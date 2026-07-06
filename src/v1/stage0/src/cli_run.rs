@@ -785,10 +785,16 @@ const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
 enum CompileCleanScopePlan {
     /// Local dev only — neither `GITHUB_ACTIONS` nor `GUNBC_CI_DIFF_BASE` active.
     WholeTree,
-    SkipNoAffected { reason: String },
-    Scoped { entry_paths: Vec<String> },
+    SkipNoAffected {
+        reason: String,
+    },
+    Scoped {
+        entry_paths: Vec<String>,
+    },
     /// CI path: diff observation or scope disposition failed — job must red (no widening).
-    Refused { reason: String },
+    Refused {
+        reason: String,
+    },
 }
 
 fn compile_clean_scope_plan_from_touched_paths(
@@ -885,8 +891,7 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
             let roots = witness_layer_roots();
             let index = build_module_index_primary_precedence(&roots);
             let facts = build_module_graph_facts_live(&roots);
-            load_compile_clean_entry_sources(&roots, &index, &facts, None)
-                .map(Some)
+            load_compile_clean_entry_sources(&roots, &index, &facts, None).map(Some)
         }
         CompileCleanScopePlan::Scoped { entry_paths } => {
             eprintln!(
