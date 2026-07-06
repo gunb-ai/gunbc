@@ -2,7 +2,12 @@ module v2.test.claim.interface_summary.interface_summary_firewall
 
 import std.interface_summary { export_entry_fingerprint }
 import std.types { ContentHash, NonEmptyStr, List }
-import v2.lens.interface_summary { interface_summary_for_module }
+import v2.lens.interface_summary {
+  interface_summary_for_module,
+  import_interface_hashes_for_module
+}
+import v2.lens.module_graph { ImportResolutionFact }
+import v2.std.algebra { Empty }
 import v2.std.collection { Present, Absent, optional_absent }
 import v2.std.decl_index { export_signature_facts_host_scaffold_dissolution_trigger }
 import v2.std.logic { Bool }
@@ -110,4 +115,22 @@ test fn export_signature_facts_host_scaffold_receipt_cites_dissolution_authoriti
       s: export_signature_facts_host_scaffold_dissolution_trigger,
       pattern: "decl_facts_for_roots"
     )
+}
+
+test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool {
+  let edges = [
+    ImportResolutionFact {
+      path: "src/mod.dag",
+      import_module: "missing.other",
+      target_declared: true
+    }
+  ]
+  match import_interface_hashes_for_module(
+    rel_path: "src/mod.dag",
+    edges: edges,
+    summaries: Empty
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }

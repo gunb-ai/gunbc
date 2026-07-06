@@ -218,24 +218,6 @@ fn interface_summary_for_module(
   })
 }
 
-test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool {
-  let edges = [
-    ImportResolutionFact {
-      path: "src/mod.dag",
-      import_module: "missing.other",
-      target_declared: true
-    }
-  ]
-  match import_interface_hashes_for_module(
-    rel_path: "src/mod.dag",
-    edges: edges,
-    summaries: Empty
-  ) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
