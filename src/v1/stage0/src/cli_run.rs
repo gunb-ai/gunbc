@@ -856,11 +856,6 @@ fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     }
     match floor_git_diff_name_status_range() {
         Ok((changed_paths, _departed)) => {
-            if changed_paths.is_empty() {
-                return CompileCleanScopePlan::SkipNoAffected {
-                    reason: "empty diff — no touched paths".to_string(),
-                };
-            }
             match compile_clean_scope_plan_from_touched_paths(&changed_paths) {
                 Ok(plan) => plan,
                 Err(msg) => CompileCleanScopePlan::Refused {
@@ -10893,6 +10888,35 @@ pub fn test_migration_delete_guard_holds() -> bool {
 mod witness_layer_roots_compile_clean_tests {
     use super::*;
 
+    struct EnvGuard {
+        key: &'static str,
+        prior: Option<String>,
+    }
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prior = std::env::var(key).ok();
+            // SAFETY: serialized by test harness (single-threaded test module).
+            unsafe { std::env::set_var(key, value) };
+            Self { key, prior }
+        }
+        fn remove(key: &'static str) -> Self {
+            let prior = std::env::var(key).ok();
+            // SAFETY: serialized by test harness (single-threaded test module).
+            unsafe { std::env::remove_var(key) };
+            Self { key, prior }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.prior {
+                    Some(v) => std::env::set_var(self.key, v),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
     fn with_workspace_cwd<F: FnOnce()>(f: F) {
         let ws = workspace_root();
         let prior = std::env::current_dir().ok();
@@ -10952,28 +10976,6 @@ mod witness_layer_roots_compile_clean_tests {
     /// Lever-a receipt: diff observation failure refuses — never widens to whole-tree.
     #[test]
     fn scoped_plan_refuses_on_invalid_diff_base() {
-        struct EnvGuard {
-            key: &'static str,
-            prior: Option<String>,
-        }
-        impl EnvGuard {
-            fn set(key: &'static str, value: &str) -> Self {
-                let prior = std::env::var(key).ok();
-                // SAFETY: serialized by test harness (single-threaded test module).
-                unsafe { std::env::set_var(key, value) };
-                Self { key, prior }
-            }
-        }
-        impl Drop for EnvGuard {
-            fn drop(&mut self) {
-                unsafe {
-                    match &self.prior {
-                        Some(v) => std::env::set_var(self.key, v),
-                        None => std::env::remove_var(self.key),
-                    }
-                }
-            }
-        }
         let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
         let _head = EnvGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
         let plan = compile_clean_scope_plan_for_ci();
@@ -10987,34 +10989,6 @@ mod witness_layer_roots_compile_clean_tests {
     /// `floor_diff_observe` / `install_group_syntax`) without requiring `GUNBC_CI_DIFF_BASE`.
     #[test]
     fn github_actions_activates_compile_clean_scoping() {
-        struct EnvGuard {
-            key: &'static str,
-            prior: Option<String>,
-        }
-        impl EnvGuard {
-            fn set(key: &'static str, value: &str) -> Self {
-                let prior = std::env::var(key).ok();
-                // SAFETY: serialized by test harness (single-threaded test module).
-                unsafe { std::env::set_var(key, value) };
-                Self { key, prior }
-            }
-            fn remove(key: &'static str) -> Self {
-                let prior = std::env::var(key).ok();
-                // SAFETY: serialized by test harness (single-threaded test module).
-                unsafe { std::env::remove_var(key) };
-                Self { key, prior }
-            }
-        }
-        impl Drop for EnvGuard {
-            fn drop(&mut self) {
-                unsafe {
-                    match &self.prior {
-                        Some(v) => std::env::set_var(self.key, v),
-                        None => std::env::remove_var(self.key),
-                    }
-                }
-            }
-        }
         let _ga = EnvGuard::set("GITHUB_ACTIONS", "true");
         let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
         assert!(compile_clean_scoping_active());
