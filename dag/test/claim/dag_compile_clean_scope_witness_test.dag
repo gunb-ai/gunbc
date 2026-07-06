@@ -26,13 +26,13 @@ test fn dag_compile_clean_scope_partition_authority_holds() -> Bool {
     && witness_pool_roots_match_witness_layer_roots()
 }
 
-test fn dag_compile_clean_scope_importer_touched_by_dependency_edit_holds() -> Bool {
+test fn dag_compile_clean_scope_importer_touched_by_v2_logic_edit_holds() -> Bool {
   match compile_clean_scope_disposition_from_touched(
     touched_paths: ["src/v2/std/logic.dag"]
   ) {
     ScopedRun { entry_paths: paths } =>
       fold(paths, init: false, f: fn(found, p) {
-        found || ends_with(s: p, suffix: "dag_compile_clean_transport.dag")
+        found || (p == "dag/test/claim/parse_test.dag")
       })
     SkipNoAffectedEntries { reason: _ } => false
   }
