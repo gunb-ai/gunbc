@@ -172,10 +172,10 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) -> Result<(),
     Ok(())
 }
 
-fn single_source(content: &str) -> Rc<Vec<Rc<SourceFile>>> {
+fn single_source(content: &str) -> Rc<im_rc::Vector<Rc<SourceFile>>> {
     // The witness modules below have no imports, so import-transitive resolution
     // is exactly the entry file itself.
-    Rc::new(vec![Rc::new(SourceFile {
+    Rc::new(im_rc::vector![Rc::new(SourceFile {
         path: "test.dag".to_string(),
         content: content.to_string(),
     })])
