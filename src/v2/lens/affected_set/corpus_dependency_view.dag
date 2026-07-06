@@ -75,17 +75,22 @@ fn corpus_dependency_view_per_pr_substrate_refuse() -> Bool {
   corpus_dependency_view_per_pr_substrate_refuse()
 }
 
-fn corpus_dependency_views_live() -> List<DependencyView> {
+fn ensure_corpus_dependency_view_per_pr_substrate() -> Bool {
   if corpus_dependency_view_per_pr_substrate_ready() {
-    fold(fn_arrow_decl_facts_live(), init: [], f: fn(acc, decl) {
-      append_dependency_views(
-        left: acc,
-        right: dependency_lens(root: decl.output)
-      )
-    })
+    true
   } else {
     corpus_dependency_view_per_pr_substrate_refuse()
   }
+}
+
+fn corpus_dependency_views_live() -> List<DependencyView> {
+  let _ready = ensure_corpus_dependency_view_per_pr_substrate()
+  fold(fn_arrow_decl_facts_live(), init: [], f: fn(acc, decl) {
+    append_dependency_views(
+      left: acc,
+      right: dependency_lens(root: decl.output)
+    )
+  })
 }
 
 fn corpus_dependency_view_edge_count() -> Int {

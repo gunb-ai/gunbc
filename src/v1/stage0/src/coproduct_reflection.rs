@@ -809,6 +809,50 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
+fn whole_tree_measurement_exclude_substrings() -> Vec<String> {
+    crate::cli_run::FLOOR_DISCOVERY_EXCLUDES
+        .iter()
+        .map(|s| (*s).to_string())
+        .chain([
+            "test/fixture/".to_string(),
+            "/test/".to_string(),
+            "nat_semiring_rung".to_string(),
+            "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
+            "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
+        ])
+        .collect()
+}
+
+/// True when the interpreter context was resolved over the whole-tree eligible
+/// module census (same exclude set as `whole_tree_resolved_ctx` / measurement probe).
+pub fn eval_fn_arrow_decl_substrate_is_whole_tree(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let loaded = ctx.modules.len();
+    let roots = crate::cli_run::default_source_roots();
+    let excludes = whole_tree_measurement_exclude_substrings();
+    let index = crate::cli_run::build_module_path_index(&roots);
+    let expected = index
+        .iter()
+        .filter(|(module_path, rel_path)| {
+            !excludes
+                .iter()
+                .any(|sub| rel_path.contains(sub) || module_path.contains(sub))
+        })
+        .count();
+    Ok(Value::Bool(loaded >= expected))
+}
+
+pub fn eval_corpus_dependency_view_per_pr_substrate_refuse(
+    _ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    Err(InterpError::TypeError {
+        msg: "corpus_dependency_view per-PR execution refused: fn_arrow_decl_substrate_is_whole_tree is false (blocked-on-#6239)".to_string(),
+    })
+}
+
 fn literal_source_lexeme(
     node: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,

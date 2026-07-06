@@ -3,6 +3,9 @@ module tools.rust_stage0_gates
 import std.list { List }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.lens.affected_set.corpus_dependency_view {
+  corpus_dependency_view_per_pr_substrate_ready
+}
 import v2.lens.affected_set.entry_selection { entry_affected_by_dependency_view }
 import gunbc.ci_layer_roots { witness_layer_roots }
 
@@ -38,11 +41,15 @@ data declared_consumed_input_units: List<ConsumedInputUnit> = [
 ]
 
 fn unit_is_affected(u: ConsumedInputUnit, paths: List<String>) -> Bool {
-  entry_affected_by_dependency_view(
-    entry_path: u.entry_path,
-    pool_roots: witness_layer_roots,
-    touched_paths: paths
-  )
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    entry_affected_by_dependency_view(
+      entry_path: u.entry_path,
+      pool_roots: witness_layer_roots,
+      touched_paths: paths
+    )
+  } else {
+    true
+  }
 }
 
 fn any_declared_unit_affected(paths: List<String>) -> Bool {

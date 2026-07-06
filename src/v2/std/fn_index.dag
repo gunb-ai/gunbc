@@ -1,6 +1,7 @@
 module v2.std.fn_index
 
 import v2.std.collection { List }
+import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
@@ -18,4 +19,8 @@ type FnArrowDecl {
 
 fn fn_arrow_decl_facts_live() -> List<FnArrowDecl> {
   fn_arrow_decl_facts_live()
+}
+
+fn fn_arrow_decl_substrate_is_whole_tree() -> Bool {
+  fn_arrow_decl_substrate_is_whole_tree()
 }
