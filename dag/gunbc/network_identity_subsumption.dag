@@ -4,7 +4,6 @@ import std.types { NonEmptyStr, Bool, List, String }
 import std.disposition { Disposition, Terminal }
 import extdeps.dhcp.v4 {
   DhcpLeaseObservation,
-  DhcpClientHostNameOption12,
   DynamicDhcpLease,
   StaticDhcpReservation,
   Active,
