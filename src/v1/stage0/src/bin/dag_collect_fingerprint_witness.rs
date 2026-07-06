@@ -17,9 +17,6 @@ use v1_compiler::v1_rt::atom_identity_hash;
 use v1_compiler::v1_std_core::empty_node_list;
 use v1_compiler::v1_std_core::{Cardinality, Connective, ExprData, Node, SourceSpan};
 
-<<<<<<< HEAD:src/v1/tests/src/dag_collect_fingerprint_witness_test.rs
-fn hashes(labels: Vec<&str>) -> Rc<im_rc::Vector<String>> {
-=======
 type WitnessCase = (&'static str, fn());
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
@@ -27,8 +24,7 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::from(1)
 }
 
-fn hashes(labels: Vec<&str>) -> Rc<Vec<String>> {
->>>>>>> origin/main:src/v1/stage0/src/bin/dag_collect_fingerprint_witness.rs
+fn hashes(labels: Vec<&str>) -> Rc<im_rc::Vector<String>> {
     Rc::new(
         labels
             .into_iter()
