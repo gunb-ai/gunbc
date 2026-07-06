@@ -485,6 +485,16 @@ pub(crate) fn default_source_roots() -> Vec<String> {
         .collect()
 }
 
+/// True when `rel_path` lies under a `gunbc.ci_layer_roots.witness_layer_roots` entry.
+/// Paths outside (e.g. `src/v1/*.dag`) are excluded from floor node-frontier attribution —
+/// the discovery index is built over witness roots only (`dag`, `src/v2`).
+pub(crate) fn path_under_witness_layer_root(rel_path: &str) -> bool {
+    let norm = rel_path.trim_start_matches("./");
+    witness_layer_roots()
+        .iter()
+        .any(|root| norm == root.as_str() || norm.starts_with(&format!("{root}/")))
+}
+
 pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
     build_module_path_index(&default_source_roots())
 }
@@ -4890,6 +4900,9 @@ fn floor_diff_edits_from_line_ranges(
         }
         saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
+        if !path_under_witness_layer_root(&file_norm) {
+            continue;
+        }
         if !std::path::Path::new(file_path).exists() {
             if departed_paths.contains(&file_norm) {
                 // Departed per the diff (deletion / rename-from): its decl set
