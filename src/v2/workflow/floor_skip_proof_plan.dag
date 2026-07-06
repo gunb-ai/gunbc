@@ -2,6 +2,7 @@ module v2.workflow.floor_skip_proof_plan
 
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.realization_schedule {
+  SelectionApplied,
   Runnable,
   RunnableDiscoveryBatch,
   ScheduleWitnessEntry,
@@ -34,7 +35,7 @@ fn floor_skip_proof_batches() -> List<List<Runnable>> {
       source_roots: witness_layer_roots,
       scan_dirs: [],
       explicit_entries: floor_skip_proof_roster(),
-      skip_unaffected_node_frontier: true,
+      node_frontier_selection: SelectionApplied,
       exclude_substrings: [],
       discovery_scope_dirs: [],
       spawn_width_cap: 1,
