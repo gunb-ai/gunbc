@@ -10,8 +10,7 @@
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use v1_compiler::v1_compiler_artifact::RenderTarget;
-use v1_compiler::v1_compiler_compile::{compile_to_resolved, emit_resolved_for_target, SourceFile};
+use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_std_core::{empty_intern_table, intern, intern_str, InternTable};
 
 /// O(M²) shows ~4× wall-clock per module-count doubling; linear stays sub-4×.
@@ -66,63 +65,6 @@ fn compile_modules(sources: Vec<Rc<SourceFile>>) {
     assert_resolved_no_hard_errors(&resolved);
 }
 
-/// WIDE (multi-import) ancestry: each module imports its previous `fan_in` modules and references
-/// each parent's canonical type, forcing the |imports|>1 `map_merge` UNION path in build_type_env.
-/// The single-parent `ancestry_cache_sharing` borrow (#6304/#6310) does NOT cover this path — this is
-/// the shape sharp-wolf's 82,713-recurse real module exposes and the shallow single-parent chain
-/// (`floor_scaling_curve_import_chain`) HIDES. Discriminating probe for the build_type_env->SymbolIndex
-/// surgery: expected superlinear NOW, must go flat after the reform.
-fn synthetic_wide_ancestry_sources(depth: usize, fan_in: usize) -> Vec<Rc<SourceFile>> {
-    (0..depth)
-        .map(|i| {
-            let mut content = format!("module test.wide_{i}\n");
-            let lo = i.saturating_sub(fan_in);
-            for j in lo..i {
-                content.push_str(&format!("import test.wide_{j}\n"));
-            }
-            if i == 0 {
-                content.push_str("type T0 = Int\n");
-            } else {
-                content.push_str(&format!("type T{i} = T{}\n", i - 1));
-                for (k, j) in (lo..i.saturating_sub(1)).enumerate() {
-                    content.push_str(&format!("type T{i}_a{k} = T{j}\n"));
-                }
-            }
-            Rc::new(SourceFile {
-                path: format!("wide_{i}.dag"),
-                content,
-            })
-        })
-        .collect()
-}
-
-fn time_wide_ancestry_compile(depth: usize, fan_in: usize) -> Duration {
-    let sources = synthetic_wide_ancestry_sources(depth, fan_in);
-    compile_modules(sources.clone());
-    let mut samples = Vec::new();
-    for _ in 0..5 {
-        let start = Instant::now();
-        compile_modules(sources.clone());
-        samples.push(start.elapsed());
-    }
-    samples.sort();
-    samples[samples.len() / 2]
-}
-
-#[test]
-fn wide_ancestry_scaling_probe() {
-    let fan_in = 3;
-    let d50 = time_wide_ancestry_compile(50, fan_in);
-    let d100 = time_wide_ancestry_compile(100, fan_in);
-    let d200 = time_wide_ancestry_compile(200, fan_in);
-    let r1 = d100.as_secs_f64() / d50.as_secs_f64().max(1e-9);
-    let r2 = d200.as_secs_f64() / d100.as_secs_f64().max(1e-9);
-    eprintln!(
-        "WIDE-ANCESTRY (fan_in={fan_in}) scaling: d50={d50:?} d100={d100:?} d200={d200:?} \
-         r100/50={r1:.2} r200/100={r2:.2} (2x=linear, 4x=quadratic; single-parent chain was ~2.5-2.9)"
-    );
-}
-
 fn time_import_chain_compile(depth: usize) -> Duration {
     let sources = synthetic_import_chain_sources(depth);
     compile_modules(sources.clone());
@@ -134,38 +76,6 @@ fn time_import_chain_compile(depth: usize) -> Duration {
     }
     samples.sort();
     samples[samples.len() / 2]
-}
-
-/// EMIT-isolated scaling probe (§7.5 emit-first): compile once (outside timer), then time ONLY
-/// `emit_resolved_for_target(.., Rust)` which drives `emit_imports` (the 78% O(M?) suspect). Compared
-/// against the front-half receipt below, a higher/climbing ratio isolates emit as the superlinear locus.
-fn time_import_chain_emit(depth: usize) -> Duration {
-    let sources = synthetic_import_chain_sources(depth);
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
-    let _ = emit_resolved_for_target(resolved.clone(), RenderTarget::Rust);
-    let mut samples = Vec::new();
-    for _ in 0..7 {
-        let start = Instant::now();
-        let _ = emit_resolved_for_target(resolved.clone(), RenderTarget::Rust);
-        samples.push(start.elapsed());
-    }
-    samples.sort();
-    samples[samples.len() / 2]
-}
-
-#[test]
-fn emit_scaling_curve_import_chain_probe() {
-    let d50 = time_import_chain_emit(50);
-    let d100 = time_import_chain_emit(100);
-    let d200 = time_import_chain_emit(200);
-    let d400 = time_import_chain_emit(400);
-    let r1 = d100.as_secs_f64() / d50.as_secs_f64().max(1e-9);
-    let r2 = d200.as_secs_f64() / d100.as_secs_f64().max(1e-9);
-    let r3 = d400.as_secs_f64() / d200.as_secs_f64().max(1e-9);
-    eprintln!(
-        "EMIT-ISOLATED scaling: d50={d50:?} d100={d100:?} d200={d200:?} d400={d400:?} \
-         r100/50={r1:.2} r200/100={r2:.2} r400/200={r3:.2} (2x=linear, 4x=quadratic)"
-    );
 }
 
 #[test]
