@@ -14800,6 +14800,18 @@ pub fn build_type_name_export_index(
                         .next()
                         .cloned()
                         .unwrap_or(binding);
+                    if name == "NonEmptyStr" {
+                        for b in m.type_env.bindings.values().filter(|b| b.name == name) {
+                            eprintln!(
+                                "[canon-debug] mod-binding name={} resolved.span={}:{}..{} ident={:?}",
+                                b.name,
+                                b.resolved.span.file,
+                                b.resolved.span.start,
+                                b.resolved.span.end,
+                                b.resolved.ident_span.as_ref().map(|sp| (sp.start, sp.end))
+                            );
+                        }
+                    }
                     match v1_rt::map_get(&acc2, name.clone()) {
                         None => v1_rt::rc_map_insert(
                             acc2,

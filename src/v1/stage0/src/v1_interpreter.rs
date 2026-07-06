@@ -2997,14 +2997,23 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     if target_name.is_empty() {
         let isp = target_node.ident_span.clone();
         eprintln!(
-            "[cast-debug] name={:?} ident_span={:?} si_has_file={:?} char_codes_len={:?}",
+            "[cast-debug] name={:?} ident_span={:?} children={} target_span={:?}",
             target_node.name,
             isp.as_ref().map(|sp| (sp.file.clone(), sp.start, sp.end)),
-            isp.as_ref()
-                .map(|sp| ctx.si().contains_key(&sp.file)),
-            isp.as_ref().and_then(|sp| v1_rt::map_get(&ctx.si(), sp.file.clone())
-                .map(|ix| ix.char_codes.len()))
+            node.children.len(),
+            (target_node.span.file.clone(), target_node.span.start, target_node.span.end)
         );
+        for (i, c) in node.children.iter().enumerate() {
+            eprintln!(
+                "[cast-debug]   child[{}] name={:?} span={}..{} ident={:?} expr={:?}",
+                i,
+                c.name,
+                c.span.start,
+                c.span.end,
+                c.ident_span.as_ref().map(|sp| (sp.start, sp.end)),
+                format!("{:?}", c.expr_data).chars().take(40).collect::<String>()
+            );
+        }
     }
 
     if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
