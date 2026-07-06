@@ -13,6 +13,7 @@ type TypeEnv {
   inductive_fields: Map<String, List<InductiveField>>
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
+  source_visible_names: Map<String, Bool>
 }
 
 type TypeBinding {
@@ -284,5 +285,5 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_bindings_by_ident = fold(merged_bindings |> map_values, init: empty_map(), f: (acc, binding) =>
     map_insert(acc, intern(table: merged_intern_table, s: binding.name).id, binding)
   )
-  TypeEnv { bindings: merged_bindings_by_ident, str_bindings: merged_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
+  TypeEnv { bindings: merged_bindings_by_ident, str_bindings: merged_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table, source_visible_names: empty_map() }
 }
