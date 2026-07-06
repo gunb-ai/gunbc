@@ -1,41 +1,172 @@
 module v2.test.manual.ambiguity_count_probe
 
-import v2.compiler.parse { grammar_choice_ambiguity_count }
+import v2.compiler.parse {
+  grammar_choice_ambiguity_count,
+  grammar_choice_ambiguity_roster
+}
 import v2.extdeps.languages.dag { dag_wave1_grammar_root }
+import v2.std.algebra { length }
+import v2.std.collection { list_at_optional, Present, Absent }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 
-test fn probe_count_gt_zero() -> Bool {
-  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) > 0
+fn roster_prod_at(index: Int) -> Symbol {
+  match list_at_optional(xs: grammar_choice_ambiguity_roster(root: dag_wave1_grammar_root()), index: index) {
+    Present { value: row } => row.production
+    Absent => ^roster_index_absent
+  }
 }
 
-test fn probe_count_eq_1() -> Bool {
-  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 1
+fn roster_both_nullable_at(index: Int) -> Bool {
+  match list_at_optional(xs: grammar_choice_ambiguity_roster(root: dag_wave1_grammar_root()), index: index) {
+    Present { value: row } => row.both_nullable
+    Absent => false
+  }
 }
 
-test fn probe_count_eq_2() -> Bool {
-  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 2
+fn roster_overlap_len_at(index: Int) -> Int {
+  match list_at_optional(xs: grammar_choice_ambiguity_roster(root: dag_wave1_grammar_root()), index: index) {
+    Present { value: row } => length(xs: row.overlap_terminals)
+    Absent => -1
+  }
 }
 
-test fn probe_count_eq_3() -> Bool {
-  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 3
-}
-
-test fn probe_count_eq_4() -> Bool {
-  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 4
+fn roster_prod_eq(index: Int, prod: Symbol) -> Bool {
+  roster_prod_at(index: index) == prod
 }
 
 test fn probe_count_eq_5() -> Bool {
   grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 5
 }
 
-test fn probe_count_eq_6() -> Bool {
-  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 6
+test fn probe_row0_prod_expr() -> Bool {
+  roster_prod_eq(index: 0, prod: ^dag_production_expr)
 }
 
-test fn probe_count_eq_7() -> Bool {
-  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 7
+test fn probe_row1_prod_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_expr)
 }
 
-test fn probe_count_eq_8() -> Bool {
-  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 8
+test fn probe_row2_prod_expr() -> Bool {
+  roster_prod_eq(index: 2, prod: ^dag_production_expr)
+}
+
+test fn probe_row3_prod_expr() -> Bool {
+  roster_prod_eq(index: 3, prod: ^dag_production_expr)
+}
+
+test fn probe_row4_prod_expr() -> Bool {
+  roster_prod_eq(index: 4, prod: ^dag_production_expr)
+}
+
+test fn probe_row0_overlap_len_1() -> Bool {
+  roster_overlap_len_at(index: 0) == 1
+}
+
+test fn probe_row0_overlap_len_gt_0() -> Bool {
+  roster_overlap_len_at(index: 0) > 0
+}
+
+test fn probe_row0_both_nullable() -> Bool {
+  roster_both_nullable_at(index: 0)
+}
+
+test fn probe_row1_both_nullable() -> Bool {
+  roster_both_nullable_at(index: 1)
+}
+
+test fn probe_row0_prod_primary_expr() -> Bool {
+  roster_prod_eq(index: 0, prod: ^dag_production_primary_expr)
+}
+
+test fn probe_row0_prod_binary_expr() -> Bool {
+  roster_prod_eq(index: 0, prod: ^dag_production_binary_expr)
+}
+
+test fn probe_row0_prod_unary_expr() -> Bool {
+  roster_prod_eq(index: 0, prod: ^dag_production_unary_expr)
+}
+
+test fn probe_row0_prod_postfix_expr() -> Bool {
+  roster_prod_eq(index: 0, prod: ^dag_production_postfix_expr)
+}
+
+test fn probe_row0_prod_type_expr() -> Bool {
+  roster_prod_eq(index: 0, prod: ^dag_production_type_expr)
+}
+
+test fn probe_row0_prod_stmt() -> Bool {
+  roster_prod_eq(index: 0, prod: ^dag_production_stmt)
+}
+
+test fn probe_row1_prod_primary_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_primary_expr)
+}
+
+test fn probe_row1_prod_binary_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_binary_expr)
+}
+
+test fn probe_row1_prod_unary_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_unary_expr)
+}
+
+test fn probe_row1_prod_postfix_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_postfix_expr)
+}
+
+test fn probe_row1_prod_type_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_type_expr)
+}
+
+test fn probe_row1_prod_stmt() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_stmt)
+}
+
+test fn probe_row1_prod_top_level_item() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_top_level_item)
+}
+
+test fn probe_row1_prod_match_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_match_expr)
+}
+
+test fn probe_row1_prod_if_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_if_expr)
+}
+
+test fn probe_row1_prod_fn_literal() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_fn_literal)
+}
+
+test fn probe_row1_prod_block_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_block_expr)
+}
+
+test fn probe_row2_prod_primary_expr() -> Bool {
+  roster_prod_eq(index: 2, prod: ^dag_production_primary_expr)
+}
+
+test fn probe_row2_prod_type_expr() -> Bool {
+  roster_prod_eq(index: 2, prod: ^dag_production_type_expr)
+}
+
+test fn probe_row2_prod_stmt() -> Bool {
+  roster_prod_eq(index: 2, prod: ^dag_production_stmt)
+}
+
+test fn probe_row3_prod_primary_expr() -> Bool {
+  roster_prod_eq(index: 3, prod: ^dag_production_primary_expr)
+}
+
+test fn probe_row3_prod_type_expr() -> Bool {
+  roster_prod_eq(index: 3, prod: ^dag_production_type_expr)
+}
+
+test fn probe_row4_prod_primary_expr() -> Bool {
+  roster_prod_eq(index: 4, prod: ^dag_production_primary_expr)
+}
+
+test fn probe_row4_prod_type_expr() -> Bool {
+  roster_prod_eq(index: 4, prod: ^dag_production_type_expr)
 }
