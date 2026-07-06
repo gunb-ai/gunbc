@@ -1,5 +1,6 @@
 module v2.extdeps.languages.rust
 import v2.std.language_model { LanguageModel }
+import v2.std.inhabitant_bridge { inhabitant_pair_node }
 
 import v2.std.grammar {
   StampClass,
@@ -768,46 +769,11 @@ fn rust_noninteger_facts_node(facts: RustNonIntegerPrimitiveFacts) -> Node {
 }
 }
 
-fn rust_integer_inhabitant_node(id: Symbol, facts: RustIntegerPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
-      rust_named_edge(
-        name: ^rust_inhabitant_field_facts,
-        target: rust_integer_facts_node(facts: facts)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-fn rust_float_inhabitant_node(id: Symbol, facts: RustFloatPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
-      rust_named_edge(
-        name: ^rust_inhabitant_field_facts,
-        target: rust_float_facts_node(facts: facts)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-fn rust_noninteger_inhabitant_node(id: Symbol, facts: RustNonIntegerPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
-      rust_named_edge(
-        name: ^rust_inhabitant_field_facts,
-        target: rust_noninteger_facts_node(facts: facts)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+fn rust_inhabitant_node(id: Symbol, facts: Node) -> Node {
+  inhabitant_pair_node(
+    atom_edge: rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
+    facts_edge: rust_named_edge(name: ^rust_inhabitant_field_facts, target: facts)
+  )
 }
 
 fn rust_inhabitant_i8_node() -> Node {

@@ -1,5 +1,6 @@
 module v2.extdeps.languages.wasm
 import v2.std.language_model { LanguageModel }
+import v2.std.inhabitant_bridge { inhabitant_pair_node }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.grammar {
@@ -286,32 +287,11 @@ fn wasm_float_facts_node(facts: WasmFloatPrimitiveFacts) -> Node {
 }
 }
 
-fn wasm_integer_inhabitant_node(id: Symbol, facts: WasmIntegerPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      wasm_named_edge(name: ^wasm_inhabitant_field_atom, target: wasm_inhabitant_atom(id: id)),
-      wasm_named_edge(
-        name: ^wasm_inhabitant_field_facts,
-        target: wasm_integer_facts_node(facts: facts)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-fn wasm_float_inhabitant_node(id: Symbol, facts: WasmFloatPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      wasm_named_edge(name: ^wasm_inhabitant_field_atom, target: wasm_inhabitant_atom(id: id)),
-      wasm_named_edge(
-        name: ^wasm_inhabitant_field_facts,
-        target: wasm_float_facts_node(facts: facts)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+fn wasm_inhabitant_node(id: Symbol, facts: Node) -> Node {
+  inhabitant_pair_node(
+    atom_edge: wasm_named_edge(name: ^wasm_inhabitant_field_atom, target: wasm_inhabitant_atom(id: id)),
+    facts_edge: wasm_named_edge(name: ^wasm_inhabitant_field_facts, target: facts)
+  )
 }
 
 fn wasm_inhabitant_i32_node() -> Node {
