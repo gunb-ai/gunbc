@@ -65,17 +65,13 @@ fn r1_symbol_atom(s: Symbol) -> Node {
 }
 
 fn r1_positional_targets(n: Node) -> List<Node> {
-  fold_list(
-    xs: n.children,
-    empty: Empty,
-    cons: fn(acc, e) {
-      match e.label {
-        Positional =>
-          list_append(left: acc, right: Cons { head: e.target, tail: Empty })
-        Named { name: _ } => acc
-      }
+  fold(n.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Positional =>
+        list_append(left: acc, right: Cons { head: e.target, tail: Empty })
+      Named { name: _ } => acc
     }
-  )
+  })
 }
 
 fn r1_symbol_of(n: Node) -> Optional<Symbol> {
