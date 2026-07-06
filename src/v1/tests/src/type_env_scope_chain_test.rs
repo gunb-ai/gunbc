@@ -298,6 +298,7 @@ fn type_env_import_resolves_via_str_bindings_index() {
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
+        source_visible_names: Rc::new(im_rc::HashMap::new()),
     });
     assert!(
         lookup_type_by_name(stripped, "Shared".to_string()).is_none(),
@@ -329,6 +330,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
+        source_visible_names: Rc::new(im_rc::HashMap::new()),
     });
     assert!(
         lookup_type_by_name(stripped.clone(), "Shared".to_string()).is_some(),
@@ -344,6 +346,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
+        source_visible_names: Rc::new(im_rc::HashMap::new()),
     });
     assert!(
         lookup_type_by_name(stripped_index, "Shared".to_string()).is_none(),
