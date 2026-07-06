@@ -1,0 +1,41 @@
+module v2.test.manual.ambiguity_count_probe
+
+import v2.compiler.parse { grammar_choice_ambiguity_count }
+import v2.extdeps.languages.dag { dag_wave1_grammar_root }
+import v2.std.logic { Bool }
+
+test fn probe_count_gt_zero() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) > 0
+}
+
+test fn probe_count_eq_1() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 1
+}
+
+test fn probe_count_eq_2() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 2
+}
+
+test fn probe_count_eq_3() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 3
+}
+
+test fn probe_count_eq_4() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 4
+}
+
+test fn probe_count_eq_5() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 5
+}
+
+test fn probe_count_eq_6() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 6
+}
+
+test fn probe_count_eq_7() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 7
+}
+
+test fn probe_count_eq_8() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 8
+}
