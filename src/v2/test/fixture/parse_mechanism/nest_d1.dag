@@ -5,8 +5,11 @@ import v2.std.nat { Nat }
 
 type Bit = B0 | B1
 
+fn nest_leaf(_: Bit) -> Nat { 0 }
+
 fn nested_depth(x: Bit) -> Nat {
   match x {
-  B0 => 0
+    B0 => nest_leaf(B0)
+    B1 => nest_leaf(B1)
   }
 }
