@@ -110,9 +110,17 @@ separate std-induction PR so the termination checker's soundness is reviewed on 
   §7.5 profile says **emit_imports (78%) is the first consumer, `build_type_env` (17%) second** — so the
   receipt decides emit-first vs both-at-once AND confirms the target is superlinear not a fat constant.
   Second gate: the namespace pivot sign-off (the index is shared with the resolver companion, §header).
-- **DEPENDENCY** — `QualifiedName` is v2.std-only today (`src/v2/std/qualified_name.dag`); the index keys on
-  `String`. Not blocking the perf wiring, but blocks the §3-grounded + content-hash-groundable key (§5.5-inv-1)
-  done cleanly. Two-std split (smart-ant-466).
+- **DEPENDENCY (parked — re-dispatch on the node/algebra defork)** — the index keys on `String`, which *works
+  for the surgery* (the `entries: Map<String, Node>` / `symbol_index_lookup(qualified_name: String)` params are
+  even named `qualified_name`: String is a projection of the real key, not the real key). The `QualifiedName`
+  grounding — the §5.5-inv-1 content-hash-groundable / containment-path key — is v2.std-only today
+  (`src/v2/std/qualified_name.dag`) and is **gated on the node + algebra two-std deforks** (operator-owned,
+  `dag/gunbc/plans/dag_v2_defork_audit.dag`): `QualifiedName = FreeMonoid<Symbol>`, and `FreeMonoid` is the live
+  `algebra` fork-census item while `Symbol`/`symbol_intern_lexeme` are v2-only, so **naive promotion re-creates
+  the `dag/std/algebra.dag:115` shadow** (the Empty/Cons variant-drop when both trees co-occur) — doing it now is
+  actively wrong, not merely low-value. Not blocking the perf wiring. Re-dispatch when that defork lands and a
+  clean `std.qualified_name` home exists. (smart-ant-466 was tied only to this; archived without producing a
+  branch/PR — the item is parked, not half-done.)
 - **SURGERY (Phase 2, load-bearing — DESIGN-named; higher bar, escalate on doubt)** — fill the index
   (topo-prepass per §8, or fill-as-you-go per #6306 — receipt decides); replace `build_type_env`'s
   per-module `ancestry_str_bindings` materialization (`04_infer.dag:5726-5752`) with index lookups; wire the
