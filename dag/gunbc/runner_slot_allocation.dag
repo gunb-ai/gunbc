@@ -1,0 +1,110 @@
+module gunbc.runner_slot_allocation
+
+import std.types { Int, String, List, Bool }
+import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+
+type RunnerSlotLabels {
+  github_labels: List<String>
+}
+
+type RunnerSlotDesired {
+  memory_max: ByteSize
+  memory_swap_max: ByteSize
+  memory_high: ByteSize
+  tasks_max: Int
+  cpu_weight: Int
+  labels: RunnerSlotLabels
+}
+
+type HostRunnerSlotAllocation {
+  host: HostIdentity
+  slots_per_host: Int
+  cores_per_slot: HardwareThreadCount
+  runner_slice_cap: ByteSize
+  per_slot: RunnerSlotDesired
+}
+
+data gunbc_runner_slot_allocation_authority_disposition: Disposition = Terminal {
+  reason: "Single authority for srv1/srv2 runner-slot desired allocation (operator brief 2026-07-05): 8 cores · 8GiB MemoryMax · 32GiB MemorySwapMax · 10 slots/host · static oversubscription policy (Σ per-slot MemoryMax may exceed runner_slice_cap — expressed and checked, not silent). Downstream: gunbc.ci_floor_measurement (declared vs live cap fork), gunbc.ci_runner_placement, gunbc.host_converge, gunbc.runner_slot_enforcement, gunbc.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
+}
+
+data gunbc_runner_slot_oversubscription_policy: String = "static: ten slots × 8GiB per-slot MemoryMax = 80GiB declared demand vs 80GiB runner_slice_cap on 128c/125GiB hosts — intentional full utilization; admission backpressure is labels/slots, not Σ≤slice silently assumed."
+
+fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
+  RunnerSlotDesired {
+    memory_max: byte_size(8589934592),
+    memory_swap_max: byte_size(34359738368),
+    memory_high: byte_size(7516192768),
+    tasks_max: 512,
+    cpu_weight: 100,
+    labels: RunnerSlotLabels { github_labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"] }
+  }
+}
+
+fn gunbc_runner_slots_per_host() -> Int {
+  10
+}
+
+fn gunbc_runner_cores_per_slot() -> HardwareThreadCount {
+  hardware_thread_count(count: 8)
+}
+
+fn gunbc_runner_slice_cap_declared() -> ByteSize {
+  byte_size(85899345920)
+}
+
+fn gunbc_runner_slot_demand_sum_memory_max(slots: Int, per_slot: ByteSize) -> ByteSize {
+  byte_size(byte_size_count(b: per_slot) * slots)
+}
+
+fn gunbc_runner_slot_oversubscription_within_slice(slots: Int, per_slot: ByteSize, slice_cap: ByteSize) -> Bool {
+  byte_size_count(b: gunbc_runner_slot_demand_sum_memory_max(slots: slots, per_slot: per_slot)) <=
+    byte_size_count(b: slice_cap)
+}
+
+fn gunbc_committed_host_runner_slot_allocation(host: HostIdentity) -> HostRunnerSlotAllocation {
+  let per_slot = gunbc_runner_slot_desired()
+  let slots = gunbc_runner_slots_per_host()
+  HostRunnerSlotAllocation {
+    host: host,
+    slots_per_host: slots,
+    cores_per_slot: gunbc_runner_cores_per_slot(),
+    runner_slice_cap: gunbc_runner_slice_cap_declared(),
+    per_slot: per_slot
+  }
+}
+
+data gunbc_runner_slot_allocation_srv1: HostRunnerSlotAllocation = gunbc_committed_host_runner_slot_allocation(
+  host: operator_host_srv1
+)
+
+data gunbc_runner_slot_allocation_srv2: HostRunnerSlotAllocation = gunbc_committed_host_runner_slot_allocation(
+  host: operator_host_srv2
+)
+
+fn gunbc_committed_runner_slot_allocations() -> List<HostRunnerSlotAllocation> {
+  [gunbc_runner_slot_allocation_srv1, gunbc_runner_slot_allocation_srv2]
+}
+
+fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
+  let per_slot = gunbc_runner_slot_desired()
+  let slots = gunbc_runner_slots_per_host()
+  let slice_cap = gunbc_runner_slice_cap_declared()
+  gunbc_runner_slot_oversubscription_within_slice(slots: slots, per_slot: per_slot.memory_max, slice_cap: slice_cap)
+    && (hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 8)
+    && (byte_size_count(b: per_slot.memory_max) == byte_size_count(b: byte_size(8589934592)))
+    && (byte_size_count(b: per_slot.memory_swap_max) == byte_size_count(b: byte_size(34359738368)))
+}
+
+data gunbc_runner_slot_allocation_live_cap_dissolve_on: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.runner_slot_allocation",
+    decl_name: "gunbc_runner_slot_desired",
+    field: WholeDeclaration
+  }
+}
