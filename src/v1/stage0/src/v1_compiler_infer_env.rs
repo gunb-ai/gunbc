@@ -100,6 +100,7 @@ pub struct TypeEnv {
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
+    pub source_visible_names: Rc<HashMap<String, bool>>,
 }
 
 fn empty_type_env_parents() -> Rc<Vec<Rc<TypeEnv>>> {
