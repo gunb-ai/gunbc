@@ -4,10 +4,10 @@ import extdeps.filesystem.filesystem_io
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import v2.lens.fn_family { module_sigma_family_count, module_largest_family_member_count }
+import v2.lens.fn_family { module_sigma_family_count, module_largest_family_member_count, module_sigma_families, FnFamilyFinding }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Symbol }
-import v2.std.algebra { FreeMonoid, length, fold_list }
+import v2.std.algebra { FreeMonoid, length, fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
@@ -60,4 +60,32 @@ fn corpus_scope_largest_family_size() -> Int {
 
 fn corpus_scope_has_no_sigma_families() -> Bool {
   corpus_scope_parse_accepted() && (corpus_scope_sigma_family_count() == 0)
+}
+
+fn no_ordinals() -> List<Int> {
+  []
+}
+
+fn corpus_scope_family_ordinals() -> List<Int> {
+  fold_list(
+    xs: corpus_subject_trees(),
+    empty: no_ordinals(),
+    cons: fn(acc, tree) { collect_family_ordinals(acc: acc, tree: tree) }
+  )
+}
+
+fn collect_family_ordinals(acc: List<Int>, tree: Node) -> List<Int> {
+  fold_list(
+    xs: module_sigma_families(tree: tree),
+    empty: acc,
+    cons: fn(a2, f) { append_family_row(a2: a2, f: f) }
+  )
+}
+
+fn append_family_row(a2: List<Int>, f: FnFamilyFinding) -> List<Int> {
+  fold_list(
+    xs: f.member_ordinals,
+    empty: list_snoc_item(xs: list_snoc_item(xs: a2, item: 0 - 1), item: f.member_count),
+    cons: fn(x, o) { list_snoc_item(xs: x, item: o) }
+  )
 }
