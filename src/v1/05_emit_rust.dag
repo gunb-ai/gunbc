@@ -3078,27 +3078,29 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
     } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
-    } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-      emit_zero_param_phantom_opaque_struct(item: item, source_indices: env.source_indices)
     } else {
       match rust_seed_host_numeric_alias(name: item_text, corpus_repr: emit_info.corpus_repr) {
         Present { value: host } =>
           concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
         Absent =>
-          concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
-            n: resolved_type(n: item),
-            generic_param_names: [],
-            shared_types: shared_types,
-            corpus_repr: emit_info.corpus_repr,
-            source_indices: env.source_indices,
-            scope: scope,
-            imports: imports,
-            registry: registry,
-            module_name: module_name,
-            export_sets: export_sets,
-            typed_modules: typed_modules,
-            module_index: module_index,
-            variant_to_enum: emit_info.variant_to_enum), ";")
+          if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
+            emit_zero_param_phantom_opaque_struct(item: item, source_indices: env.source_indices)
+          } else {
+            concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
+              n: resolved_type(n: item),
+              generic_param_names: [],
+              shared_types: shared_types,
+              corpus_repr: emit_info.corpus_repr,
+              source_indices: env.source_indices,
+              scope: scope,
+              imports: imports,
+              registry: registry,
+              module_name: module_name,
+              export_sets: export_sets,
+              typed_modules: typed_modules,
+              module_index: module_index,
+              variant_to_enum: emit_info.variant_to_enum), ";")
+          }
       }
     }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {

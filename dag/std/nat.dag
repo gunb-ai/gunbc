@@ -1,9 +1,8 @@
 module std.nat
 
-import std.algebra { CommutativeSemiring, Ordering, Less, Equal, Greater }
-import std.magnitude { Magnitude }
+import std.algebra { Ordering, Less, Equal, Greater }
 
-type Nat = CommutativeSemiring<Magnitude>
+type Nat
 
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }

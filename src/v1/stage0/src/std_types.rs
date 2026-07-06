@@ -24,6 +24,7 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
             let mut __m = HashMap::new();
             __m.insert("String".to_string(), true);
             __m.insert("Int".to_string(), true);
+            __m.insert("Nat".to_string(), true);
             __m.insert("Bool".to_string(), true);
             __m.insert("Float".to_string(), true);
             __m.insert("Secret".to_string(), true);

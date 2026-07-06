@@ -3,7 +3,7 @@ module std.types
 import std.algebra { BooleanAlgebra, FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names }
 
 data kernel_type_set: Map<String, Bool> = {
-  "String": true, "Int": true, "Bool": true, "Float": true,
+  "String": true, "Int": true, "Nat": true, "Bool": true, "Float": true,
   "Secret": true, "Json": true, "Unit": true, "Bytes": true
 }
 

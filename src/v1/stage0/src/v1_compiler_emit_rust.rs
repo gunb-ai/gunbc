@@ -7293,71 +7293,73 @@ pub fn emit_typed_item(
                     {
                         rust_nominal_identity_carrier_def(item_text.clone())
                     } else {
-                        if is_zero_param_self_referential_opaque_decl(
-                            item.clone(),
-                            env.source_indices.clone(),
+                        match rust_seed_host_numeric_alias(
+                            item_text.clone(),
+                            emit_info.corpus_repr.clone(),
                         ) {
-                            emit_zero_param_phantom_opaque_struct(
-                                item.clone(),
-                                env.source_indices.clone(),
-                            )
-                        } else {
-                            match rust_seed_host_numeric_alias(
-                                item_text.clone(),
-                                emit_info.corpus_repr.clone(),
-                            ) {
-                                Some(host) => v1_rt::concat(
+                            Some(host) => v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    rust_visibility_prefix(),
+                                                    rust_items().type_alias_keyword.clone(),
+                                                ),
+                                                " ".to_string(),
+                                            ),
+                                            item_text.clone(),
+                                        ),
+                                        " = ".to_string(),
+                                    ),
+                                    host.clone(),
+                                ),
+                                ";".to_string(),
+                            ),
+                            None => {
+                                if is_zero_param_self_referential_opaque_decl(
+                                    item.clone(),
+                                    env.source_indices.clone(),
+                                ) {
+                                    emit_zero_param_phantom_opaque_struct(
+                                        item.clone(),
+                                        env.source_indices.clone(),
+                                    )
+                                } else {
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        rust_visibility_prefix(),
-                                                        rust_items().type_alias_keyword.clone(),
+                                                        v1_rt::concat(
+                                                            rust_visibility_prefix(),
+                                                            rust_items().type_alias_keyword.clone(),
+                                                        ),
+                                                        " ".to_string(),
                                                     ),
-                                                    " ".to_string(),
+                                                    item_text.clone(),
                                                 ),
-                                                item_text.clone(),
+                                                " = ".to_string(),
                                             ),
-                                            " = ".to_string(),
-                                        ),
-                                        host.clone(),
-                                    ),
-                                    ";".to_string(),
-                                ),
-                                None => v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        rust_visibility_prefix(),
-                                                        rust_items().type_alias_keyword.clone(),
-                                                    ),
-                                                    " ".to_string(),
-                                                ),
-                                                item_text.clone(),
+                                            render_rust_alias_rhs_type(
+                                                resolved_type(item.clone()),
+                                                Rc::new(vec![]),
+                                                shared_types,
+                                                emit_info.corpus_repr.clone(),
+                                                env.source_indices.clone(),
+                                                scope.clone(),
+                                                imports.clone(),
+                                                registry.clone(),
+                                                module_name.clone(),
+                                                export_sets.clone(),
+                                                typed_modules.clone(),
+                                                module_index.clone(),
+                                                emit_info.variant_to_enum.clone(),
                                             ),
-                                            " = ".to_string(),
                                         ),
-                                        render_rust_alias_rhs_type(
-                                            resolved_type(item.clone()),
-                                            Rc::new(vec![]),
-                                            shared_types,
-                                            emit_info.corpus_repr.clone(),
-                                            env.source_indices.clone(),
-                                            scope.clone(),
-                                            imports.clone(),
-                                            registry.clone(),
-                                            module_name.clone(),
-                                            export_sets.clone(),
-                                            typed_modules.clone(),
-                                            module_index.clone(),
-                                            emit_info.variant_to_enum.clone(),
-                                        ),
-                                    ),
-                                    ";".to_string(),
-                                ),
+                                        ";".to_string(),
+                                    )
+                                }
                             }
                         }
                     }
