@@ -1,6 +1,6 @@
 module v2.lens.affected_set.corpus_dependency_view
 
-import v2.std.algebra { length, list_append }
+import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView, append_dependency_views, dependency_lens }
 import v2.std.fn_index { fn_arrow_decl_facts_live }
