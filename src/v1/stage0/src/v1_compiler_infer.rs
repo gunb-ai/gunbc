@@ -12054,83 +12054,7 @@ pub fn merge_kernel_variant_locals_low_priority(
     }
 }
 
-pub fn filter_env_to_specific_names(
-    parent_env: Rc<TypeEnv>,
-    allowed: Rc<Vec<String>>,
-) -> Rc<TypeEnv> {
-    let allowed_set = allowed.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, n: String| v1_rt::rc_map_insert(acc, n, true),
-    );
-    let filtered_str = Rc::new(v1_rt::map_keys(&parent_env.str_bindings.clone()))
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                if v1_rt::map_has(&allowed_set.clone(), name.clone()) {
-                    match v1_rt::map_get(&parent_env.str_bindings.clone(), name.clone()) {
-                        Some(b) => v1_rt::rc_map_insert(acc.clone(), name.clone(), b.clone()),
-                        None => acc.clone(),
-                    }
-                } else {
-                    acc.clone()
-                }
-            },
-        );
-    let filtered_ancestry = Rc::new(v1_rt::map_keys(&parent_env.ancestry_str_bindings.clone()))
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                if v1_rt::map_has(&allowed_set.clone(), name.clone()) {
-                    match v1_rt::map_get(&parent_env.ancestry_str_bindings.clone(), name.clone()) {
-                        Some(b) => v1_rt::rc_map_insert(acc.clone(), name.clone(), b.clone()),
-                        None => acc.clone(),
-                    }
-                } else {
-                    acc.clone()
-                }
-            },
-        );
-    let filtered_bindings = Rc::new(v1_rt::map_keys(&parent_env.bindings.clone()))
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, ident: i64| {
-                match v1_rt::map_get(&parent_env.bindings.clone(), ident.clone()) {
-                    Some(b) => {
-                        if v1_rt::map_has(&allowed_set.clone(), b.name.clone()) {
-                            v1_rt::rc_map_insert(acc.clone(), ident.clone(), b.clone())
-                        } else {
-                            acc.clone()
-                        }
-                    }
-                    None => acc.clone(),
-                }
-            },
-        );
-    Rc::new(TypeEnv {
-        bindings: filtered_bindings,
-        str_bindings: filtered_str,
-        ancestry_str_bindings: filtered_ancestry,
-        parents: parent_env.parents.clone(),
-        recursive_types: parent_env.recursive_types.clone(),
-        recursive_type_set: parent_env.recursive_type_set.clone(),
-        inductive_fields: parent_env.inductive_fields.clone(),
-        source_indices: parent_env.source_indices.clone(),
-        intern_table: parent_env.intern_table.clone(),
-    })
-}
-
-pub fn type_env_for_import(
-    module_path: String,
-    parent_env: Rc<TypeEnv>,
-    specific_names: Rc<Vec<String>>,
-    is_all: bool,
-) -> Rc<TypeEnv> {
+pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<TypeEnv> {
     if (module_path == "std.types".to_string()) {
         {
             let filtered = Rc::new(v1_rt::map_keys(&parent_env.bindings.clone()))
@@ -12208,10 +12132,8 @@ pub fn type_env_for_import(
                 intern_table: parent_env.intern_table.clone(),
             })
         }
-    } else if is_all {
-        parent_env.clone()
     } else {
-        filter_env_to_specific_names(parent_env.clone(), specific_names.clone())
+        parent_env.clone()
     }
 }
 
@@ -12488,8 +12410,6 @@ pub fn build_type_env(
                         Some(typed_parent) => Rc::new(vec![type_env_for_import(
                             imp.module_path.clone(),
                             typed_parent.type_env.clone(),
-                            imp.specific_names.clone(),
-                            imp.is_all,
                         )]),
                         None => Rc::new(vec![]),
                     })
@@ -13060,8 +12980,6 @@ pub fn build_type_env_unresolved(
                         Some(typed_parent) => Rc::new(vec![type_env_for_import(
                             imp.module_path.clone(),
                             typed_parent.type_env.clone(),
-                            imp.specific_names.clone(),
-                            imp.is_all,
                         )]),
                         None => Rc::new(vec![]),
                     })
@@ -15084,11 +15002,6 @@ pub fn rewire_type_env_parent_links(
                                         Some(parent) => Rc::new(vec![type_env_for_import(
                                             path.clone(),
                                             parent.type_env.clone(),
-                                            import_specific_names_at(
-                                                imp.clone(),
-                                                source_indices.clone(),
-                                            ),
-                                            import_is_all(imp.clone()),
                                         )]),
                                         None => Rc::new(vec![]),
                                     }
