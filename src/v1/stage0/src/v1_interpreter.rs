@@ -8,6 +8,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use im_rc::HashMap as HamtMap;
+use im_rc::OrdSet;
 use im_rc::Vector as RrbVector;
 
 use crate::cli_run::value_to_wire_json;
@@ -379,7 +380,7 @@ pub enum Value {
     Str(String),
     List(Rc<RrbVector<Value>>),
     Map(Rc<HamtMap<CanonKey, Value>>),
-    Set(Rc<BTreeSet<String>>),
+    Set(Rc<OrdSet<String>>),
     Record {
         type_name: Symbol,
         fields: Rc<Vec<(Symbol, Value)>>,
@@ -5469,7 +5470,7 @@ fn eval_builtin(
 
         "empty_map" => Ok(Some(map_value(HamtMap::new()))),
 
-        "empty_set" => Ok(Some(Value::Set(Rc::new(BTreeSet::new())))),
+        "empty_set" => Ok(Some(Value::Set(Rc::new(OrdSet::new())))),
 
         "set_insert" => match positional.as_slice() {
             [Value::Set(s), Value::Str(k)] => {
