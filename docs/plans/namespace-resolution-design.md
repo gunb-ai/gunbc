@@ -269,8 +269,9 @@ values `{ import-scoped (§1c, today) , namespace-only-X , namespace-only-Y }`. 
 
 1. Land `resolve(name, position)` + the `Ambiguous`/`Unresolved` outcomes beside the current
    resolver, gated by the policy row (import-scoped stays the default → zero corpus churn).
-2. Run the **precise** census (declared `module` paths, not the dir proxy) to fix the exact
-   forced-qualification residue and the fork worklist.
+2. The **precise census is already run** (§5.1, declared `module` paths): the exact
+   forced-qualification residue and the fork worklist are its outputs — steps 3–4 act on them,
+   no re-run.
 3. Consolidate the §3 forks the census surfaced (Rule 1 work that stands on its own).
 4. Flip the policy to `namespace-only-Y` **per subtree** as each converges (drop its imports,
    let bare resolve, qualify the genuine homonyms) — not big-bang. A subtree is converged when
@@ -307,9 +308,6 @@ flip retires, subtree by subtree, until step 5 deletes the syntax outright.
 
 ## 9. Open / to-verify
 
-- **Uniqueness test (X vs Y)** — the §4 operator decision; (Y) recommended.
-- **Precise census** on declared `module` paths (the dir-proxy over-buckets same-dir vs
-  subtree); yields the exact forced-qualification residue and the fork worklist.
 - **Root-prefix map** (`src/v1/**` ↔ `v1.*`, `dag/**` ↔ `v2.*`) and whether the `module`
   declaration is derivable from the path (if so, the declaration is itself a Rule-1 candidate
   to delete). Note `04_infer.dag:718` already special-cases the `"v2."` prefix — that logic
