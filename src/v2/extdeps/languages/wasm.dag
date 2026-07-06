@@ -865,10 +865,6 @@ fn wasm_localidx_literal_lex_rule() -> LexRule {
   )
 }
 
-fn wasm_typed_numeric_literal_lex_rule(token_class: Symbol, pattern: LexPattern) -> LexRule {
-  wasm_numeric_literal_lex_rule(token_class: token_class, pattern: pattern)
-}
-
 fn wasm_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -905,19 +901,19 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
       wasm_int_numeric_literal_lex_rule(),
       wasm_float_numeric_literal_lex_rule(),
       wasm_localidx_literal_lex_rule(),
-      wasm_typed_numeric_literal_lex_rule(
+      wasm_numeric_literal_lex_rule(
         token_class: ^wasm_token_i32_numeric_literal,
         pattern: wasm_wat_int_literal_lex_pattern()
       ),
-      wasm_typed_numeric_literal_lex_rule(
+      wasm_numeric_literal_lex_rule(
         token_class: ^wasm_token_i64_numeric_literal,
         pattern: wasm_wat_int_literal_lex_pattern()
       ),
-      wasm_typed_numeric_literal_lex_rule(
+      wasm_numeric_literal_lex_rule(
         token_class: ^wasm_token_f32_numeric_literal,
         pattern: wasm_wat_float_literal_lex_pattern()
       ),
-      wasm_typed_numeric_literal_lex_rule(
+      wasm_numeric_literal_lex_rule(
         token_class: ^wasm_token_f64_numeric_literal,
         pattern: wasm_wat_float_literal_lex_pattern()
       ),
