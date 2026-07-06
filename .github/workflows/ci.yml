@@ -126,7 +126,11 @@ jobs:
         timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
+<<<<<<< HEAD
     timeout-minutes: 106
+=======
+    timeout-minutes: 75
+>>>>>>> origin/main
     steps:
       - name: Checkout
         uses: actions/checkout@v5
