@@ -31,23 +31,22 @@ So the disjoint machinery (templates vs operational-fold vs Node-encoding) is sa
 
 ## 3. The target authority (consequence of §1–§2 + the ruling)
 
-One home per concept, chosen by the layer DAG (`std ← extdeps ← compiler ← workflow`):
+One home per concept, chosen by the layer DAG (`std ← extdeps ← compiler ← workflow`). **This section is reconciled with the signed decisions in §7/§7.1** — where the pre-sign-off draft was broader, it now states the resolved scope:
 
-1. **`FreeMonoid` coproduct + the algebraic-structure records live once, in `std.algebra`** (the `dag/std` tree — the authority both trees can import). This is the concept layer; it belongs in std, and the dag tree is std's home.
-2. **The operational fold ops** (`fold_list`, `list_head`, `list_tail`, `fold_list_right`, `skip`, `freemonoid_empty`) are generic, layer-appropriate std — they **move from `v2.std.algebra` into `std.algebra`** (or a `std.list` sub-module split off it — see §7 Q1). They are the "ops from inhabitance" surface of the coproduct; they belong beside it.
-3. **The Node-encoding machinery** (`algebra_inhabitance_node`, `*_type_node`, `*_node`) is **compiler-layer, not std** — it encodes std algebra types *as `Node`s* for the `04_infer` inhabitance check. It stays in the v2 compiler tree (relayered out of `v2.std.algebra` into a compiler module), importing the single `std.algebra` authority. It is realization/dispatch, which §3 keeps peripheral, never in the concept.
-4. **`v2.std.algebra`'s duplicate structure-record + `FreeMonoid` decls are deleted**; its 290 importers repoint to `std.algebra`.
-5. **The aliases the ruling authorized** (`String = FreeMonoid<Char>`, `List<T> = FreeMonoid<T>`, `QualifiedName = FreeMonoid<Symbol>`), grounding to native `Vec` in the seed and the faithful coproduct in pure-v2, are introduced **on the single authority** — but their blast radius is huge (String/List touch nearly everything), so §7 Q4 asks whether they land here or in a follow-on. `QualifiedName` is the small, contained alias that this doc's motivating item needs; it can land first.
+1. **`FreeMonoid` coproduct lives once, in `std.algebra`** (the `dag/std` tree — the authority both trees can import; already present at `dag/std/algebra.dag:111`). The algebraic-structure records (`Magma`…`BooleanAlgebra`) **stay forked for now** — the shared-body diff (§7.1 step 1) showed 12 of 14 differ, a genuine divergent grounding, so per signed Q2 they **defer** to a separate operator-held follow-on. This lane relocates `FreeMonoid`/`Empty`/`Cons`, not the records.
+2. **The operational FreeMonoid ops move from `v2.std.algebra` into `std.algebra`** — the full enumerated set (§7.1 step 1): `fold_list`, `fold_list_right`, `fold_non_empty`, `list_head`, `list_tail`, `skip`, `freemonoid_empty`, `for_all`, `any`, `filter`, `contains`, `count_where`, `is_empty` (+ helper types `ListTailResult`/`ListHeadResult`) and the `PointwisePower<T>` type. They are the "ops from inhabitance" surface of the coproduct and belong beside it (signed Q1 — kept in `std.algebra`, not split to `std.list`).
+3. **The Node-encoding fns** (`algebra_inhabitance_node`, `*_type_node`, `*_node`) **stay in `std.algebra`** per signed Q5 — the surface is tiny (`algebra_inhabitance_node` 1 consumer, the `*_type_node`/`*_node` family 0), they build only on `std.node` + the coproduct (no upward dependency), and they are a projection of the algebra types into `Node` — std-appropriate. Genuinely dead zero-consumer fns are **pruned** as a §2 win (not relayered to a new compiler module).
+4. **`v2.std.algebra`'s duplicate `FreeMonoid`/`Empty`/`Cons` decls + the moved ops are deleted** (the records are **not** deleted — they stay, deferred per §3.1); its 290 importers repoint to `std.algebra` for the moved symbols.
+5. **Only the `QualifiedName = FreeMonoid<Symbol>` alias lands here** (signed Q4). The `String = FreeMonoid<Char>` / `List<T> = FreeMonoid<T>` aliases have repo-wide blast radius and ride Root A's emit-seam; they are a separate follow-on (Root A is currently unowned — §5).
 
-The template/profile machinery (dag-only) and the operational-fold machinery (moving to dag) then sit in one file/module cluster with no cross-tree twin — the shadow is structurally impossible because there is only one `FreeMonoid`.
+Because `FreeMonoid`/`Empty`/`Cons` then exist in exactly one place, the **dangerous coproduct-variant-drop shadow is structurally impossible**. The record collision remains (benign record-with-record; §7.1 step 1) until the deferred record grounding.
 
-## 4. What moves where (the mechanical plan, once §3 is signed)
+## 4. What moves where (the mechanical plan on the signed shape)
 
-- **Into `std.algebra`** (dag tree): the 6 operational fold ops, verbatim, from `v2.std.algebra`. Reconcile any structure-record method-signature drift between the two record forms (the audit flags algebra as a *divergent grounding*, so the records may not be identical — a shared-body diff gates this; the coproduct is the only proven-identical part).
-- **Into a new v2 compiler module** (e.g. `v2.compiler.algebra_encoding` or beside `04_infer`): the Node-encoding fns, importing `std.algebra`.
-- **Delete** from `src/v2/std/algebra.dag`: the structure-record + `FreeMonoid`/`Empty`/`Cons` decls now homed in `std.algebra`.
-- **Repoint** the 290 `import v2.std.algebra { … }` sites to `import std.algebra { … }` (+ the encoding-module import where they used Node-encoding fns). Mechanical, but large — a single fold over the import sites, staged atomically (§5 hazard).
-- **Then** `QualifiedName` gets its `std.qualified_name` home (FreeMonoid<Symbol> now resolvable from both trees), unparking `type-env-single-authority-design.md` §5.1.
+- **Into `std.algebra`** (dag tree), verbatim from `v2.std.algebra`: the **~15 operational ops + helper types + `PointwisePower`** enumerated in §3.2/§7.1 step 1. Keep the low-consumer **Node-encoding fns in `std.algebra`** (signed Q5), pruning genuinely dead zero-consumer ones. **Records are NOT moved** — they stay forked, deferred per signed Q2 (§7.1 step 1 diff: 12 of 14 differ).
+- **Delete** from `src/v2/std/algebra.dag`: the `FreeMonoid`/`Empty`/`Cons` decls + the moved ops now homed in `std.algebra`. (The structure records are **left in place** — deferred.)
+- **Repoint** the 290 `import v2.std.algebra { … }` sites to `import std.algebra { … }` for the moved symbols. Mechanical, but large — a single fold over the import sites, staged atomically (§5 hazard).
+- **Then** `QualifiedName` gets its `std.qualified_name` home (`FreeMonoid<Symbol>` now resolvable from both trees), unparking `type-env-single-authority-design.md` §5.1.
 
 ## 5. Sequencing & gates (do not collide with live lanes)
 
