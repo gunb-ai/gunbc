@@ -1,7 +1,8 @@
 module v2.test.parse.parse_table_content_key
 
 import v2.compiler.parse { ParseTable, ParseTableRealization, ParsePositionKey, parse_table_subject }
-import v2.std.collection { empty_map }
+import v2.std.algebra { Empty }
+import v2.std.collection { Set, empty_map }
 import v2.std.node { Hash }
 import v2.std.logic { Bool }
 
@@ -14,7 +15,9 @@ fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
     entries: empty_map(),
     memo_hits: 0,
     memo_misses: 0,
-    memo_lookup_calls: 0
+    memo_lookup_calls: 0,
+    nullable_set: Set { member: fn(_) { false } },
+    first_rows: Empty
   }
 }
 
