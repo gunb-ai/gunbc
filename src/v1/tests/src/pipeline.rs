@@ -4310,7 +4310,7 @@ fn empty_batch() -> Batch {
     );
     let content = find_file(&result, "src/test_rc_list_construct.rs");
     let has_rc_field = content.contains("Rc<Vec<");
-    let has_rc_construction = content.contains("Rc::new(im_rc::vector![");
+    let has_rc_construction = content.contains("Rc::new(vec![");
     assert_eq!(
         has_rc_field, has_rc_construction,
         "list field Rc wrapping must match construction.\n\
@@ -4318,8 +4318,8 @@ fn empty_batch() -> Batch {
         has_rc_field, has_rc_construction, content
     );
     assert!(
-        content.contains("Rc::new(im_rc::vector!["),
-        "list construction should use Rc::new(im_rc::vector![...]) to match Rc<Vec<>> field type, got:\n{}",
+        content.contains("Rc::new(vec!["),
+        "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}",
         content
     );
 }
