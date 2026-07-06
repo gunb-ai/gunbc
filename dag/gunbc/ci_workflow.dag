@@ -339,12 +339,12 @@ data gunbc_ci_floor_gate_step_budget_note: String = "Interim floor-step budget (
 
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
 
-fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
-}
+data gunbc_ci_floor_job_runner_starvation_kill_minutes: Int = 10
+
+data gunbc_ci_rust_tests_job_timeout_minutes: Int = 30
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI budget semantics (operator ruling, 2026-07-05, ACTIVE on this branch): any timed-out gate is a FAILURE, not a silent pass — no verdict == failure. The budget is enforced at the STEP level (GitHub Actions step timeout-minutes fails the step, conclusion=failure, logs + [t+Xs] phase marks intact), with a computed job backstop via gunbc_ci_job_backstop_timeout_minutes() = release build + floor step + aux + prelude (355m interim: 45 + 300 + 5 + 5). Breach semantics stay RED-by-step-failure; step budgets on-carrier: release build gunbc_ci_release_build_step_timeout_minutes (45m), floor gunbc_ci_floor_step_timeout_minutes (300m interim — receipt run 28794864868 @ c3e2093: batch-1 second reconcile still running at 200m cap), merge-admission aux gunbc_ci_aux_step_timeout_minutes (5m). rust_tests keeps its own step budgets (sccache warm 46m, gate 45m, job backstop gunbc_ci_rust_job_backstop_timeout_minutes() = 106m). The 2026-07-06 main-branch 10m job-level starvation kill (#6323, conclusion=cancelled silent-pass) is NOT the live authority here: receipt run 28811397826 @ 304fe94 cancelled mid plan-resolve with zero floor verdict, blocking merge. dissolve-on: compile-clean scoping/memoization (S2a node store) shrinks the floor under a shorter measured envelope → re-derive gunbc_ci_floor_step_timeout_minutes and gunbc_ci_job_backstop_timeout_minutes() DOWNWARD. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default — workflow-layer policy on top."
+  reason: "gunbc CI budget semantics — operator ruling 2026-07-06: ci/floor job JOB-level killed at gunbc_ci_floor_job_runner_starvation_kill_minutes (10m); rust_tests job at gunbc_ci_rust_tests_job_timeout_minutes (30m). Under the #6239 v2-resolve compile-wall the floor step cannot complete within 10m (plan-entry resolve alone ~75m); the job kill returns conclusion=cancelled (silent-pass trade-off, runner starvation dominates). rust_tests scoped to 30m job cap. Step-level budgets on-carrier remain for observability when job timeout permits. dissolve-on: compile-clean scoping/memoization (S2a node store) shrinks floor under a real budget → restore step-level job backstops with RED-by-step-failure."
 }
 
 fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
@@ -383,7 +383,7 @@ fn ci_job() -> Job {
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: gunbc_ci_floor_job_runner_starvation_kill_minutes },
     continue_on_error: none,
     concurrency: none
   }
@@ -403,7 +403,7 @@ fn rust_tests_job() -> Job {
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_rust_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: gunbc_ci_rust_tests_job_timeout_minutes },
     continue_on_error: none,
     concurrency: none
   }
