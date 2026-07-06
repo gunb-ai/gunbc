@@ -175,10 +175,17 @@ fork, which nearest-wins resolves for free:**
   are in **disjoint subtrees** (`v1.*` vs `std.*`), so nearest-wins resolves each at its use-site
   (v1 code sees v1's, std code sees std's) with **zero qualification and zero ambiguity**. They
   dissolve as the seed shrinks, not by qualifying.
-- **Genuine cross-tree forks (identical variant-set → same concept): only 2** — `ImportTrigger`
-  (`std.languages` vs `v1.compiler.languages`, same 5 variants — a seed fork) and `Reconciliation`
-  = `Converged|NotConverged` (`product.budget_tree` vs `std.realization_reconcile` — a real §3
-  fork to consolidate). That is the entire "consolidate now" worklist the census forces.
+- **The 2 same-name pairs the census flagged are NOT consolidate-now forks** (verified by reading
+  the decls, 2026-07-06): `ImportTrigger` (`dag/std/languages.dag` vs `src/v1/languages.dag`) is a
+  genuine duplicate but one of **8 types in a whole-file v1-seed mirror** — DESIGN §7 seed-shrink
+  territory, dissolves with the seed, not standalone (and editing the seed is regen-risky).
+  `Reconciliation` is a **homonym, not a fork**: `std.realization_reconcile.Reconciliation<A,E>`
+  (`Converged|NotConverged`, a generic effect-grounding outcome) vs `product.budget_tree.Reconciliation`
+  (`AllSatisfied|Evicted|GuaranteedShortfall`, a budget-admission outcome) — *different concepts and
+  variant sets*; the "identical variant-set" was a census variant-extraction artifact, and
+  consolidating them would be wrong. Nearest-wins resolves each in its own subtree. **Net
+  consolidate-now forks the census forces: zero** — the same-name residue is homonyms (resolve by
+  subtree) and seed-file duplication (dissolves with the seed).
 - **Same-subtree variant collisions** — the `github` conclusion families (`Success`/`Failure`/
   `Cancelled` across `extdeps.github.{actions,checks,workflow_runs}`, `CheckConclusion` itself
   actions-vs-checks with *different* variant sets) — are genuinely co-visible in github code and
@@ -187,8 +194,9 @@ fork, which nearest-wins resolves for free:**
 **Net:** under (Y) + nearest-wins the forced-qualification residue is a **handful** — the
 same-subtree homonyms with no typed context — because (a) cross-tree seed forks resolve by
 subtree, (b) github-style collisions resolve by expected type, (c) file-local helpers never
-collide. The census's standing value is the two-item fork worklist plus a clean quantification of
-the v1→v2 seed-duplication surface.
+collide. The census's standing value is the clean quantification of the v1→v2 seed-duplication
+surface (dissolves with the seed) — it forces no consolidate-now forks; its same-name flags are
+homonyms and seed-file duplication, not genuine cross-tree §3 forks.
 
 ## 6. Resolution mechanics carried from §1c (unchanged, re-homed)
 
