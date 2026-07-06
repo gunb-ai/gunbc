@@ -10892,6 +10892,16 @@ pub fn test_migration_delete_guard_holds() -> bool {
 #[cfg(test)]
 mod witness_layer_roots_compile_clean_tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_env_test_lock<F: FnOnce()>(f: F) {
+        let _guard = ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        f();
+    }
 
     struct EnvGuard {
         key: &'static str,
@@ -10900,13 +10910,13 @@ mod witness_layer_roots_compile_clean_tests {
     impl EnvGuard {
         fn set(key: &'static str, value: &str) -> Self {
             let prior = std::env::var(key).ok();
-            // SAFETY: serialized by test harness (single-threaded test module).
+            // SAFETY: `with_env_test_lock` serializes env mutation across parallel tests.
             unsafe { std::env::set_var(key, value) };
             Self { key, prior }
         }
         fn remove(key: &'static str) -> Self {
             let prior = std::env::var(key).ok();
-            // SAFETY: serialized by test harness (single-threaded test module).
+            // SAFETY: `with_env_test_lock` serializes env mutation across parallel tests.
             unsafe { std::env::remove_var(key) };
             Self { key, prior }
         }
@@ -10935,13 +10945,15 @@ mod witness_layer_roots_compile_clean_tests {
     /// Hand-Rust receipt: the emit leg is a strict superset of resolve for the same sources.
     #[test]
     fn emit_success_implies_resolve_success_on_live_witness_roots() {
-        // Whole-tree path only: this receipt is about emit⊇resolve, not lever-a scoping.
-        // In CI `GITHUB_ACTIONS=true` would route through the live shard-roster disposition.
-        let _ga = EnvGuard::remove("GITHUB_ACTIONS");
-        let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
-        if witness_layer_roots_compile_clean_emit_check() {
-            assert!(witness_layer_roots_compile_clean_check());
-        }
+        with_env_test_lock(|| {
+            // Whole-tree path only: this receipt is about emit⊇resolve, not lever-a scoping.
+            // In CI `GITHUB_ACTIONS=true` would route through the live shard-roster disposition.
+            let _ga = EnvGuard::remove("GITHUB_ACTIONS");
+            let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+            if witness_layer_roots_compile_clean_emit_check() {
+                assert!(witness_layer_roots_compile_clean_check());
+            }
+        });
     }
 
     /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
@@ -10985,13 +10997,15 @@ mod witness_layer_roots_compile_clean_tests {
     /// Lever-a receipt: diff observation failure refuses — never widens to whole-tree.
     #[test]
     fn scoped_plan_refuses_on_invalid_diff_base() {
-        let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
-        let _head = EnvGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
-        let plan = compile_clean_scope_plan_for_ci();
-        assert!(
-            matches!(plan, CompileCleanScopePlan::Refused { .. }),
-            "expected Refused on diff failure, got {plan:?}"
-        );
+        with_env_test_lock(|| {
+            let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
+            let _head = EnvGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
+            let plan = compile_clean_scope_plan_for_ci();
+            assert!(
+                matches!(plan, CompileCleanScopePlan::Refused { .. }),
+                "expected Refused on diff failure, got {plan:?}"
+            );
+        });
     }
 
     /// Lever-a receipt: `GITHUB_ACTIONS=true` activates scoping (same signal as
@@ -11000,9 +11014,11 @@ mod witness_layer_roots_compile_clean_tests {
     /// `compile_clean_scope_plan_for_ci` here would run the live shard-roster scan.
     #[test]
     fn github_actions_activates_compile_clean_scoping() {
-        let _ga = EnvGuard::set("GITHUB_ACTIONS", "true");
-        let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
-        assert!(compile_clean_scoping_active());
+        with_env_test_lock(|| {
+            let _ga = EnvGuard::set("GITHUB_ACTIONS", "true");
+            let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+            assert!(compile_clean_scoping_active());
+        });
     }
 
     /// Hand-Rust receipt: primary-precedence pool defers to the first witness root.
