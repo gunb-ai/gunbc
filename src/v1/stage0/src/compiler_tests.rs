@@ -800,7 +800,7 @@ mod compiler_tests {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "BooleanAlgebra".into()),
-            Some("std::collections::BTreeSet<{0}>".to_string())
+            Some("BTreeSet<{0}>".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()),
@@ -820,7 +820,7 @@ mod compiler_tests {
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "Set".into()),
-            Some("std::collections::BTreeSet<{0}>".to_string())
+            Some("BTreeSet<{0}>".to_string())
         );
     }
 
@@ -907,8 +907,8 @@ mod compiler_tests {
             "Vec<i64>"
         );
         assert_eq!(
-            apply_inhabitant_template1("std::collections::BTreeSet<{0}>".into(), "i64".into()),
-            "std::collections::BTreeSet<i64>"
+            apply_inhabitant_template1("BTreeSet<{0}>".into(), "i64".into()),
+            "BTreeSet<i64>"
         );
         assert_eq!(
             apply_inhabitant_template2("HashMap<{0}, {1}>".into(), "String".into(), "i64".into()),

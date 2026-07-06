@@ -4102,7 +4102,7 @@ type DiffBag { ids: Set<DiffId> }
         content
     );
     assert!(
-        content.contains("pub ids: std::collections::BTreeSet<DiffId>,"),
+        content.contains("pub ids: BTreeSet<DiffId>,"),
         "Set<DiffId> should lower to BTreeSet<DiffId>, got:\n{}",
         content
     );

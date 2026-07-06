@@ -2992,8 +2992,8 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
 
 fn emit_prelude(imported_names: List<String>) -> String {
   let base = concat(
-    "use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};\n",
-    "use crate::v1_rt::{VecCompat, VecJoin};\n",
+    "use im_rc::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
+    "use crate::v1_rt::\{VecCompat, VecJoin\};\n",
     "use std::rc::Rc;\n",
     "use crate::v1_rt;")
   let has_witness = imported_names |> any(n => n == "Witness")
@@ -8546,7 +8546,7 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
     let pipeline_mod = module_to_filename(name: "v1.compiler.compile")
     let core_mod = module_to_filename(name: "v1.std.core")
     concat(base,
-      "\nuse im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};\n",
+      "\nuse im_rc::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
       "use std::rc::Rc;\n",
       "use ", crate_name, "::", pipeline_mod, ";\n",
       "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
