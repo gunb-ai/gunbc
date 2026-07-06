@@ -2994,27 +2994,6 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
     let target_name = authored_name_at(ctx.si(), target_node.clone());
-    if target_name.is_empty() {
-        let isp = target_node.ident_span.clone();
-        eprintln!(
-            "[cast-debug] name={:?} ident_span={:?} children={} target_span={:?}",
-            target_node.name,
-            isp.as_ref().map(|sp| (sp.file.clone(), sp.start, sp.end)),
-            node.children.len(),
-            (target_node.span.file.clone(), target_node.span.start, target_node.span.end)
-        );
-        for (i, c) in node.children.iter().enumerate() {
-            eprintln!(
-                "[cast-debug]   child[{}] name={:?} span={}..{} ident={:?} expr={:?}",
-                i,
-                c.name,
-                c.span.start,
-                c.span.end,
-                c.ident_span.as_ref().map(|sp| (sp.start, sp.end)),
-                format!("{:?}", c.expr_data).chars().take(40).collect::<String>()
-            );
-        }
-    }
 
     if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
         return Ok(v);
@@ -3028,14 +3007,7 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         (Value::Bool(b), "String") => Ok(Value::Str(b.to_string())),
         (v, "String") => Ok(Value::Str(format!("{}", v))),
         (v, t) => Err(InterpError::TypeError {
-            msg: format!(
-                "cannot cast {} to {} [DEBUG span {}:{}..{}]",
-                v.type_label(),
-                t,
-                node.span.file,
-                node.span.start,
-                node.span.end
-            ),
+            msg: format!("cannot cast {} to {}", v.type_label(), t),
         }),
     }
 }
