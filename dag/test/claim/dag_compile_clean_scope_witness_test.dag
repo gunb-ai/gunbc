@@ -3,6 +3,7 @@ module test.claim.dag_compile_clean_scope_witness
 import tools.dag_compile_clean_scope {
   witness_empty_touched_skips,
   witness_docs_only_touch_skips,
+  witness_dot_slash_docs_only_touch_skips,
   witness_std_logic_touch_scopes,
   witness_rust_only_touch_requires_whole_tree,
   witness_ci_yaml_touch_requires_whole_tree,
@@ -17,6 +18,10 @@ test fn dag_compile_clean_scope_empty_touched_skips_holds() -> Bool {
 
 test fn dag_compile_clean_scope_docs_only_touch_skips_holds() -> Bool {
   witness_docs_only_touch_skips()
+}
+
+test fn dag_compile_clean_scope_dot_slash_docs_only_touch_skips_holds() -> Bool {
+  witness_dot_slash_docs_only_touch_skips()
 }
 
 test fn dag_compile_clean_scope_std_logic_touch_scopes_holds() -> Bool {

@@ -117,6 +117,16 @@ fn witness_docs_only_touch_skips() -> Bool {
   }
 }
 
+fn witness_dot_slash_docs_only_touch_skips() -> Bool {
+  match compile_clean_scope_disposition_from_touched(
+    touched_paths: ["./docs/plans/example.md"]
+  ) {
+    SkipNoAffectedEntries { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
+    RequireWholeTree { reason: _ } => false
+  }
+}
+
 fn witness_std_logic_touch_scopes() -> Bool {
   match compile_clean_scope_disposition_from_touched(
     touched_paths: ["dag/std/logic.dag"]
