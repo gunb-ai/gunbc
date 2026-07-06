@@ -4,6 +4,7 @@ import v2.std.algebra {
   AbelianGroup,
   Cons,
   Empty,
+  fold_list,
   fold_list_node,
   FreeMonoid,
   Group,
@@ -130,6 +131,157 @@ fn decimal_digit_value(d: DecimalDigit) -> Int {
   }
 }
 
+type DecimalDigitStep {
+  digit: DecimalDigit
+  carry: Bool
+}
+
+fn decimal_digit_double(d: DecimalDigit, carry_in: Bool) -> DecimalDigitStep {
+  match d {
+    D0 => if carry_in { DecimalDigitStep { digit: D1, carry: false } } else { DecimalDigitStep { digit: D0, carry: false } }
+    D1 => if carry_in { DecimalDigitStep { digit: D3, carry: false } } else { DecimalDigitStep { digit: D2, carry: false } }
+    D2 => if carry_in { DecimalDigitStep { digit: D5, carry: false } } else { DecimalDigitStep { digit: D4, carry: false } }
+    D3 => if carry_in { DecimalDigitStep { digit: D7, carry: false } } else { DecimalDigitStep { digit: D6, carry: false } }
+    D4 => if carry_in { DecimalDigitStep { digit: D9, carry: false } } else { DecimalDigitStep { digit: D8, carry: false } }
+    D5 => if carry_in { DecimalDigitStep { digit: D1, carry: true } } else { DecimalDigitStep { digit: D0, carry: true } }
+    D6 => if carry_in { DecimalDigitStep { digit: D3, carry: true } } else { DecimalDigitStep { digit: D2, carry: true } }
+    D7 => if carry_in { DecimalDigitStep { digit: D5, carry: true } } else { DecimalDigitStep { digit: D4, carry: true } }
+    D8 => if carry_in { DecimalDigitStep { digit: D7, carry: true } } else { DecimalDigitStep { digit: D6, carry: true } }
+    D9 => if carry_in { DecimalDigitStep { digit: D9, carry: true } } else { DecimalDigitStep { digit: D8, carry: true } }
+  }
+}
+
+fn decimal_digit_sub_borrow(d: DecimalDigit, borrow_in: Bool) -> DecimalDigitStep {
+  match d {
+    D0 => if borrow_in { DecimalDigitStep { digit: D9, carry: true } } else { DecimalDigitStep { digit: D0, carry: false } }
+    D1 => if borrow_in { DecimalDigitStep { digit: D0, carry: false } } else { DecimalDigitStep { digit: D1, carry: false } }
+    D2 => if borrow_in { DecimalDigitStep { digit: D1, carry: false } } else { DecimalDigitStep { digit: D2, carry: false } }
+    D3 => if borrow_in { DecimalDigitStep { digit: D2, carry: false } } else { DecimalDigitStep { digit: D3, carry: false } }
+    D4 => if borrow_in { DecimalDigitStep { digit: D3, carry: false } } else { DecimalDigitStep { digit: D4, carry: false } }
+    D5 => if borrow_in { DecimalDigitStep { digit: D4, carry: false } } else { DecimalDigitStep { digit: D5, carry: false } }
+    D6 => if borrow_in { DecimalDigitStep { digit: D5, carry: false } } else { DecimalDigitStep { digit: D6, carry: false } }
+    D7 => if borrow_in { DecimalDigitStep { digit: D6, carry: false } } else { DecimalDigitStep { digit: D7, carry: false } }
+    D8 => if borrow_in { DecimalDigitStep { digit: D7, carry: false } } else { DecimalDigitStep { digit: D8, carry: false } }
+    D9 => if borrow_in { DecimalDigitStep { digit: D8, carry: false } } else { DecimalDigitStep { digit: D9, carry: false } }
+  }
+}
+
+type DecimalDigitsStep {
+  digits: List<DecimalDigit>
+  carry: Bool
+}
+
+fn decimal_digits_double(digits: List<DecimalDigit>) -> DecimalDigitsStep {
+  match digits {
+    Empty => DecimalDigitsStep { digits: Empty, carry: false }
+    Cons { head, tail } =>
+      match decimal_digits_double(digits: tail) {
+        DecimalDigitsStep { digits: doubled_tail, carry: tail_carry } =>
+          match decimal_digit_double(d: head, carry_in: tail_carry) {
+            DecimalDigitStep { digit, carry } =>
+              DecimalDigitsStep { digits: Cons { head: digit, tail: doubled_tail }, carry: carry }
+          }
+      }
+  }
+}
+
+fn decimal_digits_sub_one(digits: List<DecimalDigit>) -> DecimalDigitsStep {
+  match digits {
+    Empty => DecimalDigitsStep { digits: Empty, carry: true }
+    Cons { head, tail } =>
+      match decimal_digits_sub_one(digits: tail) {
+        DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
+          match decimal_digit_sub_borrow(d: head, borrow_in: tail_borrow) {
+            DecimalDigitStep { digit, carry } =>
+              DecimalDigitsStep { digits: Cons { head: digit, tail: sub_tail }, carry: carry }
+          }
+      }
+  }
+}
+
+fn decimal_digits_to_magnitude(digits: List<DecimalDigit>) -> DecimalMagnitude {
+  match digits {
+    Empty => DecimalZero
+    Cons { head, tail } =>
+      match head {
+        D0 => decimal_digits_to_magnitude(digits: tail)
+        D1 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: tail } }
+        D2 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: tail } }
+        D3 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD3, tail: tail } }
+        D4 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD4, tail: tail } }
+        D5 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD5, tail: tail } }
+        D6 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD6, tail: tail } }
+        D7 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD7, tail: tail } }
+        D8 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD8, tail: tail } }
+        D9 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD9, tail: tail } }
+      }
+  }
+}
+
+type NonZeroDoubleLead
+  = NonZeroDoubleStays { lead: NonZeroDecimalDigit }
+  | NonZeroDoubleOverflows { pushed: DecimalDigit }
+
+fn nonzero_decimal_digit_double_lead(lead: NonZeroDecimalDigit, carry_in: Bool) -> NonZeroDoubleLead {
+  match lead {
+    NonZeroD1 => if carry_in { NonZeroDoubleStays { lead: NonZeroD3 } } else { NonZeroDoubleStays { lead: NonZeroD2 } }
+    NonZeroD2 => if carry_in { NonZeroDoubleStays { lead: NonZeroD5 } } else { NonZeroDoubleStays { lead: NonZeroD4 } }
+    NonZeroD3 => if carry_in { NonZeroDoubleStays { lead: NonZeroD7 } } else { NonZeroDoubleStays { lead: NonZeroD6 } }
+    NonZeroD4 => if carry_in { NonZeroDoubleStays { lead: NonZeroD9 } } else { NonZeroDoubleStays { lead: NonZeroD8 } }
+    NonZeroD5 => if carry_in { NonZeroDoubleOverflows { pushed: D1 } } else { NonZeroDoubleOverflows { pushed: D0 } }
+    NonZeroD6 => if carry_in { NonZeroDoubleOverflows { pushed: D3 } } else { NonZeroDoubleOverflows { pushed: D2 } }
+    NonZeroD7 => if carry_in { NonZeroDoubleOverflows { pushed: D5 } } else { NonZeroDoubleOverflows { pushed: D4 } }
+    NonZeroD8 => if carry_in { NonZeroDoubleOverflows { pushed: D7 } } else { NonZeroDoubleOverflows { pushed: D6 } }
+    NonZeroD9 => if carry_in { NonZeroDoubleOverflows { pushed: D9 } } else { NonZeroDoubleOverflows { pushed: D8 } }
+  }
+}
+
+fn decimal_nonzero_double(m: DecimalNonZeroMagnitude) -> DecimalNonZeroMagnitude {
+  match decimal_digits_double(digits: m.tail) {
+    DecimalDigitsStep { digits: doubled_tail, carry: tail_carry } =>
+      match nonzero_decimal_digit_double_lead(lead: m.lead, carry_in: tail_carry) {
+        NonZeroDoubleStays { lead } =>
+          DecimalNonZeroMagnitude { lead: lead, tail: doubled_tail }
+        NonZeroDoubleOverflows { pushed } =>
+          DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Cons { head: pushed, tail: doubled_tail } }
+      }
+  }
+}
+
+fn nonzero_decimal_digit_minus_borrow(lead: NonZeroDecimalDigit, borrow_in: Bool) -> DecimalDigit {
+  match lead {
+    NonZeroD1 => if borrow_in { D0 } else { D1 }
+    NonZeroD2 => if borrow_in { D1 } else { D2 }
+    NonZeroD3 => if borrow_in { D2 } else { D3 }
+    NonZeroD4 => if borrow_in { D3 } else { D4 }
+    NonZeroD5 => if borrow_in { D4 } else { D5 }
+    NonZeroD6 => if borrow_in { D5 } else { D6 }
+    NonZeroD7 => if borrow_in { D6 } else { D7 }
+    NonZeroD8 => if borrow_in { D7 } else { D8 }
+    NonZeroD9 => if borrow_in { D8 } else { D9 }
+  }
+}
+
+fn decimal_nonzero_sub_one(m: DecimalNonZeroMagnitude) -> DecimalMagnitude {
+  match decimal_digits_sub_one(digits: m.tail) {
+    DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
+      decimal_digits_to_magnitude(
+        digits: Cons {
+          head: nonzero_decimal_digit_minus_borrow(lead: m.lead, borrow_in: tail_borrow),
+          tail: sub_tail
+        }
+      )
+  }
+}
+
+fn integer_pow2_magnitude(exponent: Int) -> DecimalNonZeroMagnitude {
+  if exponent <= 0 {
+    DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [] }
+  } else {
+    decimal_nonzero_double(m: integer_pow2_magnitude(exponent: exponent - 1))
+  }
+}
+
 fn decimal_digit_compare(left: DecimalDigit, right: DecimalDigit) -> Ordering {
   int_compare(a: decimal_digit_value(d: left), b: decimal_digit_value(d: right))
 }
@@ -191,49 +343,98 @@ type StandardIntegerType
   | UInt16
   | UInt8
 
-fn integer_standard_integer_type_interval_spec(standard_integer_type: StandardIntegerType) -> IntegerIntervalSpec {
+fn integer_standard_integer_type_signedness(standard_integer_type: StandardIntegerType) -> Signedness {
   match standard_integer_type {
-    Int128 => int128_interval_spec()
-    Int64 => int64_interval_spec()
-    Int32 => int32_interval_spec()
-    Int16 => int16_interval_spec()
-    Int8 => int8_interval_spec()
-    UInt128 => uint128_interval_spec()
-    UInt64 => uint64_interval_spec()
-    UInt32 => uint32_interval_spec()
-    UInt16 => uint16_interval_spec()
-    UInt8 => uint8_interval_spec()
+    Int128 => Signed
+    Int64 => Signed
+    Int32 => Signed
+    Int16 => Signed
+    Int8 => Signed
+    UInt128 => Unsigned
+    UInt64 => Unsigned
+    UInt32 => Unsigned
+    UInt16 => Unsigned
+    UInt8 => Unsigned
   }
 }
 
+fn integer_standard_integer_type_width_bits(standard_integer_type: StandardIntegerType) -> Int {
+  match standard_integer_type {
+    Int128 => 128
+    Int64 => 64
+    Int32 => 32
+    Int16 => 16
+    Int8 => 8
+    UInt128 => 128
+    UInt64 => 64
+    UInt32 => 32
+    UInt16 => 16
+    UInt8 => 8
+  }
+}
+
+fn integer_magnitude_upper_bound(magnitude: DecimalMagnitude) -> IntegerIntervalBound {
+  match magnitude {
+    DecimalZero => IntegerConcreteZero
+    DecimalNonZero { magnitude } =>
+      IntegerConcreteBound { sign: IntegerBoundNonNegative, magnitude: magnitude }
+  }
+}
+
+fn integer_machine_interval_spec(signedness: Signedness, width_bits: Int) -> IntegerIntervalSpec {
+  match signedness {
+    Signed =>
+      integer_interval(
+        inclusive_min: integer_concrete_bound(
+          sign: IntegerBoundNegative,
+          magnitude: integer_pow2_magnitude(exponent: width_bits - 1)
+        ),
+        inclusive_max: integer_magnitude_upper_bound(
+          magnitude: decimal_nonzero_sub_one(m: integer_pow2_magnitude(exponent: width_bits - 1))
+        )
+      )
+    Unsigned =>
+      integer_interval(
+        inclusive_min: integer_concrete_zero(),
+        inclusive_max: integer_magnitude_upper_bound(
+          magnitude: decimal_nonzero_sub_one(m: integer_pow2_magnitude(exponent: width_bits))
+        )
+      )
+  }
+}
+
+fn integer_standard_integer_type_interval_spec(standard_integer_type: StandardIntegerType) -> IntegerIntervalSpec {
+  integer_machine_interval_spec(
+    signedness: integer_standard_integer_type_signedness(standard_integer_type: standard_integer_type),
+    width_bits: integer_standard_integer_type_width_bits(standard_integer_type: standard_integer_type)
+  )
+}
+
+data integer_standard_integer_type_roster: List<StandardIntegerType> = [
+  Int128, Int64, Int32, Int16, Int8,
+  UInt128, UInt64, UInt32, UInt16, UInt8
+]
+
 fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntegerType> {
-  if node == integer_interval_spec_node(spec: int128_interval_spec()) {
-    Accepted { value: Int128, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: int64_interval_spec()) {
-    Accepted { value: Int64, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: int32_interval_spec()) {
-    Accepted { value: Int32, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: int16_interval_spec()) {
-    Accepted { value: Int16, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: int8_interval_spec()) {
-    Accepted { value: Int8, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: uint128_interval_spec()) {
-    Accepted { value: UInt128, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: uint64_interval_spec()) {
-    Accepted { value: UInt64, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: uint32_interval_spec()) {
-    Accepted { value: UInt32, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: uint16_interval_spec()) {
-    Accepted { value: UInt16, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: uint8_interval_spec()) {
-    Accepted { value: UInt8, diagnostics: None }
-  } else {
-    Rejected {
+  fold_list(
+    xs: integer_standard_integer_type_roster,
+    empty: Rejected {
       diagnostics: diagnostics_singleton(
         d: integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: node)
       )
+    },
+    cons: fn(acc, candidate) {
+      match acc {
+        Accepted { value: _, diagnostics: _ } => acc
+        Rejected { diagnostics: _ } =>
+          if node == integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: candidate)) {
+            Accepted { value: candidate, diagnostics: None }
+          } else {
+            acc
+          }
+      }
     }
-  }
+  )
 }
 
 fn integer_pointer_width_bound_compare(
