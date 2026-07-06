@@ -1,7 +1,7 @@
 # `algebra` grounding-unification: one FreeMonoid authority across the two std trees
 
-Status: **DRAFT for operator sign-off.** Owner: calm-lark-461. Design-only — no load-bearing edit lands under this doc until the operator signs the shape.
-Executes the prerequisite the de-fork audit names for category (b): *"the grounded dag authority for each has to be designed before any fan-out can repoint to it"* (`dag/gunbc/plans/dag_v2_defork_audit.dag`, census dissolution note). This is that per-concept authority design for **`algebra`**, the anchor the operator ruled on 2026-06-22 (§3b of the audit). It does **not** re-open that ruling; it makes it implementable and surfaces the load-bearing decisions the ruling left open.
+Status: **Shape SIGNED by operator 2026-07-06** (Q1–Q5 answered — see §7). Owner: calm-lark-461. Implementation may proceed on the signed shape; the load-bearing core (`std.algebra` collapse + the `04_infer` residue) stays model-first and verified by-execution.
+Executes the prerequisite the de-fork audit names for category (b): *"the grounded dag authority for each has to be designed before any fan-out can repoint to it"* (`dag/gunbc/plans/dag_v2_defork_audit.dag`, census dissolution note). This is that per-concept authority design for **`algebra`**, the anchor the operator ruled on 2026-06-22 (§3b of the audit). It does **not** re-open that ruling; it makes it implementable.
 
 Reasoned serially per the DESIGN preamble: §1 fixes the problem, each later section is a consequence.
 
