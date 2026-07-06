@@ -880,11 +880,21 @@ struct HandVerifyReport {
     /// No emit candidate exists (a pure host-physics pin with no `.dag` source): not
     /// regen-verifiable, covered only by the fresh-crate cargo-green check.
     no_candidate: Vec<String>,
+    /// A candidate exists but could not be rustfmt-normalized (an unparseable / incomplete
+    /// emit candidate, or an rustfmt spawn / IO failure): the comparison is inconclusive.
+    /// Kept DISTINCT from `drifts` on purpose -- collapsing a normalization failure into
+    /// "drift" is the §5 absorbing-fallback this very gate exists to eliminate (infra failure
+    /// made indistinguishable from real content drift, its frequency uncountable). Each entry
+    /// carries the reason so a genuine content diff stays countable and a tooling failure stays
+    /// loud. (Infra failure formatting the *committed* file is hard-propagated upstream, so a
+    /// candidate-side failure here is normally the emitter producing un-formattable output.)
+    unverifiable: Vec<String>,
 }
 
 /// rustfmt `content` standalone (edition 2021), returning the formatted text. Emitting to
-/// stdout leaves no file behind. Returns Err with rustfmt's stderr when the content does
-/// not parse -- an incomplete emit candidate is itself drift, so callers treat Err as drift.
+/// stdout leaves no file behind. Returns Err with rustfmt's stderr when the content does not
+/// parse, and with the spawn/IO error when rustfmt cannot be run at all -- callers keep those
+/// cases distinct from a real content difference rather than folding them into "drift".
 fn rustfmt_normalize(content: &str, work_dir: &Path, tag: &str) -> Result<String, String> {
     fs::create_dir_all(work_dir).map_err(|e| format!("create {}: {e}", work_dir.display()))?;
     let path = work_dir.join(format!("{tag}.rs"));
@@ -916,6 +926,7 @@ fn verify_hand_maintained_candidates(
         matches: Vec::new(),
         drifts: Vec::new(),
         no_candidate: Vec::new(),
+        unverifiable: Vec::new(),
     };
     for file_name in HAND_MAINTAINED_STAGE0_FILES {
         // compile_stage0's emitted map is keyed by output path (e.g. "src/main.rs"),
@@ -937,7 +948,16 @@ fn verify_hand_maintained_candidates(
             Ok(candidate_norm) if candidate_norm == committed_norm => {
                 report.matches.push((*file_name).to_string())
             }
-            _ => report.drifts.push((*file_name).to_string()),
+            // Both files normalized and the content differs: a real drift.
+            Ok(_) => report.drifts.push((*file_name).to_string()),
+            // The candidate would not normalize -- inconclusive, NOT drift. Keep it loud and
+            // countable with its reason instead of fabricating a drift count.
+            Err(reason) => {
+                let first_line = reason.lines().next().unwrap_or("").trim();
+                report
+                    .unverifiable
+                    .push(format!("{file_name} ({first_line})"));
+            }
         }
     }
     // Directory pins (e.g. module_path_index) have no single emit candidate keyed by path.
@@ -952,10 +972,11 @@ fn verify_hand_maintained_candidates(
 /// the terminal-kernel host-physics pins that regen cannot cross-check.
 fn print_hand_verify_report(report: &HandVerifyReport) {
     println!(
-        "regen_stage0 hand-maintained verification: {} match / {} drift / {} no-candidate",
+        "regen_stage0 hand-maintained verification: {} match / {} drift / {} no-candidate / {} unverifiable",
         report.matches.len(),
         report.drifts.len(),
-        report.no_candidate.len()
+        report.no_candidate.len(),
+        report.unverifiable.len()
     );
     if !report.matches.is_empty() {
         println!(
@@ -974,6 +995,13 @@ fn print_hand_verify_report(report: &HandVerifyReport) {
             "  NO CANDIDATE (not in the fresh emit closure -- a host-physics pin with no \
              .dag source, or a module the closure does not reach; cargo-green only): {}",
             report.no_candidate.join(", ")
+        );
+    }
+    if !report.unverifiable.is_empty() {
+        println!(
+            "  UNVERIFIABLE (candidate did not rustfmt-normalize -- inconclusive, not counted \
+             as drift; inspect the reason): {}",
+            report.unverifiable.join(", ")
         );
     }
 }
