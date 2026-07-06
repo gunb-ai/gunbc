@@ -1,0 +1,76 @@
+module v2.test.manual.grammar_choice_ambiguity_audit
+
+import v2.compiler.parse {
+  grammar_choice_ambiguity_count,
+  grammar_choice_ambiguity_roster,
+  grammar_has_choice_ambiguity,
+  grammar_validate_for_parse
+}
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.python { python_wave1_grammar_root }
+import v2.std.collection { list_at_optional, Present, Absent }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { GrammarRoot, ModeledGrammar, VoidGrammar }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+data gca_audit_note: String = "Manual ambiguity stomper receipt (not CI-enrolled). CONTRACT: dag_wave1 grammar has zero FIRST-set choice overlaps and zero nullable-choice pairs — witness_dag_wave1_grammar_has_zero_choice_ambiguity (release gunbc, ~83s wall). grammar_validate_for_parse is fail-closed on ambiguity count>0. PARSER FALLBACKS STILL LIVE (not grammar ambiguity): (1) parse_nonterminal_memoized bypasses memo for ^dag_production_match_arm_stmt_body; (2) parse_expr choice arm runs full left thunk before right (02_parse.dag). Python wave1 is a POSITIVE CONTROL: count=1, validate rejects. Offline formal-production scan: scripts/audit_dag_grammar_first.py — 0 overlaps, 0 NT-ref cycles on catalog rows (live grammar uses dag_grammar_*_expr builders; gunbc witness is authority)."
+
+fn dag_wave1_grammar_root() -> GrammarRoot {
+  match dag_language_model_wave1().grammar {
+    ModeledGrammar { root: root } => root
+    VoidGrammar => dag_wave1_void_grammar_unexpected()
+  }
+}
+
+fn dag_wave1_void_grammar_unexpected() -> GrammarRoot {
+  match dag_wave1_void_grammar_unexpected() {
+    _ => dag_wave1_void_grammar_unexpected()
+  }
+}
+
+fn witness_python_wave1_choice_ambiguity_count() -> Int {
+  grammar_choice_ambiguity_count(root: python_wave1_grammar_root())
+}
+
+fn witness_python_wave1_grammar_validate_rejects_ambiguity() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: python_wave1_grammar_root(), at: at) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn witness_dag_wave1_choice_ambiguity_count() -> Int {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root())
+}
+
+fn witness_dag_wave1_choice_ambiguity_roster_nonempty() -> Bool {
+  witness_dag_wave1_choice_ambiguity_count() > 0
+}
+
+fn witness_dag_wave1_grammar_has_zero_choice_ambiguity() -> Bool {
+  !grammar_has_choice_ambiguity(root: dag_wave1_grammar_root())
+}
+
+fn witness_dag_wave1_grammar_validate_accepts() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: dag_wave1_grammar_root(), at: at) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_dag_wave1_grammar_validate_rejects_ambiguity() -> Bool {
+  !witness_dag_wave1_grammar_validate_accepts()
+}
+
+fn witness_dag_wave1_first_choice_ambiguity_production() -> Symbol {
+  match list_at_optional(
+    xs: grammar_choice_ambiguity_roster(root: dag_wave1_grammar_root()),
+    index: 0
+  ) {
+    Present { value: row } => row.production
+    Absent => ^grammar_choice_ambiguity_roster_empty
+  }
+}

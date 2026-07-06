@@ -947,6 +947,432 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
   )
 }
 
+data parse_first_ambiguity_note: String = "FIRST-set analysis + choice ambiguity roster (construction over caching; sunny-wren-799)."
+
+type GrammarExprFirstFold {
+  terminals: List<Symbol>
+  nullable: Bool
+}
+
+type ProductionFirstRow {
+  name: Symbol
+  terminals: List<Symbol>
+}
+
+type GrammarChoiceAmbiguityRow {
+  production: Symbol
+  overlap_terminals: List<Symbol>
+  both_nullable: Bool
+}
+
+fn grammar_empty_terminal_list() -> List<Symbol> {
+  Empty
+}
+
+fn first_list_contains(xs: List<Symbol>, item: Symbol) -> Bool {
+  contains(xs: xs, item: item, eq: fn(a, b) { a == b })
+}
+
+fn first_list_union(left: List<Symbol>, right: List<Symbol>) -> List<Symbol> {
+  fold_list(
+    xs: right,
+    empty: left,
+    cons: fn(acc, sym) {
+      if first_list_contains(xs: acc, item: sym) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: sym)
+      }
+    }
+  )
+}
+
+fn first_list_intersect(left: List<Symbol>, right: List<Symbol>) -> List<Symbol> {
+  filter(
+    xs: left,
+    predicate: fn(sym) { first_list_contains(xs: right, item: sym) }
+  )
+}
+
+fn production_first_row_lookup(rows: List<ProductionFirstRow>, name: Symbol) -> List<Symbol> {
+  match list_at_optional(
+    xs: filter(xs: rows, predicate: fn(r) { r.name == name }),
+    index: 0
+  ) {
+    Present { value: row } => row.terminals
+    Absent => grammar_empty_terminal_list()
+  }
+}
+
+fn expr_first_fold_terminal(token_class: Symbol) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: Cons { head: token_class, tail: Empty },
+    nullable: false
+  }
+}
+
+fn expr_first_fold_nonterminal(
+  name: Symbol,
+  nullable_set: Set<Symbol>,
+  first_rows: List<ProductionFirstRow>
+) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: production_first_row_lookup(rows: first_rows, name: name),
+    nullable: nullable_set.member(name)
+  }
+}
+
+fn expr_first_fold_sequence(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: first_list_union(
+      left: left.terminals,
+      right: if left.nullable { right.terminals } else { grammar_empty_terminal_list() }
+    ),
+    nullable: left.nullable && right.nullable
+  }
+}
+
+fn expr_first_fold_choice(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: first_list_union(left: left.terminals, right: right.terminals),
+    nullable: left.nullable || right.nullable
+  }
+}
+
+fn expr_first_fold_optional(element: GrammarExprFirstFold) -> GrammarExprFirstFold {
+  GrammarExprFirstFold { terminals: element.terminals, nullable: true }
+}
+
+fn expr_first_fold_repeat(element: GrammarExprFirstFold) -> GrammarExprFirstFold {
+  GrammarExprFirstFold { terminals: element.terminals, nullable: true }
+}
+
+fn expr_first_fold(
+  expr: GrammarExpr,
+  nullable_set: Set<Symbol>,
+  first_rows: List<ProductionFirstRow>
+) -> GrammarExprFirstFold {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class, _) { expr_first_fold_terminal(token_class: token_class) },
+      nonterminal: fn(name) {
+        expr_first_fold_nonterminal(name: name, nullable_set: nullable_set, first_rows: first_rows)
+      },
+      sequence: expr_first_fold_sequence,
+      choice: expr_first_fold_choice,
+      optional: expr_first_fold_optional,
+      repeat: expr_first_fold_repeat
+    }
+  )
+}
+
+fn upsert_production_first_row(
+  rows: List<ProductionFirstRow>,
+  row: ProductionFirstRow
+) -> List<ProductionFirstRow> {
+  list_snoc_item(
+    xs: filter(xs: rows, predicate: fn(r) { r.name != row.name }),
+    item: row
+  )
+}
+
+fn compute_production_first_row_step(
+  rows: List<ProductionFirstRow>,
+  p: GrammarProduction,
+  nullable_set: Set<Symbol>
+) -> ProductionFirstRow {
+  let folded = expr_first_fold(
+    expr: p.expression,
+    nullable_set: nullable_set,
+    first_rows: rows
+  )
+  ProductionFirstRow { name: p.name, terminals: folded.terminals }
+}
+
+fn compute_production_first_rows(
+  root: GrammarRoot,
+  nullable_set: Set<Symbol>
+) -> List<ProductionFirstRow> {
+  fold_list(
+    xs: root.productions,
+    empty: Empty,
+    cons: fn(acc, _) {
+      fold_list(
+        xs: root.productions,
+        empty: acc,
+        cons: fn(rows, p) {
+          upsert_production_first_row(
+            rows: rows,
+            row: compute_production_first_row_step(
+              rows: rows,
+              p: p,
+              nullable_set: nullable_set
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
+fn choice_branches_ambiguous(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> Bool {
+  if left.nullable && right.nullable {
+    true
+  } else {
+    !is_empty(xs: first_list_intersect(left: left.terminals, right: right.terminals))
+  }
+}
+
+fn append_choice_ambiguity_row(
+  acc: List<GrammarChoiceAmbiguityRow>,
+  production: Symbol,
+  left: GrammarExprFirstFold,
+  right: GrammarExprFirstFold
+) -> List<GrammarChoiceAmbiguityRow> {
+  if choice_branches_ambiguous(left: left, right: right) {
+    list_snoc_item(
+      xs: acc,
+      item: GrammarChoiceAmbiguityRow {
+        production: production,
+        overlap_terminals: first_list_intersect(left: left.terminals, right: right.terminals),
+        both_nullable: left.nullable && right.nullable
+      }
+    )
+  } else {
+    acc
+  }
+}
+
+fn collect_choice_ambiguities_in_expr(
+  expr: GrammarExpr,
+  production: Symbol,
+  nullable_set: Set<Symbol>,
+  first_rows: List<ProductionFirstRow>,
+  acc: List<GrammarChoiceAmbiguityRow>
+) -> List<GrammarChoiceAmbiguityRow> {
+  match expr {
+    Terminal { token_class: _, stamp: _ } => acc
+    Nonterminal { production: _ } => acc
+    Sequence { left: left, right: right } =>
+      collect_choice_ambiguities_in_expr(
+        expr: right,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        acc: collect_choice_ambiguities_in_expr(
+          expr: left,
+          production: production,
+          nullable_set: nullable_set,
+          first_rows: first_rows,
+          acc: acc
+        )
+      )
+    Choice { left: left, right: right } => {
+      let left_first = expr_first_fold(expr: left, nullable_set: nullable_set, first_rows: first_rows)
+      let right_first = expr_first_fold(expr: right, nullable_set: nullable_set, first_rows: first_rows)
+      let acc1 = append_choice_ambiguity_row(
+        acc: acc,
+        production: production,
+        left: left_first,
+        right: right_first
+      )
+      collect_choice_ambiguities_in_expr(
+        expr: right,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        acc: collect_choice_ambiguities_in_expr(
+          expr: left,
+          production: production,
+          nullable_set: nullable_set,
+          first_rows: first_rows,
+          acc: acc1
+        )
+      )
+    }
+    Optional { element: element } =>
+      collect_choice_ambiguities_in_expr(
+        expr: element,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        acc: acc
+      )
+    Repeat { element: element } =>
+      collect_choice_ambiguities_in_expr(
+        expr: element,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        acc: acc
+      )
+  }
+}
+
+fn grammar_choice_ambiguity_roster(root: GrammarRoot) -> List<GrammarChoiceAmbiguityRow> {
+  let nullable_set = compute_nullable_set(root: root)
+  let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
+  fold_list(
+    xs: root.productions,
+    empty: Empty,
+    cons: fn(acc, p) {
+      collect_choice_ambiguities_in_expr(
+        expr: p.expression,
+        production: p.name,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        acc: acc
+      )
+    }
+  )
+}
+
+fn grammar_has_choice_ambiguity(root: GrammarRoot) -> Bool {
+  grammar_choice_ambiguity_exists(root: root)
+}
+
+fn grammar_choice_ambiguity_exists(root: GrammarRoot) -> Bool {
+  let nullable_set = compute_nullable_set(root: root)
+  let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
+  any(
+    xs: root.productions,
+    predicate: fn(p) {
+      choice_ambiguity_exists_in_expr(
+        expr: p.expression,
+        production: p.name,
+        nullable_set: nullable_set,
+        first_rows: first_rows
+      )
+    }
+  )
+}
+
+fn choice_ambiguity_exists_in_expr(
+  expr: GrammarExpr,
+  production: Symbol,
+  nullable_set: Set<Symbol>,
+  first_rows: List<ProductionFirstRow>
+) -> Bool {
+  match expr {
+    Terminal { token_class: _, stamp: _ } => false
+    Nonterminal { production: _ } => false
+    Sequence { left: left, right: right } =>
+      choice_ambiguity_exists_in_expr(
+        expr: left,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows
+      ) || choice_ambiguity_exists_in_expr(
+        expr: right,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows
+      )
+    Choice { left: left, right: right } => {
+      let left_first = expr_first_fold(expr: left, nullable_set: nullable_set, first_rows: first_rows)
+      let right_first = expr_first_fold(expr: right, nullable_set: nullable_set, first_rows: first_rows)
+      if choice_branches_ambiguous(left: left_first, right: right_first) {
+        true
+      } else {
+        choice_ambiguity_exists_in_expr(
+          expr: left,
+          production: production,
+          nullable_set: nullable_set,
+          first_rows: first_rows
+        ) || choice_ambiguity_exists_in_expr(
+          expr: right,
+          production: production,
+          nullable_set: nullable_set,
+          first_rows: first_rows
+        )
+      }
+    }
+    Optional { element: element } =>
+      choice_ambiguity_exists_in_expr(
+        expr: element,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows
+      )
+    Repeat { element: element } =>
+      choice_ambiguity_exists_in_expr(
+        expr: element,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows
+      )
+  }
+}
+
+fn choice_ambiguity_tally_at_branch(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> Int {
+  if choice_branches_ambiguous(left: left, right: right) { 1 } else { 0 }
+}
+
+fn tally_choice_ambiguities_in_expr(
+  expr: GrammarExpr,
+  production: Symbol,
+  nullable_set: Set<Symbol>,
+  first_rows: List<ProductionFirstRow>
+) -> Int {
+  match expr {
+    Terminal { token_class: _, stamp: _ } => 0
+    Nonterminal { production: _ } => 0
+    Sequence { left: left, right: right } =>
+      tally_choice_ambiguities_in_expr(
+        expr: left,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows
+      ) + tally_choice_ambiguities_in_expr(
+        expr: right,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows
+      )
+    Choice { left: left, right: right } => choice_ambiguity_tally_at_branch(left: expr_first_fold(expr: left, nullable_set: nullable_set, first_rows: first_rows), right: expr_first_fold(expr: right, nullable_set: nullable_set, first_rows: first_rows)) + tally_choice_ambiguities_in_expr(expr: left, production: production, nullable_set: nullable_set, first_rows: first_rows) + tally_choice_ambiguities_in_expr(expr: right, production: production, nullable_set: nullable_set, first_rows: first_rows)
+    Optional { element: element } =>
+      tally_choice_ambiguities_in_expr(
+        expr: element,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows
+      )
+    Repeat { element: element } =>
+      tally_choice_ambiguities_in_expr(
+        expr: element,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows
+      )
+  }
+}
+
+fn grammar_choice_ambiguity_count(root: GrammarRoot) -> Int {
+  let nullable_set = compute_nullable_set(root: root)
+  let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
+  fold_list(
+    xs: root.productions,
+    empty: 0,
+    cons: fn(acc, p) {
+      acc + tally_choice_ambiguities_in_expr(
+        expr: p.expression,
+        production: p.name,
+        nullable_set: nullable_set,
+        first_rows: first_rows
+      )
+    }
+  )
+}
+
+fn parse_grammar_choice_ambiguity_diagnostic(at: Locus, count: Int) -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_grammar_choice_ambiguity,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn grammar_empty_corner_list() -> List<Symbol> {
   Empty
 }
@@ -1115,7 +1541,15 @@ fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<Validated
       if grammar_has_left_recursion(root: root) {
         Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
-        Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
+        if grammar_has_choice_ambiguity(root: root) {
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: parse_grammar_choice_ambiguity_diagnostic(at: at, count: 1)
+            )
+          }
+        } else {
+          Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
+        }
       }
     }
   }
