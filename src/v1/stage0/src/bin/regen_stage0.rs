@@ -68,6 +68,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_syntax.rs",
     "std_termination.rs",
     "std_types.rs",
+    "test_claim_ownership_movable.rs",
     "v1_compiler_artifact.rs",
     "v1_compiler_coercion.rs",
     "v1_compiler_compile.rs",

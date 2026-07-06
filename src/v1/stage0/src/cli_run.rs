@@ -7932,6 +7932,11 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import v2.std.text { String }\n");
+    // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
+    // #5473/#5486). The emitted value references those constructors, so the manifest must import
+    // them or every witness fails to resolve with `undefined variable 'V2Tree'` — the source_root
+    // ingest gate's persistent RED. Both constructors are imported since a scan may span trees.
+    out.push_str("import v2.std.cross_tree.import_model { DagTree, V2Tree }\n");
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");
         out.push_str("  Admission,\n");
