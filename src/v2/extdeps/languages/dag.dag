@@ -48,8 +48,10 @@ import v2.std.grammar {
   grammar_production_to_node,
   grammar_relation_tokens_node,
   grammar_empty_sync_tokens,
+  derive_grammar_relation_row,
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
+  grammar_relation_row_to_node,
   node_atom_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
@@ -111,6 +113,7 @@ import v2.std.compilers.target_model {
   concrete_syntax_token_to_node,
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
+  TargetEmitHostRuntimeRow,
   TargetCallApplyShape,
   TargetClosureShape,
   TargetConditionalShape,
@@ -162,6 +165,23 @@ data dag_mvp1_match_source_text: String = "fn one_or_two() -> Int { match true {
 data dag_mvp1_rec_source_text: String = "fn mk() -> Rec { Rec { v: 9 } }"
 
 data dag_mvp1_field_access_source_text: String = "fn get(r: Rec) -> Int { r.v }"
+
+type DagGrammarRelationRow {
+  production: FormalProduction
+  emitted: Node
+  tokens: List<ConcreteSyntaxToken>
+}
+
+type DagMvp1BodiedFnFamilySpec {
+  inhabitant_field: Symbol
+  emitted_fn: Node
+  grammar_row: DagGrammarRelationRow
+  source_literal: Symbol
+  production_binding: Symbol
+  authority_source_text: String
+  relation_rule: Symbol
+  scaffold: TargetBodiedArrowStatementScaffold
+}
 
 fn dag_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -3334,147 +3354,57 @@ data dag_mvp1_fixture_emitted_add_fn: Node = Node {
 }
 
 fn dag_mvp1_pick_zip_fold_closure_edges() -> List<Edge> {
-  [
-    dag_named_edge(
-      name: ^dag_inhabitant_field_mvp1_pick_fn,
-      target: dag_mvp1_fixture_emitted_pick_fn
-    )
-  ]
+  dag_mvp1_bodied_fn_zip_fold_closure_edges(spec: dag_mvp1_pick_family_spec())
 }
 
 fn dag_mvp1_pick_declared_inhabitants_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: list_append(
-        left: dag_declared_inhabitants_core().children,
-        right: dag_mvp1_zip_fold_closure_edges()
-      ),
-      right: dag_mvp1_pick_zip_fold_closure_edges()
-    ),
-    occurrence_id: SyntheticOccurrence
-  }
+  dag_mvp1_bodied_fn_declared_inhabitants_root(spec: dag_mvp1_pick_family_spec())
 }
 
 fn dag_mvp1_bind_zip_fold_closure_edges() -> List<Edge> {
-  [
-    dag_named_edge(
-      name: ^dag_inhabitant_field_mvp1_bind_fn,
-      target: dag_mvp1_fixture_emitted_bind_fn
-    )
-  ]
+  dag_mvp1_bodied_fn_zip_fold_closure_edges(spec: dag_mvp1_bind_family_spec())
 }
 
 fn dag_mvp1_bind_declared_inhabitants_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: list_append(
-        left: dag_declared_inhabitants_core().children,
-        right: dag_mvp1_zip_fold_closure_edges()
-      ),
-      right: dag_mvp1_bind_zip_fold_closure_edges()
-    ),
-    occurrence_id: SyntheticOccurrence
-  }
+  dag_mvp1_bodied_fn_declared_inhabitants_root(spec: dag_mvp1_bind_family_spec())
 }
 
 fn dag_mvp1_loop_zip_fold_closure_edges() -> List<Edge> {
-  [
-    dag_named_edge(
-      name: ^dag_inhabitant_field_mvp1_loop_fn,
-      target: dag_mvp1_fixture_emitted_loop_fn
-    )
-  ]
+  dag_mvp1_bodied_fn_zip_fold_closure_edges(spec: dag_mvp1_loop_family_spec())
 }
 
 fn dag_mvp1_loop_declared_inhabitants_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: list_append(
-        left: dag_declared_inhabitants_core().children,
-        right: dag_mvp1_zip_fold_closure_edges()
-      ),
-      right: dag_mvp1_loop_zip_fold_closure_edges()
-    ),
-    occurrence_id: SyntheticOccurrence
-  }
+  dag_mvp1_bodied_fn_declared_inhabitants_root(spec: dag_mvp1_loop_family_spec())
 }
 
 data dag_inhabitant_field_mvp1_match_fn: Symbol = dag_inhabitant_field_mvp1_match_fn
 
 fn dag_mvp1_match_zip_fold_closure_edges() -> List<Edge> {
-  [
-    dag_named_edge(
-      name: dag_inhabitant_field_mvp1_match_fn,
-      target: dag_mvp1_fixture_emitted_match_fn
-    )
-  ]
+  dag_mvp1_bodied_fn_zip_fold_closure_edges(spec: dag_mvp1_match_family_spec())
 }
 
 fn dag_mvp1_match_declared_inhabitants_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: list_append(
-        left: dag_declared_inhabitants_core().children,
-        right: dag_mvp1_zip_fold_closure_edges()
-      ),
-      right: dag_mvp1_match_zip_fold_closure_edges()
-    ),
-    occurrence_id: SyntheticOccurrence
-  }
+  dag_mvp1_bodied_fn_declared_inhabitants_root(spec: dag_mvp1_match_family_spec())
 }
 
 data dag_inhabitant_field_mvp1_rec_fn: Symbol = dag_inhabitant_field_mvp1_rec_fn
 
 fn dag_mvp1_rec_zip_fold_closure_edges() -> List<Edge> {
-  [
-    dag_named_edge(
-      name: dag_inhabitant_field_mvp1_rec_fn,
-      target: dag_mvp1_fixture_emitted_rec_fn
-    )
-  ]
+  dag_mvp1_bodied_fn_zip_fold_closure_edges(spec: dag_mvp1_rec_family_spec())
 }
 
 fn dag_mvp1_rec_declared_inhabitants_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: list_append(
-        left: dag_declared_inhabitants_core().children,
-        right: dag_mvp1_zip_fold_closure_edges()
-      ),
-      right: dag_mvp1_rec_zip_fold_closure_edges()
-    ),
-    occurrence_id: SyntheticOccurrence
-  }
+  dag_mvp1_bodied_fn_declared_inhabitants_root(spec: dag_mvp1_rec_family_spec())
 }
 
 data dag_inhabitant_field_mvp1_field_access_fn: Symbol = dag_inhabitant_field_mvp1_field_access_fn
 
 fn dag_mvp1_field_access_zip_fold_closure_edges() -> List<Edge> {
-  [
-    dag_named_edge(
-      name: dag_inhabitant_field_mvp1_field_access_fn,
-      target: dag_mvp1_fixture_emitted_field_access_fn
-    )
-  ]
+  dag_mvp1_bodied_fn_zip_fold_closure_edges(spec: dag_mvp1_field_access_family_spec())
 }
 
 fn dag_mvp1_field_access_declared_inhabitants_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: list_append(
-        left: dag_declared_inhabitants_core().children,
-        right: dag_mvp1_zip_fold_closure_edges()
-      ),
-      right: dag_mvp1_field_access_zip_fold_closure_edges()
-    ),
-    occurrence_id: SyntheticOccurrence
-  }
+  dag_mvp1_bodied_fn_declared_inhabitants_root(spec: dag_mvp1_field_access_family_spec())
 }
 
 fn dag_mvp1_zip_fold_closure_edges() -> List<Edge> {
@@ -3546,12 +3476,12 @@ fn dag_mvp1_serialize_source_children() -> List<Edge> {
 }
 
 fn dag_mvp1_serialize_source_node() -> Node {
-  let _authority = dag_mvp1_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: dag_mvp1_serialize_source_children(),
-    occurrence_id: SyntheticOccurrence
-}
+  dag_mvp1_family_serialize_source_node(
+    source_literal: ^dag_mvp1_source_literal,
+    production_binding: ^dag_production_mvp1_fn_add,
+    tokens: dag_mvp1_concrete_tokens(),
+    authority_source_text: dag_mvp1_source_text
+  )
 }
 
 type DagGramBuild1State
@@ -4033,27 +3963,13 @@ fn dag_type_decl_structural_target_model() -> TargetModel {
 }
 
 fn dag_mvp1_grammar_relation_row_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      dag_named_edge(
-        name: ^grammar_relation_field_production,
-        target: formal_production_to_node(production: dag_formal_production_mvp1_fn_add())
-      ),
-      dag_named_edge(
-        name: ^grammar_relation_field_emitted,
-        target: dag_mvp1_emitted_add_fn_node()
-      ),
-      dag_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: dag_mvp1_concrete_tokens(),
-          token_to_node: dag_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  dag_grammar_relation_row_node(
+    row: DagGrammarRelationRow {
+      production: dag_formal_production_mvp1_fn_add(),
+      emitted: dag_mvp1_emitted_add_fn_node(),
+      tokens: dag_mvp1_concrete_tokens()
+    }
+  )
 }
 
 fn dag_mvp1_translation_rules_node() -> Node {
@@ -5032,6 +4948,166 @@ fn dag_block_evaluation_mode() -> BlockEvaluationMode {
 
 fn dag_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(rows: [])
+}
+
+fn dag_grammar_relation_row_node(row: DagGrammarRelationRow) -> Node {
+  grammar_relation_row_to_node(
+    row: derive_grammar_relation_row(production: row.production, emitted: row.emitted),
+    tokens: grammar_relation_tokens_node(
+      tokens: row.tokens,
+      token_to_node: dag_concrete_token_node
+    )
+  )
+}
+
+fn dag_mvp1_family_serialize_source_node(
+  source_literal: Symbol,
+  production_binding: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  authority_source_text: String
+) -> Node {
+  let _authority = authority_source_text
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: [
+        dag_named_edge(
+          name: ^serialize_source_field_source_text,
+          target: dag_inhabitant_atom(id: source_literal)
+        ),
+        dag_named_edge(
+          name: ^serialize_source_field_source_grammar,
+          target: dag_inhabitant_atom(id: production_binding)
+        )
+      ],
+      right: [
+        dag_named_edge(
+          name: ^grammar_relation_field_tokens,
+          target: grammar_relation_tokens_node(
+            tokens: tokens,
+            token_to_node: dag_concrete_token_node
+          )
+        )
+      ]
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bodied_fn_zip_fold_closure_edges(spec: DagMvp1BodiedFnFamilySpec) -> List<Edge> {
+  [
+    dag_named_edge(
+      name: spec.inhabitant_field,
+      target: spec.emitted_fn
+    )
+  ]
+}
+
+fn dag_mvp1_bodied_fn_declared_inhabitants_root(spec: DagMvp1BodiedFnFamilySpec) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: list_append(
+        left: dag_declared_inhabitants_core().children,
+        right: dag_mvp1_zip_fold_closure_edges()
+      ),
+      right: dag_mvp1_bodied_fn_zip_fold_closure_edges(spec: spec)
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bodied_fn_grammar_relation_row_node(spec: DagMvp1BodiedFnFamilySpec) -> Node {
+  dag_grammar_relation_row_node(row: spec.grammar_row)
+}
+
+fn dag_mvp1_bodied_fn_translation_rules_node(spec: DagMvp1BodiedFnFamilySpec) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: spec.relation_rule,
+        target: grammar_relation_row_attach_bodied_scaffold(
+          row: dag_mvp1_bodied_fn_grammar_relation_row_node(spec: spec),
+          scaffold: spec.scaffold
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bodied_fn_serialize_source_node(spec: DagMvp1BodiedFnFamilySpec) -> Node {
+  dag_mvp1_family_serialize_source_node(
+    source_literal: spec.source_literal,
+    production_binding: spec.production_binding,
+    tokens: spec.grammar_row.tokens,
+    authority_source_text: spec.authority_source_text
+  )
+}
+
+fn dag_mvp1_bodied_fn_target_model_bundle_node(spec: DagMvp1BodiedFnFamilySpec) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^target_model_edge_selection_policy,
+        target: dag_mvp1_selection_policy_node()
+      ),
+      dag_named_edge(
+        name: ^target_model_edge_declared_inhabitants,
+        target: dag_mvp1_bodied_fn_declared_inhabitants_root(spec: spec)
+      ),
+      dag_named_edge(
+        name: ^target_model_edge_translation_rules,
+        target: dag_mvp1_bodied_fn_translation_rules_node(spec: spec)
+      ),
+      dag_named_edge(
+        name: ^target_model_edge_serialize_source,
+        target: dag_mvp1_bodied_fn_serialize_source_node(spec: spec)
+      ),
+      dag_named_edge(
+        name: ^target_model_edge_fidelity_quotient,
+        target: dag_mvp1_fidelity_quotient_node()
+      ),
+      dag_named_edge(
+        name: ^target_model_edge_value_expression_projection,
+        target: value_expr_projection_bundle_node(
+          projection: dag_value_expression_projection()
+        )
+      ),
+      dag_named_edge(
+        name: ^target_model_edge_operator_realizations,
+        target: dag_operator_realizations_catalog_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_bodied_fn_target_model(
+  spec: DagMvp1BodiedFnFamilySpec,
+  runtime_row: Optional<TargetEmitHostRuntimeRow>
+) -> TargetModel {
+  match runtime_row {
+    Present { value: row } =>
+      TargetModel {
+        bundle: dag_mvp1_bodied_fn_target_model_bundle_node(spec: spec),
+        lex: dag_wave1_lex(),
+        binding_spellings: dag_mvp1_binding_spellings(),
+        token_class_emit_transforms: target_model_emit_transforms_empty,
+        authority_source_text: spec.authority_source_text,
+        runtime_row: row
+      }
+    Absent =>
+      TargetModel {
+        bundle: dag_mvp1_bodied_fn_target_model_bundle_node(spec: spec),
+        lex: dag_wave1_lex(),
+        binding_spellings: dag_mvp1_binding_spellings(),
+        token_class_emit_transforms: target_model_emit_transforms_empty,
+        authority_source_text: spec.authority_source_text
+      }
+  }
 }
 
 fn dag_mvp1_pick_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
