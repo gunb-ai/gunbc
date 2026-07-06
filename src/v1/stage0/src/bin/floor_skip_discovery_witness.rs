@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, resolve_entry_with_index, run_discovery_corpus_with_options,
-    workspace_root, DiscoveryCorpusOptions, DiscoverySummary,
+    workspace_root, DiscoveryCorpusOptions, DiscoverySummary, NodeFrontierSelectionMode,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -38,7 +38,11 @@ fn floor_skip_test_roster() -> (Vec<String>, Vec<(String, String)>) {
 
 fn discovery_options(skip: bool) -> DiscoveryCorpusOptions {
     DiscoveryCorpusOptions {
-        skip_unaffected_node_frontier: skip,
+        node_frontier_selection: if skip {
+            NodeFrontierSelectionMode::Applied
+        } else {
+            NodeFrontierSelectionMode::Off
+        },
         explicit_roster_only: true,
         ..Default::default()
     }
@@ -102,6 +106,110 @@ fn run_injected_diff_roster(
         discovery_options(true),
     )
     .expect("node-precise skip path must not error (FreeMonoid decode root fix)")
+}
+
+fn run_injected_diff_roster_with_mode(
+    rel_path: &str,
+    line: i64,
+    roster: &[(String, String)],
+    mode: NodeFrontierSelectionMode,
+) -> DiscoverySummary {
+    let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// synthetic touch\n");
+    let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
+    run_discovery_corpus_with_options(
+        &floor_skip_source_roots(),
+        &[],
+        roster,
+        ExecutionMode::Wet,
+        1,
+        DiscoveryCorpusOptions {
+            node_frontier_selection: mode,
+            explicit_roster_only: true,
+            ..Default::default()
+        },
+    )
+    .expect("predict-only path must not error")
+}
+
+const FALSIFIER_CONTROL_REL: &str =
+    "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag";
+
+fn falsifier_control_roster(function: &str) -> Vec<(String, String)> {
+    let ws = workspace_root();
+    vec![(
+        ws.join(FALSIFIER_CONTROL_REL)
+            .to_string_lossy()
+            .into_owned(),
+        function.to_string(),
+    )]
+}
+
+fn predict_only_red_predicted_unaffected_is_divergence() {
+    chdir_workspace();
+    // Diff touches an UNRELATED fixture, so the red control is predicted-unaffected.
+    let summary = run_injected_diff_roster_with_mode(
+        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+        3,
+        &falsifier_control_roster("falsifier_red_control_holds"),
+        NodeFrontierSelectionMode::PredictOnly,
+    );
+    assert_eq!(summary.skipped, 0, "predict-only never applies the skip");
+    assert_eq!(
+        summary.predicted_unaffected.len(),
+        1,
+        "the prediction must be recorded per row"
+    );
+    assert_eq!(
+        summary.failures.len(),
+        1,
+        "the red row still fails the batch"
+    );
+    assert_eq!(
+        summary.divergences.len(),
+        1,
+        "predicted-unaffected + red = exactly one counted divergence"
+    );
+}
+
+fn predict_only_green_predicted_unaffected_no_divergence() {
+    chdir_workspace();
+    let summary = run_injected_diff_roster_with_mode(
+        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+        3,
+        &falsifier_control_roster("falsifier_green_control_holds"),
+        NodeFrontierSelectionMode::PredictOnly,
+    );
+    assert_eq!(summary.predicted_unaffected.len(), 1);
+    assert_eq!(summary.passed, 1, "predicted-unaffected rows still run");
+    assert!(
+        summary.divergences.is_empty(),
+        "a green predicted-unaffected row is a confirmed prediction, not a divergence"
+    );
+}
+
+fn predict_only_red_predicted_affected_is_not_divergence() {
+    chdir_workspace();
+    // Diff edits the red control's own declaration line → predicted-AFFECTED → its red
+    // is an ordinary failure. Divergence must discriminate, not count every red.
+    let ws = workspace_root();
+    let text = std::fs::read_to_string(ws.join(FALSIFIER_CONTROL_REL))
+        .expect("falsifier control fixture readable");
+    let line = fixture_line(&text, "test fn falsifier_red_control_holds");
+    let summary = run_injected_diff_roster_with_mode(
+        FALSIFIER_CONTROL_REL,
+        line,
+        &falsifier_control_roster("falsifier_red_control_holds"),
+        NodeFrontierSelectionMode::PredictOnly,
+    );
+    assert!(
+        summary.predicted_unaffected.is_empty(),
+        "editing the declaration line predicts the row affected"
+    );
+    assert_eq!(summary.failures.len(), 1, "the red still fails the batch");
+    assert!(
+        summary.divergences.is_empty(),
+        "predicted-affected + red is NOT a divergence — divergence must discriminate"
+    );
 }
 
 fn budget_roster_completeness_entry(ws: &std::path::Path) -> String {
@@ -420,6 +528,18 @@ fn main() -> ExitCode {
         (
             "discovery_corpus_skip_enabled_git_observation_refuses",
             discovery_corpus_skip_enabled_git_observation_refuses,
+        ),
+        (
+            "predict_only_red_predicted_unaffected_is_divergence",
+            predict_only_red_predicted_unaffected_is_divergence,
+        ),
+        (
+            "predict_only_green_predicted_unaffected_no_divergence",
+            predict_only_green_predicted_unaffected_no_divergence,
+        ),
+        (
+            "predict_only_red_predicted_affected_is_not_divergence",
+            predict_only_red_predicted_affected_is_not_divergence,
         ),
         (
             "node_precise_referenced_runs_orphan_skips_by_execution",

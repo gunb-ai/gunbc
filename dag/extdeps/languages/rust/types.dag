@@ -38,17 +38,17 @@ data rust_algebra_inhabitants: List<InhabitantDecl> = [
     is_copy: false },
 
   { algebra: "BooleanAlgebra",
-    template: "std::collections::BTreeSet<\{0\}>",
+    template: "BTreeSet<\{0\}>",
     arity: 1,
     identity_expr: "BTreeSet::new()",
-    import_path: "use std::collections::BTreeSet;",
+    import_path: none,
     is_copy: false },
 
   { algebra: "PartialFunction",
     template: "HashMap<\{0\}, \{1\}>",
     arity: 2,
     identity_expr: "HashMap::new()",
-    import_path: "use std::collections::HashMap;",
+    import_path: none,
     is_copy: false },
 
   { algebra: "OrderedRing",

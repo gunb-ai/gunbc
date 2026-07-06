@@ -104,7 +104,7 @@ fn json_diff_path(a: &serde_json::Value, b: &serde_json::Value, path: &str) -> O
 
 fn canonical_graph_bytes(
     graph: &ResolvedGraph,
-    source_indices: &std::collections::HashMap<String, Rc<NewlineIndex>>,
+    source_indices: &im_rc::HashMap<String, Rc<NewlineIndex>>,
 ) -> Vec<u8> {
     serialize_fixture_payload_for_test(graph, source_indices).expect("serialize payload")
 }

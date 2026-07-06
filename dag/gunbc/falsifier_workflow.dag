@@ -1,0 +1,112 @@
+module gunbc.falsifier_workflow
+
+import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep,
+  WorkflowTrigger, Schedule, WorkflowDispatch,
+  WorkflowPermissions, PermRead
+}
+import gunbc.ci_workflow {
+  ci_prelude_steps, ci_release_build_step,
+  gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes
+}
+import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import gunbc.ci_spec {
+  claim_executor_bin_shell, ci_repo_root_shell
+}
+import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+
+data falsifier_workflow_note: String = "Affected-set differential falsifier cadence (signed design: docs/plans/affected-set-differential-falsifier.md; signs 2026-07-05: N=8 windows, counted re-arm, roster authority = the existing host-scaffold/live-tree disposition facts). Nightly cold run of the discovery corpus with SelectionPredictOnly: would-skip predictions are recorded per row, every row runs, and a predicted-unaffected row that runs red is a counted DIVERGENCE attributing a missing selection edge (the red also fails the batch through the normal failure channel). An observation refusal aborts typed and is NOT a divergence. Dissolution: 8 consecutive zero-divergence windows retire this workflow (delete it; the receipt is the Actions run history); a later divergence re-arms another 8-window cycle, itself counted. Cost is bounded per window - one cold run nightly, never multiplied into PRs."
+
+data falsifier_window_base_note: String = "GUNBC_CI_DIFF_BASE=HEAD~20 gives the nightly run a declared window so predictions have non-trivial structure (main-vs-main is empty and would predict skip-everything, which only falsifies rot in assumed-green subjects). 20 is a declared window breadth, not a smuggled threshold: the diff is exact for whatever the window contains, and a shorter history degenerates to the empty-diff posture honestly. The ci checkout is fetch-depth 0, so the window is available."
+
+data gunbc_falsifier_step_timeout_minutes: Int = 120
+
+data falsifier_plan_function: String = "gunbc_falsifier_batches"
+
+fn falsifier_invoke() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)),
+      concat(" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function ", falsifier_plan_function)
+    )
+  )
+}
+
+fn falsifier_step() -> Step {
+  RunStep {
+    name: Present { value: "affected-set falsifier (predict-only cold run)" },
+    id: none,
+    run: falsifier_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "GUNBC_CI_DIFF_BASE", value: yaml_string(s: "HEAD~20")),
+        kv(key: "GUNBC_CI_DIFF_HEAD", value: yaml_string(s: "HEAD"))
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_falsifier_step_timeout_minutes }
+  }
+}
+
+fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+fn falsifier_job() -> Job {
+  Job {
+    id: "falsifier",
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), falsifier_step()]),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    strategy: none,
+    timeout_minutes: Present { value: gunbc_falsifier_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none
+  }
+}
+
+data falsifier_nightly_cron: CronSchedule = CronSchedule {
+  minute: Exact { value: 0 },
+  hour: Exact { value: 7 },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+data falsifier_workflow: Workflow = {
+  name: "affected-set-falsifier",
+  on: [
+    WorkflowDispatch { inputs: [] },
+    Schedule { cron: falsifier_nightly_cron }
+  ],
+  concurrency: none,
+  env: Present {
+    value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))]
+  },
+  permissions: Present {
+    value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: none
+    }
+  },
+  jobs: [falsifier_job()]
+}
+
+fn expected_falsifier_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: falsifier_workflow))
+}

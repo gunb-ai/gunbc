@@ -7,13 +7,15 @@ pub use crate::extdeps_cargo::{CargoDepSource, CargoDependency, CargoFeature};
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::v1_compiler_emit_rust::{emit_cargo_dep, emit_non_empty_wrappers};
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 pub use crate::v1_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(

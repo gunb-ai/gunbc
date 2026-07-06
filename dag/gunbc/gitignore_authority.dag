@@ -22,7 +22,7 @@ import gunbc.gitignore_model {
   OpenClawControlDir, OpenClawAgentsFile, OpenClawHeartbeatFile, OpenClawIdentityFile,
   OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
   OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
-  PythonLocalDevScriptFile, PythonBytecodeCacheDir, PythonCompiledBytecode,
+  PythonLocalDevScriptFile, PythonAuditScriptAllowlisted, PythonBytecodeCacheDir, PythonCompiledBytecode,
   ClaimMapDir, ScratchProbeFile,
   GunbcPlanningDir, ScriptsFixturesDir
 }
@@ -122,7 +122,7 @@ data gitignore_authority: List<IgnoreGroup> = [
   },
   IgnoreGroup {
     producer: Derivable { kind: PythonLocalDevScript },
-    artifacts: [PythonLocalDevScriptFile]
+    artifacts: [PythonLocalDevScriptFile, PythonAuditScriptAllowlisted]
   },
   IgnoreGroup {
     producer: Cited { kind: CPythonInterpreter, upstream: "python.org/peps/pep-3147" },

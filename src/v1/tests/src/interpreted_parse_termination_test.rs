@@ -40,7 +40,7 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult) {
 }
 
 fn assert_witness_terminates(function: &str, budget: Duration) {
-    let resolved = compile_to_resolved(Rc::new(bisect_sources()));
+    let resolved = compile_to_resolved(Rc::new(bisect_sources().into()));
     assert_resolved_ok(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = v1_interpreter::InterpContext::new(

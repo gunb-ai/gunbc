@@ -1,11 +1,14 @@
+use crate::v1_rt::VecCompat;
+use im_rc::HashMap;
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Instant;
 
 use im_rc::HashMap as HamtMap;
+use im_rc::OrdSet;
 use im_rc::Vector as RrbVector;
 
 use crate::cli_run::value_to_wire_json;
@@ -377,7 +380,7 @@ pub enum Value {
     Str(String),
     List(Rc<RrbVector<Value>>),
     Map(Rc<HamtMap<CanonKey, Value>>),
-    Set(Rc<BTreeSet<String>>),
+    Set(Rc<OrdSet<String>>),
     Record {
         type_name: Symbol,
         fields: Rc<Vec<(Symbol, Value)>>,
@@ -991,7 +994,7 @@ impl ExecutionMode {
 }
 
 pub struct InterpContext {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
+    pub modules: Rc<im_rc::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
@@ -1733,6 +1736,33 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
         {
             Some(format!(
                 "{} vs {} — a number and its coproduct (Nat Zero/Succ) encoding are \
+                 two representations of one value; Value::eq cannot decide them, so \
+                 `==` would silently fabricate `false` (DESIGN §5). Ground the \
+                 primitive into its realization to compare (DESIGN §1/§2/§7).",
+                describe_repr(a),
+                describe_repr(b),
+            ))
+        }
+        (
+            Value::Bool(_),
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            },
+        )
+        | (
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            },
+            Value::Bool(_),
+        ) if fields.is_empty()
+            && matches!(resolve_sym(*variant_name).as_str(), "True" | "False") =>
+        {
+            Some(format!(
+                "{} vs {} — a native Bool and its True/False coproduct encoding are \
                  two representations of one value; Value::eq cannot decide them, so \
                  `==` would silently fabricate `false` (DESIGN §5). Ground the \
                  primitive into its realization to compare (DESIGN §1/§2/§7).",
@@ -5466,7 +5496,7 @@ fn eval_builtin(
 
         "empty_map" => Ok(Some(map_value(HamtMap::new()))),
 
-        "empty_set" => Ok(Some(Value::Set(Rc::new(BTreeSet::new())))),
+        "empty_set" => Ok(Some(Value::Set(Rc::new(OrdSet::new())))),
 
         "set_insert" => match positional.as_slice() {
             [Value::Set(s), Value::Str(k)] => {

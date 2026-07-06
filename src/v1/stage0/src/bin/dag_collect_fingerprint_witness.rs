@@ -24,7 +24,7 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::from(1)
 }
 
-fn hashes(labels: Vec<&str>) -> Rc<Vec<String>> {
+fn hashes(labels: Vec<&str>) -> Rc<im_rc::Vector<String>> {
     Rc::new(
         labels
             .into_iter()
@@ -52,9 +52,9 @@ fn shell_node(
         ident: None,
         span: synth_span(),
         ident_span: None,
-        children: Rc::new(children),
+        children: Rc::new(children.into()),
         connective,
-        params: Rc::new(params),
+        params: Rc::new(params.into()),
         inferred: None,
         return_cardinality: Cardinality::Required,
         uses: empty_node_list(),
