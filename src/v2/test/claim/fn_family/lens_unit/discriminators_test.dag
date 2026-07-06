@@ -1,0 +1,117 @@
+module v2.test.fn_family.lens_unit.discriminators_test
+
+import v2.lens.fn_family {
+  sigma_family_related, sigma_families_of_defs, module_fn_decl_subtrees,
+  module_sigma_family_count, FnFamilyFinding
+}
+import v2.std.node {
+  Node, Edge, NodeKind, TypeNode, Connective, Atom, Conj, Symbol, Positional,
+  node_synthetic
+}
+import v2.std.algebra { FreeMonoid, length, fold_list, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+
+fn atom_node(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn edge_of(k: Node) -> Edge {
+  Edge { label: Positional, target: k }
+}
+
+fn no_edges() -> List<Edge> {
+  []
+}
+
+fn kids_to_edges(kids: List<Node>) -> List<Edge> {
+  fold_list(
+    xs: kids,
+    empty: no_edges(),
+    cons: fn(acc, k) { list_snoc_item(xs: acc, item: edge_of(k: k)) }
+  )
+}
+
+fn conj_of(kids: List<Node>) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: kids_to_edges(kids: kids)
+  )
+}
+
+fn family_member(leaf: Symbol) -> Node {
+  conj_of(kids: [atom_node(id: ^shared_head), conj_of(kids: [atom_node(id: leaf), atom_node(id: ^shared_tail)])])
+}
+
+fn structurally_different_def() -> Node {
+  conj_of(kids: [atom_node(id: ^shared_head), atom_node(id: ^flat_tail)])
+}
+
+fn witness_pair_related() -> Bool {
+  sigma_family_related(a: family_member(leaf: ^alpha), b: family_member(leaf: ^beta))
+}
+
+fn witness_structural_difference_unrelated() -> Bool {
+  sigma_family_related(a: family_member(leaf: ^alpha), b: structurally_different_def()) == false
+}
+
+fn witness_bare_atoms_unrelated() -> Bool {
+  sigma_family_related(a: atom_node(id: ^alpha), b: atom_node(id: ^beta)) == false
+}
+
+fn witness_identical_defs_related() -> Bool {
+  sigma_family_related(a: family_member(leaf: ^alpha), b: family_member(leaf: ^alpha))
+}
+
+fn witness_three_member_family_found() -> Bool {
+  let findings = sigma_families_of_defs(defs: [
+    family_member(leaf: ^alpha),
+    family_member(leaf: ^beta),
+    family_member(leaf: ^gamma),
+    structurally_different_def()
+  ])
+  length(xs: findings) == 1
+}
+
+fn witness_family_member_count_and_holes() -> Bool {
+  let findings = sigma_families_of_defs(defs: [
+    family_member(leaf: ^alpha),
+    family_member(leaf: ^beta),
+    family_member(leaf: ^gamma)
+  ])
+  fold_list(
+    xs: findings,
+    empty: false,
+    cons: fn(acc, f) { (f.member_count == 3) && (f.hole_count == 1) }
+  )
+}
+
+fn witness_disjoint_defs_no_family() -> Bool {
+  let findings = sigma_families_of_defs(defs: [
+    family_member(leaf: ^alpha),
+    structurally_different_def()
+  ])
+  length(xs: findings) == 0
+}
+
+fn fn_decl_marked_subtree(leaf: Symbol) -> Node {
+  conj_of(kids: [atom_node(id: ^dag_surface_fn_decl), conj_of(kids: [atom_node(id: leaf), atom_node(id: ^shared_tail)])])
+}
+
+fn synthetic_module_tree() -> Node {
+  conj_of(kids: [
+    atom_node(id: ^dag_surface_module),
+    fn_decl_marked_subtree(leaf: ^alpha),
+    fn_decl_marked_subtree(leaf: ^beta),
+    atom_node(id: ^unrelated_item)
+  ])
+}
+
+fn witness_subject_extraction_finds_two() -> Bool {
+  length(xs: module_fn_decl_subtrees(tree: synthetic_module_tree())) == 2
+}
+
+fn witness_module_family_count_one() -> Bool {
+  module_sigma_family_count(tree: synthetic_module_tree()) == 1
+}

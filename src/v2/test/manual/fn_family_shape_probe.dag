@@ -263,3 +263,11 @@ fn probe_stage_for_path(path: String) -> Int {
 fn probe_refinement_stage() -> Int {
   probe_stage_for_path(path: "src/v2/std/refinement.dag")
 }
+
+fn probe_scope_stage() -> Int {
+  probe_stage_for_path(path: "dag/tools/dag_compile_clean_scope.dag")
+}
+
+fn probe_concept_stage() -> Int {
+  probe_stage_for_path(path: "src/v2/test/claim/concept_index_enumeration_test.dag")
+}

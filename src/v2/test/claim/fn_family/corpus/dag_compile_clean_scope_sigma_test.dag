@@ -1,0 +1,63 @@
+module v2.test.fn_family.corpus.dag_compile_clean_scope_sigma_test
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.lens.fn_family { module_sigma_family_count, module_largest_family_member_count }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, Symbol }
+import v2.std.algebra { FreeMonoid, length, fold_list }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.text { String }
+
+data corpus_sigma_charter: String = "Corpus witness for the sigma-family wall, live subject dag/tools/dag_compile_clean_scope.dag: the file parses under wave1 and its top-level fn decls must contain ZERO sigma-families (k>=2 defs that anti-unify with leaf-only fillings over a shared internal spine). RED means someone spelled an axis into fn-name copies; the fix is one parameterized core plus data rows, never a roster edit here. Parse cost receipt 2026-07-06: ~94s in-interp for the 6KB subject."
+
+data corpus_scope_subject_path: String = "dag/tools/dag_compile_clean_scope.dag"
+
+data corpus_sigma_anchor: Symbol = ^fn_family_corpus_anchor
+
+fn corpus_subject_trees() -> List<Node> {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: filesystem_read(path: corpus_scope_subject_path).content,
+    file: corpus_sigma_anchor,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => []
+        Accepted { value: artifact, diagnostics: _ } => [artifact.tree]
+      }
+  }
+}
+
+fn corpus_scope_parse_accepted() -> Bool {
+  length(xs: corpus_subject_trees()) == 1
+}
+
+fn corpus_scope_sigma_family_count() -> Int {
+  fold_list(
+    xs: corpus_subject_trees(),
+    empty: 0,
+    cons: fn(acc, tree) { acc + module_sigma_family_count(tree: tree) }
+  )
+}
+
+fn corpus_scope_largest_family_size() -> Int {
+  fold_list(
+    xs: corpus_subject_trees(),
+    empty: 0,
+    cons: fn(acc, tree) {
+      let m = module_largest_family_member_count(tree: tree)
+      if m > acc { m } else { acc }
+    }
+  )
+}
+
+fn corpus_scope_has_no_sigma_families() -> Bool {
+  corpus_scope_parse_accepted() && (corpus_scope_sigma_family_count() == 0)
+}
