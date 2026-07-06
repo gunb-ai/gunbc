@@ -1,7 +1,0 @@
-module test.gitref_cast_smoke
-
-import std.types { GitRef }
-
-fn smoke() -> GitRef {
-  "origin/main" as GitRef
-}
