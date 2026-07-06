@@ -2,7 +2,6 @@
 // Source module: v1.compiler.emit_core_support
 
 pub use crate::v1_compiler_artifact::RenderTarget;
-use crate::v1_rt::VecJoin;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_items::ResolvedGraph;
 pub use crate::v1_compiler_infer_service::UniqueAccum;
@@ -11,6 +10,8 @@ use crate::v1_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCase
 pub use crate::v1_compiler_languages::{language_spec_for_target, test_conventions_for_target};
 pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::Connective::NoConnective;
@@ -19,8 +20,7 @@ pub use crate::v1_std_core::{Connective, ErrorNode, NewlineIndex, Node, TextFile
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
-use crate::v1_rt::VecCompat;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

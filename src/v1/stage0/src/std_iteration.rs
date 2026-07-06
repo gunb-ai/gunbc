@@ -7,5 +7,5 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet};
+use im_rc::OrdSet as BTreeSet;
 use std::rc::Rc;

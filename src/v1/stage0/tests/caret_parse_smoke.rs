@@ -1,6 +1,6 @@
 use im_rc::HashMap;
-use v1_compiler::v1_rt::VecCompat;
 use std::rc::Rc;
+use v1_compiler::v1_rt::VecCompat;
 
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::{compile_sources, compile_to_resolved, SourceFile};

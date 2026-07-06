@@ -9,7 +9,6 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_templates, rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
     rust_serde_rename_all_snake_case, rust_struct_derives, rust_struct_derives_copy,
 };
-use crate::v1_rt::VecJoin;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_serialization::VariantEncoding::*;
@@ -93,6 +92,8 @@ pub use crate::v1_compiler_ownership::{
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::AlgebraFieldKind::*;
@@ -149,8 +150,7 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
-use crate::v1_rt::VecCompat;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn render_rust_type(
@@ -3395,14 +3395,8 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
         });
         proofs.iter().cloned().fold(
             Rc::new(OwnershipBuildResult {
-                ownership_index: v1_rt::rc_empty_map::<
-                    String,
-                    Rc<BTreeSet<String>>,
-                >(),
-                read_only_params_index: v1_rt::rc_empty_map::<
-                    String,
-                    Rc<BTreeSet<String>>,
-                >(),
+                ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             }),
             |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
                 let acc = v1_rt::take_owned(acc);

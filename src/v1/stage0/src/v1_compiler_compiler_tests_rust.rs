@@ -2,7 +2,6 @@
 // Source module: v1.compiler.compiler_tests_rust
 
 pub use crate::v1_compiler_artifact::RenderTarget;
-use crate::v1_rt::VecJoin;
 use crate::v1_compiler_artifact::RenderTarget::{Go, Python, Rust};
 pub use crate::v1_compiler_coercion::extract_coercion_tests;
 use crate::v1_compiler_coercion::CoercionAssertion::{
@@ -10,13 +9,14 @@ use crate::v1_compiler_coercion::CoercionAssertion::{
 };
 pub use crate::v1_compiler_coercion::{CoercionAssertion, CoercionTestEntry};
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
-use crate::v1_rt::VecCompat;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn ct_module_header() -> String {

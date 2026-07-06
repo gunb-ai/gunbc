@@ -108,7 +108,10 @@ fn build_module_index() -> std::collections::HashMap<String, std::path::PathBuf>
     build_module_index_for_roots(&source_roots())
 }
 
-fn scan_dag_files(dir: &std::path::Path, index: &mut std::collections::HashMap<String, std::path::PathBuf>) {
+fn scan_dag_files(
+    dir: &std::path::Path,
+    index: &mut std::collections::HashMap<String, std::path::PathBuf>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -140,7 +143,8 @@ fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
     None
 }
 
-static MODULE_INDEX: OnceLock<std::collections::HashMap<String, std::path::PathBuf>> = OnceLock::new();
+static MODULE_INDEX: OnceLock<std::collections::HashMap<String, std::path::PathBuf>> =
+    OnceLock::new();
 
 fn module_index() -> &'static std::collections::HashMap<String, std::path::PathBuf> {
     MODULE_INDEX.get_or_init(build_module_index)

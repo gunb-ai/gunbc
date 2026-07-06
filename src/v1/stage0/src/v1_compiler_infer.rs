@@ -111,6 +111,7 @@ use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::empty_intern_table;
 // HAND-PATCH (§1c re-export chains): accessor for the chain followers below.
+use crate::v1_rt::VecCompat;
 use crate::v1_std_core::import_specific_names_at;
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -168,8 +169,7 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
-use crate::v1_rt::VecCompat;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_witness_type_name(name: String) -> bool {
@@ -14520,8 +14520,7 @@ pub fn build_positional_payload_variants(
                             let variants = item.children.clone();
                             variants.clone().iter().cloned().fold(
                                 inner.clone(),
-                                |vacc: Rc<BTreeSet<String>>,
-                                 variant: Rc<Node>| {
+                                |vacc: Rc<BTreeSet<String>>, variant: Rc<Node>| {
                                     if variant_has_positional_payload_shape(
                                         variant.clone(),
                                         si.clone(),
@@ -14631,15 +14630,11 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             fielded_variants: fielded,
             positional_payload_variants: positional,
             shared_types: v1_rt::rc_empty_set::<String>(),
-            ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(
-            ),
+            ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             movable: v1_rt::rc_empty_set::<String>(),
             variant_to_enum: vtoe,
             owned_bindings: v1_rt::rc_empty_set::<String>(),
-            read_only_params_index: v1_rt::rc_empty_map::<
-                String,
-                Rc<BTreeSet<String>>,
-            >(),
+            read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
             corpus_repr: rust_corpus_repr(modules.clone()),
         })

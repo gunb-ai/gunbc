@@ -3,8 +3,8 @@
 
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_emit::escape_json_string;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 pub use crate::v1_std_core::make_error_node;

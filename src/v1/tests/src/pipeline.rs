@@ -1,9 +1,9 @@
 #![allow(clippy::disallowed_macros)]
 
-use im_rc::{OrdSet as BTreeSet};
 use crate::helpers::*;
-use serde_json::Value;
 use im_rc::HashMap;
+use im_rc::OrdSet as BTreeSet;
+use serde_json::Value;
 use std::rc::Rc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::SourceFile;
@@ -1917,10 +1917,7 @@ fn dag_artifact_deref_node<'a>(artifact: &'a Value, node_ref: &'a Value) -> &'a 
         .unwrap_or_else(|| panic!("missing node {id} in nodes table"))
 }
 
-fn normalize_typed_graph(
-    value: &Value,
-    name_map: &im_rc::HashMap<&str, String>,
-) -> Value {
+fn normalize_typed_graph(value: &Value, name_map: &im_rc::HashMap<&str, String>) -> Value {
     match value {
         Value::Object(map) => {
             let mut out = serde_json::Map::new();
@@ -1933,7 +1930,7 @@ fn normalize_typed_graph(
                     if let Value::Array(arr) = v {
                         out.insert(
                             k.clone(),
-                            Value::Array(std::iter::repeat(Value::Null).take(arr.len()).collect()),
+                            Value::Array(std::iter::repeat_n(Value::Null, arr.len()).collect()),
                         );
                         continue;
                     }

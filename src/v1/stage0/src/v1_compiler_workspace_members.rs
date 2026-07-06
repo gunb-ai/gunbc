@@ -3,15 +3,15 @@
 
 pub use crate::v1_compiler_stage0_crates::stage0_crate_plan;
 pub use crate::v1_compiler_stage0_crates::Stage0CrateSpec;
-use crate::v1_rt::VecJoin;
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
 use im_rc::{OrdSet as BTreeSet, Vector as Vec};
-use crate::v1_rt::VecCompat;
 use std::rc::Rc;
 
 pub fn workspace_members_region_begin_marker() -> String {

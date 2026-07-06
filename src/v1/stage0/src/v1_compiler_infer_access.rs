@@ -8,6 +8,7 @@ pub use crate::v1_compiler_infer_types::{
     node_type_equals, normalize_access_type_node, resolved_type,
 };
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::CompilerDiagnostic::InternalError;
@@ -20,8 +21,7 @@ pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, InferredNode, Newlin
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
-use crate::v1_rt::VecCompat;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

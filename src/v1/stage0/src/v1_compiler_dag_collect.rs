@@ -20,7 +20,7 @@ pub use crate::v1_std_core::{Connective, ErrorNode, ExprData, InferredNode, Matc
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::cell::RefCell;
 use std::rc::Rc;
 

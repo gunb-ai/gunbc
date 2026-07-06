@@ -1308,7 +1308,8 @@ fn resolve_entry_with_parse_cache(
     let source_indices = Rc::new(si_map);
     let global_table = index.intern_table.borrow().clone();
 
-    let graph = v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
+    let graph =
+        v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
 
     if graph
         .diagnostics
@@ -1561,9 +1562,13 @@ fn resolved_graph_from_sources(
     String,
 > {
     let result = match typecheck_gate {
-        ResolveTypecheckGate::Strict => v1_compiler_compile::compile_to_resolved(Rc::new(sources.into())),
+        ResolveTypecheckGate::Strict => {
+            v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
+        }
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
-            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(sources.into()))
+            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(
+                sources.into(),
+            ))
         }
     };
 
@@ -10802,7 +10807,10 @@ fn resolve_dag_path_for_transport_script(path: &str) -> PathBuf {
 
 fn parse_module_items_for_transport_script(
     path: &str,
-) -> (Rc<im_rc::Vector<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+) -> (
+    Rc<im_rc::Vector<Rc<Node>>>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+) {
     let resolved = resolve_dag_path_for_transport_script(path);
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {

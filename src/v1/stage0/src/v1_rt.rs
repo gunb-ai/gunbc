@@ -311,12 +311,17 @@ pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
     let end = (end.max(0) as usize).min(len).max(start);
     let units = (end.saturating_sub(start)) as u64;
     record_source_chars_slice_walked(units);
-    chars
-        .iter()
-        .skip(start)
-        .take(end - start)
-        .filter_map(|&cp| char::from_u32(cp as u32))
-        .collect()
+    // Focus caches the current RRB chunk, so per-char access is contiguous-slice
+    // speed; a plain iter().skip(start) walks O(start) per call, which summed
+    // quadratically across a tokenize pass (profiled 2026-07-06).
+    let mut focus = chars.focus();
+    let mut out = String::with_capacity(end - start);
+    for i in start..end {
+        if let Some(ch) = char::from_u32(*focus.index(i) as u32) {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 pub fn parse_int(s: String) -> Option<i64> {

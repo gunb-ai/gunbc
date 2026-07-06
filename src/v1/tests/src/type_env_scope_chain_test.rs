@@ -70,9 +70,7 @@ fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
 
 fn typed_module_by_name<'a>(
     modules: &'a im_rc::Vector<Rc<TypedModule>>,
-    source_indices: &Rc<
-        im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
-    >,
+    source_indices: &Rc<im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
     name: &str,
 ) -> &'a Rc<TypedModule> {
     modules
@@ -83,9 +81,7 @@ fn typed_module_by_name<'a>(
 
 fn assert_rc_identity_across_import_chain(
     graph: &ResolvedGraph,
-    source_indices: &Rc<
-        im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
-    >,
+    source_indices: &Rc<im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
 ) {
     let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.type_env_rc_definer");
     let use_mod = typed_module_by_name(&graph.modules, source_indices, "test.type_env_rc_consumer");

@@ -9,7 +9,7 @@ use crate::wt_common::Flag::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet};
+use im_rc::OrdSet as BTreeSet;
 use std::rc::Rc;
 
 pub fn wt_a_wired(p: Flag) -> Flag {

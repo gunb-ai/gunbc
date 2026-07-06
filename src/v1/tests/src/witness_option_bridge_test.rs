@@ -9,7 +9,6 @@
 //! - rust_emitter_lowers_*: unit tests of the v1 Rust emitter's variant-pattern
 //!   lowering — v1-EMITTER-coupled (lane ruling): they die with the Route-A
 //!   emitter retirement, not before; migrating them would cement the v1 emitter.
-use im_rc::{OrdSet as BTreeSet};
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};

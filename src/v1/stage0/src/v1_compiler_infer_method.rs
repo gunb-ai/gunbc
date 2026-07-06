@@ -17,7 +17,7 @@ pub use crate::v1_std_core::{Cardinality, Connective, ErrorNode, ExprData, Infer
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn type_variable_node(id: String) -> Rc<Node> {

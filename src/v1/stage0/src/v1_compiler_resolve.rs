@@ -2,8 +2,9 @@
 // Source module: v1.compiler.resolve
 
 pub use crate::std_types::kernel_type_set;
-use crate::v1_rt::VecJoin;
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::CompilerDiagnostic::{
@@ -18,8 +19,7 @@ pub use crate::v1_std_core::{CompilerDiagnostic, Connective, ErrorNode, NewlineI
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
-use crate::v1_rt::VecCompat;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -101,8 +101,7 @@ pub fn resolve_modules(
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ResolveAccum>, m: Rc<Node>| {
-                let acc =
-                    v1_rt::take_owned(acc);
+                let acc = v1_rt::take_owned(acc);
                 {
                     let result = resolve_module_imports(
                         m.clone(),

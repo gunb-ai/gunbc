@@ -17,12 +17,12 @@ use crate::std_pareto::AxisGoal::*;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, ContentHash, List};
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness::Violates;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
 use im_rc::{OrdSet as BTreeSet, Vector as Vec};
-use crate::v1_rt::VecCompat;
 use std::rc::Rc;
 
 #[derive(

@@ -2,9 +2,9 @@
 
 use im_rc::HashMap;
 use im_rc::{vector as vec, Vector as Vec};
-use v1_compiler::v1_rt::VecCompat;
 use std::process::ExitCode;
 use std::rc::Rc;
+use v1_compiler::v1_rt::VecCompat;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::std_induction::SubValueRelation;
@@ -146,13 +146,13 @@ fn resolve_imports_transitively(
 fn compile_dag(source: &str) -> Rc<PipelineResult> {
     let module_index = build_module_index();
     let sources = resolve_imports_transitively("test.dag", source, &module_index);
-    compile_sources(Rc::new(sources.into()), RenderTarget::Rust)
+    compile_sources(Rc::new(sources), RenderTarget::Rust)
 }
 
 fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
     let module_index = build_module_index();
     let sources = resolve_imports_transitively("test.dag", source, &module_index);
-    compile_to_resolved(Rc::new(sources.into()))
+    compile_to_resolved(Rc::new(sources))
 }
 
 fn assert_no_diagnostics(result: &PipelineResult) {
