@@ -70,8 +70,6 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     movable: empty_set(),
     variant_to_enum: empty_map(),
     owned_bindings: empty_set(),
-    move_sites_index: empty_map(),
-    move_sites: empty_map(),
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
 
