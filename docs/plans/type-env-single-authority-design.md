@@ -1,7 +1,9 @@
 # Type environment: single import authority + scope cursor (v1 fix, v2 target)
 
-Status: DRAFT for operator review. Owner: cool-hawk-899 (ci-timeout / resolve-axis spine).
-Directive: operator (2026-07-05) — "fix v1, it's worth it; then apply the same to v2."
+Status: DRAFT for operator review. Owner: lively-raven-355 (realization / SymbolIndex) — inherited 2026-07-06 when cool-hawk-899 archived; cool-hawk-899 authored §1–§8.
+Directive: operator (2026-07-05) — "fix v1, it's worth it; then apply the same to v2." · (2026-07-06) — the intra-process node-level memo must be built as one shard of an eventual content-addressed, distributable realize (map-reduce / RBE); see §5.5.
+
+**Resolver half (companion):** `docs/plans/namespace-resolution-design.md` (loyal-dove-903). This doc is the INDEX/storage half (fill-once `SymbolIndex`, the O(M²) fix); the companion is the SEMANTICS half (`resolve(name, position)`). One index, two `ResolutionPolicy` values over it — `import-scoped` (this doc's §3, behavior-preserving, ships first) and `namespace-only-Y` (the companion's nearest-enclosing-subtree pivot, on top). **One-index invariant (companion §7.5):** the fill stays policy-agnostic (topo prepass fills everything import-DAG-reachable); the policy gates LOOKUP only, never fill — else two policies materialize two indices, the dual-representation Rule 1 forbids.
 
 This is reasoned serially (per DESIGN preamble): the problem fixes the axioms, each section a consequence.
 
@@ -93,9 +95,51 @@ separate std-induction PR so the termination checker's soundness is reviewed on 
 1. **Design review** (this doc) — operator signs the model before any load-bearing edit.
 2. **v1**: introduce `SymbolIndex` + `Scope`; rewrite `build_type_env`/`typecheck_modules` to fill-once +
    scope-resolve; delete `ancestry_str_bindings` materialization + the `union_parent_type_env_caches` /
-   rewire cluster. cool-hawk-899 is owner-of-record for `build_type_env` during this.
+   rewire cluster. lively-raven-355 owns this (inherited).
 3. **v2**: apply the SAME model to `std.type_env` (the L31 target). One model, two realizations — authored
    so v2 is the durable home and v1 is a thin seed of it.
+
+### 5.1 Status + dependency-ordered work (2026-07-06)
+
+- **DONE** — #6306 demand-driven realize (module walk, exact closure §5.5-inv-2, memoized). `SymbolIndex` /
+  `ImportBinding` / `ScopeBinding` / `Scope` + ops MODELED (`src/v1/04_env.dag:25-66`) but **inert**
+  (`symbol_index_lookup`/`insert` called nowhere in `04_infer`). Content-addressed substrate exists in std
+  (§5.5-inv-1). Interim `ancestry_cache_sharing` (borrow parent Rc-shared cache) landed (#6304/#6310).
+- **GATE (blocks surgery — a measurement, not code)** — the scaling receipt (`reference_carrier_witness_test`
+  @ 100/200/400/800 modules) + whole-corpus compile-clean wall-clock baseline, loyal-heron's deliverable.
+  §7.5 profile says **emit_imports (78%) is the first consumer, `build_type_env` (17%) second** — so the
+  receipt decides emit-first vs both-at-once AND confirms the target is superlinear not a fat constant.
+  Second gate: the namespace pivot sign-off (the index is shared with the resolver companion, §header).
+- **DEPENDENCY (parked — re-dispatch on the node/algebra defork)** — the index keys on `String`, which *works
+  for the surgery* (the `entries: Map<String, Node>` / `symbol_index_lookup(qualified_name: String)` params are
+  even named `qualified_name`: String is a projection of the real key, not the real key). The `QualifiedName`
+  grounding — the §5.5-inv-1 content-hash-groundable / containment-path key — is v2.std-only today
+  (`src/v2/std/qualified_name.dag`) and is **gated on the node + algebra two-std deforks** (operator-owned,
+  `dag/gunbc/plans/dag_v2_defork_audit.dag`): `QualifiedName = FreeMonoid<Symbol>`, and `FreeMonoid` is the live
+  `algebra` fork-census item while `Symbol`/`symbol_intern_lexeme` are v2-only, so **naive promotion re-creates
+  the `dag/std/algebra.dag:115` shadow** (the Empty/Cons variant-drop when both trees co-occur) — doing it now is
+  actively wrong, not merely low-value. Not blocking the perf wiring. Re-dispatch when that defork lands and a
+  clean `std.qualified_name` home exists. (smart-ant-466 was tied only to this; archived without producing a
+  branch/PR — the item is parked, not half-done.)
+- **SURGERY (Phase 2, load-bearing — DESIGN-named; higher bar, escalate on doubt)** — fill the index
+  (topo-prepass per §8, or fill-as-you-go per #6306 — receipt decides); replace `build_type_env`'s
+  per-module `ancestry_str_bindings` materialization (`04_infer.dag:5726-5752`) with index lookups; wire the
+  `Scope` cursor; delete `ancestry_str_bindings` + `union_parent_type_env_caches` + rewire cluster. **Note:
+  its own validation (byte-identical fixpoint) is currently #6239-wall-blocked — the surgery cannot be proven
+  green-by-execution until the wall is manageable or emit_imports is cut first.**
+- **VALIDATION (§6)** — scaling curve N²→N; byte-identical emit fixpoint; `cargo test --workspace` + witnesses.
+- **THEN → §5.5 runway** — concurrent memo + in-progress markers (intra-process parallel); content-hash key
+  + per-unit determinism → the CAS (inter-process / RBE).
+
+## 5.5 Distributability invariants (map-reduce / RBE endgame — operator 2026-07-06)
+
+The intra-process node-level memo is not a terminal design — it is **shard 0 of a content-addressed, distributable realize** (map-reduce / Bazel-RBE shape: infinitely scalable, across-process/host irrelevant). The whole RBE idea reduces to one shape: *each realize-unit is a pure function of content-addressed inputs → a content-addressed result in a shared CAS*. Given that, **map** (realize the ready frontier) and **reduce** (merge results into the index/CAS) are the same operations whether workers are threads, processes, or hosts — only the CAS transport changes. So "across process/host is irrelevant" becomes true exactly when three invariants hold, and we commit to them NOW so wiring the intra-process memo cannot foreclose the endgame (cheap now, a re-architecture later):
+
+1. **Content-hash-groundable key.** The `SymbolIndex` key is `String` (qualified name) intra-process, but must be *groundable to a content-hash* so results are location-independent and dedupe across processes. The substrate already exists (`std.content_hash`, `std.cache_identity`, `std.cache_interface`, `std.realization_schedule`; the DAG nodes are already content-addressed). Build the index as one shard of the CAS keyed by a projection of that hash — not a name-only map that forks when distributed.
+2. **Exact minimal input closure per unit.** A superset digest = spurious cache misses + poisoned dedup. **#6306 already delivers this** ("exact dependency closure, not topological superset") — it is the RBE-critical property and it is landed.
+3. **Per-unit determinism.** Each realize-unit a pure deterministic function of its input digests. The whole-compile byte-identical fixpoint (§7 self-host) proves it at *corpus* level; RBE needs it *per-unit* — the live thread is `determinism-mechanism-design.md` (#5941 P1).
+
+The demand-driven shape #6306 already has **is** the map-reduce shape: the set of modules whose deps are all realized is the wavefront. `fold → thread pool → RBE workers` is a scheduler swap; `local Map → content-addressed CAS` is the only backend swap. The reform must keep those two seams clean (a `RealizationBackend` the fill writes through, a scheduler the driver folds through) rather than inlining `HashMap` + a serial fold as load-bearing assumptions.
 
 ## 6. Validation (§5 prove-by-execution)
 

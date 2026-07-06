@@ -78,9 +78,52 @@ fn pmp_memo_stats_report_path(path: String) -> List<Int> {
   }
 }
 
-data pmp_through_decimal_path: String =
-  "src/v2/test/fixture/integer_census_trunc/through_decimal_compare.txt"
+data pmp_through_decimal_path: String = "src/v2/test/fixture/integer_census_trunc/through_decimal_compare.txt"
 
 fn pmp_through_decimal_memo_report() -> List<Int> {
   pmp_memo_stats_report_path(path: pmp_through_decimal_path)
+}
+
+fn exp_nest_d1_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/nest_d1.dag")
+}
+
+fn exp_nest_d2_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/nest_d2.dag")
+}
+
+fn exp_nest_d3_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/nest_d3.dag")
+}
+
+fn exp_nest_d4_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/nest_d4.dag")
+}
+
+fn exp_elseif_k4_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/elseif_k4.dag")
+}
+
+fn exp_elseif_k8_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/elseif_k8.dag")
+}
+
+fn exp_elseif_k16_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/elseif_k16.dag")
+}
+
+fn exp_elseif_k32_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/elseif_k32.dag")
+}
+
+fn exp_through_compose_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/integer_census_trunc/through_compose_types.txt")
+}
+
+fn pmp_through_compose_memo_report() -> List<Int> {
+  pmp_memo_stats_report_path(path: "src/v2/test/fixture/integer_census_trunc/through_compose_types.txt")
+}
+
+fn exp_through_decimal_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: pmp_through_decimal_path)
 }
