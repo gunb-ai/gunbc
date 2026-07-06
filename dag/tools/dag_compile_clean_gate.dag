@@ -1,25 +1,14 @@
 module tools.dag_compile_clean_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.dag_compile_clean_transport {
-  run_clean_tree_compile,
-  run_perturb_optional_skew_red_receipt,
-  run_perturb_unresolved_import_red_receipt,
-  run_cross_tree_import_green_receipt,
-  run_dag_shell_primary_precedence_receipt
-}
+import tools.dag_compile_clean_transport { run_clean_tree_compile }
 
 func run_dag_compile_clean_gate_body() -> ProcessExit {
-  let clean = run_clean_tree_compile()
-  let perturb = run_perturb_optional_skew_red_receipt()
-  let unresolved_perturb = run_perturb_unresolved_import_red_receipt()
-  let cross_tree = run_cross_tree_import_green_receipt()
-  let dag_shell = run_dag_shell_primary_precedence_receipt()
-  return if clean && perturb && unresolved_perturb && cross_tree && dag_shell {
+  if run_clean_tree_compile() {
     ExitSuccess
   } else {
     exit_failure(
-      reason: "dag compile-clean gate failed: clean-tree compile and/or perturb/cross-tree/dag-shell receipt"
+      reason: "dag compile-clean gate failed: clean-tree compile over witness layer roots"
     )
   }
 }

@@ -13,11 +13,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data cargo_compile_env: Map<String, String> = empty_map()
 
 fn cargo_build_jobs_flag(count: Int) -> List<String> {
-  ["--jobs", "{count}"]
+  ["--jobs", to_string(count)]
 }
 
 fn cargo_nextest_build_jobs_flag(count: Int) -> List<String> {
-  ["--build-jobs", "{count}"]
+  ["--build-jobs", to_string(count)]
 }
 
 service cargo.Build {

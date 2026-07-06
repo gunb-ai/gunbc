@@ -464,9 +464,12 @@ pub fn rust_opaque_kernel_alias_carrier(name: String) -> Option<String> {
 }
 
 pub fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> Option<String> {
-    if (((name.clone() == "Nat".to_string()) || (name.clone() == "Int".to_string()))
-        && corpus_repr_is_host(corpus_repr))
-    {
+    if !corpus_repr_is_host(corpus_repr) {
+        return None;
+    }
+    // Nat authority (`std.nat`: `type Nat = CommutativeSemiring<Magnitude>`) must
+    // project to the host scalar before alias-rhs expansion names the semiring.
+    if name == "Nat" || name == "Int" || name == "CommutativeSemiring" {
         Some("i64".to_string())
     } else {
         None
@@ -12516,7 +12519,8 @@ pub fn field_access_field_is_boxed(
                     let faithful_nat_field =
                         matches!(emit_info.corpus_repr.clone(), FaithfulFreeMonoid)
                             && (field_ty_name.clone() == "Nat".to_string()
-                                || v1_rt::substring(&field_ty_name, 0, 4) == "Nat<".to_string());
+                                || v1_rt::substring(&field_ty_name, 0, 4) == "Nat<".to_string()
+                                || field_ty_name.clone() == "CommutativeSemiring".to_string());
                     faithful_nat_field
                         || needs_box_wrapping(
                             field_ty.clone(),

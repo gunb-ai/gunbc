@@ -1,10 +1,91 @@
-use std::rc::Rc;
+#![allow(clippy::disallowed_macros)]
 
-use crate::helpers::*;
+//! Host-physics floor witness for parse/tokenize oracle suite
+//! (migrated from `src/v1/tests/src/parse.rs`).
+//! Exercises syntax parsing, span grounding, strict corpus parses, tokenizer
+//! behavior, and lookup/performance invariants until v1.compiler.parse/tokenize
+//! are witness-layer importable.
+
+use std::collections::HashMap;
+use std::process::ExitCode;
+use std::rc::Rc;
+use std::time::Instant;
+
+use v1_compiler::cli_run::workspace_root;
 use v1_compiler::std_types::SourceSpan;
+use v1_compiler::v1_compiler_parse::ParseResult;
 use v1_compiler::v1_compiler_tokenize::{source_code_point, source_len, SourceRef};
 use v1_compiler::v1_rt::{reset_text_lookup_chars_walked, take_text_lookup_chars_walked};
-use v1_compiler::v1_std_core::{build_newline_index, source_text_at, InferredNode, TokenShape};
+use v1_compiler::v1_std_core::{
+    build_newline_index, diagnostic_to_message, diagnostic_to_span, source_text_at, InferredNode,
+    Token, TokenShape,
+};
+
+type WitnessCase = (&'static str, fn());
+
+fn fail(msg: impl std::fmt::Display) -> ExitCode {
+    eprintln!("parse_witness: {msg}");
+    ExitCode::from(1)
+}
+
+fn read_v2_file(relative_path: &str) -> String {
+    let path = workspace_root().join(relative_path);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e))
+}
+
+fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
+    v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
+}
+
+fn parse_source(source: &str) -> Rc<ParseResult> {
+    let tokens =
+        v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string());
+    let source_index =
+        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert("test.dag".to_string(), source_index);
+    v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices))
+}
+
+fn assert_parses(source: &str, label: &str) {
+    let result = parse_source(source);
+    if let Some(ref err) = result.error {
+        panic!(
+            "{} had parse error: {}",
+            label,
+            diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    assert!(result.module.is_some(), "{} produced no module", label);
+}
+
+fn assert_parses_strict(relative_path: &str) {
+    let source = read_v2_file(relative_path);
+    let result = parse_source(&source);
+    if let Some(ref err) = result.error {
+        let span = {
+            let s = diagnostic_to_span(err.diagnostic.clone());
+            let line = source[..s.start.max(0) as usize]
+                .chars()
+                .filter(|c| *c == '\n')
+                .count()
+                + 1;
+            format!(" (line {})", line)
+        };
+        panic!(
+            "{} had parse error: {}{}",
+            relative_path,
+            diagnostic_to_message(err.diagnostic.clone()),
+            span
+        );
+    }
+    assert!(
+        result.module.is_some(),
+        "{} produced no module and no error",
+        relative_path
+    );
+}
 
 fn median_tokenize_secs(source: &str) -> (f64, usize) {
     const RUNS: usize = 5;
@@ -92,7 +173,6 @@ fn total_source_text_at_chars_walked(
     take_text_lookup_chars_walked()
 }
 
-#[test]
 fn fn_lambda_syntax() {
     let source = r#"module test
 fn foo() -> List<Int> {
@@ -107,7 +187,6 @@ fn foo() -> List<Int> {
     assert_parses(source, "fn_lambda_syntax");
 }
 
-#[test]
 fn pipe_syntax() {
     let source = r#"module test
 fn foo(items: List<Int>) -> Int {
@@ -116,7 +195,6 @@ fn foo(items: List<Int>) -> Int {
     assert_parses(source, "pipe_syntax");
 }
 
-#[test]
 fn multi_stmt_if_body() {
     let source = r#"module test
 fn foo(x: Int) -> Int {
@@ -129,7 +207,6 @@ fn foo(x: Int) -> Int {
     assert_parses(source, "multi_stmt_if_body");
 }
 
-#[test]
 fn match_with_variant_construct() {
     let source = r#"module test
 fn foo(ch: String) -> String {
@@ -141,7 +218,6 @@ fn foo(ch: String) -> String {
     assert_parses(source, "match_with_variant_construct");
 }
 
-#[test]
 fn fold_with_fn_lambda_and_pipe() {
     let source = r#"module test
 fn drop_last(stack: List<Int>) -> List<Int> {
@@ -157,7 +233,6 @@ fn drop_last(stack: List<Int>) -> List<Int> {
     assert_parses(source, "fold_with_fn_lambda_and_pipe");
 }
 
-#[test]
 fn nested_match_with_pipe() {
     let source = r#"module test
 fn foo(item: String) -> List<String> {
@@ -174,7 +249,6 @@ fn foo(item: String) -> List<String> {
     assert_parses(source, "nested_match_with_pipe");
 }
 
-#[test]
 fn implicit_block_match_arms() {
     let source = r#"module test
 fn foo(item: String) -> String {
@@ -191,7 +265,6 @@ fn foo(item: String) -> String {
     assert_parses(source, "implicit_block_match_arms");
 }
 
-#[test]
 fn typecheck_match_with_itemresult() {
     let source = r#"module test
 fn foo(item: String) -> String {
@@ -207,7 +280,6 @@ fn foo(item: String) -> String {
     assert_parses(source, "typecheck_match_with_itemresult");
 }
 
-#[test]
 fn parse_generic_fn() {
     let source = r#"module test
 fn identity<T>(x: T) -> T {
@@ -216,7 +288,6 @@ fn identity<T>(x: T) -> T {
     assert_parses(source, "generic fn");
 }
 
-#[test]
 fn parse_multi_type_param_fn() {
     let source = r#"module test
 fn fold_stack<T, B>(stack: List<T>, init: B, f: fn(B, T) -> B) -> B {
@@ -225,7 +296,6 @@ fn fold_stack<T, B>(stack: List<T>, init: B, f: fn(B, T) -> B) -> B {
     assert_parses(source, "multi-type-param generic fn");
 }
 
-#[test]
 fn parse_fn_expression_body() {
     let source = r#"module test
 type Color = Red | Green
@@ -239,7 +309,6 @@ fn code_point(c: Int) -> Int = c + 0
     assert_parses(source, "expression-bodied fn");
 }
 
-#[test]
 fn parse_fn_brace_body_still_accepted() {
     let source = r#"module test
 fn add(x: Int, y: Int) -> Int { x + y }
@@ -247,7 +316,6 @@ fn add(x: Int, y: Int) -> Int { x + y }
     assert_parses(source, "brace-bodied fn (legacy)");
 }
 
-#[test]
 fn item_ident_spans_point_at_identifiers_not_keywords() {
     let source = r#"module test
 type Widget = String
@@ -297,7 +365,6 @@ service weather.api {
     assert!(service_ident.start > service_item.span.start);
 }
 
-#[test]
 fn module_node_ident_is_populated_by_parser() {
     let source = r#"module my.test.module
 import std.types { String }
@@ -324,7 +391,6 @@ type Foo { value: String }
     );
 }
 
-#[test]
 fn type_alias_rhs_ident_span_points_at_authored_type_name() {
     let source = r#"module test
 type Alias = ResultType
@@ -356,7 +422,6 @@ type Alias = ResultType
     assert!(rhs_ident.start > alias_item.span.start);
 }
 
-#[test]
 fn type_param_spans_point_at_identifiers_not_delimiters() {
     let source = r#"module test
 type Pair<KeyT, ValueU> = Map<KeyT, ValueU>
@@ -394,80 +459,63 @@ type Pair<KeyT, ValueU> = Map<KeyT, ValueU>
     assert_eq!(value_ident.start, source.find("ValueU").unwrap() as i64);
 }
 
-#[test]
 fn stack_parses_strict() {
     assert_parses_strict("dag/std/stack.dag");
 }
 
-#[test]
 fn unicode_parses_strict() {
     assert_parses_strict("dag/std/unicode.dag");
 }
 
-#[test]
 fn core_parses_strict() {
     assert_parses_strict("src/v1/00_core.dag");
 }
 
-#[test]
 fn tokenize_parses_strict() {
     assert_parses_strict("src/v1/01_tokenize.dag");
 }
 
-#[test]
 fn parse_parses_strict() {
     assert_parses_strict("src/v1/02_parse.dag");
 }
 
-#[test]
 fn resolve_parses_strict() {
     assert_parses_strict("src/v1/03_resolve.dag");
 }
 
-#[test]
 fn typecheck_parses_strict() {
     assert_parses_strict("src/v1/04_infer.dag");
 }
 
-#[test]
 fn emit_parses_strict() {
     assert_parses_strict("src/v1/05_emit.dag");
 }
 
-#[test]
 fn pipeline_parses_strict() {
     assert_parses_strict("src/v1/compile.dag");
 }
 
-#[test]
 fn artifact_parses_strict() {
     assert_parses_strict("src/v1/artifact.dag");
 }
 
-#[test]
 fn complexity_parses_strict() {
     assert_parses_strict("src/v1/complexity.dag");
 }
 
-#[test]
 fn ownership_parses_strict() {
     assert_parses_strict("src/v1/ownership.dag");
 }
 
-#[test]
 fn shared_behavioral_parses_strict() {
     assert_parses_strict("dag/std/behavioral.dag");
 }
 
-#[test]
 fn shared_primitives_parses_strict() {
     assert_parses_strict("dag/std/primitives.dag");
 }
 
-#[test]
 fn tokenizer_non_ascii_performance_regression() {
-    use std::time::Instant;
-
     let source = read_v2_file("src/v1/tests/fixtures/non_ascii_perf.dag");
     assert!(!source.is_ascii(), "test requires non-ASCII source file");
 
@@ -506,7 +554,6 @@ fn tokenizer_non_ascii_performance_regression() {
     );
 }
 
-#[test]
 fn tokenizer_text_lookup_flat_in_file_size() {
     const LOOKUPS: usize = 1_000;
     let large_source = read_v2_file("src/v1/02_parse.dag");
@@ -531,7 +578,6 @@ fn tokenizer_text_lookup_flat_in_file_size() {
     );
 }
 
-#[test]
 fn source_text_at_lookup_flat_in_file_size() {
     let source = read_v2_file("src/v1/tests/fixtures/non_ascii_perf.dag");
     assert!(
@@ -568,7 +614,6 @@ fn source_text_at_lookup_flat_in_file_size() {
     );
 }
 
-#[test]
 fn source_text_at_lookup_flat_in_file_padding() {
     const K: usize = 8;
     const SMALL_PAD: usize = 32;
@@ -606,7 +651,6 @@ fn source_text_at_lookup_flat_in_file_padding() {
     );
 }
 
-#[test]
 fn tokenizer_scales_linearly_with_file_size() {
     let small_source = read_v2_file("src/v1/ownership.dag"); // ~23KB
     let large_source = read_v2_file("src/v1/02_parse.dag"); // ~271KB
@@ -637,7 +681,6 @@ fn tokenizer_scales_linearly_with_file_size() {
     );
 }
 
-#[test]
 fn tokenizer_scanning_scales_linearly() {
     let small_source = read_v2_file("src/v1/ownership.dag");
     let large_source = read_v2_file("src/v1/02_parse.dag");
@@ -668,10 +711,7 @@ fn tokenizer_scanning_scales_linearly() {
     );
 }
 
-#[test]
 fn parser_scales_linearly_with_token_count() {
-    use std::time::Instant;
-
     let small_source = read_v2_file("src/v1/ownership.dag");
     let large_source = read_v2_file("src/v1/02_parse.dag");
 
@@ -705,13 +745,11 @@ fn parser_scales_linearly_with_token_count() {
     );
 }
 
-#[test]
 fn tokenizer_smoke() {
     let tokens = tokenize("fn add(a: Int) -> Int { a }");
     assert!(!tokens.is_empty(), "should produce at least one token");
 }
 
-#[test]
 fn tokenizer_empty_input() {
     let tokens = tokenize("");
     assert!(
@@ -720,7 +758,6 @@ fn tokenizer_empty_input() {
     );
 }
 
-#[test]
 fn tokenizer_keywords() {
     let tokens = tokenize("module fn type import data");
     assert!(
@@ -730,7 +767,6 @@ fn tokenizer_keywords() {
     );
 }
 
-#[test]
 fn tokenizer_two_char_operators() {
     let tokens = tokenize("== -> => !=");
     assert!(
@@ -740,7 +776,6 @@ fn tokenizer_two_char_operators() {
     );
 }
 
-#[test]
 fn tokenizer_scans_pipe_arrow() {
     let tokens = tokenize("items |> count");
     assert!(
@@ -751,7 +786,6 @@ fn tokenizer_scans_pipe_arrow() {
     );
 }
 
-#[test]
 fn tokenizer_scans_null_coalesce() {
     let tokens = tokenize("x ?? y");
     assert!(
@@ -762,7 +796,6 @@ fn tokenizer_scans_null_coalesce() {
     );
 }
 
-#[test]
 fn tokenize_produces_correct_kinds() {
     let tokens = tokenize("fn add(a: Int) -> Int { a }");
     assert!(
@@ -779,7 +812,6 @@ fn tokenize_produces_correct_kinds() {
     );
 }
 
-#[test]
 fn parser_e2e() {
     let result = parse_source("module test");
     assert!(result.error.is_none(), "should parse 'module test'");
@@ -787,7 +819,6 @@ fn parser_e2e() {
     assert_eq!(module.name, "test");
 }
 
-#[test]
 fn parse_real_source() {
     let source =
         "module test\ntype Foo { x: Int }\ntype Bar = Foo\nfn identity(x: Int) -> Int { x }";
@@ -797,7 +828,6 @@ fn parse_real_source() {
     assert!(!module.children.is_empty(), "should have items");
 }
 
-#[test]
 fn parse_fold_with_fn_lambda() {
     let source = r#"module test
 fn transform(items: List<Int>) -> List<Int> {
@@ -809,19 +839,6 @@ fn transform(items: List<Int>) -> List<Int> {
     assert!(result.error.is_none(), "fold with fn lambda should parse");
 }
 
-#[test]
-#[ignore = "40s — hanging in parser; triage under PERF track"]
-fn parse_multiline_pipe_chain() {
-    let source = "module test\nfn transform(items: List<Int>) -> List<Int> {\n  let x = items |> map(i =>\n    process(i)\n  ) |> filter(f => f != none)\n  x\n}\n";
-    let result = parse_source(source);
-    assert!(
-        result.error.is_none(),
-        "multiline pipe chain should parse: {:?}",
-        result.error
-    );
-}
-
-#[test]
 fn parse_fn_lambda_in_call_arg() {
     let source = "module test\nfn transform(items: List<Int>) -> List<Int> {\n  fold(init: [], f: fn(acc, item) {\n    append(acc, items: item)\n  })\n}";
     let result = parse_source(source);
@@ -832,7 +849,6 @@ fn parse_fn_lambda_in_call_arg() {
     );
 }
 
-#[test]
 fn gist_transitive_closure_parse() {
     let files = [
         "dag/std/types.dag",
@@ -854,7 +870,6 @@ fn gist_transitive_closure_parse() {
     }
 }
 
-#[test]
 fn keyword_as_field_name_allowed() {
     let keywords = [
         "type",
@@ -896,12 +911,11 @@ fn keyword_as_field_name_allowed() {
             result
                 .error
                 .as_ref()
-                .map(|e| { v1_compiler::v1_std_core::diagnostic_to_message(e.diagnostic.clone()) })
+                .map(|e| { diagnostic_to_message(e.diagnostic.clone()) })
         );
     }
 }
 
-#[test]
 fn keyword_as_field_name_forbidden() {
     let forbidden = ["true", "false", "none", "null", "acquire", "release"];
     for kw in &forbidden {
@@ -913,4 +927,163 @@ fn keyword_as_field_name_forbidden() {
             kw,
         );
     }
+}
+
+fn floor_suite() -> Vec<WitnessCase> {
+    vec![
+        ("fn_lambda_syntax", fn_lambda_syntax),
+        ("pipe_syntax", pipe_syntax),
+        ("multi_stmt_if_body", multi_stmt_if_body),
+        ("match_with_variant_construct", match_with_variant_construct),
+        ("fold_with_fn_lambda_and_pipe", fold_with_fn_lambda_and_pipe),
+        ("nested_match_with_pipe", nested_match_with_pipe),
+        ("implicit_block_match_arms", implicit_block_match_arms),
+        (
+            "typecheck_match_with_itemresult",
+            typecheck_match_with_itemresult,
+        ),
+        ("parse_generic_fn", parse_generic_fn),
+        ("parse_multi_type_param_fn", parse_multi_type_param_fn),
+        ("parse_fn_expression_body", parse_fn_expression_body),
+        (
+            "parse_fn_brace_body_still_accepted",
+            parse_fn_brace_body_still_accepted,
+        ),
+        (
+            "item_ident_spans_point_at_identifiers_not_keywords",
+            item_ident_spans_point_at_identifiers_not_keywords,
+        ),
+        (
+            "module_node_ident_is_populated_by_parser",
+            module_node_ident_is_populated_by_parser,
+        ),
+        (
+            "type_alias_rhs_ident_span_points_at_authored_type_name",
+            type_alias_rhs_ident_span_points_at_authored_type_name,
+        ),
+        (
+            "type_param_spans_point_at_identifiers_not_delimiters",
+            type_param_spans_point_at_identifiers_not_delimiters,
+        ),
+        ("stack_parses_strict", stack_parses_strict),
+        ("unicode_parses_strict", unicode_parses_strict),
+        ("core_parses_strict", core_parses_strict),
+        ("tokenize_parses_strict", tokenize_parses_strict),
+        ("parse_parses_strict", parse_parses_strict),
+        ("resolve_parses_strict", resolve_parses_strict),
+        ("typecheck_parses_strict", typecheck_parses_strict),
+        ("emit_parses_strict", emit_parses_strict),
+        ("pipeline_parses_strict", pipeline_parses_strict),
+        ("artifact_parses_strict", artifact_parses_strict),
+        ("complexity_parses_strict", complexity_parses_strict),
+        ("ownership_parses_strict", ownership_parses_strict),
+        (
+            "shared_behavioral_parses_strict",
+            shared_behavioral_parses_strict,
+        ),
+        (
+            "shared_primitives_parses_strict",
+            shared_primitives_parses_strict,
+        ),
+        ("tokenizer_smoke", tokenizer_smoke),
+        ("tokenizer_empty_input", tokenizer_empty_input),
+        ("tokenizer_keywords", tokenizer_keywords),
+        ("tokenizer_two_char_operators", tokenizer_two_char_operators),
+        ("tokenizer_scans_pipe_arrow", tokenizer_scans_pipe_arrow),
+        (
+            "tokenizer_scans_null_coalesce",
+            tokenizer_scans_null_coalesce,
+        ),
+        (
+            "tokenize_produces_correct_kinds",
+            tokenize_produces_correct_kinds,
+        ),
+        ("parser_e2e", parser_e2e),
+        ("parse_real_source", parse_real_source),
+        ("parse_fold_with_fn_lambda", parse_fold_with_fn_lambda),
+        ("parse_fn_lambda_in_call_arg", parse_fn_lambda_in_call_arg),
+        (
+            "gist_transitive_closure_parse",
+            gist_transitive_closure_parse,
+        ),
+        (
+            "keyword_as_field_name_allowed",
+            keyword_as_field_name_allowed,
+        ),
+        (
+            "keyword_as_field_name_forbidden",
+            keyword_as_field_name_forbidden,
+        ),
+    ]
+}
+
+fn perf_suite() -> Vec<WitnessCase> {
+    vec![
+        (
+            "tokenizer_non_ascii_performance_regression",
+            tokenizer_non_ascii_performance_regression,
+        ),
+        (
+            "tokenizer_text_lookup_flat_in_file_size",
+            tokenizer_text_lookup_flat_in_file_size,
+        ),
+        (
+            "source_text_at_lookup_flat_in_file_size",
+            source_text_at_lookup_flat_in_file_size,
+        ),
+        (
+            "source_text_at_lookup_flat_in_file_padding",
+            source_text_at_lookup_flat_in_file_padding,
+        ),
+        (
+            "tokenizer_scales_linearly_with_file_size",
+            tokenizer_scales_linearly_with_file_size,
+        ),
+        (
+            "tokenizer_scanning_scales_linearly",
+            tokenizer_scanning_scales_linearly,
+        ),
+        (
+            "parser_scales_linearly_with_token_count",
+            parser_scales_linearly_with_token_count,
+        ),
+    ]
+}
+
+fn all_suite() -> Vec<WitnessCase> {
+    let mut tests = floor_suite();
+    tests.extend(perf_suite());
+    tests
+}
+
+fn run_suite(tests: &[WitnessCase]) -> ExitCode {
+    for (name, test) in tests {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(test));
+        if result.is_err() {
+            return fail(format!("{name} panicked"));
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+fn main() -> ExitCode {
+    let suite = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "--suite".to_string());
+    let suite_name = if suite == "--suite" {
+        std::env::args()
+            .nth(2)
+            .unwrap_or_else(|| "floor".to_string())
+    } else {
+        suite
+    };
+
+    let tests: Vec<WitnessCase> = match suite_name.as_str() {
+        "floor" => floor_suite(),
+        "perf" => perf_suite(),
+        "all" => all_suite(),
+        other => return fail(format!("unknown suite {other:?}; expected floor|perf|all")),
+    };
+
+    run_suite(&tests)
 }

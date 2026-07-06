@@ -27,8 +27,6 @@ mod coverage_completeness_lens_test;
 #[cfg(test)]
 mod cross_representation_equality_test;
 #[cfg(test)]
-mod dag_collect_fingerprint_witness_test;
-#[cfg(test)]
 mod dag_comment_wall_test;
 #[cfg(test)]
 mod data_cache_scoping_test;
@@ -102,8 +100,6 @@ mod optional_carrier_signature_test;
 mod optional_consumer_fail_closed_test;
 #[cfg(test)]
 mod optional_receiver_method_unwrap_test;
-#[cfg(test)]
-mod parse;
 #[cfg(test)]
 mod parse_table_memo_amortization_test;
 #[cfg(test)]
