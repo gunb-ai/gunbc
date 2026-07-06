@@ -5056,6 +5056,13 @@ fn floor_diff_edits_from_line_ranges(
         }
         saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
+        // v1 compiler-stage fragments live outside witness_layer_roots (gunbc.ci_layer_roots
+        // excludes src/v1 from floor discovery). They are not standalone witness entry points,
+        // so resolve_entry_with_index fails; coarse attribution only.
+        if file_norm.starts_with("src/v1/") {
+            saw_non_dag = true;
+            continue;
+        }
         if !std::path::Path::new(file_path).exists() {
             if departed_paths.contains(&file_norm) {
                 // Departed per the diff (deletion / rename-from): its decl set
