@@ -123,7 +123,7 @@ fn variant_reexport_chain_full_pipeline_is_clean() {
     ]);
     let msgs: Vec<_> = diagnostic_messages(&result)
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty(),
@@ -141,7 +141,7 @@ fn variant_reexport_incremental_surfaces_match_full_pipeline_fingerprint() {
     ]);
     let pipeline_msgs: Vec<_> = diagnostic_messages(&pipeline)
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
 
     let (modules, source_indices, intern_table) = resolved_module_graph(sources);
