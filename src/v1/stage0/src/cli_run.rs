@@ -7972,6 +7972,43 @@ pub fn emit_source_root_ingest_manifest(
 }
 
 #[cfg(test)]
+mod source_root_ingest_manifest_tests {
+    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord};
+
+    #[test]
+    fn manifest_imports_grounded_source_root_constructors() {
+        // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef`
+        // (V2Tree/DagTree, #5473/#5486). The manifest references those constructors, so it
+        // MUST import them from v2.std.cross_tree.import_model -- otherwise every witness that
+        // imports the manifest fails to resolve with `undefined variable 'V2Tree'`, which was
+        // the source_root_ingest gate's persistent main-RED. RED CONTROL: delete the
+        // cross_tree.import_model import line in the emitter and this test fails.
+        let tmp = std::env::temp_dir().join(format!(
+            "sri_manifest_import_test_{}.dag",
+            std::process::id()
+        ));
+        let records = vec![SourceRootReadRecord {
+            file_path: "src/v2/x.dag".to_string(),
+            module_path: "x".to_string(),
+            source: "module x\n".to_string(),
+            source_root: "V2Tree".to_string(),
+        }];
+        emit_source_root_ingest_manifest(&tmp, &records, None).expect("emit manifest");
+        let out = std::fs::read_to_string(&tmp).expect("read manifest");
+        let _ = std::fs::remove_file(&tmp);
+        assert!(
+            out.contains("source_root: V2Tree"),
+            "manifest must emit the grounded source_root value"
+        );
+        assert!(
+            out.contains("import v2.std.cross_tree.import_model"),
+            "manifest referencing V2Tree/DagTree must import them or witnesses hit \
+             `undefined variable`; got:\n{out}"
+        );
+    }
+}
+
+#[cfg(test)]
 mod inert_lens_hygiene_tests {
     use super::{
         default_source_roots, discover_floor_corpus_rows, inert_lens_modules,
