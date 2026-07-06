@@ -768,122 +768,31 @@ fn rust_noninteger_facts_node(facts: RustNonIntegerPrimitiveFacts) -> Node {
 }
 }
 
-fn rust_integer_inhabitant_node(id: Symbol, facts: RustIntegerPrimitiveFacts) -> Node {
+fn rust_inhabitant_node(id: Symbol, facts: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
-      rust_named_edge(
-        name: ^rust_inhabitant_field_facts,
-        target: rust_integer_facts_node(facts: facts)
-      )
+      rust_named_edge(name: ^rust_inhabitant_field_facts, target: facts)
     ],
     occurrence_id: SyntheticOccurrence
+  }
 }
+
+fn rust_integer_inhabitant_node(id: Symbol, facts: RustIntegerPrimitiveFacts) -> Node {
+  rust_inhabitant_node(id: id, facts: rust_integer_facts_node(facts: facts))
 }
 
 fn rust_float_inhabitant_node(id: Symbol, facts: RustFloatPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
-      rust_named_edge(
-        name: ^rust_inhabitant_field_facts,
-        target: rust_float_facts_node(facts: facts)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  rust_inhabitant_node(id: id, facts: rust_float_facts_node(facts: facts))
 }
 
 fn rust_noninteger_inhabitant_node(id: Symbol, facts: RustNonIntegerPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
-      rust_named_edge(
-        name: ^rust_inhabitant_field_facts,
-        target: rust_noninteger_facts_node(facts: facts)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-fn rust_inhabitant_i8_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_i8, facts: rust_facts_i8)
-}
-
-fn rust_inhabitant_i16_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_i16, facts: rust_facts_i16)
+  rust_inhabitant_node(id: id, facts: rust_noninteger_facts_node(facts: facts))
 }
 
 fn rust_inhabitant_i32_node() -> Node {
   rust_integer_inhabitant_node(id: ^rust_inhabitant_i32, facts: rust_facts_i32)
-}
-
-fn rust_inhabitant_i64_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_i64, facts: rust_facts_i64)
-}
-
-fn rust_inhabitant_i128_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_i128, facts: rust_facts_i128)
-}
-
-fn rust_inhabitant_u8_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_u8, facts: rust_facts_u8)
-}
-
-fn rust_inhabitant_u16_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_u16, facts: rust_facts_u16)
-}
-
-fn rust_inhabitant_u32_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_u32, facts: rust_facts_u32)
-}
-
-fn rust_inhabitant_u64_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_u64, facts: rust_facts_u64)
-}
-
-fn rust_inhabitant_u128_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_u128, facts: rust_facts_u128)
-}
-
-fn rust_inhabitant_isize_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_isize, facts: rust_facts_isize)
-}
-
-fn rust_inhabitant_usize_node() -> Node {
-  rust_integer_inhabitant_node(id: ^rust_inhabitant_usize, facts: rust_facts_usize)
-}
-
-fn rust_inhabitant_f32_node() -> Node {
-  rust_float_inhabitant_node(id: ^rust_inhabitant_f32, facts: rust_facts_f32)
-}
-
-fn rust_inhabitant_f64_node() -> Node {
-  rust_float_inhabitant_node(id: ^rust_inhabitant_f64, facts: rust_facts_f64)
-}
-
-fn rust_inhabitant_bool_node() -> Node {
-  rust_noninteger_inhabitant_node(id: ^rust_inhabitant_bool, facts: rust_facts_bool)
-}
-
-fn rust_inhabitant_char_node() -> Node {
-  rust_noninteger_inhabitant_node(id: ^rust_inhabitant_char, facts: rust_facts_char)
-}
-
-fn rust_inhabitant_str_node() -> Node {
-  rust_noninteger_inhabitant_node(id: ^rust_inhabitant_str, facts: rust_facts_str)
-}
-
-fn rust_inhabitant_unit_node() -> Node {
-  rust_noninteger_inhabitant_node(id: ^rust_inhabitant_unit, facts: rust_facts_unit)
-}
-
-fn rust_inhabitant_never_node() -> Node {
-  rust_noninteger_inhabitant_node(id: ^rust_inhabitant_never, facts: rust_facts_never)
 }
 
 fn rust_named_edge(name: Symbol, target: Node) -> Edge {
@@ -894,25 +803,25 @@ fn rust_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: ^rust_inhabitant_field_i8, target: rust_inhabitant_i8_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_i16, target: rust_inhabitant_i16_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_i32, target: rust_inhabitant_i32_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_i64, target: rust_inhabitant_i64_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_i128, target: rust_inhabitant_i128_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_u8, target: rust_inhabitant_u8_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_u16, target: rust_inhabitant_u16_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_u32, target: rust_inhabitant_u32_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_u64, target: rust_inhabitant_u64_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_u128, target: rust_inhabitant_u128_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_isize, target: rust_inhabitant_isize_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_usize, target: rust_inhabitant_usize_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_f32, target: rust_inhabitant_f32_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_f64, target: rust_inhabitant_f64_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_bool, target: rust_inhabitant_bool_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_char, target: rust_inhabitant_char_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_str, target: rust_inhabitant_str_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_unit, target: rust_inhabitant_unit_node()),
-      rust_named_edge(name: ^rust_inhabitant_field_never, target: rust_inhabitant_never_node())
+      rust_named_edge(name: ^rust_inhabitant_field_i8, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_i8, facts: rust_facts_i8)),
+      rust_named_edge(name: ^rust_inhabitant_field_i16, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_i16, facts: rust_facts_i16)),
+      rust_named_edge(name: ^rust_inhabitant_field_i32, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_i32, facts: rust_facts_i32)),
+      rust_named_edge(name: ^rust_inhabitant_field_i64, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_i64, facts: rust_facts_i64)),
+      rust_named_edge(name: ^rust_inhabitant_field_i128, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_i128, facts: rust_facts_i128)),
+      rust_named_edge(name: ^rust_inhabitant_field_u8, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_u8, facts: rust_facts_u8)),
+      rust_named_edge(name: ^rust_inhabitant_field_u16, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_u16, facts: rust_facts_u16)),
+      rust_named_edge(name: ^rust_inhabitant_field_u32, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_u32, facts: rust_facts_u32)),
+      rust_named_edge(name: ^rust_inhabitant_field_u64, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_u64, facts: rust_facts_u64)),
+      rust_named_edge(name: ^rust_inhabitant_field_u128, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_u128, facts: rust_facts_u128)),
+      rust_named_edge(name: ^rust_inhabitant_field_isize, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_isize, facts: rust_facts_isize)),
+      rust_named_edge(name: ^rust_inhabitant_field_usize, target: rust_integer_inhabitant_node(id: ^rust_inhabitant_usize, facts: rust_facts_usize)),
+      rust_named_edge(name: ^rust_inhabitant_field_f32, target: rust_float_inhabitant_node(id: ^rust_inhabitant_f32, facts: rust_facts_f32)),
+      rust_named_edge(name: ^rust_inhabitant_field_f64, target: rust_float_inhabitant_node(id: ^rust_inhabitant_f64, facts: rust_facts_f64)),
+      rust_named_edge(name: ^rust_inhabitant_field_bool, target: rust_noninteger_inhabitant_node(id: ^rust_inhabitant_bool, facts: rust_facts_bool)),
+      rust_named_edge(name: ^rust_inhabitant_field_char, target: rust_noninteger_inhabitant_node(id: ^rust_inhabitant_char, facts: rust_facts_char)),
+      rust_named_edge(name: ^rust_inhabitant_field_str, target: rust_noninteger_inhabitant_node(id: ^rust_inhabitant_str, facts: rust_facts_str)),
+      rust_named_edge(name: ^rust_inhabitant_field_unit, target: rust_noninteger_inhabitant_node(id: ^rust_inhabitant_unit, facts: rust_facts_unit)),
+      rust_named_edge(name: ^rust_inhabitant_field_never, target: rust_noninteger_inhabitant_node(id: ^rust_inhabitant_never, facts: rust_facts_never))
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -3528,51 +3437,64 @@ fn rust_sg2_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
+fn rust_sg2_type_expr_bundle_core_base() -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^target_model_edge_type_expression_projection,
+      target: rust_type_expression_projection_bundle_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_serialize_source,
+      target: rust_sg2_serialize_source_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_translation_rules,
+      target: Node {
+        kind: TypeNode { connective: Conj },
+        children: Empty,
+        occurrence_id: SyntheticOccurrence
+      }
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_selection_policy,
+      target: rust_mvp1_selection_policy_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_declared_inhabitants,
+      target: rust_declared_inhabitants_root()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_collection_realization,
+      target: rust_collection_realization_catalog_node()
+    )
+  ]
+}
+
+fn rust_sg2_type_expr_bundle_core(trailing: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^target_model_edge_type_expression_projection,
-        target: rust_type_expression_projection_bundle_node()
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: rust_sg2_serialize_source_node()
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_translation_rules,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: Empty,
-          occurrence_id: SyntheticOccurrence
-}
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_selection_policy,
-        target: rust_mvp1_selection_policy_node()
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_declared_inhabitants,
-        target: rust_declared_inhabitants_root()
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_collection_realization,
-        target: rust_collection_realization_catalog_node()
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_reference_layer_tokens,
-        target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_use_site_ownership_realizations,
-        target: target_use_site_ownership_catalog_node(
-          rows: rust_sg_rc_use_site_ownership_catalog()
-        )
-      )
-    ],
+    children: list_append(left: rust_sg2_type_expr_bundle_core_base(), right: trailing),
     occurrence_id: SyntheticOccurrence
+  }
 }
+
+fn rust_sg2_type_expr_target_model_trailing_edges() -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^target_model_edge_reference_layer_tokens,
+      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_use_site_ownership_realizations,
+      target: target_use_site_ownership_catalog_node(
+        rows: rust_sg_rc_use_site_ownership_catalog()
+      )
+    )
+  ]
+}
+
+fn rust_sg2_type_expr_target_model_bundle_core() -> Node {
+  rust_sg2_type_expr_bundle_core(trailing: rust_sg2_type_expr_target_model_trailing_edges())
 }
 
 fn rust_sg2_type_expr_target_model_node() -> Node {
@@ -3624,40 +3546,7 @@ fn rust_sg2_type_expr_target_model() -> TargetModel {
 }
 
 fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^target_model_edge_type_expression_projection,
-        target: rust_type_expression_projection_bundle_node()
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: rust_sg2_serialize_source_node()
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_translation_rules,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: Empty,
-          occurrence_id: SyntheticOccurrence
-}
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_selection_policy,
-        target: rust_mvp1_selection_policy_node()
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_declared_inhabitants,
-        target: rust_declared_inhabitants_root()
-      ),
-      rust_named_edge(
-        name: ^target_model_edge_collection_realization,
-        target: rust_collection_realization_catalog_node()
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  rust_sg2_type_expr_bundle_core(trailing: [])
 }
 
 fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {

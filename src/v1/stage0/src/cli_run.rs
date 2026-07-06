@@ -718,6 +718,7 @@ fn load_compile_clean_entry_sources(
     source_roots: &[String],
     index: &ModuleSourceIndex,
     facts: &ModuleGraphFactsLive,
+    entry_path_filter: Option<&std::collections::HashSet<String>>,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let first_root = std::path::Path::new(&source_roots[0]);
     let mut entry_files = Vec::new();
@@ -725,6 +726,12 @@ fn load_compile_clean_entry_sources(
         let mut dag_paths = Vec::new();
         collect_dag_files(first_root, &mut dag_paths);
         for path in dag_paths {
+            let rel = workspace_relative_repo_path(&path.to_string_lossy());
+            if let Some(filter) = entry_path_filter {
+                if !filter.contains(&rel) {
+                    continue;
+                }
+            }
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             entry_files.push((path.to_string_lossy().to_string(), content));
@@ -772,35 +779,189 @@ fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNo
     })
 }
 
-fn witness_layer_roots_compile_clean_sources() -> Option<Vec<Rc<v1_compiler_compile::SourceFile>>> {
-    let roots = witness_layer_roots();
-    let index = build_module_index_primary_precedence(&roots);
-    let facts = build_module_graph_facts_live(&roots);
-    load_compile_clean_entry_sources(&roots, &index, &facts).ok()
+const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CompileCleanScopePlan {
+    /// Local dev only — neither `GITHUB_ACTIONS` nor `GUNBC_CI_DIFF_BASE` active.
+    WholeTree,
+    SkipNoAffected {
+        reason: String,
+    },
+    Scoped {
+        entry_paths: Vec<String>,
+    },
+    /// CI path: diff observation or scope disposition failed — job must red (no widening).
+    Refused {
+        reason: String,
+    },
+}
+
+fn compile_clean_scope_plan_from_touched_paths(
+    touched_paths: &[String],
+) -> Result<CompileCleanScopePlan, String> {
+    let roots = default_source_roots();
+    let (graph, indices) = resolve_entry_graph_shared(&roots, COMPILE_CLEAN_SCOPE_ENTRY)
+        .map_err(|e| format!("dag_compile_clean_scope resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let paths: Vec<v1_interpreter::Value> = touched_paths
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [(
+        Some("touched_paths".to_string()),
+        list_value_from_vec(paths),
+    )];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "compile_clean_scope_disposition_from_touched",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("compile_clean_scope_disposition_from_touched: {e}"))?;
+    match &result {
+        v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "ScopedRun") => {
+            let entry_paths = match ctx.field(fields, "entry_paths") {
+                Some(v) => string_list_from_value(v, "entry_paths")?,
+                None => return Err("ScopedRun missing `entry_paths`".to_string()),
+            };
+            Ok(CompileCleanScopePlan::Scoped { entry_paths })
+        }
+        v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "SkipNoAffectedEntries") => {
+            let reason = match ctx.field(fields, "reason") {
+                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                _ => "no compile-clean entry affected".to_string(),
+            };
+            Ok(CompileCleanScopePlan::SkipNoAffected { reason })
+        }
+        v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "RequireWholeTree") => {
+            let reason = match ctx.field(fields, "reason") {
+                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                _ => "whole-tree baseline required".to_string(),
+            };
+            eprintln!("compile-clean scope: {reason}");
+            Ok(CompileCleanScopePlan::WholeTree)
+        }
+        other => Err(format!(
+            "compile_clean_scope_disposition_from_touched returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+fn compile_clean_scoping_active() -> bool {
+    std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
+        || std::env::var("GITHUB_ACTIONS")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+}
+
+fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
+    if !compile_clean_scoping_active() {
+        return CompileCleanScopePlan::WholeTree;
+    }
+    match floor_git_diff_name_status_range() {
+        Ok((changed_paths, _departed)) => {
+            match compile_clean_scope_plan_from_touched_paths(&changed_paths) {
+                Ok(plan) => plan,
+                Err(msg) => CompileCleanScopePlan::Refused {
+                    reason: format!("compile-clean scope disposition failed: {msg}"),
+                },
+            }
+        }
+        Err(msg) => CompileCleanScopePlan::Refused {
+            reason: format!("diff observation failed: {msg}"),
+        },
+    }
+}
+
+fn witness_layer_roots_compile_clean_sources_for_plan(
+    plan: &CompileCleanScopePlan,
+) -> Result<Option<Vec<Rc<v1_compiler_compile::SourceFile>>>, String> {
+    match plan {
+        CompileCleanScopePlan::Refused { reason } => {
+            eprintln!("compile-clean scope: refused ({reason})");
+            Err(reason.clone())
+        }
+        CompileCleanScopePlan::SkipNoAffected { reason } => {
+            eprintln!("compile-clean scope: skipped ({reason})");
+            Ok(None)
+        }
+        CompileCleanScopePlan::WholeTree => {
+            let roots = witness_layer_roots();
+            let index = build_module_index_primary_precedence(&roots);
+            let facts = build_module_graph_facts_live(&roots);
+            load_compile_clean_entry_sources(&roots, &index, &facts, None).map(Some)
+        }
+        CompileCleanScopePlan::Scoped { entry_paths } => {
+            eprintln!(
+                "compile-clean scope: {} affected entr{} (of whole-tree gate)",
+                entry_paths.len(),
+                if entry_paths.len() == 1 { "y" } else { "ies" }
+            );
+            let filter: std::collections::HashSet<String> = entry_paths
+                .iter()
+                .map(|p| workspace_relative_repo_path(p))
+                .collect();
+            let roots = witness_layer_roots();
+            let index = build_module_index_primary_precedence(&roots);
+            let facts = build_module_graph_facts_live(&roots);
+            load_compile_clean_entry_sources(&roots, &index, &facts, Some(&filter)).map(Some)
+        }
+    }
 }
 
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
+/// In CI (`GITHUB_ACTIONS=true`) or when `GUNBC_CI_DIFF_BASE` is set, scopes to affected
+/// shard entries from `tools.dag_compile_clean_scope` (lever a) using `gunbc_ci_spec.diff_policy`
+/// defaults via `floor_diff_observe`; diff/disposition failure refuses (never widens).
+/// Skip/whole-tree/skip-vs-run authority lives in `tools.dag_compile_clean_scope` (including
+/// `RequireWholeTree` for non-docs infra/Rust touches with no shard intersection).
 pub fn witness_layer_roots_compile_clean_check() -> bool {
-    let sources = match witness_layer_roots_compile_clean_sources() {
-        Some(sources) => sources,
-        None => return false,
-    };
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-    !compile_clean_resolve_has_hard_errors(&result)
+    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+        Ok(None) => true,
+        Ok(Some(sources)) => {
+            let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+            !compile_clean_resolve_has_hard_errors(&result)
+        }
+        Err(msg) => {
+            eprintln!("compile-clean: source load failed ({msg})");
+            false
+        }
+    }
 }
 
 /// Emit leg: `--target dag` compile over witness layer roots without shell or disk write.
 /// Green-by-execution consumer for the batch-1 compile-clean gate (DESIGN §5).
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
-    let sources = match witness_layer_roots_compile_clean_sources() {
-        Some(sources) => sources,
-        None => return false,
-    };
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
+    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+        Ok(None) => true,
+        Ok(Some(sources)) => {
+            let result =
+                v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
+            !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
+                && !result.files.is_empty()
+        }
+        Err(msg) => {
+            eprintln!("compile-clean emit: source load failed ({msg})");
+            false
+        }
+    }
 }
 
 /// Workspace-relative path for module-graph closure queries (`v2.lens.module_graph`).
@@ -1129,7 +1290,7 @@ fn load_sources(
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let index = build_module_index(source_roots);
     let facts = build_module_graph_facts_live(source_roots);
-    load_compile_clean_entry_sources(source_roots, &index, &facts)
+    load_compile_clean_entry_sources(source_roots, &index, &facts, None)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10745,13 +10906,133 @@ pub fn test_migration_delete_guard_holds() -> bool {
 #[cfg(test)]
 mod witness_layer_roots_compile_clean_tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_env_test_lock<F: FnOnce()>(f: F) {
+        let _guard = ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        f();
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        prior: Option<String>,
+    }
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prior = std::env::var(key).ok();
+            // SAFETY: `with_env_test_lock` serializes env mutation across parallel tests.
+            unsafe { std::env::set_var(key, value) };
+            Self { key, prior }
+        }
+        fn remove(key: &'static str) -> Self {
+            let prior = std::env::var(key).ok();
+            // SAFETY: `with_env_test_lock` serializes env mutation across parallel tests.
+            unsafe { std::env::remove_var(key) };
+            Self { key, prior }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.prior {
+                    Some(v) => std::env::set_var(self.key, v),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    fn with_workspace_cwd<F: FnOnce()>(f: F) {
+        let ws = workspace_root();
+        let prior = std::env::current_dir().ok();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        f();
+        if let Some(p) = prior {
+            let _ = std::env::set_current_dir(p);
+        }
+    }
 
     /// Hand-Rust receipt: the emit leg is a strict superset of resolve for the same sources.
     #[test]
     fn emit_success_implies_resolve_success_on_live_witness_roots() {
-        if witness_layer_roots_compile_clean_emit_check() {
-            assert!(witness_layer_roots_compile_clean_check());
-        }
+        with_env_test_lock(|| {
+            // Whole-tree path only: this receipt is about emit⊇resolve, not lever-a scoping.
+            // In CI `GITHUB_ACTIONS=true` would route through the live shard-roster disposition.
+            let _ga = EnvGuard::remove("GITHUB_ACTIONS");
+            let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+            if witness_layer_roots_compile_clean_emit_check() {
+                assert!(witness_layer_roots_compile_clean_check());
+            }
+        });
+    }
+
+    /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
+    #[test]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
+    fn scoped_plan_skips_docs_only_touch() {
+        with_workspace_cwd(|| {
+            let plan =
+                compile_clean_scope_plan_from_touched_paths(&["docs/plans/example.md".to_string()])
+                    .expect("scope disposition");
+            assert_eq!(
+                plan,
+                CompileCleanScopePlan::SkipNoAffected {
+                    reason: "no compile-clean entry import-closure intersects touched paths"
+                        .to_string()
+                }
+            );
+        });
+    }
+
+    /// Lever-a receipt: a direct dag entry touch scopes to at least that entry.
+    #[test]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
+    fn scoped_plan_includes_touched_dag_entry() {
+        with_workspace_cwd(|| {
+            let plan =
+                compile_clean_scope_plan_from_touched_paths(&["dag/std/logic.dag".to_string()])
+                    .expect("scope disposition");
+            match plan {
+                CompileCleanScopePlan::Scoped { entry_paths } => {
+                    assert!(
+                        entry_paths.iter().any(|p| p == "dag/std/logic.dag"),
+                        "expected dag/std/logic.dag in {entry_paths:?}"
+                    );
+                }
+                other => panic!("expected ScopedRun, got {other:?}"),
+            }
+        });
+    }
+
+    /// Lever-a receipt: diff observation failure refuses — never widens to whole-tree.
+    #[test]
+    fn scoped_plan_refuses_on_invalid_diff_base() {
+        with_env_test_lock(|| {
+            let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
+            let _head = EnvGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
+            let plan = compile_clean_scope_plan_for_ci();
+            assert!(
+                matches!(plan, CompileCleanScopePlan::Refused { .. }),
+                "expected Refused on diff failure, got {plan:?}"
+            );
+        });
+    }
+
+    /// Lever-a receipt: `GITHUB_ACTIONS=true` activates scoping (same signal as
+    /// `floor_diff_observe` / `install_group_syntax`) without requiring `GUNBC_CI_DIFF_BASE`.
+    /// Disposition soundness (not `WholeTree`) is covered by `.dag` witnesses — calling
+    /// `compile_clean_scope_plan_for_ci` here would run the live shard-roster scan.
+    #[test]
+    fn github_actions_activates_compile_clean_scoping() {
+        with_env_test_lock(|| {
+            let _ga = EnvGuard::set("GITHUB_ACTIONS", "true");
+            let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+            assert!(compile_clean_scoping_active());
+        });
     }
 
     /// Hand-Rust receipt: primary-precedence pool defers to the first witness root.

@@ -3,6 +3,7 @@ module v2.test.parse.grammar_validation
 import v2.std.compilers.lexing { Token }
 import v2.std.grammar {
   StampClass,
+  Choice,
   GrammarProduction,
   GrammarRoot,
   Nonterminal,
@@ -15,6 +16,7 @@ import v2.std.grammar {
 }
 import v2.compiler.parse {
   ParseSyncState,
+  grammar_has_choice_ambiguity,
   grammar_has_duplicate_productions,
   grammar_has_left_recursion,
   grammar_has_undefined_nonterminals,
@@ -135,6 +137,54 @@ data validation_two_distinct_root: GrammarRoot = GrammarRoot {
     tail: Cons { head: validation_terminal_production(name: ^validation_other), tail: Empty }
   },
   sync_tokens: grammar_empty_sync_tokens()
+}
+
+data validation_ambiguous_choice_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_start,
+      expression: Choice {
+        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+        right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
+      },
+      emitted: grammar_atom(identity: ^validation_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+data validation_disjoint_choice_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_start,
+      expression: Choice {
+        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+        right: Terminal { token_class: ^validation_tok_class_b, stamp: StampClass }
+      },
+      emitted: grammar_atom(identity: ^validation_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+fn validation_choice_ambiguity_validate_rejects() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: validation_ambiguous_choice_root, at: at) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn validation_disjoint_choice_validate_accepts() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn validation_lookup_present_holds_named() -> Bool {
@@ -261,6 +311,38 @@ data claim_right_recursive_parse_succeeds: TestClaim = EqualsClaim {
   lhs: validation_bool_atom(
     b: validation_outcome_accepted(out: validation_right_recursive_parse_fixture())
   ),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_choice_ambiguity_detected: TestClaim = EqualsClaim {
+  label: "grammar_has_choice_ambiguity returns true when Choice branches share a FIRST terminal",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_choice_ambiguity(root: validation_ambiguous_choice_root)),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_disjoint_choice_not_ambiguous: TestClaim = EqualsClaim {
+  label: "grammar_has_choice_ambiguity returns false when Choice FIRST sets are disjoint",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_choice_ambiguity(root: validation_disjoint_choice_root)),
+  rhs: validation_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_validate_rejects_choice_ambiguity: TestClaim = EqualsClaim {
+  label: "grammar_validate_for_parse rejects grammars with overlapping Choice FIRST sets",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_choice_ambiguity_validate_rejects()),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_validate_accepts_disjoint_choice: TestClaim = EqualsClaim {
+  label: "grammar_validate_for_parse accepts grammars whose Choice branches have disjoint FIRST sets",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_disjoint_choice_validate_accepts()),
   rhs: validation_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

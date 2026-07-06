@@ -179,6 +179,8 @@ type ParseTableRealization {
   memo_hits: Int
   memo_misses: Int
   memo_lookup_calls: Int
+  nullable_set: Set<Symbol>
+  first_rows: List<ProductionFirstRow>
 }
 
 type ParseTable = ParseTableRealization
@@ -279,56 +281,59 @@ fn parse_table_memo_stats(table: ParseTable) -> ParseMemoStats {
   }
 }
 
-fn parse_table_record_lookup_call(table: ParseTable) -> ParseTable {
+fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, ParseMemoEntry>, hits: Int, misses: Int, lookups: Int) -> ParseTable {
   ParseTableRealization {
     artifact_kind: table.artifact_kind,
     interface: table.interface,
     grammar_digest: table.grammar_digest,
     token_stream_digest: table.token_stream_digest,
-    entries: table.entries,
-    memo_hits: table.memo_hits,
-    memo_misses: table.memo_misses,
-    memo_lookup_calls: table.memo_lookup_calls + 1
+    entries: entries,
+    memo_hits: hits,
+    memo_misses: misses,
+    memo_lookup_calls: lookups,
+    nullable_set: table.nullable_set,
+    first_rows: table.first_rows
   }
+}
+
+fn parse_table_record_lookup_call(table: ParseTable) -> ParseTable {
+  parse_table_carry_analysis(
+    table: table,
+    entries: table.entries,
+    hits: table.memo_hits,
+    misses: table.memo_misses,
+    lookups: table.memo_lookup_calls + 1
+  )
 }
 
 fn parse_table_record_hit(table: ParseTable) -> ParseTable {
-  ParseTableRealization {
-    artifact_kind: table.artifact_kind,
-    interface: table.interface,
-    grammar_digest: table.grammar_digest,
-    token_stream_digest: table.token_stream_digest,
+  parse_table_carry_analysis(
+    table: table,
     entries: table.entries,
-    memo_hits: table.memo_hits + 1,
-    memo_misses: table.memo_misses,
-    memo_lookup_calls: table.memo_lookup_calls
-  }
+    hits: table.memo_hits + 1,
+    misses: table.memo_misses,
+    lookups: table.memo_lookup_calls
+  )
 }
 
 fn parse_table_record_miss(table: ParseTable) -> ParseTable {
-  ParseTableRealization {
-    artifact_kind: table.artifact_kind,
-    interface: table.interface,
-    grammar_digest: table.grammar_digest,
-    token_stream_digest: table.token_stream_digest,
+  parse_table_carry_analysis(
+    table: table,
     entries: table.entries,
-    memo_hits: table.memo_hits,
-    memo_misses: table.memo_misses + 1,
-    memo_lookup_calls: table.memo_lookup_calls
-  }
+    hits: table.memo_hits,
+    misses: table.memo_misses + 1,
+    lookups: table.memo_lookup_calls
+  )
 }
 
 fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseMemoEntry) -> ParseTable {
-  ParseTableRealization {
-    artifact_kind: table.artifact_kind,
-    interface: table.interface,
-    grammar_digest: table.grammar_digest,
-    token_stream_digest: table.token_stream_digest,
+  parse_table_carry_analysis(
+    table: table,
     entries: map_insert(m: table.entries, key: key, value: value),
-    memo_hits: table.memo_hits,
-    memo_misses: table.memo_misses,
-    memo_lookup_calls: table.memo_lookup_calls
-  }
+    hits: table.memo_hits,
+    misses: table.memo_misses,
+    lookups: table.memo_lookup_calls
+  )
 }
 
 fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
@@ -376,6 +381,7 @@ fn parse_table_for_production(
   validated: ValidatedGrammarRoot,
   all_tokens: List<Token>
 ) -> ParseTable {
+  let analysis = compute_grammar_first_analysis(root: validated.root)
   ParseTableRealization {
     artifact_kind: parse_table_artifact_kind,
     interface: parse_table_memo_interface,
@@ -384,7 +390,9 @@ fn parse_table_for_production(
     entries: empty_map(),
     memo_hits: 0,
     memo_misses: 0,
-    memo_lookup_calls: 0
+    memo_lookup_calls: 0,
+    nullable_set: analysis.nullable_set,
+    first_rows: analysis.first_rows
   }
 }
 
@@ -397,7 +405,9 @@ fn parse_table_empty() -> ParseTable {
     entries: empty_map(),
     memo_hits: 0,
     memo_misses: 0,
-    memo_lookup_calls: 0
+    memo_lookup_calls: 0,
+    nullable_set: Set { member: fn(_) { false } },
+    first_rows: Empty
   }
 }
 
@@ -947,6 +957,366 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
   )
 }
 
+data parse_first_ambiguity_note: String = "FIRST-set analysis + choice ambiguity roster (construction over caching; sunny-wren-799)."
+
+data production_first_rows_fixpoint_note: String = "compute_production_first_rows uses |productions| outer sweeps (same outer-counter pattern as compute_nullable_set). Each sweep is monotone: FIRST terminal sets only grow via first_list_union. A terminal enters production P only after nullable-prefix dependencies through other productions stabilize; longest chain length is |productions|, so |productions| sweeps suffice."
+
+type GrammarExprFirstFold {
+  terminals: List<Symbol>
+  nullable: Bool
+}
+
+type ProductionFirstRow {
+  name: Symbol
+  terminals: List<Symbol>
+}
+
+type GrammarChoiceAmbiguityRow {
+  production: Symbol
+  overlap_terminals: List<Symbol>
+  both_nullable: Bool
+}
+
+type GrammarFirstAnalysis {
+  nullable_set: Set<Symbol>
+  first_rows: List<ProductionFirstRow>
+}
+
+fn grammar_empty_terminal_list() -> List<Symbol> {
+  Empty
+}
+
+fn first_list_contains(xs: List<Symbol>, item: Symbol) -> Bool {
+  contains(xs: xs, item: item, eq: fn(a, b) { a == b })
+}
+
+fn first_list_union(left: List<Symbol>, right: List<Symbol>) -> List<Symbol> {
+  fold_list(
+    xs: right,
+    empty: left,
+    cons: fn(acc, sym) {
+      if first_list_contains(xs: acc, item: sym) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: sym)
+      }
+    }
+  )
+}
+
+fn first_list_intersect(left: List<Symbol>, right: List<Symbol>) -> List<Symbol> {
+  filter(
+    xs: left,
+    predicate: fn(sym) { first_list_contains(xs: right, item: sym) }
+  )
+}
+
+fn production_first_row_lookup(rows: List<ProductionFirstRow>, name: Symbol) -> List<Symbol> {
+  match list_at_optional(
+    xs: filter(xs: rows, predicate: fn(r) { r.name == name }),
+    index: 0
+  ) {
+    Present { value: row } => row.terminals
+    Absent => grammar_empty_terminal_list()
+  }
+}
+
+fn expr_first_fold_terminal(token_class: Symbol) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: Cons { head: token_class, tail: Empty },
+    nullable: false
+  }
+}
+
+fn expr_first_fold_nonterminal(
+  name: Symbol,
+  nullable_set: Set<Symbol>,
+  first_rows: List<ProductionFirstRow>
+) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: production_first_row_lookup(rows: first_rows, name: name),
+    nullable: nullable_set.member(name)
+  }
+}
+
+fn expr_first_fold_sequence(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: first_list_union(
+      left: left.terminals,
+      right: if left.nullable { right.terminals } else { grammar_empty_terminal_list() }
+    ),
+    nullable: left.nullable && right.nullable
+  }
+}
+
+fn expr_first_fold_choice(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: first_list_union(left: left.terminals, right: right.terminals),
+    nullable: left.nullable || right.nullable
+  }
+}
+
+fn expr_first_fold_optional(element: GrammarExprFirstFold) -> GrammarExprFirstFold {
+  GrammarExprFirstFold { terminals: element.terminals, nullable: true }
+}
+
+fn expr_first_fold_repeat(element: GrammarExprFirstFold) -> GrammarExprFirstFold {
+  GrammarExprFirstFold { terminals: element.terminals, nullable: true }
+}
+
+fn expr_first_fold(
+  expr: GrammarExpr,
+  nullable_set: Set<Symbol>,
+  first_rows: List<ProductionFirstRow>
+) -> GrammarExprFirstFold {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class, _) { expr_first_fold_terminal(token_class: token_class) },
+      nonterminal: fn(name) {
+        expr_first_fold_nonterminal(name: name, nullable_set: nullable_set, first_rows: first_rows)
+      },
+      sequence: expr_first_fold_sequence,
+      choice: expr_first_fold_choice,
+      optional: expr_first_fold_optional,
+      repeat: expr_first_fold_repeat
+    }
+  )
+}
+
+fn upsert_production_first_row(
+  rows: List<ProductionFirstRow>,
+  row: ProductionFirstRow
+) -> List<ProductionFirstRow> {
+  list_snoc_item(
+    xs: filter(xs: rows, predicate: fn(r) { r.name != row.name }),
+    item: row
+  )
+}
+
+fn compute_production_first_row_step(
+  rows: List<ProductionFirstRow>,
+  p: GrammarProduction,
+  nullable_set: Set<Symbol>
+) -> ProductionFirstRow {
+  let folded = expr_first_fold(
+    expr: p.expression,
+    nullable_set: nullable_set,
+    first_rows: rows
+  )
+  ProductionFirstRow { name: p.name, terminals: folded.terminals }
+}
+
+fn compute_production_first_rows(
+  root: GrammarRoot,
+  nullable_set: Set<Symbol>
+) -> List<ProductionFirstRow> {
+  fold_list(
+    xs: root.productions,
+    empty: Empty,
+    cons: fn(acc, _) {
+      fold_list(
+        xs: root.productions,
+        empty: acc,
+        cons: fn(rows, p) {
+          upsert_production_first_row(
+            rows: rows,
+            row: compute_production_first_row_step(
+              rows: rows,
+              p: p,
+              nullable_set: nullable_set
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
+fn choice_branches_ambiguous(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> Bool {
+  if left.nullable && right.nullable {
+    true
+  } else {
+    !is_empty(xs: first_list_intersect(left: left.terminals, right: right.terminals))
+  }
+}
+
+fn append_choice_ambiguity_row(
+  acc: List<GrammarChoiceAmbiguityRow>,
+  production: Symbol,
+  left: GrammarExprFirstFold,
+  right: GrammarExprFirstFold
+) -> List<GrammarChoiceAmbiguityRow> {
+  if choice_branches_ambiguous(left: left, right: right) {
+    list_snoc_item(
+      xs: acc,
+      item: GrammarChoiceAmbiguityRow {
+        production: production,
+        overlap_terminals: first_list_intersect(left: left.terminals, right: right.terminals),
+        both_nullable: left.nullable && right.nullable
+      }
+    )
+  } else {
+    acc
+  }
+}
+
+fn collect_choice_ambiguities_in_expr(
+  expr: GrammarExpr,
+  production: Symbol,
+  nullable_set: Set<Symbol>,
+  first_rows: List<ProductionFirstRow>,
+  acc: List<GrammarChoiceAmbiguityRow>
+) -> List<GrammarChoiceAmbiguityRow> {
+  match expr {
+    Terminal { token_class: _, stamp: _ } => acc
+    Nonterminal { production: _ } => acc
+    Sequence { left: left, right: right } =>
+      collect_choice_ambiguities_in_expr(
+        expr: right,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        acc: collect_choice_ambiguities_in_expr(
+          expr: left,
+          production: production,
+          nullable_set: nullable_set,
+          first_rows: first_rows,
+          acc: acc
+        )
+      )
+    Choice { left: left, right: right } => {
+      let left_first = expr_first_fold(expr: left, nullable_set: nullable_set, first_rows: first_rows)
+      let right_first = expr_first_fold(expr: right, nullable_set: nullable_set, first_rows: first_rows)
+      let acc1 = append_choice_ambiguity_row(
+        acc: acc,
+        production: production,
+        left: left_first,
+        right: right_first
+      )
+      collect_choice_ambiguities_in_expr(
+        expr: right,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        acc: collect_choice_ambiguities_in_expr(
+          expr: left,
+          production: production,
+          nullable_set: nullable_set,
+          first_rows: first_rows,
+          acc: acc1
+        )
+      )
+    }
+    Optional { element: element } =>
+      collect_choice_ambiguities_in_expr(
+        expr: element,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        acc: acc
+      )
+    Repeat { element: element } =>
+      collect_choice_ambiguities_in_expr(
+        expr: element,
+        production: production,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        acc: acc
+      )
+  }
+}
+
+fn compute_grammar_first_analysis(root: GrammarRoot) -> GrammarFirstAnalysis {
+  let nullable_set = compute_nullable_set(root: root)
+  GrammarFirstAnalysis {
+    nullable_set: nullable_set,
+    first_rows: compute_production_first_rows(root: root, nullable_set: nullable_set)
+  }
+}
+
+fn grammar_choice_ambiguity_roster_from_analysis(
+  root: GrammarRoot,
+  analysis: GrammarFirstAnalysis
+) -> List<GrammarChoiceAmbiguityRow> {
+  fold_list(
+    xs: root.productions,
+    empty: Empty,
+    cons: fn(acc, p) {
+      collect_choice_ambiguities_in_expr(
+        expr: p.expression,
+        production: p.name,
+        nullable_set: analysis.nullable_set,
+        first_rows: analysis.first_rows,
+        acc: acc
+      )
+    }
+  )
+}
+
+fn grammar_choice_ambiguity_roster(root: GrammarRoot) -> List<GrammarChoiceAmbiguityRow> {
+  grammar_choice_ambiguity_roster_from_analysis(
+    root: root,
+    analysis: compute_grammar_first_analysis(root: root)
+  )
+}
+
+fn grammar_has_choice_ambiguity(root: GrammarRoot) -> Bool {
+  !is_empty(xs: grammar_choice_ambiguity_roster(root: root))
+}
+
+fn grammar_choice_ambiguity_count(root: GrammarRoot) -> Int {
+  length(xs: grammar_choice_ambiguity_roster(root: root))
+}
+
+fn parse_grammar_choice_ambiguity_diagnostic(at: Locus, count: Int) -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_grammar_choice_ambiguity,
+    at: at,
+    correction: match count > 0 {
+      true => Unavailable { reason: ExternalContractUnknown }
+      false => Unavailable { reason: UserInputBoundary }
+    }
+  }
+}
+
+fn parse_grammar_choice_ambiguity_row_diagnostic(at: Locus, row: GrammarChoiceAmbiguityRow) -> Diagnostic {
+  let overlap_count = length(xs: row.overlap_terminals)
+  parse_grammar_choice_ambiguity_diagnostic(
+    at: at,
+    count: if row.both_nullable && overlap_count == 0 { 1 } else { overlap_count }
+  )
+}
+
+fn grammar_choice_ambiguity_row_diagnostic_list(
+  at: Locus,
+  roster: List<GrammarChoiceAmbiguityRow>
+) -> List<Diagnostic> {
+  fold_list(
+    xs: roster,
+    empty: Empty,
+    cons: fn(acc, row) {
+      list_snoc_item(
+        xs: acc,
+        item: parse_grammar_choice_ambiguity_row_diagnostic(at: at, row: row)
+      )
+    }
+  )
+}
+
+fn grammar_choice_ambiguity_rejection_diagnostics(
+  at: Locus,
+  roster: List<GrammarChoiceAmbiguityRow>
+) -> NonEmptyDiagnostics {
+  parse_diags_to_non_empty(
+    diags: grammar_choice_ambiguity_row_diagnostic_list(at: at, roster: roster),
+    default: parse_grammar_choice_ambiguity_diagnostic(
+      at: at,
+      count: length(xs: roster)
+    )
+  )
+}
+
 fn grammar_empty_corner_list() -> List<Symbol> {
   Empty
 }
@@ -1105,22 +1475,6 @@ fn grammar_has_duplicate_productions(root: GrammarRoot) -> Bool {
   }
 }
 
-fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
-  if grammar_has_undefined_nonterminals(root: root) {
-    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
-  } else {
-    if grammar_has_duplicate_productions(root: root) {
-      Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
-    } else {
-      if grammar_has_left_recursion(root: root) {
-        Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
-      } else {
-        Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
-      }
-    }
-  }
-}
-
 fn parse_diag_cons(d: Diagnostic, acc: Diagnostics) -> Diagnostics {
   match acc {
     None => Some { diagnostics: NonEmptyDiagnostics { head: d, tail: [] } }
@@ -1142,6 +1496,29 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
   match parse_diags_to_diagnostics(diags: diags) {
     None => NonEmptyDiagnostics { head: default, tail: [] }
     Some { diagnostics: ned } => ned
+  }
+}
+
+fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
+  if grammar_has_undefined_nonterminals(root: root) {
+    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
+  } else {
+    if grammar_has_duplicate_productions(root: root) {
+      Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
+    } else {
+      if grammar_has_left_recursion(root: root) {
+        Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
+      } else {
+        let ambiguity_roster = grammar_choice_ambiguity_roster(root: root)
+        if !is_empty(xs: ambiguity_roster) {
+          Rejected {
+            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: ambiguity_roster)
+          }
+        } else {
+          Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
+        }
+      }
+    }
   }
 }
 
@@ -1179,8 +1556,364 @@ fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
   parse_token_first(tokens: parse_tokens_drop(tokens: tokens, count: index))
 }
 
-type ParseThunk {
-  apply: fn(List<Token>, List<Token>, GrammarRoot, ParseTable, ParseProvenanceState) -> ParseExprResult
+
+fn parse_expr_terminal(
+  token_class: Symbol,
+  stamp: StampClass,
+  tokens: List<Token>,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_token_first(tokens: tokens) {
+    Absent => ParseExprRejected { diagnostics: [], table: table }
+    Present { value: tok } =>
+      match tok.class == token_class {
+        true =>
+          match list_tail(xs: tokens) {
+            TailFound { tail: remaining } =>
+              let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)
+              ParseExprAccepted {
+                remaining: remaining,
+                captured: stamped.node,
+                diagnostics: [],
+                prov: stamped.prov,
+                table: table
+              }
+            TailAbsent => ParseExprRejected { diagnostics: [], table: table }
+          }
+        false => ParseExprRejected { diagnostics: [], table: table }
+      }
+  }
+}
+
+fn parse_expr_sequence(
+  left: GrammarExpr,
+  right: GrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_with_first(
+    expr: left,
+    tokens: tokens,
+    all_tokens: all_tokens,
+    root: root,
+    table: table,
+    prov: prov
+  ) {
+    ParseExprRejected { diagnostics: diags, table: table1 } =>
+      ParseExprRejected { diagnostics: diags, table: table1 }
+    ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1, table: table1 } =>
+      match parse_expr_with_first(
+        expr: right,
+        tokens: rest1,
+        all_tokens: all_tokens,
+        root: root,
+        table: table1,
+        prov: prov1
+      ) {
+        ParseExprRejected { diagnostics: diags2, table: table2 } =>
+          ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2), table: table2 }
+        ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2, prov: prov2, table: table2 } =>
+          let stamped = parse_stamp_derived_conj(cap1: cap1, cap2: cap2, prov: prov2)
+          ParseExprAccepted {
+            remaining: rest2,
+            captured: stamped.node,
+            diagnostics: list_append(left: diags1, right: diags2),
+            prov: stamped.prov,
+            table: table2
+          }
+      }
+  }
+}
+
+fn parse_choice_residue_backtrack(
+  left: GrammarExpr,
+  right: GrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_with_first(
+    expr: left,
+    tokens: tokens,
+    all_tokens: all_tokens,
+    root: root,
+    table: table,
+    prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+      ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
+    ParseExprRejected { diagnostics: _, table: table1 } =>
+      parse_expr_with_first(
+        expr: right,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table1,
+        prov: prov
+      )
+  }
+}
+
+fn parse_choice_on_present_token(
+  left: GrammarExpr,
+  right: GrammarExpr,
+  tok: Token,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState,
+  left_first: GrammarExprFirstFold,
+  right_first: GrammarExprFirstFold
+) -> ParseExprResult {
+  if first_list_contains(xs: left_first.terminals, item: tok.class) && !first_list_contains(xs: right_first.terminals, item: tok.class) {
+    parse_expr_with_first(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+  } else {
+    if first_list_contains(xs: right_first.terminals, item: tok.class) && !first_list_contains(xs: left_first.terminals, item: tok.class) {
+      parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+    } else {
+      if left_first.nullable && first_list_contains(xs: right_first.terminals, item: tok.class) {
+        parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+      } else {
+        parse_choice_residue_backtrack(
+          left: left,
+          right: right,
+          tokens: tokens,
+          all_tokens: all_tokens,
+          root: root,
+          table: table,
+          prov: prov
+        )
+      }
+    }
+  }
+}
+
+data parse_choice_dispatch_note: String = "parse_choice_first_dispatch: per-Choice expr_first_fold projects table.nullable_set + table.first_rows (not a second FIRST authority). Disjoint FIRST -> direct arm; overlap or neither-token residue -> parse_choice_residue_backtrack (try L then R, preserving nullable-left empty match on present tokens)."
+
+fn parse_choice_first_dispatch(
+  left: GrammarExpr,
+  right: GrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  let left_first = expr_first_fold(expr: left, nullable_set: table.nullable_set, first_rows: table.first_rows)
+  let right_first = expr_first_fold(expr: right, nullable_set: table.nullable_set, first_rows: table.first_rows)
+  if choice_branches_ambiguous(left: left_first, right: right_first) {
+    parse_choice_residue_backtrack(
+      left: left,
+      right: right,
+      tokens: tokens,
+      all_tokens: all_tokens,
+      root: root,
+      table: table,
+      prov: prov
+    )
+  } else {
+    match parse_token_first(tokens: tokens) {
+      Absent =>
+        if left_first.nullable {
+          parse_expr_with_first(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+        } else if right_first.nullable {
+          parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+        } else {
+          ParseExprRejected { diagnostics: [], table: table }
+        }
+      Present { value: tok } =>
+        parse_choice_on_present_token(
+          left: left,
+          right: right,
+          tok: tok,
+          tokens: tokens,
+          all_tokens: all_tokens,
+          root: root,
+          table: table,
+          prov: prov,
+          left_first: left_first,
+          right_first: right_first
+        )
+    }
+  }
+}
+
+fn parse_expr_optional(
+  element: GrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_with_first(
+    expr: element,
+    tokens: tokens,
+    all_tokens: all_tokens,
+    root: root,
+    table: table,
+    prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+      ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
+    ParseExprRejected { diagnostics: _, table: table1 } =>
+      ParseExprAccepted {
+        remaining: tokens,
+        captured: grammar_empty_node(),
+        diagnostics: [],
+        prov: prov,
+        table: table1
+      }
+  }
+}
+
+fn parse_expr_repeat(
+  element: GrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  let init = ParseRepeatAcc {
+    remaining: tokens,
+    acc_nodes: [],
+    acc_diags: [],
+    done: false,
+    prov: prov,
+    table: table
+  }
+  let result = fold_list(
+    xs: tokens,
+    empty: init,
+    cons: fn(acc, _) {
+      match acc.done {
+        true => acc
+        false =>
+          match parse_expr_with_first(
+            expr: element,
+            tokens: acc.remaining,
+            all_tokens: all_tokens,
+            root: root,
+            table: acc.table,
+            prov: acc.prov
+          ) {
+            ParseExprRejected { diagnostics: _, table: table1 } =>
+              ParseRepeatAcc {
+                remaining: acc.remaining,
+                acc_nodes: acc.acc_nodes,
+                acc_diags: acc.acc_diags,
+                done: true,
+                prov: acc.prov,
+                table: table1
+              }
+            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+              match length(xs: rest) != length(xs: acc.remaining) {
+                true =>
+                  ParseRepeatAcc {
+                    remaining: rest,
+                    acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
+                    acc_diags: list_append(left: acc.acc_diags, right: diags),
+                    done: false,
+                    prov: prov1,
+                    table: table1
+                  }
+                false =>
+                  ParseRepeatAcc {
+                    remaining: acc.remaining,
+                    acc_nodes: acc.acc_nodes,
+                    acc_diags: acc.acc_diags,
+                    done: true,
+                    prov: acc.prov,
+                    table: table1
+                  }
+              }
+          }
+      }
+    }
+  )
+  let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes, prov: result.prov)
+  ParseExprAccepted {
+    remaining: result.remaining,
+    captured: stamped.node,
+    diagnostics: result.acc_diags,
+    prov: stamped.prov,
+    table: result.table
+  }
+}
+
+fn parse_expr_with_first(
+  expr: GrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match expr {
+    Terminal { token_class: token_class, stamp: stamp } =>
+      parse_expr_terminal(
+        token_class: token_class,
+        stamp: stamp,
+        tokens: tokens,
+        table: table,
+        prov: prov
+      )
+    Nonterminal { production: prod_name } =>
+      parse_nonterminal_memoized(
+        all_tokens: all_tokens,
+        tokens: tokens,
+        root: root,
+        table: table,
+        prod_name: prod_name,
+        prov: prov
+      )
+    Sequence { left: left, right: right } =>
+      parse_expr_sequence(
+        left: left,
+        right: right,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    Choice { left: left, right: right } =>
+      parse_choice_first_dispatch(
+        left: left,
+        right: right,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    Optional { element: element } =>
+      parse_expr_optional(
+        element: element,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    Repeat { element: element } =>
+      parse_expr_repeat(
+        element: element,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+  }
 }
 
 fn parse_expr(
@@ -1191,157 +1924,14 @@ fn parse_expr(
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  let thunk = fold_grammar_expr(
+  parse_expr_with_first(
     expr: expr,
-    algebra: GrammarExprFold {
-      terminal: fn(token_class, stamp) {
-        ParseThunk { apply: fn(tok_in, _all_toks, _root_in, table_in, prov_in) {
-          match parse_token_first(tokens: tok_in) {
-            Absent => ParseExprRejected { diagnostics: [], table: table_in }
-            Present { value: tok } =>
-              match tok.class == token_class {
-                true =>
-                  match list_tail(xs: tok_in) {
-                    TailFound { tail: remaining } =>
-                      let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov_in)
-                      ParseExprAccepted {
-                        remaining: remaining,
-                        captured: stamped.node,
-                        diagnostics: [],
-                        prov: stamped.prov,
-                        table: table_in
-                      }
-                    TailAbsent => ParseExprRejected { diagnostics: [], table: table_in }
-                  }
-                false => ParseExprRejected { diagnostics: [], table: table_in }
-              }
-          } } }
-      },
-      nonterminal: fn(prod_name) {
-        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
-          parse_nonterminal_memoized(
-            all_tokens: all_toks,
-            tokens: tok_in,
-            root: root_in,
-            table: table_in,
-            prod_name: prod_name,
-            prov: prov_in
-          )
-        } }
-      },
-      sequence: fn(left_thunk, right_thunk) {
-        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
-          match left_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
-            ParseExprRejected { diagnostics: diags, table: table1 } =>
-              ParseExprRejected { diagnostics: diags, table: table1 }
-            ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1, table: table1 } =>
-              match right_thunk.apply(rest1, all_toks, root_in, table1, prov1) {
-                ParseExprRejected { diagnostics: diags2, table: table2 } =>
-                  ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2), table: table2 }
-                ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2, prov: prov2, table: table2 } =>
-                  let stamped = parse_stamp_derived_conj(cap1: cap1, cap2: cap2, prov: prov2)
-                  ParseExprAccepted {
-                    remaining: rest2,
-                    captured: stamped.node,
-                    diagnostics: list_append(left: diags1, right: diags2),
-                    prov: stamped.prov,
-                    table: table2
-                  }
-              }
-          }
-        } }
-      },
-      choice: fn(left_thunk, right_thunk) {
-        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
-          match left_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
-            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
-              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
-            ParseExprRejected { diagnostics: _, table: table1 } =>
-              right_thunk.apply(tok_in, all_toks, root_in, table1, prov_in)
-          }
-        } }
-      },
-      optional: fn(element_thunk) {
-        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
-          match element_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
-            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
-              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
-            ParseExprRejected { diagnostics: _, table: table1 } =>
-              ParseExprAccepted {
-                remaining: tok_in,
-                captured: grammar_empty_node(),
-                diagnostics: [],
-                prov: prov_in,
-                table: table1
-              }
-          }
-        } }
-      },
-      repeat: fn(element_thunk) {
-        ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
-          let init = ParseRepeatAcc {
-            remaining: tok_in,
-            acc_nodes: [],
-            acc_diags: [],
-            done: false,
-            prov: prov_in,
-            table: table_in
-          }
-          let result = fold_list(
-            xs: tok_in,
-            empty: init,
-            cons: fn(acc, _) {
-              match acc.done {
-                true => acc
-                false =>
-                  match element_thunk.apply(acc.remaining, all_toks, root_in, acc.table, acc.prov) {
-                    ParseExprRejected { diagnostics: _, table: table1 } =>
-                      ParseRepeatAcc {
-                        remaining: acc.remaining,
-                        acc_nodes: acc.acc_nodes,
-                        acc_diags: acc.acc_diags,
-                        done: true,
-                        prov: acc.prov,
-                        table: table1
-                      }
-                    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
-                      match length(xs: rest) != length(xs: acc.remaining) {
-                        true =>
-                          ParseRepeatAcc {
-                            remaining: rest,
-                            acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
-                            acc_diags: list_append(left: acc.acc_diags, right: diags),
-                            done: false,
-                            prov: prov1,
-                            table: table1
-                          }
-                        false =>
-                          ParseRepeatAcc {
-                            remaining: acc.remaining,
-                            acc_nodes: acc.acc_nodes,
-                            acc_diags: acc.acc_diags,
-                            done: true,
-                            prov: acc.prov,
-                            table: table1
-                          }
-                      }
-                  }
-              }
-            }
-          )
-          let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes, prov: result.prov)
-          ParseExprAccepted {
-            remaining: result.remaining,
-            captured: stamped.node,
-            diagnostics: result.acc_diags,
-            prov: stamped.prov,
-            table: result.table
-          }
-        } }
-      }
-    }
+    tokens: tokens,
+    all_tokens: all_tokens,
+    root: root,
+    table: table,
+    prov: prov
   )
-  thunk.apply(tokens, all_tokens, root, table, prov)
 }
 
 fn parse_production_memo_stats(
