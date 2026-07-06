@@ -1,7 +1,5 @@
 module test.claim.pipeline_transport_emit_rest_shell_witness
 
-import tools.compile_dag_rust_emit_check_bridge { compile_dag_rust_emit_check }
-
 fn w_rest_uses_transport_method() -> Bool {
   compile_dag_rust_emit_check(
     "module re1a\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItems {\n    output { items: List<String> }\n    transport rest { method: GET, path: \"/items\" }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"a\"] \"items\"\n    }\n  }\n}\n",

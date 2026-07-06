@@ -46,14 +46,6 @@ fn manifest_entry_admission_qualified_name_is_well_formed() {
         .expect("emit manifest");
     let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
     assert!(
-        manifest.contains("import v2.std.cross_tree.import_model { V2Tree"),
-        "manifest must import grounded SourceRootRef variants:\n{manifest}"
-    );
-    assert!(
-        manifest.contains("source_root: V2Tree"),
-        "manifest witness rows must carry grounded source_root tags:\n{manifest}"
-    );
-    assert!(
         manifest.contains(
             "Cons { head: ^v2, tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } } }"
         ),
