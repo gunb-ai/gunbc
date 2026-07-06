@@ -565,6 +565,7 @@ fn type_env_std_types_type_variable_filtered_from_import() {
             }),
         )])),
         intern_table: intern_table.clone(),
+        source_visible_names: Rc::new(im_rc::HashMap::new()),
     });
     let filtered = type_env_for_import("std.types".to_string(), parent);
     for tv in ["T", "K", "V", "MappedElement", "FoldAccumulator"] {
