@@ -10,7 +10,7 @@ env:
 jobs:
   falsifier:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 155
+    timeout-minutes: 170
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -54,14 +54,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc || exit 1
                 else
                   exit 1
                 fi
@@ -74,7 +74,7 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
-        timeout-minutes: 30
+        timeout-minutes: 45
       - name: affected-set falsifier (predict-only cold run)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

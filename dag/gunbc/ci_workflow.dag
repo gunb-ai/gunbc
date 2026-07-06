@@ -315,13 +315,13 @@ data gunbc_ci_floor_step_timeout_minutes: Duration = 10
 
 data gunbc_ci_floor_step_timeout_minutes_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: gunbc_ci_floor_step_timeout_minutes names GitHub Actions step timeout-minutes on the wire (extdeps/github/actions.dag RunStep.timeout_minutes projects Int). Carrier is std.types.Duration (minute magnitude, interim until CI budgets ground on std.measure time with explicit unit at the model layer and Int projection moves to GHA emit-only realization). DISSOLVES WHEN all gunbc CI step timeout authorities use a grounded measure carrier and timeout_minutes Int is derived at the workflow emit seam only."
 
-data gunbc_ci_rust_gate_step_timeout_minutes: Int = 10
+data gunbc_ci_rust_gate_step_timeout_minutes: Int = 45
 
 data gunbc_ci_rust_gate_step_budget_note: String = "Budgeted rust-gate-only step (gunbc run rust_gates_ci then fmt/clippy/nextest after sccache warm): 45m interim — reconcile before main() consumed ~22m and nextest was killed mid-run at the 30m step cap (receipt: rust_tests job 85319650284, run 28775863915 on d7dc35e; warm 14m38s, reconcile 1339s, fmt+clippy ~40s, nextest in-flight at step-FAILURE). Prior 30m receipt: clippy --all-targets still in-flight at 15m kill (job 85269811605). Cold-cache storms stay in gunbc_ci_rust_sccache_warm_step_timeout_minutes (45m), not here (operator ruling, cool-hawk-899 / valiant-bee-192)."
 
 data ci_rust_build_gate_step_split_note: String = "Build and rust gate are separate workflow steps (same discipline as ci_build_floor_step_split_note): bundling cargo build + rust_gates_ci under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: rust_tests job 85237415376, run 28746200534 on dfbff0f). Warm step ci_rust_sccache_warm_step carries gunbc_ci_rust_sccache_warm_step_timeout_minutes; rust gate step carries gunbc_ci_rust_gate_step_timeout_minutes."
 
-data gunbc_ci_rust_sccache_warm_step_timeout_minutes: Int = 15
+data gunbc_ci_rust_sccache_warm_step_timeout_minutes: Int = 45
 
 data gunbc_ci_rust_sccache_warm_step_budget_note: String = "Observable sccache-warm step (release bins + cache prime) before the budgeted rust gate: cold-cache fallback storms are counted here, not in gunbc_ci_rust_gate_step_timeout_minutes (operator ruling, cool-hawk-899 / valiant-bee-192). Receipt: PRs 6286/6274/6290 timed out at 15m with clippy never finishing under sccache cold-cache fallback while bundled with build."
 
