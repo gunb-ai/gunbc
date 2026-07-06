@@ -105,6 +105,7 @@ fn witness_empty_touched_skips() -> Bool {
   match compile_clean_scope_disposition_from_touched(touched_paths: []) {
     SkipNoAffectedEntries { reason: _ } => true
     ScopedRun { entry_paths: _ } => false
+    RequireWholeTree { reason: _ } => false
   }
 }
 
@@ -114,6 +115,7 @@ fn witness_docs_only_touch_skips() -> Bool {
   ) {
     SkipNoAffectedEntries { reason: _ } => true
     ScopedRun { entry_paths: _ } => false
+    RequireWholeTree { reason: _ } => false
   }
 }
 
