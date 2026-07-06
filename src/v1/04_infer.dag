@@ -5726,7 +5726,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     match module.resolved_imports |> first {
       Present { value: imp } =>
         match map_get(parent_index, imp.module_path) {
-          Present { value: parent_mod } => parent_mod.type_env_cache.str_bindings
+          Present { value: parent_mod } => map_merge(parent_mod.type_env.ancestry_str_bindings, parent_mod.type_env.str_bindings)
           Absent => ancestry_cache.str_bindings
         }
       Absent => ancestry_cache.str_bindings
@@ -5840,7 +5840,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     match module.resolved_imports |> first {
       Present { value: imp } =>
         match map_get(parent_index, imp.module_path) {
-          Present { value: parent_mod } => parent_mod.type_env_cache.str_bindings
+          Present { value: parent_mod } => map_merge(parent_mod.type_env.ancestry_str_bindings, parent_mod.type_env.str_bindings)
           Absent => ancestry_cache.str_bindings
         }
       Absent => ancestry_cache.str_bindings
