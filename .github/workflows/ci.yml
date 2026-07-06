@@ -117,7 +117,7 @@ jobs:
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
-        timeout-minutes: 300
+        timeout-minutes: 10
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -199,7 +199,7 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
-        timeout-minutes: 46
+        timeout-minutes: 15
       - name: v1 rust gate (fmt + clippy + nextest)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
