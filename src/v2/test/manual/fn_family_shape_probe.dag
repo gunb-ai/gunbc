@@ -1,7 +1,7 @@
 module v2.test.manual.fn_family_shape_probe
 
 import extdeps.filesystem.filesystem_io
-import v2.compiler.parse { parse_module, grammar_validate_for_parse }
+import v2.compiler.parse { parse_module, grammar_validate_for_parse, grammar_choice_ambiguity_roster }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.grammar { ModeledGrammar, VoidGrammar }
@@ -159,5 +159,23 @@ fn probe_parse_reject_reasons() -> List<Symbol> {
           )
         Accepted { value: _, diagnostics: _ } => [^probe_accepted]
       }
+  }
+}
+
+fn probe_ambiguity_rows() -> List<Symbol> {
+  let lm = dag_language_model_wave1()
+  match lm.grammar {
+    VoidGrammar => [^probe_void_grammar]
+    ModeledGrammar { root: root } =>
+      fold_list(
+        xs: grammar_choice_ambiguity_roster(root: root),
+        empty: probe_empty_symbols(),
+        cons: fn(acc, row) {
+          list_snoc_item(
+            xs: list_snoc_item(xs: acc, item: row.production),
+            item: if row.both_nullable { ^probe_both_nullable } else { ^probe_not_nullable }
+          )
+        }
+      )
   }
 }
