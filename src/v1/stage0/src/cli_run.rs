@@ -10905,6 +10905,7 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
     #[test]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
     fn scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
             let plan =
@@ -10922,6 +10923,7 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// Lever-a receipt: a direct dag entry touch scopes to at least that entry.
     #[test]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
     fn scoped_plan_includes_touched_dag_entry() {
         with_workspace_cwd(|| {
             let plan =
