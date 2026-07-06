@@ -7,9 +7,9 @@ import tools.dag_compile_clean_scope {
   witness_std_logic_touch_scopes,
   witness_rust_only_touch_requires_whole_tree,
   witness_ci_yaml_touch_requires_whole_tree,
+  witness_v2_logic_edit_scopes_parse_test_importer,
   witness_entry_root_is_first_witness_layer_root,
-  witness_pool_roots_match_witness_layer_roots,
-  compile_clean_scope_disposition_from_touched
+  witness_pool_roots_match_witness_layer_roots
 }
 
 test fn dag_compile_clean_scope_empty_touched_skips_holds() -> Bool {
@@ -42,14 +42,5 @@ test fn dag_compile_clean_scope_partition_authority_holds() -> Bool {
 }
 
 test fn dag_compile_clean_scope_importer_touched_by_v2_logic_edit_holds() -> Bool {
-  match compile_clean_scope_disposition_from_touched(
-    touched_paths: ["src/v2/std/logic.dag"]
-  ) {
-    ScopedRun { entry_paths: paths } =>
-      fold(paths, init: false, f: fn(found, p) {
-        found || (p == "dag/test/claim/parse_test.dag")
-      })
-    SkipNoAffectedEntries { reason: _ } => false
-    RequireWholeTree { reason: _ } => false
-  }
+  witness_v2_logic_edit_scopes_parse_test_importer()
 }

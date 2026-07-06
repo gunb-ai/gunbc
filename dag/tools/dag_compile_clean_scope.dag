@@ -157,3 +157,30 @@ fn witness_ci_yaml_touch_requires_whole_tree() -> Bool {
     SkipNoAffectedEntries { reason: _ } => false
   }
 }
+
+fn witness_v2_logic_edit_scopes_parse_test_importer() -> Bool {
+  match compile_clean_scope_disposition_from_touched(
+    touched_paths: ["src/v2/std/logic.dag"]
+  ) {
+    ScopedRun { entry_paths: paths } =>
+      fold(paths, init: false, f: fn(found, p) {
+        found || (p == "dag/test/claim/parse_test.dag")
+      })
+    SkipNoAffectedEntries { reason: _ } => false
+    RequireWholeTree { reason: _ } => false
+  }
+}
+
+fn lever_a_local_receipts_hold() -> Bool {
+  witness_empty_touched_skips()
+    && witness_docs_only_touch_skips()
+    && witness_dot_slash_docs_only_touch_skips()
+    && witness_std_logic_touch_scopes()
+    && witness_rust_only_touch_requires_whole_tree()
+    && witness_ci_yaml_touch_requires_whole_tree()
+    && witness_v2_logic_edit_scopes_parse_test_importer()
+    && witness_entry_root_is_first_witness_layer_root()
+    && witness_pool_roots_match_witness_layer_roots()
+}
+
+data lever_a_local_verify_scaffold_note: String = "LOCAL-DEV-ONLY scaffold (scripts/lever_a_local_verify.sh is a pure claim_batch sequencer — no bash verdict logic). dissolves-on: GATE 3 CI self-demonstration of scoped compile-clean in budget retires the script. GATE 1d host refusal (cli_run Refused on diff/disposition failure): cargo test scoped_plan_refuses_on_invalid_diff_base until a host witness enrolls. GATE 1b/1c: inject break inside vs outside disposition entry_paths closure — scoped RED vs GREEN; nightly whole-tree #6299 is catcher. GATE 2: replay merged PR diffs locally; whole-tree baseline cited from runs 28780252806 and 28748751115 only. Core-query soundness: cite #6274 (entry_affected_by_touched_paths equivalent to Rust frontier on 25 entries)."

@@ -1,0 +1,7 @@
+module test.claim.lever_a_local_receipt_witness
+
+import tools.dag_compile_clean_scope { lever_a_local_receipts_hold }
+
+test fn lever_a_local_receipts_hold() -> Bool {
+  lever_a_local_receipts_hold()
+}
