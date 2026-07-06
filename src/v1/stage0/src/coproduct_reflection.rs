@@ -1,5 +1,4 @@
-use crate::v1_rt::VecCompat;
-use im_rc::HashMap;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -13,7 +12,7 @@ use crate::v1_interpreter::{
 };
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
+    param_node_type_expr, source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -597,12 +596,7 @@ fn marshal_skeleton(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> (Value, std::collections::BTreeSet<String>) {
     match node.expr_data.as_ref() {
-        ExprData::ExprBlock => marshal_stmt_sequence(
-            ctx,
-            &node.children.iter().cloned().collect::<std::vec::Vec<_>>(),
-            param_names,
-            si,
-        ),
+        ExprData::ExprBlock => marshal_stmt_sequence(ctx, &node.children, param_names, si),
         ExprData::ExprLet => {
             marshal_stmt_sequence(ctx, std::slice::from_ref(node), param_names, si)
         }
@@ -1043,6 +1037,83 @@ fn marshal_decl_fact_node(
         }
         _ => Ok(unit_type_node(ctx)),
     }
+}
+
+fn marshal_fn_export_signature_node(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
+    let mut edges = Vec::new();
+    for p in item.params.iter() {
+        if param_is_type_param(p, si) {
+            continue;
+        }
+        let ty = param_node_type_expr(p.clone());
+        edges.push(edge_positional(ctx, marshal_type_expr_ref(ctx, si, &ty)?));
+    }
+    let ret_val = item
+        .inferred
+        .as_ref()
+        .and_then(|inf| inferred_to_node(inf.clone()))
+        .map(|ret| marshal_type_expr_ref(ctx, si, &ret))
+        .transpose()?
+        .unwrap_or_else(|| unit_type_node(ctx));
+    edges.push(edge_positional(ctx, ret_val));
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Arrow")),
+        edges,
+    ))
+}
+
+fn marshal_export_signature_node(
+    ctx: &InterpContext,
+    item: &Rc<Node>,
+    kind: ItemKind,
+    si: &SourceIndices,
+) -> InterpResult<Value> {
+    match kind {
+        ItemKind::TypeItem => concept_decl_node(ctx, si, item),
+        ItemKind::FnItem | ItemKind::FuncItem => marshal_fn_export_signature_node(ctx, si, item),
+        ItemKind::DataItem => match item
+            .inferred
+            .as_ref()
+            .and_then(|inf| inferred_to_node(inf.clone()))
+        {
+            Some(ty) => marshal_type_expr_ref(ctx, si, &ty),
+            None => Ok(unit_type_node(ctx)),
+        },
+        _ => Ok(unit_type_node(ctx)),
+    }
+}
+
+pub fn eval_export_signature_facts(
+    ctx: &InterpContext,
+    pool_roots: &[String],
+) -> InterpResult<Value> {
+    let facts = decl_facts_for_roots(pool_roots);
+    let mut rows = Vec::with_capacity(facts.len());
+    for fact in facts {
+        let node = marshal_export_signature_node(ctx, &fact.node, fact.kind, &fact.source_indices)
+            .map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "export_signature_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
+                    fact.qualified_name, fact.kind, fact.rel_path
+                ),
+            })?;
+        rows.push(Value::Record {
+            type_name: ctx.sym("DeclFact"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("qualified_name"), Value::Str(fact.qualified_name)),
+                (ctx.sym("name"), Value::Str(fact.name)),
+                (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
+                (ctx.sym("node"), node),
+                (ctx.sym("rel_path"), Value::Str(fact.rel_path)),
+            ])),
+        });
+    }
+    Ok(crate::v1_interpreter::list_value(rows))
 }
 
 pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
