@@ -59,7 +59,13 @@ fn corpus_scope_largest_family_size() -> Int {
 }
 
 fn corpus_scope_has_no_sigma_families() -> Bool {
-  corpus_scope_parse_accepted() && (corpus_scope_sigma_family_count() == 0)
+  let trees = corpus_subject_trees()
+  let family_total = fold_list(
+    xs: trees,
+    empty: 0,
+    cons: fn(acc, tree) { acc + module_sigma_family_count(tree: tree) }
+  )
+  (length(xs: trees) == 1) && (family_total == 0)
 }
 
 fn no_ordinals() -> List<Int> {
