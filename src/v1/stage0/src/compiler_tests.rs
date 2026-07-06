@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod compiler_tests {
     use crate::v1_compiler_tokenize::tokenize;
-    use std::collections::HashMap;
+    use im_rc::HashMap;
 
     /// Find workspace root by walking up from the current directory looking for Cargo.toml + dag/
     fn workspace_root() -> std::path::PathBuf {
@@ -171,7 +171,7 @@ mod compiler_tests {
             }
         }
 
-        let mut result: Vec<_> = seen.into_values().collect();
+        let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
         result.sort_by(|a, b| a.path.cmp(&b.path));
         result
     }
@@ -235,10 +235,8 @@ mod compiler_tests {
             "module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
         );
-        let result = crate::v1_compiler_parse::parse(
-            tokens,
-            std::rc::Rc::new(std::collections::HashMap::new()),
-        );
+        let result =
+            crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im_rc::HashMap::new()));
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
@@ -267,7 +265,7 @@ mod compiler_tests {
 
                 let result = crate::v1_compiler_parse::parse(
                     tokens,
-                    std::rc::Rc::new(std::collections::HashMap::new()),
+                    std::rc::Rc::new(im_rc::HashMap::new()),
                 );
 
                 assert!(
@@ -296,7 +294,7 @@ mod compiler_tests {
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo { x: Int, name: String }\nfn add(a: Int, b: Int) -> Int { a + b }\n".to_string(),
                 });
-                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im_rc::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
 
                 assert!(
                     !result.files.is_empty(),
@@ -337,7 +335,7 @@ mod compiler_tests {
                     content: "module module_b\nimport module_a { Sealed }\nfn bad_ctor(v: String) -> Sealed { Sealed { x: v } }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(vec![module_a, module_b]),
+                    std::rc::Rc::new(im_rc::vector![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
@@ -390,7 +388,7 @@ mod compiler_tests {
                     content: "module module_b\nimport module_a { FieldlessFoo }\nfn bad_ctor() -> FieldlessFoo { FieldlessFoo { } }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(vec![module_a, module_b]),
+                    std::rc::Rc::new(im_rc::vector![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
@@ -430,7 +428,7 @@ mod compiler_tests {
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
                 let entry_pairs = discover_dag_files("dag/extdeps/llm");
-                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dag"]));
+                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dag"]).into());
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
                     crate::v1_compiler_artifact::RenderTarget::Rust,
@@ -473,7 +471,7 @@ mod compiler_tests {
                     );
                     let result = crate::v1_compiler_parse::parse(
                         tokens,
-                        std::rc::Rc::new(std::collections::HashMap::new()),
+                        std::rc::Rc::new(im_rc::HashMap::new()),
                     );
                     assert!(
                         result.module.is_some(),
@@ -499,7 +497,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = std::rc::Rc::new(self_compile_sources());
+                let sources = std::rc::Rc::new(self_compile_sources().into());
                 let result = crate::v1_compiler_compile::resolve_sources(sources);
 
                 let errors: Vec<_> = result
@@ -531,7 +529,8 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = std::rc::Rc::new(self_compile_sources());
+                let sources: std::rc::Rc<im_rc::Vector<_>> =
+                    std::rc::Rc::new(self_compile_sources().into());
                 let source_count = sources.len();
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
@@ -587,7 +586,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = std::rc::Rc::new(self_compile_sources());
+                let sources = std::rc::Rc::new(self_compile_sources().into());
 
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
@@ -801,7 +800,7 @@ mod compiler_tests {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "BooleanAlgebra".into()),
-            Some("std::collections::BTreeSet<{0}>".to_string())
+            Some("BTreeSet<{0}>".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()),
@@ -821,7 +820,7 @@ mod compiler_tests {
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "Set".into()),
-            Some("std::collections::BTreeSet<{0}>".to_string())
+            Some("BTreeSet<{0}>".to_string())
         );
     }
 
@@ -908,8 +907,8 @@ mod compiler_tests {
             "Vec<i64>"
         );
         assert_eq!(
-            apply_inhabitant_template1("std::collections::BTreeSet<{0}>".into(), "i64".into()),
-            "std::collections::BTreeSet<i64>"
+            apply_inhabitant_template1("BTreeSet<{0}>".into(), "i64".into()),
+            "BTreeSet<i64>"
         );
         assert_eq!(
             apply_inhabitant_template2("HashMap<{0}, {1}>".into(), "String".into(), "i64".into()),
@@ -951,15 +950,15 @@ mod compiler_tests {
             ident: None,
             span: span.clone(),
             ident_span: Some(span),
-            children: std::rc::Rc::new(children),
+            children: std::rc::Rc::new(children.into()),
             connective: crate::v1_std_core::Connective::NoConnective,
-            params: std::rc::Rc::new(Vec::new()),
+            params: std::rc::Rc::new(im_rc::Vector::new()),
             inferred: None,
             return_cardinality: crate::v1_std_core::Cardinality::Required,
-            uses: std::rc::Rc::new(Vec::new()),
+            uses: std::rc::Rc::new(im_rc::Vector::new()),
             body: None,
             transport: None,
-            properties: std::rc::Rc::new(Vec::new()),
+            properties: std::rc::Rc::new(im_rc::Vector::new()),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -1076,7 +1075,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                use std::collections::HashMap;
+                use im_rc::HashMap;
                 use std::time::Instant;
 
                 let sources = self_compile_sources();
@@ -1183,7 +1182,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules),
+                    std::rc::Rc::new(modules.into()),
                     resolve_si,
                 );
                 let resolve_total = t_stage.elapsed();
@@ -1359,7 +1358,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules),
+                    std::rc::Rc::new(modules.into()),
                     resolve_si,
                 );
                 let resolve_elapsed = t.elapsed();
@@ -1552,7 +1551,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                use std::collections::HashMap;
+                use im_rc::HashMap;
                 use std::time::Instant;
 
                 let sources = self_compile_sources();
@@ -1611,7 +1610,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules),
+                    std::rc::Rc::new(modules.into()),
                     resolve_si,
                 );
                 let setup_time = t0.elapsed();

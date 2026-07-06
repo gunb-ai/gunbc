@@ -5,6 +5,7 @@ use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, Optio
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 pub use crate::v1_std_core::{
@@ -14,8 +15,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 

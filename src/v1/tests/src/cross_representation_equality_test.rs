@@ -53,7 +53,7 @@ fn with_receipts_ctx<R>(body: impl FnOnce(&v1_interpreter::InterpContext) -> R) 
     let roots = [ws.join("src/v2"), ws.join("dag")];
     let sources =
         resolve_imports_transitively_with_source_roots("test.dag", RECEIPTS_SOURCE, &roots);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx =

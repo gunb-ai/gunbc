@@ -6,12 +6,14 @@ use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_emit_model::SimpleMethodSpec;
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -50,7 +52,7 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "Vec<{0}>".to_string());
-            __m.insert("set".to_string(), "std::collections::BTreeSet<{0}>".to_string());
+            __m.insert("set".to_string(), "BTreeSet<{0}>".to_string());
             __m.insert("optional".to_string(), "Option<{0}>".to_string());
             __m.insert("map".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());

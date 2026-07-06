@@ -24,7 +24,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 
 fn run_bool(src: &str, entry: &str) {
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     match v1_interpreter::run(graph, resolved.source_indices.clone(), entry) {
@@ -98,7 +98,7 @@ fn build() -> List<Int> {{ concat([{nums}], [0]) }}
 "#
     );
     let sources = resolve_imports_transitively("test.dag", &src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     let first =

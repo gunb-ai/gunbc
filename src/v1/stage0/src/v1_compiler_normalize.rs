@@ -16,8 +16,8 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
