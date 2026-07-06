@@ -1,0 +1,7 @@
+module synthetic.fn_family.probe_two
+
+import v2.std.nat { Nat }
+
+fn aaa(x: Nat) -> Nat { x }
+
+fn bbb(y: Nat) -> Nat { y }

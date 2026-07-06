@@ -1,9 +1,11 @@
 module v2.test.manual.fn_family_shape_probe
 
-import v2.compiler.parse { parse_module }
+import extdeps.filesystem.filesystem_io
+import v2.compiler.parse { parse_module, grammar_validate_for_parse }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
 import v2.std.node { Node, NodeKind, TypeNode, ComputationNode, Connective, Atom, Symbol, node_subtree_nodes }
 import v2.std.algebra { FreeMonoid, filter, length, fold_list, list_snoc_item }
 import v2.std.collection { List }
@@ -13,7 +15,27 @@ import v2.std.text { String }
 
 data probe_anchor: Symbol = ^fn_family_shape_probe_anchor
 
-data probe_two_fn_source: String = "module probe_m\n\nfn aaa(x: Int) -> Int \{ x \}\n\nfn bbb(y: Int) -> Int \{ y \}\n"
+data probe_two_fn_fixture_path: String = "src/v2/test/fixture/fn_family/probe_two.dag"
+
+fn probe_two_fn_source() -> String {
+  filesystem_read(path: probe_two_fn_fixture_path).content
+}
+
+fn probe_parse_stage(source_text: String) -> Int {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source_text, file: probe_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => 1
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => 2
+        Accepted { value: _, diagnostics: _ } => 3
+      }
+  }
+}
+
+fn probe_stage() -> Int {
+  probe_parse_stage(source_text: probe_two_fn_source())
+}
 
 fn probe_parse_tree(source_text: String) -> List<Node> {
   let lm = dag_language_model_wave1()
@@ -43,12 +65,12 @@ fn node_is_atom_of(n: Node, id: Symbol) -> Bool {
 }
 
 fn probe_parses() -> Int {
-  length(xs: probe_parse_tree(source_text: probe_two_fn_source))
+  length(xs: probe_parse_tree(source_text: probe_two_fn_source()))
 }
 
 fn probe_total_nodes() -> Int {
   fold_list(
-    xs: probe_parse_tree(source_text: probe_two_fn_source),
+    xs: probe_parse_tree(source_text: probe_two_fn_source()),
     empty: 0,
     cons: fn(acc, tree) { acc + length(xs: node_subtree_nodes(root: tree)) }
   )
@@ -56,7 +78,7 @@ fn probe_total_nodes() -> Int {
 
 fn probe_count_atom(id: Symbol) -> Int {
   fold_list(
-    xs: probe_parse_tree(source_text: probe_two_fn_source),
+    xs: probe_parse_tree(source_text: probe_two_fn_source()),
     empty: 0,
     cons: fn(acc, tree) {
       acc + length(xs: filter(
@@ -75,29 +97,67 @@ fn probe_name_atom_count() -> Int {
   probe_count_atom(id: ^aaa) + probe_count_atom(id: ^bbb)
 }
 
+fn probe_kind_symbol(n: Node) -> Symbol {
+  match n.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: found } => found
+        Conj => ^probe_conj
+        Disj => ^probe_disj
+        Arrow => ^probe_arrow
+        Cardinality => ^probe_cardinality
+        Instantiation => ^probe_instantiation
+      }
+    ComputationNode { behavior: _ } => ^probe_computation
+  }
+}
+
+fn probe_tree_child_kinds(acc: List<Symbol>, tree: Node) -> List<Symbol> {
+  fold_list(
+    xs: tree.children,
+    empty: acc,
+    cons: fn(a2, edge) { list_snoc_item(xs: a2, item: probe_kind_symbol(n: edge.target)) }
+  )
+}
+
+fn probe_empty_symbols() -> List<Symbol> {
+  []
+}
+
 fn probe_root_child_kinds() -> List<Symbol> {
   fold_list(
-    xs: probe_parse_tree(source_text: probe_two_fn_source),
-    empty: [],
-    cons: fn(acc, tree) {
-      fold_list(
-        xs: tree.children,
-        empty: acc,
-        cons: fn(a2, edge) {
-          match edge.target.kind {
-            TypeNode { connective: c } =>
-              match c {
-                Atom { identity: found } => list_snoc_item(xs: a2, item: found)
-                Conj => list_snoc_item(xs: a2, item: ^probe_conj)
-                Disj => list_snoc_item(xs: a2, item: ^probe_disj)
-                Arrow => list_snoc_item(xs: a2, item: ^probe_arrow)
-                Cardinality => list_snoc_item(xs: a2, item: ^probe_cardinality)
-                Instantiation => list_snoc_item(xs: a2, item: ^probe_instantiation)
-              }
-            ComputationNode { behavior: _ } => list_snoc_item(xs: a2, item: ^probe_computation)
-          }
-        }
-      )
-    }
+    xs: probe_parse_tree(source_text: probe_two_fn_source()),
+    empty: probe_empty_symbols(),
+    cons: fn(acc, tree) { probe_tree_child_kinds(acc: acc, tree: tree) }
   )
+}
+
+fn probe_grammar_validates() -> Int {
+  let lm = dag_language_model_wave1()
+  let at = port_locus(port: ^fn_family_probe_locus)
+  match lm.grammar {
+    VoidGrammar => 0
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => 1
+        Accepted { value: _, diagnostics: _ } => 2
+      }
+  }
+}
+
+fn probe_parse_reject_reasons() -> List<Symbol> {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: probe_two_fn_source(), file: probe_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => [^probe_tokenize_rejected]
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: ds } =>
+          fold_list(
+            xs: ds.tail,
+            empty: [ds.head.reason],
+            cons: fn(acc, d) { list_snoc_item(xs: acc, item: d.reason) }
+          )
+        Accepted { value: _, diagnostics: _ } => [^probe_accepted]
+      }
+  }
 }
