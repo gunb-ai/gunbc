@@ -2,41 +2,56 @@ module v2.lens.affected_set.corpus_dependency_view
 
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Measure, Milli, Time, time_measure }
+import std.nat { Nat }
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView, append_dependency_views, dependency_lens }
-import v2.std.fn_index { fn_arrow_decl_facts_live }
+import v2.std.fn_index { fn_arrow_decl_facts_live, fn_arrow_decl_substrate_is_whole_tree }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
 data corpus_dependency_view_measurement_note: String = "Phase-0 DependencyView build probe (lever-a slice 2). Folds dependency_lens over every FnArrowDecl in the resolved whole-tree context (fn_arrow_decl_facts_live) — the same whole-corpus substrate wiring_liveness uses. Production affected_set uses dependency_lens(root: InferredTree.root) once; whole-tree InferredTree root is gated on resolve grounding (#6239). This probe upper-bounds single-root fold cost by summing per-decl folds; dissolve-on: InferredTree.root lands, repoint probe at dependency_lens(root: tree.root) and delete the per-decl aggregation."
 
+type WallClockMillis = Measure<Time, Milli, Nat>
+
+fn wall_clock_millis(count: Nat) -> WallClockMillis {
+  time_measure(count: count)
+}
+
+data corpus_dependency_view_wall_clock_ms_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: WallClockMillis / phase-mark duration fields ground on std.measure time carriers; raw Int millisecond scalars retire when measure_dependency_view_build host receipt emits Measure projections only."
+
 data corpus_dependency_view_resolve_budget_minutes: Int = 90
 
 type CorpusDependencyViewResolvePhaseMark {
-  frontend_done_ms: Int
-  normalize_done_ms: Int
-  reconcile_done_ms: Int
-  view_build_done_ms: Int
+  frontend_done: WallClockMillis
+  normalize_done: WallClockMillis
+  reconcile_done: WallClockMillis
+  view_build_done: WallClockMillis
 }
 
 type CorpusDependencyViewMeasurementVerdict
-  = Completed { resolve_wall_ms: Int, view_build_wall_ms: Int, edge_count: Int, decl_count: Int }
+  = Completed {
+      resolve_wall: WallClockMillis,
+      view_build_wall: WallClockMillis,
+      edge_count: Int,
+      decl_count: Int
+    }
   | WallPricedAbort {
-      aborted_wall_ms: Int
+      aborted_wall: WallClockMillis
       budget_minutes: Int
       phase_marks: CorpusDependencyViewResolvePhaseMark
       last_phase: String
     }
 
 data corpus_dependency_view_measurement_receipt: CorpusDependencyViewMeasurementVerdict = WallPricedAbort {
-  aborted_wall_ms: 3220703,
+  aborted_wall: wall_clock_millis(count: 3220703),
   budget_minutes: corpus_dependency_view_resolve_budget_minutes,
   phase_marks: CorpusDependencyViewResolvePhaseMark {
-    frontend_done_ms: 4104,
-    normalize_done_ms: 4677,
-    reconcile_done_ms: 0,
-    view_build_done_ms: 0
+    frontend_done: wall_clock_millis(count: 4104),
+    normalize_done: wall_clock_millis(count: 4677),
+    reconcile_done: wall_clock_millis(count: 0),
+    view_build_done: wall_clock_millis(count: 0)
   },
   last_phase: "post_normalize_stuck_in_reconcile"
 }
@@ -50,15 +65,27 @@ data corpus_dependency_view_per_pr_execution_gate: Disposition = Scaffold {
   }
 }
 
-data corpus_dependency_view_per_pr_execution_gate_note: String = "Per-PR DependencyView execution (compile-clean scoping + floor witness entry_file_touched axis over live corpus) is blocked-on-#6239 on-carrier: fn_arrow_decl_facts_live / whole-tree InferredTree.root require strict whole-tree resolve (~77m compile wall, operator lane). The query swap (entry_selection) is NOT wall-gated — only its per-PR execution. Receipt: corpus_dependency_view_measurement_receipt = WallPricedAbort @3220703ms with phase marks through normalize; reconcile never completed. Dissolve-on: #6239 lands, delete this gate row and re-run measure_dependency_view_build under the 90m cap."
+data corpus_dependency_view_per_pr_execution_gate_note: String = "Per-PR DependencyView execution (compile-clean scoping + floor witness entry_file_touched axis over live corpus) is blocked-on-#6239 on-carrier: fn_arrow_decl_substrate_is_whole_tree must be true before corpus_dependency_views_live runs. Receipt: corpus_dependency_view_measurement_receipt = WallPricedAbort @3220703ms. Dissolve-on: #6239 lands, delete gate row and re-run measure_dependency_view_build under the 90m cap."
+
+fn corpus_dependency_view_per_pr_substrate_ready() -> Bool {
+  fn_arrow_decl_substrate_is_whole_tree()
+}
+
+fn corpus_dependency_view_per_pr_substrate_refuse() -> Bool {
+  corpus_dependency_view_per_pr_substrate_refuse()
+}
 
 fn corpus_dependency_views_live() -> List<DependencyView> {
-  fold(fn_arrow_decl_facts_live(), init: [], f: fn(acc, decl) {
-    append_dependency_views(
-      left: acc,
-      right: dependency_lens(root: decl.output)
-    )
-  })
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    fold(fn_arrow_decl_facts_live(), init: [], f: fn(acc, decl) {
+      append_dependency_views(
+        left: acc,
+        right: dependency_lens(root: decl.output)
+      )
+    })
+  } else {
+    corpus_dependency_view_per_pr_substrate_refuse()
+  }
 }
 
 fn corpus_dependency_view_edge_count() -> Int {

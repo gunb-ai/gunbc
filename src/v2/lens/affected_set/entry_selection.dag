@@ -1,14 +1,15 @@
 module v2.lens.affected_set.entry_selection
 
 import v2.lens.affected_set.corpus_dependency_view {
-  corpus_dependency_view_per_pr_execution_gate,
-  corpus_dependency_view_per_pr_execution_gate_note,
+  corpus_dependency_view_per_pr_substrate_ready,
+  corpus_dependency_view_per_pr_substrate_refuse,
   corpus_dependency_views_live
 }
 import v2.lens.module_graph {
   module_declaration_facts_live,
   ModuleDeclarationFact,
-  module_graph_exclude_substrings
+  module_graph_exclude_substrings,
+  path_matches_touched
 }
 import v2.std.algebra { any, contains, length, list_snoc_item }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
@@ -19,23 +20,7 @@ import v2.std.node { Node }
 import v2.std.text { String }
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
 
-data entry_selection_query_note: String = "Production entry selector (lever-a slice 2): reverse-reachability over DependencyView at node-grain, projected node -> containing module file path -> shard entry match. Replaces import-closure entry_affected_by_touched_paths. Edit-locus resolution uses module_declaration_facts path match + fn_arrow_decl output nodes for the touched module (dissolve-on: NodeArtifactProvenance over whole-tree InferredTree when #6239 lands). Per-PR live execution: corpus_dependency_view_per_pr_execution_gate (blocked-on-#6239)."
-
-fn strip_leading_dot_slash(s: String) -> String {
-  if starts_with(s: s, prefix: "./") {
-    substring(s: s, start: 2, end: string_length(s: s))
-  } else {
-    s
-  }
-}
-
-fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
-  let file = strip_leading_dot_slash(closure_path)
-  let target = strip_leading_dot_slash(touched_path)
-  string_eq(a: file, b: target)
-    || ends_with(s: file, suffix: target)
-    || ends_with(s: target, suffix: file)
-}
+data entry_selection_query_note: String = "Production entry selector (lever-a slice 2): reverse-reachability over DependencyView at node-grain, projected node -> containing module file path -> shard entry match. Replaces import-closure entry_affected_by_touched_paths. Edit-locus resolution uses module_declaration_facts path match + fn_arrow_decl output nodes for the touched module (dissolve-on: NodeArtifactProvenance over whole-tree InferredTree when #6239 lands). Per-PR live execution refuses when corpus_dependency_view_per_pr_substrate_ready is false (blocked-on-#6239)."
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
@@ -200,16 +185,18 @@ fn entry_affected_by_dependency_view_excluding(
   touched_paths: List<String>,
   exclude_substrings: List<String>
 ) -> Bool {
-  let _gate = corpus_dependency_view_per_pr_execution_gate
-  let _gate_note = corpus_dependency_view_per_pr_execution_gate_note
   let _exclude = exclude_substrings
-  entry_path_in_affected_file_paths(
-    entry_path: entry_path,
-    affected_paths: affected_file_paths_for_touched_paths(
-      pool_roots: pool_roots,
-      touched_paths: touched_paths
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    entry_path_in_affected_file_paths(
+      entry_path: entry_path,
+      affected_paths: affected_file_paths_for_touched_paths(
+        pool_roots: pool_roots,
+        touched_paths: touched_paths
+      )
     )
-  )
+  } else {
+    corpus_dependency_view_per_pr_substrate_refuse()
+  }
 }
 
 fn entry_affected_by_dependency_view(
