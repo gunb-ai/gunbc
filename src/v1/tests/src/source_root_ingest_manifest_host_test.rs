@@ -60,11 +60,10 @@ fn manifest_emits_source_root_ref_import_for_tagged_reads() {
     let temp = unique_temp_dir("manifest-sr-ref");
     fs::create_dir_all(&temp).expect("temp dir");
     let manifest_path = temp.join("manifest.dag");
+    let scan_dir = ws.join("src/v2/test/fixture/program_assembly");
     let records = discover_source_root_reads(
-        &[ws.join("src/v2").to_string_lossy().to_string()],
-        &ws.join("src/v2/test/fixture/program_assembly")
-            .to_string_lossy()
-            .to_string(),
+        &[ws.join("src/v2").to_string_lossy().into_owned()],
+        scan_dir.to_str().expect("scan dir utf-8"),
         &[],
     )
     .expect("discover reads");
