@@ -4,6 +4,7 @@ import v2.std.algebra {
   AbelianGroup,
   Cons,
   Empty,
+  fold_list,
   fold_list_node,
   FreeMonoid,
   Group,
@@ -130,6 +131,150 @@ fn decimal_digit_value(d: DecimalDigit) -> Int {
   }
 }
 
+data decimal_digit_roster: List<DecimalDigit> = [D0, D1, D2, D3, D4, D5, D6, D7, D8, D9]
+
+data nonzero_decimal_digit_roster: List<NonZeroDecimalDigit> = [
+  NonZeroD1, NonZeroD2, NonZeroD3, NonZeroD4, NonZeroD5, NonZeroD6, NonZeroD7, NonZeroD8, NonZeroD9
+]
+
+fn decimal_digit_of_units(value: Int) -> DecimalDigit {
+  if value >= 10 {
+    decimal_digit_of_units(value: value - 10)
+  } else {
+    fold_list(
+      xs: decimal_digit_roster,
+      empty: D0,
+      cons: fn(acc, d) { if decimal_digit_value(d: d) == value { d } else { acc } }
+    )
+  }
+}
+
+fn nonzero_decimal_digit_of_positive_units(value: Int) -> NonZeroDecimalDigit {
+  fold_list(
+    xs: nonzero_decimal_digit_roster,
+    empty: NonZeroD1,
+    cons: fn(acc, d) {
+      if decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: d)) == value { d } else { acc }
+    }
+  )
+}
+
+type DecimalDigitStep {
+  digit: DecimalDigit
+  carry: Bool
+}
+
+fn decimal_digit_double(d: DecimalDigit, carry_in: Bool) -> DecimalDigitStep {
+  let doubled = (2 * decimal_digit_value(d: d)) + (if carry_in { 1 } else { 0 })
+  DecimalDigitStep { digit: decimal_digit_of_units(value: doubled), carry: doubled >= 10 }
+}
+
+fn decimal_digit_sub_borrow(d: DecimalDigit, borrow_in: Bool) -> DecimalDigitStep {
+  let difference = decimal_digit_value(d: d) - (if borrow_in { 1 } else { 0 })
+  DecimalDigitStep { digit: decimal_digit_of_units(value: difference + 10), carry: difference < 0 }
+}
+
+type DecimalDigitsStep {
+  digits: FreeMonoid<DecimalDigit>
+  carry: Bool
+}
+
+fn decimal_digits_double(digits: FreeMonoid<DecimalDigit>) -> DecimalDigitsStep {
+  match digits {
+    Empty => DecimalDigitsStep { digits: Empty, carry: false }
+    Cons { head, tail } =>
+      match decimal_digits_double(digits: tail) {
+        DecimalDigitsStep { digits: doubled_tail, carry: tail_carry } =>
+          match decimal_digit_double(d: head, carry_in: tail_carry) {
+            DecimalDigitStep { digit, carry } =>
+              DecimalDigitsStep { digits: Cons { head: digit, tail: doubled_tail }, carry: carry }
+          }
+      }
+  }
+}
+
+fn decimal_digits_sub_one(digits: FreeMonoid<DecimalDigit>) -> DecimalDigitsStep {
+  match digits {
+    Empty => DecimalDigitsStep { digits: Empty, carry: true }
+    Cons { head, tail } =>
+      match decimal_digits_sub_one(digits: tail) {
+        DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
+          match decimal_digit_sub_borrow(d: head, borrow_in: tail_borrow) {
+            DecimalDigitStep { digit, carry } =>
+              DecimalDigitsStep { digits: Cons { head: digit, tail: sub_tail }, carry: carry }
+          }
+      }
+  }
+}
+
+fn decimal_digits_to_magnitude(digits: FreeMonoid<DecimalDigit>) -> DecimalMagnitude {
+  match digits {
+    Empty => DecimalZero
+    Cons { head, tail } =>
+      if decimal_digit_value(d: head) == 0 {
+        decimal_digits_to_magnitude(digits: tail)
+      } else {
+        DecimalNonZero {
+          magnitude: DecimalNonZeroMagnitude {
+            lead: nonzero_decimal_digit_of_positive_units(value: decimal_digit_value(d: head)),
+            tail: tail
+          }
+        }
+      }
+  }
+}
+
+type NonZeroDoubleLead
+  = NonZeroDoubleStays { lead: NonZeroDecimalDigit }
+  | NonZeroDoubleOverflows { pushed: DecimalDigit }
+
+fn nonzero_decimal_digit_double_lead(lead: NonZeroDecimalDigit, carry_in: Bool) -> NonZeroDoubleLead {
+  let doubled = (2 * decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: lead))) + (if carry_in { 1 } else { 0 })
+  if doubled >= 10 {
+    NonZeroDoubleOverflows { pushed: decimal_digit_of_units(value: doubled) }
+  } else {
+    NonZeroDoubleStays { lead: nonzero_decimal_digit_of_positive_units(value: doubled) }
+  }
+}
+
+fn decimal_nonzero_double(m: DecimalNonZeroMagnitude) -> DecimalNonZeroMagnitude {
+  match decimal_digits_double(digits: m.tail) {
+    DecimalDigitsStep { digits: doubled_tail, carry: tail_carry } =>
+      match nonzero_decimal_digit_double_lead(lead: m.lead, carry_in: tail_carry) {
+        NonZeroDoubleStays { lead } =>
+          DecimalNonZeroMagnitude { lead: lead, tail: doubled_tail }
+        NonZeroDoubleOverflows { pushed } =>
+          DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Cons { head: pushed, tail: doubled_tail } }
+      }
+  }
+}
+
+fn nonzero_decimal_digit_minus_borrow(lead: NonZeroDecimalDigit, borrow_in: Bool) -> DecimalDigit {
+  decimal_digit_of_units(
+    value: decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: lead)) - (if borrow_in { 1 } else { 0 })
+  )
+}
+
+fn decimal_nonzero_sub_one(m: DecimalNonZeroMagnitude) -> DecimalMagnitude {
+  match decimal_digits_sub_one(digits: m.tail) {
+    DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
+      decimal_digits_to_magnitude(
+        digits: Cons {
+          head: nonzero_decimal_digit_minus_borrow(lead: m.lead, borrow_in: tail_borrow),
+          tail: sub_tail
+        }
+      )
+  }
+}
+
+fn integer_pow2_magnitude(exponent: Int) -> DecimalNonZeroMagnitude {
+  if exponent <= 0 {
+    DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [] }
+  } else {
+    decimal_nonzero_double(m: integer_pow2_magnitude(exponent: exponent - 1))
+  }
+}
+
 fn decimal_digit_compare(left: DecimalDigit, right: DecimalDigit) -> Ordering {
   int_compare(a: decimal_digit_value(d: left), b: decimal_digit_value(d: right))
 }
@@ -191,49 +336,98 @@ type StandardIntegerType
   | UInt16
   | UInt8
 
-fn integer_standard_integer_type_interval_spec(standard_integer_type: StandardIntegerType) -> IntegerIntervalSpec {
+fn integer_standard_integer_type_signedness(standard_integer_type: StandardIntegerType) -> Signedness {
   match standard_integer_type {
-    Int128 => int128_interval_spec()
-    Int64 => int64_interval_spec()
-    Int32 => int32_interval_spec()
-    Int16 => int16_interval_spec()
-    Int8 => int8_interval_spec()
-    UInt128 => uint128_interval_spec()
-    UInt64 => uint64_interval_spec()
-    UInt32 => uint32_interval_spec()
-    UInt16 => uint16_interval_spec()
-    UInt8 => uint8_interval_spec()
+    Int128 => Signed
+    Int64 => Signed
+    Int32 => Signed
+    Int16 => Signed
+    Int8 => Signed
+    UInt128 => Unsigned
+    UInt64 => Unsigned
+    UInt32 => Unsigned
+    UInt16 => Unsigned
+    UInt8 => Unsigned
   }
 }
 
+fn integer_standard_integer_type_width_bits(standard_integer_type: StandardIntegerType) -> Int {
+  match standard_integer_type {
+    Int128 => 128
+    Int64 => 64
+    Int32 => 32
+    Int16 => 16
+    Int8 => 8
+    UInt128 => 128
+    UInt64 => 64
+    UInt32 => 32
+    UInt16 => 16
+    UInt8 => 8
+  }
+}
+
+fn integer_magnitude_upper_bound(magnitude: DecimalMagnitude) -> IntegerIntervalBound {
+  match magnitude {
+    DecimalZero => IntegerConcreteZero
+    DecimalNonZero { magnitude } =>
+      IntegerConcreteBound { sign: IntegerBoundNonNegative, magnitude: magnitude }
+  }
+}
+
+fn integer_machine_interval_spec(signedness: Signedness, width_bits: Int) -> IntegerIntervalSpec {
+  match signedness {
+    Signed =>
+      integer_interval(
+        inclusive_min: integer_concrete_bound(
+          sign: IntegerBoundNegative,
+          magnitude: integer_pow2_magnitude(exponent: width_bits - 1)
+        ),
+        inclusive_max: integer_magnitude_upper_bound(
+          magnitude: decimal_nonzero_sub_one(m: integer_pow2_magnitude(exponent: width_bits - 1))
+        )
+      )
+    Unsigned =>
+      integer_interval(
+        inclusive_min: integer_concrete_zero(),
+        inclusive_max: integer_magnitude_upper_bound(
+          magnitude: decimal_nonzero_sub_one(m: integer_pow2_magnitude(exponent: width_bits))
+        )
+      )
+  }
+}
+
+fn integer_standard_integer_type_interval_spec(standard_integer_type: StandardIntegerType) -> IntegerIntervalSpec {
+  integer_machine_interval_spec(
+    signedness: integer_standard_integer_type_signedness(standard_integer_type: standard_integer_type),
+    width_bits: integer_standard_integer_type_width_bits(standard_integer_type: standard_integer_type)
+  )
+}
+
+data integer_standard_integer_type_roster: List<StandardIntegerType> = [
+  Int128, Int64, Int32, Int16, Int8,
+  UInt128, UInt64, UInt32, UInt16, UInt8
+]
+
 fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntegerType> {
-  if node == integer_interval_spec_node(spec: int128_interval_spec()) {
-    Accepted { value: Int128, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: int64_interval_spec()) {
-    Accepted { value: Int64, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: int32_interval_spec()) {
-    Accepted { value: Int32, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: int16_interval_spec()) {
-    Accepted { value: Int16, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: int8_interval_spec()) {
-    Accepted { value: Int8, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: uint128_interval_spec()) {
-    Accepted { value: UInt128, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: uint64_interval_spec()) {
-    Accepted { value: UInt64, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: uint32_interval_spec()) {
-    Accepted { value: UInt32, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: uint16_interval_spec()) {
-    Accepted { value: UInt16, diagnostics: None }
-  } else if node == integer_interval_spec_node(spec: uint8_interval_spec()) {
-    Accepted { value: UInt8, diagnostics: None }
-  } else {
-    Rejected {
+  fold_list(
+    xs: integer_standard_integer_type_roster,
+    empty: Rejected {
       diagnostics: diagnostics_singleton(
         d: integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: node)
       )
+    },
+    cons: fn(acc, candidate) {
+      match acc {
+        Accepted { value: _, diagnostics: _ } => acc
+        Rejected { diagnostics: _ } =>
+          if node == integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: candidate)) {
+            Accepted { value: candidate, diagnostics: None }
+          } else {
+            acc
+          }
+      }
     }
-  }
+  )
 }
 
 fn integer_pointer_width_bound_compare(
@@ -466,73 +660,43 @@ fn integer_pointer_width_bound(
 }
 
 fn int8_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D8] }),
-    inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D7] })
-  )
+  integer_machine_interval_spec(signedness: Signed, width_bits: 8)
 }
 
 fn int16_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD3, tail: [D2, D7, D6, D8] }),
-    inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD3, tail: [D2, D7, D6, D7] })
-  )
+  integer_machine_interval_spec(signedness: Signed, width_bits: 16)
 }
 
 fn int32_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: [D1, D4, D7, D4, D8, D3, D6, D4, D8] }),
-    inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: [D1, D4, D7, D4, D8, D3, D6, D4, D7] })
-  )
+  integer_machine_interval_spec(signedness: Signed, width_bits: 32)
 }
 
 fn int64_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD9, tail: [D2, D2, D3, D3, D7, D2, D0, D3, D6, D8, D5, D4, D7, D7, D5, D8, D0, D8] }),
-    inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD9, tail: [D2, D2, D3, D3, D7, D2, D0, D3, D6, D8, D5, D4, D7, D7, D5, D8, D0, D7] })
-  )
+  integer_machine_interval_spec(signedness: Signed, width_bits: 64)
 }
 
 fn int128_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D7, D0, D1, D4, D1, D1, D8, D3, D4, D6, D0, D4, D6, D9, D2, D3, D1, D7, D3, D1, D6, D8, D7, D3, D0, D3, D7, D1, D5, D8, D8, D4, D1, D0, D5, D7, D2, D8] }),
-    inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D7, D0, D1, D4, D1, D1, D8, D3, D4, D6, D0, D4, D6, D9, D2, D3, D1, D7, D3, D1, D6, D8, D7, D3, D0, D3, D7, D1, D5, D8, D8, D4, D1, D0, D5, D7, D2, D7] })
-  )
+  integer_machine_interval_spec(signedness: Signed, width_bits: 128)
 }
 
 fn uint8_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_concrete_zero(),
-    inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: [D5, D5] })
-  )
+  integer_machine_interval_spec(signedness: Unsigned, width_bits: 8)
 }
 
 fn uint16_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_concrete_zero(),
-    inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD6, tail: [D5, D5, D3, D5] })
-  )
+  integer_machine_interval_spec(signedness: Unsigned, width_bits: 16)
 }
 
 fn uint32_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_concrete_zero(),
-    inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD4, tail: [D2, D9, D4, D9, D6, D7, D2, D9, D5] })
-  )
+  integer_machine_interval_spec(signedness: Unsigned, width_bits: 32)
 }
 
 fn uint64_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_concrete_zero(),
-    inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D8, D4, D4, D6, D7, D4, D4, D0, D7, D3, D7, D0, D9, D5, D5, D1, D6, D1, D5] })
-  )
+  integer_machine_interval_spec(signedness: Unsigned, width_bits: 64)
 }
 
 fn uint128_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_concrete_zero(),
-    inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD3, tail: [D4, D0, D2, D8, D2, D3, D6, D6, D9, D2, D0, D9, D3, D8, D4, D6, D3, D4, D6, D3, D3, D7, D4, D6, D0, D7, D4, D3, D1, D7, D6, D8, D2, D1, D1, D4, D5, D5] })
-  )
+  integer_machine_interval_spec(signedness: Unsigned, width_bits: 128)
 }
 
 fn int_platform_interval_spec() -> IntegerIntervalSpec {
