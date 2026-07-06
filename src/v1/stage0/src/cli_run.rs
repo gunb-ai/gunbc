@@ -313,7 +313,7 @@ pub fn compile_dag_rust_emit_check(
     let module_index = build_module_path_index_from_witness_roots();
     let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
     let result = v1_compiler_compile::compile_sources(
-        Rc::new(sources),
+        Rc::new(sources.into()),
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
     let hard_diagnostics = result
@@ -1308,7 +1308,7 @@ fn resolve_entry_with_parse_cache(
     let source_indices = Rc::new(si_map);
     let global_table = index.intern_table.borrow().clone();
 
-    let graph = v1_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
+    let graph = v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
 
     if graph
         .diagnostics
@@ -1412,10 +1412,10 @@ fn reconcile_with_typed_cache(
     module_identity: &RefCell<HashMap<String, String>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     reset_type_env_lookup_profile();
-    let mut modules: Rc<Vec<Rc<TypedModule>>> = Rc::new(Vec::new());
+    let mut modules: Rc<im_rc::Vector<Rc<TypedModule>>> = Rc::new(im_rc::Vector::new());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v1_rt::rc_empty_map();
-    let mut diag_chunks: Vec<Rc<Vec<Rc<ErrorNode>>>> = Vec::new();
+    let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
 
@@ -1490,8 +1490,8 @@ fn reconcile_with_typed_cache(
 
     let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
-    let diagnostics: Rc<Vec<Rc<ErrorNode>>> = Rc::new({
-        let mut acc = Vec::new();
+    let diagnostics: Rc<im_rc::Vector<Rc<ErrorNode>>> = Rc::new({
+        let mut acc = im_rc::Vector::new();
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
@@ -1539,7 +1539,7 @@ fn format_error_node(
 }
 
 fn format_error_nodes(
-    diags: &Rc<Vec<Rc<ErrorNode>>>,
+    diags: &Rc<im_rc::Vector<Rc<ErrorNode>>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     diags
@@ -1561,9 +1561,9 @@ fn resolved_graph_from_sources(
     String,
 > {
     let result = match typecheck_gate {
-        ResolveTypecheckGate::Strict => v1_compiler_compile::compile_to_resolved(Rc::new(sources)),
+        ResolveTypecheckGate::Strict => v1_compiler_compile::compile_to_resolved(Rc::new(sources.into())),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
-            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(sources))
+            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(sources.into()))
         }
     };
 
@@ -1967,7 +1967,7 @@ pub fn whole_corpus_semantic_oracle_snapshot(
     use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources.into()));
     let graph = result.graph.as_ref().ok_or_else(|| {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -2175,7 +2175,7 @@ pub fn handle_run_with_options(
     };
     eprintln!("resolved {} sources", sources.len());
 
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
 
     let has_errors = result
         .diagnostics
@@ -10802,7 +10802,7 @@ fn resolve_dag_path_for_transport_script(path: &str) -> PathBuf {
 
 fn parse_module_items_for_transport_script(
     path: &str,
-) -> (Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+) -> (Rc<im_rc::Vector<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
     let resolved = resolve_dag_path_for_transport_script(path);
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
@@ -12111,7 +12111,7 @@ pub struct RestTransportCollectResult {
 }
 
 fn rest_transport_field_string(
-    props: Rc<Vec<Rc<Node>>>,
+    props: Rc<im_rc::Vector<Rc<Node>>>,
     prop_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {

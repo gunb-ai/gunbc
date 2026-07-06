@@ -1,3 +1,4 @@
+use crate::v1_rt::VecCompat;
 use im_rc::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -596,7 +597,7 @@ fn marshal_skeleton(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> (Value, std::collections::BTreeSet<String>) {
     match node.expr_data.as_ref() {
-        ExprData::ExprBlock => marshal_stmt_sequence(ctx, &node.children, param_names, si),
+        ExprData::ExprBlock => marshal_stmt_sequence(ctx, &node.children.iter().cloned().collect::<std::vec::Vec<_>>(), param_names, si),
         ExprData::ExprLet => {
             marshal_stmt_sequence(ctx, std::slice::from_ref(node), param_names, si)
         }

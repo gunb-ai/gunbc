@@ -2,6 +2,7 @@
 // Source module: v1.compiler.resolve
 
 pub use crate::std_types::kernel_type_set;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -101,7 +102,7 @@ pub fn resolve_modules(
             }),
             |acc: Rc<ResolveAccum>, m: Rc<Node>| {
                 let acc =
-                    v1_rt::take_owned_counted(acc, "src/v1/stage0/src/v1_compiler_resolve.rs:102");
+                    v1_rt::take_owned(acc);
                 {
                     let result = resolve_module_imports(
                         m.clone(),
@@ -675,10 +676,7 @@ pub fn kahn_drain(
                 in_degree_map: in_degree_map.clone(),
             }),
             |state: Rc<KahnDrainState>, node: String| {
-                let state = v1_rt::take_owned_counted(
-                    state,
-                    "src/v1/stage0/src/v1_compiler_resolve.rs:676",
-                );
+                let state = v1_rt::take_owned(state);
                 {
                     let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
                     let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {

@@ -2,6 +2,7 @@
 // Source module: extdeps.languages.python.emit
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
+use crate::v1_rt::VecJoin;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_emit_model::SimpleMethodSpec;

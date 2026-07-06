@@ -1,3 +1,4 @@
+use crate::v1_rt::VecCompat;
 use im_rc::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -29,7 +30,7 @@ fn rel_path(path: &Path) -> String {
 /// Parse-only module items for one `.dag` file (no resolve). Shared substrate for
 /// `decl_facts(roots)` (#5966) and emit-only corpus audits.
 pub struct ParsedDagFile {
-    pub items: Rc<Vec<Rc<Node>>>,
+    pub items: Rc<im_rc::Vector<Rc<Node>>>,
     pub source_indices: SourceIndices,
 }
 

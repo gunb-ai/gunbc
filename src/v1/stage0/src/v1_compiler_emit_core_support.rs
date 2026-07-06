@@ -2,6 +2,7 @@
 // Source module: v1.compiler.emit_core_support
 
 pub use crate::v1_compiler_artifact::RenderTarget;
+use crate::v1_rt::VecJoin;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_items::ResolvedGraph;
 pub use crate::v1_compiler_infer_service::UniqueAccum;

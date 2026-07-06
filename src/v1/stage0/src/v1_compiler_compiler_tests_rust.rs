@@ -2,6 +2,7 @@
 // Source module: v1.compiler.compiler_tests_rust
 
 pub use crate::v1_compiler_artifact::RenderTarget;
+use crate::v1_rt::VecJoin;
 use crate::v1_compiler_artifact::RenderTarget::{Go, Python, Rust};
 pub use crate::v1_compiler_coercion::extract_coercion_tests;
 use crate::v1_compiler_coercion::CoercionAssertion::{

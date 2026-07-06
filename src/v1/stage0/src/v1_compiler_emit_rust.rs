@@ -9,6 +9,7 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_templates, rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
     rust_serde_rename_all_snake_case, rust_struct_derives, rust_struct_derives_copy,
 };
+use crate::v1_rt::VecJoin;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_serialization::VariantEncoding::*;
@@ -3404,10 +3405,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                 >(),
             }),
             |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
-                let acc = v1_rt::take_owned_counted(
-                    acc,
-                    "src/v1/stage0/src/v1_compiler_emit_rust.rs:3406",
-                );
+                let acc = v1_rt::take_owned(acc);
                 {
                     let read_only = if v1_rt::set_contains(
                         &callable_set,

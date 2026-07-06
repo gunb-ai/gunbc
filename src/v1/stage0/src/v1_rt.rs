@@ -66,6 +66,37 @@ pub fn record_source_chars_index_lookup() {
 #[cfg(not(feature = "text_lookup_work_counter"))]
 pub fn record_source_chars_index_lookup() {}
 
+// Vec here is im_rc's persistent Vector (one realization with the interpreter's
+// Value::List). VecCompat papers the two API deltas the emitter's method rows
+// rely on (first/join) so emitted call sites stay identical across carriers.
+pub trait VecCompat<T> {
+    fn first(&self) -> Option<&T>;
+    fn push(&mut self, item: T);
+    fn with_capacity(capacity: usize) -> Self;
+}
+
+impl<T: Clone> VecCompat<T> for Vec<T> {
+    fn first(&self) -> Option<&T> {
+        self.front()
+    }
+    fn push(&mut self, item: T) {
+        self.push_back(item);
+    }
+    fn with_capacity(_capacity: usize) -> Self {
+        Vec::new()
+    }
+}
+
+pub trait VecJoin {
+    fn join(&self, sep: &str) -> String;
+}
+
+impl VecJoin for Vec<String> {
+    fn join(&self, sep: &str) -> String {
+        self.iter().cloned().collect::<std::vec::Vec<_>>().join(sep)
+    }
+}
+
 pub trait V2Concat {
     fn v1_concat(self, other: Self) -> Self;
 }
@@ -77,7 +108,7 @@ impl V2Concat for String {
     }
 }
 
-impl<T> V2Concat for Vec<T> {
+impl<T: Clone> V2Concat for Vec<T> {
     fn v1_concat(mut self, other: Vec<T>) -> Vec<T> {
         self.extend(other);
         self
@@ -152,7 +183,7 @@ pub fn trim(s: String) -> String {
     s.trim().to_string()
 }
 
-pub fn count<T>(items: Rc<Vec<T>>) -> i64 {
+pub fn count<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.len() as i64
 }
 
@@ -258,19 +289,19 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
     m.values().cloned().collect()
 }
 
-pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
+pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
     a.extend(b);
     a
 }
 
-pub fn list_push<T>(mut list: Vec<T>, item: T) -> Vec<T> {
+pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> {
     list.push(item);
     list
 }
 
 pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
     let mut v = (*list).clone();
-    v.push(item);
+    v.push_back(item);
     v
 }
 
@@ -280,8 +311,10 @@ pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
     let end = (end.max(0) as usize).min(len).max(start);
     let units = (end.saturating_sub(start)) as u64;
     record_source_chars_slice_walked(units);
-    chars[start..end]
+    chars
         .iter()
+        .skip(start)
+        .take(end - start)
         .filter_map(|&cp| char::from_u32(cp as u32))
         .collect()
 }
@@ -302,21 +335,13 @@ pub fn rc_empty_set<T: Ord>() -> Rc<BTreeSet<T>> {
     Rc::new(BTreeSet::new())
 }
 
-#[track_caller]
 pub fn rc_set_insert<T: Ord + Clone>(mut s: Rc<BTreeSet<T>>, x: T) -> Rc<BTreeSet<T>> {
-    if Rc::strong_count(&s) > 1 {
-        rc_shared_update_guard("rc_set_insert", Rc::strong_count(&s));
-    }
     Rc::make_mut(&mut s).insert(x);
     s
 }
 
-#[track_caller]
 pub fn rc_set_union<T: Ord + Clone>(a: Rc<BTreeSet<T>>, b: Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>> {
     let mut out = a;
-    if Rc::strong_count(&out) > 1 {
-        rc_shared_update_guard("rc_set_union", Rc::strong_count(&out));
-    }
     for x in b.iter().cloned() {
         Rc::make_mut(&mut out).insert(x);
     }
@@ -328,9 +353,7 @@ pub fn set_contains<T: Ord, S: AsRef<BTreeSet<T>>>(s: S, x: T) -> bool {
 }
 
 pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
-    let mut v = (*list).clone();
-    v.reverse();
-    Rc::new(v)
+    Rc::new(list.iter().cloned().rev().collect())
 }
 
 pub fn replace(s: String, from: String, to: String) -> String {
@@ -343,94 +366,14 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // will call these. Read-only functions (map_get, map_keys, map_values, lookup,
 // map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
 
-// Shared-Rc update guard (operator ruling 2026-07-05): a clone fallback in an
-// rc_* update is a degradation arm — it must refuse (fail, the default and the
-// only production mode) or be counted and loud (count: the stopped-line audit
-// instrument, never a way to keep producing), per DESIGN.md 5. There is no
-// silence mode — escape hatches are banned (operator ruling 2026-07-05).
-// #[track_caller] threads the generated caller's file:line into the diagnostic
-// so each refusal names the exact emitted site to license.
-struct RcCloneFallbackLedger(std::cell::RefCell<std::collections::HashMap<String, u64>>);
-
-impl Drop for RcCloneFallbackLedger {
-    fn drop(&mut self) {
-        let m = self.0.borrow();
-        if m.is_empty() {
-            return;
-        }
-        let mut v: Vec<(&String, &u64)> = m.iter().collect();
-        v.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
-        eprintln!("clone-fallback report: {} sites degraded this run", v.len());
-        for (site, n) in v {
-            eprintln!("clone-fallback total: {:>12}  {}", n, site);
-        }
-    }
-}
-
-thread_local! {
-    static RC_CLONE_FALLBACKS: RcCloneFallbackLedger =
-        RcCloneFallbackLedger(std::cell::RefCell::new(std::collections::HashMap::new()));
-}
-
-fn clone_fallback_mode() -> u8 {
-    static MODE: std::sync::OnceLock<u8> = std::sync::OnceLock::new();
-    *MODE.get_or_init(|| match std::env::var("GUNBC_CLONE_FALLBACK").as_deref() {
-        Ok("count") => 1,
-        _ => 2,
-    })
-}
-
-#[track_caller]
-fn rc_shared_update_guard(op: &str, strong: usize) {
-    match clone_fallback_mode() {
-        1 => {
-            let key = format!("{} at {}", op, std::panic::Location::caller());
-            RC_CLONE_FALLBACKS.with(|m| {
-                let mut m = m.0.borrow_mut();
-                let n = m.entry(key.clone()).or_insert(0);
-                *n += 1;
-                if *n == 1 {
-                    eprintln!("clone-fallback (count): {}", key);
-                }
-            });
-        }
-        _ => panic!(
-            "clone-fallback refused: {} at {} on a shared Rc (strong={}) — this update \
-             deep-copies the whole container. Last use? -> missing move license \
-             (emitter site). Genuinely still live? -> the copy needs structural \
-             sharing, not a clone. GUNBC_CLONE_FALLBACK=count runs the stopped-line \
-             audit (full ledger, still not a green run).",
-            op,
-            std::panic::Location::caller(),
-            strong
-        ),
-    }
-}
-
-pub fn rc_clone_fallback_counts() -> Vec<(String, u64)> {
-    RC_CLONE_FALLBACKS.with(|m| {
-        let mut v: Vec<(String, u64)> = m.0.borrow().iter().map(|(k, n)| (k.clone(), *n)).collect();
-        v.sort();
-        v
-    })
-}
-
-#[track_caller]
 pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
     let mut v = list;
-    if Rc::strong_count(&v) > 1 {
-        rc_shared_update_guard("rc_list_push", Rc::strong_count(&v));
-    }
-    Rc::make_mut(&mut v).push(item);
+    Rc::make_mut(&mut v).push_back(item);
     v
 }
 
-#[track_caller]
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     let mut result = a;
-    if Rc::strong_count(&result) > 1 {
-        rc_shared_update_guard("rc_list_concat", Rc::strong_count(&result));
-    }
     Rc::make_mut(&mut result).extend(b.iter().cloned());
     result
 }
@@ -780,58 +723,11 @@ pub fn contiguous_loop_elementwise_kernel(
     out
 }
 
-// take_owned_counted: the fail-closed replacement for the silent
-// `Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())` fallback (DESIGN.md §5:
-// a failure arm must refuse or be counted, never silently widen). The ownership
-// proof licenses the take-owned; a shared Rc at runtime is a proof deficit whose
-// per-site frequency must stay observable, so the clone arm counts per emitted
-// site (site = "<module>:<span_start>" of the use-site the emitter rewrote).
-thread_local! {
-    static TAKE_OWNED_CLONE_FALLBACKS: std::cell::RefCell<std::collections::HashMap<&'static str, u64>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-/// INVARIANT: `site` must be a string literal (the emitter always passes one).
-/// Counts key on `&'static str`; a non-literal static with duplicate content
-/// could fragment one site's count across entries and silently degrade the
-/// per-site observability this function exists to provide (DESIGN.md 5).
-pub fn take_owned_counted<T: Clone>(x: Rc<T>, site: &'static str) -> T {
-    Rc::try_unwrap(x).unwrap_or_else(|rc| {
-        if clone_fallback_mode() == 2 {
-            panic!(
-                "clone-fallback refused: take_owned at emitted site {} on a shared Rc \
-                 (strong={}) — the licensed move found the value still shared. \
-                 GUNBC_CLONE_FALLBACK=count runs the stopped-line audit.",
-                site,
-                Rc::strong_count(&rc)
-            );
-        }
-        TAKE_OWNED_CLONE_FALLBACKS.with(|m| *m.borrow_mut().entry(site).or_insert(0) += 1);
-        let key = format!("take_owned at {}", site);
-        RC_CLONE_FALLBACKS.with(|m| {
-            let mut m = m.0.borrow_mut();
-            let n = m.entry(key.clone()).or_insert(0);
-            *n += 1;
-            if *n == 1 {
-                eprintln!("clone-fallback (count): {}", key);
-            }
-        });
-        (*rc).clone()
-    })
-}
-
-pub fn take_owned_clone_fallback_counts() -> Vec<(String, u64)> {
-    TAKE_OWNED_CLONE_FALLBACKS.with(|m| {
-        let mut v: Vec<(String, u64)> = m
-            .borrow()
-            .iter()
-            .map(|(site, n)| (site.to_string(), *n))
-            .collect();
-        v.sort();
-        v
-    })
-}
-
-pub fn reset_take_owned_clone_fallbacks() {
-    TAKE_OWNED_CLONE_FALLBACKS.with(|m| m.borrow_mut().clear());
+// take_owned: move out of a uniquely-held Rc; clone when shared. With every
+// container realized persistently (im_rc), the shared-arm clone is cheap
+// structural sharing — an ordinary designed path, not a degradation arm, so
+// no counter and no refusal (the clone-fallback guard class was deleted with
+// the Rc<std container> carriers it policed).
+pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
+    Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())
 }

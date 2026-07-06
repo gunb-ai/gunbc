@@ -2,6 +2,7 @@
 // Source module: v1.compiler.compile
 
 pub use crate::std_computation::ShrinkFactor;
+use crate::v1_rt::VecJoin;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
@@ -2245,7 +2246,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let acc =
-                    v1_rt::take_owned_counted(acc, "src/v1/stage0/src/v1_compiler_compile.rs:2244");
+                    v1_rt::take_owned(acc);
                 {
                     let parsed = parse_with_table(
                         p.tokens.clone(),

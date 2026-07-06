@@ -1,3 +1,4 @@
+use crate::v1_rt::VecCompat;
 use im_rc::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
@@ -992,7 +993,7 @@ impl ExecutionMode {
 }
 
 pub struct InterpContext {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
+    pub modules: Rc<im_rc::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,

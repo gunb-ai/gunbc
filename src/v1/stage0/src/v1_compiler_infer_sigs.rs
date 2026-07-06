@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_sigs
 
 pub use crate::std_induction::SubValueRelation;
+use crate::v1_rt::VecCompat;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;

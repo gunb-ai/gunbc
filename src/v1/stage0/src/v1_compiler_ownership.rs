@@ -1192,10 +1192,7 @@ pub fn analyze_ownership(
                 .iter()
                 .cloned()
                 .fold(empty_usage_accum(), |acc: Rc<UsageAccum>, p: Rc<Node>| {
-                    let acc = v1_rt::take_owned_counted(
-                        acc,
-                        "src/v1/stage0/src/v1_compiler_ownership.rs:1194",
-                    );
+                    let acc = v1_rt::take_owned(acc);
                     {
                         let p_name = authored_name_at(si.clone(), p.clone());
                         Rc::new(UsageAccum {

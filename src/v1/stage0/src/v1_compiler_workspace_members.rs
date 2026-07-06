@@ -3,6 +3,7 @@
 
 pub use crate::v1_compiler_stage0_crates::stage0_crate_plan;
 pub use crate::v1_compiler_stage0_crates::Stage0CrateSpec;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

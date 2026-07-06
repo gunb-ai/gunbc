@@ -3,6 +3,7 @@
 
 pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffix};
 pub use crate::std_induction::SubValueRelation;
+use crate::v1_rt::VecJoin;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{BinOp, LiteralValue};

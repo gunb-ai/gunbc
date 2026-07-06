@@ -2,6 +2,7 @@
 
 #![allow(unused_parens, clippy::all, clippy::disallowed_macros)]
 
+use crate::v1_rt::VecCompat;
 use clap::{Parser, Subcommand};
 
 use im_rc::HashMap;

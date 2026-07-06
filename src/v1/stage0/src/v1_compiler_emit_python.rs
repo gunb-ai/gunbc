@@ -2,6 +2,7 @@
 // Source module: v1.compiler.emit_python
 
 pub use crate::std_induction::SubValueRelation;
+use crate::v1_rt::VecJoin;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{BinOp, LiteralValue};

@@ -2,6 +2,7 @@
 // Source module: v1.probe.emit_interp
 
 pub use crate::v1_compiler_artifact::RenderTarget;
+use crate::v1_rt::VecJoin;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_compile::compile_sources;
 pub use crate::v1_compiler_compile::SourceFile;
