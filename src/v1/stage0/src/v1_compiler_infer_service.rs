@@ -7,9 +7,9 @@ use crate::v1_compiler_infer_items::ItemKind::FuncItem;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, TypedModule};
 pub use crate::v1_compiler_infer_types::{emit_map_has, nominal_type_ref};
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -23,8 +23,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{Cardinality, Connective, ExprData, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

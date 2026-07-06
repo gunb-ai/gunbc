@@ -73,10 +73,9 @@ pub use crate::v1_compiler_languages::{
     TestNameStyle, VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
-use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::AlgebraFieldKind::*;
 use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -118,8 +117,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {

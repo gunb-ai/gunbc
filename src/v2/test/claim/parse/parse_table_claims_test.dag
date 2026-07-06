@@ -253,8 +253,10 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
   }
   let tok_a = parse_table_token(class: ^pt_parse_expr_tok_a)
   let tok_b = parse_table_token(class: ^pt_parse_expr_tok_b)
+  let tok_c = parse_table_token(class: ^pt_parse_expr_tok_c)
   let toks_a = Cons { head: tok_a, tail: Empty }
   let toks_b = Cons { head: tok_b, tail: Empty }
+  let toks_c = Cons { head: tok_c, tail: Empty }
   let toks_ab = Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } }
   let toks_aab = Cons { head: tok_a, tail: Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } } }
   let r1 = match parse_expr(
@@ -325,5 +327,16 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
     ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: _ } => false
     ParseExprRejected { diagnostics: _, table: _ } => true
   }
-  r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8
+  let r9 = match parse_expr(
+    expr: Choice {
+      left: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass } },
+      right: Terminal { token_class: ^pt_parse_expr_tok_b, stamp: StampClass }
+    },
+    tokens: toks_c, all_tokens: toks_c, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _, table: _ } =>
+      length(xs: rest) == 1
+    ParseExprRejected { diagnostics: _, table: _ } => false
+  }
+  r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8 && r9
 }

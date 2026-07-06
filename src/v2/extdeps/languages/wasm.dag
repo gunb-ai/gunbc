@@ -286,48 +286,27 @@ fn wasm_float_facts_node(facts: WasmFloatPrimitiveFacts) -> Node {
 }
 }
 
-fn wasm_integer_inhabitant_node(id: Symbol, facts: WasmIntegerPrimitiveFacts) -> Node {
+fn wasm_inhabitant_node(id: Symbol, facts: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       wasm_named_edge(name: ^wasm_inhabitant_field_atom, target: wasm_inhabitant_atom(id: id)),
-      wasm_named_edge(
-        name: ^wasm_inhabitant_field_facts,
-        target: wasm_integer_facts_node(facts: facts)
-      )
+      wasm_named_edge(name: ^wasm_inhabitant_field_facts, target: facts)
     ],
     occurrence_id: SyntheticOccurrence
+  }
 }
+
+fn wasm_integer_inhabitant_node(id: Symbol, facts: WasmIntegerPrimitiveFacts) -> Node {
+  wasm_inhabitant_node(id: id, facts: wasm_integer_facts_node(facts: facts))
 }
 
 fn wasm_float_inhabitant_node(id: Symbol, facts: WasmFloatPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      wasm_named_edge(name: ^wasm_inhabitant_field_atom, target: wasm_inhabitant_atom(id: id)),
-      wasm_named_edge(
-        name: ^wasm_inhabitant_field_facts,
-        target: wasm_float_facts_node(facts: facts)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  wasm_inhabitant_node(id: id, facts: wasm_float_facts_node(facts: facts))
 }
 
 fn wasm_inhabitant_i32_node() -> Node {
   wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i32, facts: wasm_facts_i32)
-}
-
-fn wasm_inhabitant_i64_node() -> Node {
-  wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i64, facts: wasm_facts_i64)
-}
-
-fn wasm_inhabitant_f32_node() -> Node {
-  wasm_float_inhabitant_node(id: ^wasm_inhabitant_f32, facts: wasm_facts_f32)
-}
-
-fn wasm_inhabitant_f64_node() -> Node {
-  wasm_float_inhabitant_node(id: ^wasm_inhabitant_f64, facts: wasm_facts_f64)
 }
 
 fn wasm_integer_inhabitant_id(facts: WasmIntegerPrimitiveFacts) -> Symbol {
@@ -408,42 +387,6 @@ fn wasm_float_numeric_immediate_node(
 }
 }
 
-fn wasm_i32_numeric_literal_node() -> Node {
-  wasm_int_numeric_immediate_node(
-    surface: ^wasm_surface_i32_numeric_literal,
-    token_class: ^wasm_token_i32_numeric_literal,
-    width: WasmIntBits32,
-    validation: ^wasm_numeric_immediate_validation_i32_range
-  )
-}
-
-fn wasm_i64_numeric_literal_node() -> Node {
-  wasm_int_numeric_immediate_node(
-    surface: ^wasm_surface_i64_numeric_literal,
-    token_class: ^wasm_token_i64_numeric_literal,
-    width: WasmIntBits64,
-    validation: ^wasm_numeric_immediate_validation_i64_range
-  )
-}
-
-fn wasm_f32_numeric_literal_node() -> Node {
-  wasm_float_numeric_immediate_node(
-    surface: ^wasm_surface_f32_numeric_literal,
-    token_class: ^wasm_token_f32_numeric_literal,
-    width: WasmFloatBits32,
-    validation: ^wasm_numeric_immediate_validation_f32_payload
-  )
-}
-
-fn wasm_f64_numeric_literal_node() -> Node {
-  wasm_float_numeric_immediate_node(
-    surface: ^wasm_surface_f64_numeric_literal,
-    token_class: ^wasm_token_f64_numeric_literal,
-    width: WasmFloatBits64,
-    validation: ^wasm_numeric_immediate_validation_f64_payload
-  )
-}
-
 fn wasm_localidx_node(token_class: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^wasm_surface_localidx } },
@@ -462,7 +405,7 @@ fn wasm_localidx_node(token_class: Symbol) -> Node {
       )
     ],
     occurrence_id: SyntheticOccurrence
-}
+  }
 }
 
 fn wasm_localidx_operand_node() -> Node {
@@ -473,13 +416,13 @@ fn wasm_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      wasm_named_edge(name: ^wasm_inhabitant_field_i32, target: wasm_inhabitant_i32_node()),
-      wasm_named_edge(name: ^wasm_inhabitant_field_i64, target: wasm_inhabitant_i64_node()),
-      wasm_named_edge(name: ^wasm_inhabitant_field_f32, target: wasm_inhabitant_f32_node()),
-      wasm_named_edge(name: ^wasm_inhabitant_field_f64, target: wasm_inhabitant_f64_node()),
+      wasm_named_edge(name: ^wasm_inhabitant_field_i32, target: wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i32, facts: wasm_facts_i32)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_i64, target: wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i64, facts: wasm_facts_i64)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_f32, target: wasm_float_inhabitant_node(id: ^wasm_inhabitant_f32, facts: wasm_facts_f32)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_f64, target: wasm_float_inhabitant_node(id: ^wasm_inhabitant_f64, facts: wasm_facts_f64))
     ],
     occurrence_id: SyntheticOccurrence
-}
+  }
 }
 
 fn wasm_mvp1_selection_policy_node() -> Node {
@@ -922,34 +865,6 @@ fn wasm_localidx_literal_lex_rule() -> LexRule {
   )
 }
 
-fn wasm_i32_numeric_literal_lex_rule() -> LexRule {
-  wasm_numeric_literal_lex_rule(
-    token_class: ^wasm_token_i32_numeric_literal,
-    pattern: wasm_wat_int_literal_lex_pattern()
-  )
-}
-
-fn wasm_i64_numeric_literal_lex_rule() -> LexRule {
-  wasm_numeric_literal_lex_rule(
-    token_class: ^wasm_token_i64_numeric_literal,
-    pattern: wasm_wat_int_literal_lex_pattern()
-  )
-}
-
-fn wasm_f32_numeric_literal_lex_rule() -> LexRule {
-  wasm_numeric_literal_lex_rule(
-    token_class: ^wasm_token_f32_numeric_literal,
-    pattern: wasm_wat_float_literal_lex_pattern()
-  )
-}
-
-fn wasm_f64_numeric_literal_lex_rule() -> LexRule {
-  wasm_numeric_literal_lex_rule(
-    token_class: ^wasm_token_f64_numeric_literal,
-    pattern: wasm_wat_float_literal_lex_pattern()
-  )
-}
-
 fn wasm_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -986,10 +901,22 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
       wasm_int_numeric_literal_lex_rule(),
       wasm_float_numeric_literal_lex_rule(),
       wasm_localidx_literal_lex_rule(),
-      wasm_i32_numeric_literal_lex_rule(),
-      wasm_i64_numeric_literal_lex_rule(),
-      wasm_f32_numeric_literal_lex_rule(),
-      wasm_f64_numeric_literal_lex_rule(),
+      wasm_numeric_literal_lex_rule(
+        token_class: ^wasm_token_i32_numeric_literal,
+        pattern: wasm_wat_int_literal_lex_pattern()
+      ),
+      wasm_numeric_literal_lex_rule(
+        token_class: ^wasm_token_i64_numeric_literal,
+        pattern: wasm_wat_int_literal_lex_pattern()
+      ),
+      wasm_numeric_literal_lex_rule(
+        token_class: ^wasm_token_f32_numeric_literal,
+        pattern: wasm_wat_float_literal_lex_pattern()
+      ),
+      wasm_numeric_literal_lex_rule(
+        token_class: ^wasm_token_f64_numeric_literal,
+        pattern: wasm_wat_float_literal_lex_pattern()
+      ),
       wasm_lex_rule(token_class: ^wasm_token_i32_const, text: "i32.const"),
       wasm_lex_rule(token_class: ^wasm_token_i32_add, text: "i32.add"),
       wasm_lex_rule(token_class: ^wasm_token_i32_sub, text: "i32.sub"),
@@ -1451,36 +1378,68 @@ fn wasm_grammar_production_value_type() -> GrammarProduction {
   }
 }
 
-fn wasm_grammar_production_i32_numeric_literal() -> GrammarProduction {
+fn wasm_grammar_production_numeric_literal(
+  production: Symbol,
+  token_class: Symbol,
+  emitted: Node
+) -> GrammarProduction {
   GrammarProduction {
-    name: ^wasm_production_i32_numeric_literal,
-    expression: wasm_grammar_terminal(token_class: ^wasm_token_i32_numeric_literal),
-    emitted: wasm_i32_numeric_literal_node()
+    name: production,
+    expression: wasm_grammar_terminal(token_class: token_class),
+    emitted: emitted
   }
+}
+
+fn wasm_grammar_production_i32_numeric_literal() -> GrammarProduction {
+  wasm_grammar_production_numeric_literal(
+    production: ^wasm_production_i32_numeric_literal,
+    token_class: ^wasm_token_i32_numeric_literal,
+    emitted: wasm_int_numeric_immediate_node(
+      surface: ^wasm_surface_i32_numeric_literal,
+      token_class: ^wasm_token_i32_numeric_literal,
+      width: WasmIntBits32,
+      validation: ^wasm_numeric_immediate_validation_i32_range
+    )
+  )
 }
 
 fn wasm_grammar_production_i64_numeric_literal() -> GrammarProduction {
-  GrammarProduction {
-    name: ^wasm_production_i64_numeric_literal,
-    expression: wasm_grammar_terminal(token_class: ^wasm_token_i64_numeric_literal),
-    emitted: wasm_i64_numeric_literal_node()
-  }
+  wasm_grammar_production_numeric_literal(
+    production: ^wasm_production_i64_numeric_literal,
+    token_class: ^wasm_token_i64_numeric_literal,
+    emitted: wasm_int_numeric_immediate_node(
+      surface: ^wasm_surface_i64_numeric_literal,
+      token_class: ^wasm_token_i64_numeric_literal,
+      width: WasmIntBits64,
+      validation: ^wasm_numeric_immediate_validation_i64_range
+    )
+  )
 }
 
 fn wasm_grammar_production_f32_numeric_literal() -> GrammarProduction {
-  GrammarProduction {
-    name: ^wasm_production_f32_numeric_literal,
-    expression: wasm_grammar_terminal(token_class: ^wasm_token_f32_numeric_literal),
-    emitted: wasm_f32_numeric_literal_node()
-  }
+  wasm_grammar_production_numeric_literal(
+    production: ^wasm_production_f32_numeric_literal,
+    token_class: ^wasm_token_f32_numeric_literal,
+    emitted: wasm_float_numeric_immediate_node(
+      surface: ^wasm_surface_f32_numeric_literal,
+      token_class: ^wasm_token_f32_numeric_literal,
+      width: WasmFloatBits32,
+      validation: ^wasm_numeric_immediate_validation_f32_payload
+    )
+  )
 }
 
 fn wasm_grammar_production_f64_numeric_literal() -> GrammarProduction {
-  GrammarProduction {
-    name: ^wasm_production_f64_numeric_literal,
-    expression: wasm_grammar_terminal(token_class: ^wasm_token_f64_numeric_literal),
-    emitted: wasm_f64_numeric_literal_node()
-  }
+  wasm_grammar_production_numeric_literal(
+    production: ^wasm_production_f64_numeric_literal,
+    token_class: ^wasm_token_f64_numeric_literal,
+    emitted: wasm_float_numeric_immediate_node(
+      surface: ^wasm_surface_f64_numeric_literal,
+      token_class: ^wasm_token_f64_numeric_literal,
+      width: WasmFloatBits64,
+      validation: ^wasm_numeric_immediate_validation_f64_payload
+    )
+  )
 }
 
 fn wasm_grammar_production_localidx() -> GrammarProduction {

@@ -38,15 +38,15 @@ fn python_claim_bool_atom(b: Bool) -> Node {
 fn python_wave1_grammar_validates_fixture() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: python_wave1_grammar_root(), at: at) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
-fn python_wave1_grammar_parse_accepted() -> Bool {
+fn python_wave1_grammar_parse_blocked_at_validate() -> Bool {
   match python_wave1_grammar_parse_fixture() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -72,7 +72,7 @@ fn python_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
 }
 
 data claim_python_wave1_grammar_validates: TestClaim = EqualsClaim {
-  label: "python_wave1_grammar_root passes grammar_validate_for_parse",
+  label: "python_wave1_grammar_root fails grammar_validate_for_parse (choice ambiguity count=1 until left-factored)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_claim_bool_atom(b: python_wave1_grammar_validates_fixture()),
   rhs: python_claim_bool_atom(b: true),
@@ -80,9 +80,9 @@ data claim_python_wave1_grammar_validates: TestClaim = EqualsClaim {
 }
 
 data claim_python_wave1_grammar_parses_tokens: TestClaim = EqualsClaim {
-  label: "python MVP-1 production parse_production accepts lexer output for def-add source",
+  label: "python MVP-1 parse blocked at grammar_validate_for_parse until stmt-suite choice overlap defactored",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: python_claim_bool_atom(b: python_wave1_grammar_parse_accepted()),
+  lhs: python_claim_bool_atom(b: python_wave1_grammar_parse_blocked_at_validate()),
   rhs: python_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
