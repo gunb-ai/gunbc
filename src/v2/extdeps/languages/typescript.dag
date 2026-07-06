@@ -1,6 +1,10 @@
 module v2.extdeps.languages.typescript
 import v2.std.language_model { LanguageModel }
 
+import v2.std.primitive_catalog {
+  catalog_surface_symbol_in_rows,
+  primitive_fact_bundles_from_catalog_rows
+}
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.grammar {
   StampClass,
@@ -2083,20 +2087,16 @@ fn ts_wave1_lex_token_symbol(sym: Symbol) -> Bool {
     sym == ^ts_token_semicolon
 }
 
-fn ts_catalog_surface_symbol_step(sym: Symbol, acc: Bool, row: TsEcma262NumericPrimitiveFactsUnion) -> Bool {
-  match row {
-    TsNumericFactsNumber { facts: f } => acc || sym == f.surface_spelling
-    TsNumericFactsBigInt { facts: f } => acc || sym == f.surface_spelling
-  }
-}
-
 fn ts_catalog_surface_symbol(sym: Symbol) -> Bool {
   sym == ts_facts_boolean.surface_spelling ||
-  fold_list(
-    xs: ts_numeric_facts_catalog,
-    empty: false,
-    cons: fn(acc, row) {
-      ts_catalog_surface_symbol_step(sym: sym, acc: acc, row: row)
+  catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ts_numeric_facts_catalog,
+    row_surface_spelling: fn(row) {
+      match row {
+        TsNumericFactsNumber { facts: f } => f.surface_spelling
+        TsNumericFactsBigInt { facts: f } => f.surface_spelling
+      }
     }
   )
 }
@@ -2184,30 +2184,16 @@ fn ts_primitive_bundle_from_bool_facts(facts: TsBooleanPrimitiveFacts) -> Primit
   }
 }
 
-fn ts_primitive_bundles_from_catalog_step(
-  acc: List<PrimitiveFactBundle>,
-  row: TsEcma262NumericPrimitiveFactsUnion
-) -> List<PrimitiveFactBundle> {
-  match row {
-    TsNumericFactsNumber { facts: f } =>
-      list_snoc_item(
-        xs: acc,
-        item: ts_primitive_bundle_from_number_facts(facts: f)
-      )
-    TsNumericFactsBigInt { facts: f } =>
-      list_snoc_item(
-        xs: acc,
-        item: ts_primitive_bundle_from_bigint_facts(facts: f)
-      )
-  }
-}
-
 fn ts_numeric_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ts_numeric_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, row) {
-      ts_primitive_bundles_from_catalog_step(acc: acc, row: row)
+  primitive_fact_bundles_from_catalog_rows(
+    rows: ts_numeric_facts_catalog,
+    row_to_bundle: fn(row) {
+      match row {
+        TsNumericFactsNumber { facts: f } =>
+          ts_primitive_bundle_from_number_facts(facts: f)
+        TsNumericFactsBigInt { facts: f } =>
+          ts_primitive_bundle_from_bigint_facts(facts: f)
+      }
     }
   )
 }

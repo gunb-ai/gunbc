@@ -1,6 +1,10 @@
 module v2.extdeps.languages.ecmascript
 import v2.std.language_model { LanguageModel }
 
+import v2.std.primitive_catalog {
+  catalog_surface_symbol_in_rows,
+  primitive_fact_bundles_from_catalog_rows
+}
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.algebra { Empty, fold_list, list_append, list_snoc_item }
 import v2.std.grammar {
@@ -514,79 +518,55 @@ fn ecmascript_primitive_bundle_from_singleton_facts(
 }
 
 fn ecmascript_primitive_bundles_from_number_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_number_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_number_facts(facts: facts)
-      )
+  primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_number_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_number_facts(facts: facts)
     }
   )
 }
 
 fn ecmascript_primitive_bundles_from_bigint_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_bigint_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_bigint_facts(facts: facts)
-      )
+  primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_bigint_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_bigint_facts(facts: facts)
     }
   )
 }
 
 fn ecmascript_primitive_bundles_from_boolean_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_boolean_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_boolean_facts(facts: facts)
-      )
+  primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_boolean_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_boolean_facts(facts: facts)
     }
   )
 }
 
 fn ecmascript_primitive_bundles_from_symbol_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_symbol_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_symbol_facts(facts: facts)
-      )
+  primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_symbol_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_symbol_facts(facts: facts)
     }
   )
 }
 
 fn ecmascript_primitive_bundles_from_string_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_string_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_string_facts(facts: facts)
-      )
+  primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_string_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_string_facts(facts: facts)
     }
   )
 }
 
 fn ecmascript_primitive_bundles_from_singleton_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: ecmascript_singleton_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: ecmascript_primitive_bundle_from_singleton_facts(facts: facts)
-      )
+  primitive_fact_bundles_from_catalog_rows(
+    rows: ecmascript_singleton_facts_catalog,
+    row_to_bundle: fn(facts) {
+      ecmascript_primitive_bundle_from_singleton_facts(facts: facts)
     }
   )
 }
@@ -1340,119 +1320,51 @@ fn ecmascript_wave1_lex_token_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn ecmascript_catalog_surface_spelling_eq(sym: Symbol, spelling: Symbol) -> Bool {
-  sym == spelling
-}
-
-fn ecmascript_catalog_surface_fold_false() -> Bool {
-  false
-}
-
-fn ecmascript_number_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptNumberPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
-}
-
 fn ecmascript_number_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_number_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_number_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_number_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
-}
-
-fn ecmascript_bigint_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptBigIntPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn ecmascript_bigint_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_bigint_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_bigint_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_bigint_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
-}
-
-fn ecmascript_boolean_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptBooleanPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn ecmascript_boolean_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_boolean_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_boolean_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_boolean_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
-}
-
-fn ecmascript_string_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptStringPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn ecmascript_string_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_string_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_string_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_string_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
-}
-
-fn ecmascript_symbol_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptSymbolPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn ecmascript_symbol_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_symbol_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_symbol_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_symbol_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
 }
 
-fn ecmascript_singleton_catalog_surface_step(
-  sym: Symbol,
-  acc: Bool,
-  facts: EcmascriptSingletonPrimitiveFacts
-) -> Bool {
-  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
-}
-
 fn ecmascript_singleton_catalog_surface_symbol(sym: Symbol) -> Bool {
-  fold_list(
-    xs: ecmascript_singleton_facts_catalog,
-    empty: ecmascript_catalog_surface_fold_false(),
-    cons: fn(acc, facts) {
-      ecmascript_singleton_catalog_surface_step(sym: sym, acc: acc, facts: facts)
-    }
+  catalog_surface_symbol_in_rows(
+    sym: sym,
+    rows: ecmascript_singleton_facts_catalog,
+    row_surface_spelling: fn(facts) { facts.surface_spelling }
   )
 }
 
