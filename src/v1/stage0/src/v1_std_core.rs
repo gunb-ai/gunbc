@@ -1197,10 +1197,14 @@ pub fn authored_name_at(
         Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
             Some(index) => {
                 let text = source_text_at(index.clone(), span.clone());
-                if (text.clone() == "".to_string()) {
-                    "".to_string()
+                if text.is_empty() {
+                    if node.name.is_empty() {
+                        String::new()
+                    } else {
+                        node.name.clone()
+                    }
                 } else {
-                    text.clone()
+                    text
                 }
             }
             None => {
