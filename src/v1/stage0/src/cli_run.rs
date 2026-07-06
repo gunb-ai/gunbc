@@ -616,12 +616,10 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = path.to_string_lossy().to_string();
                 let rel_forward = workspace_relative_repo_path(&rel_path);
-                if is_source_root_ingest_manifest_stub_rel(&rel_forward) {
-                    let overlay =
-                        source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx);
-                    if overlay {
-                        continue;
-                    }
+                if is_source_root_ingest_manifest_stub_rel(&rel_forward)
+                    && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
+                {
+                    continue;
                 }
                 if let Some(existing) = index.get(&module_path) {
                     if existing.path != rel_path && !same_canonical_file(&existing.path, &rel_path)
@@ -4227,10 +4225,7 @@ struct FileLineRange {
 
 fn floor_git_diff_range() -> Result<String, String> {
     use v1_interpreter::Value;
-    // Match claim_executor's workspace-relative --source-root argv (witness_layer_roots),
-    // not default_source_roots() absolute paths. Mixed path keys in the shared module index
-    // made resolve_transitively emit the same module twice → duplicate module declaration.
-    let roots: Vec<String> = witness_layer_roots();
+    let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
         .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
@@ -5058,13 +5053,6 @@ fn floor_diff_edits_from_line_ranges(
         }
         saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
-        // v1 compiler-stage fragments live outside witness_layer_roots (gunbc.ci_layer_roots
-        // excludes src/v1 from floor discovery). They are not standalone witness entry points,
-        // so resolve_entry_with_index fails; coarse attribution only.
-        if file_norm.starts_with("src/v1/") {
-            saw_non_dag = true;
-            continue;
-        }
         if !std::path::Path::new(file_path).exists() {
             if departed_paths.contains(&file_norm) {
                 // Departed per the diff (deletion / rename-from): its decl set
@@ -5137,10 +5125,7 @@ fn floor_diff_edits_from_line_ranges(
         }
         // Module-line edits (line 1) stay fail-closed for modifies — renaming can
         // change entry identity. Wholly-added files necessarily touch line 1.
-        if changed.contains(&1)
-            && !added_paths.contains(&file_norm)
-            && !added_paths.contains(file_path)
-        {
+        if changed.contains(&1) && !added_paths.contains(&file_norm) {
             return Err(format!("diff before first declaration in {file_path}"));
         }
         let has_pre_decl = changed.iter().any(|&l| l < first_decl_line);
@@ -5359,7 +5344,6 @@ pub fn run_discovery_corpus_with_options(
         line_ranges_by_file.entry(path.clone()).or_default();
     }
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
-    let added_paths = parse_unified_diff_added_paths(&diff_text);
     let changed_paths: Vec<String> = name_status_changed_paths;
     // Union-resolve S1 (docs/plans/resolver-graph-major-design.md §7): ONE index for the
     // whole process step. Frontier attribution, the floor runner context, and every roster
@@ -5381,7 +5365,7 @@ pub fn run_discovery_corpus_with_options(
             &line_ranges_by_file,
             &changed_new_lines_by_file,
             &name_status_departed_paths,
-            &added_paths,
+            &parse_unified_diff_added_paths(&diff_text),
         ) {
             Ok(edits) => (true, edits),
             Err(msg) => {

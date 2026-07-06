@@ -59,4 +59,4 @@ pub type UIntPlatform = crate::std_machine_constraints::Compose<
 
 pub type NonNegativeInt = i64;
 
-pub type PositiveInt = Rc<CommutativeSemiring<Magnitude>>;
+pub type PositiveInt = Nat;
