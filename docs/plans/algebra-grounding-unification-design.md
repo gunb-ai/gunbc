@@ -64,15 +64,26 @@ The template/profile machinery (dag-only) and the operational-fold machinery (mo
 - **`QualifiedName` promotion executes mechanically** afterward — the discriminating downstream signal that the authority is genuinely single.
 - `cargo test --workspace` green; the algebra/FreeMonoid witnesses (`generic_alias_coproduct_instantiation_test.dag`) green.
 
-## 7. Open decisions for the operator (the load-bearing calls I cannot make)
+## 7. Resolved decisions (operator, 2026-07-06)
 
-These are the model-before-implement forks that need your sign-off before any edit:
+- **Q1 — operational-fold home → `std.algebra`** (not a `std.list` split). Decided by consumers + naturalness (operator: "look at consumers, which is more natural"): the 6 ops (`fold_list` 100 consumers, `skip` 84, `list_head`/`list_tail`/`fold_list_right` ~15, `freemonoid_empty` 5) are consumed pervasively across the v2 tree and operate on `FreeMonoid` specifically — they are the free monoid's "ops from inhabitance," so they belong beside the coproduct. `dag/std/list.dag` already exists but is a near-empty stub over a *different* type (`std.types.List`, not `FreeMonoid`); routing the FreeMonoid fold ops there would fuse the List-vs-FreeMonoid representation question, which is the deferred Q4 alias work. Keep them in `std.algebra`.
+- **Q2 — reconcile the structure records if reasonable; FreeMonoid unfork is the priority** (operator). So: the `FreeMonoid` coproduct + `Empty`/`Cons` + the fold ops unfork **first and unconditionally**; the `Magma`…`BooleanAlgebra` record reconciliation rides along **only if** a shared-body diff shows the two record forms are already equal (or trivially so). If they diverge non-trivially (a real *divergent grounding*), the records stay as a follow-on and this lane collapses only `FreeMonoid` + ops — the priority is met without blocking on the record grounding.
+- **Q3 — pull the `04_infer` recursive-`Cons.tail` residue into this lane** (operator). It is load-bearing `03_resolve`/`04_infer` work and stays model-first, but it is in-scope here, not a separate escalation. (Reversed my earlier "separate" read on the operator's call.)
+- **Q4 — land only `QualifiedName` here; `String`/`List` aliases are a separate follow-on** (operator will dispatch that after Root A). ⚠️ **Root-A ownership gap:** the audit assigns Root A (the `05_emit_rust.dag` grounding emit-seam) to **jolly-cat**, who is **no longer in the session tree** (operator observed 2026-07-06). The `String`/`List` alias follow-on depends on Root A landing, so Root A needs a fresh owner before that follow-on can start. This lane does **not** need Root A (QualifiedName-only, no host-`Vec` alias grounding required), so it is not blocked — but the gap is flagged for the operator to re-dispatch.
+- **Q5 — prefer a std/extdeps home for the Node-encoding fns over a new compiler module** (operator: "roll into std or extdeps if you can"). Feasible because the surface is tiny: `algebra_inhabitance_node` has **1** live consumer (`src/v2/lens/leaf_model_verification.dag:613`) and the `*_type_node`/`*_node` family has **0**. So rather than mint `v2.compiler.algebra_encoding`, keep the encoding fns in `std.algebra` (they build only on `std.node` + the coproduct, no upward dependency) — they are a projection of the algebra types into `Node`, std-appropriate — and prune any genuinely dead `*_node`/`*_type_node` with zero consumers as part of the collapse (a §2 win rather than a relayer).
 
-- **Q1 — operational-fold home: `std.algebra` or a split `std.list`?** The 6 fold ops are generic list operations. Folding them into `std.algebra` keeps one file; splitting a `std.list` module is cleaner layering but adds a module. Which?
-- **Q2 — structure-record reconciliation.** The audit classes `algebra` as a *divergent grounding*, so the `Magma`…`BooleanAlgebra` records may differ in method signatures between the two files. Is reconciling them in-scope here, or is only `FreeMonoid` + the operational ops unforked now, with the structure records deferred to the numeric-tower grounding they entangle with?
-- **Q3 — the `04_infer` recursive-`Cons.tail` residue.** Prerequisite dispatched separately (load-bearing infer work), or pulled into this lane? My read: separate — it pre-dates and is load-bearing, so it should be its own escalation.
-- **Q4 — aliases: land `String`/`List` here, or only `QualifiedName`?** `String`/`List` aliasing has repo-wide blast radius and rides Root A's emit-seam; `QualifiedName` is contained. My recommendation: land only `QualifiedName` here (it unparks the motivating item), defer `String`/`List` to the Root-A-coordinated follow-on.
-- **Q5 — module naming for the relayered Node-encoding fns.** `v2.compiler.algebra_encoding`, or fold into an existing `04_infer` support module?
+## 7.1 Implementation sequencing (on the signed shape)
+
+Dependency-ordered; the collapse is **one atomic push** per the §5 auto-committer hazard (stage every file together).
+
+1. **Shared-body diff of the structure records** (`Magma`…`BooleanAlgebra`) between the two files — decides Q2's "reasonable" branch (reconcile-along vs records-deferred). Cheap, gates nothing else. *(next step)*
+2. **`04_infer` recursive-`Cons.tail` residue** (Q3, load-bearing) — verify current state (an earlier grep for the *"variant not found"* string found nothing live, so it may be partially resolved) and fix so the coproduct fold typechecks without the `list_head` workaround. Model-first; escalate if the fix touches `03_resolve` semantics beyond the fixpoint gap.
+3. **`std.algebra` authority merge** — move the 6 fold ops + (if Q2-reasonable) reconciled records into `dag/std/algebra.dag`; keep the low-consumer encoding fns, prune dead ones.
+4. **Delete** `src/v2/std/algebra.dag`'s `FreeMonoid`/`Empty`/`Cons` (+ moved ops/records) decls; **repoint** the 290 `import v2.std.algebra` sites to `import std.algebra` — a single fold, staged in the same push as the delete.
+5. **`QualifiedName` → `std.qualified_name`** (Q4-contained), unparking `type-env §5.1`.
+6. **Validation** per §6 (flag-ANY wall green over the 75 co-occurrence entries; byte-identical fixpoint; shadow repro witness).
+
+Steps 3–4 are the atomic collapse; the 290-importer repoint is mechanical and parallelizable (candidate for dispatched sub-lanes) while the load-bearing core (steps 2–3) stays with this session.
 
 ## 8. Dissolution
 
