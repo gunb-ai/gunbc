@@ -10,7 +10,8 @@
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
+use v1_compiler::v1_compiler_artifact::RenderTarget;
+use v1_compiler::v1_compiler_compile::{compile_to_resolved, emit_resolved_for_target, SourceFile};
 use v1_compiler::v1_std_core::{empty_intern_table, intern, intern_str, InternTable};
 
 /// O(M²) shows ~4× wall-clock per module-count doubling; linear stays sub-4×.
@@ -76,6 +77,38 @@ fn time_import_chain_compile(depth: usize) -> Duration {
     }
     samples.sort();
     samples[samples.len() / 2]
+}
+
+/// EMIT-isolated scaling probe (§7.5 emit-first): compile once (outside timer), then time ONLY
+/// `emit_resolved_for_target(.., Rust)` which drives `emit_imports` (the 78% O(M?) suspect). Compared
+/// against the front-half receipt below, a higher/climbing ratio isolates emit as the superlinear locus.
+fn time_import_chain_emit(depth: usize) -> Duration {
+    let sources = synthetic_import_chain_sources(depth);
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let _ = emit_resolved_for_target(resolved.clone(), RenderTarget::Rust);
+    let mut samples = Vec::new();
+    for _ in 0..7 {
+        let start = Instant::now();
+        let _ = emit_resolved_for_target(resolved.clone(), RenderTarget::Rust);
+        samples.push(start.elapsed());
+    }
+    samples.sort();
+    samples[samples.len() / 2]
+}
+
+#[test]
+fn emit_scaling_curve_import_chain_probe() {
+    let d50 = time_import_chain_emit(50);
+    let d100 = time_import_chain_emit(100);
+    let d200 = time_import_chain_emit(200);
+    let d400 = time_import_chain_emit(400);
+    let r1 = d100.as_secs_f64() / d50.as_secs_f64().max(1e-9);
+    let r2 = d200.as_secs_f64() / d100.as_secs_f64().max(1e-9);
+    let r3 = d400.as_secs_f64() / d200.as_secs_f64().max(1e-9);
+    eprintln!(
+        "EMIT-ISOLATED scaling: d50={d50:?} d100={d100:?} d200={d200:?} d400={d400:?} \
+         r100/50={r1:.2} r200/100={r2:.2} r400/200={r3:.2} (2x=linear, 4x=quadratic)"
+    );
 }
 
 #[test]
