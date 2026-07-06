@@ -2,9 +2,9 @@ module tools.dag_compile_clean_scope
 
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
+import tools.dag_compile_clean_shard_roster { compile_clean_shard_entry_paths }
 import v2.lens.module_graph {
-  entry_affected_by_touched_paths,
-  module_declaration_facts_live
+  entry_affected_by_touched_paths
 }
 import std.types { String, Bool, List, list_length }
 
@@ -20,21 +20,12 @@ fn compile_clean_entry_root() -> String {
   compile_clean_partition_boundary().entry_root
 }
 
-fn compile_clean_entry_module_paths(entry_root: String) -> List<String> {
-  fold(
-    module_declaration_facts_live(pool_roots: [entry_root]),
-    init: [],
-    f: fn(acc, decl) { concat(acc, [decl.path]) }
-  )
-}
-
 fn compile_clean_affected_entry_paths(
   pool_roots: List<String>,
-  entry_root: String,
   touched_paths: List<String>
 ) -> List<String> {
   fold(
-    compile_clean_entry_module_paths(entry_root: entry_root),
+    compile_clean_shard_entry_paths(),
     init: [],
     f: fn(acc, entry_path) {
       if entry_affected_by_touched_paths(
@@ -54,10 +45,8 @@ fn compile_clean_scope_disposition_from_touched(
   touched_paths: List<String>
 ) -> CompileCleanScopeDisposition {
   let pool_roots = compile_clean_pool_roots()
-  let entry_root = compile_clean_entry_root()
   let affected = compile_clean_affected_entry_paths(
     pool_roots: pool_roots,
-    entry_root: entry_root,
     touched_paths: touched_paths
   )
   if list_length(items: affected) > 0 {

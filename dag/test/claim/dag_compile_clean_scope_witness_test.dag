@@ -1,0 +1,39 @@
+module test.claim.dag_compile_clean_scope_witness
+
+import tools.dag_compile_clean_scope {
+  witness_empty_touched_skips,
+  witness_docs_only_touch_skips,
+  witness_std_logic_touch_scopes,
+  witness_entry_root_is_first_witness_layer_root,
+  witness_pool_roots_match_witness_layer_roots,
+  compile_clean_scope_disposition_from_touched
+}
+
+test fn dag_compile_clean_scope_empty_touched_skips_holds() -> Bool {
+  witness_empty_touched_skips()
+}
+
+test fn dag_compile_clean_scope_docs_only_touch_skips_holds() -> Bool {
+  witness_docs_only_touch_skips()
+}
+
+test fn dag_compile_clean_scope_std_logic_touch_scopes_holds() -> Bool {
+  witness_std_logic_touch_scopes()
+}
+
+test fn dag_compile_clean_scope_partition_authority_holds() -> Bool {
+  witness_entry_root_is_first_witness_layer_root()
+    && witness_pool_roots_match_witness_layer_roots()
+}
+
+test fn dag_compile_clean_scope_importer_touched_by_dependency_edit_holds() -> Bool {
+  match compile_clean_scope_disposition_from_touched(
+    touched_paths: ["src/v2/std/logic.dag"]
+  ) {
+    ScopedRun { entry_paths: paths } =>
+      fold(paths, init: false, f: fn(found, p) {
+        found || ends_with(s: p, suffix: "dag_compile_clean_transport.dag")
+      })
+    SkipNoAffectedEntries { reason: _ } => false
+  }
+}

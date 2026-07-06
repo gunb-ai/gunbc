@@ -783,9 +783,12 @@ const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CompileCleanScopePlan {
+    /// Local dev only — no `GUNBC_CI_DIFF_BASE` in the environment.
     WholeTree,
     SkipNoAffected { reason: String },
     Scoped { entry_paths: Vec<String> },
+    /// CI path: diff observation or scope disposition failed — job must red (no widening).
+    Refused { reason: String },
 }
 
 fn compile_clean_scope_plan_from_touched_paths(
@@ -853,33 +856,25 @@ fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
             }
             match compile_clean_scope_plan_from_touched_paths(&changed_paths) {
                 Ok(plan) => plan,
-                Err(msg) => {
-                    eprintln!(
-                        "compile-clean scope: disposition query failed ({msg}) — \
-                         running whole-tree check (fail-closed)"
-                    );
-                    CompileCleanScopePlan::WholeTree
-                }
+                Err(msg) => CompileCleanScopePlan::Refused {
+                    reason: format!("compile-clean scope disposition failed: {msg}"),
+                },
             }
         }
-        Err(msg) => {
-            eprintln!(
-                "compile-clean scope: diff observation failed ({msg}) — \
-                 running whole-tree check (fail-closed)"
-            );
-            CompileCleanScopePlan::WholeTree
-        }
+        Err(msg) => CompileCleanScopePlan::Refused {
+            reason: format!("diff observation failed: {msg}"),
+        },
     }
-}
-
-fn witness_layer_roots_compile_clean_sources() -> Option<Vec<Rc<v1_compiler_compile::SourceFile>>> {
-    witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()).ok()
 }
 
 fn witness_layer_roots_compile_clean_sources_for_plan(
     plan: &CompileCleanScopePlan,
 ) -> Result<Option<Vec<Rc<v1_compiler_compile::SourceFile>>>, String> {
     match plan {
+        CompileCleanScopePlan::Refused { reason } => {
+            eprintln!("compile-clean scope: refused ({reason})");
+            Err(reason.clone())
+        }
         CompileCleanScopePlan::SkipNoAffected { reason } => {
             eprintln!("compile-clean scope: skipped ({reason})");
             Ok(None)
@@ -912,27 +907,39 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
-/// When `GUNBC_CI_DIFF_BASE` is set (CI), scopes to the affected entry import-closure
-/// (lever a: `tools.dag_compile_clean_scope`); diff observation failure falls back to whole-tree.
+/// When `GUNBC_CI_DIFF_BASE` is set (CI), scopes to affected shard entries from
+/// `tools.dag_compile_clean_scope` (lever a); diff/disposition failure refuses (never widens).
 pub fn witness_layer_roots_compile_clean_check() -> bool {
-    let sources = match witness_layer_roots_compile_clean_sources() {
-        Some(sources) => sources,
-        None => return true,
-    };
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-    !compile_clean_resolve_has_hard_errors(&result)
+    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+        Ok(None) => true,
+        Ok(Some(sources)) => {
+            let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+            !compile_clean_resolve_has_hard_errors(&result)
+        }
+        Err(msg) => {
+            eprintln!("compile-clean: source load failed ({msg})");
+            false
+        }
+    }
 }
 
 /// Emit leg: `--target dag` compile over witness layer roots without shell or disk write.
 /// Green-by-execution consumer for the batch-1 compile-clean gate (DESIGN §5).
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
-    let sources = match witness_layer_roots_compile_clean_sources() {
-        Some(sources) => sources,
-        None => return true,
-    };
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
+    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+        Ok(None) => true,
+        Ok(Some(sources)) => {
+            let result =
+                v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
+            !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
+                && !result.files.is_empty()
+        }
+        Err(msg) => {
+            eprintln!("compile-clean emit: source load failed ({msg})");
+            false
+        }
+    }
 }
 
 /// Workspace-relative path for module-graph closure queries (`v2.lens.module_graph`).
@@ -10884,6 +10891,69 @@ mod witness_layer_roots_compile_clean_tests {
         if witness_layer_roots_compile_clean_emit_check() {
             assert!(witness_layer_roots_compile_clean_check());
         }
+    }
+
+    /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
+    #[test]
+    fn scoped_plan_skips_docs_only_touch() {
+        let plan = compile_clean_scope_plan_from_touched_paths(&["docs/plans/example.md".to_string()])
+            .expect("scope disposition");
+        assert_eq!(
+            plan,
+            CompileCleanScopePlan::SkipNoAffected {
+                reason: "no compile-clean entry import-closure intersects touched paths".to_string()
+            }
+        );
+    }
+
+    /// Lever-a receipt: a direct dag entry touch scopes to at least that entry.
+    #[test]
+    fn scoped_plan_includes_touched_dag_entry() {
+        let plan = compile_clean_scope_plan_from_touched_paths(&["dag/std/logic.dag".to_string()])
+            .expect("scope disposition");
+        match plan {
+            CompileCleanScopePlan::Scoped { entry_paths } => {
+                assert!(
+                    entry_paths.iter().any(|p| p == "dag/std/logic.dag"),
+                    "expected dag/std/logic.dag in {entry_paths:?}"
+                );
+            }
+            other => panic!("expected ScopedRun, got {other:?}"),
+        }
+    }
+
+    /// Lever-a receipt: diff observation failure refuses — never widens to whole-tree.
+    #[test]
+    fn scoped_plan_refuses_on_invalid_diff_base() {
+        struct EnvGuard {
+            key: &'static str,
+            prior: Option<String>,
+        }
+        impl EnvGuard {
+            fn set(key: &'static str, value: &str) -> Self {
+                let prior = std::env::var(key).ok();
+                // SAFETY: serialized by test harness (single-threaded test module).
+                unsafe { std::env::set_var(key, value) };
+                Self { key, prior }
+            }
+        }
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                unsafe {
+                    match &self.prior {
+                        Some(v) => std::env::set_var(self.key, v),
+                        None => std::env::remove_var(self.key),
+                    }
+                }
+            }
+        }
+        let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
+        let _head = EnvGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
+        let plan = compile_clean_scope_plan_for_ci();
+        assert!(
+            matches!(plan, CompileCleanScopePlan::Refused { .. }),
+            "expected Refused on diff failure, got {plan:?}"
+        );
     }
 
     /// Hand-Rust receipt: primary-precedence pool defers to the first witness root.
