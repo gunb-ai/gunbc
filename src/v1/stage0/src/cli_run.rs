@@ -728,7 +728,7 @@ fn load_compile_clean_entry_sources(
         for path in dag_paths {
             let rel = workspace_relative_repo_path(&path.to_string_lossy());
             if let Some(filter) = entry_path_filter {
-                if !filter.contains(&rel) && !filter.contains(&path.to_string_lossy().to_string()) {
+                if !filter.contains(&rel) {
                     continue;
                 }
             }
