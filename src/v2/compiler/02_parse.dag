@@ -1681,23 +1681,21 @@ fn parse_choice_on_present_token(
       if left_first.nullable && first_list_contains(xs: right_first.terminals, item: tok.class) {
         parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
       } else {
-        if first_list_contains(xs: left_first.terminals, item: tok.class) && first_list_contains(xs: right_first.terminals, item: tok.class) {
-          parse_choice_residue_backtrack(
-            left: left,
-            right: right,
-            tokens: tokens,
-            all_tokens: all_tokens,
-            root: root,
-            table: table,
-            prov: prov
-          )
-        } else {
-          ParseExprRejected { diagnostics: [], table: table }
-        }
+        parse_choice_residue_backtrack(
+          left: left,
+          right: right,
+          tokens: tokens,
+          all_tokens: all_tokens,
+          root: root,
+          table: table,
+          prov: prov
+        )
       }
     }
   }
 }
+
+data parse_choice_dispatch_note: String = "parse_choice_first_dispatch: per-Choice expr_first_fold projects table.nullable_set + table.first_rows (not a second FIRST authority). Disjoint FIRST -> direct arm; overlap or neither-token residue -> parse_choice_residue_backtrack (try L then R, preserving nullable-left empty match on present tokens)."
 
 fn parse_choice_first_dispatch(
   left: GrammarExpr,
