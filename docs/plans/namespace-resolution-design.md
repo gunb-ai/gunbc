@@ -39,28 +39,59 @@ Everything below is a *consequence* of these two, not an independent choice.
    located `Ambiguous(candidates)` error — never a flat-namespace pick, never an
    expected-type tie-break (§1c rule 5 stays deleted). You resolve it by qualifying.
 
-## 3. The model — `resolve(name, position) → Node | Unresolved | Ambiguous`
+## 3. The model — ONE structure: the containment tree (operator, 2026-07-06)
 
-The entire feature is one total function. Given a `name` (possibly a dotted suffix) and the
-referring node's `position` (its `module` path in the namespace tree):
+There is not a namespace mechanism *and* a scoping mechanism *and* a field-access mechanism to
+reconcile. There is **one relationship — syntactic containment — and it induces all of them at
+once.** Model that tree cleanly and resolution has no knobs to tune; the tuning risk (this
+section's earlier "nearest-wins / smallest-enclosing-subtree" drafts) came entirely from
+treating resolution as a fuzzy search over a flat index instead of a walk up one tree, and from
+treating the module-namespace tree and the value-nesting tree as *separate* — they are one tree.
 
-- **Search scope** = the smallest enclosing subtree (an ancestor on `position`'s path) that
-  contains ≥1 node whose path ends in `name`. This is why a bare `Symbol` in
-  `v2.std.diagnostic` reaches the sibling `v2.std.node.Symbol`: their smallest common
-  ancestor `v2.std` contains exactly one `Symbol`.
-- **Outcome (Rule 2):**
-  - exactly one match in that subtree → **resolve** it (the reference *is* the dependency edge);
-  - two or more → **`Ambiguous`**, listing the candidate paths; the author qualifies;
-  - zero, climbing to the root → **`Unresolved`**.
-- **Minimal qualification:** a qualified reference `a.b.Name` is resolved the same way with
-  `a.b` constraining the subtree; it is *well-formed* only if the suffix is the shortest that
-  disambiguates (a lint, not a hard error — over-qualification is a Rule-1 smell, not unsafe).
+**The containment tree.** `module v2.std.node` places a file's contents at a position;
+`T { a { b } }` extends the path *below* it (`…T.a.b`); a coproduct's arms sit under it
+(`…CheckConclusion.Success`). Module-nesting and value-nesting are the same tree. Four facts
+fall out of a node's position in it, none separately specified:
 
-**Namespace root.** A file declares its own path (`module v1.compiler.resolve`,
-03_resolve.dag:1); the declared `module` path — not the filesystem path — is the node's
-position. The source-root→namespace-root binding (`src/v1/**` ↔ `v1.*`, `dag/**` ↔ `v2.*`)
-lives at that boundary; §9 flags confirming the exact map, and whether the `module`
-declaration is itself recoverable from the path (if so, it is a Rule-1 candidate to derive).
+1. **Qualified name = containment position.** `a` inside `T` *is* `T.a`; the inner `a` in
+   `T { a { a } }` *is* `T.a.a` — distinct from `T.a` because its *position* differs. Identity
+   comes from position, so **Rule 2 is satisfied by construction** — there is nothing to
+   disambiguate that the nesting has not already disambiguated.
+2. **Reference = lexical lookup up the ancestor chain.** A bare `name` resolves to the nearest
+   enclosing binding on `position`'s ancestor chain; inner shadows outer (different positions =
+   different names, no conflict). A sibling *module* is visible (it is a child of your parent, an
+   ancestor); that sibling's *members* are **not** bare — you project into it (`node.Symbol`).
+   Kernel is the root, so it is on every chain (bare everywhere).
+3. **`.` = projection one level down that tree** — field (`t.a`), module member (`node.Symbol`),
+   variant (`CheckConclusion.Success`): the *same* operation, descend into a named child.
+4. **`.` is also the sub-value relation.** `t.a` makes `a` a strict-sub-value of `t`
+   (`std.induction SubValueRelation`), which is how structural recursion is proven to descend.
+   So containment → name → scope → `.` → descent-evidence are **one structure**, and
+   `type-env-single-authority`'s `ScopeBinding { provenance }` already carries exactly it.
+
+**Outcome (the total function is a tree walk, not a search):** lexical lookup finds exactly one
+nearest binding → **resolve** (the reference *is* the dependency edge); two bindings at the same
+nearest level → **`Ambiguous`** (qualify by projecting from a container that disambiguates); none
+up to the root → **`Unresolved`**. Qualification is projection (`node.Symbol`), minimal by
+Rule 1 (project from the shallowest container that resolves uniquely; over-qualification is a
+lint, not unsafe). No expected-type *picker* (§1c rule 5); (Y) supplies the *container* in a
+typed position (a variant's expected type), which is projection-with-the-container-implicit, not
+a tie-break.
+
+**Front/back split (the operator's core ask — model it once, cleanly):**
+- **Frontend builds the tree** from nesting: each node's qualified path = its position. Pure
+  structure, *zero resolution logic*. This is precisely what `SymbolIndex` should be — **the
+  containment tree materialized** (path → node), derived from nesting, not a separate index with
+  its own reach rules.
+- **Backend walks it**: lexical lookup up (references), projection down (`.`). Trivial and
+  rigid, because "which nodes can I see" is just "which nodes are on my ancestor chain" — the
+  tree already answers it; there is no heuristic to tune.
+
+**Namespace root.** A file declares its own path (`module v1.compiler.resolve`, 03_resolve.dag:1)
+= its position in the tree. The source-root→namespace-root binding (`src/v1/**` ↔ `v1.*`,
+`dag/**` ↔ `v2.*`) lives at that boundary; §9 flags confirming the exact map and whether the
+`module` declaration is recoverable from the path (if so, the declaration is itself a Rule-1
+candidate to derive rather than author).
 
 ## 4. The uniqueness test — DECIDED: (Y), position-information (operator, 2026-07-06)
 
@@ -202,8 +233,9 @@ the *single* qualified-name authority, filled once by a topo-order DFS prepass, 
 O(M²) `ancestry_str_bindings` materialization. **That `SymbolIndex` is exactly the index
 `resolve(name, position)` queries** — Rule 1 forbids a second one. The two docs compose cleanly:
 
-- **`SymbolIndex` = the storage** (qualified name → Node, one authority). Shared. Not mine to
-  re-build; I consume it.
+- **`SymbolIndex` = the containment tree materialized** (qualified path → Node, one authority —
+  §3: the frontend builds it from nesting, it is not a separate index with its own reach rules).
+  Shared. Not mine to re-build; I consume it.
 - **`resolve(name, position)` = the semantics over it** (nearest-enclosing-subtree search +
   (Y) expected-type filter + `Ambiguous`/`Unresolved`). Mine.
 - **The one genuine difference is a policy value, not a conflict.** type-env-single-authority
@@ -224,10 +256,10 @@ shared** — which also keeps the O(M²) fix policy-agnostic (fill-once stands u
 
 **Sequencing consequence:** `SymbolIndex` lands first (it is the substrate *and* the O(M²) fix,
 gated on loyal-heron's scaling receipt per that doc's §7.5). Namespace-only is then a policy
-layer over the settled index — not a from-scratch resolver. The nearest-wins search is a query
-over `SymbolIndex`'s qualified-name keys (find the shortest key ending in `name` reachable from
-`position`); the kernel-`Nat` / `:231` / family-closure / `source_visible_names` collapse (§7)
-all happen *at* this seam. Reconciliation owed: fold the `import-list-visibility` assumption in
+layer over the settled index — not a from-scratch resolver. Resolution is a **walk over the
+containment tree** the `SymbolIndex` materializes (§3: lexical lookup up the ancestor chain, `.`
+projection down), not a fuzzy key search; the kernel-`Nat` / `:231` / family-closure /
+`source_visible_names` collapse (§7) all happen *at* this seam. Reconciliation owed: fold the `import-list-visibility` assumption in
 type-env-single-authority §3 into the policy row so it reads as one setting, not the law.
 
 ## 8. Migration — per-subtree, behind a swappable policy
@@ -250,8 +282,8 @@ values `{ import-scoped (§1c, today) , namespace-only-X , namespace-only-Y }`. 
    `v2.std.nat` = `type Nat = Zero | Succ { prev: Nat }`. It quadruple-discriminates the policy:
    - **today (kernel-first + kernel_type_set has "Nat"):** `Err(NoSuchVariable{Zero})` — ambient
      kernel `Nat` wins globally, variant family silently dropped (the fail-open);
-   - **`namespace-only-Y`:** nearest-wins binds `v2.std.nat.Nat` (module depth < kernel root) →
-     `Zero`/`Succ` bound → `Bool(false)`/`Bool(true)`;
+   - **`namespace-only-Y`:** lexical lookup binds `v2.std.nat.Nat` (nearer on the ancestor chain
+     than kernel root, which it shadows) → `Zero`/`Succ` bound → `Bool(false)`/`Bool(true)`;
    - **same-depth two-`Nat`:** `Ambiguous`, never silent;
    - **fork-removed (no kernel "Nat"):** trivially the one coproduct → same greens.
    Reproduce the red in isolation by adding `"Nat"` to `kernel_type_set` on main (lively-raven's
