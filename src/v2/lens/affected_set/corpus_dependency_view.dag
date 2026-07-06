@@ -2,7 +2,7 @@ module v2.lens.affected_set.corpus_dependency_view
 
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.measure { Measure, Milli, Time, time_measure }
+import std.measure { Millisecond, Minute, millisecond, minute }
 import std.nat { Nat }
 import v2.std.algebra { length }
 import v2.std.collection { List }
@@ -13,45 +13,39 @@ import v2.std.text { String }
 
 data corpus_dependency_view_measurement_note: String = "Phase-0 DependencyView build probe (lever-a slice 2). Folds dependency_lens over every FnArrowDecl in the resolved whole-tree context (fn_arrow_decl_facts_live) — the same whole-corpus substrate wiring_liveness uses. Production affected_set uses dependency_lens(root: InferredTree.root) once; whole-tree InferredTree root is gated on resolve grounding (#6239). This probe upper-bounds single-root fold cost by summing per-decl folds; dissolve-on: InferredTree.root lands, repoint probe at dependency_lens(root: tree.root) and delete the per-decl aggregation."
 
-type WallClockMillis = Measure<Time, Milli, Nat>
+data corpus_dependency_view_resolve_budget: Minute = minute(count: 90)
 
-fn wall_clock_millis(count: Nat) -> WallClockMillis {
-  time_measure(count: count)
-}
-
-data corpus_dependency_view_wall_clock_ms_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: WallClockMillis / phase-mark duration fields ground on std.measure time carriers; raw Int millisecond scalars retire when measure_dependency_view_build host receipt emits Measure projections only."
-
-data corpus_dependency_view_resolve_budget_minutes: Int = 90
+data corpus_dependency_view_resolve_budget_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: corpus_dependency_view_resolve_budget names the measure_dependency_view_build --resolve-budget-minutes host cap; Minute count projects to Int at the Rust emit seam only once CI budgets ground on std.measure end-to-end."
 
 type CorpusDependencyViewResolvePhaseMark {
-  frontend_done: WallClockMillis
-  normalize_done: WallClockMillis
-  reconcile_done: WallClockMillis
-  view_build_done: WallClockMillis
+  frontend_done: Millisecond
+  normalize_done: Millisecond
+  reconcile_done: Millisecond
+  view_build_done: Millisecond
 }
 
 type CorpusDependencyViewMeasurementVerdict
   = Completed {
-      resolve_wall: WallClockMillis,
-      view_build_wall: WallClockMillis,
+      resolve_wall: Millisecond,
+      view_build_wall: Millisecond,
       edge_count: Int,
       decl_count: Int
     }
   | WallPricedAbort {
-      aborted_wall: WallClockMillis
-      budget_minutes: Int
+      aborted_wall: Millisecond
+      budget: Minute
       phase_marks: CorpusDependencyViewResolvePhaseMark
       last_phase: String
     }
 
 data corpus_dependency_view_measurement_receipt: CorpusDependencyViewMeasurementVerdict = WallPricedAbort {
-  aborted_wall: wall_clock_millis(count: 3220703),
-  budget_minutes: corpus_dependency_view_resolve_budget_minutes,
+  aborted_wall: millisecond(count: 3220703),
+  budget: corpus_dependency_view_resolve_budget,
   phase_marks: CorpusDependencyViewResolvePhaseMark {
-    frontend_done: wall_clock_millis(count: 4104),
-    normalize_done: wall_clock_millis(count: 4677),
-    reconcile_done: wall_clock_millis(count: 0),
-    view_build_done: wall_clock_millis(count: 0)
+    frontend_done: millisecond(count: 4104),
+    normalize_done: millisecond(count: 4677),
+    reconcile_done: millisecond(count: 0),
+    view_build_done: millisecond(count: 0)
   },
   last_phase: "post_normalize_stuck_in_reconcile"
 }

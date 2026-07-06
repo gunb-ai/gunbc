@@ -290,6 +290,16 @@ fn microsecond_count(m: Microsecond) -> Nat {
   measure_count(m)
 }
 
+type Millisecond = Measure<Time, Milli, Nat>
+
+fn millisecond(count: Nat) -> Millisecond {
+  Millisecond { count: count }
+}
+
+fn millisecond_count(m: Millisecond) -> Nat {
+  measure_count(m)
+}
+
 type Second = Measure<Time, One, Nat>
 
 fn second(count: Nat) -> Second {
@@ -298,6 +308,16 @@ fn second(count: Nat) -> Second {
 
 fn second_count(s: Second) -> Nat {
   measure_count(s)
+}
+
+type Minute = Measure<Time, One, Nat>
+
+fn minute(count: Nat) -> Minute {
+  Minute { count: count }
+}
+
+fn minute_count(m: Minute) -> Nat {
+  measure_count(m)
 }
 
 type Percent = Measure<Dimensionless, One, Nat>
