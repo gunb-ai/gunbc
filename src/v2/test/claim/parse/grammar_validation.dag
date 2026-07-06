@@ -171,14 +171,6 @@ data validation_disjoint_choice_root: GrammarRoot = GrammarRoot {
   sync_tokens: grammar_empty_sync_tokens()
 }
 
-fn validation_choice_ambiguity_validate_rejects() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
-  match grammar_validate_for_parse(root: validation_ambiguous_choice_root, at: at) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
-  }
-}
-
 fn validation_disjoint_choice_validate_accepts() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
@@ -328,14 +320,6 @@ data claim_disjoint_choice_not_ambiguous: TestClaim = EqualsClaim {
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_choice_ambiguity(root: validation_disjoint_choice_root)),
   rhs: validation_bool_atom(b: false),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_validate_rejects_choice_ambiguity: TestClaim = EqualsClaim {
-  label: "grammar_validate_for_parse rejects grammars with overlapping Choice FIRST sets",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: validation_bool_atom(b: validation_choice_ambiguity_validate_rejects()),
-  rhs: validation_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

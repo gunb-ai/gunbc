@@ -1509,14 +1509,7 @@ fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<Validated
       if grammar_has_left_recursion(root: root) {
         Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
-        let ambiguity_roster = grammar_choice_ambiguity_roster(root: root)
-        if !is_empty(xs: ambiguity_roster) {
-          Rejected {
-            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: ambiguity_roster)
-          }
-        } else {
-          Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
-        }
+        Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
       }
     }
   }

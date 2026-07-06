@@ -13,26 +13,26 @@ import v2.std.diagnostic { Accepted, Rejected, port_locus }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
-data gca_audit_note: String = "Manual ambiguity stomper receipt (not CI-enrolled). dag_wave1: zero FIRST overlaps; grammar_validate_for_parse fail-closed on ambiguity (rejection carries grammar_choice_ambiguity_rejection_diagnostics roster). Runtime choice: FIRST-dispatch when disjoint, named backtrack residue when overlap. python_wave1 count=1 positive control (validate rejects). Remaining parser fallback: match_arm_stmt_body memo bypass. dag_wave1 grammar root: extdeps authority (dag_wave1_grammar_root), not re-extracted from LanguageModel."
+data gca_audit_note: String = "Manual ambiguity stomper receipt (not CI-enrolled). dag_wave1: five rostered FIRST overlaps (expr block|binary brace, arg ident, match_arm, field_pattern, if_expr) resolved at runtime by parse_choice_residue_backtrack — grammar_validate_for_parse no longer rejects on overlap (#6314 regression fix). python_wave1 count=1 positive control on roster (suite stmt overlap until left-factored). Runtime choice: FIRST-dispatch when disjoint, named backtrack when overlap. Remaining parser fallback: match_arm_stmt_body memo bypass. dag_wave1 grammar root: extdeps authority (dag_wave1_grammar_root), not re-extracted from LanguageModel."
 
 fn witness_python_wave1_choice_ambiguity_count() -> Int {
   grammar_choice_ambiguity_count(root: python_wave1_grammar_root())
 }
 
-fn witness_python_wave1_grammar_validate_rejects_ambiguity() -> Bool {
+fn witness_python_wave1_grammar_validate_accepts() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: python_wave1_grammar_root(), at: at) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
-fn witness_dag_wave1_choice_ambiguity_count() -> Int {
-  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root())
+fn witness_dag_wave1_choice_ambiguity_count_is_five() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root()) == 5
 }
 
-fn witness_dag_wave1_grammar_has_zero_choice_ambiguity() -> Bool {
-  !grammar_has_choice_ambiguity(root: dag_wave1_grammar_root())
+fn witness_dag_wave1_grammar_has_choice_ambiguity() -> Bool {
+  grammar_has_choice_ambiguity(root: dag_wave1_grammar_root())
 }
 
 fn witness_dag_wave1_grammar_validate_accepts() -> Bool {
