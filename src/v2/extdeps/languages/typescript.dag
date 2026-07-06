@@ -1,10 +1,6 @@
 module v2.extdeps.languages.typescript
 import v2.std.language_model { LanguageModel }
 
-import v2.std.primitive_catalog {
-  catalog_surface_symbol_in_rows,
-  primitive_fact_bundles_from_catalog_rows
-}
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.grammar {
   StampClass,
@@ -271,6 +267,34 @@ fn ts_inhabitant_atom(id: Symbol) -> Node {
 
 fn ts_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
+}
+
+fn ts_primitive_algebra_witness_node(
+  witness_field_name: Symbol,
+  witness_tag: Symbol,
+  middle_field_name: Symbol,
+  middle_field_target: Node,
+  std_projection_field_name: Symbol,
+  std_projection: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: witness_field_name,
+        target: ts_inhabitant_atom(id: witness_tag)
+      ),
+      ts_named_edge(
+        name: middle_field_name,
+        target: middle_field_target
+      ),
+      ts_named_edge(
+        name: std_projection_field_name,
+        target: ts_inhabitant_atom(id: std_projection)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
 }
 
 fn ts_number_arithmetic_semantics_node() -> Node {
@@ -2089,11 +2113,11 @@ fn ts_wave1_lex_token_symbol(sym: Symbol) -> Bool {
 
 fn ts_catalog_surface_symbol(sym: Symbol) -> Bool {
   sym == ts_facts_boolean.surface_spelling ||
-  catalog_surface_symbol_in_rows(
-    sym: sym,
-    rows: ts_numeric_facts_catalog,
-    row_surface_spelling: fn(row) {
-      match row {
+  fold_list(
+    xs: ts_numeric_facts_catalog,
+    empty: false,
+    cons: fn(acc, row) {
+      acc || sym == match row {
         TsNumericFactsNumber { facts: f } => f.surface_spelling
         TsNumericFactsBigInt { facts: f } => f.surface_spelling
       }
@@ -2185,15 +2209,19 @@ fn ts_primitive_bundle_from_bool_facts(facts: TsBooleanPrimitiveFacts) -> Primit
 }
 
 fn ts_numeric_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  primitive_fact_bundles_from_catalog_rows(
-    rows: ts_numeric_facts_catalog,
-    row_to_bundle: fn(row) {
-      match row {
-        TsNumericFactsNumber { facts: f } =>
-          ts_primitive_bundle_from_number_facts(facts: f)
-        TsNumericFactsBigInt { facts: f } =>
-          ts_primitive_bundle_from_bigint_facts(facts: f)
-      }
+  fold_list(
+    xs: ts_numeric_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, row) {
+      list_snoc_item(
+        xs: acc,
+        item: match row {
+          TsNumericFactsNumber { facts: f } =>
+            ts_primitive_bundle_from_number_facts(facts: f)
+          TsNumericFactsBigInt { facts: f } =>
+            ts_primitive_bundle_from_bigint_facts(facts: f)
+        }
+      )
     }
   )
 }
@@ -2206,66 +2234,36 @@ fn ts_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 }
 
 fn ts_number_algebra_witness_node(facts: TsNumberPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(
-        name: ^ts_witness_number_approximate_field,
-        target: ts_inhabitant_atom(id: ^ts_witness_number_approximate_field)
-      ),
-      ts_named_edge(
-        name: ^ts_facts_field_ieee754_binary,
-        target: ts_inhabitant_atom(id: facts.ieee754_binary)
-      ),
-      ts_named_edge(
-        name: ^facts_field_std_projection,
-        target: ts_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ts_primitive_algebra_witness_node(
+    witness_field_name: ^ts_witness_number_approximate_field,
+    witness_tag: ^ts_witness_number_approximate_field,
+    middle_field_name: ^ts_facts_field_ieee754_binary,
+    middle_field_target: ts_inhabitant_atom(id: facts.ieee754_binary),
+    std_projection_field_name: ^facts_field_std_projection,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(
-        name: ^ts_witness_bigint_ordered_ring,
-        target: ts_inhabitant_atom(id: ^ts_witness_bigint_ordered_ring)
-      ),
-      ts_named_edge(
-        name: ^ts_facts_field_operation_semantics,
-        target: ts_bigint_operation_semantics_node()
-      ),
-      ts_named_edge(
-        name: ^facts_field_std_projection,
-        target: ts_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ts_primitive_algebra_witness_node(
+    witness_field_name: ^ts_witness_bigint_ordered_ring,
+    witness_tag: ^ts_witness_bigint_ordered_ring,
+    middle_field_name: ^ts_facts_field_operation_semantics,
+    middle_field_target: ts_bigint_operation_semantics_node(),
+    std_projection_field_name: ^facts_field_std_projection,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ts_bool_algebra_witness_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(
-        name: ^ts_witness_bool_boolean_algebra,
-        target: ts_inhabitant_atom(id: ^ts_witness_bool_boolean_algebra)
-      ),
-      ts_named_edge(
-        name: ^ts_facts_field_encoding,
-        target: ts_inhabitant_atom(id: ts_facts_boolean.encoding)
-      ),
-      ts_named_edge(
-        name: ^ts_facts_field_std_projection,
-        target: ts_inhabitant_atom(id: ts_facts_boolean.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ts_primitive_algebra_witness_node(
+    witness_field_name: ^ts_witness_bool_boolean_algebra,
+    witness_tag: ^ts_witness_bool_boolean_algebra,
+    middle_field_name: ^ts_facts_field_encoding,
+    middle_field_target: ts_inhabitant_atom(id: ts_facts_boolean.encoding),
+    std_projection_field_name: ^ts_facts_field_std_projection,
+    std_projection: ts_facts_boolean.std_projection
+  )
 }
 
 fn ts_number_algebra_inhabitance(facts: TsNumberPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -3155,24 +3153,14 @@ fn ts_string_inhabitant_node(id: Symbol, facts: TsStringPrimitiveFacts) -> Node 
 }
 
 fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(
-        name: ^ts_witness_string_free_monoid,
-        target: ts_inhabitant_atom(id: ^ts_witness_string_free_monoid)
-      ),
-      ts_named_edge(
-        name: ^ts_facts_field_encoding,
-        target: ts_inhabitant_atom(id: facts.encoding)
-      ),
-      ts_named_edge(
-        name: ^facts_field_std_projection,
-        target: ts_inhabitant_atom(id: facts.std_projection)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  ts_primitive_algebra_witness_node(
+    witness_field_name: ^ts_witness_string_free_monoid,
+    witness_tag: ^ts_witness_string_free_monoid,
+    middle_field_name: ^ts_facts_field_encoding,
+    middle_field_target: ts_inhabitant_atom(id: facts.encoding),
+    std_projection_field_name: ^facts_field_std_projection,
+    std_projection: facts.std_projection
+  )
 }
 
 fn ts_string_algebra_inhabitance(facts: TsStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
