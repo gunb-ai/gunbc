@@ -57,7 +57,7 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-      - name: Build v1-compiler (release)
+      - name: Build release bins (claim_executor + gunbc)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
