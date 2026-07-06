@@ -62,15 +62,15 @@ position. The source-root→namespace-root binding (`src/v1/**` ↔ `v1.*`, `dag
 lives at that boundary; §9 flags confirming the exact map, and whether the `module`
 declaration is itself recoverable from the path (if so, it is a Rule-1 candidate to derive).
 
-## 4. The one decision the rules constrain but do not fully pin — the uniqueness test
+## 4. The uniqueness test — DECIDED: (Y), position-information (operator, 2026-07-06)
 
-"Resolves to exactly one node" — *given what?* Two readings, and this is the single call to make:
+"Resolves to exactly one node" — *given what?* Two readings; **(Y) is the ruling.**
 
 - **(X) Pure structural.** A name resolves iff unique in the structural subtree; the expected
   type is never consulted. Simple, uniform, no expected-type anywhere. **Cost:** every use of a
   shared arm name (the `github` `Success`/`Failure`/`Cancelled` family; `Unit`) must qualify
   *at every site*, including in fully-typed positions where the type already determines it.
-- **(Y) Position-information (recommended).** A reference resolves to exactly one node given
+- **(Y) Position-information — THE RULING.** A reference resolves to exactly one node given
   *everything known at its position* — the structural subtree **and** the expected type when the
   position is typed (a return annotation, a match scrutinee, a field type). `Success` in a
   `-> CheckConclusion` position: 6 structural matches, but the expected type filters to one →
@@ -80,8 +80,11 @@ declaration is itself recoverable from the path (if so, it is a Rule-1 candidate
 *filter that narrows to uniqueness*, not a *picker among survivors*, so it is **not** the §1c
 rule-5 pathology (unbound name → scan all types → tie-break). And it is minimal (Rule 1): you
 don't restate what the position already fixes. It generalizes §1c rule 4 (patterns resolve via
-scrutinee type) from pattern to any typed position. Recommendation: **(Y)**. §5 shows why the
-cost of (X) is real and concentrated.
+scrutinee type) from pattern to any typed position. **Decided (Y)** (operator, 2026-07-06); §5
+shows why the cost of (X) is real and concentrated. Implementation consequence: `resolve` takes
+an optional `expected: Node?` — present in checking positions (annotation, scrutinee, field
+type), absent in synthesis positions; when present *and* the structural candidate set is >1, it
+filters to variants/members of `expected` before declaring `Ambiguous`.
 
 ## 5. The collision census (empirical grounding, 2026-07-06)
 
@@ -147,11 +150,46 @@ to all names:
   import list with usage. No import list → nothing to reconcile → they are deleted, not
   hardened. (This retires the memory thread `resolve-selective-import-fail-open`.)
 - `get_exported_names` re-export of `specific_names` (the two-hop leak) — no export list.
+- **`parameterized_use_site_prefers_parameterized_decl` (04_resolve.dag:231)** — the retry that
+  prefers an imported generic `Optional<T>` over the paramless kernel `Optional` (a param-count-
+  keyed kernel-vs-import precedence patch). This is a *second precedence path*, and nearest-wins
+  subsumes it uniformly: the imported generic is module-local (nearer) and wins over root-kernel
+  by scope depth, no param-count special-case. **Dissolve-on: the pivot** — remove it *with* the
+  policy flip, so it is not left as a competing precedence mechanism (Rule 1). (flagged
+  lively-raven-355, 2026-07-06; same root as the kernel-`Nat` shadow bug below.)
 
 The original "fail-open" (`Symbol` resolving in `diagnostic.dag` without an import) **was not a
 bug** under these rules — it is correct unique resolution. The bug was the *import declaration*
 that made it "undeclared"; Rule 1 deletes that layer, and the wall moves from *"did you import
 it?"* to *"is it unique?"* (Rule 2).
+
+## 7.5 Substrate — this rides on the `SymbolIndex` (do NOT fork the index)
+
+This design is the **resolver half** of a whole whose **index half** already exists:
+`docs/plans/type-env-single-authority-design.md` (owner cool-hawk-899; realization lane
+lively-raven-355). That doc builds `SymbolIndex : Map<QualifiedName, Node>` (04_env.dag:36) as
+the *single* qualified-name authority, filled once by a topo-order DFS prepass, replacing the
+O(M²) `ancestry_str_bindings` materialization. **That `SymbolIndex` is exactly the index
+`resolve(name, position)` queries** — Rule 1 forbids a second one. The two docs compose cleanly:
+
+- **`SymbolIndex` = the storage** (qualified name → Node, one authority). Shared. Not mine to
+  re-build; I consume it.
+- **`resolve(name, position)` = the semantics over it** (nearest-enclosing-subtree search +
+  (Y) expected-type filter + `Ambiguous`/`Unresolved`). Mine.
+- **The one genuine difference is a policy value, not a conflict.** type-env-single-authority
+  keeps the *import list as the visibility gate* ("a module's import list says which qualified
+  names are visible" — its §3). Namespace-only **deletes** that gate and resolves by structural
+  position instead. These are the two values of the §8 `ResolutionPolicy` row —
+  `import-scoped` (their v1 perf fix, ships first) and `namespace-only-Y` (this pivot, on top).
+  Same `SymbolIndex` underneath both.
+
+**Sequencing consequence:** `SymbolIndex` lands first (it is the substrate *and* the O(M²) fix,
+gated on loyal-heron's scaling receipt per that doc's §7.5). Namespace-only is then a policy
+layer over the settled index — not a from-scratch resolver. The nearest-wins search is a query
+over `SymbolIndex`'s qualified-name keys (find the shortest key ending in `name` reachable from
+`position`); the kernel-`Nat` / `:231` / family-closure / `source_visible_names` collapse (§7)
+all happen *at* this seam. Reconciliation owed: fold the `import-list-visibility` assumption in
+type-env-single-authority §3 into the policy row so it reads as one setting, not the law.
 
 ## 8. Migration — per-subtree, behind a swappable policy
 
@@ -166,6 +204,20 @@ values `{ import-scoped (§1c, today) , namespace-only-X , namespace-only-Y }`. 
 4. Flip the policy to `namespace-only-Y` **per subtree** as each converges (drop its imports,
    let bare resolve, qualify the genuine homonyms) — not big-bang. A subtree is converged when
    it resolves clean with zero `Ambiguous`.
+
+   **Discriminating witness (live red today, lively-raven-355):**
+   `cross_representation_equality_test` (`src/v1/tests/src/cross_representation_equality_test.rs`),
+   fixture `RECEIPTS_SOURCE`, `import v2.std.nat { Nat, Succ, Zero, nat_add }` where
+   `v2.std.nat` = `type Nat = Zero | Succ { prev: Nat }`. It quadruple-discriminates the policy:
+   - **today (kernel-first + kernel_type_set has "Nat"):** `Err(NoSuchVariable{Zero})` — ambient
+     kernel `Nat` wins globally, variant family silently dropped (the fail-open);
+   - **`namespace-only-Y`:** nearest-wins binds `v2.std.nat.Nat` (module depth < kernel root) →
+     `Zero`/`Succ` bound → `Bool(false)`/`Bool(true)`;
+   - **same-depth two-`Nat`:** `Ambiguous`, never silent;
+   - **fork-removed (no kernel "Nat"):** trivially the one coproduct → same greens.
+   Reproduce the red in isolation by adding `"Nat"` to `kernel_type_set` on main (lively-raven's
+   #6325 delta). This is §8's acceptance witness — it must go from `Err(NoSuchVariable)` to the
+   coproduct greens under the flip, with a same-depth control asserting `Ambiguous`.
 5. Retire imports to `alias`-only once no subtree depends on import-scoped resolution.
 
 The current selective-import mask is thereby the **interim realization** of the
