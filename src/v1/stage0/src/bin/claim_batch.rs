@@ -10,7 +10,7 @@ use v1_compiler::cli_run::{
     build_multi_entry_index, check_floor_filename_hygiene, closure_subject_for_entry,
     discover_floor_corpus_rows, make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, resolve_entry_with_index, run_claim_measured,
-    ClaimOutcome, DiscoveryRow, MultiEntryIndex, witness_exclusion_substrings,
+    witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;

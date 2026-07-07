@@ -493,9 +493,9 @@ pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
 pub fn witness_exclusion_substrings() -> Vec<String> {
     static EXCLUDES: OnceLock<Vec<String>> = OnceLock::new();
     EXCLUDES
-        .get_or_init(|| {
-            witness_exclusion_substrings_from_source(ci_layer_roots_authority_content())
-        })
+        .get_or_init(
+            || witness_exclusion_substrings_from_source(ci_layer_roots_authority_content()),
+        )
         .clone()
 }
 

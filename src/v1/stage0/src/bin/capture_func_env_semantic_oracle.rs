@@ -9,7 +9,9 @@
 use std::process::ExitCode;
 
 use serde::Serialize;
-use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, whole_tree_resolve_exclusion_substrings};
+use v1_compiler::cli_run::{
+    whole_corpus_semantic_oracle_snapshot, whole_tree_resolve_exclusion_substrings,
+};
 
 #[derive(Serialize)]
 struct CaptureOutput<'a> {

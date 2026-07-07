@@ -6,8 +6,8 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, resolve_entry_with_index, whole_tree_resolved_ctx, WholeTreeCtx,
-    whole_tree_resolve_exclusion_substrings,
+    build_multi_entry_index, resolve_entry_with_index, whole_tree_resolve_exclusion_substrings,
+    whole_tree_resolved_ctx, WholeTreeCtx,
 };
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_compiler_infer::{infer_expr, InferScope};

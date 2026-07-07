@@ -1,7 +1,7 @@
 use v1_compiler::cli_run::{
     discover_floor_corpus_rows, is_governed_service_representative_row, run_discovery_corpus,
     wet_hermetic_discovery_outcome_divergences, wet_hermetic_scaffold_roster_entry_prefix,
-    ClaimOutcome, DiscoveryRow, DiscoveryWitnessOutcome, witness_exclusion_substrings,
+    witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, DiscoveryWitnessOutcome,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 

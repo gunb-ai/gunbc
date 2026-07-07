@@ -33,7 +33,10 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{peak_rss_vhwm_bytes, whole_tree_resolved_ctx, whole_tree_resolve_exclusion_substrings, WholeTreeCtx};
+use v1_compiler::cli_run::{
+    peak_rss_vhwm_bytes, whole_tree_resolve_exclusion_substrings, whole_tree_resolved_ctx,
+    WholeTreeCtx,
+};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 const DEAD_WIRES_FN: &str = "wiring_liveness_corpus_dead_wires";
