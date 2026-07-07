@@ -11098,20 +11098,24 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
     /// must refuse through install_floor_compile_clean_receipt → consume_floor_compile_clean_gate_verdict.
+    /// Ignored in CI: ~minutes cold whole-tree compile; recorded execution receipt in PR #6361 body.
     #[test]
-    #[ignore = "manual: whole-tree compile-clean ~minutes cold; run before merge"]
+    #[ignore = "manual ~minutes whole-tree compile; recorded execution receipt in PR #6361 body (clever-koi demand 1)"]
     fn floor_compile_clean_gate_e2e_refuses_on_broken_tree() {
         with_env_test_lock(|| {
-            let _ga = EnvGuard::remove("GITHUB_ACTIONS");
-            let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
-            let _inject = EnvGuard::set("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED", "1");
-            reset_floor_compile_clean_receipt_for_test();
-            install_floor_compile_clean_receipt()
-                .expect("real whole-tree compile with injected unresolved import");
-            assert!(
-                !consume_floor_compile_clean_gate_verdict(),
-                "gate must refuse when the one real compile hits hard errors"
-            );
+            with_workspace_cwd(|| {
+                let _ga = EnvGuard::remove("GITHUB_ACTIONS");
+                let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+                let _inject =
+                    EnvGuard::set("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED", "1");
+                reset_floor_compile_clean_receipt_for_test();
+                install_floor_compile_clean_receipt()
+                    .expect("real whole-tree compile with injected unresolved import");
+                assert!(
+                    !consume_floor_compile_clean_gate_verdict(),
+                    "gate must refuse when the one real compile hits hard errors"
+                );
+            });
         });
     }
 
