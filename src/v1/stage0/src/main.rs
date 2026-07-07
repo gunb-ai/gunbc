@@ -44,6 +44,11 @@ enum Commands {
         target: String,
         #[arg(long = "dependency-pool-index", default_value = "strict")]
         dependency_pool_index: String,
+        /// Entry `.dag` file: compile only this module and its transitive imports
+        /// (not every `.dag` file under the first --source-root). Scopes the compile
+        /// to a subtree so a small closure can be emitted without a whole-tree pass.
+        #[arg(long)]
+        entry: Option<String>,
     },
     Ci,
 
@@ -307,6 +312,7 @@ fn main() {
             output_dir,
             target,
             dependency_pool_index,
+            entry,
         } => {
             let render_targets = parse_render_targets(&target);
             let pool_index = parse_dependency_pool_index(&dependency_pool_index);
@@ -319,19 +325,27 @@ fn main() {
                     source_roots.len()
                 );
 
-                // Entry modules: all .dag files in the FIRST source root.
-                // Additional roots are dependency pools resolved via imports.
-                // This is intentional: --source-root src/v1 --source-root dag
-                // means 'compile src/v1, using dag as a dependency pool.'
-                let first_root = std::path::Path::new(&source_roots[0]);
+                // Entry modules. With --entry: exactly the one named file (its
+                // transitive imports are resolved from the index below), so a small
+                // subtree compiles without a whole-tree pass. Without --entry: all
+                // .dag files in the FIRST source root (additional roots are dependency
+                // pools resolved via imports — `--source-root src/v1 --source-root dag`
+                // means 'compile src/v1, using dag as a dependency pool').
                 let mut entry_files = Vec::new();
-                if first_root.is_dir() {
-                    let mut dag_paths = Vec::new();
-                    collect_dag_files(first_root, &mut dag_paths);
-                    for path in dag_paths {
-                        let content = std::fs::read_to_string(&path)
-                            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
-                        entry_files.push((path.to_string_lossy().to_string(), content));
+                if let Some(entry_path) = &entry {
+                    let content = std::fs::read_to_string(entry_path)
+                        .unwrap_or_else(|e| panic!("failed to read entry {:?}: {}", entry_path, e));
+                    entry_files.push((entry_path.clone(), content));
+                } else {
+                    let first_root = std::path::Path::new(&source_roots[0]);
+                    if first_root.is_dir() {
+                        let mut dag_paths = Vec::new();
+                        collect_dag_files(first_root, &mut dag_paths);
+                        for path in dag_paths {
+                            let content = std::fs::read_to_string(&path)
+                                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                            entry_files.push((path.to_string_lossy().to_string(), content));
+                        }
                     }
                 }
                 let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);
