@@ -81,7 +81,7 @@ data type_env_profiling_dissolution_trigger: String = "🟡 dissolve-on: host at
 data type_env_work_count_profiling_dissolution_trigger: String = "🟡 dissolve-on: build_type_env + merge_type_env_cache + rewire pass counters — fold into PerformanceReceipt at realization-measurement-loop Phase 0."
 data type_env_cache_parallel_repr_dissolution_trigger: String = "🟡 dissolve-on: TypeEnvCache String-keyed str_bindings and cycle_set_str parallel to TypeEnv Int-keyed bindings and recursive_type_set — fold into single authority at v2 regen."
 data type_env_cache_key_determinism_authority: String = "Cache-key determinism for resolved_graph disk tier: resolved_graph_cache::encode_cache_payload applies sort_json_value at serialization boundary (not merge_type_env_cache / build_type_env hot paths). B2 de-fork: Rust seed must match this .dag plain map_merge authority."
-data flatten_visible_bindings_invariant: String = "B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only — no flatten_visible_bindings fallback; 6de571f3 reverted in 80ab63a). flatten_visible_bindings: parent fold map_merge(flatten(parent), acc) — earlier env.parents win over later on collision; local map_merge(ancestry_str_bindings, str_bindings) then map_merge(from_parents, local) — str_bindings wins ancestry, local wins parents. Parent-recurse counter is stub-only on import chains (witness flatten_visible_parent_recurses==0); merge_envs still calls flatten for one-shot env merge."
+data visible_bindings_invariant: String = "B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3 reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator ruling: the parent-recurse counter was a parallel representation guarding a fallback; the fallback is now unwritable by construction — no whole-env flatten exists to call). Visibility reads are one-level: local str_bindings/ancestry_str_bindings, or a fold over parent.str_bindings only (see collect_unit_variant_phantom_matches). Dissolve-on: namespace-as-sole-authority ruling — env maps become a derived projection of namespace reachability."
 
 fn empty_type_env_cache() -> TypeEnvCache {
   TypeEnvCache {
@@ -92,11 +92,7 @@ fn empty_type_env_cache() -> TypeEnvCache {
   }
 }
 
-fn build_type_env_calls() -> Int { 0 }
-fn merge_type_env_cache_calls() -> Int { 0 }
-fn rewire_type_env_parent_links_calls() -> Int { 0 }
-fn rewire_type_env_import_str_binding_calls() -> Int { 0 }
-data type_env_counter_dissolution: String = "The 2026-07-04 use-site inference pathology instrument (env-amplification counters) dissolves with the pathology it measured: the record_* statement calls and their stub fns are deleted (they were also the only corpus instances of a statement-then-expression block the Rust emitter mis-renders — that emitter deficiency is ledgered with the emit-stage work). The Int getter stubs below stay for API compatibility with the hand-maintained phase_profile heartbeat until that consumer drops them."
+data type_env_counter_dissolution: String = "The 2026-07-04 use-site inference pathology instrument (env-amplification counters) dissolved with the pathology it measured: the record_* statement calls and their stub fns were deleted (they were also the only corpus instances of a statement-then-expression block the Rust emitter mis-renders — that emitter deficiency is ledgered with the emit-stage work). 2026-07-06: the getter stubs, their hand-injected AtomicU64 realization in the generated seed, the phase_profile heartbeat reads, and the counter-equality witness tests are deleted together (operator ruling: counter witnesses are a parallel representation). The live scaling witnesses are the time-based import-chain tests in src/v1/tests/src/type_env_scope_chain_test.rs."
 
 fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
   TypeEnvCache {
@@ -257,33 +253,4 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
   )
 }
 
-fn flatten_visible_parent_recurses() -> Int { 0 }
-fn reset_flatten_visible_profile() -> Unit { }
-fn reset_type_env_lookup_profile() -> Unit { reset_flatten_visible_profile() }
-fn maybe_print_type_env_lookup_profile() -> Unit { }
 
-fn flatten_visible_bindings(env: TypeEnv) -> Map<String, TypeBinding> {
-  let from_parents = fold(env.parents, init: empty_map(), f: (acc, parent) =>
-    map_merge(flatten_visible_bindings(env: parent), acc)
-  )
-  let local_by_name = map_merge(env.ancestry_str_bindings, env.str_bindings)
-  map_merge(from_parents, local_by_name)
-}
-
-fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
-  let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) =>
-    map_merge(acc, flatten_visible_bindings(env: env))
-  )
-  let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
-  let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
-  let merged_inductive_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
-  let merged_source_indices = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.source_indices))
-  let merged_intern_table = match envs |> first {
-    Present { value: first_env } => first_env.intern_table
-    Absent => empty_intern_table()
-  }
-  let merged_bindings_by_ident = fold(merged_bindings |> map_values, init: empty_map(), f: (acc, binding) =>
-    map_insert(acc, intern(table: merged_intern_table, s: binding.name).id, binding)
-  )
-  TypeEnv { bindings: merged_bindings_by_ident, str_bindings: merged_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table, source_visible_names: empty_map() }
-}

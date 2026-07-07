@@ -47,7 +47,7 @@ data copied_port_fact_list_append_left_citation: String = "v2.std.algebra.list_a
 
 data copied_port_fact_list_snoc_left_citation: String = "v2.std.algebra.list_snoc_item — xs port copies via list_append(left: xs, …)"
 
-data copied_port_fact_map_merge_overlay_citation: String = "v1_rt.rs:360 rc_map_merge iterates overlay into Rc::make_mut(base); src/v1/04_env.dag:226 merge_envs acc in base port is blessed — acc in overlay is R1 copied-port"
+data copied_port_fact_map_merge_overlay_citation: String = "v1_rt.rs:360 rc_map_merge iterates overlay into Rc::make_mut(base); acc in base port is blessed — acc in overlay is R1 copied-port (historical blessed instance: merge_envs, deleted from src/v1/04_env.dag 2026-07-06; a live overlay-port suspect for future census: collect_unit_variant_phantom_matches fold, src/v1/04_resolve.dag)"
 
 data complexity_r1_flow_opaque_residue_note: String = "FlowOpaque: accumulator binder not a direct-reference at either combiner call port (opaque through lets/nested calls). Counted in R1JudgeResult.flow_opaque_count — never silently skipped; lens boundary Violates."
 
@@ -65,17 +65,13 @@ fn r1_symbol_atom(s: Symbol) -> Node {
 }
 
 fn r1_positional_targets(n: Node) -> List<Node> {
-  fold_list(
-    xs: n.children,
-    empty: Empty,
-    cons: fn(acc, e) {
-      match e.label {
-        Positional =>
-          list_append(left: acc, right: Cons { head: e.target, tail: Empty })
-        Named { name: _ } => acc
-      }
+  fold(n.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Positional =>
+        list_append(left: acc, right: Cons { head: e.target, tail: Empty })
+      Named { name: _ } => acc
     }
-  )
+  })
 }
 
 fn r1_symbol_of(n: Node) -> Optional<Symbol> {

@@ -81,9 +81,7 @@ import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   str_bindings_from_bindings,
-  build_type_env_calls, merge_type_env_cache_calls,
-  rewire_type_env_parent_links_calls, rewire_type_env_import_str_binding_calls,
-  is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
+  is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map
 }

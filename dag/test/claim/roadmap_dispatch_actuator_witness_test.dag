@@ -1,6 +1,7 @@
 module test.claim.roadmap_dispatch_actuator
 
 import ctrl.process_algebra { ProcessNodeId }
+import std.types { NonEmptyStr, GitRef, FilePath }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge,
   IntricacyHigh, VolumeMedium,
