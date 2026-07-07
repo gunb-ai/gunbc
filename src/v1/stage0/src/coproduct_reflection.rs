@@ -809,29 +809,14 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
-fn whole_tree_measurement_exclude_substrings() -> Vec<String> {
-    crate::cli_run::whole_tree_resolve_exclusion_substrings()
-}
-
-/// True when the interpreter context was resolved over the whole-tree eligible
 /// module census (same exclude set as `whole_tree_resolved_ctx` / measurement probe).
 pub fn eval_fn_arrow_decl_substrate_is_whole_tree(
     ctx: &InterpContext,
     _args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let loaded = ctx.modules.len();
-    let roots = crate::cli_run::default_source_roots();
-    let excludes = whole_tree_measurement_exclude_substrings();
-    let index = crate::cli_run::build_module_path_index(&roots);
-    let expected = index
-        .iter()
-        .filter(|(module_path, rel_path)| {
-            !excludes
-                .iter()
-                .any(|sub| rel_path.contains(sub) || module_path.contains(sub))
-        })
-        .count();
-    Ok(Value::Bool(loaded >= expected))
+    Ok(Value::Bool(
+        crate::cli_run::fn_arrow_decl_substrate_is_whole_tree_for_census(ctx.modules.len()),
+    ))
 }
 
 pub fn eval_corpus_dependency_view_per_pr_substrate_refuse(

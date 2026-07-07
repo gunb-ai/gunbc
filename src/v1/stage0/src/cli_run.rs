@@ -518,6 +518,23 @@ pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
     excludes
 }
 
+/// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs
+/// `loaded` modules in the current resolve context (same exclude set as `whole_tree_resolved_ctx`).
+pub fn fn_arrow_decl_substrate_is_whole_tree_for_census(loaded: usize) -> bool {
+    let roots = default_source_roots();
+    let excludes = whole_tree_resolve_exclusion_substrings();
+    let index = build_module_path_index(&roots);
+    let expected = index
+        .iter()
+        .filter(|(module_path, rel_path)| {
+            !excludes
+                .iter()
+                .any(|sub| rel_path.contains(sub) || module_path.contains(sub))
+        })
+        .count();
+    loaded >= expected
+}
+
 pub fn census_corpus_roots_follow_layer_authority() -> bool {
     let synthetic = "module gunbc.ci_layer_roots\n\n\
          data witness_layer_roots: List<String> = [\"alpha_layer_root\", \"beta_layer_root\", \"gamma_layer_root\"]\n";
@@ -967,36 +984,63 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
     paths
 }
 
-fn entry_affected_by_touched_paths_with_facts(
-    entry_path: &str,
-    touched_paths: &[String],
-    facts: &ModuleGraphFactsLive,
-) -> bool {
-    let closure: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
-        .into_iter()
-        .collect();
-    touched_paths
-        .iter()
-        .any(|touched| touched_file_in_import_closure(touched, &closure))
-}
-
-/// Floor CI hot path: same disposition as `compile_clean_scope_disposition_from_touched` but
-/// uses cached `build_module_graph_facts_live` + Rust closure walks — avoids the Wet interpreter
-/// fold over `compile_clean_shard_entry_paths()` that times out the 10m floor step.
+/// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_touched` (DependencyView +
+/// `#6239` substrate gate) without the Wet interpreter fold over `compile_clean_shard_entry_paths()`.
 fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     touched_paths: &[String],
 ) -> CompileCleanScopePlan {
+    if compile_clean_touches_allow_skip(touched_paths) {
+        let reason = if touched_paths.is_empty() {
+            "no compile-clean entry DependencyView frontier intersects touched paths".to_string()
+        } else {
+            "docs-only diff — no compile-clean entry selection required".to_string()
+        };
+        eprintln!("compile-clean scope: skipped ({reason})");
+        return CompileCleanScopePlan::SkipNoAffected { reason };
+    }
+
+    // `dag_compile_clean_scope.dag:85-88` — RequireWholeTree when substrate not ready.
+    // floor_fast has no whole-tree resolve context (loaded=0) until #6239; live substrate is false.
+    if !fn_arrow_decl_substrate_is_whole_tree_for_census(0) {
+        eprintln!(
+            "compile-clean scope: DependencyView per-PR selection blocked-on-#6239 (fn_arrow_decl_substrate_is_whole_tree false)"
+        );
+        return CompileCleanScopePlan::WholeTree;
+    }
+
     let pool_roots = compile_clean_source_roots();
-    let ws = workspace_root();
-    let abs_pool_roots: Vec<String> = pool_roots
-        .iter()
-        .map(|r| ws.join(r).to_string_lossy().into_owned())
-        .collect();
-    let facts = build_module_graph_facts_live(&abs_pool_roots);
+    let roots = default_source_roots();
+    let (graph, indices) = match resolve_entry_graph_shared(&roots, ENTRY_SELECTION_ENTRY) {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!(
+                "compile-clean scope: entry_selection resolve failed ({msg}) — whole-tree baseline"
+            );
+            return CompileCleanScopePlan::WholeTree;
+        }
+    };
+    let es_ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    if !fn_arrow_decl_substrate_is_whole_tree_for_census(es_ctx.modules.len()) {
+        eprintln!(
+            "compile-clean scope: DependencyView per-PR selection blocked-on-#6239 (fn_arrow_decl_substrate_is_whole_tree false)"
+        );
+        return CompileCleanScopePlan::WholeTree;
+    }
+
     let mut affected = Vec::new();
     for entry_path in compile_clean_shard_entry_paths_fast() {
-        if entry_affected_by_touched_paths_with_facts(&entry_path, touched_paths, &facts) {
-            affected.push(entry_path);
+        match call_entry_affected_by_dependency_view(
+            &es_ctx,
+            &entry_path,
+            &pool_roots,
+            touched_paths,
+        ) {
+            Ok(true) => affected.push(entry_path),
+            Ok(false) => {}
+            Err(msg) => {
+                eprintln!("compile-clean scope: {msg} — whole-tree baseline");
+                return CompileCleanScopePlan::WholeTree;
+            }
         }
     }
     if !affected.is_empty() {
@@ -1007,14 +1051,6 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
         );
         return CompileCleanScopePlan::Scoped {
             entry_paths: affected,
-        };
-    }
-    if compile_clean_touches_allow_skip(touched_paths) {
-        eprintln!(
-            "compile-clean scope: skipped (no compile-clean entry import-closure intersects touched paths)"
-        );
-        return CompileCleanScopePlan::SkipNoAffected {
-            reason: "no compile-clean entry import-closure intersects touched paths".to_string(),
         };
     }
     eprintln!(
@@ -11444,32 +11480,22 @@ mod witness_layer_roots_compile_clean_tests {
             assert_eq!(
                 plan,
                 CompileCleanScopePlan::SkipNoAffected {
-                    reason: "no compile-clean entry import-closure intersects touched paths"
+                    reason: "docs-only diff — no compile-clean entry selection required"
                         .to_string()
                 }
             );
         });
     }
 
-    /// Lever-a PR touch receipt: dag transport edits scope (not silent whole-tree).
+    /// Interim #6239: substrate not ready → whole-tree (not import-closure Scoped).
     #[test]
-    fn floor_fast_scoped_plan_includes_lever_a_dag_transport_touch() {
+    fn floor_fast_plan_whole_tree_when_substrate_not_ready() {
         with_workspace_cwd(|| {
             let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
                 "dag/tools/dag_compile_clean_transport.dag".to_string(),
                 "src/v1/stage0/src/cli_run.rs".to_string(),
             ]);
-            match plan {
-                CompileCleanScopePlan::Scoped { entry_paths } => {
-                    assert!(
-                        entry_paths
-                            .iter()
-                            .any(|p| p.contains("dag_compile_clean_transport")),
-                        "expected transport entry in {entry_paths:?}"
-                    );
-                }
-                other => panic!("expected ScopedRun for lever-A PR touch, got {other:?}"),
-            }
+            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
         });
     }
 
