@@ -777,6 +777,28 @@ fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNo
     })
 }
 
+fn eprint_compile_clean_hard_diagnostics(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let mut count = 0usize;
+    for d in diagnostics.iter() {
+        if matches!(
+            *d.diagnostic.clone(),
+            CompilerDiagnostic::ComplexityUnknown { .. }
+        ) {
+            continue;
+        }
+        eprintln!(
+            "compile-clean: {}",
+            diagnostic_to_message(d.diagnostic.clone())
+        );
+        count += 1;
+        if count >= 20 {
+            eprintln!("compile-clean: (truncated hard diagnostics at 20)");
+            break;
+        }
+    }
+}
+
 const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1186,7 +1208,12 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
         Ok(None) => true,
         Ok(Some(sources)) => {
             let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-            !compile_clean_resolve_has_hard_errors(&result)
+            if compile_clean_resolve_has_hard_errors(&result) {
+                eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
+                false
+            } else {
+                true
+            }
         }
         Err(msg) => {
             eprintln!("compile-clean: source load failed ({msg})");
