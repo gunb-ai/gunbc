@@ -1,6 +1,6 @@
 module v2.test.manual.fold_source_mvp
 
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
 import v2.std.text { SourceFold, String, fold_source }

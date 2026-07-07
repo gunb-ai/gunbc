@@ -13,7 +13,8 @@ import v2.extdeps.languages.python {
   python_mvp1_grammar_relation_row,
   python_mvp1_translation_rules_node
 }
-import v2.std.algebra { Empty, list_append }
+import std.algebra { Empty }
+import v2.std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.compilers.target_model {
   concrete_syntax_token_class,

@@ -1,21 +1,7 @@
 module v2.std.integer
 
-import v2.std.algebra {
-  AbelianGroup,
-  Cons,
-  Empty,
-  fold_list,
-  fold_list_node,
-  FreeMonoid,
-  Group,
-  length,
-  Magma,
-  Monoid,
-  OrderedRing,
-  Ordering,
-  Ring,
-  Semigroup
-}
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { AbelianGroup, fold_list, fold_list_node, Group, length, Magma, Monoid, OrderedRing, Ordering, Ring, Semigroup }
 import v2.std.collection { List }
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, Unavailable }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }

@@ -17,7 +17,7 @@ import v2.lens.cost {
   SizeVariable,
   asymptotic_class_dominates
 }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   AmbiguousIntent,

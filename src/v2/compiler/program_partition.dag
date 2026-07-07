@@ -14,7 +14,8 @@ import v2.compiler.translate {
   translate_project_transform_in_arrow_scope
 }
 import v2.lens.application { subterm_at }
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List, Map }
 import v2.std.compilers.target_model {
   TargetModel,

@@ -22,7 +22,8 @@ import v2.lens.enforcement.grammar_coverage {
 }
 import v2.lens.enforcement.receipts { BodyJudged, BodyUnavailable, judge_subject_node }
 import v2.lens.enforcement.standing_intent { whole_corpus_scope }
-import v2.std.algebra { Empty, fold_list, length, list_append }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, length, list_append }
 import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.decl_index { decl_facts }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }

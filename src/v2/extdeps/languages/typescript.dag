@@ -185,19 +185,8 @@ import v2.std.host_transport {
   target_emit_host_runtime_row_unconfigured
 }
 import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
-import v2.std.algebra {
-  algebra_binary_fn_node,
-  approximate_field_type_node,
-  boolean_algebra_type_node,
-  BooleanAlgebra,
-  Cons,
-  Empty,
-  fold_list,
-  free_monoid_type_node,
-  list_append,
-  list_snoc_item,
-  ordered_ring_type_node
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { algebra_binary_fn_node, approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, fold_list, free_monoid_type_node, list_append, list_snoc_item, ordered_ring_type_node }
 import v2.std.text { String }
 
 type TsNumberPrimitiveFacts {

@@ -18,7 +18,8 @@ import v2.extdeps.languages.dag {
 import v2.std.compilers.lexing { TokenStream, token_stream_remaining }
 import v2.std.grammar { GrammarRoot, grammar_empty_sync_tokens }
 import v2.std.provenance { span_index_empty }
-import v2.std.algebra { Empty, FreeMonoid, fold_list, length, list_snoc_item }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
   Diagnostic,

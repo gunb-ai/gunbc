@@ -11,7 +11,7 @@ import v2.test.manual.ingest_bridge {
 }
 
 import v2.std.text { string_is_empty }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.compiler.ingest {
   cross_language_compile,
   parse_tree_to_emitted_node,

@@ -3,7 +3,8 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredTree }
-import v2.std.algebra { Empty, bag_eq, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { bag_eq, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.dependency {
   ClassifiedDependencyView,

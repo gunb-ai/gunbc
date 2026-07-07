@@ -34,7 +34,8 @@ import v2.std.diagnostic {
   Rejected,
   diagnostics_singleton
 }
-import v2.std.algebra { Empty, length }
+import std.algebra { Empty }
+import v2.std.algebra { length }
 import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }

@@ -22,7 +22,8 @@ import v2.std.cross_tree.resolution {
   source_root_index_insert
 }
 import v2.std.language_model { LanguageModel }
-import v2.std.algebra { Empty, FreeMonoid, fold_list, list_snoc_item }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.artifact { SourceFile }
 import v2.std.diagnostic {
   Accepted,

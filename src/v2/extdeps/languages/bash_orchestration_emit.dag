@@ -14,15 +14,8 @@ import v2.extdeps.languages.bash {
   orch_retry_target_model
 }
 import v2.extdeps.languages.bash_command_fold { bash_fold_raw_line_target_model }
-import v2.std.algebra {
-  FreeMonoid,
-  list_head,
-  list_tail,
-  HeadFound,
-  HeadAbsent,
-  TailFound,
-  TailAbsent
-}
+import std.algebra { FreeMonoid }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.collection { empty_map }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.compilers.target_model {
