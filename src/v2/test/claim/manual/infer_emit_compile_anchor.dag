@@ -33,7 +33,7 @@ import v2.std.diagnostic {
   port_locus,
   Unavailable
 }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.node { Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 import v2.std.witness { Violates, Witness }
