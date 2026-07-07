@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
@@ -950,6 +951,19 @@ enum FloorCompileCleanReceipt {
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
 
+/// When set by `claim_executor` for `gunbc_ci_floor_batches`, the first gate consume installs
+/// the one whole-tree receipt (after plan resolve has warmed the module-graph facts cache).
+static FLOOR_COMPILE_CLEAN_LAZY_INSTALL: AtomicBool = AtomicBool::new(false);
+
+pub fn enable_floor_compile_clean_lazy_install() {
+    FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(true, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+fn disable_floor_compile_clean_lazy_install_for_test() {
+    FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(false, Ordering::SeqCst);
+}
+
 fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
     let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
@@ -1002,6 +1016,14 @@ pub fn floor_compile_clean_receipt_installed() -> bool {
 /// Gate consumer: reads the receipt from `install_floor_compile_clean_receipt` only.
 /// Refuses when no receipt exists — never runs a second compile.
 pub fn consume_floor_compile_clean_gate_verdict() -> bool {
+    if FLOOR_COMPILE_CLEAN_LAZY_INSTALL.load(Ordering::SeqCst)
+        && !floor_compile_clean_receipt_installed()
+    {
+        if let Err(msg) = install_floor_compile_clean_receipt() {
+            eprintln!("compile-clean gate: refused — receipt install failed ({msg})");
+            return false;
+        }
+    }
     let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
         Ok(g) => g,
         Err(e) => {
@@ -1189,6 +1211,7 @@ pub fn import_closure_from_facts(
 /// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
 /// set. Built once per `MultiEntryIndex` / resolve pass so closure queries do not re-scan the
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
+#[derive(Clone)]
 pub struct ModuleGraphFactsLive {
     edges: Vec<ImportResolutionFactRaw>,
     nodes: Vec<ModuleDeclarationFactRaw>,
@@ -1240,7 +1263,17 @@ mod shared_cache_collision_guard_tests {
     }
 }
 
-pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsLive {
+thread_local! {
+    static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
+        const { RefCell::new(HashMap::new()) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_module_graph_facts_cache_for_test() {
+    MODULE_GRAPH_FACTS_CACHE.with(|cache| cache.borrow_mut().clear());
+}
+
+fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphFactsLive {
     #[cfg(test)]
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     const EXCLUDE: &[String] = &[];
@@ -1253,6 +1286,18 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
         nodes,
         adjacency,
     }
+}
+
+pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsLive {
+    let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
+    MODULE_GRAPH_FACTS_CACHE.with(|cache| {
+        if let Some(facts) = cache.borrow().get(&key) {
+            return facts.clone();
+        }
+        let facts = build_module_graph_facts_live_uncached(pool_roots);
+        cache.borrow_mut().insert(key, facts.clone());
+        facts
+    })
 }
 
 /// Host realization of `v2.lens.module_graph.import_closure_live`.
@@ -11012,6 +11057,7 @@ mod witness_layer_roots_compile_clean_tests {
         let _guard = ENV_TEST_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        disable_floor_compile_clean_lazy_install_for_test();
         f();
     }
 
