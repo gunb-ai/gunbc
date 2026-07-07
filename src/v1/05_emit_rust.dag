@@ -678,6 +678,17 @@ fn alias_rhs_container_arg(arg: Node, source_indices: Map<String, NewlineIndex>)
 
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  match n.type_annotation {
+    Present { value: _ } =>
+      if n.connective == Conj && (n.children |> count) == 1 {
+        match n.children |> first {
+          Present { value: base_te } =>
+            return render_rust_type(n: base_te, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+          Absent => {}
+        }
+      }
+    Absent => {}
+  }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     to_pascal(name: name)
