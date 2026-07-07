@@ -2435,6 +2435,30 @@ pub fn handle_run(
     handle_run_with_options(source_roots, function, entry_file, false, claim_run);
 }
 
+/// adhoc-c328b166-bca residual-hunt instrumentation dump: printed periodically
+/// (env `GUNBC_FLATTEN_SITE_DUMP_SECS`) and once, deterministically, right
+/// after a `dag run` entry returns -- the periodic dump alone races the
+/// process's natural completion and under-reports on fast runs.
+fn dump_residual_hunt_instrumentation() {
+    let mut sites = v1_interpreter::flatten_by_site_snapshot();
+    sites.sort_by(|a, b| b.3.cmp(&a.3));
+    eprintln!("--- free_monoid_to_vec by call site (top 15 by items cloned) ---");
+    for (file, line, calls, total) in sites.iter().take(15) {
+        eprintln!("  {}:{}  calls={}  items={}", file, line, calls, total);
+    }
+    let (cons_calls, cons_len_sum) = v1_interpreter::list_cons_tail_split_snapshot();
+    eprintln!(
+        "--- list Cons-match tail split (hypothesis B): calls={} receiver_len_sum={} ---",
+        cons_calls, cons_len_sum
+    );
+    let mut freq = v1_interpreter::call_frequency_snapshot();
+    freq.sort_by(|a, b| a.0.cmp(b.0));
+    eprintln!("--- hypothesis A call frequency ---");
+    for (name, calls) in freq.iter() {
+        eprintln!("  {}  calls={}", name, calls);
+    }
+}
+
 pub fn handle_run_with_options(
     source_roots: Vec<String>,
     function: String,
@@ -2459,17 +2483,7 @@ pub fn handle_run_with_options(
         if let Ok(secs) = secs.parse::<u64>() {
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_secs(secs));
-                let mut sites = v1_interpreter::flatten_by_site_snapshot();
-                sites.sort_by(|a, b| b.3.cmp(&a.3));
-                eprintln!("--- free_monoid_to_vec by call site (top 15 by items cloned) ---");
-                for (file, line, calls, total) in sites.iter().take(15) {
-                    eprintln!("  {}:{}  calls={}  items={}", file, line, calls, total);
-                }
-                let (cons_calls, cons_len_sum) = v1_interpreter::list_cons_tail_split_snapshot();
-                eprintln!(
-                    "--- list Cons-match tail split (hypothesis B): calls={} receiver_len_sum={} ---",
-                    cons_calls, cons_len_sum
-                );
+                dump_residual_hunt_instrumentation();
             });
         }
     }
@@ -2545,6 +2559,9 @@ pub fn handle_run_with_options(
         match v1_interpreter::run_in_context(&ctx, &function, !claim_run) {
             Ok(val) => {
                 println!("{}", val);
+                if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
+                    dump_residual_hunt_instrumentation();
+                }
                 if claim_run {
                     match &val {
                         v1_interpreter::Value::Bool(false) => std::process::exit(1),
