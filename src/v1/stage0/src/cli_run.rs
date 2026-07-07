@@ -900,7 +900,11 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
             let roots = witness_layer_roots();
             let index = build_module_index_primary_precedence(&roots);
             let facts = build_module_graph_facts_live(&roots);
-            load_compile_clean_entry_sources(&roots, &index, &facts, None).map(Some)
+            load_compile_clean_entry_sources(&roots, &index, &facts, None)
+                .map(|opt| opt.map(|mut sources| {
+                    append_test_floor_compile_clean_inject(&mut sources);
+                    sources
+                }))
         }
         CompileCleanScopePlan::Scoped { entry_paths } => {
             eprintln!(
@@ -917,6 +921,21 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
             let facts = build_module_graph_facts_live(&roots);
             load_compile_clean_entry_sources(&roots, &index, &facts, Some(&filter)).map(Some)
         }
+    }
+}
+
+/// Test-only inject: append an unresolved-import module to the compile-clean closure so
+/// `install_floor_compile_clean_receipt` + `consume_floor_compile_clean_gate_verdict` can be
+/// proven end-to-end (§5 discriminating RED) without mutating the workspace tree.
+fn append_test_floor_compile_clean_inject(sources: &mut Vec<Rc<v1_compiler_compile::SourceFile>>) {
+    if std::env::var("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        sources.push(Rc::new(v1_compiler_compile::SourceFile {
+            path: "dag/test/fixture/lever_a_e2e_unresolved_inject.dag".to_string(),
+            content: "module test.lever_a_e2e_unresolved_inject\nimport totally.nonexistent.lever_a_module { Foo }\nfn probe() -> Int { 42 }".to_string(),
+        }));
     }
 }
 
@@ -11092,6 +11111,63 @@ mod witness_layer_roots_compile_clean_tests {
                 "gate must refuse when the installed receipt records compile failure"
             );
         });
+    }
+
+    /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
+    /// must refuse through install_floor_compile_clean_receipt → consume_floor_compile_clean_gate_verdict.
+    #[test]
+    #[ignore = "manual: whole-tree compile-clean ~minutes cold; run before merge"]
+    fn floor_compile_clean_gate_e2e_refuses_on_broken_tree() {
+        with_env_test_lock(|| {
+            let _ga = EnvGuard::remove("GITHUB_ACTIONS");
+            let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+            let _inject = EnvGuard::set("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED", "1");
+            reset_floor_compile_clean_receipt_for_test();
+            install_floor_compile_clean_receipt()
+                .expect("real whole-tree compile with injected unresolved import");
+            assert!(
+                !consume_floor_compile_clean_gate_verdict(),
+                "gate must refuse when the one real compile hits hard errors"
+            );
+        });
+    }
+
+    /// widen-never-narrow box (lively-raven-355): the dag/ entry closure has zero live `import v1.*`
+    /// lines — src/v1 is a shell-perturb resolution root only, not gate entry scope.
+    #[test]
+    fn compile_clean_dag_entry_tree_has_no_v1_module_imports() {
+        let dag_root = workspace_root().join("dag");
+        let mut offenders = Vec::new();
+        let mut stack = vec![dag_root];
+        while let Some(dir) = stack.pop() {
+            let entries = std::fs::read_dir(&dir)
+                .unwrap_or_else(|e| panic!("read_dir {:?}: {e}", dir));
+            for entry in entries {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().and_then(|s| s.to_str()) == Some("dag") {
+                    let content = std::fs::read_to_string(&path)
+                        .unwrap_or_else(|e| panic!("read {:?}: {e}", path));
+                    for (i, line) in content.lines().enumerate() {
+                        let trimmed = line.trim_start();
+                        if trimmed.starts_with("import v1.") {
+                            offenders.push(format!(
+                                "{}:{}: {}",
+                                path.display(),
+                                i + 1,
+                                trimmed
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "dag compile-clean entry tree must not import v1.* modules: {offenders:?}"
+        );
     }
 
     /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).

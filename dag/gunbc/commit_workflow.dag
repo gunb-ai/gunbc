@@ -49,6 +49,8 @@ type CommitWorkflowRealizationBinding {
   artifact: GeneratedArtifact
 }
 
+data lever_a_emit_witness_enrollment_dissolution_note: String = "Lever A (#6361): removed CommitWitnessClaim row for dag_compile_clean_clean_tree_emit_execution_holds — that witness called witness_layer_roots_compile_clean_emit_check(), a second whole-tree --target dag compile over the same witness_layer_roots pool. Batch-1 dag_compile_clean_gate now consumes the executor's ONE install_floor_compile_clean_receipt (identical roots, identical emit leg); re-enrolling the witness would only re-pay the same compile in batch-2. Serialize-shape + perturb receipts stay enrolled separately."
+
 data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: EmitHostGate },
