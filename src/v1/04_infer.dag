@@ -830,7 +830,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       },
       kernel_diags: []
     }
-  } else if func_name == "map_keys" {
+  } else if func_name == "map_keys" || func_name == "sorted_map_keys" {
     match typed_args |> first {
       Present { value: receiver_arg } =>
         match arg_value(n: receiver_arg).inferred {
@@ -966,7 +966,7 @@ type MethodPipeFallback {
 }
 
 fn method_pipe_map_keys_values_fallback(recv_rt: Node, method_name: String, scope: InferScope, span: SourceSpan) -> MethodPipeFallback {
-  if method_name == "map_keys" {
+  if method_name == "map_keys" || method_name == "sorted_map_keys" {
     match map_key_type_in_env(type_node: recv_rt, env: scope.type_env) {
       Present { value: key_type } =>
         let lk = list_kernel_ty_from_element(element: key_type)
