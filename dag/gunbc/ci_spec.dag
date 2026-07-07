@@ -126,13 +126,15 @@ fn ci_repo_root_shell() -> String {
   "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 }
 
+data ci_release_build_regen_stage0_note: String = "regen_stage0 is built here (unconditionally, via cargo) alongside claim_executor/gunbc — NOT lazily via ensure_regen_stage0_built's build-if-absent. On the self-hosted runners target/release/ persists across jobs, so build-if-absent would run a STALE regen_stage0 from a prior commit; the ci_regen_ratchet job then reads no regen_divergence_count contract from that stale binary and fails the no-count refusal. cargo build is source-change-aware, so listing --bin regen_stage0 here guarantees a fresh binary that emits the count (receipt: ci_regen_ratchet job 85537100872, run 28841755357 @ 7927413 — stale-binary no-count refusal)."
+
 fn ci_release_build_line() -> String {
   concat(
     concat(
       "\"$CARGO_HOME/bin/cargo\" build -p v1-compiler --release --features ",
       ci_release_features
     ),
-    " --bin claim_executor --bin gunbc"
+    " --bin claim_executor --bin gunbc --bin regen_stage0"
   )
 }
 

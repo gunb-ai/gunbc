@@ -176,11 +176,15 @@ fn run_regen_divergence_ratchet() -> Bool {
 }
 
 fn regen_divergence_ratchet_gate() -> ProcessExit {
-  if run_regen_divergence_ratchet() {
+  let result = shell.Exec.Run(script: serialize_bash(p: regen_divergence_ratchet_program()))
+  if result.success {
     ExitSuccess
   } else {
     ExitFailure {
-      reason: "regen_divergence_ratchet: self-host divergence grew or the count contract was unreadable (see step log for the typed refusal)"
+      reason: concat(
+        "regen_divergence_ratchet FAILED — the located refusal (which arm + the observed count) is in the captured shell output below:\n",
+        result.stdout
+      )
     }
   }
 }
