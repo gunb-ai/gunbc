@@ -12,7 +12,7 @@ import extdeps.languages.bash.program {
 }
 import tools.host_prelude { ensure_gunbc_built }
 
-data emit_determinism_corpus_roots: List<String> = ["dag"]
+data emit_determinism_corpus_roots: List<String> = ["dag", "src/v2"]
 
 fn ed_source_root_flags() -> List<ShellWord> {
   fold(emit_determinism_corpus_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
