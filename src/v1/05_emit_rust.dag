@@ -9150,7 +9150,7 @@ fn emit_resolve_transitively_fn(crate_name: String, pipeline_mod: String) -> Str
     "        }\n",
     "    }\n",
     "\n",
-    "    let mut result: Vec<_> = seen.into_values().collect();\n",
+    "    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();\n",
     "    result.sort_by(|a, b| a.path.cmp(&b.path));\n",
     "    result\n",
     "}\n\n")
