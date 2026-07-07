@@ -1461,21 +1461,34 @@ pub fn render_rust_alias_rhs_type(
                 {
                     match n.children.clone().first().cloned() {
                         Some(base_te) => {
-                            return render_rust_alias_rhs_type(
-                                base_te.clone(),
-                                generic_param_names.clone(),
-                                shared_types.clone(),
+                            if (rust_seed_host_numeric_alias(
+                                authored_name_at(source_indices.clone(), base_te.clone()),
                                 corpus_repr.clone(),
-                                source_indices.clone(),
-                                scope.clone(),
-                                imports.clone(),
-                                registry.clone(),
-                                module_name.clone(),
-                                export_sets.clone(),
-                                typed_modules.clone(),
-                                module_index.clone(),
-                                variant_to_enum.clone(),
-                            )
+                            ) != None)
+                            {
+                                return render_rust_alias_rhs_type(
+                                    base_te.clone(),
+                                    generic_param_names.clone(),
+                                    shared_types.clone(),
+                                    corpus_repr.clone(),
+                                    source_indices.clone(),
+                                    scope.clone(),
+                                    imports.clone(),
+                                    registry.clone(),
+                                    module_name.clone(),
+                                    export_sets.clone(),
+                                    typed_modules.clone(),
+                                    module_index.clone(),
+                                    variant_to_enum.clone(),
+                                );
+                            } else {
+                                return render_rust_type(
+                                    base_te.clone(),
+                                    shared_types.clone(),
+                                    corpus_repr.clone(),
+                                    source_indices.clone(),
+                                );
+                            }
                         }
                         None => {}
                     }

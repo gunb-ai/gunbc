@@ -683,7 +683,11 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       if n.connective == Conj && (n.children |> count) == 1 {
         match n.children |> first {
           Present { value: base_te } =>
-            return render_rust_type(n: base_te, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+            if rust_seed_host_numeric_alias(name: authored_name_at(source_indices: source_indices, node: base_te), corpus_repr: corpus_repr) != none {
+              return render_rust_alias_rhs_type(n: base_te, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+            } else {
+              return render_rust_type(n: base_te, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+            }
           Absent => {}
         }
       }
