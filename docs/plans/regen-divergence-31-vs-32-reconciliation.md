@@ -55,6 +55,16 @@ during this audit; moot after ratchet deletion).
 Leading hypothesis on the 31-vs-32 question: lively-raven's **32** count was post-#6348
 actual on the managed-files axis (31 GENERATED + `main.rs`), not a ratchet arithmetic error.
 
+## Doc-vs-config drift (crisp-bear handover, 2026-07-07)
+
+The two-job split notes **declared** the `regen_divergence` ratchet a REQUIRED branch-protection
+check, but that was **never realized in config**. Verified via operator UI + rulesets API
+`16178731`: the only protection-required check is **`ci`** (the compile wall). So the ratchet
+red was **status-red, never merge-blocking**; its removal in #6355 changed no required-check
+surface. This explains why main could carry `ci_regen_ratchet` failures while other PRs merged
+on `ci` + `rust_tests` — and why the hour spent treating ratchet tightness as the merge
+blocker was reasoning from the wrong premise (substrate doc aspiration ≠ live branch rules).
+
 ## lively-raven #6357 verification checklist (live items)
 
 Ratchet/baseline atomicity items are **moot** (no baseline exists post-#6355). Remaining
@@ -64,6 +74,6 @@ live gates for approval:
 2. **`cargo test --workspace`** green or each skip/ignore explicitly dispositioned — not a silent pass if result is missing.
 3. `fail_closed_non_dag_file_forces_run_all` **deleted**, naming sibling `non_dag_only_diff_is_structural_empty_frontier_not_refusal` (#6269).
 4. **sigterm** disposition line present (pre-existing #6256, `phase_profile` untouched).
-5. All **10 non-seed files** accounted in the PR body.
+5. All **non-seed files** accounted in the PR body (count grew with `.dag` boundary fixes: `stage0_crates.dag`, `05_emit_rust.dag`, etc.).
 
 Reviewer lane only — do not re-run accept-fresh.
