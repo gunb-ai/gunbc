@@ -26,7 +26,7 @@ import v2.compiler.parse {
   parse_skip_to_sync,
 }
 import v2.std.witness { Holds, Violates }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
+import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, port_locus }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -171,11 +171,51 @@ data validation_disjoint_choice_root: GrammarRoot = GrammarRoot {
   sync_tokens: grammar_empty_sync_tokens()
 }
 
-fn validation_choice_ambiguity_validate_rejects() -> Bool {
+fn validation_overlap_choice_validate_accepts_with_residue() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: validation_ambiguous_choice_root, at: at) {
+    Accepted { value: _, diagnostics: d } =>
+      match d {
+        Some { diagnostics: residue } => residue.head.reason == ^parse_grammar_choice_overlap_residue
+        None => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data validation_nullable_ambiguous_choice_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_start,
+      expression: Choice {
+        left: Optional { element: Terminal { token_class: ^validation_tok_class, stamp: StampClass } },
+        right: Optional { element: Terminal { token_class: ^validation_tok_class, stamp: StampClass } }
+      },
+      emitted: grammar_atom(identity: ^validation_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+fn validation_nullable_ambiguity_validate_rejects() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: validation_nullable_ambiguous_choice_root, at: at) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
+  }
+}
+
+fn validation_disjoint_choice_residue_is_none() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
+    Accepted { value: _, diagnostics: d } =>
+      match d {
+        None => true
+        Some { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -331,10 +371,26 @@ data claim_disjoint_choice_not_ambiguous: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_validate_rejects_choice_ambiguity: TestClaim = EqualsClaim {
-  label: "grammar_validate_for_parse rejects grammars with overlapping Choice FIRST sets",
+data claim_validate_accepts_overlap_with_counted_residue: TestClaim = EqualsClaim {
+  label: "grammar_validate_for_parse accepts non-nullable Choice FIRST overlap as counted typed residue (reason parse_grammar_choice_overlap_residue); runtime routes it to parse_choice_residue_backtrack",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: validation_bool_atom(b: validation_choice_ambiguity_validate_rejects()),
+  lhs: validation_bool_atom(b: validation_overlap_choice_validate_accepts_with_residue()),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_validate_rejects_nullable_choice_ambiguity: TestClaim = EqualsClaim {
+  label: "grammar_validate_for_parse stays fail-closed on genuine ambiguity: both-nullable Choice arms sharing a FIRST terminal are Rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_nullable_ambiguity_validate_rejects()),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_disjoint_choice_validate_residue_none: TestClaim = EqualsClaim {
+  label: "disjoint-FIRST Choice validates with zero residue diagnostics (residue channel discriminates overlap from clean)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_disjoint_choice_residue_is_none()),
   rhs: validation_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
