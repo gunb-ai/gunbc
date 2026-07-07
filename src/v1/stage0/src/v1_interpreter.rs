@@ -5207,24 +5207,18 @@ fn eval_emit_host_run_transport_builtin(
     for f in &files {
         match f {
             Value::Record { fields, .. } => {
-                let path = match ctx.field(fields, "path") {
-                    Some(Value::Str(s)) => s.clone(),
-                    _ => {
-                        return Err(InterpError::TypeError {
-                            msg: "emit_host_run_transport: workspace file missing String path"
-                                .to_string(),
-                        })
-                    }
-                };
-                let text = match ctx.field(fields, "text") {
-                    Some(Value::Str(s)) => s.clone(),
-                    _ => {
-                        return Err(InterpError::TypeError {
-                            msg: "emit_host_run_transport: workspace file missing String text"
-                                .to_string(),
-                        })
-                    }
-                };
+                let path = ctx.field(fields, "path").and_then(free_monoid_to_string).ok_or_else(
+                    || InterpError::TypeError {
+                        msg: "emit_host_run_transport: workspace file missing String path"
+                            .to_string(),
+                    },
+                )?;
+                let text = ctx.field(fields, "text").and_then(free_monoid_to_string).ok_or_else(
+                    || InterpError::TypeError {
+                        msg: "emit_host_run_transport: workspace file missing String text"
+                            .to_string(),
+                    },
+                )?;
                 workspace_files.push((path, text));
             }
             other => {
@@ -5251,17 +5245,13 @@ fn eval_emit_host_run_transport_builtin(
         })?;
         let mut argv: Vec<String> = Vec::with_capacity(argv_items.len());
         for item in &argv_items {
-            match item {
-                Value::Str(s) => argv.push(s.clone()),
-                other => {
-                    return Err(InterpError::TypeError {
-                        msg: format!(
-                            "emit_host_run_transport: build argv element must be String, got {}",
-                            other.type_label()
-                        ),
-                    })
-                }
-            }
+            let s = free_monoid_to_string(item).ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport: build argv element must be String, got {}",
+                    item.type_label()
+                ),
+            })?;
+            argv.push(s);
         }
         if argv.is_empty() {
             return Err(InterpError::TypeError {
@@ -5271,7 +5261,21 @@ fn eval_emit_host_run_transport_builtin(
         build_argvs.push(argv);
     }
 
-    let run_argv = expect_str_list_flex(run_arg, "emit_host_run_transport run argv")?;
+    let run_arg_items = run_arg
+        .and_then(free_monoid_to_vec)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "emit_host_run_transport: run must be a List<String>".to_string(),
+        })?;
+    let mut run_argv: Vec<String> = Vec::with_capacity(run_arg_items.len());
+    for item in &run_arg_items {
+        let s = free_monoid_to_string(item).ok_or_else(|| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport: run argv element must be String, got {}",
+                item.type_label()
+            ),
+        })?;
+        run_argv.push(s);
+    }
     if run_argv.is_empty() {
         return Err(InterpError::TypeError {
             msg: "emit_host_run_transport: empty run argv".to_string(),
