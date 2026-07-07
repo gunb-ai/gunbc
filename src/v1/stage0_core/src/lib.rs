@@ -146,10 +146,10 @@ impl<T: Clone> NonEmptyVec<T> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(BTreeSet<T>);
+pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: BTreeSet<T>) -> Result<Self, &'static str> {
+    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
         if items.is_empty() {
             Err("NonEmptyBTreeSet requires at least one element")
         } else {
@@ -157,11 +157,11 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         }
     }
 
-    pub fn as_set(&self) -> &BTreeSet<T> {
+    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
         &self.0
     }
 
-    pub fn into_set(self) -> BTreeSet<T> {
+    pub fn into_set(self) -> std::collections::BTreeSet<T> {
         self.0
     }
 }
