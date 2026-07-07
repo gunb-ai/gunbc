@@ -89,19 +89,8 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.logic { Bool, bool_boolean_algebra }
-import v2.std.algebra {
-  approximate_field_type_node,
-  boolean_algebra_type_node,
-  BooleanAlgebra,
-  commutative_semiring_type_node,
-  Cons,
-  Empty,
-  fold_list,
-  free_monoid_type_node,
-  list_append,
-  list_snoc_item,
-  ordered_ring_type_node
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, commutative_semiring_type_node, fold_list, free_monoid_type_node, list_append, list_snoc_item, ordered_ring_type_node }
 import v2.std.text { String }
 
 type SwiftIntWidth

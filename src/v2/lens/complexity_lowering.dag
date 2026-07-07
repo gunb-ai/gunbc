@@ -11,7 +11,8 @@ import v2.lens.cost {
   asymptotic_class_of_cost,
   polynomial_degree_two
 }
-import v2.std.algebra { FreeMonoid, any, fold_list, for_all }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { any, fold_list, for_all }
 import v2.std.node { Symbol }
 import v2.std.logic { Bool }
 

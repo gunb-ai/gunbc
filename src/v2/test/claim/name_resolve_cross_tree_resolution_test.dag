@@ -13,7 +13,8 @@ import v2.extdeps.languages.dag {
   dag_language_model_surface_empty_prelude,
   dag_named_edge
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
 import v2.std.cross_tree.import_model { DagTree, SourceRootSet, V2Tree }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,

@@ -11,7 +11,7 @@ import v2.lens.enforcement.cost_coverage {
   cost_coverage_file_receipt,
   cost_coverage_tree_census
 }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }

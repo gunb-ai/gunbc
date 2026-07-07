@@ -19,7 +19,8 @@ import v2.extdeps.languages.dag {
   dag_mvp1_target_model,
   dag_mvp1_translation_rules_node
 }
-import v2.std.algebra { Empty, list_append }
+import std.algebra { Empty }
+import v2.std.algebra { list_append }
 import v2.std.collection { List, Set }
 import v2.std.compilers.lexing { Token, token_stream_remaining }
 import v2.std.compilers.target_model {

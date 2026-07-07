@@ -1,6 +1,7 @@
 module v2.test.parse.token_stream_cursor
 
-import v2.std.algebra { Cons, Empty, length, skip }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { length, skip }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.compilers.lexing {
   Token,

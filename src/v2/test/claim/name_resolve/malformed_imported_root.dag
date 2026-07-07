@@ -13,7 +13,8 @@ import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_named_edge
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
 import v2.std.collection { empty_map }
 import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.qualified_name { QualifiedName }

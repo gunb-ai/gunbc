@@ -17,7 +17,7 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
   effect_io_pure_read_write_roundtrip,
   effect_io_pure_unit_type_node
 }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
