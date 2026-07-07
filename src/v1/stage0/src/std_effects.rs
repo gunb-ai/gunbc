@@ -80,7 +80,7 @@ impl IdempotencyEvidence {
 }
 
 pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
-    match (*shape).clone() {
+    match (*shape.clone()).clone() {
         EffectShape::ReadEffect => true,
         EffectShape::UpsertEffect { .. } => true,
         EffectShape::DeleteEffect { .. } => true,
@@ -96,16 +96,16 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
 }
 
 pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
-    match (*left).clone() {
-        KeySource::PathParam { param: pa, .. } => match (*right).clone() {
+    match (*left.clone()).clone() {
+        KeySource::PathParam { param: pa, .. } => match (*right.clone()).clone() {
             KeySource::PathParam { param: pb, .. } => (pa.clone() == pb.clone()),
             _ => false,
         },
-        KeySource::InputField { field: fa, .. } => match (*right).clone() {
+        KeySource::InputField { field: fa, .. } => match (*right.clone()).clone() {
             KeySource::InputField { field: fb, .. } => (fa.clone() == fb.clone()),
             _ => false,
         },
-        KeySource::CompositeKey { fields: fa, .. } => match (*right).clone() {
+        KeySource::CompositeKey { fields: fa, .. } => match (*right.clone()).clone() {
             KeySource::CompositeKey { fields: fb, .. } => string_list_eq(fa.clone(), fb.clone()),
             _ => false,
         },
@@ -113,7 +113,7 @@ pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
 }
 
 pub fn create_effect_is_dedupable(shape: Rc<EffectShape>) -> bool {
-    match (*shape).clone() {
+    match (*shape.clone()).clone() {
         EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
             CreateCause::CreateIfAbsent {
                 key_source: key_source,
@@ -126,9 +126,9 @@ pub fn create_effect_is_dedupable(shape: Rc<EffectShape>) -> bool {
 }
 
 pub fn create_double_init_collapsible(a: Rc<EffectShape>, b: Rc<EffectShape>) -> bool {
-    match (*a).clone() {
+    match (*a.clone()).clone() {
         EffectShape::CreateEffect { cause: cause_a, .. } => match (*cause_a.clone()).clone() {
-            CreateCause::CreateIfAbsent { key_source: ka, .. } => match (*b).clone() {
+            CreateCause::CreateIfAbsent { key_source: ka, .. } => match (*b.clone()).clone() {
                 EffectShape::CreateEffect { cause: cause_b, .. } => {
                     match (*cause_b.clone()).clone() {
                         CreateCause::CreateIfAbsent { key_source: kb, .. } => {
@@ -171,7 +171,7 @@ impl CompositionVerdict {
 }
 
 pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
-    effects.iter().cloned().fold(
+    effects.clone().iter().cloned().fold(
         Rc::new(CompositionVerdict::IdempotentComposition),
         |acc: Rc<CompositionVerdict>, e: Rc<OperationEffect>| match (*acc.clone()).clone() {
             CompositionVerdict::BrokenBy {
@@ -219,14 +219,14 @@ pub enum DeriveOpEffectResult {
 }
 
 pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<EffectShape> {
-    match method {
+    match method.clone() {
         HttpMethod::GET => Rc::new(EffectShape::ReadEffect),
         HttpMethod::HEAD => Rc::new(EffectShape::ReadEffect),
         HttpMethod::OPTIONS => Rc::new(EffectShape::ReadEffect),
         HttpMethod::POST => Rc::new(EffectShape::CreateEffect {
             cause: Rc::new(CreateCause::PostAlways),
         }),
-        HttpMethod::DELETE => match last_path_param(path) {
+        HttpMethod::DELETE => match last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::DeleteEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
@@ -234,7 +234,7 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
                 cause: Rc::new(CreateCause::PostAlways),
             }),
         },
-        HttpMethod::PUT => match last_path_param(path) {
+        HttpMethod::PUT => match last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
@@ -242,7 +242,7 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
                 cause: Rc::new(CreateCause::PostAlways),
             }),
         },
-        HttpMethod::PATCH => match last_path_param(path) {
+        HttpMethod::PATCH => match last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
@@ -262,10 +262,10 @@ pub fn derive_op_effect(
         let shape = derive_effect_shape(method.clone(), path.clone());
         Rc::new(DeriveOpEffectResult::DerivedEffect {
             effect: Rc::new(DerivedOpEffect {
-                operation_name: operation_name,
+                operation_name: operation_name.clone(),
                 method: method.clone(),
                 path_template: path.clone(),
-                shape: shape,
+                shape: shape.clone(),
             }),
         })
     }
@@ -361,7 +361,7 @@ pub fn check_modifier_vs_derivation(
             declared_idempotent: declared_idempotent.clone(),
             declared_readonly: declared_readonly.clone(),
             derived_shape: op.shape.clone(),
-            agreement: agreement,
+            agreement: agreement.clone(),
         })
     }
 }
@@ -381,7 +381,7 @@ pub fn generate_idempotency_obligations(
         let mut __result = Vec::new();
         for o in Rc::new({
             let mut __result = Vec::new();
-            for o in ops.iter().cloned() {
+            for o in ops.clone().iter().cloned() {
                 if is_idempotent_effect(o.shape.clone()) {
                     __result.push(o);
                 }

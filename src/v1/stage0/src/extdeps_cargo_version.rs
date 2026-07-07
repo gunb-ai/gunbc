@@ -45,19 +45,22 @@ pub fn default_stage0_package_version() -> CargoPackageVersion {
 
 pub fn render_cargo_package_version_field(version: CargoPackageVersion) -> String {
     v1_rt::concat(
-        v1_rt::concat("version = \"".to_string(), version),
+        v1_rt::concat("version = \"".to_string(), version.clone()),
         "\"".to_string(),
     )
 }
 
 pub fn render_cargo_version_requirement_toml(req: CargoVersionRequirement) -> String {
-    v1_rt::concat(v1_rt::concat("\"".to_string(), req), "\"".to_string())
+    v1_rt::concat(
+        v1_rt::concat("\"".to_string(), req.clone()),
+        "\"".to_string(),
+    )
 }
 
 pub fn render_cargo_package_header_prefix(name: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
-            v1_rt::concat("[package]\nname = \"".to_string(), name),
+            v1_rt::concat("[package]\nname = \"".to_string(), name.clone()),
             "\"\n".to_string(),
         ),
         render_cargo_package_version_field(default_stage0_package_version()),

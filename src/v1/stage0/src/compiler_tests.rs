@@ -322,6 +322,56 @@ mod compiler_tests {
     }
 
     #[test]
+    fn unlisted_import_use_witness() {
+        // Discriminating witness for the selective-import fail-closed mask
+        // (resolve_node_bounded masked boundary). module_b references `Widget`
+        // without importing it (imports only `Gadget`) -> UnlistedImportUse must
+        // be emitted. module_c imports `Widget` -> must NOT be flagged (red control:
+        // an inert mask fails the first assert; an over-firing mask fails the second).
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "module_a.dag".to_string(),
+                    content: "module module_a\ntype Widget { x: String }\ntype Gadget { y: String }\n".to_string(),
+                });
+                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "module_b.dag".to_string(),
+                    content: "module module_b\nimport module_a { Gadget }\nfn use_widget(w: Widget) -> Widget { w }\n".to_string(),
+                });
+                let module_c = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "module_c.dag".to_string(),
+                    content: "module module_c\nimport module_a { Widget }\nfn use_widget(w: Widget) -> Widget { w }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im_rc::vector![module_a, module_b, module_c]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let unlisted: Vec<_> = result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }))
+                    .collect();
+                let widget_in_b = unlisted.iter().any(|e| {
+                    e.module_name == "module_b"
+                        && matches!(&*e.diagnostic, crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { name, .. } if name == "Widget")
+                });
+                assert!(
+                    widget_in_b,
+                    "expected UnlistedImportUse 'Widget' in module_b (uses Widget, imports only Gadget), got: {:?}",
+                    result.diagnostics
+                );
+                let flagged_in_c = unlisted.iter().any(|e| e.module_name == "module_c");
+                assert!(
+                    !flagged_in_c,
+                    "module_c imports Widget -> must NOT be flagged (mask over-firing), got: {:?}",
+                    unlisted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("unlisted_import_use_witness panicked");
+    }
+
+    #[test]
     fn sole_constructor_violation_outside_module() {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
@@ -1557,8 +1607,7 @@ mod compiler_tests {
                 let sources = self_compile_sources();
 
                 eprintln!(
-                    "
-=== PER-MODULE RECONCILE PROFILE ({} sources) ===",
+                    "\n=== PER-MODULE RECONCILE PROFILE ({} sources) ===",
                     sources.len()
                 );
 
@@ -1621,11 +1670,7 @@ mod compiler_tests {
                     setup_time,
                     format_bytes(rss_baseline)
                 );
-                eprintln!(
-                    "  Modules to reconcile: {}
-",
-                    graph.modules.len()
-                );
+                eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
                 let mut mi_raw = HashMap::<
                     String,
@@ -1776,15 +1821,11 @@ mod compiler_tests {
 
                 let rss_final = get_rss_bytes();
                 eprintln!(
-                    "
-  RSS final: {} (from baseline: +{})",
+                    "\n  RSS final: {} (from baseline: +{})",
                     format_bytes(rss_final),
                     format_bytes(rss_final.saturating_sub(rss_baseline))
                 );
-                eprintln!(
-                    "=== DONE ===
-"
-                );
+                eprintln!("=== DONE ===\n");
             })
             .expect("failed to spawn thread")
             .join();

@@ -53,7 +53,7 @@ pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
             }
             __result
         });
-        match params.last().cloned() {
+        match params.clone().last().cloned() {
             Some(tok) => match (*tok.clone()).clone() {
                 UrlPathToken::ParamToken { name: n, .. } => Some(n.clone()),
                 UrlPathToken::LiteralToken { .. } => None,
@@ -70,7 +70,7 @@ pub struct PathParamBinding {
 }
 
 pub fn path_param_value(params: Rc<Vec<Rc<PathParamBinding>>>, name: String) -> String {
-    params.iter().cloned().fold(
+    params.clone().iter().cloned().fold(
         "".to_string(),
         |acc: String, binding: Rc<PathParamBinding>| {
             if (acc.clone() != "".to_string()) {

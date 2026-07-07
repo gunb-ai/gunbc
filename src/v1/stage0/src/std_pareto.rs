@@ -59,13 +59,13 @@ pub fn compare_int(a: i64, b: i64) -> Ordering {
 }
 
 pub fn axis_comparison(goal: AxisGoal, value_order: Ordering) -> AxisComparison {
-    match goal {
-        AxisGoal::HigherIsBetter => match value_order {
+    match goal.clone() {
+        AxisGoal::HigherIsBetter => match value_order.clone() {
             Ordering::Greater => AxisComparison::Better,
             Ordering::Equal => AxisComparison::Same,
             Ordering::Less => AxisComparison::Worse,
         },
-        AxisGoal::LowerIsBetter => match value_order {
+        AxisGoal::LowerIsBetter => match value_order.clone() {
             Ordering::Greater => AxisComparison::Worse,
             Ordering::Equal => AxisComparison::Same,
             Ordering::Less => AxisComparison::Better,
@@ -74,7 +74,7 @@ pub fn axis_comparison(goal: AxisGoal, value_order: Ordering) -> AxisComparison 
 }
 
 pub fn axis_comparison_int(goal: AxisGoal, a: i64, b: i64) -> AxisComparison {
-    axis_comparison(goal, compare_int(a, b))
+    axis_comparison(goal.clone(), compare_int(a.clone(), b.clone()))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -84,7 +84,7 @@ pub struct DominanceTally {
 }
 
 pub fn tally_step(acc: DominanceTally, cmp: AxisComparison) -> DominanceTally {
-    match cmp {
+    match cmp.clone() {
         AxisComparison::Better => DominanceTally {
             saw_better: true,
             saw_worse: acc.saw_worse.clone(),
@@ -93,7 +93,7 @@ pub fn tally_step(acc: DominanceTally, cmp: AxisComparison) -> DominanceTally {
             saw_better: acc.saw_better.clone(),
             saw_worse: true,
         },
-        AxisComparison::Same => acc,
+        AxisComparison::Same => acc.clone(),
     }
 }
 
@@ -114,7 +114,7 @@ pub fn tally_verdict(t: DominanceTally) -> DominanceVerdict {
 }
 
 pub fn dominance_of_comparisons(comparisons: Rc<Vec<AxisComparison>>) -> DominanceVerdict {
-    tally_verdict(comparisons.iter().cloned().fold(
+    tally_verdict(comparisons.clone().iter().cloned().fold(
         DominanceTally {
             saw_better: false,
             saw_worse: false,
@@ -124,7 +124,7 @@ pub fn dominance_of_comparisons(comparisons: Rc<Vec<AxisComparison>>) -> Dominan
 }
 
 pub fn verdict_dominates(v: DominanceVerdict) -> bool {
-    match v {
+    match v.clone() {
         DominanceVerdict::Dominates => true,
         DominanceVerdict::Dominated => false,
         DominanceVerdict::Equivalent => false,
@@ -133,7 +133,7 @@ pub fn verdict_dominates(v: DominanceVerdict) -> bool {
 }
 
 pub fn verdict_is_dominated(v: DominanceVerdict) -> bool {
-    match v {
+    match v.clone() {
         DominanceVerdict::Dominated => true,
         DominanceVerdict::Dominates => false,
         DominanceVerdict::Equivalent => false,
@@ -142,7 +142,7 @@ pub fn verdict_is_dominated(v: DominanceVerdict) -> bool {
 }
 
 pub fn verdict_is_equivalent(v: DominanceVerdict) -> bool {
-    match v {
+    match v.clone() {
         DominanceVerdict::Equivalent => true,
         DominanceVerdict::Dominates => false,
         DominanceVerdict::Dominated => false,
@@ -151,7 +151,7 @@ pub fn verdict_is_equivalent(v: DominanceVerdict) -> bool {
 }
 
 pub fn verdict_is_incomparable(v: DominanceVerdict) -> bool {
-    match v {
+    match v.clone() {
         DominanceVerdict::Incomparable => true,
         DominanceVerdict::Dominates => false,
         DominanceVerdict::Dominated => false,
@@ -161,6 +161,7 @@ pub fn verdict_is_incomparable(v: DominanceVerdict) -> bool {
 
 pub fn any_dominates(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
     verdicts
+        .clone()
         .iter()
         .cloned()
         .fold(false, |acc: bool, v: DominanceVerdict| {
@@ -169,7 +170,7 @@ pub fn any_dominates(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
 }
 
 pub fn on_pareto_front(verdicts: Rc<Vec<DominanceVerdict>>) -> bool {
-    !any_dominates(verdicts)
+    !any_dominates(verdicts.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

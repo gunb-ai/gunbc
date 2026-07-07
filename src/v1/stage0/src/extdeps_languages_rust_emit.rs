@@ -531,7 +531,7 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
 }
 
 pub fn is_rt_function(name: String) -> bool {
-    v1_rt::map_contains_key(&rt_functions(), name)
+    v1_rt::map_contains_key(&rt_functions(), name.clone())
 }
 
 pub fn rt_bridge_name(name: String) -> String {
@@ -542,7 +542,7 @@ pub fn rt_bridge_name(name: String) -> String {
 }
 
 pub fn rt_passes_by_ref(name: String) -> bool {
-    v1_rt::map_contains_key(&rt_ref_map_functions(), name)
+    v1_rt::map_contains_key(&rt_ref_map_functions(), name.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

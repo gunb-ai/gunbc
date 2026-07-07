@@ -36,7 +36,7 @@ pub struct DagCollectAcc {
 }
 
 pub fn dag_collect_slot_seq(slots: Rc<HashMap<String, Rc<DagCollectSlot>>>) -> i64 {
-    (slots.len() as i64)
+    (slots.clone().len() as i64)
 }
 
 pub fn dag_collect_pack_slots(
@@ -67,22 +67,22 @@ pub fn dag_collect_pack_slots(
             },
         );
         Rc::new(DagCollectAcc {
-            seen: seen,
-            order: order,
-            collision_errors: collision_errors,
+            seen: seen.clone(),
+            order: order.clone(),
+            collision_errors: collision_errors.clone(),
         })
     }
 }
 
 pub fn json_quote(s: String) -> String {
     v1_rt::concat(
-        v1_rt::concat("\"".to_string(), escape_json_string(s)),
+        v1_rt::concat("\"".to_string(), escape_json_string(s.clone())),
         "\"".to_string(),
     )
 }
 
 pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
-    match value.as_deref().cloned() {
+    match value.clone().as_deref().cloned() {
         None => "none".to_string(),
         Some(InferredNode::Resolved { node: _, .. }) => "Resolved".to_string(),
         Some(InferredNode::TypeVariable { id: id, .. }) => {
@@ -95,7 +95,7 @@ pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
 }
 
 pub fn expr_data_variant(data: Rc<ExprData>) -> String {
-    match (*data).clone() {
+    match (*data.clone()).clone() {
         ExprData::NoExprData => "NoExprData".to_string(),
         ExprData::ExprLiteral { value: _, .. } => "ExprLiteral".to_string(),
         ExprData::ExprError { .. } => "ExprError".to_string(),
@@ -127,7 +127,7 @@ pub fn expr_data_variant(data: Rc<ExprData>) -> String {
 }
 
 pub fn connective_name(value: Connective) -> String {
-    match value {
+    match value.clone() {
         Connective::Conj => "Conj".to_string(),
         Connective::Disj => "Disj".to_string(),
         Connective::NoConnective => "NoConnective".to_string(),
@@ -137,7 +137,7 @@ pub fn connective_name(value: Connective) -> String {
 
 pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
     Rc::new({
-        let mut __sorted: Vec<_> = digests.iter().cloned().collect();
+        let mut __sorted: Vec<_> = digests.clone().iter().cloned().collect();
         __sorted.sort_by(|a: &String, b: &String| {
             let __ka = (|d: String| d.clone())(a.clone());
             let __kb = (|d: String| d.clone())(b.clone());
@@ -154,18 +154,18 @@ pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
 }
 
 pub fn dag_node_seq_hash(digests: Rc<Vec<String>>) -> String {
-    digests.iter().cloned().fold(
+    digests.clone().iter().cloned().fold(
         v1_rt::atom_identity_hash("^dag_collect_seq_empty".to_string()),
         |acc: v1_rt::Hash, d: String| v1_rt::hash_combine(acc, d.clone()),
     )
 }
 
 pub fn child_subtree_hash(connective: Connective, digests: Rc<Vec<String>>) -> String {
-    match connective {
-        Connective::Conj => dag_node_bag_hash(digests),
-        Connective::Disj => dag_node_bag_hash(digests),
-        Connective::Arrow => dag_node_seq_hash(digests),
-        Connective::NoConnective => dag_node_seq_hash(digests),
+    match connective.clone() {
+        Connective::Conj => dag_node_bag_hash(digests.clone()),
+        Connective::Disj => dag_node_bag_hash(digests.clone()),
+        Connective::Arrow => dag_node_seq_hash(digests.clone()),
+        Connective::NoConnective => dag_node_seq_hash(digests.clone()),
     }
 }
 
@@ -206,14 +206,17 @@ pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
         });
         let with_children = v1_rt::hash_combine(
             dag_node_surface_leaf_mix(node.clone()),
-            child_subtree_hash(node.connective.clone(), child_hashes),
+            child_subtree_hash(node.connective.clone(), child_hashes.clone()),
         );
-        v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes))
+        v1_rt::hash_combine(
+            with_children.clone(),
+            dag_node_seq_hash(param_hashes.clone()),
+        )
     })
 }
 
 pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint_rec(node)
+    dag_node_surface_fingerprint_rec(node.clone())
 }
 
 pub fn dag_collect_fp_memo_dissolve_on() -> String {
@@ -230,13 +233,13 @@ pub fn dag_collect_fp_memo_reset() -> bool {
 }
 
 pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint(node)
+    dag_node_surface_fingerprint(node.clone())
 }
 
 pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
     {
         let synthetic = ((span.start.clone() == 0) && (span.end.clone() == 0));
-        let detail = if synthetic {
+        let detail = if synthetic.clone() {
             " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
                 .to_string()
         } else {
@@ -247,9 +250,9 @@ pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<Err
                 message: v1_rt::concat(
                     v1_rt::concat(
                         "dag artifact: distinct nodes share identity key ".to_string(),
-                        json_quote(key),
+                        json_quote(key.clone()),
                     ),
-                    detail,
+                    detail.clone(),
                 ),
                 span: span.clone(),
             }),

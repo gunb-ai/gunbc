@@ -21,21 +21,21 @@ pub enum Classical {
 }
 
 pub fn classical_not(a: Classical) -> Classical {
-    match a {
+    match a.clone() {
         Classical::True => Classical::False,
         Classical::False => Classical::True,
     }
 }
 
 pub fn classical_and(a: Classical, b: Classical) -> Classical {
-    match a {
+    match a.clone() {
         Classical::False => Classical::False,
         Classical::True => b,
     }
 }
 
 pub fn classical_or(a: Classical, b: Classical) -> Classical {
-    match a {
+    match a.clone() {
         Classical::True => Classical::True,
         Classical::False => b,
     }

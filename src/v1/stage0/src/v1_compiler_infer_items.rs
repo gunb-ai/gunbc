@@ -90,10 +90,10 @@ pub fn inferred_to_outputs(
             InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
             InferredNode::Resolved { node: rt, .. } => {
                 let has_structure = (rt.connective.clone() != Connective::NoConnective);
-                if has_structure {
+                if has_structure.clone() {
                     {
                         let is_product = (rt.connective.clone() == Connective::Conj);
-                        if is_product {
+                        if is_product.clone() {
                             if (rt.ident_span.clone() == None) {
                                 Rc::new({
                                     let mut __result = Vec::new();

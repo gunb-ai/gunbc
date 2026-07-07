@@ -83,12 +83,12 @@ pub fn ct_coercion_tests() -> String {
         let entries = extract_coercion_tests();
         let test_fns = Rc::new({
             let mut __result = Vec::new();
-            for e in entries.iter().cloned() {
+            for e in entries.clone().iter().cloned() {
                 __result.push(render_coercion_test_rust(e.clone()));
             }
             __result
         });
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    // =========================================================================\n".to_string(), "    // Coercion registry tests (auto-generated from data declarations)\n".to_string()), "    // =========================================================================\n\n".to_string()), test_fns.join(&"\n".to_string())), ct_rust_btree_set_ord_eligibility_test())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    // =========================================================================\n".to_string(), "    // Coercion registry tests (auto-generated from data declarations)\n".to_string()), "    // =========================================================================\n\n".to_string()), test_fns.clone().join(&"\n".to_string())), ct_rust_btree_set_ord_eligibility_test())
     }
 }
 
@@ -97,7 +97,7 @@ pub fn ct_rust_btree_set_ord_eligibility_test() -> String {
 }
 
 pub fn render_target_rust_enum(target: RenderTarget) -> String {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => "RenderTarget::Rust".to_string(),
         RenderTarget::Python => "RenderTarget::Python".to_string(),
         RenderTarget::Go => "RenderTarget::Go".to_string(),
@@ -126,7 +126,7 @@ pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
                     ),
                     "        use crate::v1_compiler_coercion::*;\n".to_string(),
                 ),
-                assertions.join(&"".to_string()),
+                assertions.clone().join(&"".to_string()),
             ),
             "    }\n\n".to_string(),
         )
@@ -134,21 +134,21 @@ pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
 }
 
 pub fn first_or_empty(items: Rc<Vec<String>>) -> String {
-    match items.first().cloned() {
+    match items.clone().first().cloned() {
         Some(v) => v.clone(),
         None => "".to_string(),
     }
 }
 
 pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
-    match items.get(1 as usize).cloned() {
+    match items.clone().get(1 as usize).cloned() {
         Some(v) => v.clone(),
         None => "".to_string(),
     }
 }
 
 pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
-    match (*a).clone() {
+    match (*a.clone()).clone() {
         CoercionAssertion::CheckpointAssertion {
             target: t,
             dag_name: name,
@@ -246,7 +246,7 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                                         ),
                                         "\".into(), \"".to_string(),
                                     ),
-                                    arg0,
+                                    arg0.clone(),
                                 ),
                                 "\".into()), \"".to_string(),
                             ),
@@ -260,7 +260,7 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                     {
                         let arg0 = first_or_empty(arg_list.clone());
                         let arg1 = second_or_empty(arg_list.clone());
-                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0), "\".into(), \"".to_string()), arg1), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
+                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0.clone()), "\".into(), \"".to_string()), arg1.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
                     }
                 } else {
                     "".to_string()

@@ -28,7 +28,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::TypeVariable { id: id })),
+        inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
@@ -53,23 +53,29 @@ pub fn map_of_type_variables() -> Rc<Node> {
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    make_container_type("List".to_string(), type_variable_node(id))
+    make_container_type("List".to_string(), type_variable_node(id.clone()))
         .ty
         .clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    make_container_type("List".to_string(), element).ty.clone()
+    make_container_type("List".to_string(), element.clone())
+        .ty
+        .clone()
 }
 
 pub fn witness_of_element(element: Rc<Node>) -> Rc<Node> {
-    make_container_type("Witness".to_string(), element)
+    make_container_type("Witness".to_string(), element.clone())
         .ty
         .clone()
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
-    v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, Rc<Node>>(), key, value)
+    v1_rt::rc_map_insert(
+        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        key.clone(),
+        value.clone(),
+    )
 }
 
 pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
@@ -451,11 +457,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
 }
 
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
-    v1_rt::map_get(&builtin_function_registry(), name)
+    v1_rt::map_get(&builtin_function_registry(), name.clone())
 }
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
-    match infer_builtin_call_type(name) {
+    match infer_builtin_call_type(name.clone()) {
         Some(v) => v.clone(),
         None => unit_type(),
     }

@@ -124,7 +124,7 @@ pub fn render_stage0_crate_feature(feature: Rc<CargoFeature>) -> String {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(feature.name.clone(), " = [".to_string()),
-                    dep_names,
+                    dep_names.clone(),
                 ),
                 "]\n".to_string(),
             )
@@ -173,11 +173,11 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
                 ),
                 "\n\n[dependencies]\n".to_string(),
             ),
-            deps,
+            deps.clone(),
         );
         Rc::new(TextFile {
             path: v1_rt::concat(spec.crate_dir.clone(), "/Cargo.toml".to_string()),
-            content: content,
+            content: content.clone(),
         })
     }
 }
@@ -209,18 +209,18 @@ pub fn render_stage0_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
                 ),
                 "\n\n".to_string(),
             ),
-            includes,
+            includes.clone(),
         );
         if spec.carries_non_empty_wrappers.clone() {
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(head, "\n\n".to_string()),
+                    v1_rt::concat(head.clone(), "\n\n".to_string()),
                     emit_non_empty_wrappers(),
                 ),
                 "\n".to_string(),
             )
         } else {
-            v1_rt::concat(head, "\n".to_string())
+            v1_rt::concat(head.clone(), "\n".to_string())
         }
     }
 }
@@ -244,7 +244,7 @@ pub fn render_stage0_emit_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
             __result
         })
         .join(&"\n\n".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()), stage0_crate_allow_block()), "\n\n".to_string()), "pub use v1_stage0_core::{NonEmptyBTreeSet, NonEmptyVec};".to_string()), "\n\n".to_string()), reexports), "\n\n".to_string()), "#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;".to_string()), "\n\n".to_string()), "pub use v1_compiler_emit_core_support::*;".to_string()), "\n".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()), stage0_crate_allow_block()), "\n\n".to_string()), "pub use v1_stage0_core::{NonEmptyBTreeSet, NonEmptyVec};".to_string()), "\n\n".to_string()), reexports.clone()), "\n\n".to_string()), "#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;".to_string()), "\n\n".to_string()), "pub use v1_compiler_emit_core_support::*;".to_string()), "\n".to_string())
     }
 }
 
@@ -256,7 +256,7 @@ pub fn emit_stage0_crate_lib(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
         };
         Rc::new(TextFile {
             path: v1_rt::concat(spec.crate_dir.clone(), "/src/lib.rs".to_string()),
-            content: content,
+            content: content.clone(),
         })
     }
 }

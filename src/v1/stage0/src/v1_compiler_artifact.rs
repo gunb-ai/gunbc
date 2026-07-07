@@ -90,7 +90,7 @@ impl PartitionRule {
 }
 
 pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
-    match (*rule).clone() {
+    match (*rule.clone()).clone() {
         PartitionRule::Explicit {
             artifacts: arts, ..
         } => Rc::new(ArtifactPlan {
@@ -114,8 +114,8 @@ pub fn default_artifact_plan(
         artifacts: Rc::new(vec![Rc::new(Artifact {
             name: "default".to_string(),
             kind: ArtifactKind::ServiceBinary,
-            target: target,
-            entry_modules: root_modules,
+            target: target.clone(),
+            entry_modules: root_modules.clone(),
             dependencies: Rc::new(vec![]),
         })]),
     }))

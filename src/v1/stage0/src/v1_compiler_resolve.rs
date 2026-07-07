@@ -54,7 +54,7 @@ pub struct ResolveAccum {
 }
 
 pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
-    match v1_rt::map_get(&m, key) {
+    match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
         None => false,
     }
@@ -128,6 +128,7 @@ pub fn resolve_modules(
         let sorted_names = topo_result.sorted.clone();
         let sorted_order_map = Rc::new(
             sorted_names
+                .clone()
                 .iter()
                 .cloned()
                 .enumerate()
@@ -170,7 +171,7 @@ pub fn resolve_modules(
             __result
         });
         let sorted_resolved = Rc::new({
-            let mut __sorted: Vec<_> = acyclic_resolved.iter().cloned().collect();
+            let mut __sorted: Vec<_> = acyclic_resolved.clone().iter().cloned().collect();
             __sorted.sort_by(|a: &Rc<ResolvedModule>, b: &Rc<ResolvedModule>| {
                 let __ka = (|m: Rc<ResolvedModule>| m.dep_order.clone())(a.clone());
                 let __kb = (|m: Rc<ResolvedModule>| m.dep_order.clone())(b.clone());
@@ -179,14 +180,17 @@ pub fn resolve_modules(
             __sorted
         });
         Rc::new(ModuleGraph {
-            modules: sorted_resolved,
-            diagnostics: v1_rt::concat(v1_rt::concat(dup_diags, import_diags), topo_diags),
+            modules: sorted_resolved.clone(),
+            diagnostics: v1_rt::concat(
+                v1_rt::concat(dup_diags.clone(), import_diags.clone()),
+                topo_diags.clone(),
+            ),
         })
     }
 }
 
 pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) -> Option<Rc<Node>> {
-    v1_rt::map_get(&module_index, path)
+    v1_rt::map_get(&module_index, path.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -243,8 +247,8 @@ pub fn resolve_module_imports(
             __result
         });
         Rc::new(ModuleResolveResult {
-            resolved_imports: resolved,
-            diagnostics: diags,
+            resolved_imports: resolved.clone(),
+            diagnostics: diags.clone(),
         })
     }
 }
@@ -264,8 +268,8 @@ pub fn resolve_import(
 ) -> Rc<ImportResolveResult> {
     {
         let import_path = authored_name_at(source_indices.clone(), import.clone());
-        let target = find_module(module_index, import_path.clone());
-        match target {
+        let target = find_module(module_index.clone(), import_path.clone());
+        match target.clone() {
             None => {
                 let diag = make_error_node(
                     Rc::new(CompilerDiagnostic::UnresolvedImport {
@@ -285,7 +289,7 @@ pub fn resolve_import(
                         ),
                         target_module: None,
                     }),
-                    diagnostics: Rc::new(vec![diag]),
+                    diagnostics: Rc::new(vec![diag.clone()]),
                 })
             }
             Some(target_mod) => {
@@ -337,7 +341,7 @@ pub fn resolve_import(
                         ),
                         target_module: Some(target_mod.clone()),
                     }),
-                    diagnostics: name_diags,
+                    diagnostics: name_diags.clone(),
                 })
             }
         }
@@ -383,7 +387,10 @@ pub fn get_exported_names(
             __result
         });
         v1_rt::concat(
-            v1_rt::concat(v1_rt::concat(item_names, variant_names), imported_names),
+            v1_rt::concat(
+                v1_rt::concat(item_names.clone(), variant_names.clone()),
+                imported_names.clone(),
+            ),
             Rc::new(v1_rt::map_keys(&kernel_type_set())),
         )
     }
@@ -393,7 +400,7 @@ pub fn get_item_name(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices, item)
+    authored_name_at(source_indices.clone(), item.clone())
 }
 
 pub fn get_variant_names(
@@ -402,7 +409,7 @@ pub fn get_variant_names(
 ) -> Rc<Vec<String>> {
     {
         let is_coproduct = (item.connective.clone() == Connective::Disj);
-        if is_coproduct {
+        if is_coproduct.clone() {
             Rc::new({
                 let mut __result = Vec::new();
                 for c in item.children.clone().iter().cloned() {
@@ -427,7 +434,7 @@ pub fn check_duplicate_modules(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let result = modules.iter().cloned().fold(
+        let result = modules.clone().iter().cloned().fold(
             Rc::new(DuplicateCheckState {
                 seen_names: v1_rt::rc_empty_map::<String, bool>(),
                 diagnostics: Rc::new(vec![]),
@@ -484,7 +491,7 @@ pub fn adjacency_add_edge(
         v1_rt::rc_map_insert(
             adjacency.clone(),
             from_module.clone(),
-            v1_rt::rc_list_push(existing, to_module),
+            v1_rt::rc_list_push(existing.clone(), to_module.clone()),
         )
     }
 }
@@ -549,7 +556,7 @@ pub fn topological_sort(
             }
             __result
         });
-        let adjacency = explicit_edges.iter().cloned().fold(
+        let adjacency = explicit_edges.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
                 adjacency_add_edge(acc, edge.from_module.clone(), edge.to_module.clone())
@@ -603,10 +610,10 @@ pub fn topological_sort(
         });
         let module_count = (modules.clone().len() as i64);
         let result = kahn_drain(
-            initial_queue,
+            initial_queue.clone(),
             Rc::new(vec![]),
             in_degree_map.clone(),
-            adjacency,
+            adjacency.clone(),
             module_count.clone(),
         );
         if ((result.sorted.clone().len() as i64) == module_count.clone()) {
@@ -750,7 +757,7 @@ pub fn kahn_drain(
             __sorted
         });
         {
-            let __tco_0 = new_zero;
+            let __tco_0 = new_zero.clone();
             let __tco_1 = batch_result.sorted.clone();
             let __tco_2 = batch_result.in_degree_map.clone();
             let __tco_3 = (fuel - 1);

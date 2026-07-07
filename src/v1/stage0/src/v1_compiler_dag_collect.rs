@@ -83,7 +83,7 @@ pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
 
 pub fn dag_node_key(node: Rc<Node>) -> String {
     {
-        let anchor = dag_node_collection_anchor(node);
+        let anchor = dag_node_collection_anchor(node.clone());
         if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0)) {
             v1_rt::concat(
                 ":0..0:".to_string(),
@@ -111,7 +111,7 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
 }
 
 pub fn dag_node_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint_memo(dag_node_collection_anchor(node))
+    dag_node_surface_fingerprint_memo(dag_node_collection_anchor(node.clone()))
 }
 
 pub fn dag_collect_nodes_list(
@@ -119,7 +119,7 @@ pub fn dag_collect_nodes_list(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    nodes.iter().cloned().fold(
+    nodes.clone().iter().cloned().fold(
         slots.clone(),
         |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, n: Rc<Node>| {
             dag_collect_insert_slots(n.clone(), s, collision_errors.clone())
@@ -132,9 +132,11 @@ pub fn dag_collect_optional_node(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    match value {
-        Some(inner) => dag_collect_insert_slots(inner.clone(), slots, collision_errors),
-        None => slots,
+    match value.clone() {
+        Some(inner) => {
+            dag_collect_insert_slots(inner.clone(), slots.clone(), collision_errors.clone())
+        }
+        None => slots.clone(),
     }
 }
 
@@ -143,11 +145,11 @@ pub fn dag_collect_inferred(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    match value.as_deref().cloned() {
+    match value.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
-            dag_collect_insert_slots(n.clone(), slots, collision_errors)
+            dag_collect_insert_slots(n.clone(), slots.clone(), collision_errors.clone())
         }
-        _ => slots,
+        _ => slots.clone(),
     }
 }
 
@@ -156,7 +158,7 @@ pub fn dag_collect_match_pattern(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    match (*pattern).clone() {
+    match (*pattern.clone()).clone() {
         MatchPattern::Bind { name: _, .. } => slots,
         MatchPattern::LitPattern { value: _, .. } => slots,
         MatchPattern::VariantPattern { field_bindings, .. } => {
@@ -235,7 +237,7 @@ pub fn dag_collect_insert_slots(
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
     {
-        let anchor = dag_node_collection_anchor(node);
+        let anchor = dag_node_collection_anchor(node.clone());
         let key = dag_node_key(anchor.clone());
         match v1_rt::map_get(&slots, key.clone()) {
             Some(_) => slots.clone(),
@@ -255,12 +257,12 @@ pub fn dag_collect_insert_slots(
                         key.clone(),
                         Rc::new(DagCollectSlot {
                             key: key.clone(),
-                            fp: fp,
+                            fp: fp.clone(),
                             node: anchor.clone(),
-                            seq: seq,
+                            seq: seq.clone(),
                         }),
                     ),
-                    collision_errors,
+                    collision_errors.clone(),
                 )
             }
         }
@@ -273,10 +275,13 @@ pub fn dag_collect_from_module(
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
     {
-        let slots =
-            dag_collect_insert_slots(module.module.clone(), slots, collision_errors.clone());
+        let slots = dag_collect_insert_slots(
+            module.module.clone(),
+            slots.clone(),
+            collision_errors.clone(),
+        );
         module.items.clone().iter().cloned().fold(
-            slots,
+            slots.clone(),
             |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, item: Rc<Node>| {
                 dag_collect_insert_slots(item.clone(), s, collision_errors.clone())
             },
@@ -303,6 +308,6 @@ pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
                 dag_collect_from_module(m.clone(), s, collision_errors.clone())
             },
         );
-        dag_collect_pack_slots(slots, collision_errors.clone())
+        dag_collect_pack_slots(slots.clone(), collision_errors.clone())
     }
 }

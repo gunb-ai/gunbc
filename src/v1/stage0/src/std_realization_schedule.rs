@@ -57,7 +57,7 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
 
 pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Nat>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
-        time: time,
+        time: time.clone(),
         space: byte_size(0),
         power: watt(0),
         basis: CostBasis::Measured,
@@ -123,12 +123,12 @@ impl WitnessSpan {
 }
 
 pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
-    match a {
-        WitnessKind::CorpusWitnessKind => match b {
+    match a.clone() {
+        WitnessKind::CorpusWitnessKind => match b.clone() {
             WitnessKind::CorpusWitnessKind => true,
             WitnessKind::ExecutionWitnessKind => false,
         },
-        WitnessKind::ExecutionWitnessKind => match b {
+        WitnessKind::ExecutionWitnessKind => match b.clone() {
             WitnessKind::ExecutionWitnessKind => true,
             WitnessKind::CorpusWitnessKind => false,
         },
@@ -176,7 +176,7 @@ pub fn runnable_memory_negligible() -> Rc<RunnableMemoryClass> {
 pub fn runnable_memory_substantial(predicted_peak: ByteSize) -> Rc<RunnableMemoryClass> {
     Rc::new(RunnableMemoryClass::RunnableMemorySubstantial {
         peak: Rc::new(RunnableMemoryPeak {
-            predicted_peak: predicted_peak,
+            predicted_peak: predicted_peak.clone(),
         }),
     })
 }
@@ -185,18 +185,20 @@ pub fn runnable_memory_class_eq(
     left: Rc<RunnableMemoryClass>,
     right: Rc<RunnableMemoryClass>,
 ) -> bool {
-    match (*left).clone() {
-        RunnableMemoryClass::RunnableMemoryNegligible => match (*right).clone() {
+    match (*left.clone()).clone() {
+        RunnableMemoryClass::RunnableMemoryNegligible => match (*right.clone()).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => true,
             RunnableMemoryClass::RunnableMemorySubstantial { peak: _, .. } => false,
         },
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: lp, .. } => match (*right).clone() {
-            RunnableMemoryClass::RunnableMemoryNegligible => false,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: rp, .. } => {
-                (byte_size_count(lp.predicted_peak.clone())
-                    == byte_size_count(rp.predicted_peak.clone()))
+        RunnableMemoryClass::RunnableMemorySubstantial { peak: lp, .. } => {
+            match (*right.clone()).clone() {
+                RunnableMemoryClass::RunnableMemoryNegligible => false,
+                RunnableMemoryClass::RunnableMemorySubstantial { peak: rp, .. } => {
+                    (byte_size_count(lp.predicted_peak.clone())
+                        == byte_size_count(rp.predicted_peak.clone()))
+                }
             }
-        },
+        }
     }
 }
 
@@ -205,19 +207,19 @@ pub fn runnable_memory_substantial_sum(
     right: Rc<RunnableMemoryClass>,
 ) -> Rc<RunnableMemoryClass> {
     {
-        let left_count = match (*left).clone() {
+        let left_count = match (*left.clone()).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => 0,
             RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
                 byte_size_count(p.predicted_peak.clone())
             }
         };
-        let right_count = match (*right).clone() {
+        let right_count = match (*right.clone()).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => 0,
             RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
                 byte_size_count(p.predicted_peak.clone())
             }
         };
-        runnable_memory_substantial(byte_size((left_count + right_count)))
+        runnable_memory_substantial(byte_size((left_count.clone() + right_count.clone())))
     }
 }
 
@@ -244,9 +246,9 @@ pub fn runnable_resource_profile(
     memory: Rc<RunnableMemoryClass>,
 ) -> Rc<RunnableResourceProfile> {
     Rc::new(RunnableResourceProfile {
-        heavy_whole_tree_resolve: heavy_whole_tree_resolve,
-        spawns_host_compiler: spawns_host_compiler,
-        memory: memory,
+        heavy_whole_tree_resolve: heavy_whole_tree_resolve.clone(),
+        spawns_host_compiler: spawns_host_compiler.clone(),
+        memory: memory.clone(),
     })
 }
 
@@ -269,7 +271,7 @@ pub fn runnable_predicted_space(profile: Rc<RunnableResourceProfile>) -> ByteSiz
 }
 
 pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
-    match (*r).clone() {
+    match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
         Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
         Runnable::RunnableKernelWorkload {
@@ -279,7 +281,7 @@ pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
 }
 
 pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
-    match (*r).clone() {
+    match (*r.clone()).clone() {
         Runnable::RunnableDiscoveryBatch { .. } => false,
         Runnable::RunnableSingleClaim { profile: p, .. } => {
             runnable_excludes_corpus_co_residence(p.clone())
@@ -313,18 +315,18 @@ pub fn node_frontier_selection_eq(
     left: NodeFrontierSelection,
     right: NodeFrontierSelection,
 ) -> bool {
-    match left {
-        NodeFrontierSelection::SelectionOff => match right {
+    match left.clone() {
+        NodeFrontierSelection::SelectionOff => match right.clone() {
             NodeFrontierSelection::SelectionOff => true,
             NodeFrontierSelection::SelectionApplied => false,
             NodeFrontierSelection::SelectionPredictOnly => false,
         },
-        NodeFrontierSelection::SelectionApplied => match right {
+        NodeFrontierSelection::SelectionApplied => match right.clone() {
             NodeFrontierSelection::SelectionOff => false,
             NodeFrontierSelection::SelectionApplied => true,
             NodeFrontierSelection::SelectionPredictOnly => false,
         },
-        NodeFrontierSelection::SelectionPredictOnly => match right {
+        NodeFrontierSelection::SelectionPredictOnly => match right.clone() {
             NodeFrontierSelection::SelectionOff => false,
             NodeFrontierSelection::SelectionApplied => false,
             NodeFrontierSelection::SelectionPredictOnly => true,
@@ -376,7 +378,7 @@ pub struct RealizationPlan<S> {
 }
 
 pub fn runnable_step_label(r: Rc<Runnable>) -> String {
-    match (*r).clone() {
+    match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
         Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
         Runnable::RunnableKernelWorkload {
@@ -387,6 +389,7 @@ pub fn runnable_step_label(r: Rc<Runnable>) -> String {
 
 pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
     batch
+        .clone()
         .iter()
         .cloned()
         .fold(false, |acc: bool, r: Rc<Runnable>| {
@@ -432,24 +435,24 @@ pub fn schedule_lens_violation_diagnostic(
         let at = Rc::new(LensVerdictLocus::ModuleWholeFile {
             module_name: schedule_lens_module(),
         });
-        match (*kind).clone() {
+        match (*kind.clone()).clone() {
             ScheduleLensViolation::EmptySchedule => Rc::new(LensVerdictDiagnostic {
                 reason: "schedule_lens_empty_schedule".to_string(),
-                at: at,
+                at: at.clone(),
             }),
             ScheduleLensViolation::CompileGateNotFirst {
                 expected: expected, ..
             } => Rc::new(LensVerdictDiagnostic {
                 reason: ("schedule_lens_compile_gate_not_first:".to_string() + &expected.clone()),
-                at: at,
+                at: at.clone(),
             }),
             ScheduleLensViolation::CorpusBeforeCompile => Rc::new(LensVerdictDiagnostic {
                 reason: "schedule_lens_corpus_before_compile".to_string(),
-                at: at,
+                at: at.clone(),
             }),
             ScheduleLensViolation::SingleBatchOnly => Rc::new(LensVerdictDiagnostic {
                 reason: "schedule_lens_single_batch_only".to_string(),
-                at: at,
+                at: at.clone(),
             }),
         }
     }
@@ -498,7 +501,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
                         } else {
                             {
                                 let batch1 = plan.schedule.clone().get(1 as usize).cloned();
-if ((batch1.expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) < 2) {
+if ((batch1.clone().expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) < 2) {
                                     Rc::new(LensVerdict::Violation {
     diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::SingleBatchOnly), compile_gate_fn.clone()),
 })
@@ -582,13 +585,13 @@ continue;
 }
 
 pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
-    match (*left).clone() {
+    match (*left.clone()).clone() {
         Runnable::RunnableSingleClaim {
             entry: le,
             function: lf,
             profile: lp,
             ..
-        } => match (*right).clone() {
+        } => match (*right.clone()).clone() {
             Runnable::RunnableSingleClaim {
                 entry: re,
                 function: rf,
@@ -613,7 +616,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
             spawn_width_cap: lwc,
             profile: lp,
             ..
-        } => match (*right).clone() {
+        } => match (*right.clone()).clone() {
             Runnable::RunnableSingleClaim { .. } => false,
             Runnable::RunnableDiscoveryBatch {
                 source_roots: rsr,
@@ -642,7 +645,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
         Runnable::RunnableKernelWorkload {
             fused_op_count: lleft,
             ..
-        } => match (*right).clone() {
+        } => match (*right.clone()).clone() {
             Runnable::RunnableSingleClaim { .. } => false,
             Runnable::RunnableDiscoveryBatch { .. } => false,
             Runnable::RunnableKernelWorkload {
@@ -708,7 +711,7 @@ pub fn schedule_generates_identical_schedule<S>(
     plan: Rc<RealizationPlan<S>>,
     schedule: Schedule,
 ) -> bool {
-    schedule_eq(plan.schedule.clone(), schedule)
+    schedule_eq(plan.schedule.clone(), schedule.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
