@@ -1,6 +1,7 @@
 module v2.extdeps.formats.sql_target
 
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.grammar {
   FormalGrammarSymbol,
   FormalProduction,

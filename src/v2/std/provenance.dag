@@ -1,7 +1,8 @@
 module v2.std.provenance
 
 import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   ByteRange,

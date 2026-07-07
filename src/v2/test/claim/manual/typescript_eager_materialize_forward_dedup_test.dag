@@ -6,7 +6,8 @@ import v2.extdeps.languages.typescript {
   ts_wave2a_task_type_alias_emitted,
   ts_wave2a_task_type_alias_relation_row_witness
 }
-import v2.std.algebra { Empty, list_append }
+import std.algebra { Empty }
+import v2.std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.compilers.target_model {
   concrete_syntax_token_class,

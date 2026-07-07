@@ -4,7 +4,8 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import v2.std.algebra { Cons, Empty, fold_list, length }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, outcome_accepted }
 import v2.std.logic { Bool }

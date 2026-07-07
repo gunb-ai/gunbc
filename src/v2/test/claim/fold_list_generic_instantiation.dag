@@ -1,6 +1,7 @@
 module v2.test.claim.fold_list_generic_instantiation
 
-import v2.std.algebra { Cons, Empty, fold_list, fold_list_right }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, fold_list_right }
 
 type Rec { v: Int }
 

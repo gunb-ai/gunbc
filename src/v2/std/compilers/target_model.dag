@@ -1,6 +1,7 @@
 module v2.std.compilers.target_model
 
-import v2.std.algebra { Cons, Empty, Equal, FreeMonoid, Greater, Less, Ordering, TailAbsent, TailFound, fold_list, fold_list_node, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { Equal, Greater, Less, Ordering, TailAbsent, TailFound, fold_list, fold_list_node, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
 import v2.std.collection {
   Absent,
   List,

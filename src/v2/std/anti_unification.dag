@@ -4,10 +4,8 @@ import v2.std.node {
   Node, Edge, NodeKind, TypeNode, Connective, Atom, Symbol,
   node_synthetic, node_subtree_nodes
 }
-import v2.std.algebra {
-  FreeMonoid, freemonoid_empty, fold_list, list_append, list_snoc_item,
-  zip_eq, zip_map, reduce_or, is_empty, any, for_all
-}
+import std.algebra { FreeMonoid }
+import v2.std.algebra { freemonoid_empty, fold_list, list_append, list_snoc_item, zip_eq, zip_map, reduce_or, is_empty, any, for_all }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.logic { Bool }
 

@@ -11,7 +11,8 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, HeadAbsent, HeadFound, fold_list_right, list_head }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list_right, list_head }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.logic { Bool }

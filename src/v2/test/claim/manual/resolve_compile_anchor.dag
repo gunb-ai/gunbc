@@ -14,7 +14,8 @@ import v2.extdeps.languages.dag {
   dag_language_model_wave1_void,
   dag_named_edge
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
