@@ -316,7 +316,7 @@ pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> Str
         ServiceMethodStrategy::ExternalReceiver { var_name: v, .. } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(v1_rt::concat("(".to_string(), v.clone()), " *".to_string()),
-                service_name,
+                service_name.clone(),
             ),
             ") ".to_string(),
         ),
@@ -340,11 +340,14 @@ pub fn service_methods_inside_class(spec: Rc<LanguageSpec>) -> bool {
 pub fn service_return_str(spec: Rc<LanguageSpec>, ret_type: String) -> String {
     match (*spec.service_return.clone()).clone() {
         ServiceReturnStrategy::ArrowReturn => {
-            v1_rt::concat(spec.items.clone().return_arrow.clone(), ret_type)
+            v1_rt::concat(spec.items.clone().return_arrow.clone(), ret_type.clone())
         }
         ServiceReturnStrategy::ErrorTupleReturn { error_type: et, .. } => v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(v1_rt::concat(" (".to_string(), ret_type), ", ".to_string()),
+                v1_rt::concat(
+                    v1_rt::concat(" (".to_string(), ret_type.clone()),
+                    ", ".to_string(),
+                ),
                 et.clone(),
             ),
             ")".to_string(),
@@ -371,14 +374,14 @@ pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
-            for f in forms.iter().cloned() {
+            for f in forms.clone().iter().cloned() {
                 if (f.kind.clone() == kind.clone()) {
                     __result.push(f);
                 }
             }
             __result
         });
-        match matching.first().cloned() {
+        match matching.clone().first().cloned() {
             Some(f) => f.keyword.clone(),
             None => "__MISSING_ITEM_KEYWORD__".to_string(),
         }
@@ -1213,7 +1216,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
 }
 
 pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => rust_spec(),
         RenderTarget::Go => go_spec(),
         RenderTarget::Python => python_spec(),
@@ -1222,7 +1225,7 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
 }
 
 pub fn target_keyword(target: RenderTarget, key: String) -> String {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => match v1_rt::lookup(&rust_keywords(), key.clone()) {
             v1_rt::Witness::Holds { value: kw, .. } => kw.clone(),
             v1_rt::Witness::Violates { diagnostic: _, .. } => key.clone(),
@@ -1240,7 +1243,7 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
 }
 
 pub fn target_operators(target: RenderTarget) -> Rc<Vec<Rc<OperatorSpec>>> {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => rust_operators(),
         RenderTarget::Python => python_operators(),
         RenderTarget::Go => go_operators(),
@@ -1254,10 +1257,10 @@ pub fn binop_symbol(
     algebra_field: Option<AlgebraFieldKind>,
 ) -> Option<String> {
     {
-        let ops = target_operators(target);
+        let ops = target_operators(target.clone());
         let op_matching = Rc::new({
             let mut __result = Vec::new();
-            for spec in ops.iter().cloned() {
+            for spec in ops.clone().iter().cloned() {
                 if match spec.binop.clone() {
                     Some(b) => (b.clone() == op.clone()),
                     None => false,
@@ -1267,7 +1270,7 @@ pub fn binop_symbol(
             }
             __result
         });
-        let specific = match algebra_field {
+        let specific = match algebra_field.clone() {
             Some(af) => Rc::new({
                 let mut __result = Vec::new();
                 for spec in op_matching.clone().iter().cloned() {
@@ -1298,7 +1301,7 @@ pub fn binop_symbol(
             .first()
             .cloned(),
         };
-        match result {
+        match result.clone() {
             Some(spec) => Some(spec.symbol.clone()),
             None => None,
         }
@@ -1306,7 +1309,7 @@ pub fn binop_symbol(
 }
 
 pub fn is_string_like(target: RenderTarget, name: String) -> bool {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => {
             let mut __found = false;
             for t in rust_string_types().iter().cloned() {
@@ -1342,35 +1345,39 @@ pub fn is_string_like(target: RenderTarget, name: String) -> bool {
 }
 
 pub fn scaffold_for_target(target: RenderTarget) -> Rc<ProjectScaffold> {
-    language_spec_for_target(target).scaffold.clone()
+    language_spec_for_target(target.clone()).scaffold.clone()
 }
 
 pub fn serialization_for_target(target: RenderTarget) -> Rc<SerializationSpec> {
-    language_spec_for_target(target).serialization.clone()
+    language_spec_for_target(target.clone())
+        .serialization
+        .clone()
 }
 
 pub fn test_conventions_for_target(target: RenderTarget) -> Rc<TestConventions> {
-    language_spec_for_target(target).test_conventions.clone()
+    language_spec_for_target(target.clone())
+        .test_conventions
+        .clone()
 }
 
 pub fn visibility_for_target(target: RenderTarget) -> Rc<VisibilitySpec> {
-    language_spec_for_target(target).visibility.clone()
+    language_spec_for_target(target.clone()).visibility.clone()
 }
 
 pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
-    language_spec_for_target(target).sharing.clone()
+    language_spec_for_target(target.clone()).sharing.clone()
 }
 
 pub fn expression_semantics_for_target(target: RenderTarget) -> Rc<ExpressionSemantics> {
-    language_spec_for_target(target)
+    language_spec_for_target(target.clone())
         .expression_semantics
         .clone()
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     {
-        let tmpl = sharing_for_target(target).wrap_template.clone();
-        v1_rt::replace(tmpl, "{0}".to_string(), inner)
+        let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
+        v1_rt::replace(tmpl.clone(), "{0}".to_string(), inner.clone())
     }
 }
 

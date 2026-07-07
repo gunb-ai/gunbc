@@ -7503,23 +7503,11 @@ mod node_frontier_plumbing_controls {
         );
     }
 
-    // Control 5 (fail-closed): exclusively non-.dag diff → seed collection fails closed.
-    #[test]
-    fn fail_closed_non_dag_file_forces_run_all() {
-        let ws = workspace_root();
-        let roots = setup_roots(&ws);
-        let index = build_multi_entry_index(&roots);
-        let diff = "diff --git a/src/v1/stage0/src/cli_run.rs b/src/v1/stage0/src/cli_run.rs\n\
-                    --- a/src/v1/stage0/src/cli_run.rs\n\
-                    +++ b/src/v1/stage0/src/cli_run.rs\n\
-                    @@ -1,0 +2,1 @@\n+// synthetic\n";
-        let err = floor_diff_edits_from_diff_text(&index, &diff)
-            .expect_err("diff on a non-.dag file must fail-closed");
-        assert!(
-            err.contains("non-.dag"),
-            "expected non-.dag fail-closed, got: {err}"
-        );
-    }
+    // Control 5 (structural-∅, not fail-closed): an exclusively non-.dag diff is a nominal
+    // empty .dag frontier, NOT a refusal (#6269 dropped the saw_non_dag arm). This behavior is
+    // asserted, CWD-safely, by `non_dag_only_diff_is_structural_empty_frontier_not_refusal`
+    // above; the former `fail_closed_non_dag_file_forces_run_all` here tested the pre-#6269
+    // fail-closed semantics and was deleted as a stale, contradictory twin (2026-07-07).
 
     // Control 5 (fail-closed): diff before first declaration in a .dag file → fail-closed.
     // The module header (line 1) precedes the first data/fn declaration.

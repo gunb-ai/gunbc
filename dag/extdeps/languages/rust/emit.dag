@@ -147,6 +147,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "list_push",          bridge_name: "rc_list_push",     passes_by_ref: false, wraps_result: false },
   { name: "map_get",            bridge_name: "map_get",          passes_by_ref: true,  wraps_result: false },
   { name: "map_keys",           bridge_name: "map_keys",         passes_by_ref: true,  wraps_result: true },
+  { name: "sorted_map_keys",    bridge_name: "sorted_map_keys",  passes_by_ref: true,  wraps_result: true },
   { name: "map_values",         bridge_name: "map_values",       passes_by_ref: true,  wraps_result: true },
   { name: "parse_int",          bridge_name: "parse_int",        passes_by_ref: false, wraps_result: false },
   { name: "map_contains_key",   bridge_name: "map_contains_key", passes_by_ref: true,  wraps_result: false },
