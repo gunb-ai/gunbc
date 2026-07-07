@@ -69,6 +69,8 @@ fn corpus_dependency_view_per_pr_substrate_refuse() -> Bool {
   corpus_dependency_view_per_pr_substrate_refuse()
 }
 
+data corpus_dependency_view_per_pr_substrate_refuse_host_intrinsic_note: String = "Host-intrinsic stub (v2.std.fn_index pattern): self-call body is not executed; v1_interpreter routes to eval_corpus_dependency_view_per_pr_substrate_refuse → InterpError::TypeError naming #6239 (coproduct_reflection.rs). Interim Bool carrier is not an honest value — runtime is fail-closed refusal, not false. Callers that need model honesty use corpus_dependency_view_per_pr_substrate_ready() guard (compile-clean RequireWholeTree, cli_run must-run) before reaching refuse. DISSOLVES WHEN #6239 lands: delete refuse fn, bridge, and ensure_* helper; live corpus_dependency_views_live runs without gate."
+
 fn ensure_corpus_dependency_view_per_pr_substrate() -> Bool {
   if corpus_dependency_view_per_pr_substrate_ready() {
     true

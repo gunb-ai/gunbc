@@ -53,6 +53,8 @@ type Scale =
 
 data sixty_scale_note: String = "Scale.Sixty is the sexagesimal time factor (60 seconds per unit); Minute = Measure<Time, Sixty, Nat> is distinct from Second = Measure<Time, One, Nat>. Conversion authority: time_scale_factor_seconds. scale_exponent refuses Sixty (none) — not a decimal 10^k exponent."
 
+data scale_non_decimal_taxonomy_dissolution_trigger: String = "🟡 dissolve-on: Scale currently mixes decimal SI prefixes (Milli…Exa), binary memory prefixes (Kibi…Tebi), and sexagesimal time (Sixty). Each new non-decimal factor requires arms in time_scale_factor_seconds / memory_scale_factor_bytes / scale_exponent. Follow-up: split per-quantity scale sets at the type level (e.g. TimeScale vs DecimalScale) or document closed per-Quantity factor authorities — tracked with lever-a slice 2, not blocking #6335 merge."
+
 fn scale_exponent(s: Scale) -> Int? {
   match s {
     Atto  => Present { value: -18 }
