@@ -26,7 +26,7 @@ data regen_divergence_baseline_grep_pattern: String = "regen_divergence_baseline
 
 data regen_divergence_baseline_note: String = "SINGLE AUTHORITY for the sanctioned self-host divergence count (#6352, two-job split). The only place the sanctioned count lives; lowering it is the debt-paydown action, and the ratchet forbids raising it. When it reaches 0 the ratchet becomes the byte-identical hard gate (auto-promote, no manual flip)."
 
-data regen_divergence_ratchet_note: String = "The regen_divergence ratchet is the §5 no-escape-hatch guard for the two-job split (operator ruling 2026-07-07, #6352). The non-required ci_regen job shows honest byte-identical RED; this REQUIRED ratchet forbids the divergence GROWING behind that red door. Mechanism (B1, clever-koi-reviewed): actual = regen's real per-run count (regen_stage0 emits the 'regen_divergence_count=N' contract — real execution output, not prose-scrape, not a literal); TIGHTNESS actual==baseline forces the baseline to track true divergence exactly so every change is a visible baseline edit; DRIFT baseline(HEAD)<=baseline(origin/main) makes a baseline-RAISE mechanically unwritable (a grow-both-actual-and-baseline attack fails the drift). AUTO-PROMOTE: baseline==0 gives actual==0 required which is byte-identical which is the original hard gate — structural, no manual flip, bound to the same mismatches-empty oracle. A missing count (regen did not emit the contract) is a fail-CLOSED refusal, never a pass. Bootstrap (origin/main lacks this file on the introducing PR): drift falls back to baseline(HEAD), safe because tightness already pins baseline to the real actual. dissolve-on: the grep of main's committed .dag for the baseline value is an interim cross-ref read; dissolves when the scheduler emits the ratchet as one-realize-two-check-runs sharing the regen execution (the 2x-regen §2 dissolve-target) and reads the baseline through a structured cross-ref instead of git-show+grep."
+data regen_divergence_ratchet_note: String = "The regen_divergence ratchet is the §5 no-escape-hatch guard for the two-job split (operator ruling 2026-07-07, #6352). The non-required ci_regen job shows honest byte-identical RED; this REQUIRED ratchet forbids the divergence GROWING behind that red door. Mechanism (B1, clever-koi-reviewed): actual = regen's real per-run count (regen_stage0 emits the 'regen_divergence_count=N' contract — real execution output, not prose-scrape, not a literal); TIGHTNESS actual==baseline forces the baseline to track true divergence exactly so every change is a visible baseline edit; DRIFT baseline(HEAD)<=baseline(origin/main) makes a baseline-RAISE mechanically unwritable (a grow-both-actual-and-baseline attack fails the drift). AUTO-PROMOTE: baseline==0 gives actual==0 required which is byte-identical which is the original hard gate — structural, no manual flip, bound to the same mismatches-empty oracle. A missing count (regen did not emit the contract) is a fail-CLOSED refusal, never a pass. The main-baseline lookup distinguishes GENUINE BOOTSTRAP from PARSE-FAILURE (no absorbing fallback): `git cat-file -e origin/main:<path>` tests existence — if the file is ABSENT on main (the introducing PR) drift is skipped (tightness already pins baseline to the real actual, so no widen is possible); if the file is PRESENT but the value is unparseable (git error / format drift), the ratchet REFUSES (exit 1) rather than substituting a permissive literal — a blanket `|| echo <baseline>` would let a lowered baseline drift back up on any parse failure, the §5 absorbing-fallback this mechanism exists to forbid. dissolve-on: the grep of main's committed .dag for the baseline value is an interim cross-ref read; dissolves when the scheduler emits the ratchet as one-realize-two-check-runs sharing the regen execution (the 2x-regen §2 dissolve-target) and reads the baseline through a structured cross-ref instead of git-show+grep."
 
 fn regen_capture_cmdsubst() -> ShellWord {
   CmdSubst {
@@ -62,23 +62,23 @@ fn concat_authority_ref() -> String {
   concat("origin/main:", regen_divergence_baseline_authority_path)
 }
 
-fn baseline_main_cmdsubst() -> ShellWord {
+fn baseline_main_parse_cmdsubst() -> ShellWord {
   CmdSubst {
-    body: AndOr {
+    body: Pipe {
       left: Pipe {
-        left: Pipe {
-          left: command(words: [
-            lit(text: "git"), lit(text: "show"),
-            lit(text: concat_authority_ref())
-          ]),
-          right: command(words: [lit(text: "grep"), lit(text: "-oE"), lit(text: regen_divergence_baseline_grep_pattern)])
-        },
-        right: command(words: [lit(text: "grep"), lit(text: "-oE"), lit(text: "[0-9]+$")])
+        left: command(words: [
+          lit(text: "git"), lit(text: "show"),
+          lit(text: concat_authority_ref())
+        ]),
+        right: command(words: [lit(text: "grep"), lit(text: "-oE"), lit(text: regen_divergence_baseline_grep_pattern)])
       },
-      op: OrElse,
-      right: command(words: [lit(text: "echo"), lit(text: to_string(regen_divergence_baseline))])
+      right: command(words: [lit(text: "grep"), lit(text: "-oE"), lit(text: "[0-9]+$")])
     }
   }
+}
+
+fn git_main_has_baseline_cond() -> ShellStmt {
+  command(words: [lit(text: "git"), lit(text: "cat-file"), lit(text: "-e"), lit(text: concat_authority_ref())])
 }
 
 fn baseline_literal_word() -> ShellWord {
@@ -119,6 +119,27 @@ fn refuse_if_baseline_raised() -> ShellStmt {
   }
 }
 
+fn refuse_if_baseline_unparseable() -> ShellStmt {
+  If {
+    cond: command(words: [lit(text: "["), lit(text: "-z"), var_ref(name: "BASELINE_MAIN"), lit(text: "]")]),
+    then: [
+      command(words: [lit(text: "echo"), lit(text: "regen_divergence_ratchet: REFUSED — regen_divergence_baseline present on origin/main but unparseable (format drift?); failing closed rather than substituting a permissive default")]),
+      exit_code_stmt(code: 1)
+    ]
+  }
+}
+
+fn drift_check_when_main_has_baseline() -> ShellStmt {
+  If {
+    cond: git_main_has_baseline_cond(),
+    then: [
+      assign(name: "BASELINE_MAIN", value: baseline_main_parse_cmdsubst()),
+      refuse_if_baseline_unparseable(),
+      refuse_if_baseline_raised()
+    ]
+  }
+}
+
 fn regen_divergence_ratchet_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
   ShellProgram {
@@ -127,10 +148,9 @@ fn regen_divergence_ratchet_program() -> ShellProgram {
       command(words: [lit(text: "cd"), root]),
       assign(name: "REGEN_OUT", value: regen_capture_cmdsubst()),
       assign(name: "ACTUAL", value: actual_count_cmdsubst()),
-      assign(name: "BASELINE_MAIN", value: baseline_main_cmdsubst()),
       refuse_if_no_count(),
       refuse_if_not_tight(),
-      refuse_if_baseline_raised(),
+      drift_check_when_main_has_baseline(),
       command(words: [lit(text: "echo"), lit(text: "regen_divergence_ratchet: OK — self-host divergence within the (shrinking) baseline")]),
       exit_code_stmt(code: 0)
     ])
