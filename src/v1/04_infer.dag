@@ -6809,7 +6809,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
       Present { value: _ } => acc
       Absent =>
         match m.type_env.parents |> last {
-          Present { value: kernel } => Present { value: kernel }
+          Present { value: kernel } => if map_is_empty(kernel.bindings) { Absent } else { Present { value: kernel } }
           Absent => Absent
         }
     }
