@@ -5192,6 +5192,13 @@ fn is_map_typed_expr(texpr: Node, source_indices: Map<String, NewlineIndex>) -> 
   }
 }
 
+fn is_collection_typed_expr(texpr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match texpr.inferred {
+    Present { value: Resolved { node: n } } => node_is_collection(n: n, source_indices: source_indices)
+    _ => false
+  }
+}
+
 fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let arg = arg_value(n: value_arg)
   let scrutinee = emit_typed_expr(texpr: arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -6051,10 +6058,24 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
     }
     }
     PlainMethodSemantics =>
+      if method == "get" && is_collection_typed_expr(texpr: receiver, source_indices: scope.type_env.source_indices) {
+        emit_rust_get_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      } else {
       let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-      let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-      let args_str = arg_strs |> join(separator: ", ")
-      concat(recv_str, ".", emit_ident(name: method, target: Rust), "(", args_str, ")")
+      match map_get(rust_method_templates(), method) {
+        Present { value: tmpl } =>
+          let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
+          let raw = apply_named_template(template: tmpl, bindings: bindings)
+          if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method) {
+            concat("Rc::new(", raw, ")")
+          } else { raw }
+        Absent =>
+          let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
+          let args_str = arg_strs |> join(separator: ", ")
+          concat(recv_str, ".", emit_ident(name: method, target: Rust), "(", args_str, ")")
+      }
+      }
   } }
   else { "compile_error!(\"method call missing reconcile semantics\")" }
 }
