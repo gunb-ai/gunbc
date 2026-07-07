@@ -3,9 +3,9 @@
 //! Phase-0 whole-tree resolve RSS probe (calm-ram-408 / stern-moth-225).
 //!
 //! Strict-resolves every `.dag` module under the given source roots that passes
-//! the floor discovery exclude list plus `--exclude-subpath` filters, in ONE
-//! `whole_tree_resolved_ctx` pass — the width-1 all-modules-live worst case
-//! from representation-minimization.md.
+//! `gunbc.ci_layer_roots.whole_tree_resolve_exclusion_substrings` (floor
+//! `witness_exclusion_substrings` ∪ probe `whole_tree_strict_resolve_exclusion_substrings`)
+//! plus `--exclude-subpath` filters, in ONE `whole_tree_resolved_ctx` pass —
 
 use std::process::ExitCode;
 
