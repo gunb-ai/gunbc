@@ -6376,6 +6376,14 @@ fn record_call_frequency(func_name: &str) {
         "parse_diag_cons",
         "parse_production",
         "parse_expr",
+        "list_snoc_item",
+        "list_append",
+        "parse_sync_step",
+        "parse_match_arm_stmt_step",
+        "parse_expr_repeat",
+        "parse_current_position",
+        "parse_nonterminal_memoized",
+        "parse_nonterminal_memoized_core",
     ];
     let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
         return;
