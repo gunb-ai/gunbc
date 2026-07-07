@@ -4223,6 +4223,22 @@ fn render_shell_trace(argv: &[String]) {
     }
 }
 
+fn shell_completion_trace_line(exit_code: i32, stdout_bytes: usize, wall: std::time::Duration) -> String {
+    format!(
+        "[shell] done exit={exit_code} stdout={stdout_bytes} bytes wall={:.3}s",
+        wall.as_secs_f64()
+    )
+}
+
+/// Post-wait completion trace for every shell transport: exit, stdout bytes, wall seconds.
+/// Pairs with `render_shell_trace` (pre-spawn) so silent long-running children are locatable.
+fn render_shell_completion_trace(exit_code: i32, stdout_bytes: usize, wall: std::time::Duration) {
+    trace_emit(
+        OutputChannel::ShellTrace,
+        &shell_completion_trace_line(exit_code, stdout_bytes, wall),
+    );
+}
+
 fn shell_stdin_payload(val: &Value) -> InterpResult<Vec<u8>> {
     match val {
         Value::Str(s) => Ok(s.as_bytes().to_vec()),
@@ -4252,6 +4268,7 @@ fn dispatch_shell(
 
     render_shell_trace(&argv);
 
+    let wall_start = std::time::Instant::now();
     let output = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
         use std::process::Stdio;
@@ -4294,8 +4311,11 @@ fn dispatch_shell(
             })?
     };
 
+    let exit_code = output.status.code().unwrap_or(-1);
+    render_shell_completion_trace(exit_code, output.stdout.len(), wall_start.elapsed());
+
     Ok(ShellResult {
-        exit_code: output.status.code().unwrap_or(-1),
+        exit_code,
         stdout: String::from_utf8_lossy(&output.stdout)
             .trim_end()
             .to_string(),
@@ -6919,5 +6939,23 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Str(x), Value::Str(y)) => x.cmp(y),
         (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
         _ => std::cmp::Ordering::Equal,
+    }
+}
+
+#[cfg(test)]
+mod shell_completion_trace_tests {
+    use super::shell_completion_trace_line;
+    use std::time::Duration;
+
+    #[test]
+    fn shell_completion_trace_line_formats_exit_stdout_wall() {
+        let line = shell_completion_trace_line(0, 1234, Duration::from_millis(5150));
+        assert_eq!(line, "[shell] done exit=0 stdout=1234 bytes wall=5.150s");
+    }
+
+    #[test]
+    fn shell_completion_trace_line_surfaces_nonzero_exit() {
+        let line = shell_completion_trace_line(1, 0, Duration::from_secs(2));
+        assert_eq!(line, "[shell] done exit=1 stdout=0 bytes wall=2.000s");
     }
 }
