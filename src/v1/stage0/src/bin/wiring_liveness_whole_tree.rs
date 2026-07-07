@@ -33,7 +33,7 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{peak_rss_vhwm_bytes, whole_tree_resolved_ctx, WholeTreeCtx};
+use v1_compiler::cli_run::{peak_rss_vhwm_bytes, whole_tree_resolved_ctx, whole_tree_resolve_exclusion_substrings, WholeTreeCtx};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 const DEAD_WIRES_FN: &str = "wiring_liveness_corpus_dead_wires";
@@ -51,10 +51,7 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    // Intentionally-malformed scanner fixture inputs (test DATA referenced by string
-    // path, not live code) declare imports of nonexistent modules and so cannot be
-    // part of a Strict whole-tree resolve. Excluded by default; extendable via flag.
-    let mut exclude_subpaths: Vec<String> = vec!["test/fixture/".to_string()];
+    let mut exclude_subpaths = whole_tree_resolve_exclusion_substrings();
 
     let mut i = 1;
     while i < args.len() {

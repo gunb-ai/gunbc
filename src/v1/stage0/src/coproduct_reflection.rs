@@ -810,7 +810,7 @@ pub fn eval_fn_arrow_decl_facts_live(
 }
 
 fn whole_tree_measurement_exclude_substrings() -> Vec<String> {
-    crate::cli_run::witness_exclusion_substrings()
+    crate::cli_run::whole_tree_resolve_exclusion_substrings()
 }
 
 /// True when the interpreter context was resolved over the whole-tree eligible

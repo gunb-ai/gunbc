@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, resolve_entry_with_index, whole_tree_resolved_ctx, WholeTreeCtx,
-    witness_exclusion_substrings,
+    whole_tree_resolve_exclusion_substrings,
 };
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_compiler_infer::{infer_expr, InferScope};
@@ -253,7 +253,7 @@ fn func_env_unique_sig_ptr_count_matches_defined_functions() {
 #[test]
 #[ignore = "CI witness opt-in inversion (2026-07-04): whole-tree resolve over dag+src/v1 — the rust-lane twin of the corpus witnesses inverted out of the per-PR floor (run-everything had pushed both CI jobs to the 90-min timeout: max cost, zero signal). Run explicitly: cargo nextest run -p v1-compiler-tests -- --ignored func_env_whole_tree_unique_ptr_count_equals_local_definitions. Re-enroll when affected-set selection + floor memoization land (see ci_witness_optin_inversion in gunbc.commit_workflow)."]
 fn func_env_whole_tree_unique_ptr_count_equals_local_definitions() {
-    let exclude_subpaths = witness_exclusion_substrings();
+    let exclude_subpaths = whole_tree_resolve_exclusion_substrings();
     let roots = vec![
         workspace_root().join("dag").to_string_lossy().into_owned(),
         workspace_root()

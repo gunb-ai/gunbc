@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::Deserialize;
-use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, witness_exclusion_substrings};
+use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, whole_tree_resolve_exclusion_substrings};
 
 use crate::helpers::workspace_root;
 
@@ -35,7 +35,7 @@ struct SemanticBaseline {
 }
 
 fn whole_tree_probe_excludes() -> Vec<String> {
-    witness_exclusion_substrings()
+    whole_tree_resolve_exclusion_substrings()
 }
 
 fn git_toplevel() -> PathBuf {

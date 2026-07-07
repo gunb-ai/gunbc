@@ -338,6 +338,8 @@ const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_SUBSTRINGS_DATA_NAME: &str = "witness_exclusion_substrings";
+const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
+    "whole_tree_strict_resolve_exclusion_substrings";
 
 fn ci_layer_roots_authority_content() -> &'static str {
     static CONTENT: OnceLock<String> = OnceLock::new();
@@ -461,6 +463,16 @@ pub(crate) fn witness_exclusion_substrings_from_source(content: &str) -> Vec<Str
     string_list_data_from_ci_layer_roots_source(content, WITNESS_EXCLUSION_SUBSTRINGS_DATA_NAME)
 }
 
+/// Project `whole_tree_strict_resolve_exclusion_substrings` out of the ci_layer_roots authority.
+pub(crate) fn whole_tree_strict_resolve_exclusion_substrings_from_source(
+    content: &str,
+) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(
+        content,
+        WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME,
+    )
+}
+
 /// The witness layer roots, read live from the single .dag authority and memoized.
 pub(crate) fn witness_layer_roots() -> Vec<String> {
     static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
@@ -485,6 +497,25 @@ pub fn witness_exclusion_substrings() -> Vec<String> {
             witness_exclusion_substrings_from_source(ci_layer_roots_authority_content())
         })
         .clone()
+}
+
+/// Whole-tree strict-resolve probe exclusions — `gunbc.ci_layer_roots.whole_tree_strict_resolve_exclusion_substrings`.
+pub fn whole_tree_strict_resolve_exclusion_substrings() -> Vec<String> {
+    static EXCLUDES: OnceLock<Vec<String>> = OnceLock::new();
+    EXCLUDES
+        .get_or_init(|| {
+            whole_tree_strict_resolve_exclusion_substrings_from_source(
+                ci_layer_roots_authority_content(),
+            )
+        })
+        .clone()
+}
+
+/// Floor discovery ∪ whole-tree probe policy — `gunbc.ci_layer_roots.whole_tree_resolve_exclusion_substrings`.
+pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
+    let mut excludes = witness_exclusion_substrings();
+    excludes.extend(whole_tree_strict_resolve_exclusion_substrings());
+    excludes
 }
 
 pub fn census_corpus_roots_follow_layer_authority() -> bool {
