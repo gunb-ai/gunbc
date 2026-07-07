@@ -57,6 +57,16 @@ encounter. It replaces "start from a requested module and walk backward, repeate
 Reverse-from-request + per-module flatten is exactly what forced the copies; forward-DFS + one shared index
 + a scope cursor removes the *need* for them.
 
+### 3.1 CORRECTION — flat direct-import is NOT byte-identical; re-export transitivity is load-bearing (lively-raven-355, 2026-07-07, proven by execution)
+
+The naïve reading of §3 — "resolve a name = locals, else imports → qualified name → the one index" as a *flat direct-import* lookup (a module sees only its direct imports' **own** exports) — is **NOT byte-identical on the live corpus.** A direct-import experiment (own-only module caches, ancestry = direct imports + kernel) was implemented, regen'd, and run against `regen --verify`; it **failed loudly** (the fail-closed fixpoint oracle working as designed) with unresolved `EmitResult` / `parse_with_table` / `default_artifact_plan` / `Rust` in `compile.dag` + `probe_emit_interp.dag`.
+
+**Root cause — re-export transitivity.** Those names *are* directly imported (`compile.dag:29` `import v1.compiler.emit { EmitResult }`) but `v1.compiler.emit` does **not define** `EmitResult` — it imports it from `emit_core_support` (the definition, `emit_core_support.dag:17`) and **re-exports** it. The corpus relies on modules re-exporting their **entire visible surface** (own ∪ ancestry), and importers resolving names *through* the re-exporter. That "re-export everything" **IS** the transitive accumulation — i.e. it is the O(M²) itself.
+
+**The separation that saves the reform (clever-koi adjudication, 2026-07-07):** re-export transitivity and the quadratic are **separable**. The O(M²) is the eager per-module union-**copy** of ancestry maps, *not* the semantics. So **import-scoped resolution = own bindings, else a walk of the import DAG (the re-export chain)** — the walk **memoized and Rc-shared** (per `(module, name)` or lazy per-module name→definer maps), **never unioned into importers**. `SymbolIndex` stores per-module **own** bindings only; the transitive surface is *derived at lookup, stored nowhere* (so increment-2's completeness receipt is just `index == Σ own bindings`, and the dual-representation risk drops out). Cycle-safety = §7.6 inv-1 (import DAG acyclic). **Precedence crux:** when a name is reachable via >1 branch, the walk's winner must reproduce the current union's exact `(fold-order over resolved_imports) × (map_merge overwrite direction)`; byte-identity (`regen --verify` + corpus emit) is the oracle.
+
+**Staging (PR-2 vs PR-4):** import-scoped = own + re-export-chain walk is **PR-2's byte-identical contract** (changes nothing about what compiles). The corpus migration to **import-from-definer** (each `import` names the *defining* module, eliminating re-export reliance) belongs to **PR-4, the namespace-only-Y pivot** (`namespace-resolution-design.md`), where the semantic change always lived — the refutation above hands PR-4 its first concrete census rows: `EmitResult`, `parse_with_table`, `default_artifact_plan`, `Rust`. Operator holds veto on this staging (namespace design is operator-signed).
+
 ## 4. New/changed types (model-before-implement — these land first)
 
 The split is BY CONSTRUCTION, not validation (operator 2026-07-05: "why guess — design it this way").
