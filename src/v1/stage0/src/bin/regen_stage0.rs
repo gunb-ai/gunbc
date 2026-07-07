@@ -1223,6 +1223,12 @@ fn verify_stage0_matches(committed_src: &Path, fresh_src: &Path) -> Result<(), S
             mismatches.push((*file_name).to_string());
         }
     }
+    // Structured divergence-count contract for the regen_divergence ratchet (#6352, two-job split):
+    // regen OWNS emitting this exact key; the ratchet OWNS parsing it. This is a real per-run
+    // execution output (mismatches.len()), not a prose-scrape of the human message below and not a
+    // re-asserted literal. Emitted on both paths (0 on match, N on divergence) so the ratchet reads
+    // it whether the seed is byte-identical or stale.
+    println!("regen_divergence_count={}", mismatches.len());
     if mismatches.is_empty() {
         return Ok(());
     }
