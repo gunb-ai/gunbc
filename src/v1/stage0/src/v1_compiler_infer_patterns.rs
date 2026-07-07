@@ -15,9 +15,9 @@ pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
 };
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{FieldNotFound, NonExhaustiveMatch, VariantNotFound};
 use crate::v1_std_core::Connective::{Disj, NoConnective};
@@ -34,9 +34,151 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+
+pub fn generic_use_slot_bindings(
+    scrut_node: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    {
+        let decl = resolve_generic_use_decl(env.clone(), scrut_node.clone());
+        Rc::new(
+            decl.params
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+                let slot = generic_param_name_at(pair.1.clone(), env.source_indices.clone());
+                match scrut_node
+                    .children
+                    .clone()
+                    .get(pair.0.clone() as usize)
+                    .cloned()
+                {
+                    Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), arg.clone()),
+                    None => acc.clone(),
+                }
+            },
+        )
+    }
+}
+
+pub fn expand_scrut_from_decl(
+    decl: Rc<Node>,
+    scrut_node: Rc<Node>,
+    name: String,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    {
+        let decl_is_disj = (decl.connective.clone() == Connective::Disj);
+        let has_inferred_alias = (((decl.inferred.clone() != None)
+            && (decl.connective.clone() == Connective::NoConnective))
+            && ((decl.children.clone().len() as i64) == 0));
+        if decl_is_disj.clone() {
+            decl
+        } else {
+            if has_inferred_alias.clone() {
+                match decl.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
+                        substitute_type_slots(
+                            target.clone(),
+                            subst.clone(),
+                            name.clone(),
+                            env.source_indices.clone(),
+                        )
+                    }
+                    _ => scrut_node.clone(),
+                }
+            } else {
+                scrut_node.clone()
+            }
+        }
+    }
+}
+
+pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+    {
+        let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
+        let is_generic_use = (((scrut_node.connective.clone() == Connective::NoConnective)
+            && ((scrut_node.children.clone().len() as i64) > 0))
+            && is_user_generic_use_site(scrut_node.clone(), env.clone()));
+        match lookup_type_by_name(env.clone(), name.clone()) {
+            Some(decl) => {
+                if is_generic_use.clone() {
+                    expand_scrut_from_decl(
+                        decl.clone(),
+                        scrut_node.clone(),
+                        name.clone(),
+                        env.clone(),
+                    )
+                } else {
+                    {
+                        let def_is_disj = (decl.connective.clone() == Connective::Disj);
+                        let has_inferred_body = ((decl.inferred.clone() != None)
+                            && (decl.connective.clone() == Connective::NoConnective));
+                        if def_is_disj.clone() {
+                            decl.clone()
+                        } else {
+                            if has_inferred_body.clone() {
+                                match decl.inferred.clone().as_deref().cloned() {
+                                    Some(InferredNode::Resolved { node: target, .. }) => {
+                                        let target_is_disj =
+                                            (target.connective.clone() == Connective::Disj);
+                                        if target_is_disj.clone() {
+                                            target.clone()
+                                        } else {
+                                            scrut_node.clone()
+                                        }
+                                    }
+                                    _ => scrut_node.clone(),
+                                }
+                            } else {
+                                scrut_node.clone()
+                            }
+                        }
+                    }
+                }
+            }
+            None => scrut_node.clone(),
+        }
+    }
+}
+
+pub fn expand_scrut_type_for_variant_lookup(
+    mut scrut_node: Rc<Node>,
+    mut env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    loop {
+        let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
+        let is_disj = (scrut_node.connective.clone() == Connective::Disj);
+        let is_witness = is_witness_type_name(name.clone());
+        let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
+        if ((is_optional.clone() || is_disj.clone()) || is_witness.clone()) {
+            break scrut_node.clone();
+        } else {
+            match scrut_node.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: target, .. }) => {
+                    let __tco_0 = target.clone();
+                    scrut_node = __tco_0;
+                    continue;
+                }
+                _ => {
+                    break expand_scrut_from_type_name(scrut_node.clone(), env.clone());
+                }
+            }
+        }
+    }
+}
 
 pub fn is_witness_type_name(name: String) -> bool {
     ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
@@ -72,7 +214,7 @@ pub enum PatternSubject {
 }
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
-    match (*inferred).clone() {
+    match (*inferred.clone()).clone() {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
@@ -88,7 +230,9 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved { node: inner })),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: inner.clone(),
+            })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
@@ -105,7 +249,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             name: "Present".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Present".to_string())),
-            children: Rc::new(vec![value_field]),
+            children: Rc::new(vec![value_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
@@ -138,7 +282,9 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved { node: inner })),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: inner.clone(),
+            })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
@@ -155,7 +301,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             name: "Holds".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Holds".to_string())),
-            children: Rc::new(vec![value_field]),
+            children: Rc::new(vec![value_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
@@ -204,7 +350,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::Resolved {
-                node: diagnostic_type,
+                node: diagnostic_type.clone(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -222,7 +368,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             name: "Violates".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Violates".to_string())),
-            children: Rc::new(vec![diagnostic_field]),
+            children: Rc::new(vec![diagnostic_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: None,
@@ -248,7 +394,7 @@ pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
         } else {
             false
         };
-        if is_error {
+        if is_error.clone() {
             break Rc::new(PatternSubject::PatternLookupBlocked);
         } else {
             if (((n.connective.clone() == Connective::NoConnective)
@@ -273,7 +419,7 @@ pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
 }
 
 pub fn pattern_subject_from_inferred(n: Option<Rc<InferredNode>>) -> Rc<PatternSubject> {
-    match n.as_deref().cloned() {
+    match n.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: resolved, .. }) => {
             pattern_subject_from_node(resolved.clone())
         }
@@ -283,7 +429,7 @@ pub fn pattern_subject_from_inferred(n: Option<Rc<InferredNode>>) -> Rc<PatternS
 
 pub fn node_lookup_resolved(node: Rc<Node>) -> Rc<NodeLookupResult> {
     Rc::new(NodeLookupResult {
-        status: Rc::new(NodeLookupStatus::LookupResolved { node: node }),
+        status: Rc::new(NodeLookupStatus::LookupResolved { node: node.clone() }),
         diagnostics: Rc::new(vec![]),
     })
 }
@@ -291,7 +437,7 @@ pub fn node_lookup_resolved(node: Rc<Node>) -> Rc<NodeLookupResult> {
 pub fn node_lookup_failed(diagnostics: Rc<Vec<Rc<ErrorNode>>>) -> Rc<NodeLookupResult> {
     Rc::new(NodeLookupResult {
         status: Rc::new(NodeLookupStatus::LookupFailed),
-        diagnostics: diagnostics,
+        diagnostics: diagnostics.clone(),
     })
 }
 
@@ -305,7 +451,7 @@ pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject>
 }
 
 pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
-    match (*subject).clone() {
+    match (*subject.clone()).clone() {
         PatternSubject::PatternResolved { node: resolved, .. } => resolved.clone(),
         PatternSubject::PatternDynamic { span: _, .. } => error_type(),
         PatternSubject::PatternLookupBlocked => error_type(),
@@ -320,111 +466,12 @@ pub fn variant_not_found_result(
 ) -> Rc<NodeLookupResult> {
     node_lookup_failed(Rc::new(vec![make_error_node(
         Rc::new(CompilerDiagnostic::VariantNotFound {
-            variant: variant_name,
-            type_name: authored_name_at(source_indices, scrut.clone()),
+            variant: variant_name.clone(),
+            type_name: authored_name_at(source_indices.clone(), scrut.clone()),
             span: scrut.span.clone(),
         }),
-        module_name,
+        module_name.clone(),
     )]))
-}
-
-pub fn generic_use_slot_bindings(
-    scrut_node: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> Rc<HashMap<String, Rc<Node>>> {
-    let decl = resolve_generic_use_decl(env.clone(), scrut_node.clone());
-    Rc::new(
-        decl.params
-            .clone()
-            .iter()
-            .cloned()
-            .enumerate()
-            .map(|(i, v)| (i as i64, v))
-            .collect::<Vec<_>>(),
-    )
-    .iter()
-    .cloned()
-    .fold(
-        v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
-            let slot = generic_param_name_at(pair.1.clone(), env.source_indices.clone());
-            match scrut_node
-                .children
-                .clone()
-                .get(pair.0.clone() as usize)
-                .cloned()
-            {
-                Some(arg) => v1_rt::rc_map_insert(acc, slot, arg),
-                None => acc,
-            }
-        },
-    )
-}
-
-pub fn expand_scrut_type_for_variant_lookup(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
-    let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
-    if ((scrut_node.return_cardinality.clone() == CardOptional)
-        || (scrut_node.connective.clone() == Connective::Disj))
-        || is_witness_type_name(name.clone())
-    {
-        return scrut_node.clone();
-    }
-    if (((scrut_node.connective.clone() == Connective::NoConnective)
-        && ((scrut_node.children.clone().len() as i64) > 0))
-        && is_user_generic_use_site(scrut_node.clone(), env.clone()))
-    {
-        match lookup_type_by_name(env.clone(), name.clone()) {
-            Some(decl) => {
-                if (((decl.inferred.clone() != None)
-                    && ((decl.children.clone().len() as i64) == 0))
-                    && (decl.connective.clone() == Connective::NoConnective))
-                {
-                    match decl.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: target, .. }) => {
-                            let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                            let expanded = substitute_type_slots(
-                                target,
-                                subst,
-                                name.clone(),
-                                env.source_indices.clone(),
-                            );
-                            return expanded;
-                        }
-                        _ => scrut_node.clone(),
-                    }
-                } else if (decl.connective.clone() == Connective::Disj) {
-                    decl.clone()
-                } else {
-                    scrut_node.clone()
-                }
-            }
-            None => scrut_node.clone(),
-        }
-    } else {
-        match lookup_type_by_name(env.clone(), name.clone()) {
-            Some(def) => {
-                if (def.connective.clone() == Connective::Disj) {
-                    def.clone()
-                } else if ((def.inferred.clone() != None)
-                    && (def.connective.clone() == Connective::NoConnective))
-                {
-                    match def.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: target, .. }) => {
-                            if (target.connective.clone() == Connective::Disj) {
-                                target
-                            } else {
-                                scrut_node.clone()
-                            }
-                        }
-                        _ => scrut_node.clone(),
-                    }
-                } else {
-                    scrut_node.clone()
-                }
-            }
-            None => scrut_node.clone(),
-        }
-    }
 }
 
 pub fn lookup_variant_in_type(
@@ -434,7 +481,7 @@ pub fn lookup_variant_in_type(
     env: Rc<TypeEnv>,
     field_binding_count: i64,
 ) -> Rc<NodeLookupResult> {
-    match (*scrut).clone() {
+    match (*scrut.clone()).clone() {
         PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
         PatternSubject::PatternDynamic {
             span: dynamic_span, ..
@@ -444,7 +491,7 @@ pub fn lookup_variant_in_type(
                 type_name: "unresolved".to_string(),
                 span: dynamic_span.clone(),
             }),
-            module_name,
+            module_name.clone(),
         )])),
         PatternSubject::PatternResolved {
             node: scrut_node, ..
@@ -506,11 +553,12 @@ pub fn lookup_variant_in_type(
                                             variant_name.clone(),
                                             source_indices.clone(),
                                         );
-                                        let record_destructure = (((field_binding_count > 0)
+                                        let record_destructure = (((field_binding_count.clone()
+                                            > 0)
                                             && (scrut_node.connective.clone()
                                                 == Connective::Conj))
                                             && (scrut_name.clone() == variant_name.clone()));
-                                        let fallback = if record_destructure {
+                                        let fallback = if record_destructure.clone() {
                                             node_lookup_resolved(scrut_node.clone())
                                         } else {
                                             if (optional_coproduct_subject.clone()
@@ -531,13 +579,13 @@ pub fn lookup_variant_in_type(
                                                     variant_not_found_result(
                                                         scrut_node.clone(),
                                                         variant_name.clone(),
-                                                        module_name,
+                                                        module_name.clone(),
                                                         source_indices.clone(),
                                                     )
                                                 }
                                             }
                                         };
-                                        match direct_match {
+                                        match direct_match.clone() {
                                             Some(v) => node_lookup_resolved(v.clone()),
                                             None => fallback,
                                         }
@@ -558,7 +606,7 @@ pub fn lookup_field_in_variant(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
-    match (*variant).clone() {
+    match (*variant.clone()).clone() {
         PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
         PatternSubject::PatternDynamic {
             span: dynamic_span, ..
@@ -568,7 +616,7 @@ pub fn lookup_field_in_variant(
                 type_name: "unresolved".to_string(),
                 span: dynamic_span.clone(),
             }),
-            module_name,
+            module_name.clone(),
         )])),
         PatternSubject::PatternResolved {
             node: variant_node, ..
@@ -579,7 +627,7 @@ pub fn lookup_field_in_variant(
         ) {
             Some(field_child) => {
                 let resolved = child_type_node(field_child.clone());
-                node_lookup_resolved(resolved)
+                node_lookup_resolved(resolved.clone())
             }
             None => node_lookup_failed(Rc::new(vec![make_error_node(
                 Rc::new(CompilerDiagnostic::FieldNotFound {
@@ -587,7 +635,7 @@ pub fn lookup_field_in_variant(
                     type_name: authored_name_at(source_indices.clone(), variant_node.clone()),
                     span: variant_node.span.clone(),
                 }),
-                module_name,
+                module_name.clone(),
             )])),
         },
     }
@@ -604,7 +652,7 @@ pub fn check_match_exhaustiveness(
         let scrut_is_optional =
             (scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional);
         let has_structure = (scrutinee_type.connective.clone() != Connective::NoConnective);
-        let resolved_raw = if has_structure {
+        let resolved_raw = if has_structure.clone() {
             scrutinee_type.clone()
         } else {
             match lookup_type_by_name(
@@ -615,10 +663,10 @@ pub fn check_match_exhaustiveness(
                 None => scrutinee_type.clone(),
             }
         };
-        let resolved = if scrut_is_optional {
-            with_optional_cardinality(resolved_raw)
+        let resolved = if scrut_is_optional.clone() {
+            with_optional_cardinality(resolved_raw.clone())
         } else {
-            resolved_raw
+            resolved_raw.clone()
         };
         let is_coproduct = (resolved.connective.clone() == Connective::Disj);
         let resolved_is_optional =
@@ -627,7 +675,7 @@ pub fn check_match_exhaustiveness(
             env.source_indices.clone(),
             resolved.clone(),
         )) && ((resolved.children.clone().len() as i64) == 1));
-        if ((is_coproduct || resolved_is_optional.clone()) || resolved_is_witness.clone()) {
+        if ((is_coproduct.clone() || resolved_is_optional.clone()) || resolved_is_witness.clone()) {
             {
                 let variant_names = if resolved_is_optional.clone() {
                     Rc::new(vec!["Present".to_string(), "Absent".to_string()])
@@ -659,7 +707,7 @@ pub fn check_match_exhaustiveness(
                     }
                     __found
                 };
-                if has_catch_all {
+                if has_catch_all.clone() {
                     Rc::new(vec![])
                 } else {
                     {
@@ -698,7 +746,7 @@ pub fn check_match_exhaustiveness(
                         );
                         let uncovered = Rc::new({
                             let mut __result = Vec::new();
-                            for v in variant_names.iter().cloned() {
+                            for v in variant_names.clone().iter().cloned() {
                                 if (emit_map_has(covered_set.clone(), v.clone()) == false) {
                                     __result.push(v);
                                 }
@@ -709,9 +757,9 @@ pub fn check_match_exhaustiveness(
                             Rc::new(vec![make_error_node(
                                 Rc::new(CompilerDiagnostic::NonExhaustiveMatch {
                                     missing: uncovered.clone(),
-                                    span: span,
+                                    span: span.clone(),
                                 }),
-                                module_name,
+                                module_name.clone(),
                             )])
                         } else {
                             Rc::new(vec![])

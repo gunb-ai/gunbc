@@ -77,7 +77,7 @@ pub fn empty_trace() -> Rc<Trace> {
 
 pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
     Rc::new(Trace {
-        events: v1_rt::rc_list_push(trace.events.clone(), event),
+        events: v1_rt::rc_list_push(trace.events.clone(), event.clone()),
         stack: trace.stack.clone(),
     })
 }
@@ -85,7 +85,7 @@ pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
 pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
     Rc::new(Trace {
         events: trace.events.clone(),
-        stack: v1_rt::rc_list_push(trace.stack.clone(), frame),
+        stack: v1_rt::rc_list_push(trace.stack.clone(), frame.clone()),
     })
 }
 
@@ -115,7 +115,7 @@ pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
 }
 
 pub fn event_span(event: Rc<TraceEvent>) -> Rc<SourceSpan> {
-    match (*event).clone() {
+    match (*event.clone()).clone() {
         TraceEvent::TraceEnter { span: s, .. } => s.clone(),
         TraceEvent::TraceExit { span: s, .. } => s.clone(),
         TraceEvent::TraceError { span: s, .. } => s.clone(),
@@ -123,7 +123,7 @@ pub fn event_span(event: Rc<TraceEvent>) -> Rc<SourceSpan> {
 }
 
 pub fn event_node_id(event: Rc<TraceEvent>) -> String {
-    match (*event).clone() {
+    match (*event.clone()).clone() {
         TraceEvent::TraceEnter { node_id: id, .. } => id.clone(),
         TraceEvent::TraceExit { node_id: id, .. } => id.clone(),
         TraceEvent::TraceError { node_id: id, .. } => id.clone(),
@@ -140,13 +140,13 @@ pub enum TraceFilter {
 
 pub fn event_matches_span(event: Rc<TraceEvent>, filter_start: i64, filter_end: i64) -> bool {
     {
-        let sp = event_span(event);
-        ((sp.start.clone() >= filter_start) && (sp.start.clone() < filter_end))
+        let sp = event_span(event.clone());
+        ((sp.start.clone() >= filter_start.clone()) && (sp.start.clone() < filter_end.clone()))
     }
 }
 
 pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<TraceEvent>>> {
-    match (*filter).clone() {
+    match (*filter.clone()).clone() {
         TraceFilter::FilterByFunc {
             func_name: name, ..
         } => Rc::new({
@@ -198,7 +198,7 @@ pub fn format_span(sp: Rc<SourceSpan>) -> String {
 }
 
 pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
-    match (*event).clone() {
+    match (*event.clone()).clone() {
         TraceEvent::TraceEnter {
             node_id: id,
             span: sp,
@@ -273,10 +273,10 @@ pub fn capture_repro(
     trace: Rc<Trace>,
 ) -> Rc<ReproCase> {
     Rc::new(ReproCase {
-        func_name: func_name,
-        inputs: inputs,
+        func_name: func_name.clone(),
+        inputs: inputs.clone(),
         expected_output: None,
-        trace: Some(trace),
+        trace: Some(trace.clone()),
     })
 }
 

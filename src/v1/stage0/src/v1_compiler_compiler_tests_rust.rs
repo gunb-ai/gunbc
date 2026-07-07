@@ -9,14 +9,12 @@ use crate::v1_compiler_coercion::CoercionAssertion::{
 };
 pub use crate::v1_compiler_coercion::{CoercionAssertion, CoercionTestEntry};
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
-use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn ct_module_header() -> String {
@@ -85,12 +83,12 @@ pub fn ct_coercion_tests() -> String {
         let entries = extract_coercion_tests();
         let test_fns = Rc::new({
             let mut __result = Vec::new();
-            for e in entries.iter().cloned() {
+            for e in entries.clone().iter().cloned() {
                 __result.push(render_coercion_test_rust(e.clone()));
             }
             __result
         });
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    // =========================================================================\n".to_string(), "    // Coercion registry tests (auto-generated from data declarations)\n".to_string()), "    // =========================================================================\n\n".to_string()), test_fns.join(&"\n".to_string())), ct_rust_btree_set_ord_eligibility_test())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    // =========================================================================\n".to_string(), "    // Coercion registry tests (auto-generated from data declarations)\n".to_string()), "    // =========================================================================\n\n".to_string()), test_fns.clone().join(&"\n".to_string())), ct_rust_btree_set_ord_eligibility_test())
     }
 }
 
@@ -99,7 +97,7 @@ pub fn ct_rust_btree_set_ord_eligibility_test() -> String {
 }
 
 pub fn render_target_rust_enum(target: RenderTarget) -> String {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => "RenderTarget::Rust".to_string(),
         RenderTarget::Python => "RenderTarget::Python".to_string(),
         RenderTarget::Go => "RenderTarget::Go".to_string(),
@@ -128,7 +126,7 @@ pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
                     ),
                     "        use crate::v1_compiler_coercion::*;\n".to_string(),
                 ),
-                assertions.join(&"".to_string()),
+                assertions.clone().join(&"".to_string()),
             ),
             "    }\n\n".to_string(),
         )
@@ -136,21 +134,21 @@ pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
 }
 
 pub fn first_or_empty(items: Rc<Vec<String>>) -> String {
-    match items.first().cloned() {
+    match items.clone().first().cloned() {
         Some(v) => v.clone(),
         None => "".to_string(),
     }
 }
 
 pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
-    match items.get(1 as usize).cloned() {
+    match items.clone().get(1 as usize).cloned() {
         Some(v) => v.clone(),
         None => "".to_string(),
     }
 }
 
 pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
-    match (*a).clone() {
+    match (*a.clone()).clone() {
         CoercionAssertion::CheckpointAssertion {
             target: t,
             dag_name: name,
@@ -248,7 +246,7 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                                         ),
                                         "\".into(), \"".to_string(),
                                     ),
-                                    arg0,
+                                    arg0.clone(),
                                 ),
                                 "\".into()), \"".to_string(),
                             ),
@@ -262,7 +260,7 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                     {
                         let arg0 = first_or_empty(arg_list.clone());
                         let arg1 = second_or_empty(arg_list.clone());
-                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0), "\".into(), \"".to_string()), arg1), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
+                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0.clone()), "\".into(), \"".to_string()), arg1.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
                     }
                 } else {
                     "".to_string()
@@ -285,228 +283,15 @@ pub fn ct_profile_full_pipeline_test() -> String {
 }
 
 pub fn ct_profile_reconcile_test() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    #[test]
-".to_string(), "    #[ignore]
-".to_string()), "    fn profile_reconcile_per_module() {
-".to_string()), "        let result = std::thread::Builder::new()
-".to_string()), "            .stack_size(64 * 1024 * 1024)
-".to_string()), "            .spawn(|| {
-".to_string()), "                use im_rc::HashMap;
-".to_string()), "                use std::time::Instant;
-
-".to_string()), "                let sources = self_compile_sources();
-
-".to_string()), "                eprintln!(
-".to_string()), "                    \"\n=== PER-MODULE RECONCILE PROFILE ({} sources) ===\",
-".to_string()), "                    sources.len()
-".to_string()), "                );
-
-".to_string()), "                let t0 = Instant::now();
-".to_string()), "                let mut modules = Vec::new();
-".to_string()), "                let mut intern_table = crate::v1_std_core::empty_intern_table();
-".to_string()), "                for source in &sources {
-".to_string()), "                    let tokens = crate::v1_compiler_tokenize::tokenize(
-".to_string()), "                        source.content.clone(),
-".to_string()), "                        source.path.clone(),
-".to_string()), "                    );
-".to_string()), "                    let si = crate::v1_std_core::build_newline_index(
-".to_string()), "                        source.path.clone(),
-".to_string()), "                        source.content.clone(),
-".to_string()), "                    );
-".to_string()), "                    let parsed = crate::v1_compiler_parse::parse_with_table(
-".to_string()), "                        tokens.clone(),
-".to_string()), "                        crate::v1_rt::rc_map_insert(
-".to_string()), "                            crate::v1_rt::rc_empty_map::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>(),
-".to_string()), "                            si.file.clone(),
-".to_string()), "                            si.clone(),
-".to_string()), "                        ),
-".to_string()), "                        intern_table.clone(),
-".to_string()), "                    );
-".to_string()), "                    let result = parsed.result.clone();
-".to_string()), "                    intern_table = parsed.intern_table.clone();
-".to_string()), "                    let m = result.module.clone()
-".to_string()), "                        .unwrap_or_else(|| panic!(\"parse failed for source {}\", source.path));
-".to_string()), "                    modules.push(m);
-".to_string()), "                }
-".to_string()), "                let resolve_si = sources.iter().fold(
-".to_string()), "                    crate::v1_rt::rc_empty_map::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>(),
-".to_string()), "                    |acc, s| crate::v1_rt::rc_map_insert(acc, s.path.clone(), crate::v1_std_core::build_newline_index(s.path.clone(), s.content.clone())),
-".to_string()), "                );
-".to_string()), "                let graph = crate::v1_compiler_resolve::resolve_modules(std::rc::Rc::new(modules.into()), resolve_si);
-".to_string()), "                let setup_time = t0.elapsed();
-".to_string()), "                let rss_baseline = get_rss_bytes();
-".to_string()), "                eprintln!(
-".to_string()), "                    \"  Setup (tok+parse+resolve): {:?}  | RSS: {}\",
-".to_string()), "                    setup_time,
-".to_string()), "                    format_bytes(rss_baseline)
-".to_string()), "                );
-".to_string()), "                eprintln!(\"  Modules to reconcile: {}\n\", graph.modules.len());
-
-".to_string()), "                let mut mi_raw = HashMap::<
-".to_string()), "                    String,
-".to_string()), "                    std::rc::Rc<crate::v1_compiler_infer_items::TypedModule>,
-".to_string()), "                >::new();
-".to_string()), "                let source_indices = std::rc::Rc::new(sources.iter().fold(
-".to_string()), "                    HashMap::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>::new(),
-".to_string()), "                    |mut acc, source| {
-".to_string()), "                        acc.insert(
-".to_string()), "                            source.path.clone(),
-".to_string()), "                            crate::v1_std_core::build_newline_index(
-".to_string()), "                                source.path.clone(),
-".to_string()), "                                source.content.clone(),
-".to_string()), "                            ),
-".to_string()), "                        );
-".to_string()), "                        acc
-".to_string()), "                    },
-".to_string()), "                ));
-".to_string()), "                let mut variant_surfaces = crate::v1_rt::rc_empty_map::<
-".to_string()), "                    String,
-".to_string()), "                    std::rc::Rc<crate::v1_compiler_infer::VariantExportSurface>,
-".to_string()), "                >();
-
-".to_string()), "                for resolved in graph.modules.iter() {
-".to_string()), "                    let name = resolved.module.name.to_string();
-".to_string()), "                    let item_count =
-".to_string()), "                        crate::v1_std_core::module_items(resolved.module.clone()).len();
-".to_string()), "                    let rss_before = get_rss_bytes();
-
-".to_string()), "                    eprint!(\"  {:>35} ({:>3} items) ... \", name, item_count);
-
-".to_string()), "                    let module_index = std::rc::Rc::new(mi_raw.clone());
-
-".to_string()), "                    let t_unres = Instant::now();
-".to_string()), "                    let _unres = crate::v1_compiler_infer::build_type_env_unresolved(
-".to_string()), "                        resolved.clone(),
-".to_string()), "                        module_index.clone(),
-".to_string()), "                        source_indices.clone(),
-".to_string()), "                        intern_table.clone(),
-".to_string()), "                    );
-".to_string()), "                    let unres_elapsed = t_unres.elapsed();
-".to_string()), "                    let rss_after_unres = get_rss_bytes();
-".to_string()), "                    let unres_delta = rss_after_unres.saturating_sub(rss_before);
-
-".to_string()), "                    eprint!(
-".to_string()), "                        \"cycles={:>8.2?}(+{}) \",
-".to_string()), "                        unres_elapsed,
-".to_string()), "                        format_bytes(unres_delta)
-".to_string()), "                    );
-
-".to_string()), "                    if unres_delta > 256 * 1024 * 1024 {
-".to_string()), "                        eprintln!(\"\");
-".to_string()), "                        panic!(
-".to_string()), "                            \"ABORT: '{}' cycle detection grew RSS by {}\",
-".to_string()), "                            name,
-".to_string()), "                            format_bytes(unres_delta)
-".to_string()), "                        );
-".to_string()), "                    }
-
-".to_string()), "                    let t_env = Instant::now();
-".to_string()), "                    let env_result = crate::v1_compiler_infer::build_type_env(
-".to_string()), "                        resolved.clone(),
-".to_string()), "                        module_index.clone(),
-".to_string()), "                        source_indices.clone(),
-".to_string()), "                        intern_table.clone(),
-".to_string()), "                    );
-".to_string()), "                    let env_elapsed = t_env.elapsed();
-".to_string()), "                    let rss_after_env = get_rss_bytes();
-".to_string()), "                    let env_delta = rss_after_env.saturating_sub(rss_before);
-".to_string()), "                    let env_errs: usize = env_result
-".to_string()), "                        .diagnostics
-".to_string()), "                        .iter()
-".to_string()), "                        .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
-".to_string()), "                        .count();
-
-".to_string()), "                    eprint!(
-".to_string()), "                        \"env={:>8.2?}(+{},e={}) \",
-".to_string()), "                        env_elapsed,
-".to_string()), "                        format_bytes(env_delta),
-".to_string()), "                        env_errs
-".to_string()), "                    );
-
-".to_string()), "                    if env_delta > 512 * 1024 * 1024 {
-".to_string()), "                        eprintln!(\"\");
-".to_string()), "                        panic!(
-".to_string()), "                            \"ABORT: '{}' build_type_env grew RSS by {}\",
-".to_string()), "                            name,
-".to_string()), "                            format_bytes(env_delta)
-".to_string()), "                        );
-".to_string()), "                    }
-".to_string()), "                    if env_elapsed.as_secs() > 10 {
-".to_string()), "                        eprintln!(\"\");
-".to_string()), "                        panic!(\"ABORT: '{}' build_type_env took {:?}\", name, env_elapsed);
-".to_string()), "                    }
-
-".to_string()), "                    let t_full = Instant::now();
-".to_string()), "                    let tc_result = crate::v1_compiler_infer::typecheck_module(
-".to_string()), "                        resolved.clone(),
-".to_string()), "                        module_index.clone(),
-".to_string()), "                        variant_surfaces.clone(),
-".to_string()), "                        source_indices.clone(),
-".to_string()), "                        intern_table.clone(),
-".to_string()), "                    );
-".to_string()), "                    let full_elapsed = t_full.elapsed();
-".to_string()), "                    let rss_after = get_rss_bytes();
-".to_string()), "                    let delta = rss_after.saturating_sub(rss_before);
-".to_string()), "                    let diag_count: usize = tc_result
-".to_string()), "                        .diagnostics
-".to_string()), "                        .iter()
-".to_string()), "                        .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
-".to_string()), "                        .count();
-
-".to_string()), "                    eprintln!(
-".to_string()), "                        \"full={:>8.2?}  | RSS: {} (+{})  | errs: {}\",
-".to_string()), "                        full_elapsed,
-".to_string()), "                        format_bytes(rss_after),
-".to_string()), "                        format_bytes(delta),
-".to_string()), "                        diag_count
-".to_string()), "                    );
-
-".to_string()), "                    if delta > 512 * 1024 * 1024 {
-".to_string()), "                        panic!(
-".to_string()), "                            \"ABORT: '{}' grew RSS by {} (>512MB)\",
-".to_string()), "                            name,
-".to_string()), "                            format_bytes(delta)
-".to_string()), "                        );
-".to_string()), "                    }
-".to_string()), "                    if full_elapsed.as_secs() > 10 {
-".to_string()), "                        panic!(\"ABORT: '{}' took {:?} (>10s)\", name, full_elapsed);
-".to_string()), "                    }
-
-".to_string()), "                    let typed = tc_result.typed.clone();
-".to_string()), "                    let typed_path = crate::v1_std_core::authored_name_at(
-".to_string()), "                        source_indices.clone(),
-".to_string()), "                        typed.module.clone(),
-".to_string()), "                    );
-".to_string()), "                    variant_surfaces = crate::v1_rt::rc_map_insert(
-".to_string()), "                        variant_surfaces.clone(),
-".to_string()), "                        typed_path,
-".to_string()), "                        crate::v1_compiler_infer::build_variant_export_surface(
-".to_string()), "                            typed.clone(),
-".to_string()), "                            variant_surfaces.clone(),
-".to_string()), "                            source_indices.clone(),
-".to_string()), "                        ),
-".to_string()), "                    );
-".to_string()), "                    mi_raw.insert(name, typed);
-".to_string()), "                }
-
-".to_string()), "                let rss_final = get_rss_bytes();
-".to_string()), "                eprintln!(
-".to_string()), "                    \"\n  RSS final: {} (from baseline: +{})\",
-".to_string()), "                    format_bytes(rss_final),
-".to_string()), "                    format_bytes(rss_final.saturating_sub(rss_baseline))
-".to_string()), "                );
-".to_string()), "                eprintln!(\"=== DONE ===\n\");
-".to_string()), "            })
-".to_string()), "            .expect(\"failed to spawn thread\")
-".to_string()), "            .join();
-".to_string()), "        result.expect(\"profile_reconcile_per_module panicked\");
-".to_string()), "    }
-
-".to_string())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    #[test]\n".to_string(), "    #[ignore]\n".to_string()), "    fn profile_reconcile_per_module() {\n".to_string()), "        let result = std::thread::Builder::new()\n".to_string()), "            .stack_size(64 * 1024 * 1024)\n".to_string()), "            .spawn(|| {\n".to_string()), "                use im_rc::HashMap;\n".to_string()), "                use std::time::Instant;\n\n".to_string()), "                let sources = self_compile_sources();\n\n".to_string()), "                eprintln!(\n".to_string()), "                    \"\\n=== PER-MODULE RECONCILE PROFILE ({} sources) ===\",\n".to_string()), "                    sources.len()\n".to_string()), "                );\n\n".to_string()), "                let t0 = Instant::now();\n".to_string()), "                let mut modules = Vec::new();\n".to_string()), "                let mut intern_table = crate::v1_std_core::empty_intern_table();\n".to_string()), "                for source in &sources {\n".to_string()), "                    let tokens = crate::v1_compiler_tokenize::tokenize(\n".to_string()), "                        source.content.clone(),\n".to_string()), "                        source.path.clone(),\n".to_string()), "                    );\n".to_string()), "                    let si = crate::v1_std_core::build_newline_index(\n".to_string()), "                        source.path.clone(),\n".to_string()), "                        source.content.clone(),\n".to_string()), "                    );\n".to_string()), "                    let parsed = crate::v1_compiler_parse::parse_with_table(\n".to_string()), "                        tokens.clone(),\n".to_string()), "                        crate::v1_rt::rc_map_insert(\n".to_string()), "                            crate::v1_rt::rc_empty_map::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>(),\n".to_string()), "                            si.file.clone(),\n".to_string()), "                            si.clone(),\n".to_string()), "                        ),\n".to_string()), "                        intern_table.clone(),\n".to_string()), "                    );\n".to_string()), "                    let result = parsed.result.clone();\n".to_string()), "                    intern_table = parsed.intern_table.clone();\n".to_string()), "                    let m = result.module.clone()\n".to_string()), "                        .unwrap_or_else(|| panic!(\"parse failed for source {}\", source.path));\n".to_string()), "                    modules.push(m);\n".to_string()), "                }\n".to_string()), "                let resolve_si = sources.iter().fold(\n".to_string()), "                    crate::v1_rt::rc_empty_map::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>(),\n".to_string()), "                    |acc, s| crate::v1_rt::rc_map_insert(acc, s.path.clone(), crate::v1_std_core::build_newline_index(s.path.clone(), s.content.clone())),\n".to_string()), "                );\n".to_string()), "                let graph = crate::v1_compiler_resolve::resolve_modules(std::rc::Rc::new(modules.into()), resolve_si);\n".to_string()), "                let setup_time = t0.elapsed();\n".to_string()), "                let rss_baseline = get_rss_bytes();\n".to_string()), "                eprintln!(\n".to_string()), "                    \"  Setup (tok+parse+resolve): {:?}  | RSS: {}\",\n".to_string()), "                    setup_time,\n".to_string()), "                    format_bytes(rss_baseline)\n".to_string()), "                );\n".to_string()), "                eprintln!(\"  Modules to reconcile: {}\\n\", graph.modules.len());\n\n".to_string()), "                let mut mi_raw = HashMap::<\n".to_string()), "                    String,\n".to_string()), "                    std::rc::Rc<crate::v1_compiler_infer_items::TypedModule>,\n".to_string()), "                >::new();\n".to_string()), "                let source_indices = std::rc::Rc::new(sources.iter().fold(\n".to_string()), "                    HashMap::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>::new(),\n".to_string()), "                    |mut acc, source| {\n".to_string()), "                        acc.insert(\n".to_string()), "                            source.path.clone(),\n".to_string()), "                            crate::v1_std_core::build_newline_index(\n".to_string()), "                                source.path.clone(),\n".to_string()), "                                source.content.clone(),\n".to_string()), "                            ),\n".to_string()), "                        );\n".to_string()), "                        acc\n".to_string()), "                    },\n".to_string()), "                ));\n".to_string()), "                let mut variant_surfaces = crate::v1_rt::rc_empty_map::<\n".to_string()), "                    String,\n".to_string()), "                    std::rc::Rc<crate::v1_compiler_infer::VariantExportSurface>,\n".to_string()), "                >();\n\n".to_string()), "                for resolved in graph.modules.iter() {\n".to_string()), "                    let name = resolved.module.name.to_string();\n".to_string()), "                    let item_count =\n".to_string()), "                        crate::v1_std_core::module_items(resolved.module.clone()).len();\n".to_string()), "                    let rss_before = get_rss_bytes();\n\n".to_string()), "                    eprint!(\"  {:>35} ({:>3} items) ... \", name, item_count);\n\n".to_string()), "                    let module_index = std::rc::Rc::new(mi_raw.clone());\n\n".to_string()), "                    let t_unres = Instant::now();\n".to_string()), "                    let _unres = crate::v1_compiler_infer::build_type_env_unresolved(\n".to_string()), "                        resolved.clone(),\n".to_string()), "                        module_index.clone(),\n".to_string()), "                        source_indices.clone(),\n".to_string()), "                        intern_table.clone(),\n".to_string()), "                    );\n".to_string()), "                    let unres_elapsed = t_unres.elapsed();\n".to_string()), "                    let rss_after_unres = get_rss_bytes();\n".to_string()), "                    let unres_delta = rss_after_unres.saturating_sub(rss_before);\n\n".to_string()), "                    eprint!(\n".to_string()), "                        \"cycles={:>8.2?}(+{}) \",\n".to_string()), "                        unres_elapsed,\n".to_string()), "                        format_bytes(unres_delta)\n".to_string()), "                    );\n\n".to_string()), "                    if unres_delta > 256 * 1024 * 1024 {\n".to_string()), "                        eprintln!(\"\");\n".to_string()), "                        panic!(\n".to_string()), "                            \"ABORT: '{}' cycle detection grew RSS by {}\",\n".to_string()), "                            name,\n".to_string()), "                            format_bytes(unres_delta)\n".to_string()), "                        );\n".to_string()), "                    }\n\n".to_string()), "                    let t_env = Instant::now();\n".to_string()), "                    let env_result = crate::v1_compiler_infer::build_type_env(\n".to_string()), "                        resolved.clone(),\n".to_string()), "                        module_index.clone(),\n".to_string()), "                        source_indices.clone(),\n".to_string()), "                        intern_table.clone(),\n".to_string()), "                    );\n".to_string()), "                    let env_elapsed = t_env.elapsed();\n".to_string()), "                    let rss_after_env = get_rss_bytes();\n".to_string()), "                    let env_delta = rss_after_env.saturating_sub(rss_before);\n".to_string()), "                    let env_errs: usize = env_result\n".to_string()), "                        .diagnostics\n".to_string()), "                        .iter()\n".to_string()), "                        .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))\n".to_string()), "                        .count();\n\n".to_string()), "                    eprint!(\n".to_string()), "                        \"env={:>8.2?}(+{},e={}) \",\n".to_string()), "                        env_elapsed,\n".to_string()), "                        format_bytes(env_delta),\n".to_string()), "                        env_errs\n".to_string()), "                    );\n\n".to_string()), "                    if env_delta > 512 * 1024 * 1024 {\n".to_string()), "                        eprintln!(\"\");\n".to_string()), "                        panic!(\n".to_string()), "                            \"ABORT: '{}' build_type_env grew RSS by {}\",\n".to_string()), "                            name,\n".to_string()), "                            format_bytes(env_delta)\n".to_string()), "                        );\n".to_string()), "                    }\n".to_string()), "                    if env_elapsed.as_secs() > 10 {\n".to_string()), "                        eprintln!(\"\");\n".to_string()), "                        panic!(\"ABORT: '{}' build_type_env took {:?}\", name, env_elapsed);\n".to_string()), "                    }\n\n".to_string()), "                    let t_full = Instant::now();\n".to_string()), "                    let tc_result = crate::v1_compiler_infer::typecheck_module(\n".to_string()), "                        resolved.clone(),\n".to_string()), "                        module_index.clone(),\n".to_string()), "                        variant_surfaces.clone(),\n".to_string()), "                        source_indices.clone(),\n".to_string()), "                        intern_table.clone(),\n".to_string()), "                    );\n".to_string()), "                    let full_elapsed = t_full.elapsed();\n".to_string()), "                    let rss_after = get_rss_bytes();\n".to_string()), "                    let delta = rss_after.saturating_sub(rss_before);\n".to_string()), "                    let diag_count: usize = tc_result\n".to_string()), "                        .diagnostics\n".to_string()), "                        .iter()\n".to_string()), "                        .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))\n".to_string()), "                        .count();\n\n".to_string()), "                    eprintln!(\n".to_string()), "                        \"full={:>8.2?}  | RSS: {} (+{})  | errs: {}\",\n".to_string()), "                        full_elapsed,\n".to_string()), "                        format_bytes(rss_after),\n".to_string()), "                        format_bytes(delta),\n".to_string()), "                        diag_count\n".to_string()), "                    );\n\n".to_string()), "                    if delta > 512 * 1024 * 1024 {\n".to_string()), "                        panic!(\n".to_string()), "                            \"ABORT: '{}' grew RSS by {} (>512MB)\",\n".to_string()), "                            name,\n".to_string()), "                            format_bytes(delta)\n".to_string()), "                        );\n".to_string()), "                    }\n".to_string()), "                    if full_elapsed.as_secs() > 10 {\n".to_string()), "                        panic!(\"ABORT: '{}' took {:?} (>10s)\", name, full_elapsed);\n".to_string()), "                    }\n\n".to_string()), "                    let typed = tc_result.typed.clone();\n".to_string()), "                    let typed_path = crate::v1_std_core::authored_name_at(\n".to_string()), "                        source_indices.clone(),\n".to_string()), "                        typed.module.clone(),\n".to_string()), "                    );\n".to_string()), "                    variant_surfaces = crate::v1_rt::rc_map_insert(\n".to_string()), "                        variant_surfaces.clone(),\n".to_string()), "                        typed_path,\n".to_string()), "                        crate::v1_compiler_infer::build_variant_export_surface(\n".to_string()), "                            typed.clone(),\n".to_string()), "                            variant_surfaces.clone(),\n".to_string()), "                            source_indices.clone(),\n".to_string()), "                        ),\n".to_string()), "                    );\n".to_string()), "                    mi_raw.insert(name, typed);\n".to_string()), "                }\n\n".to_string()), "                let rss_final = get_rss_bytes();\n".to_string()), "                eprintln!(\n".to_string()), "                    \"\\n  RSS final: {} (from baseline: +{})\",\n".to_string()), "                    format_bytes(rss_final),\n".to_string()), "                    format_bytes(rss_final.saturating_sub(rss_baseline))\n".to_string()), "                );\n".to_string()), "                eprintln!(\"=== DONE ===\\n\");\n".to_string()), "            })\n".to_string()), "            .expect(\"failed to spawn thread\")\n".to_string()), "            .join();\n".to_string()), "        result.expect(\"profile_reconcile_per_module panicked\");\n".to_string()), "    }\n\n".to_string())
 }
 
 pub fn ct_module_footer() -> String {
     "}\n".to_string()
+}
+
+pub fn ct_unlisted_import_use_witness_test() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    #[test]\n".to_string(), "    fn unlisted_import_use_witness() {\n".to_string()), "        // Discriminating witness for the selective-import fail-closed mask\n".to_string()), "        // (resolve_node_bounded masked boundary). module_b references `Widget`\n".to_string()), "        // without importing it (imports only `Gadget`) -> UnlistedImportUse must\n".to_string()), "        // be emitted. module_c imports `Widget` -> must NOT be flagged (red control:\n".to_string()), "        // an inert mask fails the first assert; an over-firing mask fails the second).\n".to_string()), "        let result = std::thread::Builder::new()\n".to_string()), "            .stack_size(8 * 1024 * 1024)\n".to_string()), "            .spawn(|| {\n".to_string()), "                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n".to_string()), "                    path: \"module_a.dag\".to_string(),\n".to_string()), "                    content: \"module module_a\\ntype Widget { x: String }\\ntype Gadget { y: String }\\n\".to_string(),\n".to_string()), "                });\n".to_string()), "                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n".to_string()), "                    path: \"module_b.dag\".to_string(),\n".to_string()), "                    content: \"module module_b\\nimport module_a { Gadget }\\nfn use_widget(w: Widget) -> Widget { w }\\n\".to_string(),\n".to_string()), "                });\n".to_string()), "                let module_c = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n".to_string()), "                    path: \"module_c.dag\".to_string(),\n".to_string()), "                    content: \"module module_c\\nimport module_a { Widget }\\nfn use_widget(w: Widget) -> Widget { w }\\n\".to_string(),\n".to_string()), "                });\n".to_string()), "                let result = crate::v1_compiler_compile::compile_sources(\n".to_string()), "                    std::rc::Rc::new(im_rc::vector![module_a, module_b, module_c]),\n".to_string()), "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n".to_string()), "                );\n".to_string()), "                let unlisted: Vec<_> = result.diagnostics.iter()\n".to_string()), "                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }))\n".to_string()), "                    .collect();\n".to_string()), "                let widget_in_b = unlisted.iter().any(|e| {\n".to_string()), "                    e.module_name == \"module_b\"\n".to_string()), "                        && matches!(&*e.diagnostic, crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { name, .. } if name == \"Widget\")\n".to_string()), "                });\n".to_string()), "                assert!(\n".to_string()), "                    widget_in_b,\n".to_string()), "                    \"expected UnlistedImportUse 'Widget' in module_b (uses Widget, imports only Gadget), got: {:?}\",\n".to_string()), "                    result.diagnostics\n".to_string()), "                );\n".to_string()), "                let flagged_in_c = unlisted.iter().any(|e| e.module_name == \"module_c\");\n".to_string()), "                assert!(\n".to_string()), "                    !flagged_in_c,\n".to_string()), "                    \"module_c imports Widget -> must NOT be flagged (mask over-firing), got: {:?}\",\n".to_string()), "                    unlisted\n".to_string()), "                );\n".to_string()), "            })\n".to_string()), "            .expect(\"failed to spawn thread\")\n".to_string()), "            .join();\n".to_string()), "        result.expect(\"unlisted_import_use_witness panicked\");\n".to_string()), "    }\n\n".to_string())
 }
 
 pub fn ct_sole_constructor_test() -> String {
@@ -522,5 +307,5 @@ pub fn ct_contracts_sidecar_witness_test() -> String {
 }
 
 pub fn compiler_tests_source() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(ct_module_header(), ct_workspace_helpers()), ct_file_discovery_helpers()), ct_source_builders()), ct_tokenizer_tests()), ct_parse_tests()), ct_pipeline_test()), ct_sole_constructor_test()), ct_sole_constructor_fieldless_witness_test()), ct_contracts_sidecar_witness_test()), ct_self_parse_all_test()), ct_self_resolve_test()), ct_self_compile_test()), ct_self_compile_cargo_check_test()), ct_type_size_test()), ct_coercion_tests()), ct_profile_helpers()), ct_profile_self_compile_test()), ct_profile_full_pipeline_test()), ct_profile_reconcile_test()), ct_module_footer())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(ct_module_header(), ct_workspace_helpers()), ct_file_discovery_helpers()), ct_source_builders()), ct_tokenizer_tests()), ct_parse_tests()), ct_pipeline_test()), ct_unlisted_import_use_witness_test()), ct_sole_constructor_test()), ct_sole_constructor_fieldless_witness_test()), ct_contracts_sidecar_witness_test()), ct_self_parse_all_test()), ct_self_resolve_test()), ct_self_compile_test()), ct_self_compile_cargo_check_test()), ct_type_size_test()), ct_coercion_tests()), ct_profile_helpers()), ct_profile_self_compile_test()), ct_profile_full_pipeline_test()), ct_profile_reconcile_test()), ct_module_footer())
 }
