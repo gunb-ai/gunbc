@@ -23,7 +23,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
-data dag_lex_stamp_source: String = "module v2.test.lexeme_probe\nimport std.algebra { Cons, Empty }\n"
+data dag_lex_stamp_source: String = "module v2.test.lexeme_probe\nimport v2.std.algebra { Cons, Empty }\n"
 
 fn dag_lex_stamp_parse_tree() -> Outcome<Node> {
   let lm = dag_language_model_wave1()
