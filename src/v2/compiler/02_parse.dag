@@ -748,6 +748,68 @@ fn parse_stamp_match_arm_stmt_nodes(
   }
 }
 
+fn parse_match_arm_stmt_step(
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  acc: ParseMatchArmStmtAcc
+) -> ParseMatchArmStmtAcc {
+  if acc.done {
+    acc
+  } else if parse_looks_like_match_arm_start(tokens: acc.remaining) {
+    ParseMatchArmStmtAcc {
+      remaining: acc.remaining,
+      acc_nodes: acc.acc_nodes,
+      acc_diags: acc.acc_diags,
+      done: true,
+      prov: acc.prov,
+      table: acc.table
+    }
+  } else {
+    match parse_nonterminal_memoized_core(
+      all_tokens: all_tokens,
+      tokens: acc.remaining,
+      root: root,
+      table: acc.table,
+      prod_name: ^dag_production_stmt,
+      prov: acc.prov
+    ) {
+      ParseExprRejected { diagnostics: _, table: table1 } =>
+        ParseMatchArmStmtAcc {
+          remaining: acc.remaining,
+          acc_nodes: acc.acc_nodes,
+          acc_diags: acc.acc_diags,
+          done: true,
+          prov: acc.prov,
+          table: table1
+        }
+      ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+        if length(xs: rest) != length(xs: acc.remaining) {
+          parse_match_arm_stmt_step(
+            all_tokens: all_tokens,
+            root: root,
+            acc: ParseMatchArmStmtAcc {
+              remaining: rest,
+              acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
+              acc_diags: list_append(left: acc.acc_diags, right: diags),
+              done: false,
+              prov: prov1,
+              table: table1
+            }
+          )
+        } else {
+          ParseMatchArmStmtAcc {
+            remaining: acc.remaining,
+            acc_nodes: acc.acc_nodes,
+            acc_diags: acc.acc_diags,
+            done: true,
+            prov: acc.prov,
+            table: table1
+          }
+        }
+    }
+  }
+}
+
 fn parse_match_arm_stmt_body(
   all_tokens: List<Token>,
   tokens: List<Token>,
@@ -766,65 +828,7 @@ fn parse_match_arm_stmt_body(
       prov: prov,
       table: table
     }
-    let result = fold_list(
-      xs: tokens,
-      empty: init,
-      cons: fn(acc, _) {
-        match acc.done {
-          true => acc
-          false =>
-            if parse_looks_like_match_arm_start(tokens: acc.remaining) {
-              ParseMatchArmStmtAcc {
-                remaining: acc.remaining,
-                acc_nodes: acc.acc_nodes,
-                acc_diags: acc.acc_diags,
-                done: true,
-                prov: acc.prov,
-                table: acc.table
-              }
-            } else {
-              match parse_nonterminal_memoized_core(
-                all_tokens: all_tokens,
-                tokens: acc.remaining,
-                root: root,
-                table: acc.table,
-                prod_name: ^dag_production_stmt,
-                prov: acc.prov
-              ) {
-                ParseExprRejected { diagnostics: _, table: table1 } =>
-                  ParseMatchArmStmtAcc {
-                    remaining: acc.remaining,
-                    acc_nodes: acc.acc_nodes,
-                    acc_diags: acc.acc_diags,
-                    done: true,
-                    prov: acc.prov,
-                    table: table1
-                  }
-                ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
-                  if length(xs: rest) != length(xs: acc.remaining) {
-                    ParseMatchArmStmtAcc {
-                      remaining: rest,
-                      acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
-                      acc_diags: list_append(left: acc.acc_diags, right: diags),
-                      done: false,
-                      prov: prov1,
-                      table: table1
-                    }
-                  } else {
-                    ParseMatchArmStmtAcc {
-                      remaining: acc.remaining,
-                      acc_nodes: acc.acc_nodes,
-                      acc_diags: acc.acc_diags,
-                      done: true,
-                      prov: acc.prov,
-                      table: table1
-                    }
-                  }
-              }
-            }
-        }
-      }
-    )
+    let result = parse_match_arm_stmt_step(all_tokens: all_tokens, root: root, acc: init)
     if is_empty(xs: result.acc_nodes) {
       ParseExprRejected { diagnostics: [], table: result.table }
     } else {
