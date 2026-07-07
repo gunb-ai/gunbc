@@ -2141,6 +2141,7 @@ fn match_pattern(
                         if items.is_empty() {
                             None
                         } else {
+                            record_list_cons_tail_split(items.len());
                             let head = items[0].clone();
                             let tail = {
                                 let mut rest = (**items).clone();
@@ -6288,9 +6289,14 @@ where
 
 thread_local! {
     static FLATTEN_COUNTERS: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
-    static FLATTEN_BY_SITE: std::cell::RefCell<std::collections::HashMap<&'static str, (u64, u64)>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
 }
+
+/// Process-global (not thread-local): a background dump thread reads this
+/// concurrently with the interpreting thread, so this map must be visible
+/// across threads rather than per-thread like `FLATTEN_COUNTERS` above.
+static FLATTEN_BY_SITE: std::sync::Mutex<
+    Option<std::collections::HashMap<(&'static str, u32), (u64, u64)>>,
+> = std::sync::Mutex::new(None);
 
 pub fn flatten_counters_snapshot() -> (u64, u64) {
     FLATTEN_COUNTERS.with(|c| c.get())
@@ -6300,13 +6306,15 @@ pub fn flatten_counters_snapshot() -> (u64, u64) {
 /// cost, keyed by the immediate caller's `file:line` (`#[track_caller]`).
 /// Residual-hunt instrumentation for adhoc-c328b166-bca's follow-on (datetime.dag
 /// still DNF after the three parse-stage fixes) -- MEASURE FIRST before any cut.
-pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u64, u64)> {
-    FLATTEN_BY_SITE.with(|m| {
-        m.borrow()
+pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u32, u64, u64)> {
+    let guard = FLATTEN_BY_SITE.lock().unwrap();
+    match guard.as_ref() {
+        Some(m) => m
             .iter()
-            .map(|(site, (calls, total))| (*site, *calls, *total))
-            .collect()
-    })
+            .map(|((file, line), (calls, total))| (*file, *line, *calls, *total))
+            .collect(),
+        None => Vec::new(),
+    }
 }
 
 fn record_flatten(items: usize) {
@@ -6316,16 +6324,45 @@ fn record_flatten(items: usize) {
     });
 }
 
-#[track_caller]
-fn record_flatten_site(items: usize) {
-    let loc = std::panic::Location::caller();
-    let site: &'static str = Box::leak(format!("{}:{}", loc.file(), loc.line()).into_boxed_str());
-    FLATTEN_BY_SITE.with(|m| {
-        let mut m = m.borrow_mut();
-        let entry = m.entry(site).or_insert((0, 0));
-        entry.0 += 1;
-        entry.1 += items as u64;
-    });
+fn record_flatten_site(items: usize, loc: &'static std::panic::Location<'static>) {
+    let mut guard = FLATTEN_BY_SITE.lock().unwrap();
+    let m = guard.get_or_insert_with(std::collections::HashMap::new);
+    let entry = m.entry((loc.file(), loc.line())).or_insert((0, 0));
+    entry.0 += 1;
+    entry.1 += items as u64;
+}
+
+/// Hypothesis-B instrumentation (adhoc-c328b166-bca residual hunt): every
+/// `Cons { head, tail }` pattern match against a native `Value::List` clones
+/// the receiver and `split_off(1)`s it to build `tail`. `im_rc::Vector` makes
+/// this O(log n) once tree-ified, not the O(n) `free_monoid_to_vec` disease --
+/// but `list_tail`'s call volume across a memoized parse (one call per
+/// position, threaded through `parse_current_position`) could still sum to a
+/// superlinear total. `calls` and `receiver_len_sum` let the ladder answer
+/// that by execution instead of by reading `im_rc`'s source.
+static LIST_CONS_TAIL_SPLIT: (std::sync::atomic::AtomicU64, std::sync::atomic::AtomicU64) = (
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+);
+
+fn record_list_cons_tail_split(receiver_len: usize) {
+    LIST_CONS_TAIL_SPLIT
+        .0
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    LIST_CONS_TAIL_SPLIT
+        .1
+        .fetch_add(receiver_len as u64, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn list_cons_tail_split_snapshot() -> (u64, u64) {
+    (
+        LIST_CONS_TAIL_SPLIT
+            .0
+            .load(std::sync::atomic::Ordering::Relaxed),
+        LIST_CONS_TAIL_SPLIT
+            .1
+            .load(std::sync::atomic::Ordering::Relaxed),
+    )
 }
 
 pub const EXPR_VARIANT_COUNT: usize = 22;
@@ -6486,7 +6523,9 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
     }
 }
 
+#[track_caller]
 pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+    let site = std::panic::Location::caller();
     let mut out = Vec::new();
     let mut cur = val.clone();
     let monoid_syms = active_ctx().map(|ctx| {
@@ -6502,11 +6541,13 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
             Value::List(items) => {
                 out.extend(items.iter().cloned());
                 record_flatten(out.len());
+                record_flatten_site(out.len(), site);
                 return Some(out);
             }
             Value::Str(s) => {
                 out.extend(s.chars().map(char_value));
                 record_flatten(out.len());
+                record_flatten_site(out.len(), site);
                 return Some(out);
             }
             Value::Variant {
@@ -6517,6 +6558,7 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 let (empty_sym, cons_sym, head_sym, tail_sym) = monoid_syms?;
                 if *variant_name == empty_sym {
                     record_flatten(out.len());
+                    record_flatten_site(out.len(), site);
                     return Some(out);
                 }
                 if *variant_name == cons_sym {

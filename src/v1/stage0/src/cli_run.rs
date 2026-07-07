@@ -2455,6 +2455,25 @@ pub fn handle_run_with_options(
         std::process::exit(1);
     }
 
+    if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
+        if let Ok(secs) = secs.parse::<u64>() {
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(secs));
+                let mut sites = v1_interpreter::flatten_by_site_snapshot();
+                sites.sort_by(|a, b| b.3.cmp(&a.3));
+                eprintln!("--- free_monoid_to_vec by call site (top 15 by items cloned) ---");
+                for (file, line, calls, total) in sites.iter().take(15) {
+                    eprintln!("  {}:{}  calls={}  items={}", file, line, calls, total);
+                }
+                let (cons_calls, cons_len_sum) = v1_interpreter::list_cons_tail_split_snapshot();
+                eprintln!(
+                    "--- list Cons-match tail split (hypothesis B): calls={} receiver_len_sum={} ---",
+                    cons_calls, cons_len_sum
+                );
+            });
+        }
+    }
+
     let sources = match entry_file.as_deref() {
         Some(path) => match load_sources_for_entry(&source_roots, path) {
             Ok(sources) => sources,
