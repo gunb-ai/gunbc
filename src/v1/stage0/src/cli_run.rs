@@ -337,6 +337,7 @@ pub fn compile_dag_rust_emit_check(
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
+const WITNESS_EXCLUSION_SUBSTRINGS_DATA_NAME: &str = "witness_exclusion_substrings";
 
 fn ci_layer_roots_authority_content() -> &'static str {
     static CONTENT: OnceLock<String> = OnceLock::new();
@@ -455,6 +456,11 @@ pub(crate) fn witness_discovery_scan_dirs_from_source(content: &str) -> Vec<Stri
     string_list_data_from_ci_layer_roots_source(content, WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME)
 }
 
+/// Project `witness_exclusion_substrings` out of the ci_layer_roots authority.
+pub(crate) fn witness_exclusion_substrings_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(content, WITNESS_EXCLUSION_SUBSTRINGS_DATA_NAME)
+}
+
 /// The witness layer roots, read live from the single .dag authority and memoized.
 pub(crate) fn witness_layer_roots() -> Vec<String> {
     static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
@@ -468,6 +474,16 @@ pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
     static SCAN_DIRS: OnceLock<Vec<String>> = OnceLock::new();
     SCAN_DIRS
         .get_or_init(|| witness_discovery_scan_dirs_from_source(ci_layer_roots_authority_content()))
+        .clone()
+}
+
+/// Floor discovery path exclusions — single authority `gunbc.ci_layer_roots.witness_exclusion_substrings`.
+pub fn witness_exclusion_substrings() -> Vec<String> {
+    static EXCLUDES: OnceLock<Vec<String>> = OnceLock::new();
+    EXCLUDES
+        .get_or_init(|| {
+            witness_exclusion_substrings_from_source(ci_layer_roots_authority_content())
+        })
         .clone()
 }
 
@@ -4074,33 +4090,10 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     Some(kb.saturating_mul(1024))
 }
 
-/// Mirror of `gunbc.ci_layer_roots.witness_exclusion_substrings` — the .dag model is the
-/// single authority; plan-driven paths (`claim_executor` + `ci_floor_plan.dag`) read from
-/// `RunnableDiscoveryBatch.exclude_substrings`. SCAFFOLD — two remaining consumers to migrate:
-/// (a) `claim_batch.rs`: pre-push hook runner reads this constant directly (not plan-driven);
-///     dissolve when pre-push hooks fold over a `RunnableDiscoveryBatch` from the model, or
-///     when `claim_batch` reads `witness_exclusion_substrings` from the v2 evaluator;
-/// (b) `DiscoveryCorpusOptions::default()` + test call sites in `pipeline.rs` /
-///     `wet_hermetic_equivalence_test.rs`: pass explicit excludes from the model authority.
-/// Dissolution trigger: FLOOR_DISCOVERY_EXCLUDES has zero call sites outside this comment.
-pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
-    "impossible_bug",
-    "test/manual/",
-    "glob_discovery.dag",
-    "glob_discovery_law.dag",
-    "host_discovered_owned_data_manifest.dag",
-    "host_source_root_ingest_manifest.dag",
-    "program_assembly/real_ingest_test.dag",
-    "self_host/compiler_closure_emit_from_ingest_test.dag",
-    "unified_test_claim_substrate_equivalence.dag",
-    "ci_exclusion_proof_test.dag",
-    "test/claim/execution/",
-];
-
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
-    FLOOR_DISCOVERY_EXCLUDES
+    witness_exclusion_substrings()
         .iter()
-        .any(|sub| path.contains(sub))
+        .any(|sub| path.contains(sub.as_str()))
 }
 
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -4377,10 +4370,7 @@ fn build_floor_lens_hygiene_graph(
 }
 
 fn default_floor_lens_hygiene_excludes() -> Vec<String> {
-    FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+    witness_exclusion_substrings()
 }
 
 /// Floor witness builtin (#5433 sibling to `doc_graph_orphan_count`): unreached top-level
@@ -4670,8 +4660,9 @@ pub enum NodeFrontierSelectionMode {
 pub struct DiscoveryCorpusOptions {
     pub node_frontier_selection: NodeFrontierSelectionMode,
     pub explicit_roster_only: bool,
-    /// Path-substring exclusion list. Non-plan callers default to FLOOR_DISCOVERY_EXCLUDES;
-    /// plan-driven paths supply this from RunnableDiscoveryBatch.exclude_substrings (the model authority).
+    /// Path-substring exclusion list. Non-plan callers default to
+    /// `witness_exclusion_substrings()`; plan-driven paths supply this from
+    /// RunnableDiscoveryBatch.exclude_substrings (the model authority).
     pub exclude_substrings: Vec<String>,
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
@@ -4687,10 +4678,7 @@ impl Default for DiscoveryCorpusOptions {
         Self {
             node_frontier_selection: NodeFrontierSelectionMode::Off,
             explicit_roster_only: false,
-            exclude_substrings: FLOOR_DISCOVERY_EXCLUDES
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
             spawn_width_cap: 0,
         }
@@ -8522,8 +8510,8 @@ mod source_root_ingest_manifest_tests {
 mod inert_lens_hygiene_tests {
     use super::{
         default_source_roots, discover_floor_corpus_rows, inert_lens_modules,
-        is_top_level_lens_module, witness_discovery_scan_dirs, DiscoveryRow,
-        FLOOR_DISCOVERY_EXCLUDES,
+        is_top_level_lens_module, witness_discovery_scan_dirs, witness_exclusion_substrings,
+        DiscoveryRow,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -8620,10 +8608,7 @@ mod inert_lens_hygiene_tests {
         std::env::set_current_dir(&ws).expect("chdir to workspace root");
         let roots = default_source_roots();
         let scan_dirs = witness_discovery_scan_dirs();
-        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let excludes = witness_exclusion_substrings();
         let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
         assert!(
             result.is_ok(),
@@ -8638,7 +8623,7 @@ mod construction_justification_hygiene_tests {
     use super::{
         construction_authority_graph_unresolved, construction_authority_unresolved,
         declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
-        wall_now_authority_refs, FLOOR_DISCOVERY_EXCLUDES,
+        wall_now_authority_refs, witness_exclusion_substrings,
     };
     use std::collections::BTreeSet;
     use std::collections::HashMap;
@@ -8709,10 +8694,7 @@ mod construction_justification_hygiene_tests {
             "dag/test/claim".to_string(),
             "src/v2/test/claim/manual".to_string(),
         ];
-        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let excludes = witness_exclusion_substrings();
         let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
         assert!(
             result.is_ok(),
