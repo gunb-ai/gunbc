@@ -420,6 +420,13 @@ fn is_parametric_opaque_type_base(type_name: String, def_mod_filename: String, t
   }
 }
 
+fn alias_base_is_zero_param_decl(type_name: String, def_mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  match type_item_by_name_in_module_filename(rhs_name: type_name, mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Present { value: item } => (item.params |> count) == 0
+    Absent => false
+  }
+}
+
 fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
   if generic_param_names |> any(g => g == name) {
     false
@@ -692,6 +699,10 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       } else {
         name
       }
+    }
+    let base_is_zero_param = rust_seed_host_container_base(name: name, corpus_repr: corpus_repr) == none && alias_base_is_zero_param_decl(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    if base_is_zero_param {
+      return if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
     }
     let peel = is_parametric_opaque_type_base(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let args = n.children |> map(arg =>
