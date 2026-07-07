@@ -6288,16 +6288,43 @@ where
 
 thread_local! {
     static FLATTEN_COUNTERS: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
+    static FLATTEN_BY_SITE: std::cell::RefCell<std::collections::HashMap<&'static str, (u64, u64)>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 pub fn flatten_counters_snapshot() -> (u64, u64) {
     FLATTEN_COUNTERS.with(|c| c.get())
 }
 
+/// Per-call-site attribution for the `free_monoid_to_vec` O(n) materialization
+/// cost, keyed by the immediate caller's `file:line` (`#[track_caller]`).
+/// Residual-hunt instrumentation for adhoc-c328b166-bca's follow-on (datetime.dag
+/// still DNF after the three parse-stage fixes) -- MEASURE FIRST before any cut.
+pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u64, u64)> {
+    FLATTEN_BY_SITE.with(|m| {
+        m.borrow()
+            .iter()
+            .map(|(site, (calls, total))| (*site, *calls, *total))
+            .collect()
+    })
+}
+
 fn record_flatten(items: usize) {
     FLATTEN_COUNTERS.with(|c| {
         let (calls, total) = c.get();
         c.set((calls + 1, total + items as u64));
+    });
+}
+
+#[track_caller]
+fn record_flatten_site(items: usize) {
+    let loc = std::panic::Location::caller();
+    let site: &'static str = Box::leak(format!("{}:{}", loc.file(), loc.line()).into_boxed_str());
+    FLATTEN_BY_SITE.with(|m| {
+        let mut m = m.borrow_mut();
+        let entry = m.entry(site).or_insert((0, 0));
+        entry.0 += 1;
+        entry.1 += items as u64;
     });
 }
 
