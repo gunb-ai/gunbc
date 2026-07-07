@@ -141,3 +141,31 @@ test fn witness_disjoint_decls_quiet_through_linearity_registry() -> Bool {
     structurally_different_def()
   ]) == false
 }
+
+fn two_slot_member(s1: Symbol, s2: Symbol) -> Node {
+  conj_of(kids: [atom_node(id: ^shared_head), conj_of(kids: [atom_node(id: s1), atom_node(id: s2)])])
+}
+
+data transitivity_note: String = "First-fit grouping against a representative is sound because sigma-relatedness is transitive under the exact criterion: fillings_all_leaves(anti_unify(M, rep)) forces M's internal skeleton to equal rep's exactly (any internal disagreement would be a non-leaf filling), so two members each related to rep share identical internal skeletons and differ from each other only at leaves - related by construction, never by luck. The witnesses below execute the theorem: alpha_only differs from the rep at slot1, beta_only at slot2, so alpha_only vs beta_only differ at BOTH slots - the pair the transitivity concern targets - and still relate, and all three group as ONE family whose template holes cover the union of varying positions."
+
+test fn witness_relatedness_is_transitive_across_different_slots() -> Bool {
+  let rep = two_slot_member(s1: ^x0, s2: ^y0)
+  let alpha_only = two_slot_member(s1: ^x1, s2: ^y0)
+  let beta_only = two_slot_member(s1: ^x0, s2: ^y1)
+  sigma_family_related(a: rep, b: alpha_only)
+    && sigma_family_related(a: rep, b: beta_only)
+    && sigma_family_related(a: alpha_only, b: beta_only)
+}
+
+test fn witness_first_fit_group_is_stable_across_slot_union() -> Bool {
+  let findings = sigma_families_of_defs(defs: [
+    two_slot_member(s1: ^x0, s2: ^y0),
+    two_slot_member(s1: ^x1, s2: ^y0),
+    two_slot_member(s1: ^x0, s2: ^y1)
+  ])
+  (length(xs: findings) == 1) && fold_list(
+    xs: findings,
+    empty: false,
+    cons: fn(acc, f) { (f.member_count == 3) && (f.hole_count == 2) }
+  )
+}
