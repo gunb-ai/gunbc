@@ -88,3 +88,33 @@ fn should_run_gates(paths: List<String>, git_success: Bool) -> Bool {
     true
   }
 }
+
+fn witness_dag_only_gates_when_substrate_ready() -> Bool {
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == false
+  } else {
+    should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == true
+  }
+}
+
+fn witness_empty_paths_gates_when_substrate_ready() -> Bool {
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    should_run_gates(paths: [], git_success: true) == false
+  } else {
+    should_run_gates(paths: [], git_success: true) == true
+  }
+}
+
+fn witness_declared_unit_unaffected_by_other_dag_when_substrate_ready() -> Bool {
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    unit_must_run(
+      unit: "coproduct_reflection_conformance_test",
+      paths: ["src/v2/std/text.dag"]
+    ) == false
+  } else {
+    unit_must_run(
+      unit: "coproduct_reflection_conformance_test",
+      paths: ["src/v2/std/text.dag"]
+    ) == true
+  }
+}

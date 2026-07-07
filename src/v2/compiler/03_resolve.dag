@@ -46,6 +46,7 @@ import v2.std.node {
   Named,
   Node,
   NodeFold,
+  NodeOccurrenceId,
   OccurrenceId,
   Positional,
   Symbol,
