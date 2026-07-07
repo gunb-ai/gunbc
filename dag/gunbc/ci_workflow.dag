@@ -510,5 +510,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_job(), ci_regen_ratchet_job(), ci_regen_job(), rust_tests_job()], ci_deploy_jobs())
+  jobs: concat([ci_job(), ci_regen_job(), rust_tests_job()], ci_deploy_jobs())
 }
