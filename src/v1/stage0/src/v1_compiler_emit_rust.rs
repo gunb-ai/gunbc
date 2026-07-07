@@ -24001,6 +24001,8 @@ pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
+            LiteralValue::LitInt { value: i, .. } => Some((i.clone()).to_string()),
+            LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
             LiteralValue::LitBool { value: b, .. } => Some(if b.clone() {
                 "true".to_string()
             } else {

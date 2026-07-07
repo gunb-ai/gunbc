@@ -8424,6 +8424,8 @@ fn extract_literal_string(expr: Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: v } => match v {
       LitStr { value: s } => Present { value: s }
+      LitInt { value: i } => Present { value: to_string(value: i) }
+      LitFloat { value: f } => Present { value: f }
       LitBool { value: b } => Present { value: if b { "true" } else { "false" } }
       _ => none
     }
