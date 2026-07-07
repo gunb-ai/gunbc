@@ -107,7 +107,7 @@ The pieces exist, scattered and partly forked. The spine is what they converge *
 | Component | Lane in flight | Role in the spine |
 |---|---|---|
 | produce the edges (resolve → references) | namespace-only resolution (the pivot) | builds the DependencyView from containment |
-| single-authority type-env (per-node compile *shareable*) | SymbolIndex / lively-raven (gated on #6348) | removes the false serial dep (§3); enables `Share` (§2) |
+| single-authority type-env (per-node compile *shareable*) | SymbolIndex / lively-raven (un-gated: #6348 merged 2026-07-07) | removes the false serial dep (§3); enables `Share` (§2) |
 | `DependencyView` (the fundamental relation) | bright-heron #6335 | the spine's §1 |
 | `topological_layers` → realization runner | scheduler.dag; crisp-bear's floor | the spine's §2/§6-(1) |
 
