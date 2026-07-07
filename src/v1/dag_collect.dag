@@ -6,6 +6,7 @@ import v1.std.core {
   ExprData,
   Connective, NoConnective,
   MatchPattern,
+  ErrorNode,
   import_is_all
 }
 import v1.compiler.dag_collect_support {
