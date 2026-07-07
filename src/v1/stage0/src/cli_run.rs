@@ -952,10 +952,8 @@ static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mu
 
 fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
-    let result =
-        v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
-        && !result.files.is_empty()
+    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
+    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
 }
 
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
@@ -1037,9 +1035,7 @@ pub(crate) fn reset_floor_compile_clean_receipt_for_test() {
 }
 
 #[cfg(test)]
-pub(crate) fn install_floor_compile_clean_receipt_fixture(
-    receipt: FloorCompileCleanReceipt,
-) {
+pub(crate) fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt) {
     let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
     *guard = Some(receipt);
 }
@@ -11139,8 +11135,8 @@ mod witness_layer_roots_compile_clean_tests {
         let mut offenders = Vec::new();
         let mut stack = vec![dag_root];
         while let Some(dir) = stack.pop() {
-            let entries = std::fs::read_dir(&dir)
-                .unwrap_or_else(|e| panic!("read_dir {:?}: {e}", dir));
+            let entries =
+                std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read_dir {:?}: {e}", dir));
             for entry in entries {
                 let entry = entry.unwrap();
                 let path = entry.path();
@@ -11152,12 +11148,7 @@ mod witness_layer_roots_compile_clean_tests {
                     for (i, line) in content.lines().enumerate() {
                         let trimmed = line.trim_start();
                         if trimmed.starts_with("import v1.") {
-                            offenders.push(format!(
-                                "{}:{}: {}",
-                                path.display(),
-                                i + 1,
-                                trimmed
-                            ));
+                            offenders.push(format!("{}:{}: {}", path.display(), i + 1, trimmed));
                         }
                     }
                 }
