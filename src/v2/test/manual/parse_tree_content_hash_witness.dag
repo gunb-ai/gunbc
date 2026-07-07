@@ -45,33 +45,3 @@ fn witness_parse_tree_content_hash_tiny() -> Optional<Hash> {
 fn witness_parse_tree_content_hash_small() -> Optional<Hash> {
   parse_tree_content_hash_for_path(path: "src/v2/std/execution_mode.dag")
 }
-
-fn debug_parse_accept_reject(path: String) -> String {
-  let lm = dag_language_model_wave1()
-  let at = port_locus(port: ^parse_stage_locus_port)
-  let source_text = filesystem_read(path: path).content
-  match tokenize(text: source_text, file: ^parse_tree_content_hash_file_anchor, rules: lm.lex) {
-    Rejected { diagnostics: _ } => "tokenize_rejected"
-    Accepted { value: stream, diagnostics: _ } =>
-      match lm.grammar {
-        ModeledGrammar { root: root } =>
-          match grammar_validate_for_parse(root: root, at: at) {
-            Rejected { diagnostics: _ } => "grammar_invalid"
-            Accepted { value: validated, diagnostics: _ } =>
-              match parse_production_tree(
-                tokens: token_stream_remaining(stream: stream),
-                validated: validated,
-                production_name: validated.root.start
-              ) {
-                Rejected { diagnostics: _ } => "parse_rejected"
-                Accepted { value: _, diagnostics: _ } => "parse_accepted"
-              }
-          }
-        VoidGrammar => "void_grammar"
-      }
-  }
-}
-
-fn debug_tiny() -> String {
-  debug_parse_accept_reject(path: "src/v2/std/witness.dag")
-}
