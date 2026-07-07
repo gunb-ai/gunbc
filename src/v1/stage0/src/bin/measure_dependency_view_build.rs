@@ -69,17 +69,7 @@ fn emit_wall_priced_receipt(aborted_wall_ms: u128, budget_minutes: u64) {
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut exclude_subpaths: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|sub| (*sub).to_string())
-        .collect();
-    exclude_subpaths.extend([
-        "test/fixture/".to_string(),
-        "/test/".to_string(),
-        "nat_semiring_rung".to_string(),
-        "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
-        "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
-    ]);
+    let mut exclude_subpaths: Vec<String> = witness_exclusion_substrings();
     let mut resolve_budget_minutes = DEFAULT_RESOLVE_BUDGET_MINUTES;
 
     let mut i = 1;

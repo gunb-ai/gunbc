@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::Deserialize;
-use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVERY_EXCLUDES};
+use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, witness_exclusion_substrings};
 
 use crate::helpers::workspace_root;
 
@@ -35,18 +35,7 @@ struct SemanticBaseline {
 }
 
 fn whole_tree_probe_excludes() -> Vec<String> {
-    let mut exclude_subpaths: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|sub| (*sub).to_string())
-        .collect();
-    exclude_subpaths.extend([
-        "test/fixture/".to_string(),
-        "/test/".to_string(),
-        "nat_semiring_rung".to_string(),
-        "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
-        "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
-    ]);
-    exclude_subpaths
+    witness_exclusion_substrings()
 }
 
 fn git_toplevel() -> PathBuf {

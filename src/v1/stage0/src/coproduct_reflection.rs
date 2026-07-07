@@ -810,17 +810,7 @@ pub fn eval_fn_arrow_decl_facts_live(
 }
 
 fn whole_tree_measurement_exclude_substrings() -> Vec<String> {
-    crate::cli_run::FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|s| (*s).to_string())
-        .chain([
-            "test/fixture/".to_string(),
-            "/test/".to_string(),
-            "nat_semiring_rung".to_string(),
-            "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
-            "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
-        ])
-        .collect()
+    crate::cli_run::witness_exclusion_substrings()
 }
 
 /// True when the interpreter context was resolved over the whole-tree eligible

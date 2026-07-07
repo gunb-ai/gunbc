@@ -1778,10 +1778,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // path always runs the fail-closed walk once up front — before the (expensive)
     // plan evaluation, so a naming violation is the cheapest possible failure.
     {
-        let excludes: Vec<String> = v1_compiler::cli_run::FLOOR_DISCOVERY_EXCLUDES
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
         if let Err(msg) = v1_compiler::cli_run::check_floor_filename_hygiene(&source_roots)
             .and_then(|_| {
                 v1_compiler::cli_run::discover_floor_corpus_rows(&source_roots, &[], &excludes)
