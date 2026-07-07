@@ -51,28 +51,28 @@ type Scale =
   | Gibi
   | Tebi
 
-data sixty_scale_note: String = "Scale.Sixty is the sexagesimal time factor (60 seconds per unit); Minute = Measure<Time, Sixty, Nat> is distinct from Second = Measure<Time, One, Nat>. Conversion authority: time_scale_factor_seconds (not scale_exponent, which returns 0 for Sixty as a non-decimal marker)."
+data sixty_scale_note: String = "Scale.Sixty is the sexagesimal time factor (60 seconds per unit); Minute = Measure<Time, Sixty, Nat> is distinct from Second = Measure<Time, One, Nat>. Conversion authority: time_scale_factor_seconds. scale_exponent refuses Sixty (none) — not a decimal 10^k exponent."
 
-fn scale_exponent(s: Scale) -> Int {
+fn scale_exponent(s: Scale) -> Int? {
   match s {
-    Atto  => -18
-    Femto => -15
-    Pico  => -12
-    Nano  =>  -9
-    Micro =>  -6
-    Milli =>  -3
-    One   =>   0
-    Sixty =>   0
-    Kilo  =>   3
-    Mega  =>   6
-    Giga  =>   9
-    Tera  =>  12
-    Peta  =>  15
-    Exa   =>  18
-    Kibi  =>  10
-    Mebi  =>  20
-    Gibi  =>  30
-    Tebi  =>  40
+    Atto  => Present { value: -18 }
+    Femto => Present { value: -15 }
+    Pico  => Present { value: -12 }
+    Nano  =>  Present { value:  -9 }
+    Micro =>  Present { value:  -6 }
+    Milli =>  Present { value:  -3 }
+    One   =>  Present { value:   0 }
+    Sixty =>  none
+    Kilo  =>  Present { value:   3 }
+    Mega  =>  Present { value:   6 }
+    Giga  =>  Present { value:   9 }
+    Tera  =>  Present { value:  12 }
+    Peta  =>  Present { value:  15 }
+    Exa   =>  Present { value:  18 }
+    Kibi  =>  Present { value:  10 }
+    Mebi  =>  Present { value:  20 }
+    Gibi  =>  Present { value:  30 }
+    Tebi  =>  Present { value:  40 }
   }
 }
 

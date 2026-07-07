@@ -65,6 +65,7 @@ pub enum Scale {
     Tebi,
 }
 
+<<<<<<< HEAD
 pub fn scale_exponent(s: Scale) -> i64 {
     match s.clone() {
         Scale::Atto => -18,
@@ -85,6 +86,28 @@ pub fn scale_exponent(s: Scale) -> i64 {
         Scale::Mebi => 20,
         Scale::Gibi => 30,
         Scale::Tebi => 40,
+=======
+pub fn scale_exponent(s: Scale) -> Option<i64> {
+    match s {
+        Scale::Atto => Some(-18),
+        Scale::Femto => Some(-15),
+        Scale::Pico => Some(-12),
+        Scale::Nano => Some(-9),
+        Scale::Micro => Some(-6),
+        Scale::Milli => Some(-3),
+        Scale::One => Some(0),
+        Scale::Sixty => None,
+        Scale::Kilo => Some(3),
+        Scale::Mega => Some(6),
+        Scale::Giga => Some(9),
+        Scale::Tera => Some(12),
+        Scale::Peta => Some(15),
+        Scale::Exa => Some(18),
+        Scale::Kibi => Some(10),
+        Scale::Mebi => Some(20),
+        Scale::Gibi => Some(30),
+        Scale::Tebi => Some(40),
+>>>>>>> ed98a11aec (WIP: Lever a slice 2: reground selection on DependencyView)
     }
 }
 

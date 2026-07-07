@@ -45,15 +45,22 @@ fn module_path_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>)
   }
 }
 
+fn path_excluded_by_substrings(path: String, exclude_substrings: List<String>) -> Bool {
+  any(xs: exclude_substrings, predicate: fn(sub) { string_contains(s: path, pattern: sub) })
+}
+
 fn modules_matching_touched_path(
   pool_roots: List<String>,
-  touched_path: String
+  touched_path: String,
+  exclude_substrings: List<String>
 ) -> List<ModuleDeclarationFact> {
   fold(
     module_declaration_facts_live(pool_roots: pool_roots),
     init: [],
     f: fn(acc, fact) {
-      if path_matches_touched(closure_path: fact.path, touched_path: touched_path) {
+      if path_excluded_by_substrings(path: fact.path, exclude_substrings: exclude_substrings) {
+        acc
+      } else if path_matches_touched(closure_path: fact.path, touched_path: touched_path) {
         concat(acc, [fact])
       } else {
         acc
@@ -77,11 +84,16 @@ fn edit_locus_nodes_for_module(
 
 fn edit_locus_nodes_for_touched_path(
   pool_roots: List<String>,
-  touched_path: String
+  touched_path: String,
+  exclude_substrings: List<String>
 ) -> List<Node> {
   let decls = fn_arrow_decl_facts_live()
   fold(
-    modules_matching_touched_path(pool_roots: pool_roots, touched_path: touched_path),
+    modules_matching_touched_path(
+      pool_roots: pool_roots,
+      touched_path: touched_path,
+      exclude_substrings: exclude_substrings
+    ),
     init: [],
     f: fn(acc, fact) {
       fold(
@@ -123,7 +135,8 @@ fn affected_frontier_for_edit_loci(
 
 fn file_paths_for_frontier_nodes(
   frontier: List<Node>,
-  pool_roots: List<String>
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
 ) -> List<String> {
   let decls = fn_arrow_decl_facts_live()
   let modules = module_declaration_facts_live(pool_roots: pool_roots)
@@ -132,7 +145,9 @@ fn file_paths_for_frontier_nodes(
       if decl.output == node {
         match module_path_for_decl(decl: decl, modules: modules) {
           Present { value: path } =>
-            if contains(xs: acc, item: path, eq: string_eq) {
+            if path_excluded_by_substrings(path: path, exclude_substrings: exclude_substrings) {
+              acc
+            } else if contains(xs: acc, item: path, eq: string_eq) {
               acc
             } else {
               list_snoc_item(xs: acc, item: path)
@@ -148,7 +163,8 @@ fn file_paths_for_frontier_nodes(
 
 fn affected_file_paths_for_touched_paths(
   pool_roots: List<String>,
-  touched_paths: List<String>
+  touched_paths: List<String>,
+  exclude_substrings: List<String>
 ) -> List<String> {
   let dependencies = corpus_dependency_views_live()
   let frontier = fold(touched_paths, init: [], f: fn(acc, touched_path) {
@@ -156,7 +172,8 @@ fn affected_file_paths_for_touched_paths(
       acc: acc,
       more: edit_locus_nodes_for_touched_path(
         pool_roots: pool_roots,
-        touched_path: touched_path
+        touched_path: touched_path,
+        exclude_substrings: exclude_substrings
       )
     )
   })
@@ -166,7 +183,8 @@ fn affected_file_paths_for_touched_paths(
   )
   file_paths_for_frontier_nodes(
     frontier: rerun_frontier,
-    pool_roots: pool_roots
+    pool_roots: pool_roots,
+    exclude_substrings: exclude_substrings
   )
 }
 
@@ -185,13 +203,15 @@ fn entry_affected_by_dependency_view_excluding(
   touched_paths: List<String>,
   exclude_substrings: List<String>
 ) -> Bool {
-  let _exclude = exclude_substrings
-  if corpus_dependency_view_per_pr_substrate_ready() {
+  if path_excluded_by_substrings(path: entry_path, exclude_substrings: exclude_substrings) {
+    false
+  } else if corpus_dependency_view_per_pr_substrate_ready() {
     entry_path_in_affected_file_paths(
       entry_path: entry_path,
       affected_paths: affected_file_paths_for_touched_paths(
         pool_roots: pool_roots,
-        touched_paths: touched_paths
+        touched_paths: touched_paths,
+        exclude_substrings: exclude_substrings
       )
     )
   } else {
