@@ -3865,7 +3865,12 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let return_is_bare_generic = (generic_param_names |> filter(g => g == ret_name) |> count) > 0
   let body_is_param_ref = (value_param_names |> filter(n => n == body.name) |> count) > 0
   let return_based_clone = return_is_bare_generic && !body_is_param_ref
-  let clone_param = if return_based_clone { ret_name } else { "" }
+  let element_clone_param = if body_is_param_ref { none } else {
+    generic_param_names |> filter(g => type_param_is_collection_element_in_values(param_name: g, value_params: value_params, source_indices: si)) |> first
+  }
+  let clone_param = if return_based_clone { ret_name } else {
+    match element_clone_param { Present { value: g } => g  Absent => "" }
+  }
   let needs_clone_bound = clone_param != ""
   let type_params_str = if needs_clone_bound {
     emit_type_params_with_clone_bound(params: type_params, clone_param: clone_param, source_indices: si)

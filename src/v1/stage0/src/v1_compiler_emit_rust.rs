@@ -663,7 +663,6 @@ pub fn type_param_is_collection_element_in_values(
     }
 }
 
-
 pub fn is_value_variant_type_arg(
     generic_param_names: Rc<Vec<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -9792,22 +9791,26 @@ pub fn emit_fn_def(
                 })
                 .len() as i64)
                     > 0);
-                let return_based_clone = (return_is_bare_generic && !body_is_param_ref);
-                let element_clone_param = Rc::new({
-                    let mut __result = Vec::new();
-                    for g in generic_param_names.clone().iter().cloned() {
-                        if type_param_is_collection_element_in_values(
-                            g.clone(),
-                            value_params.clone(),
-                            si.clone(),
-                        ) {
-                            __result.push(g);
+                let return_based_clone = (return_is_bare_generic && !body_is_param_ref.clone());
+                let element_clone_param = if body_is_param_ref.clone() {
+                    None
+                } else {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for g in generic_param_names.clone().iter().cloned() {
+                            if type_param_is_collection_element_in_values(
+                                g.clone(),
+                                value_params.clone(),
+                                si.clone(),
+                            ) {
+                                __result.push(g);
+                            }
                         }
-                    }
-                    __result
-                })
-                .first()
-                .cloned();
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                };
                 let clone_param = if return_based_clone {
                     ret_name.clone()
                 } else {
