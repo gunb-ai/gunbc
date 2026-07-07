@@ -2,6 +2,7 @@ module std.resources
 
 import std.filesystem { FileClassification }
 import std.types { Timestamp, FilePath, TextFilePath }
+import std.integer { UInt8 }
 import std.measure { ByteSize }
 
 type ResourceHandle {

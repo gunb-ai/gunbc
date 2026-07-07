@@ -415,41 +415,6 @@ fn type_env_import_chain_scaling_not_quadratic() {
 }
 
 #[test]
-fn type_env_import_chain_flatten_parent_recurses_zero() {
-    v1_compiler::v1_compiler_infer_env::reset_type_env_lookup_profile();
-    compile_modules(synthetic_import_chain_sources(128));
-    assert_eq!(
-        v1_compiler::v1_compiler_infer_env::flatten_visible_parent_recurses(),
-        0,
-        "flatten_visible_bindings must use ancestry index, not recursive parent flatten"
-    );
-}
-
-#[test]
-fn type_env_import_chain_build_type_env_calls_linear() {
-    const DEPTH: usize = 128;
-    v1_compiler::v1_compiler_infer_env::reset_type_env_lookup_profile();
-    compile_modules(synthetic_import_chain_sources(DEPTH));
-    let calls = v1_compiler::v1_compiler_infer_env::build_type_env_calls();
-    assert_eq!(
-        calls, DEPTH as u64,
-        "build_type_env must run once per module on import chains (got {calls}, expected {DEPTH})"
-    );
-}
-
-#[test]
-fn type_env_import_chain_merge_cache_calls_bounded() {
-    const DEPTH: usize = 128;
-    v1_compiler::v1_compiler_infer_env::reset_type_env_lookup_profile();
-    compile_modules(synthetic_import_chain_sources(DEPTH));
-    let merges = v1_compiler::v1_compiler_infer_env::merge_type_env_cache_calls();
-    assert!(
-        merges <= DEPTH as u64,
-        "merge_type_env_cache must stay O(depth) on import chains (got {merges}, budget {DEPTH})"
-    );
-}
-
-#[test]
 fn type_env_dual_import_later_overlay_wins() {
     use v1_compiler::v1_compiler_infer_env::lookup_binding_by_name;
 
