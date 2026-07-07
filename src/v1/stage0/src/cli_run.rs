@@ -5021,9 +5021,11 @@ fn collect_sorted_decl_lines_for_file(
 // (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) remain host
 // realization until provenance ingest lands. Skip/precompute **verdicts** read `.dag`
 // via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; the
-// `entry_file_touched` axis now reads `.dag` via `entry_affected_by_dependency_view`
-// (`v2.lens.affected_set.entry_selection`, lever-a slice 2). Per-PR live execution
-// blocked-on-#6239 on-carrier (`corpus_dependency_view_per_pr_execution_gate`).
+// `entry_file_touched` axis reads `.dag` via `entry_file_touched_via_dependency_view`
+// (`v2.lens.affected_set.entry_selection`, lever-a slice 2). Host guards partial-resolve
+// floor discovery: when `fn_arrow_decl_substrate_is_whole_tree` is false, returns must-run
+// (`true`) until #6239 — same interim as `rust_stage0_gates.unit_is_affected`. Per-PR live
+// DependencyView execution blocked-on-#6239 on-carrier (`corpus_dependency_view_per_pr_execution_gate`).
 // Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
 // `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
@@ -5045,6 +5047,28 @@ const ENTRY_SELECTION_ENTRY: &str = "src/v2/lens/affected_set/entry_selection.da
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // Keep in sync with `floor_host_scaffold_witness_marker` in affected_set_floor_runner.dag.
 const FLOOR_HOST_SCAFFOLD_WITNESS_MARKER: &str = "floor:host_scaffold";
+
+/// Floor `entry_file_touched` via DependencyView when whole-tree substrate is ready;
+/// interim must-run (`true`) when blocked-on-#6239 (mirrors `rust_stage0_gates.unit_is_affected`).
+fn entry_file_touched_via_dependency_view(
+    es_ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+    pool_roots: &[String],
+    touched_paths: &[String],
+) -> Result<bool, String> {
+    match crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree(es_ctx, &[]) {
+        Ok(v1_interpreter::Value::Bool(true)) => {}
+        Ok(v1_interpreter::Value::Bool(false)) => return Ok(true),
+        Ok(other) => {
+            return Err(format!(
+                "fn_arrow_decl_substrate_is_whole_tree returned `{}`, expected Bool",
+                es_ctx.format_value(&other)
+            ));
+        }
+        Err(e) => return Err(format!("fn_arrow_decl_substrate_is_whole_tree: {e}")),
+    }
+    call_entry_affected_by_dependency_view(es_ctx, entry_path, pool_roots, touched_paths)
+}
 
 fn call_entry_affected_by_dependency_view(
     ctx: &v1_interpreter::InterpContext,
@@ -6140,7 +6164,7 @@ fn run_discovery_rows(
                     false
                 } else {
                     match entry_selection_ctx {
-                        Some(es_ctx) => call_entry_affected_by_dependency_view(
+                        Some(es_ctx) => entry_file_touched_via_dependency_view(
                             es_ctx,
                             &workspace_relative_repo_path(&row.entry),
                             &pool_roots,
