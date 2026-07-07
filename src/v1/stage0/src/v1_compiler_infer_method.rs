@@ -165,6 +165,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "sorted_map_keys".to_string(),
+            list_of_type_variable("collection_element".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "map_values".to_string(),
             list_of_type_variable("collection_element".to_string()),
         );
