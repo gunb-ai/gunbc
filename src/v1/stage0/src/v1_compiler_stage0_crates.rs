@@ -325,6 +325,13 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                         }),
                     }),
                     Rc::new(CargoDependency {
+                        name: "im-rc".to_string(),
+                        source: Rc::new(CargoDepSource::RegistryDep {
+                            version: "15.1".to_string(),
+                            features: Rc::new(vec!["serde".to_string()]),
+                        }),
+                    }),
+                    Rc::new(CargoDependency {
                         name: "serde".to_string(),
                         source: Rc::new(CargoDepSource::RegistryDep {
                             version: "1".to_string(),
@@ -379,6 +386,13 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                         source: Rc::new(CargoDepSource::RegistryDep {
                             version: "0.1".to_string(),
                             features: Rc::new(vec![]),
+                        }),
+                    }),
+                    Rc::new(CargoDependency {
+                        name: "im-rc".to_string(),
+                        source: Rc::new(CargoDepSource::RegistryDep {
+                            version: "15.1".to_string(),
+                            features: Rc::new(vec!["serde".to_string()]),
                         }),
                     }),
                     Rc::new(CargoDependency {
