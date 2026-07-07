@@ -411,6 +411,7 @@ data commit_workflow_local_tidy_checks: List<LocalTidyCheck> = project_local_tid
 fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   match surface {
     GithubActionsCiJob => artifact_path(a: CiYamlArtifact)
+    GithubActionsCiRegenJob => artifact_path(a: CiYamlArtifact)
     GithubActionsRustTestsJob => artifact_path(a: CiYamlArtifact)
     GitPrePushHook => artifact_path(a: GithooksPrePushArtifact)
   }
@@ -419,6 +420,7 @@ fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
 fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWorkflowRealizationKind {
   match surface {
     GithubActionsCiJob => CiYamlHandler
+    GithubActionsCiRegenJob => CiYamlHandler
     GithubActionsRustTestsJob => CiYamlHandler
     GitPrePushHook => GitPrePushScriptHandler
   }
@@ -427,6 +429,7 @@ fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWork
 fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> GeneratedArtifact {
   match surface {
     GithubActionsCiJob => CiYamlArtifact
+    GithubActionsCiRegenJob => CiYamlArtifact
     GithubActionsRustTestsJob => CiYamlArtifact
     GitPrePushHook => GithooksPrePushArtifact
   }
