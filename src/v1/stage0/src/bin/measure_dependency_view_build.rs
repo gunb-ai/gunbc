@@ -54,7 +54,7 @@ fn int_from_value(
 }
 
 fn emit_wall_priced_receipt(aborted_wall_ms: u128, budget_minutes: u64) {
-  eprintln!(
+    eprintln!(
         "[measurement] whole-tree-resolve verdict=WallPriced aborted_wall_ms={aborted_wall_ms} \
          budget_minutes={budget_minutes} last_phase=post_normalize_stuck_in_reconcile \
          phase_marks:frontend_done_ms=4104 normalize_done_ms=4677 reconcile_done_ms=unreached \
