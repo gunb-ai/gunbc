@@ -159,7 +159,8 @@ fn touched_path_disposition_matches(row: ScopeDispositionRow) -> Bool {
     RequireWholeTree { reason: _ } =>
       match row.expect {
         ExpectSkip => false
-        ExpectScopedContaining { required_entry: _ } => true
+        ExpectScopedContaining { required_entry: _ } =>
+          !corpus_dependency_view_per_pr_substrate_ready()
         ExpectWholeTree => true
       }
   }
