@@ -13790,6 +13790,18 @@ pub fn is_map_typed_expr(
     }
 }
 
+pub fn is_collection_typed_expr(
+    texpr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match texpr.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: n, .. }) => {
+            node_is_collection(n.clone(), source_indices)
+        }
+        _ => false,
+    }
+}
+
 pub fn emit_discriminant_call_lowering(
     value_arg: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -16667,44 +16679,92 @@ pub fn emit_typed_method_call(
                 }
             }
             MethodSemantics::PlainMethodSemantics => {
-                let recv_str = emit_typed_expr(
-                    receiver.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    1024,
-                );
-                let arg_strs = Rc::new({
-                    let mut __result = Vec::new();
-                    for a in args.clone().iter().cloned() {
-                        __result.push(emit_typed_expr(
-                            arg_value(a.clone()),
+                if ((method.clone() == "get".to_string())
+                    && is_collection_typed_expr(
+                        receiver.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ))
+                {
+                    emit_rust_get_method_call(
+                        receiver.clone(),
+                        args.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    )
+                } else {
+                    {
+                        let recv_str = emit_typed_expr(
+                            receiver.clone(),
                             registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
                             emit_info.clone(),
                             1024,
-                        ));
+                        );
+                        match v1_rt::map_get(&rust_method_templates(), method.clone()) {
+                            Some(tmpl) => {
+                                let first_arg_str = emit_typed_first_arg(
+                                    args.clone(),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                );
+                                let bindings = v1_rt::rc_map_insert(
+                                    seed_bindings("recv".to_string(), recv_str),
+                                    "arg".to_string(),
+                                    first_arg_str,
+                                );
+                                let raw = apply_named_template(tmpl.clone(), bindings);
+                                if rust_runtime_bridge_wraps_collection_result_in_rc(method.clone())
+                                {
+                                    v1_rt::concat(
+                                        v1_rt::concat("Rc::new(".to_string(), raw),
+                                        ")".to_string(),
+                                    )
+                                } else {
+                                    raw
+                                }
+                            }
+                            None => {
+                                let arg_strs = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for a in args.clone().iter().cloned() {
+                                        __result.push(emit_typed_expr(
+                                            arg_value(a.clone()),
+                                            registry.clone(),
+                                            scope.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            emit_info.clone(),
+                                            1024,
+                                        ));
+                                    }
+                                    __result
+                                });
+                                let args_str = arg_strs.join(&", ".to_string());
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(recv_str, ".".to_string()),
+                                                emit_ident(method.clone(), RenderTarget::Rust),
+                                            ),
+                                            "(".to_string(),
+                                        ),
+                                        args_str,
+                                    ),
+                                    ")".to_string(),
+                                )
+                            }
+                        }
                     }
-                    __result
-                });
-                let args_str = arg_strs.join(&", ".to_string());
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(recv_str, ".".to_string()),
-                                emit_ident(method, RenderTarget::Rust),
-                            ),
-                            "(".to_string(),
-                        ),
-                        args_str,
-                    ),
-                    ")".to_string(),
-                )
+                }
             }
         }
     } else {
