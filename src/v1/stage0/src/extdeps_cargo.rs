@@ -47,7 +47,7 @@ pub enum RustEdition {
 }
 
 pub fn rust_edition_str(edition: RustEdition) -> String {
-    match edition {
+    match edition.clone() {
         RustEdition::Edition2015 => "2015".to_string(),
         RustEdition::Edition2018 => "2018".to_string(),
         RustEdition::Edition2021 => "2021".to_string(),
@@ -125,12 +125,12 @@ pub fn cargo_target_source_path(
     target: Rc<CargoTarget>,
     package_name: String,
 ) -> Rc<FilePathParts> {
-    match (*target).clone() {
+    match (*target.clone()).clone() {
         CargoTarget::Lib => Rc::new(FilePathParts {
             segments: Rc::new(vec!["src".to_string(), "lib.rs".to_string()]),
         }),
         CargoTarget::Bin { name: name, .. } => {
-            if (name.clone() == package_name) {
+            if (name.clone() == package_name.clone()) {
                 Rc::new(FilePathParts {
                     segments: Rc::new(vec!["src".to_string(), "main.rs".to_string()]),
                 })

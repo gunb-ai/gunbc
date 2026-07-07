@@ -181,7 +181,7 @@ fn ct_source_builders() -> String {
     "                }\n",
     "            }\n",
     "        }\n\n",
-    "        let mut result: Vec<_> = seen.into_values().collect();\n",
+    "        let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();\n",
     "        result.sort_by(|a, b| a.path.cmp(&b.path));\n",
     "        result\n",
     "    }\n\n",

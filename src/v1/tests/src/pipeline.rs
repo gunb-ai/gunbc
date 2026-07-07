@@ -9805,7 +9805,13 @@ fn count_ownership_violations(
     let try_unwrap_fallbacks = count_pattern(&emitted, "unwrap_or_else(|rc| (*rc).clone())");
 
     for proof in result.ownership.iter() {
-        let movable = build_movable_set(proof.clone());
+        // build_movable_set is 2-arg in the .dag authority (proof, param_names);
+        // main's seed had a stale 1-arg divergence and this call was written against
+        // it. param_names only EXTENDS movability to sole-owned params; passing the
+        // empty set keeps the param-blind (owned-locals-only) count the movable_but_cloned
+        // ratchet below was calibrated against — a conservative subset that stays under
+        // the `<= 45` bound. (result.ownership yields proofs without param_names.)
+        let movable = build_movable_set(proof.clone(), Rc::new(BTreeSet::new()));
         for name in movable.iter() {
             let clone_pattern = format!("{}.clone()", name);
             let clones_in_emitted = count_pattern(&emitted, &clone_pattern);

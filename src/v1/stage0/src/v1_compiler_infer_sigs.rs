@@ -97,7 +97,7 @@ pub fn collect_func_call_edges(
 ) -> Rc<Vec<Rc<CallEdge>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for item in items.iter().cloned() {
+        for item in items.clone().iter().cloned() {
             __result.extend(
                 (*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
                     collect_calls_in_expr(
@@ -154,7 +154,7 @@ pub fn collect_calls_in_expr(
             }
             __result
         });
-        let result = v1_rt::concat(this_edges, child_edges);
+        let result = v1_rt::concat(this_edges.clone(), child_edges.clone());
         result
     })
 }
@@ -191,7 +191,7 @@ pub fn func_reaches_self(
                 });
                 {
                     let mut __found = false;
-                    for c in callees.iter().cloned() {
+                    for c in callees.clone().iter().cloned() {
                         if if (c.clone() == root.clone()) {
                             true
                         } else {
@@ -214,7 +214,7 @@ pub fn func_reaches_self(
 }
 
 pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
-    names.iter().cloned().fold(
+    names.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
         |acc: Rc<HashMap<String, bool>>, name: String| {
             v1_rt::rc_map_insert(acc, name.clone(), true)
@@ -241,7 +241,7 @@ pub fn merge_remaining_declared(
         .iter()
         .cloned()
         .fold(
-            resolved,
+            resolved.clone(),
             |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
                 if (dsig.inferred.clone() != None) {
                     v1_rt::rc_map_insert(
@@ -472,7 +472,7 @@ pub fn topo_resolve_loop(
             __result
         });
         {
-            let __tco_0 = next_remaining;
+            let __tco_0 = next_remaining.clone();
             let __tco_1 = ready_accum.signatures.clone();
             let __tco_2 = ready_accum.diagnostics.clone();
             let __tco_3 = (fuel - 1);
@@ -520,12 +520,12 @@ pub fn resolve_func_sigs(
         topo_resolve_loop(
             local_func_names.clone(),
             v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-            declared_sigs,
-            call_edges,
+            declared_sigs.clone(),
+            call_edges.clone(),
             local_func_set.clone(),
-            module_name,
+            module_name.clone(),
             Rc::new(vec![]),
-            parent_envs,
+            parent_envs.clone(),
             (local_func_names.clone().len() as i64),
         )
     }
