@@ -1,0 +1,258 @@
+module v2.test.manual.emit_host_add_equals_eval
+
+
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_test_claim_emit_vs_eval
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval_test_claim_subject
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust {
+  rust_emit_host_runtime_primitive_type_node,
+  rust_mvp1_fixture_emitted_add_fn,
+  rust_mvp1_target_model_staging
+}
+import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
+import v2.test.manual.eval_runtime_mvp { eval_mvp2_add_subgraph_node }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection { List, Map, list_nth }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.machine { Byte }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  Continue,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  Return,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verdict { Deferred, Fail, Pass, Verdict }
+import v2.std.verification {
+  EqualsClaim,
+  Integration,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier3,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Violates, Witness }
+
+
+fn emit_eval_oct5_value(n: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: rust_emit_host_runtime_primitive_type_node(),
+      bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
+    }
+  }
+}
+
+fn emit_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn emit_eval_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Accepted { value: emit_eval_oct5_value(n: 2), diagnostics: None }
+}
+
+fn emit_eval_arg_is_two(value: RuntimeValue) -> Bool {
+  value == emit_eval_oct5_value(n: 2)
+}
+
+fn emit_eval_args_are_two_twos(args: List<RuntimeValue>) -> Bool {
+  if count(args) == 2 {
+    match list_nth(xs: args, wanted: 0, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: eval_mvp2_add_subgraph_node)) {
+      Holds { value: left } =>
+        match list_nth(xs: args, wanted: 1, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: eval_mvp2_add_subgraph_node)) {
+          Holds { value: right } =>
+            emit_eval_arg_is_two(value: left) && emit_eval_arg_is_two(value: right)
+          Violates { diagnostic: _ } => false
+        }
+      Violates { diagnostic: _ } => false
+    }
+  } else {
+    false
+  }
+}
+
+fn emit_eval_call_primitive_sum(result: Int, node: Node, args: List<RuntimeValue>, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if emit_eval_args_are_two_twos(args: args) {
+    Accepted { value: emit_eval_oct5_value(n: result), diagnostics: None }
+  } else {
+    Rejected { diagnostics: diagnostics_singleton(d: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: node)) }
+  }
+}
+
+fn emit_eval_call_primitive_five(node: Node, args: List<RuntimeValue>, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  emit_eval_call_primitive_sum(result: 5, node: node, args: args, _env: env)
+}
+
+fn emit_eval_call_primitive_six(node: Node, args: List<RuntimeValue>, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  emit_eval_call_primitive_sum(result: 6, node: node, args: args, _env: env)
+}
+
+fn emit_eval_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  Accepted { value: eval_mvp2_add_subgraph_node, diagnostics: None }
+}
+
+fn emit_eval_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Accepted { value: Continue { value: emit_eval_oct5_value(n: 5) }, diagnostics: None }
+}
+
+fn emit_eval_bind_value(_key: EnvironmentBindingKey, _value: RuntimeValue, env: EvaluationEnvironment) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+fn emit_eval_interpretation(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: emit_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: call_primitive },
+    branch: BranchInterpreter { choose_branch: emit_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: emit_eval_step_loop },
+    bind: BindInterpreter { bind_value: emit_eval_bind_value }
+  }
+}
+
+fn emit_eval_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^emit_eval_allocate_literal_sym,
+    call_primitive: ^emit_eval_call_primitive_sym,
+    choose_branch: ^emit_eval_choose_branch_sym,
+    step_loop: ^emit_eval_step_loop_sym,
+    bind_value: ^emit_eval_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn emit_eval_context(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^emit_eval_interpretation_pin,
+    interpretation: emit_eval_interpretation(call_primitive: call_primitive),
+    structure_witness: emit_eval_structure_witness()
+  )
+}
+
+
+fn emit_eval_generic_facts(node: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: rust_emit_host_runtime_primitive_type_node(),
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: ^emit_eval_generic_descent }
+      }
+    }
+  )
+}
+
+fn emit_eval_composed_facts(node: Node) -> Witness<InferredFacts> {
+  match rust_add_inferred_tree.facts.lookup(node) {
+    Holds { value: f } => Holds { value: f }
+    Violates { diagnostic: _ } => Holds { value: emit_eval_generic_facts(node: node) }
+  }
+}
+
+fn emit_eval_subject_tree() -> InferredTree {
+  InferredTree {
+    root: rust_mvp1_fixture_emitted_add_fn,
+    facts: Map { lookup: emit_eval_composed_facts }
+  }
+}
+
+fn emit_eval_claim(rhs_result_node: Node) -> TestClaim {
+  EqualsClaim {
+    label: "S0: rust emit(add-fn) host-run == eval(add-subgraph) via shared octet codec",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    lhs: rhs_result_node,
+    rhs: rhs_result_node,
+    classification: TestClassification { tier: Tier3, layer: Integration }
+  }
+}
+
+fn emit_eval_subject(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: emit_eval_claim(rhs_result_node: eval_mvp2_add_subgraph_node),
+    context: emit_eval_context(call_primitive: call_primitive),
+    tree: emit_eval_subject_tree(),
+    evaluator_pin: ^emit_eval_evaluator_pin
+  )
+}
+
+fn emit_eval_run(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_emit_vs_eval(
+    subject: emit_eval_subject(call_primitive: call_primitive),
+    target: rust_mvp1_target_model_staging()
+  )
+}
+
+fn emit_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    Pass => true
+    Fail { actual: _, falsification: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+fn emit_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    Fail { actual: _, falsification: _ } => true
+    Pass => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+test fn emit_host_add_equals_eval_holds() -> Bool {
+  emit_eval_verdict_is_pass(run: emit_eval_run(call_primitive: emit_eval_call_primitive_five))
+}
+
+test fn emit_host_add_wrong_oracle_refuses_holds() -> Bool {
+  emit_eval_verdict_is_fail(run: emit_eval_run(call_primitive: emit_eval_call_primitive_six))
+}
+
+test fn emit_host_add_equals_eval_all_holds() -> Bool {
+  emit_host_add_equals_eval_holds() && emit_host_add_wrong_oracle_refuses_holds()
+}
