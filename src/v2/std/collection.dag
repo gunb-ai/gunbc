@@ -1,6 +1,7 @@
 module v2.std.collection
 
-import v2.std.algebra { FreeMonoid, PointwisePower, fold_list, is_empty }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { PointwisePower, fold_list, is_empty }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,

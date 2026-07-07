@@ -1,6 +1,7 @@
 module v2.test.extdeps_external_authority.corpus.backfill_roster_soundness
 
-import v2.std.algebra { Cons, Empty, any, for_all, list_append }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { any, for_all, list_append }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.qualified_name { QualifiedName }

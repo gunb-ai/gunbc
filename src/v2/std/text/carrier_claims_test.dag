@@ -1,6 +1,7 @@
 module v2.test.std_text.carrier_claims
 
-import v2.std.algebra { Cons, Empty, Equal, FreeMonoid, Ordering }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { Equal, Ordering }
 import v2.std.logic { Bool }
 import v2.std.nat { Nat, Succ, Zero, nat_compare }
 import v2.std.text {

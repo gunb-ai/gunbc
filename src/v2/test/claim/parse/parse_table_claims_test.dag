@@ -2,7 +2,8 @@ module v2.test.parse.parse_table_claims
 
 import v2.std.logic { Bool }
 import v2.std.collection { List, Set }
-import v2.std.algebra { Cons, Empty, length }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { length }
 import v2.std.compilers.lexing { Token }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {

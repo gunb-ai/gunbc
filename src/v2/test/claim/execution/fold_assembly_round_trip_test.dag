@@ -15,7 +15,8 @@ import v2.std.node {
 }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
-import v2.std.algebra { FreeMonoid, zip_eq, length, list_snoc_item, freemonoid_empty }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { zip_eq, length, list_snoc_item, freemonoid_empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 

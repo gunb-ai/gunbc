@@ -1,6 +1,7 @@
 module v2.test.claim.algebra.generic_alias_coproduct_instantiation
 
-import v2.std.algebra { Cons, Empty, FreeMonoid, length }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { length }
 import v2.std.node { Symbol }
 
 type SymbolPath = FreeMonoid<Symbol>

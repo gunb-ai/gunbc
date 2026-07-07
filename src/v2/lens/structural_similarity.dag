@@ -3,7 +3,8 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { SingleAuthority }
 
 import v2.std.node { Node }
-import v2.std.algebra { FreeMonoid, length }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { length }
 import v2.std.anti_unification { ChainGeneralization, anti_unify_chain, fillings_all_leaves }
 import v2.std.logic { Bool }
 

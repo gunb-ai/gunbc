@@ -33,16 +33,8 @@ import v2.std.compilers.lexing {
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.logic { Bool, bool_boolean_algebra }
-import v2.std.algebra {
-  BooleanAlgebra,
-  boolean_algebra_node,
-  commutative_semiring_node,
-  Empty,
-  fold_list,
-  list_append,
-  list_snoc_item,
-  ordered_ring_node,
-}
+import std.algebra { Empty }
+import v2.std.algebra { BooleanAlgebra, boolean_algebra_node, commutative_semiring_node, fold_list, list_append, list_snoc_item, ordered_ring_node }
 import v2.std.collection { List, Map, Set, empty_map, map_insert }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,

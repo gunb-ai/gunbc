@@ -21,7 +21,8 @@ import v2.std.orchestration {
   LogMatches,
   EnvBinding
 }
-import v2.std.algebra { FreeMonoid, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.collection { List, Map, Optional, Present, Absent }
 import v2.compiler.target_carriers { lossless_source }
 import v2.std.diagnostic {

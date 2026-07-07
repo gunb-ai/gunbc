@@ -2,7 +2,8 @@ module v2.test.tokenize.lex_match_thunk_claims
 
 import v2.std.text { String }
 import v2.std.logic { Bool }
-import v2.std.algebra { Cons, Empty, is_empty }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { is_empty }
 import v2.std.compilers.lexing {
   BlockCommentTextChar,
   CharClassPattern,

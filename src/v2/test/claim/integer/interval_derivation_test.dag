@@ -1,6 +1,7 @@
 module v2.test.claim.integer.interval_derivation
 
-import v2.std.algebra { Cons, Empty, Equal, FreeMonoid, Ordering, fold_list, length }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { Equal, Ordering, fold_list, length }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }

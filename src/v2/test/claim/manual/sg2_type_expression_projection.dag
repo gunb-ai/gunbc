@@ -42,7 +42,7 @@ import v2.std.compilers.target_model {
   type_expr_projection_bundle_shape_for_connective,
   type_expr_projection_row_shape_witness_gate
 }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.std.node { Arrow }
 import v2.test.manual.rust_add_emit_translate {
   rust_add_inferred_tree,

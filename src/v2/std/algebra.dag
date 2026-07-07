@@ -1,6 +1,7 @@
 module v2.std.algebra
 
 import v2.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import std.algebra { FreeMonoid, Empty, Cons }
 type Magma<T> {
   op: fn(T, T) -> T
 }
@@ -70,9 +71,6 @@ type Equivalence<T> {
   eq: fn(T, T) -> Bool
 }
 
-type FreeMonoid<T>
-  = Empty
-  | Cons { head: T, tail: FreeMonoid<T> }
 fn freemonoid_empty<T>() -> FreeMonoid<T> {
   Empty
 }

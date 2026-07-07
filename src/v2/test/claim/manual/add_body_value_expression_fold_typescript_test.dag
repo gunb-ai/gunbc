@@ -18,7 +18,8 @@ import v2.extdeps.languages.typescript {
   ts_value_expression_projection,
   ts_wave1_lex_rules
 }
-import v2.std.algebra { Cons, Empty, length, list_append }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { length, list_append }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,

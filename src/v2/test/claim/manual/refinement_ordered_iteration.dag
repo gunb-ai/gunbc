@@ -7,7 +7,7 @@ import v2.std.refinement {
   StructurallyUnordered,
   refine_ordered_iteration,
 }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
