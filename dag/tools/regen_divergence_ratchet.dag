@@ -170,11 +170,6 @@ fn regen_divergence_ratchet_script() -> String {
   serialize_bash(p: regen_divergence_ratchet_program())
 }
 
-fn run_regen_divergence_ratchet() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: regen_divergence_ratchet_program()))
-  result.success
-}
-
 fn regen_divergence_ratchet_gate() -> ProcessExit {
   let result = shell.Exec.Run(script: serialize_bash(p: regen_divergence_ratchet_program()))
   if result.success {
