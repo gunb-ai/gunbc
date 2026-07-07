@@ -553,6 +553,12 @@ fn gunbc_ci_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
   gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
 }
 
+data gunbc_ci_regen_floor_plan_spawn_width_note: String = "The claim_executor seed derives a plan's spawn-width function name from the plan-function name (spawn_width_function_name in src/v1/stage0/src/bin/claim_executor.rs: strip _batches, append _plan_spawn_width), so the regen floor plan gunbc_ci_regen_floor_batches reaches gunbc_ci_regen_floor_plan_spawn_width dynamically — the name is constructed at runtime and never appears as a literal reference, which is why the ci_regen job crashed at plan setup (spawn width eval failed: no main function found) on the two-job split (#6352) with no grep-visible reference. This function supplies it, reusing the required ci job's memory-budget-derived width (gunbc_ci_plan_spawn_width) since the regen job runs on the same srv1 runner under the same budget. Without it the non-required ci_regen job is crash-red on a wiring gap instead of honest-red on the true self-host divergence it exists to report."
+
+fn gunbc_ci_regen_floor_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
+  gunbc_ci_plan_spawn_width(memory_budget_bytes: memory_budget_bytes)
+}
+
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
   parallel_run_demand_envelope(
     width: gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes)),
