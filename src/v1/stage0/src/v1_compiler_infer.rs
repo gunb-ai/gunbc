@@ -14640,41 +14640,45 @@ pub fn build_positional_payload_variants(
     )
 }
 
-pub fn rust_corpus_repr(modules: Rc<Vec<Rc<TypedModule>>>) -> RustCorpusRepr {
+pub fn corpus_has_v1_seed_source_indices(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
     {
-        let has_seed = {
-            let mut __found = false;
-            for m in modules.clone().iter().cloned() {
-                if {
-                    let mut __found = false;
-                    for k in Rc::new(v1_rt::map_keys(&m.type_env.clone().source_indices.clone()))
-                        .iter()
-                        .cloned()
+        let mut __found = false;
+        for m in modules.clone().iter().cloned() {
+            if {
+                let mut __found = false;
+                for k in Rc::new(v1_rt::map_keys(&m.type_env.clone().source_indices.clone()))
+                    .iter()
+                    .cloned()
+                {
+                    if (v1_rt::contains(k.clone(), "/v1/".to_string())
+                        || v1_rt::contains(k.clone(), "src/v1".to_string()))
                     {
-                        if (v1_rt::contains(k.clone(), "/v1/".to_string())
-                            || v1_rt::contains(k.clone(), "src/v1".to_string()))
-                        {
-                            __found = true;
-                            break;
-                        }
+                        __found = true;
+                        break;
                     }
-                    __found
-                } {
-                    __found = true;
-                    break;
                 }
+                __found
+            } {
+                __found = true;
+                break;
             }
-            __found
-        };
-        if has_seed.clone() {
-            RustCorpusRepr::HostNative
-        } else {
-            RustCorpusRepr::FaithfulFreeMonoid
         }
+        __found
     }
 }
 
-pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphInfo> {
+pub fn rust_corpus_repr(has_v1_seed: bool) -> RustCorpusRepr {
+    if has_v1_seed.clone() {
+        RustCorpusRepr::HostNative
+    } else {
+        RustCorpusRepr::FaithfulFreeMonoid
+    }
+}
+
+pub fn build_emit_graph_info(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    has_v1_seed: bool,
+) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
@@ -14729,7 +14733,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             owned_bindings: v1_rt::rc_empty_set::<String>(),
             read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
-            corpus_repr: rust_corpus_repr(modules.clone()),
+            corpus_repr: rust_corpus_repr(has_v1_seed.clone()),
         })
     }
 }
@@ -15585,7 +15589,8 @@ pub fn reconcile(
         let modules =
             rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
-        let emit_info = build_emit_graph_info(modules.clone());
+        let has_v1_seed = corpus_has_v1_seed_source_indices(modules.clone());
+        let emit_info = build_emit_graph_info(modules.clone(), has_v1_seed.clone());
         Rc::new(ResolvedGraph {
             modules: modules.clone(),
             item_registry: typed.item_registry.clone(),
