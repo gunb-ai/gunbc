@@ -65,8 +65,26 @@ pub enum Scale {
     Tebi,
 }
 
+pub fn sixty_scale_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Scale.Sixty is the sexagesimal time factor (60 seconds per unit); Minute = Measure<Time, Sixty, Nat> is distinct from Second = Measure<Time, One, Nat>. Conversion authority: time_scale_factor_seconds. scale_exponent refuses Sixty (none) — not a decimal 10^k exponent.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn scale_non_decimal_taxonomy_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: Scale currently mixes decimal SI prefixes (Milli…Exa), binary memory prefixes (Kibi…Tebi), and sexagesimal time (Sixty). Each new non-decimal factor requires arms in time_scale_factor_seconds / memory_scale_factor_bytes / scale_exponent. Follow-up: split per-quantity scale sets at the type level (e.g. TimeScale vs DecimalScale) or document closed per-Quantity factor authorities — tracked with lever-a slice 2, not blocking #6335 merge.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn scale_exponent(s: Scale) -> Option<i64> {
-    match s {
+    match s.clone() {
         Scale::Atto => Some(-18),
         Scale::Femto => Some(-15),
         Scale::Pico => Some(-12),
@@ -101,7 +119,7 @@ pub fn seconds_per_minute() -> Nat {
 }
 
 pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
-    match s {
+    match s.clone() {
         Scale::One => Some(1),
         Scale::Sixty => Some(seconds_per_minute()),
         Scale::Atto => None,
@@ -419,13 +437,13 @@ pub type Millisecond = Rc<Measure<(), (), i64>>;
 
 pub fn millisecond(count: Nat) -> Millisecond {
     Rc::new(Measure {
-        count: count,
+        count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
 }
 
 pub fn millisecond_count(m: Millisecond) -> Nat {
-    measure_count(m)
+    measure_count(m.clone())
 }
 
 pub type Second = Rc<Measure<(), (), i64>>;
@@ -445,13 +463,13 @@ pub type Minute = Rc<Measure<(), (), i64>>;
 
 pub fn minute(count: Nat) -> Minute {
     Rc::new(Measure {
-        count: count,
+        count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
 }
 
 pub fn minute_count(m: Minute) -> Nat {
-    measure_count(m)
+    measure_count(m.clone())
 }
 
 pub type Percent = Rc<Measure<(), (), i64>>;
