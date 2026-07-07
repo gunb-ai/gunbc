@@ -427,6 +427,14 @@ fn alias_base_is_zero_param_decl(type_name: String, def_mod_filename: String, ty
   }
 }
 
+fn type_param_is_collection_element_in_values(param_name: String, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  value_params |> any(vp =>
+    let te = param_node_type_expr(n: vp)
+    is_container_type(name: authored_name_at(source_indices: source_indices, node: te))
+      && (te.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == param_name))
+  )
+}
+
 fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
   if generic_param_names |> any(g => g == name) {
     false
@@ -690,6 +698,10 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
+    let numeric_host_alias = rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr)
+    if numeric_host_alias != none {
+      return match numeric_host_alias { Present { value: host } => host  Absent => "" }
+    }
     let local_mod = module_to_filename(name: module_name)
     let def_mod = alias_rhs_rust_qualify_module_filename(name: name, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let base = match rust_seed_host_container_base(name: name, corpus_repr: corpus_repr) {
@@ -3837,9 +3849,14 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let ret_name = authored_name_at(source_indices: si, node: inferred)
   let return_is_bare_generic = (generic_param_names |> filter(g => g == ret_name) |> count) > 0
   let body_is_param_ref = (value_param_names |> filter(n => n == body.name) |> count) > 0
-  let needs_clone_bound = return_is_bare_generic && !body_is_param_ref
+  let return_based_clone = return_is_bare_generic && !body_is_param_ref
+  let element_clone_param = generic_param_names |> filter(g => type_param_is_collection_element_in_values(param_name: g, value_params: value_params, source_indices: si)) |> first
+  let clone_param = if return_based_clone { ret_name } else {
+    match element_clone_param { Present { value: g } => g  Absent => "" }
+  }
+  let needs_clone_bound = clone_param != ""
   let type_params_str = if needs_clone_bound {
-    emit_type_params_with_clone_bound(params: type_params, clone_param: ret_name, source_indices: si)
+    emit_type_params_with_clone_bound(params: type_params, clone_param: clone_param, source_indices: si)
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
