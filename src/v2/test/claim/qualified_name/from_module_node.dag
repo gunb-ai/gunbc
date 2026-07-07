@@ -4,7 +4,8 @@ import v2.extdeps.languages.dag {
   emit_module_header_emitted_node,
   qualified_name_from_module_node
 }
-import v2.std.algebra { Cons, Empty, fold_list_node }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.qualified_name { QualifiedName }

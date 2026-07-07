@@ -1,6 +1,6 @@
 module v2.test.claim.grammar.validate_grammar
 
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.std.collection { Set }
 import v2.std.grammar {
   FormalGrammar,

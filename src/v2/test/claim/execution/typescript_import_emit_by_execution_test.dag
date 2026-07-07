@@ -7,7 +7,8 @@ import v2.std.collection {
   empty_map,
   map_insert
 }
-import v2.std.algebra { Cons, Empty, fold_list_node, list_append }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list_node, list_append }
 import v2.std.node {
   Atom,
   Conj,

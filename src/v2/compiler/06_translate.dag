@@ -178,20 +178,8 @@ import v2.std.collection {
   optional_absent,
   optional_present
 }
-import v2.std.algebra {
-  Cons,
-  Empty,
-  TailAbsent,
-  TailFound,
-  fold_list,
-  fold_list_node,
-  is_empty,
-  length,
-  list_append,
-  list_snoc_item,
-  list_tail,
-  zip_eq
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, is_empty, length, list_append, list_snoc_item, list_tail, zip_eq }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.grammar { grammar_relation_row_reverse_parse_selection }

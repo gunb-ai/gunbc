@@ -10,7 +10,8 @@ import v2.extdeps.languages.typescript {
   ts_mvp1_source_text,
   ts_mvp1_target_model
 }
-import v2.std.algebra { Empty, any, fold_list, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { any, fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,

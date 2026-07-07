@@ -12,7 +12,7 @@ import v2.compiler.source_authority {
   source_root_set_from_ingest
 }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.cross_tree.resolution {

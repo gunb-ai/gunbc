@@ -21,7 +21,8 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.logic { Bool }
 import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.algebra { Empty, count_equal, length }
+import std.algebra { Empty }
+import v2.std.algebra { count_equal, length }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.node { MintedOccurrence, Node, OccurrenceId, Symbol, SyntheticOccurrence, well_formed }
 import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
