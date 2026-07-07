@@ -68,16 +68,9 @@ impl PhaseProfileInner {
             Some(s) => format!(" signal={s} flushed=1"),
             None => String::new(),
         };
-        // Live type-env amplification counters (v1_compiler_infer_env atomics): during a
-        // long typecheck the heartbeat shows WHICH counter grows without bound — the
-        // 2026-07-04 use-site inference pathology instrument. Cheap relaxed loads.
-        let flatten = crate::v1_compiler_infer_env::flatten_visible_parent_recurses();
-        let builds = crate::v1_compiler_infer_env::build_type_env_calls();
-        let merges = crate::v1_compiler_infer_env::merge_type_env_cache_calls();
-        let rewires = crate::v1_compiler_infer_env::rewire_type_env_parent_links_calls();
         let _ = writeln!(
             io::stderr(),
-            "[phase-profile] tick={tick} phase={} elapsed_ms={elapsed_ms} phase_elapsed_ms={phase_elapsed_ms} context={} reason={reason} env_flatten={flatten} env_builds={builds} env_merges={merges} env_rewires={rewires}{signal_suffix}",
+            "[phase-profile] tick={tick} phase={} elapsed_ms={elapsed_ms} phase_elapsed_ms={phase_elapsed_ms} context={} reason={reason}{signal_suffix}",
             self.phase.tag(),
             self.context,
         );

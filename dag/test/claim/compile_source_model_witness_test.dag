@@ -1,6 +1,7 @@
 module test.claim.compile_source_model_witness
 
 import gunbc.compile_source_model {
+  SourceRootRole,
   StrictPoolIndex,
   PrimaryPrecedencePoolIndex,
   EntrySourceRoot,
