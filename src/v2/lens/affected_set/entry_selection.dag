@@ -32,15 +32,23 @@ fn decl_belongs_to_module(decl: FnArrowDecl, module: String) -> Bool {
 }
 
 fn module_path_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>) -> Optional<String> {
-  let matches = fold(modules, init: [], f: fn(acc, fact) {
+  let best = fold(modules, init: Absent, f: fn(acc, fact) {
     if decl_belongs_to_module(decl: decl, module: fact.module) {
-      list_snoc_item(xs: acc, item: fact.path)
+      match acc {
+        Absent => Present { value: fact }
+        Present { value: prev } =>
+          if string_length(s: fact.module) > string_length(s: prev.module) {
+            Present { value: fact }
+          } else {
+            Present { value: prev }
+          }
+      }
     } else {
       acc
     }
   })
-  match list_at_optional(xs: matches, index: 0) {
-    Present { value: path } => Present { value: path }
+  match best {
+    Present { value: fact } => Present { value: fact.path }
     Absent => Absent
   }
 }

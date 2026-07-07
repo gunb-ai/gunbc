@@ -128,6 +128,8 @@ fn ci_repo_root_shell() -> String {
 
 data ci_release_build_regen_stage0_note: String = "regen_stage0 is built here (unconditionally, via cargo) alongside claim_executor/gunbc — NOT lazily via ensure_regen_stage0_built's build-if-absent. On the self-hosted runners target/release/ persists across jobs, so build-if-absent would run a STALE regen_stage0 from a prior commit; the ci_regen job's RegenVerifyGate then compares against a stale --emit-fresh / --verify output. cargo build is source-change-aware, so listing --bin regen_stage0 here guarantees a fresh binary (the same stale-binary hazard formerly bit the removed ci_regen_ratchet's no-count refusal, receipt run 28841755357 @ 7927413). discover_source_root_ingest is listed for the same reason — batch-3 SourceRootIngestGate must not cold-compile under parallel host-effect load (receipt run 28899262773 @ 85731657415 returned Bool(false) when the bin was absent from the release build line)."
 
+data ci_release_build_discover_source_root_ingest_note: String = "discover_source_root_ingest is built here (unconditionally, via cargo) alongside claim_executor/gunbc/regen_stage0 — NOT lazily via ensure_discover_source_root_ingest_built's build-if-absent during batch-3 SourceRootIngestGate. Receipt: CI runs 28894057709 @ 9c020d57 — source_root_ingest_gate_passes returned Bool(false) while emit_host_gate_passes ran in parallel; lazy build-if-absent races parallel cargo under fleet pressure. Pre-building removes the race (same class as regen_stage0 above)."
+
 fn ci_release_build_line() -> String {
   concat(
     concat(
