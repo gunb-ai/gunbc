@@ -2,7 +2,7 @@ module test.claim.hardware_selection
 
 import std.logic { Bool }
 import std.types { Int, List }
-import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, hardware_thread_count, hertz, money_amount_micro }
+import std.measure { ByteSize, byte_size, byte_size_count, bit_width, watt, watt_count, hardware_thread_count, hertz, money_amount_micro }
 import product.hardware_selection { milliwatt }
 import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket, SocketPackage }
 import extdeps.toolchain.types { Architecture }
