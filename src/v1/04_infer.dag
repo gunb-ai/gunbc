@@ -4,7 +4,7 @@ import std.types { SourceSpan, container_param_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
-  intern, intern_str,
+  intern, intern_str, empty_intern_table,
   authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
   module_node, module_imports, module_items, import_is_all, import_specific_names_at,
   make_param_node, param_node_name_at, param_node_type_expr,
@@ -6804,16 +6804,12 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
   let index = fold(modules, init: empty_map(), f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
-  let shared_kernel = match fold(modules, init: Absent, f: (acc, m) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match m.type_env.parents |> last {
-          Present { value: kernel } => Present { value: kernel }
-          Absent => Absent
-        }
-    }
-  ) {
+  let shared_kernel = match modules |> flat_map(m =>
+      match m.type_env.parents |> last {
+        Present { value: kernel } => if map_is_empty(kernel.bindings) { [] } else { [kernel] }
+        Absent => []
+      }
+    ) |> first {
     Present { value: kernel } => kernel
     Absent =>
       match modules |> first {

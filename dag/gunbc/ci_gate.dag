@@ -9,5 +9,6 @@ type Gate
   | GeneratedArtifactDriftGate
   | SourceRootIngestGate
   | RegenVerifyGate
-  | SelfHostRealizedComparisonGate
+  | SelfHostReadsRealBytesGate
+  | SelfHostStalenessGate
   | EmitDeterminismGate

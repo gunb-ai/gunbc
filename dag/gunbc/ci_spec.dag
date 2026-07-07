@@ -4,7 +4,8 @@ import gunbc.ci_gate {
   Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
+  SourceRootIngestGate, RegenVerifyGate,
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
 }
 import gunbc.ci_layer_roots {
   witness_layer_roots,
@@ -14,6 +15,7 @@ import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_gates,
   project_ci_rust_job_gates,
+  project_ci_regen_job_gates,
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
@@ -59,6 +61,10 @@ type CiSpec {
 
 data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
+data gunbc_ci_regen_floor_gates: List<Gate> = project_ci_regen_job_gates(roster: commit_gate_roster)
+
+data gunbc_ci_two_job_split_note: String = "Two-job split (operator ruling 2026-07-07, #6350): the self-host fixed-point class — RegenVerifyGate + SelfHostStalenessGate — is a §7 ASPIRATION, not a current invariant (the committed seed is knowingly hand-maintained ahead of its .dag), so enforcing byte-identical self-host as a HARD required gate keeps main red-by-construction on unfinished aspiration. project_ci_floor_gates (GithubActionsCiJob surface) is the REQUIRED green job — every grounded invariant, must go green. project_ci_regen_job_gates (GithubActionsCiRegenJob surface) is the NON-required regen job — honest-red until the seed<->.dag reconcile lands. The green job was formerly kept §5-honest against escape-hatch (debt growing silently behind the non-required red door) by a REQUIRED regen_divergence ratchet (monotone-shrink guard, auto-promote to hard at count 0), REMOVED 2026-07-07 (operator ruling) as imminent-to-obsolete interim scaffolding once the accept-fresh self-host fixpoint drives divergence to 0 — see gunbc.ci_workflow ci_regen_ratchet_removed_note. Interim trade recorded there: debt growth behind the non-required door is unguarded until the fixpoint lands, at which point RegenVerifyGate returns to the required surface. SelfHostReadsRealBytesGate (provenance, measured-holding) stays on the required green surface."
+
 data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
 
 data gunbc_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: commit_gate_roster)
@@ -92,6 +98,18 @@ data gunbc_ci_spec: CiSpec = {
   deploy_stages: gunbc_ci_deploy_stages,
 }
 
+data gunbc_ci_regen_spec: CiSpec = {
+  gates: gunbc_ci_regen_floor_gates,
+  witness_entries: [],
+  diff_policy: {
+    base: "origin/main",
+    head: "HEAD",
+    mode: DiffMergeBase
+  },
+  notice_title: "self-host fixed-point (regen + staleness) — non-required",
+  deploy_stages: [],
+}
+
 fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<ScheduleWitnessEntry>) -> CiSpec {
   CiSpec {
     gates: spec.gates,
@@ -108,13 +126,15 @@ fn ci_repo_root_shell() -> String {
   "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 }
 
+data ci_release_build_regen_stage0_note: String = "regen_stage0 is built here (unconditionally, via cargo) alongside claim_executor/gunbc — NOT lazily via ensure_regen_stage0_built's build-if-absent. On the self-hosted runners target/release/ persists across jobs, so build-if-absent would run a STALE regen_stage0 from a prior commit; the ci_regen job's RegenVerifyGate then compares against a stale --emit-fresh / --verify output. cargo build is source-change-aware, so listing --bin regen_stage0 here guarantees a fresh binary (the same stale-binary hazard formerly bit the removed ci_regen_ratchet's no-count refusal, receipt run 28841755357 @ 7927413)."
+
 fn ci_release_build_line() -> String {
   concat(
     concat(
       "\"$CARGO_HOME/bin/cargo\" build -p v1-compiler --release --features ",
       ci_release_features
     ),
-    " --bin claim_executor --bin gunbc"
+    " --bin claim_executor --bin gunbc --bin regen_stage0"
   )
 }
 
@@ -317,18 +337,23 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
 
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
+data regen_floor_plan_function: String = "gunbc_ci_regen_floor_batches"
 
-fn scheduler_invoke(spec: CiSpec) -> String {
+fn scheduler_invoke_with(spec: CiSpec, plan_function: String) -> String {
   concat(
     concat(
       concat(
         concat(concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)), concat(" --plan-entry ", floor_plan_entry)),
-        concat(" --plan-function ", floor_plan_function)
+        concat(" --plan-function ", plan_function)
       ),
       concat(concat(" --notice-title \"", spec.notice_title), "\"")
     ),
     ""
   )
+}
+
+fn scheduler_invoke(spec: CiSpec) -> String {
+  scheduler_invoke_with(spec: spec, plan_function: floor_plan_function)
 }
 
 fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
@@ -349,6 +374,20 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
 
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
   concat(concat(ci_release_build_script(), "\n"), gunbc_ci_floor_only_script(spec: spec))
+}
+
+fn gunbc_ci_regen_floor_only_script(spec: CiSpec) -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat(
+      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+      concat(scheduler_invoke_with(spec: spec, plan_function: regen_floor_plan_function), "\n")
+    )
+  )
+}
+
+fn gunbc_ci_regen_floor_run(spec: CiSpec) -> String {
+  gunbc_ci_regen_floor_only_script(spec: spec)
 }
 
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {

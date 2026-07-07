@@ -107,78 +107,58 @@ fn witness_empty_touched_skips() -> Bool {
   }
 }
 
-fn witness_docs_only_touch_skips() -> Bool {
-  match compile_clean_scope_disposition_from_touched(
-    touched_paths: ["docs/plans/example.md"]
-  ) {
-    SkipNoAffectedEntries { reason: _ } => true
-    ScopedRun { entry_paths: _ } => false
-    RequireWholeTree { reason: _ } => false
-  }
+type ScopeDispositionExpectation
+  = ExpectSkip
+  | ExpectScopedContaining { required_entry: String }
+  | ExpectWholeTree
+
+type ScopeDispositionRow {
+  touched: String
+  expect: ScopeDispositionExpectation
 }
 
-fn witness_dot_slash_docs_only_touch_skips() -> Bool {
-  match compile_clean_scope_disposition_from_touched(
-    touched_paths: ["./docs/plans/example.md"]
-  ) {
-    SkipNoAffectedEntries { reason: _ } => true
-    ScopedRun { entry_paths: _ } => false
-    RequireWholeTree { reason: _ } => false
-  }
-}
+data scope_disposition_rows: List<ScopeDispositionRow> = [
+  ScopeDispositionRow { touched: "docs/plans/example.md", expect: ExpectSkip },
+  ScopeDispositionRow { touched: "./docs/plans/example.md", expect: ExpectSkip },
+  ScopeDispositionRow { touched: "dag/std/logic.dag", expect: ExpectScopedContaining { required_entry: "dag/std/logic.dag" } },
+  ScopeDispositionRow { touched: "src/v1/stage0/src/cli_run.rs", expect: ExpectWholeTree },
+  ScopeDispositionRow { touched: ".github/workflows/ci.yml", expect: ExpectWholeTree },
+  ScopeDispositionRow { touched: "src/v2/std/logic.dag", expect: ExpectScopedContaining { required_entry: "dag/test/claim/parse_test.dag" } }
+]
 
-fn witness_std_logic_touch_scopes() -> Bool {
-  match compile_clean_scope_disposition_from_touched(
-    touched_paths: ["dag/std/logic.dag"]
-  ) {
+fn touched_path_disposition_matches(row: ScopeDispositionRow) -> Bool {
+  match compile_clean_scope_disposition_from_touched(touched_paths: [row.touched]) {
+    SkipNoAffectedEntries { reason: _ } =>
+      match row.expect {
+        ExpectSkip => true
+        ExpectScopedContaining { required_entry: _ } => false
+        ExpectWholeTree => false
+      }
     ScopedRun { entry_paths: paths } =>
-      fold(paths, init: false, f: fn(found, p) { found || (p == "dag/std/logic.dag") })
-    SkipNoAffectedEntries { reason: _ } => false
-    RequireWholeTree { reason: _ } => false
+      match row.expect {
+        ExpectSkip => false
+        ExpectScopedContaining { required_entry: req } =>
+          fold(paths, init: false, f: fn(found, p) { found || (p == req) })
+        ExpectWholeTree => false
+      }
+    RequireWholeTree { reason: _ } =>
+      match row.expect {
+        ExpectSkip => false
+        ExpectScopedContaining { required_entry: _ } => false
+        ExpectWholeTree => true
+      }
   }
 }
 
-fn witness_rust_only_touch_requires_whole_tree() -> Bool {
-  match compile_clean_scope_disposition_from_touched(
-    touched_paths: ["src/v1/stage0/src/cli_run.rs"]
-  ) {
-    RequireWholeTree { reason: _ } => true
-    ScopedRun { entry_paths: _ } => false
-    SkipNoAffectedEntries { reason: _ } => false
-  }
-}
-
-fn witness_ci_yaml_touch_requires_whole_tree() -> Bool {
-  match compile_clean_scope_disposition_from_touched(
-    touched_paths: [".github/workflows/ci.yml"]
-  ) {
-    RequireWholeTree { reason: _ } => true
-    ScopedRun { entry_paths: _ } => false
-    SkipNoAffectedEntries { reason: _ } => false
-  }
-}
-
-fn witness_v2_logic_edit_scopes_parse_test_importer() -> Bool {
-  match compile_clean_scope_disposition_from_touched(
-    touched_paths: ["src/v2/std/logic.dag"]
-  ) {
-    ScopedRun { entry_paths: paths } =>
-      fold(paths, init: false, f: fn(found, p) {
-        found || (p == "dag/test/claim/parse_test.dag")
-      })
-    SkipNoAffectedEntries { reason: _ } => false
-    RequireWholeTree { reason: _ } => false
-  }
+fn witness_touched_path_dispositions_hold() -> Bool {
+  fold(scope_disposition_rows, init: true, f: fn(acc, row) {
+    acc && touched_path_disposition_matches(row: row)
+  })
 }
 
 fn lever_a_local_receipts_hold() -> Bool {
   witness_empty_touched_skips()
-    && witness_docs_only_touch_skips()
-    && witness_dot_slash_docs_only_touch_skips()
-    && witness_std_logic_touch_scopes()
-    && witness_rust_only_touch_requires_whole_tree()
-    && witness_ci_yaml_touch_requires_whole_tree()
-    && witness_v2_logic_edit_scopes_parse_test_importer()
+    && witness_touched_path_dispositions_hold()
     && witness_entry_root_is_first_witness_layer_root()
     && witness_pool_roots_match_witness_layer_roots()
 }

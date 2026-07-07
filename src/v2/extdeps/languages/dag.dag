@@ -5241,6 +5241,13 @@ fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
+fn dag_node_is_fn_decl(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_fn_decl
+    Absent => false
+  }
+}
+
 fn parse_production_captured_child_optional(node: Node) -> Optional<Node> {
   match find_named_child(root: node, name: ^grammar_production_captured_node_projection) {
     Accepted { value: captured, diagnostics: _ } => Present { value: captured }
