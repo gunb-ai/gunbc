@@ -18,7 +18,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data regen_divergence_baseline: Int = 31
+data regen_divergence_baseline: Int = 0
 
 data regen_divergence_baseline_authority_path: String = "dag/tools/regen_divergence_ratchet.dag"
 
