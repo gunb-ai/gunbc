@@ -8433,7 +8433,15 @@ fn extract_literal_string(expr: Node) -> String? {
   }
 }
 
-fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, module_items: List<Node>, source_indices: Map<String, NewlineIndex>) -> String? {
+fn find_data_item_body(name: String, modules: List<TypedModule>) -> Node? {
+  modules |> flat_map(tm =>
+    tm.items
+      |> filter(i => authored_name_at(source_indices: tm.type_env.source_indices, node: i) == name)
+      |> flat_map(i => match i.body { Present { value: b } => [b]  Absent => [] })
+  ) |> first
+}
+
+fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> String? {
   match param_node_default_value(n: param) {
     Present { value: dv } => match dv.expr_data {
       ExprLiteral { value: _ } => extract_literal_string(expr: dv)
@@ -8441,11 +8449,8 @@ fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, module_it
         match lookup_item(registry: registry, name: authored_name_at(source_indices: source_indices, node: dv)) {
           Present { value: info } => match info.kind {
             DataItem =>
-              match module_items |> filter(i => authored_name_at(source_indices: source_indices, node: i) == authored_name_at(source_indices: source_indices, node: dv)) |> first {
-                Present { value: data_item } => match data_item.body {
-                  Present { value: body } => extract_literal_string(expr: body)
-                  Absent => none
-                }
+              match find_data_item_body(name: authored_name_at(source_indices: source_indices, node: dv), modules: modules) {
+                Present { value: body } => extract_literal_string(expr: body)
                 Absent => none
               }
             _ => none
@@ -8458,14 +8463,14 @@ fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, module_it
   }
 }
 
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, module_items: List<Node>, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
+fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
   let item_name = authored_name_at(source_indices: source_indices, node: item)
   let svc_names = match lookup_item(registry: registry, name: item_name) {
     Present { value: info } => info.service_names
     Absent => []
   }
   let defaults = item.params |> fold(init: empty_map(), f: (acc, p) =>
-    match resolve_param_default(param: p, registry: registry, module_items: module_items, source_indices: source_indices) {
+    match resolve_param_default(param: p, registry: registry, modules: modules, source_indices: source_indices) {
       Present { value: lit } => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), lit)
       Absent => acc
     }
@@ -8504,7 +8509,7 @@ fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, Item
   modules |> flat_map(tm =>
     tm.items
       |> filter(item => is_workflow_item(item: item, registry: registry, source_indices: tm.type_env.source_indices))
-      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, module_items: tm.items, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
+      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, modules: modules, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
   )
 }
 
