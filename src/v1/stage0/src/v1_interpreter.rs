@@ -5207,18 +5207,20 @@ fn eval_emit_host_run_transport_builtin(
     for f in &files {
         match f {
             Value::Record { fields, .. } => {
-                let path = ctx.field(fields, "path").and_then(free_monoid_to_string).ok_or_else(
-                    || InterpError::TypeError {
+                let path = ctx
+                    .field(fields, "path")
+                    .and_then(free_monoid_to_string)
+                    .ok_or_else(|| InterpError::TypeError {
                         msg: "emit_host_run_transport: workspace file missing String path"
                             .to_string(),
-                    },
-                )?;
-                let text = ctx.field(fields, "text").and_then(free_monoid_to_string).ok_or_else(
-                    || InterpError::TypeError {
+                    })?;
+                let text = ctx
+                    .field(fields, "text")
+                    .and_then(free_monoid_to_string)
+                    .ok_or_else(|| InterpError::TypeError {
                         msg: "emit_host_run_transport: workspace file missing String text"
                             .to_string(),
-                    },
-                )?;
+                    })?;
                 workspace_files.push((path, text));
             }
             other => {
@@ -5261,11 +5263,12 @@ fn eval_emit_host_run_transport_builtin(
         build_argvs.push(argv);
     }
 
-    let run_arg_items = run_arg
-        .and_then(free_monoid_to_vec)
-        .ok_or_else(|| InterpError::TypeError {
-            msg: "emit_host_run_transport: run must be a List<String>".to_string(),
-        })?;
+    let run_arg_items =
+        run_arg
+            .and_then(free_monoid_to_vec)
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "emit_host_run_transport: run must be a List<String>".to_string(),
+            })?;
     let mut run_argv: Vec<String> = Vec::with_capacity(run_arg_items.len());
     for item in &run_arg_items {
         let s = free_monoid_to_string(item).ok_or_else(|| InterpError::TypeError {
@@ -5328,11 +5331,17 @@ fn emit_host_run_transport_in_workspace(
         let full = workspace.join(p);
         if let Some(parent) = full.parent() {
             std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
-                msg: format!("emit_host_run_transport: mkdir {} failed: {e}", parent.display()),
+                msg: format!(
+                    "emit_host_run_transport: mkdir {} failed: {e}",
+                    parent.display()
+                ),
             })?;
         }
         std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
-            msg: format!("emit_host_run_transport: write {} failed: {e}", full.display()),
+            msg: format!(
+                "emit_host_run_transport: write {} failed: {e}",
+                full.display()
+            ),
         })?;
     }
 
@@ -5392,7 +5401,12 @@ fn emit_host_run_transport_in_workspace(
         if !out.status.success() {
             build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
             return Ok(transport_result(
-                "build", false, code, &out.stdout, &out.stderr, build_log,
+                "build",
+                false,
+                code,
+                &out.stdout,
+                &out.stderr,
+                build_log,
             ));
         }
     }
