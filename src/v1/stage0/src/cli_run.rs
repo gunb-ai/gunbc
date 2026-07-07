@@ -859,6 +859,101 @@ fn compile_clean_scope_plan_from_touched_paths(
     }
 }
 
+/// `gunbc.ci_layer_roots.compile_clean_source_roots` — witness pool + `src/v1` for cross-tree
+/// import resolution in compile-clean scope disposition (not the gate receipt pool).
+fn compile_clean_source_roots() -> Vec<String> {
+    let mut roots = witness_layer_roots();
+    if !roots.iter().any(|r| r == "src/v1") {
+        roots.push("src/v1".to_string());
+    }
+    roots
+}
+
+fn compile_clean_touched_path_norm(path: &str) -> &str {
+    path.strip_prefix("./").unwrap_or(path)
+}
+
+fn compile_clean_touches_allow_skip(touched_paths: &[String]) -> bool {
+    touched_paths.is_empty()
+        || touched_paths
+            .iter()
+            .all(|p| compile_clean_touched_path_norm(p).starts_with("docs/"))
+}
+
+/// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
+/// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
+fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
+    let entry_root = witness_layer_roots()
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "dag".to_string());
+    let ws = workspace_root();
+    let abs_entry_root = ws.join(&entry_root).to_string_lossy().into_owned();
+    let mut paths: Vec<String> = module_declaration_facts(&[abs_entry_root])
+        .into_iter()
+        .map(|decl| workspace_relative_repo_path(&decl.path))
+        .collect();
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn entry_affected_by_touched_paths_with_facts(
+    entry_path: &str,
+    touched_paths: &[String],
+    facts: &ModuleGraphFactsLive,
+) -> bool {
+    let closure: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .collect();
+    touched_paths
+        .iter()
+        .any(|touched| touched_file_in_import_closure(touched, &closure))
+}
+
+/// Floor CI hot path: same disposition as `compile_clean_scope_disposition_from_touched` but
+/// uses cached `build_module_graph_facts_live` + Rust closure walks — avoids the Wet interpreter
+/// fold over `compile_clean_shard_entry_paths()` that times out the 10m floor step.
+fn compile_clean_scope_plan_from_touched_paths_floor_fast(
+    touched_paths: &[String],
+) -> CompileCleanScopePlan {
+    let pool_roots = compile_clean_source_roots();
+    let ws = workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let facts = build_module_graph_facts_live(&abs_pool_roots);
+    let mut affected = Vec::new();
+    for entry_path in compile_clean_shard_entry_paths_fast() {
+        if entry_affected_by_touched_paths_with_facts(&entry_path, touched_paths, &facts) {
+            affected.push(entry_path);
+        }
+    }
+    if !affected.is_empty() {
+        eprintln!(
+            "compile-clean scope: {} affected entr{} (floor fast path)",
+            affected.len(),
+            if affected.len() == 1 { "y" } else { "ies" }
+        );
+        return CompileCleanScopePlan::Scoped {
+            entry_paths: affected,
+        };
+    }
+    if compile_clean_touches_allow_skip(touched_paths) {
+        eprintln!(
+            "compile-clean scope: skipped (no compile-clean entry import-closure intersects touched paths)"
+        );
+        return CompileCleanScopePlan::SkipNoAffected {
+            reason: "no compile-clean entry import-closure intersects touched paths".to_string(),
+        };
+    }
+    eprintln!(
+        "compile-clean scope: non-empty non-docs diff with no shard intersection — whole-tree baseline"
+    );
+    CompileCleanScopePlan::WholeTree
+}
+
 fn compile_clean_scoping_active() -> bool {
     FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst)
         || std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
@@ -875,6 +970,9 @@ fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     }
     match floor_git_diff_name_status_range() {
         Ok((changed_paths, _departed)) => {
+            if FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst) {
+                return compile_clean_scope_plan_from_touched_paths_floor_fast(&changed_paths);
+            }
             match compile_clean_scope_plan_from_touched_paths(&changed_paths) {
                 Ok(plan) => plan,
                 Err(msg) => CompileCleanScopePlan::Refused {
@@ -11211,6 +11309,45 @@ mod witness_layer_roots_compile_clean_tests {
             offenders.is_empty(),
             "dag compile-clean entry tree must not import v1.* modules: {offenders:?}"
         );
+    }
+
+    /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
+    #[test]
+    fn floor_fast_scoped_plan_skips_docs_only_touch() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
+                "docs/plans/example.md".to_string(),
+            ]);
+            assert_eq!(
+                plan,
+                CompileCleanScopePlan::SkipNoAffected {
+                    reason: "no compile-clean entry import-closure intersects touched paths"
+                        .to_string()
+                }
+            );
+        });
+    }
+
+    /// Lever-a PR touch receipt: dag transport edits scope (not silent whole-tree).
+    #[test]
+    fn floor_fast_scoped_plan_includes_lever_a_dag_transport_touch() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
+                "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                "src/v1/stage0/src/cli_run.rs".to_string(),
+            ]);
+            match plan {
+                CompileCleanScopePlan::Scoped { entry_paths } => {
+                    assert!(
+                        entry_paths
+                            .iter()
+                            .any(|p| p.contains("dag_compile_clean_transport")),
+                        "expected transport entry in {entry_paths:?}"
+                    );
+                }
+                other => panic!("expected ScopedRun for lever-A PR touch, got {other:?}"),
+            }
+        });
     }
 
     /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
