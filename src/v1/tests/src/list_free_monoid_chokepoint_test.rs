@@ -93,6 +93,48 @@ fn cons_len() -> Int {
 }
 
 #[test]
+fn native_list_length_equals_freemonoid_cons_chain_length() {
+    // adhoc-c328b166-bca: `length`/`count`/`size` gained a native_len O(1)
+    // fast path for Value::List/Map/Set (parse_current_position in v2
+    // 02_parse.dag calls length() on the full token stream every parse
+    // attempt; free_monoid_to_vec's O(n) clone made that an O(n^2) tax the
+    // compiled realization never pays). The fast path and the
+    // free_monoid_to_vec fallback are two arms over one concept (length) and
+    // must agree, per this repo's cross-representation-equality precedent
+    // (numeric tower, #5428) -- pin it directly rather than trusting the two
+    // single-arm tests above to stay in sync.
+    let src = r#"module test.native_vs_freemonoid_len
+type IntList = Empty | Cons { head: Int, tail: IntList }
+fn native_five() -> Int {
+  [1, 2, 3, 4, 5].length()
+}
+fn freemonoid_five() -> IntList {
+  Cons { head: 1, tail: Cons { head: 2, tail: Cons { head: 3, tail: Cons { head: 4, tail: Cons { head: 5, tail: Empty } } } } }
+}
+fn freemonoid_five_len() -> Int {
+  freemonoid_five().length()
+}
+fn lengths_agree() -> Bool {
+  native_five() == freemonoid_five_len()
+}
+"#;
+    let sources = resolve_imports_transitively("test.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+
+    match v1_interpreter::run(graph, resolved.source_indices.clone(), "lengths_agree") {
+        Ok(Value::Bool(true)) => {}
+        other => panic!(
+            "native_len fast path and free_monoid_to_vec fallback disagree on length: {other:?}"
+        ),
+    }
+}
+
+#[test]
 fn string_contains_multichar_substring_not_char_membership() {
     let src = r#"module test.str_contains
 fn has_substring() -> Bool {
