@@ -77,7 +77,7 @@ pub fn sixty_scale_note() -> String {
 pub fn scale_non_decimal_taxonomy_dissolution_trigger() -> String {
     thread_local! {
         static CACHED: String = {
-            "🟡 dissolve-on: Scale currently mixes decimal SI prefixes (Milli…Exa), binary memory prefixes (Kibi…Tebi), and sexagesimal time (Sixty). Each new non-decimal factor requires arms in time_scale_factor_seconds / memory_scale_factor_bytes / scale_exponent. Follow-up: split per-quantity scale sets at the type level (e.g. TimeScale vs DecimalScale) or document closed per-Quantity factor authorities — tracked with lever-a slice 2, not blocking #6335 merge.".to_string()
+            "🟡 dissolve-on: Scale currently mixes decimal SI prefixes (Milli…Exa), binary memory prefixes (Kibi…Tebi), and sexagesimal time (Sixty). Each new non-decimal factor requires arms in time_scale_factor_seconds / memory_scale_factor_bytes / scale_exponent. DISSOLVES WHEN gunbc.plans.realization_measurement_loop Phase 0 \"Converge the time authorities\" splits per-quantity Scale at the type level (TimeScale vs DecimalScale vs BinaryMemoryScale) — ROADMAP plan row dag/gunbc/plans/realization_measurement_loop.dag § Phase 0; not blocking #6335 merge.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
