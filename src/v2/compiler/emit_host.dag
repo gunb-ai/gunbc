@@ -14,11 +14,22 @@ import v2.compiler.eval {
   test_claim_cache_receipt_node
 }
 import extdeps.communication.medium { Medium }
+import std.algebra { Cons, Empty }
 import v2.std.collection { List, optional_present }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
+  EmittedSource,
+  EmittedWithSuffix,
+  FixedText,
+  InvocationArg,
+  LiteralArg,
+  ProcessInvocation,
+  ProducedArtifact,
+  WorkspaceContent,
+  WorkspacePath,
   runtime_value_parse_from_row
 }
+import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Diagnostic,
   Outcome,
@@ -35,6 +46,7 @@ import v2.std.host_run {
   BuildLog,
   ByteString,
   EmitHostRunReceipt,
+  ExitOk,
   HostExit,
   HostLogicalRun,
   HostRunStdout,
@@ -60,9 +72,9 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, Violates }
 
-fn emit_host_transport_not_wired_diagnostic() -> Diagnostic {
+fn emit_host_unknown_host_tool_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: ^emit_host_transport_not_wired,
+    reason: ^emit_host_unknown_host_tool,
     at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
@@ -132,16 +144,146 @@ fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
   outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
 }
 
+fn emit_host_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
+  match xs {
+    Empty => []
+    Cons { head: h, tail: t } => concat([f(h)], emit_host_list_map(xs: t, f: f))
+  }
+}
+
+fn host_tool_program_name(tool: Symbol) -> Outcome<String> {
+  if tool == ^host_tool_cargo {
+    Accepted { value: "cargo", diagnostics: None }
+  } else {
+    outcome_rejected(d: emit_host_unknown_host_tool_diagnostic())
+  }
+}
+
+fn invocation_arg_text(arg: InvocationArg) -> String {
+  match arg {
+    LiteralArg { text: t } => t
+    WorkspacePath { path: p } => p
+    ProducedArtifact { path: p } => p
+  }
+}
+
+fn invocation_argv(inv: ProcessInvocation) -> Outcome<List<String>> {
+  bind_outcome(
+    o: host_tool_program_name(tool: inv.tool),
+    f: fn(program) {
+      Accepted {
+        value: concat(
+          [program],
+          emit_host_list_map(xs: inv.args, f: fn(a) { invocation_arg_text(arg: a) })
+        ),
+        diagnostics: None
+      }
+    }
+  )
+}
+
+fn empty_argv_lists() -> List<List<String>> {
+  []
+}
+
+fn build_invocation_argvs(builds: List<ProcessInvocation>) -> Outcome<List<List<String>>> {
+  match builds {
+    Empty => Accepted { value: empty_argv_lists(), diagnostics: None }
+    Cons { head: inv, tail: rest } =>
+      bind_outcome(
+        o: invocation_argv(inv: inv),
+        f: fn(argv) {
+          bind_outcome(
+            o: build_invocation_argvs(builds: rest),
+            f: fn(acc) {
+              Accepted { value: concat([argv], acc), diagnostics: None }
+            }
+          )
+        }
+      )
+  }
+}
+
+fn workspace_content_text(content: WorkspaceContent, emitted: String) -> String {
+  match content {
+    EmittedSource => emitted
+    FixedText { text: t } => t
+    EmittedWithSuffix { suffix: s } => concat(emitted, s)
+  }
+}
+
+fn emit_host_octet_bit(octet: Int, place: Int) -> Bool {
+  ((octet / place) % 2) == 1
+}
+
+fn emit_host_byte_from_octet(octet: Int) -> Byte {
+  Byte {
+    bits: [
+      emit_host_octet_bit(octet: octet, place: 1),
+      emit_host_octet_bit(octet: octet, place: 2),
+      emit_host_octet_bit(octet: octet, place: 4),
+      emit_host_octet_bit(octet: octet, place: 8),
+      emit_host_octet_bit(octet: octet, place: 16),
+      emit_host_octet_bit(octet: octet, place: 32),
+      emit_host_octet_bit(octet: octet, place: 64),
+      emit_host_octet_bit(octet: octet, place: 128)
+    ]
+  }
+}
+
+fn emit_host_octets_byte_string(octets: List<Int>) -> ByteString {
+  emit_host_list_map(xs: octets, f: fn(o) { emit_host_byte_from_octet(octet: o) })
+}
+
 fn run_host_process(
   row: EmitHostRuntimeRow,
   target: TargetModel,
   source: Medium<String>,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
-  let _transport = row.transport
-  Rejected {
-    diagnostics: diagnostics_singleton(d: emit_host_transport_not_wired_diagnostic())
-  }
+  let _inputs = fixture_inputs
+  let transport = row.transport
+  bind_outcome(
+    o: build_invocation_argvs(builds: transport.build),
+    f: fn(builds) {
+      bind_outcome(
+        o: invocation_argv(inv: transport.run),
+        f: fn(run_argv) {
+          let files = emit_host_list_map(
+            xs: transport.workspace,
+            f: fn(w) {
+              {
+                path: w.path,
+                text: workspace_content_text(content: w.content, emitted: source.carried)
+              }
+            }
+          )
+          let result = emit_host_run_transport(files: files, build: builds, run: run_argv)
+          let exit = HostExit {
+            outcome: Accepted {
+              value: if result.success {
+                Holds { value: ExitOk { code: result.exit_code } }
+              } else {
+                Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
+              },
+              diagnostics: None
+            }
+          }
+          Accepted {
+            value: emit_host_receipt_from_source(
+              target: target,
+              source: source,
+              exit: exit,
+              stdout_bytes: emit_host_octets_byte_string(octets: result.stdout_octets),
+              stderr_bytes: emit_host_octets_byte_string(octets: result.stderr_octets),
+              build_log: BuildLog { lines: result.build_log }
+            ),
+            diagnostics: None
+          }
+        }
+      )
+    }
+  )
 }
 
 fn run_emit_host(
