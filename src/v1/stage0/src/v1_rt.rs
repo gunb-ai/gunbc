@@ -295,7 +295,7 @@ pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
 }
 
 pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> {
-    list.push(item);
+    list.push_back(item);
     list
 }
 
@@ -371,6 +371,18 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // will call these. Read-only functions (map_get, map_keys, map_values, lookup,
 // map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
 
+// take_owned: move out of a uniquely-held Rc; clone when shared. With every
+// container realized persistently (im_rc), the shared-arm clone is cheap
+// structural sharing — an ordinary designed path, not a degradation arm, so
+// no counter and no refusal (the clone-fallback guard class was deleted with
+// the Rc<std container> carriers it policed).
+pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
+    match Rc::try_unwrap(x) {
+        Ok(v) => v,
+        Err(rc) => (*rc).clone(),
+    }
+}
+
 pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
     let mut v = list;
     Rc::make_mut(&mut v).push_back(item);
@@ -383,13 +395,10 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     result
 }
 
-// Map updates carry no shared-Rc guard: HashMap here is im_rc's persistent
-// HAMT (one realization with the interpreter's Value::Map), so make_mut's
-// clone arm is O(1) structural sharing and each insert copies an O(log n)
-// node path — a designed update, not a degradation arm. Lists (im_rc::Vector)
-// and sets (im_rc::OrdSet) above are likewise persistent carriers now, so
-// they carry no guard either — the guard's whole class dissolved with the
-// Rc<std container> carriers it existed to police.
+// Every rc_* update here rides a persistent carrier (im_rc HashMap/Vector/
+// OrdSet — one realization with the interpreter's Value::Map/List/Set), so
+// make_mut's clone arm is O(1) structural sharing and each update copies an
+// O(log n) node path — a designed update, never a degradation arm.
 pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     map: Rc<HashMap<K, V>>,
     key: K,
@@ -728,16 +737,4 @@ pub fn contiguous_loop_elementwise_kernel(
         out.push(int_relu(tmp));
     }
     out
-}
-
-// take_owned: move out of a uniquely-held Rc; clone when shared. With every
-// container realized persistently (im_rc), the shared-arm clone is cheap
-// structural sharing — an ordinary designed path, not a degradation arm, so
-// no counter and no refusal (the clone-fallback guard class was deleted with
-// the Rc<std container> carriers it policed).
-pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
-    match Rc::try_unwrap(x) {
-        Ok(v) => v,
-        Err(rc) => (*rc).clone(),
-    }
 }

@@ -7,10 +7,10 @@ pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::OrdSet as BTreeSet;
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -195,7 +195,20 @@ pub type ByteSize = Rc<Measure<(), (), i64>>;
 
 pub type Kibibyte = Rc<Measure<(), (), i64>>;
 
+pub type Mebibyte = Rc<Measure<(), (), i64>>;
+
 pub type Gibibyte = Rc<Measure<(), (), i64>>;
+
+pub fn mebibyte(count: Nat) -> Mebibyte {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn mebibyte_count(m: Mebibyte) -> Nat {
+    measure_count(m)
+}
 
 pub fn gibibyte(count: Nat) -> Gibibyte {
     Rc::new(Measure {
@@ -221,6 +234,8 @@ pub fn bits_per_byte() -> Nat {
 pub type Hertz = Rc<Measure<(), (), i64>>;
 
 pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
+
+pub type Millicore = Rc<Measure<(), (), i64>>;
 
 pub type Watt = Rc<Measure<(), (), i64>>;
 
@@ -318,6 +333,17 @@ pub fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 
 pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
     measure_count(t)
+}
+
+pub fn millicore(count: Nat) -> Millicore {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn millicore_count(m: Millicore) -> Nat {
+    measure_count(m)
 }
 
 pub type Bandwidth = Rc<Measure<(), (), i64>>;

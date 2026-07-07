@@ -3,13 +3,12 @@
 
 use self::UrlPathToken::*;
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -62,4 +61,42 @@ pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
             None => None,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PathParamBinding {
+    pub name: String,
+    pub value: String,
+}
+
+pub fn path_param_value(params: Rc<Vec<Rc<PathParamBinding>>>, name: String) -> String {
+    params.iter().cloned().fold(
+        "".to_string(),
+        |acc: String, binding: Rc<PathParamBinding>| {
+            if (acc.clone() != "".to_string()) {
+                acc.clone()
+            } else {
+                if (binding.name.clone() == name.clone()) {
+                    binding.value.clone()
+                } else {
+                    acc.clone()
+                }
+            }
+        },
+    )
+}
+
+pub fn render_path_template(
+    template: Rc<PathTemplate>,
+    params: Rc<Vec<Rc<PathParamBinding>>>,
+) -> String {
+    template.tokens.clone().iter().cloned().fold(
+        "".to_string(),
+        |acc: String, tok: Rc<UrlPathToken>| match (*tok.clone()).clone() {
+            UrlPathToken::LiteralToken { text: t, .. } => v1_rt::concat(acc.clone(), t.clone()),
+            UrlPathToken::ParamToken { name: n, .. } => {
+                v1_rt::concat(acc.clone(), path_param_value(params.clone(), n.clone()))
+            }
+        },
+    )
 }

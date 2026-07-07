@@ -27,9 +27,9 @@ pub use crate::v1_compiler_infer_types::{
     reground_alias_carrier_identity,
 };
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::FieldAccessStyle::OptionalUnwrap;
@@ -48,8 +48,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
@@ -218,18 +217,14 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
                     resolve_scrutinee_type_node(env.clone(), receiver_type.clone()),
                     env.source_indices.clone(),
                 );
-                if (resolved.connective.clone() == Connective::Conj) {
+                let resolved_name = authored_name_at(env.source_indices.clone(), resolved.clone());
+                if ((resolved.connective.clone() == Connective::Conj)
+                    || ((resolved_name.clone() != raw_name.clone())
+                        && is_declared_container_alias_spelling(resolved_name.clone())))
+                {
                     resolved.clone()
                 } else {
-                    let resolved_name =
-                        authored_name_at(env.source_indices.clone(), resolved.clone());
-                    if ((resolved_name.clone() != raw_name.clone())
-                        && is_declared_container_alias_spelling(resolved_name.clone()))
-                    {
-                        resolved.clone()
-                    } else {
-                        receiver_type.clone()
-                    }
+                    receiver_type.clone()
                 }
             }
         }

@@ -8,10 +8,10 @@ pub use crate::extdeps_version_semver::{SemVerConstraint, SemVerIdentity};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::OrdSet as BTreeSet;
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -34,13 +34,13 @@ pub type CargoVersionRequirement = SemVerConstraint;
 
 pub type CargoToolVersionFloor = SemVerConstraint;
 
-pub fn default_stage0_package_version() -> String {
+pub fn default_stage0_package_version() -> CargoPackageVersion {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: CargoPackageVersion = {
             "0.1.0".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &CargoPackageVersion| c.clone())
 }
 
 pub fn render_cargo_package_version_field(version: CargoPackageVersion) -> String {

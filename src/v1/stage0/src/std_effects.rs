@@ -14,13 +14,12 @@ pub use crate::std_realization_schedule::string_list_eq;
 use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};
 pub use crate::std_types::{HttpMethod, List};
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -172,26 +171,28 @@ impl CompositionVerdict {
 }
 
 pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
-    {
-        let non_idempotent = Rc::new({
-            let mut __result = Vec::new();
-            for e in effects.iter().cloned() {
-                if match (*e.evidence.clone()).clone() {
-                    IdempotencyEvidence::NonIdempotent { .. } => true,
-                    _ => false,
-                } {
-                    __result.push(e);
+    effects.iter().cloned().fold(
+        Rc::new(CompositionVerdict::IdempotentComposition),
+        |acc: Rc<CompositionVerdict>, e: Rc<OperationEffect>| match (*acc.clone()).clone() {
+            CompositionVerdict::BrokenBy {
+                first_breaker: breaker,
+                ..
+            } => acc.clone(),
+            CompositionVerdict::IdempotentComposition => match (*e.evidence.clone()).clone() {
+                IdempotencyEvidence::NonIdempotent { shape, reason, .. } => {
+                    Rc::new(CompositionVerdict::BrokenBy {
+                        first_breaker: e.clone(),
+                    })
                 }
-            }
-            __result
-        });
-        match non_idempotent.first().cloned() {
-            Some(op) => Rc::new(CompositionVerdict::BrokenBy {
-                first_breaker: op.clone(),
-            }),
-            None => Rc::new(CompositionVerdict::IdempotentComposition),
-        }
-    }
+                IdempotencyEvidence::LatticeEffect { shape: shape, .. } => {
+                    Rc::new(CompositionVerdict::IdempotentComposition)
+                }
+                IdempotencyEvidence::IdentityEffect => {
+                    Rc::new(CompositionVerdict::IdempotentComposition)
+                }
+            },
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -92,10 +92,9 @@ pub use crate::v1_compiler_ownership::{
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
-use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::AlgebraFieldKind::*;
 use crate::v1_std_core::BinOp::*;
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
@@ -149,8 +148,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn render_rust_type(
@@ -466,12 +464,9 @@ pub fn rust_opaque_kernel_alias_carrier(name: String) -> Option<String> {
 }
 
 pub fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> Option<String> {
-    if !corpus_repr_is_host(corpus_repr) {
-        return None;
-    }
-    // Nat authority (`std.nat`: `type Nat = CommutativeSemiring<Magnitude>`) must
-    // project to the host scalar before alias-rhs expansion names the semiring.
-    if name == "Nat" || name == "Int" || name == "CommutativeSemiring" {
+    if (((name.clone() == "Nat".to_string()) || (name.clone() == "Int".to_string()))
+        && corpus_repr_is_host(corpus_repr))
+    {
         Some("i64".to_string())
     } else {
         None
@@ -956,7 +951,7 @@ pub fn render_rust_shared_type_with_optional(
     shared_types: Rc<BTreeSet<String>>,
 ) -> String {
     rust_carrier_optional_wrap(
-        n.clone(),
+        n,
         render_rust_shared_type_if_needed(type_name, rendered, shared_types),
     )
 }
@@ -1256,10 +1251,12 @@ pub fn rust_fn_sig_preserves_authored_alias_leaf(
 ) -> bool {
     if is_kernel_type(name.clone()) {
         false
-    } else if name.clone() == "Nat".to_string() {
-        true
     } else {
-        rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone()) == None
+        if (name.clone() == "Nat".to_string()) {
+            true
+        } else {
+            (rust_seed_host_numeric_alias(name.clone(), corpus_repr) == None)
+        }
     }
 }
 
@@ -1307,55 +1304,61 @@ pub fn render_rust_fn_sig_type(
             );
         }
         let name = authored_name_at(source_indices.clone(), n.clone());
-        let is_leaf = (n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) == 0);
-        if is_leaf
-            && (name.clone() == "String".to_string())
-            && corpus_repr_is_faithful(corpus_repr.clone())
+        if ((((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+            && (name.clone() == "String".to_string()))
+            && corpus_repr_is_faithful(corpus_repr.clone()))
         {
             rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
-        } else if is_leaf
-            && (name.clone() != "".to_string())
-            && (name.clone() != "String".to_string())
-            && !is_container_type(name.clone())
-            && rust_fn_sig_peel_closed_alias(env.clone(), n.clone())
-            && rust_fn_sig_preserves_authored_alias_leaf(name.clone(), corpus_repr.clone())
-        {
-            render_rust_shared_type_with_optional(
-                n.clone(),
-                name.clone(),
-                name.clone(),
-                shared_types.clone(),
-            )
-        } else if (n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) > 0)
-            && !is_container_type(name.clone())
-            && rust_fn_sig_peel_closed_alias(env.clone(), n.clone())
-        {
-            render_rust_shared_type_with_optional(
-                n.clone(),
-                name.clone(),
-                name.clone(),
-                shared_types.clone(),
-            )
-        } else if ((generic_param_names.clone().len() as i64) > 0) {
-            render_rust_decl_type(
-                n.clone(),
-                generic_param_names.clone(),
-                shared_types.clone(),
-                corpus_repr.clone(),
-                source_indices.clone(),
-                variant_to_enum.clone(),
-                env.clone(),
-            )
         } else {
-            render_rust_fn_sig_type_applied_binding(
-                n.clone(),
-                shared_types.clone(),
-                corpus_repr.clone(),
-                source_indices.clone(),
-                env.clone(),
-            )
+            if (((((((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.clone().len() as i64) == 0))
+                && (name.clone() != "".to_string()))
+                && (name.clone() != "String".to_string()))
+                && !is_container_type(name.clone()))
+                && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
+                && rust_fn_sig_preserves_authored_alias_leaf(name.clone(), corpus_repr.clone()))
+            {
+                render_rust_shared_type_with_optional(
+                    n.clone(),
+                    name.clone(),
+                    name.clone(),
+                    shared_types.clone(),
+                )
+            } else {
+                if ((((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) > 0))
+                    && !is_container_type(name.clone()))
+                    && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
+                {
+                    render_rust_shared_type_with_optional(
+                        n.clone(),
+                        name.clone(),
+                        name.clone(),
+                        shared_types.clone(),
+                    )
+                } else {
+                    if ((generic_param_names.clone().len() as i64) > 0) {
+                        render_rust_decl_type(
+                            n.clone(),
+                            generic_param_names.clone(),
+                            shared_types.clone(),
+                            corpus_repr.clone(),
+                            source_indices.clone(),
+                            variant_to_enum.clone(),
+                            env.clone(),
+                        )
+                    } else {
+                        render_rust_fn_sig_type_applied_binding(
+                            n.clone(),
+                            shared_types.clone(),
+                            corpus_repr.clone(),
+                            source_indices.clone(),
+                            env.clone(),
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1376,14 +1379,14 @@ pub fn render_rust_fn_sig_type_applied_binding(
             if ((applied.children.clone().len() as i64) > 0) {
                 {
                     let outer_name = authored_name_at(source_indices.clone(), n.clone());
-                    if ((((outer_name.clone() != "".to_string())
+                    if (((((outer_name.clone() != "".to_string())
                         && (n.connective.clone() == Connective::NoConnective))
                         && ((n.children.clone().len() as i64) == 0))
-                        && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
+                        && rust_fn_sig_peel_closed_alias(env, n.clone()))
                         && rust_fn_sig_preserves_authored_alias_leaf(
                             outer_name.clone(),
                             corpus_repr.clone(),
-                        )
+                        ))
                     {
                         render_rust_shared_type_with_optional(
                             n.clone(),
@@ -1395,7 +1398,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
                         render_rust_type_with_applied_binding(
                             n.clone(),
                             shared_types,
-                            corpus_repr,
+                            corpus_repr.clone(),
                             source_indices.clone(),
                         )
                     }
@@ -1404,7 +1407,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
                 render_rust_type_with_applied_binding(
                     n.clone(),
                     shared_types,
-                    corpus_repr,
+                    corpus_repr.clone(),
                     source_indices.clone(),
                 )
             }
@@ -1412,7 +1415,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
         None => render_rust_type_with_applied_binding(
             n.clone(),
             shared_types,
-            corpus_repr,
+            corpus_repr.clone(),
             source_indices.clone(),
         ),
     }
@@ -3528,7 +3531,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                     } else {
                         build_read_only_params(entry.proof.clone(), entry.param_names.clone())
                     };
-                    let movable = build_movable_set(entry.proof.clone());
+                    let movable = build_movable_set(entry.proof.clone(), entry.param_names.clone());
                     Rc::new(OwnershipBuildResult {
                         ownership_index: v1_rt::rc_map_insert(
                             acc.ownership_index,
@@ -3798,7 +3801,7 @@ pub fn emit_lib_rs_from_files(
             "".to_string()
         };
         let shared_types = emit_non_empty_wrappers();
-        let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), "#![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, unreachable_patterns, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]\n".to_string()), "#![recursion_limit = \"256\"]\n\nuse im_rc::{OrdSet as BTreeSet, Vector as Vec};\n\n".to_string()), mod_decls.join(&"\n".to_string())), hand_maintained_mods), "\n\n".to_string()), shared_types), test_mod);
+        let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), "#![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, unreachable_patterns, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]\n".to_string()), "#![recursion_limit = \"256\"]\n\n".to_string()), "use im_rc::{OrdSet as BTreeSet, Vector as Vec};\n\n".to_string()), mod_decls.join(&"\n".to_string())), hand_maintained_mods), "\n\n".to_string()), shared_types), test_mod);
         Rc::new(TextFile {
             path: v1_rt::concat(
                 v1_rt::concat(rust_source_root(), "lib".to_string()),
@@ -7348,7 +7351,7 @@ pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
 
 pub fn emit_non_empty_wrappers() -> String {
     {
-        let vec_wrapper = "pub struct NonEmptyVec<T>(Vec<T>);\n\nimpl<T: Clone + std::fmt::Debug> std::fmt::Debug for NonEmptyVec<T> {\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n        f.debug_tuple(\"NonEmptyVec\").field(&self.0).finish()\n    }\n}\n\nimpl<T: Clone> Clone for NonEmptyVec<T> {\n    fn clone(&self) -> Self {\n        Self(self.0.clone())\n    }\n}\n\nimpl<T: Clone + PartialEq> PartialEq for NonEmptyVec<T> {\n    fn eq(&self, other: &Self) -> bool {\n        self.0 == other.0\n    }\n}\n\nimpl<T: Clone> NonEmptyVec<T> {\n    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {\n        if items.is_empty() {\n            Err(\"NonEmptyVec requires at least one element\")\n        } else {\n            Ok(Self(items))\n        }\n    }\n\n    pub fn into_vec(self) -> Vec<T> {\n        self.0\n    }\n}".to_string();
+        let vec_wrapper = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub struct NonEmptyVec<T>(Vec<T>);\n\n".to_string(), "impl<T: Clone + std::fmt::Debug> std::fmt::Debug for NonEmptyVec<T> {\n".to_string()), "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n".to_string()), "        f.debug_tuple(\"NonEmptyVec\").field(&self.0).finish()\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone> Clone for NonEmptyVec<T> {\n".to_string()), "    fn clone(&self) -> Self {\n".to_string()), "        Self(self.0.clone())\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone + PartialEq> PartialEq for NonEmptyVec<T> {\n".to_string()), "    fn eq(&self, other: &Self) -> bool {\n".to_string()), "        self.0 == other.0\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone> NonEmptyVec<T> {\n".to_string()), "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {\n".to_string()), "        if items.is_empty() {\n".to_string()), "            Err(\"NonEmptyVec requires at least one element\")\n".to_string()), "        } else {\n".to_string()), "            Ok(Self(items))\n".to_string()), "        }\n".to_string()), "    }\n\n".to_string()), "    pub fn into_vec(self) -> Vec<T> {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}".to_string());
         let set_wrapper = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Debug, Clone, PartialEq)]\n".to_string(), "pub struct NonEmptyBTreeSet<T: Ord>(BTreeSet<T>);\n\n".to_string()), "impl<T: Ord> NonEmptyBTreeSet<T> {\n".to_string()), "    pub fn new(items: BTreeSet<T>) -> Result<Self, &'static str> {\n".to_string()), "        if items.is_empty() {\n".to_string()), "            Err(\"NonEmptyBTreeSet requires at least one element\")\n".to_string()), "        } else {\n".to_string()), "            Ok(Self(items))\n".to_string()), "        }\n".to_string()), "    }\n\n".to_string()), "    pub fn as_set(&self) -> &BTreeSet<T> {\n".to_string()), "        &self.0\n".to_string()), "    }\n\n".to_string()), "    pub fn into_set(self) -> BTreeSet<T> {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}".to_string());
         v1_rt::concat(v1_rt::concat(vec_wrapper, "\n\n".to_string()), set_wrapper)
     }
@@ -7755,6 +7758,15 @@ pub fn emit_typed_item(
     }
 }
 
+pub fn needs_box_wrapping_shared_dominates() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A shared (Rc-rendered) type NEVER needs Box: Rc is already the cycle-breaking indirection, so Box<Rc<T>> is a double wrap that no committed seed ever carried. shared_types must dominate the recursive_types check — the old ordering short-circuited recursive->Box first, which was benign only while emit-time recursive_types stayed module-local; once build_type_env propagated imported recursive types (B1), every Rc field of Node/TypeEnv/... would have double-wrapped.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn needs_box_wrapping(
     mut n: Rc<Node>,
     mut recursive_types: Rc<BTreeSet<String>>,
@@ -7762,34 +7774,31 @@ pub fn needs_box_wrapping(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        // HAND-PATCH (seed two-step): shared (Rc-rendered) types never need Box
-        // — shared_types dominates the recursive check. Replaced by regen's
-        // true emission of the reordered dag source in the convergence commit.
         let name = authored_name_at(source_indices.clone(), n.clone());
         if v1_rt::set_contains(&shared_types, name.clone()) {
             break false;
-        }
-        if v1_rt::set_contains(&recursive_types, name.clone()) {
-            break true;
-        }
-        if ((n.children.clone().len() as i64) == 0) {
-            {
-                if (coerce_primitive_type(RenderTarget::Rust, name.clone()) != name.clone()) {
-                    break false;
-                } else {
-                    break v1_rt::set_contains(&recursive_types, name.clone());
-                }
-            }
         } else {
-            let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-            if is_optional {
-                {
-                    let __tco_0 = with_required_cardinality(n);
-                    n = __tco_0;
-                    continue;
-                }
+            if v1_rt::set_contains(&recursive_types, name.clone()) {
+                break true;
             } else {
-                break false;
+                if ((n.children.clone().len() as i64) == 0) {
+                    if (coerce_primitive_type(RenderTarget::Rust, name.clone()) != name.clone()) {
+                        break false;
+                    } else {
+                        break v1_rt::set_contains(&recursive_types, name.clone());
+                    }
+                } else {
+                    let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+                    if is_optional {
+                        {
+                            let __tco_0 = with_required_cardinality(n);
+                            n = __tco_0;
+                            continue;
+                        }
+                    } else {
+                        break false;
+                    }
+                }
             }
         }
     }
@@ -12664,18 +12673,19 @@ pub fn field_access_field_is_boxed(
                 if grounds_to_host_scalar {
                     false
                 } else {
-                    let faithful_nat_field =
-                        matches!(emit_info.corpus_repr.clone(), FaithfulFreeMonoid)
-                            && (field_ty_name.clone() == "Nat".to_string()
-                                || v1_rt::substring(&field_ty_name, 0, 4) == "Nat<".to_string()
-                                || field_ty_name.clone() == "CommutativeSemiring".to_string());
-                    faithful_nat_field
-                        || needs_box_wrapping(
-                            field_ty.clone(),
-                            emit_info.recursive_type_set.clone(),
-                            shared_types,
-                            scope.type_env.clone().source_indices.clone(),
-                        )
+                    {
+                        let faithful_nat_field = ((emit_info.corpus_repr.clone()
+                            == RustCorpusRepr::FaithfulFreeMonoid)
+                            && ((field_ty_name.clone() == "Nat".to_string())
+                                || (v1_rt::substring(&field_ty_name, 0, 4) == "Nat<".to_string())));
+                        (faithful_nat_field
+                            || needs_box_wrapping(
+                                field_ty.clone(),
+                                emit_info.recursive_type_set.clone(),
+                                shared_types,
+                                scope.type_env.clone().source_indices.clone(),
+                            ))
+                    }
                 }
             }
             None => false,
@@ -16567,7 +16577,7 @@ pub fn emit_typed_method_call(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(var_name, ".".to_string()),
-                                emit_ident(method, RenderTarget::Rust),
+                                emit_ident(method.clone(), RenderTarget::Rust),
                             ),
                             "(".to_string(),
                         ),
@@ -23152,14 +23162,14 @@ pub fn emit_data_def(
             scope.type_env.clone().source_indices.clone(),
             annotation_type_node.clone(),
         );
-        let preserves_declared_brand = ((ann_name.clone() != "".to_string())
+        let preserves_declared_brand = ((((ann_name.clone() != "".to_string())
             && ((annotation_type_node.children.clone().len() as i64) == 0))
-            && !is_container_type(ann_name.clone())
-            && !is_kernel_type(ann_name.clone());
+            && !is_container_type(ann_name.clone()))
+            && !is_kernel_type(ann_name.clone()));
         let render_type_node = if ((annotation_type_node.children.clone().len() as i64) > 0) {
             annotation_type_node.clone()
         } else {
-            if preserves_declared_brand {
+            if preserves_declared_brand.clone() {
                 annotation_type_node.clone()
             } else {
                 match value.inferred.clone().as_deref().cloned() {
@@ -23168,26 +23178,28 @@ pub fn emit_data_def(
                 }
             }
         };
-        let raw_ty_str = if preserves_declared_brand {
+        let raw_ty_str = if preserves_declared_brand.clone() {
             ann_name.clone()
-        } else if data_def_annotation_is_named_refinement(
-            annotation_type_node.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        ) {
-            coerce_primitive_type(
-                RenderTarget::Rust,
-                authored_name_at(
-                    scope.type_env.clone().source_indices.clone(),
-                    annotation_type_node.clone(),
-                ),
-            )
         } else {
-            render_rust_type_with_applied_binding(
-                render_type_node,
-                shared_types.clone(),
-                emit_info.corpus_repr.clone(),
+            if data_def_annotation_is_named_refinement(
+                annotation_type_node.clone(),
                 scope.type_env.clone().source_indices.clone(),
-            )
+            ) {
+                coerce_primitive_type(
+                    RenderTarget::Rust,
+                    authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        annotation_type_node.clone(),
+                    ),
+                )
+            } else {
+                render_rust_type_with_applied_binding(
+                    render_type_node,
+                    shared_types.clone(),
+                    emit_info.corpus_repr.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                )
+            }
         };
         let ty_str = if ((raw_ty_str.clone() == "BoundedLattice".to_string())
             || (raw_ty_str.clone() == "Rc<BoundedLattice>".to_string()))
