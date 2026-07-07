@@ -1029,13 +1029,13 @@ pub fn consume_floor_compile_clean_gate_verdict() -> bool {
 }
 
 #[cfg(test)]
-pub(crate) fn reset_floor_compile_clean_receipt_for_test() {
+fn reset_floor_compile_clean_receipt_for_test() {
     let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
     *guard = None;
 }
 
 #[cfg(test)]
-pub(crate) fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt) {
+fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt) {
     let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
     *guard = Some(receipt);
 }
