@@ -94,6 +94,20 @@ fn preamble() -> List<MarkdownBlock> {
   ]
 }
 
+fn section_0() -> RoadmapSection {
+  RoadmapSection {
+    title: "0. Priorities — current execution order (rearranged 2026-07-06)",
+    elements: [
+      section_prose(content: "The two pillars — §1 get off v1, §2 own the compute fabric — stand as the strategic goal. This section is the **current priority ordering** over them and the walls that keep them honest, rearranged 2026-07-06 to **frontload the compile wall and complexity enforcement**: fix what blocks CI now, then make the regression classes *unwritable* before they recur (construction over after-the-fact catching, DESIGN §5). Each item points into the detailed lane; work dispatches from the lane, not from the pointer. Lanes marked *un-shelved* here are moved out of §4 by this ordering."),
+      section_prose(content: "**① Compile wall** — the acute blocker. The `.dag` compile-clean floor runs **100+min** (#6239), past the CI job kills, so every PR is red on the floor and the rust-gate timeout thrash (the 10-min-drift #6339 + witness #6342, 2026-07-06) is a *downstream symptom* of the wall outgrowing the step budgets. Levers, in leverage order: affected-set-scope the compile-clean to the changed node-closure (→ ③), cross-run resolve memoization, per-module shard so `spawn_width` finally applies to the dominant node. Detail: §2 *kill the serial compile-clean wall*."),
+      section_prose(content: "**② Complexity enforcement, whole codebase** *(frontloaded — un-shelved from §4)*. Make the regression classes unwritable, not caught-after: the **repo-wide complexity budget**, the **enforcement-intent gate** (`StandingIntent` ⇄ `LensContract` ⇄ `CoverageReceipt`, fail-closed — a mechanism *claiming* enforcement is complete only when the gate proves it from receipts), **intent-linearity** (model the axioms A1–A3 and enforce the syllogism — every claim a consequence-chain back to an axiom, no orphan and no cycle; [draft](docs/plans/intent-linearity-design-draft.md)), and the **gap analysis** — which regression classes *cannot* be caught yet (the expressibility frontier: wall vs lens vs review; [frontier](docs/plans/expressibility-frontier.md)). Detail: §3 *enforcement intent + model-quality walls*; §4 *complexity budget whole-codebase* + *fail-closed meta band* (promoted here)."),
+      section_prose(content: "**③ Affected set live in CI** — per-PR selection that shrinks the floor to the changed node-closure and returns witness enrollment to affected-set-shrunk discovery (today enrollment is opt-in *because* selection is not live — itself a compile-wall multiplier). Obligations: soundness (a skipped-but-affected witness is the fail-open catastrophe), effectiveness receipts on real scoped diffs, fail-closed default on a provenance gap. Detail: §2 *affected-set de-fork*; §3 *affected-set lens*."),
+      section_prose(content: "**④ Realization** — inhabit the content-addressed carrier so caching, memoization, and provisioning all *derive* from one content-hash instead of N hand-rolled caches (v2 still hand-rolls `ParseTable`; floor shared-compute memoization is a Realization arm; DESIGN §2). Includes the **dag↔v2 de-fork grounding** — the fixed point must be well-defined over ONE algebra. Detail: §1 *de-fork grounding cluster*; §2 shared-compute memoization."),
+      section_prose(content: "**⑤ Everything linear / efficient / minimal — dev UX** *(un-shelved from §4)*. The authoring experience is minimal and non-redundant: **fold-ergonomics** (inert-abstraction lens, non-fold-residue audit, ban source comments), **namespace-only resolution** (minimal naming, delete `import`, no ambiguity — operator-signed 2026-07-06, its two rules *are* the §2/§4 minimality + no-ambiguity walls; gated on the `SymbolIndex` substrate; [design](docs/plans/namespace-resolution-design.md)), and local iteration speed. Detail: §4 *fold-ergonomics lane* (promoted); the namespace-only lane."),
+    ],
+  }
+}
+
 fn section_1() -> RoadmapSection {
   RoadmapSection {
     title: "1. Get off v1 — v2 self-hosts (TERMINAL: `src/v1` deleted)",
@@ -313,7 +327,7 @@ fn section_4() -> RoadmapSection {
   RoadmapSection {
     title: "4. Shelved (parked 2026-07-01 — not deleted)",
     elements: [
-      section_prose(content: "Every lane below was live roadmap before the reset. Shelved = plan docs and carriers stay in place, nothing dispatches from here, and the git-history ROADMAP.md holds the full pre-reset detail (structure, milestones, sign-off states). Un-shelve by PR into §1–§3, priced in displaced cost."),
+      section_prose(content: "Every lane below was live roadmap before the reset. Shelved = plan docs and carriers stay in place, nothing dispatches from here, and the git-history ROADMAP.md holds the full pre-reset detail (structure, milestones, sign-off states). Un-shelve by PR into §1–§3, priced in displaced cost. **(2026-07-06: the *complexity budget whole-codebase*, *fail-closed meta band*, and *fold-ergonomics* lanes are un-shelved into §0's priority order ② and ⑤ — this reshuffle is that PR; their nodes stay catalogued here until relocated into their §2/§3 lanes.)**"),
       section_group(
         label: "",
         nodes: [
@@ -344,7 +358,7 @@ fn roadmap_authority() -> RoadmapDocument {
   RoadmapDocument {
     preamble: preamble(),
     lead_lanes: [],
-    sections: [section_1(), section_2(), section_3(), section_4()],
+    sections: [section_0(), section_1(), section_2(), section_3(), section_4()],
   }
 }
 

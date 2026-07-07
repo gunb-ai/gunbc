@@ -9,8 +9,8 @@ use crate::std_syntax::LiteralValue::LitInt;
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, flatten_visible_bindings, is_recursive_type, is_recursive_type_by_name,
-    is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
+    authored_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for,
+    lookup_type, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -122,20 +122,28 @@ pub fn collect_unit_variant_phantom_matches(
     env: Rc<TypeEnv>,
     variant_name: String,
 ) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(v1_rt::map_values(&flatten_visible_bindings(env.clone())))
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<Node>>>, binding: Rc<TypeBinding>| match unit_variant_in_coproduct(
-                env.clone(),
-                structural_type_for_variant_lookup(env.clone(), binding.resolved.clone()),
-                variant_name.clone(),
-            ) {
-                Some(variant) => v1_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
-                None => acc.clone(),
+    {
+        let direct_bindings = env.parents.clone().iter().cloned().fold(
+            env.str_bindings.clone(),
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
+                v1_rt::rc_map_merge(parent.str_bindings.clone(), acc)
             },
-        )
+        );
+        Rc::new(v1_rt::map_values(&direct_bindings))
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<Rc<Node>>>, binding: Rc<TypeBinding>| match unit_variant_in_coproduct(
+                    env.clone(),
+                    structural_type_for_variant_lookup(env.clone(), binding.resolved.clone()),
+                    variant_name.clone(),
+                ) {
+                    Some(variant) => v1_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
+                    None => acc.clone(),
+                },
+            )
+    }
 }
 
 pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {

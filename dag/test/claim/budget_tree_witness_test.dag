@@ -1,6 +1,7 @@
 module test.claim.budget_tree_witness
 
 import std.logic { Bool }
+import std.nat { Nat }
 import std.measure { byte_size, Memory, One }
 import extdeps.accounting.budget {
   Appropriation, LineItem, BudgetBalance, Surplus, Balanced, Deficit,

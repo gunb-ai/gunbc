@@ -45,11 +45,9 @@ pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, RustCorpusRepr, TypeRepr, TypeSummary,
 };
 pub use crate::v1_compiler_infer_env::{
-    empty_type_env_cache, flatten_visible_bindings, inductive_fields_for,
-    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
-    lookup_type_by_name, lookup_type_for, merge_envs, merge_inductive_fields, merge_type_env_cache,
-    put_inductive_field, put_inductive_field_cross, record_build_type_env_call,
-    record_rewire_type_env_import_str_binding_call, record_rewire_type_env_parent_links_call,
+    empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
+    is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
+    merge_inductive_fields, merge_type_env_cache, put_inductive_field, put_inductive_field_cross,
     str_bindings_from_bindings,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, TypeEnvCache};
@@ -995,37 +993,6 @@ pub fn record_lit_expected_fields(
         },
         None => Rc::new(vec![]),
     }
-}
-
-pub fn record_lit_variant_fields_from_visible_env(
-    env: Rc<TypeEnv>,
-    variant_name: String,
-    module_name: String,
-) -> Rc<Vec<Rc<Node>>> {
-    let source_indices = env.source_indices.clone();
-    let visible = flatten_visible_bindings(env.clone());
-    for binding in Rc::new(v1_rt::map_values(&visible)).iter().cloned() {
-        let node = expand_type_for_field_access(
-            binding.resolved.clone(),
-            env.clone(),
-            module_name.clone(),
-        );
-        if (node.connective.clone() == Connective::Disj) {
-            for arm in node.children.clone().iter().cloned() {
-                let arm_name = authored_name_at(source_indices.clone(), arm.clone());
-                if (arm_name == variant_name.clone()) {
-                    let expanded =
-                        expand_type_for_field_access(arm.clone(), env.clone(), module_name.clone());
-                    if (expanded.connective.clone() == Connective::Conj) {
-                        return expanded.children.clone();
-                    } else {
-                        return arm.children.clone();
-                    }
-                }
-            }
-        }
-    }
-    Rc::new(vec![])
 }
 
 pub fn record_lit_expanded_from_expected(
@@ -5757,66 +5724,43 @@ pub fn record_lit_construction_field_names(
 pub fn field_in_any_variant_named(type_name: String, field: String, scope: Rc<InferScope>) -> bool {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        {
-            let mut __found = false;
-            for binding in Rc::new(v1_rt::map_values(&flatten_visible_bindings(
-                scope.type_env.clone(),
-            )))
-            .iter()
-            .cloned()
-            {
-                if {
-                    let node = binding.resolved.clone();
-                    if (node.connective.clone() == Connective::Disj) {
+        match variant_owner_node(scope.clone(), type_name.clone()) {
+            Some(owner) => {
+                let mut __found = false;
+                for arm in owner.children.clone().iter().cloned() {
+                    if if (authored_name_at(si.clone(), arm.clone()) == type_name.clone()) {
                         {
-                            let mut __found = false;
-                            for arm in node.children.clone().iter().cloned() {
-                                if if (authored_name_at(si.clone(), arm.clone())
-                                    == type_name.clone())
-                                {
-                                    {
-                                        let ea = expand_type_for_field_access(
-                                            arm.clone(),
-                                            scope.type_env.clone(),
-                                            scope.module_name.clone(),
-                                        );
-                                        let fields = if (ea.connective.clone() == Connective::Conj)
-                                        {
-                                            ea.children.clone()
-                                        } else {
-                                            arm.children.clone()
-                                        };
-                                        {
-                                            let mut __found = false;
-                                            for f in fields.clone().iter().cloned() {
-                                                if (authored_name_at(si.clone(), f.clone())
-                                                    == field.clone())
-                                                {
-                                                    __found = true;
-                                                    break;
-                                                }
-                                            }
-                                            __found
-                                        }
+                            let ea = expand_type_for_field_access(
+                                arm.clone(),
+                                scope.type_env.clone(),
+                                scope.module_name.clone(),
+                            );
+                            let fields = if (ea.connective.clone() == Connective::Conj) {
+                                ea.children.clone()
+                            } else {
+                                arm.children.clone()
+                            };
+                            {
+                                let mut __found = false;
+                                for f in fields.clone().iter().cloned() {
+                                    if (authored_name_at(si.clone(), f.clone()) == field.clone()) {
+                                        __found = true;
+                                        break;
                                     }
-                                } else {
-                                    false
-                                } {
-                                    __found = true;
-                                    break;
                                 }
+                                __found
                             }
-                            __found
                         }
                     } else {
                         false
+                    } {
+                        __found = true;
+                        break;
                     }
-                } {
-                    __found = true;
-                    break;
                 }
+                __found
             }
-            __found
+            None => false,
         }
     }
 }
@@ -12345,7 +12289,6 @@ pub fn build_type_env(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<BuildTypeEnvResult> {
-    record_build_type_env_call();
     {
         let source_indices = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
@@ -12874,7 +12817,6 @@ pub fn build_type_env_unresolved(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<BuildTypeEnvResult> {
-    record_build_type_env_call();
     {
         let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
@@ -14952,8 +14894,6 @@ pub fn rewire_type_env_import_str_binding_identity(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
-    record_rewire_type_env_import_str_binding_call();
-
     fn module_exports_type_name(m: Rc<TypedModule>, name: &str) -> bool {
         m.type_env
             .bindings
@@ -15073,7 +15013,6 @@ pub fn rewire_type_env_parent_links(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
-    record_rewire_type_env_parent_links_call();
     {
         let intern_table = modules
             .first()
