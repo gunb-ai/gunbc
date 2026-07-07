@@ -40,6 +40,8 @@ data declared_consumed_input_units: List<ConsumedInputUnit> = [
   coproduct_reflection_conformance_consumed_unit
 ]
 
+data unit_is_affected_substrate_not_ready_must_run_note: String = "Interim must-run when corpus_dependency_view_per_pr_substrate_ready is false (blocked-on-#6239): unit_is_affected returns true — coverage-fire Edge-(b), only ever ADDS rust-gate fires, never newly skips. NOT §5 absorbing fallback: the guard is explicit and counted at the ready() site; deficit frequency is observable (substrate false while #6239 open). Typed refusal for the selection axis lives in dag_compile_clean_scope RequireWholeTree; floor/cli_run mirror this must-run widen. Bool return defers variant modeling until per_unit_test_selector lands (unit_must_run_staged_note). DISSOLVES WHEN #6239: delete must-run arm; live entry_affected_by_dependency_view only."
+
 fn unit_is_affected(u: ConsumedInputUnit, paths: List<String>) -> Bool {
   if corpus_dependency_view_per_pr_substrate_ready() {
     entry_affected_by_dependency_view(
