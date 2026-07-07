@@ -18,6 +18,10 @@ fn s1_opt_verdict() -> String {
   }
 }
 
+fn s1_noop() -> String {
+  "NOOP"
+}
+
 fn s1_tmp() -> String {
   match grammar_coverage_ingest_path(path: "target/s1_item.dag") {
     ParsedClean => "CLEAN"
