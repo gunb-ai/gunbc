@@ -736,5 +736,8 @@ pub fn contiguous_loop_elementwise_kernel(
 // no counter and no refusal (the clone-fallback guard class was deleted with
 // the Rc<std container> carriers it policed).
 pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
-    Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())
+    match Rc::try_unwrap(x) {
+        Ok(v) => v,
+        Err(rc) => (*rc).clone(),
+    }
 }
