@@ -11898,16 +11898,41 @@ pub fn union_parent_type_env_caches(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
 ) -> Rc<TypeEnvCache> {
-    resolved_imports.clone().iter().cloned().fold(
-        empty_type_env_cache(),
-        |acc: Rc<TypeEnvCache>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
-            &parent_index,
-            imp.module_path.clone(),
-        ) {
-            Some(parent) => merge_type_env_cache(acc.clone(), parent.type_env_cache.clone()),
-            None => acc.clone(),
-        },
-    )
+    {
+        let parent_caches = Rc::new({
+            let mut __result = Vec::new();
+            for imp in resolved_imports.clone().iter().cloned() {
+                __result.extend(
+                    (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                        Some(parent) => Rc::new(vec![parent.type_env_cache.clone()]),
+                        None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        match parent_caches.clone().first().cloned() {
+            None => empty_type_env_cache(),
+            Some(head) => Rc::new(
+                parent_caches
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            .fold(
+                head.clone(),
+                |acc: Rc<TypeEnvCache>, cache: Rc<TypeEnvCache>| {
+                    merge_type_env_cache(acc, cache.clone())
+                },
+            ),
+        }
+    }
 }
 
 pub fn kernel_coproduct_variant_locals(env: Rc<TypeEnv>) -> Rc<HashMap<String, Rc<TypeBinding>>> {

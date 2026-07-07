@@ -5500,12 +5500,19 @@ fn union_parent_type_env_caches(
   resolved_imports: List<ResolvedImport>,
   parent_index: Map<String, TypedModule>
 ) -> TypeEnvCache {
-  fold(resolved_imports, init: empty_type_env_cache(), f: (acc, imp) =>
+  let parent_caches = flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: parent } => merge_type_env_cache(base: acc, overlay: parent.type_env_cache)
-      Absent => acc
+      Present { value: parent } => [parent.type_env_cache]
+      Absent => []
     }
   )
+  match parent_caches |> first {
+    Absent => empty_type_env_cache()
+    Present { value: head } =>
+      fold(parent_caches |> skip(1), init: head, f: (acc, cache) =>
+        merge_type_env_cache(base: acc, overlay: cache)
+      )
+  }
 }
 
 fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
