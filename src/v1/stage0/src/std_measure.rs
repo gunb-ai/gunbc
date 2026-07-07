@@ -52,6 +52,7 @@ pub enum Scale {
     Micro,
     Milli,
     One,
+    Sixty,
     Kilo,
     Mega,
     Giga,
@@ -73,6 +74,7 @@ pub fn scale_exponent(s: Scale) -> i64 {
         Scale::Micro => -6,
         Scale::Milli => -3,
         Scale::One => 0,
+        Scale::Sixty => 0,
         Scale::Kilo => 3,
         Scale::Mega => 6,
         Scale::Giga => 9,
@@ -94,6 +96,33 @@ pub fn kibi_factor() -> Nat {
     1024
 }
 
+pub fn seconds_per_minute() -> Nat {
+    60
+}
+
+pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
+    match s {
+        Scale::One => Some(1),
+        Scale::Sixty => Some(seconds_per_minute()),
+        Scale::Atto => None,
+        Scale::Femto => None,
+        Scale::Pico => None,
+        Scale::Nano => None,
+        Scale::Micro => None,
+        Scale::Milli => None,
+        Scale::Kilo => None,
+        Scale::Mega => None,
+        Scale::Giga => None,
+        Scale::Tera => None,
+        Scale::Peta => None,
+        Scale::Exa => None,
+        Scale::Kibi => None,
+        Scale::Mebi => None,
+        Scale::Gibi => None,
+        Scale::Tebi => None,
+    }
+}
+
 pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
     match s.clone() {
         Scale::One => Some(1),
@@ -107,6 +136,7 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
         Scale::Nano => None,
         Scale::Micro => None,
         Scale::Milli => None,
+        Scale::Sixty => None,
         Scale::Kilo => None,
         Scale::Mega => None,
         Scale::Giga => None,
@@ -385,6 +415,19 @@ pub fn microsecond_count(m: Microsecond) -> Nat {
     measure_count(m.clone())
 }
 
+pub type Millisecond = Rc<Measure<(), (), i64>>;
+
+pub fn millisecond(count: Nat) -> Millisecond {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn millisecond_count(m: Millisecond) -> Nat {
+    measure_count(m)
+}
+
 pub type Second = Rc<Measure<(), (), i64>>;
 
 pub fn second(count: Nat) -> Second {
@@ -396,6 +439,19 @@ pub fn second(count: Nat) -> Second {
 
 pub fn second_count(s: Second) -> Nat {
     measure_count(s.clone())
+}
+
+pub type Minute = Rc<Measure<(), (), i64>>;
+
+pub fn minute(count: Nat) -> Minute {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn minute_count(m: Minute) -> Nat {
+    measure_count(m)
 }
 
 pub type Percent = Rc<Measure<(), (), i64>>;
@@ -465,6 +521,8 @@ pub struct Micro;
 pub struct Milli;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct One;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Sixty;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Kilo;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

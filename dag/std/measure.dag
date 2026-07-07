@@ -51,6 +51,8 @@ type Scale =
   | Gibi
   | Tebi
 
+data sixty_scale_note: String = "Scale.Sixty is the sexagesimal time factor (60 seconds per unit); Minute = Measure<Time, Sixty, Nat> is distinct from Second = Measure<Time, One, Nat>. Conversion authority: time_scale_factor_seconds (not scale_exponent, which returns 0 for Sixty as a non-decimal marker)."
+
 fn scale_exponent(s: Scale) -> Int {
   match s {
     Atto  => -18
