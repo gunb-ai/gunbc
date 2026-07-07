@@ -12,12 +12,12 @@ import v2.lens.module_graph {
   path_matches_touched
 }
 import v2.std.algebra { any, contains, length, list_snoc_item }
-import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.dependency { DependencyView }
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
-import v2.std.text { String }
+import v2.std.text { String, string_is_empty }
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
 
 data entry_selection_query_note: String = "Production entry selector (lever-a slice 2): reverse-reachability over DependencyView at node-grain, projected node -> containing module file path -> shard entry match. Replaces import-closure entry_affected_by_touched_paths. Edit-locus resolution uses module_declaration_facts path match + fn_arrow_decl output nodes for the touched module (dissolve-on: NodeArtifactProvenance over whole-tree InferredTree when #6239 lands). Per-PR live execution refuses when corpus_dependency_view_per_pr_substrate_ready is false (blocked-on-#6239)."
@@ -52,10 +52,10 @@ fn module_path_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>)
       acc
     }
   })
-  if best_module == "" {
-    Absent
+  if string_is_empty(s: best_module) {
+    optional_absent()
   } else {
-    Present { value: best_path }
+    optional_present(value: best_path)
   }
 }
 
