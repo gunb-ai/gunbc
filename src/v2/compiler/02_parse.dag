@@ -1499,6 +1499,44 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
   }
 }
 
+data grammar_overlap_residue_disposition: String = "Choice-FIRST overlap splits into two states that must not conflate: both_nullable=true is genuine ambiguity (two arms can accept the same token with an empty derivation in play) and stays a fail-closed Rejected; both_nullable=false is a non-LL(1) choice point the runtime handles by construction (parse_choice_first_dispatch routes disjoint FIRST directly and sends overlap to parse_choice_residue_backtrack), so it is a counted, typed Accepted-residue diagnostic (reason parse_grammar_choice_overlap_residue, one per row), never a rejection and never a silent drop. Receipt: dag_wave1 carries 5 non-nullable overlap rows (expr, arg, match_arm, field_pattern, if_expr); rejecting them made parse_module refuse every input on main 2026-07-06 while the backtrack arm sat dead - the wall refused what its own runtime handles."
+
+fn grammar_nullable_ambiguity_rows(roster: List<GrammarChoiceAmbiguityRow>) -> List<GrammarChoiceAmbiguityRow> {
+  filter(xs: roster, predicate: fn(row) { row.both_nullable })
+}
+
+fn parse_grammar_choice_overlap_residue_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_grammar_choice_overlap_residue,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn diagnostics_from_diagnostic_list(items: List<Diagnostic>) -> Diagnostics {
+  match list_at_optional(xs: items, index: 0) {
+    Absent => None
+    Present { value: first } =>
+      match list_tail(xs: items) {
+        TailAbsent => Some { diagnostics: NonEmptyDiagnostics { head: first, tail: Empty } }
+        TailFound { tail: rest } =>
+          Some { diagnostics: NonEmptyDiagnostics { head: first, tail: rest } }
+      }
+  }
+}
+
+fn grammar_overlap_residue_diagnostics(at: Locus, roster: List<GrammarChoiceAmbiguityRow>) -> Diagnostics {
+  diagnostics_from_diagnostic_list(
+    items: fold_list(
+      xs: roster,
+      empty: Empty,
+      cons: fn(acc, row) {
+        list_snoc_item(xs: acc, item: parse_grammar_choice_overlap_residue_diagnostic(at: at))
+      }
+    )
+  )
+}
+
 fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
   if grammar_has_undefined_nonterminals(root: root) {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
@@ -1510,12 +1548,16 @@ fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<Validated
         Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
         let ambiguity_roster = grammar_choice_ambiguity_roster(root: root)
-        if !is_empty(xs: ambiguity_roster) {
+        let nullable_rows = grammar_nullable_ambiguity_rows(roster: ambiguity_roster)
+        if !is_empty(xs: nullable_rows) {
           Rejected {
-            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: ambiguity_roster)
+            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: nullable_rows)
           }
         } else {
-          Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
+          Accepted {
+            value: ValidatedGrammarRoot { root: root },
+            diagnostics: grammar_overlap_residue_diagnostics(at: at, roster: ambiguity_roster)
+          }
         }
       }
     }
@@ -2042,12 +2084,22 @@ fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArti
       ModeledGrammar { root: root } =>
         match grammar_validate_for_parse(root: root, at: at) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-          Accepted { value: validated, diagnostics: _ } =>
-            parse_production(
+          Accepted { value: validated, diagnostics: validation_residue } =>
+            match parse_production(
               tokens: token_stream_remaining(stream: tokens),
               validated: validated,
               production_name: root.start
-            )
+            ) {
+              Accepted { value: artifact, diagnostics: parse_diags } =>
+                Accepted {
+                  value: artifact,
+                  diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
+                }
+              Rejected { diagnostics: parse_rejected } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
+                }
+            }
         }
     }
   } else {

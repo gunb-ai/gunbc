@@ -4,26 +4,29 @@ import v2.compiler.parse {
   grammar_choice_ambiguity_count,
   grammar_choice_ambiguity_roster,
   grammar_has_choice_ambiguity,
+  grammar_nullable_ambiguity_rows,
   grammar_validate_for_parse
 }
 import v2.extdeps.languages.dag { dag_wave1_grammar_root }
 import v2.extdeps.languages.python { python_wave1_grammar_root }
 import v2.std.collection { list_at_optional, Present, Absent }
 import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.algebra { is_empty, length }
 import v2.std.logic { Bool }
+import v2.std.integer { Int }
 import v2.std.node { Symbol }
 
-data gca_audit_note: String = "Manual ambiguity stomper receipt (not CI-enrolled). dag_wave1: zero FIRST overlaps; grammar_validate_for_parse fail-closed on ambiguity (rejection carries grammar_choice_ambiguity_rejection_diagnostics roster). Runtime choice: FIRST-dispatch when disjoint, named backtrack residue when overlap. python_wave1 count=1 positive control (validate rejects). Remaining parser fallback: match_arm_stmt_body memo bypass. dag_wave1 grammar root: extdeps authority (dag_wave1_grammar_root), not re-extracted from LanguageModel."
+data gca_audit_note: String = "Manual ambiguity stomper receipt (not CI-enrolled). Disposition since the overlap-residue split (2026-07-06): both_nullable=true FIRST overlap is genuine ambiguity and grammar_validate_for_parse stays fail-closed Rejected; both_nullable=false overlap is a non-LL(1) choice point the runtime handles (FIRST-dispatch when disjoint, parse_choice_residue_backtrack when overlapping) and validates Accepted with counted residue diagnostics. Receipt for the split: dag_wave1 carries 5 non-nullable overlap rows (expr, arg, match_arm, field_pattern, if_expr) and python_wave1 carries 1; the prior reject-all-overlap wall made parse_module refuse every input on main while the backtrack arm sat dead, and the zero-ambiguity witnesses here were enrolled green early but not re-executed as the FIRST fold evolved - green by authoring is not green by execution. Counts below are PINS: residue growth must be a loud diff, not silence. dag_wave1 grammar root: extdeps authority (dag_wave1_grammar_root), not re-extracted from LanguageModel."
 
 fn witness_python_wave1_choice_ambiguity_count() -> Int {
   grammar_choice_ambiguity_count(root: python_wave1_grammar_root())
 }
 
-fn witness_python_wave1_grammar_validate_rejects_ambiguity() -> Bool {
+fn witness_python_wave1_grammar_validate_accepts_with_overlap_residue() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: python_wave1_grammar_root(), at: at) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -31,8 +34,14 @@ fn witness_dag_wave1_choice_ambiguity_count() -> Int {
   grammar_choice_ambiguity_count(root: dag_wave1_grammar_root())
 }
 
-fn witness_dag_wave1_grammar_has_zero_choice_ambiguity() -> Bool {
-  !grammar_has_choice_ambiguity(root: dag_wave1_grammar_root())
+fn witness_dag_wave1_zero_nullable_choice_ambiguity() -> Bool {
+  is_empty(xs: grammar_nullable_ambiguity_rows(
+    roster: grammar_choice_ambiguity_roster(root: dag_wave1_grammar_root())
+  ))
+}
+
+fn witness_dag_wave1_overlap_residue_row_count() -> Int {
+  length(xs: grammar_choice_ambiguity_roster(root: dag_wave1_grammar_root()))
 }
 
 fn witness_dag_wave1_grammar_validate_accepts() -> Bool {
