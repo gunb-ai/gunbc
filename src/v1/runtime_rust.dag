@@ -174,6 +174,7 @@ fn rt_collection_ops() -> String {
     "    m.get(&key).cloned()\n",
     "}\n\n",
     "pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> { m.keys().cloned().collect() }\n\n",
+    "pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> { let mut keys = map_keys(m); keys.sort(); keys }\n\n",
     "pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool { m.is_empty() }\n\n",
     "// Sound identity hint (see 04_infer.dag substitute_generics): returns true =>\n",
     "// the two are structurally equal. The compiled realization answers with pointer\n",
