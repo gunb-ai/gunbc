@@ -40,7 +40,7 @@ pub fn re_export_derive_op_effect(
     method: HttpMethod,
     path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
-    derive_op_effect(operation_name, method, path)
+    derive_op_effect(operation_name.clone(), method.clone(), path.clone())
 }
 
 pub fn re_export_check_modifier(
@@ -48,13 +48,17 @@ pub fn re_export_check_modifier(
     declared_idempotent: bool,
     declared_readonly: bool,
 ) -> Rc<ModifierCheck> {
-    check_modifier_vs_derivation(op, declared_idempotent, declared_readonly)
+    check_modifier_vs_derivation(
+        op.clone(),
+        declared_idempotent.clone(),
+        declared_readonly.clone(),
+    )
 }
 
 pub fn re_export_parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
-    parse_path_template(raw)
+    parse_path_template(raw.clone())
 }
 
 pub fn re_export_has_path_params(template: Rc<PathTemplate>) -> bool {
-    has_path_params(template)
+    has_path_params(template.clone())
 }

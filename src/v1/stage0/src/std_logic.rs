@@ -5,10 +5,10 @@ use self::Classical::*;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::OrdSet as BTreeSet;
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -21,21 +21,21 @@ pub enum Classical {
 }
 
 pub fn classical_not(a: Classical) -> Classical {
-    match a {
+    match a.clone() {
         Classical::True => Classical::False,
         Classical::False => Classical::True,
     }
 }
 
 pub fn classical_and(a: Classical, b: Classical) -> Classical {
-    match a {
+    match a.clone() {
         Classical::False => Classical::False,
         Classical::True => b,
     }
 }
 
 pub fn classical_or(a: Classical, b: Classical) -> Classical {
-    match a {
+    match a.clone() {
         Classical::True => Classical::True,
         Classical::False => b,
     }

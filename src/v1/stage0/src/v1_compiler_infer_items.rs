@@ -2,18 +2,16 @@
 // Source module: v1.compiler.infer_items
 
 use self::ItemKind::*;
-pub use crate::std_induction::SubValueRelation;
-use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, TypeEnvCache};
+pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};
 pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
@@ -26,8 +24,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -93,10 +90,10 @@ pub fn inferred_to_outputs(
             InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
             InferredNode::Resolved { node: rt, .. } => {
                 let has_structure = (rt.connective.clone() != Connective::NoConnective);
-                if has_structure {
+                if has_structure.clone() {
                     {
                         let is_product = (rt.connective.clone() == Connective::Conj);
-                        if is_product {
+                        if is_product.clone() {
                             if (rt.ident_span.clone() == None) {
                                 Rc::new({
                                     let mut __result = Vec::new();
@@ -195,38 +192,6 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
         };
         kind
     }
-}
-
-pub fn variant_locals_from_items(
-    items: Rc<Vec<Rc<Node>>>,
-    init: Rc<HashMap<String, Rc<TypeBinding>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    items.iter().cloned().fold(
-        init,
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
-            let is_coproduct = (item.connective.clone() == Connective::Disj);
-            if is_coproduct.clone() {
-                item.children.clone().iter().cloned().fold(
-                    acc.clone(),
-                    |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| {
-                        let child_name = authored_name_at(source_indices.clone(), child.clone());
-                        v1_rt::rc_map_insert(
-                            vacc,
-                            child_name.clone(),
-                            Rc::new(TypeBinding {
-                                name: child_name.clone(),
-                                resolved: item.clone(),
-                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            }),
-                        )
-                    },
-                )
-            } else {
-                acc.clone()
-            }
-        },
-    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

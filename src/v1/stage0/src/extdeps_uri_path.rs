@@ -99,6 +99,7 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             };
             let name_and_suffix = Rc::new(
                 after_open
+                    .clone()
                     .split(&"}".to_string())
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
@@ -162,8 +163,8 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             } else {
                 Rc::new(PathSegmentTokensResult::ParsedSegmentTokens {
                     tokens: v1_rt::concat(
-                        v1_rt::concat(prefix_tokens, param_tokens),
-                        suffix_tokens,
+                        v1_rt::concat(prefix_tokens.clone(), param_tokens.clone()),
+                        suffix_tokens.clone(),
                     ),
                 })
             }
@@ -189,6 +190,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
             let mut __result = Vec::new();
             for s in Rc::new(
                 path_only
+                    .clone()
                     .split(&"/".to_string())
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),

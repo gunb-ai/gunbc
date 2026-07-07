@@ -3089,19 +3089,19 @@ fn emit_non_empty_wrappers() -> String {
   )
   let set_wrapper = concat(
     "#[derive(Debug, Clone, PartialEq)]\n",
-    "pub struct NonEmptyBTreeSet<T: Ord>(BTreeSet<T>);\n\n",
+    "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);\n\n",
     "impl<T: Ord> NonEmptyBTreeSet<T> {\n",
-    "    pub fn new(items: BTreeSet<T>) -> Result<Self, &'static str> {\n",
+    "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {\n",
     "        if items.is_empty() {\n",
     "            Err(\"NonEmptyBTreeSet requires at least one element\")\n",
     "        } else {\n",
     "            Ok(Self(items))\n",
     "        }\n",
     "    }\n\n",
-    "    pub fn as_set(&self) -> &BTreeSet<T> {\n",
+    "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {\n",
     "        &self.0\n",
     "    }\n\n",
-    "    pub fn into_set(self) -> BTreeSet<T> {\n",
+    "    pub fn into_set(self) -> std::collections::BTreeSet<T> {\n",
     "        self.0\n",
     "    }\n",
     "}"

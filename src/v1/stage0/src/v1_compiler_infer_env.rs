@@ -5,9 +5,9 @@ use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, Optio
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
     source_text_at,
@@ -15,8 +15,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -24,7 +23,6 @@ pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    #[serde(skip, default = "empty_type_env_parents")]
     pub parents: Rc<Vec<Rc<TypeEnv>>>,
     pub recursive_types: Rc<Vec<i64>>,
     pub recursive_type_set: Rc<HashMap<i64, bool>>,
@@ -32,10 +30,6 @@ pub struct TypeEnv {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub source_visible_names: Rc<HashMap<String, bool>>,
-}
-
-fn empty_type_env_parents() -> Rc<Vec<Rc<TypeEnv>>> {
-    Rc::new(vec![])
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -46,11 +40,146 @@ pub struct TypeBinding {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImportBinding {
+    pub name: String,
+    pub resolved: Rc<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScopeBinding {
+    pub name: String,
+    pub resolved: Rc<Node>,
+    pub provenance: Rc<SubValueRelation>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SymbolIndex {
+    pub entries: Rc<HashMap<String, Rc<Node>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Scope {
+    pub locals: Rc<HashMap<String, Rc<ScopeBinding>>>,
+}
+
+pub fn empty_symbol_index() -> Rc<SymbolIndex> {
+    Rc::new(SymbolIndex {
+        entries: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+    })
+}
+
+pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Option<Rc<Node>> {
+    v1_rt::map_get(&index.entries.clone(), qualified_name.clone())
+}
+
+pub fn symbol_index_insert(
+    index: Rc<SymbolIndex>,
+    qualified_name: String,
+    resolved: Rc<Node>,
+) -> Rc<SymbolIndex> {
+    Rc::new(SymbolIndex {
+        entries: v1_rt::rc_map_insert(
+            index.entries.clone(),
+            qualified_name.clone(),
+            resolved.clone(),
+        ),
+    })
+}
+
+pub fn empty_scope() -> Rc<Scope> {
+    Rc::new(Scope {
+        locals: v1_rt::rc_empty_map::<String, Rc<ScopeBinding>>(),
+    })
+}
+
+pub fn scope_lookup(scope: Rc<Scope>, name: String) -> Option<Rc<ScopeBinding>> {
+    v1_rt::map_get(&scope.locals.clone(), name.clone())
+}
+
+pub fn scope_push(scope: Rc<Scope>, binding: Rc<ScopeBinding>) -> Rc<Scope> {
+    Rc::new(Scope {
+        locals: v1_rt::rc_map_insert(scope.locals.clone(), binding.name.clone(), binding.clone()),
+    })
+}
+
+pub fn ancestry_cache_sharing_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: single-parent ancestry_str_bindings borrows parent.type_env_cache.str_bindings (Rc-shared visible surface) instead of map_merge(parent.ancestry_str_bindings, parent.str_bindings) per module — kills O(M²) SipHash/map_merge churn on import chains; full SymbolIndex authority is the follow-on (type-env-single-authority-design.md).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn symbol_index_single_authority_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: SymbolIndex + Scope replace TypeEnv.ancestry_str_bindings materialization — see docs/plans/type-env-single-authority-design.md §4–§5; gated on import-chain sub-quadratic scaling receipt (reference_carrier_witness_test) + whole-corpus compile-clean wall-clock baseline.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnvCache {
     pub deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub cycle_set_str: Rc<HashMap<String, bool>>,
     pub variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+}
+
+pub fn type_env_compositional_authority_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: compositional TypeEnv.parents + ancestry_str_bindings rewire passes in stage0 — ground in v2 std.type_env when PerformanceReceipt subsumes type_env_work_count_profiling_dissolution_trigger.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_env_profiling_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_env_work_count_profiling_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: build_type_env + merge_type_env_cache + rewire pass counters — fold into PerformanceReceipt at realization-measurement-loop Phase 0.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_env_cache_parallel_repr_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: TypeEnvCache String-keyed str_bindings and cycle_set_str parallel to TypeEnv Int-keyed bindings and recursive_type_set — fold into single authority at v2 regen.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_env_cache_key_determinism_authority() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cache-key determinism for resolved_graph disk tier: resolved_graph_cache::encode_cache_payload applies sort_json_value at serialization boundary (not merge_type_env_cache / build_type_env hot paths). B2 de-fork: Rust seed must match this .dag plain map_merge authority.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn visible_bindings_invariant() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3 reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator ruling: the parent-recurse counter was a parallel representation guarding a fallback; the fallback is now unwritable by construction — no whole-env flatten exists to call). Visibility reads are one-level: local str_bindings/ancestry_str_bindings, or a fold over parent.str_bindings only (see collect_unit_variant_phantom_matches). Dissolve-on: namespace-as-sole-authority ruling — env maps become a derived projection of namespace reachability.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
@@ -62,11 +191,18 @@ pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     })
 }
 
+pub fn type_env_counter_dissolution() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The 2026-07-04 use-site inference pathology instrument (env-amplification counters) dissolved with the pathology it measured: the record_* statement calls and their stub fns were deleted (they were also the only corpus instances of a statement-then-expression block the Rust emitter mis-renders — that emitter deficiency is ledgered with the emit-stage work). 2026-07-06: the getter stubs, their hand-injected AtomicU64 realization in the generated seed, the phase_profile heartbeat reads, and the counter-equality witness tests are deleted together (operator ruling: counter witnesses are a parallel representation). The live scaling witnesses are the time-based import-chain tests in src/v1/tests/src/type_env_scope_chain_test.rs.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
         deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
-        // Match 04_env.dag authority (plain map_merge). Cache-key determinism lives at
-        // resolved_graph_cache::encode_cache_payload (sort_json_value), not here.
         str_bindings: v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone()),
         cycle_set_str: v1_rt::rc_map_merge(
             base.cycle_set_str.clone(),
@@ -80,7 +216,7 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
 }
 
 pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match intern_find(env.intern_table.clone(), name) {
+    match intern_find(env.intern_table.clone(), name.clone()) {
         Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
             Some(binding) => Some(binding.clone()),
             None => None,
@@ -92,42 +228,21 @@ pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc
 pub fn str_bindings_from_bindings(
     bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    let mut pairs: Vec<(String, Rc<TypeBinding>)> = bindings
-        .values()
-        .map(|binding| (binding.name.clone(), binding.clone()))
-        .collect();
-    pairs.sort_by(|a, b| a.0.cmp(&b.0));
-    pairs.into_iter().fold(
+    Rc::new(v1_rt::map_values(&bindings)).iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, (name, binding)| {
-            v1_rt::rc_map_insert(acc, name, binding)
-        },
-    )
-}
-
-// Serialization-boundary canonicalization only (resolved_graph_cache::sort_json_value
-// subsumes this for disk cache; do not call from build_type_env / merge_type_env_cache).
-#[allow(dead_code)]
-pub fn deterministic_str_binding_map(
-    m: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    let mut keys: Vec<String> = m.keys().cloned().collect();
-    keys.sort();
-    keys.iter().fold(
-        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, key: &String| {
-            v1_rt::rc_map_insert(acc, key.clone(), m.get(key).unwrap().clone())
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
+            v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
         },
     )
 }
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match v1_rt::map_get(&env.str_bindings, name.clone()) {
+    match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
-        None => match v1_rt::map_get(&env.ancestry_str_bindings, name.clone()) {
+        None => match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
             Some(binding) => Some(binding.clone()),
-            None => match intern_find(env.intern_table.clone(), name) {
-                Some(id) => v1_rt::map_get(&env.bindings, id),
+            None => match intern_find(env.intern_table.clone(), name.clone()) {
+                Some(id) => v1_rt::map_get(&env.bindings.clone(), id.clone()),
                 None => None,
             },
         },
@@ -139,13 +254,13 @@ pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
         Some(binding) => Some(binding.clone()),
         None => {
             let name = intern_str(env.intern_table.clone(), ident.clone());
-            lookup_binding_by_name(env, name)
+            lookup_binding_by_name(env.clone(), name.clone())
         }
     }
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
-    match v1_rt::map_get(&env.recursive_type_set.clone(), ident) {
+    match v1_rt::map_get(&env.recursive_type_set.clone(), ident.clone()) {
         Some(_) => true,
         None => false,
     }
@@ -159,21 +274,21 @@ pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
 }
 
 pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
-    match lookup_binding(env, ident) {
+    match lookup_binding(env.clone(), ident.clone()) {
         Some(binding) => Some(binding.resolved.clone()),
         None => None,
     }
 }
 
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
-    match lookup_binding_by_name(env, name) {
+    match lookup_binding_by_name(env.clone(), name.clone()) {
         Some(binding) => Some(binding.resolved.clone()),
         None => None,
     }
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
-    authored_name_at(env.source_indices.clone(), node)
+    authored_name_at(env.source_indices.clone(), node.clone())
 }
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
@@ -191,18 +306,26 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
 }
 
 pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
-    match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
-        Some(fields) if !fields.is_empty() => fields.clone(),
-        _ => {
-            for parent in env.parents.iter() {
-                let fields = inductive_fields_for(parent.clone(), type_name.clone());
-                if !fields.is_empty() {
-                    return fields;
-                }
-            }
-            Rc::new(vec![])
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let local = match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
+            Some(fields) => fields.clone(),
+            None => Rc::new(vec![]),
+        };
+        if ((local.clone().len() as i64) > 0) {
+            local.clone()
+        } else {
+            env.parents.clone().iter().cloned().fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<Rc<InductiveField>>>, parent: Rc<TypeEnv>| {
+                    if ((acc.clone().len() as i64) > 0) {
+                        acc.clone()
+                    } else {
+                        inductive_fields_for(parent.clone(), type_name.clone())
+                    }
+                },
+            )
         }
-    }
+    })
 }
 
 pub fn is_inductive_field(
@@ -213,7 +336,10 @@ pub fn is_inductive_field(
 ) -> bool {
     {
         let mut __found = false;
-        for f in inductive_fields_for(env, type_name).iter().cloned() {
+        for f in inductive_fields_for(env.clone(), type_name.clone())
+            .iter()
+            .cloned()
+        {
             if ((f.variant_name.clone() == variant_name.clone())
                 && (f.field_name.clone() == field_name.clone()))
             {
@@ -241,12 +367,12 @@ pub fn put_inductive_field(
             fields.clone(),
             type_name.clone(),
             v1_rt::concat(
-                existing,
+                existing.clone(),
                 Rc::new(vec![Rc::new(InductiveField {
                     type_name: type_name.clone(),
-                    variant_name: variant_name,
-                    field_name: field_name,
-                    shape: shape,
+                    variant_name: variant_name.clone(),
+                    field_name: field_name.clone(),
+                    shape: shape.clone(),
                     element_type: type_name.clone(),
                 })]),
             ),
@@ -271,13 +397,13 @@ pub fn put_inductive_field_cross(
             fields.clone(),
             type_name.clone(),
             v1_rt::concat(
-                existing,
+                existing.clone(),
                 Rc::new(vec![Rc::new(InductiveField {
                     type_name: type_name.clone(),
-                    variant_name: variant_name,
-                    field_name: field_name,
-                    shape: shape,
-                    element_type: element_type,
+                    variant_name: variant_name.clone(),
+                    field_name: field_name.clone(),
+                    shape: shape.clone(),
+                    element_type: element_type.clone(),
                 })]),
             ),
         )
@@ -312,7 +438,7 @@ pub fn merge_inductive_fields(
 pub fn inductive_fields_list_to_map(
     fields: Rc<Vec<Rc<InductiveField>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    fields.iter().cloned().fold(
+    fields.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
             let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {

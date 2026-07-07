@@ -42,7 +42,7 @@ pub fn check_bare_containers(
             _ => true,
         };
         let nname = authored_name_at(source_indices.clone(), n.clone());
-        let self_diags = if is_expr {
+        let self_diags = if is_expr.clone() {
             Rc::new(vec![])
         } else {
             match container_expected_arity(nname.clone()) {
@@ -50,7 +50,7 @@ pub fn check_bare_containers(
                     if (((((n.children.clone().len() as i64) == 0)
                         && ((n.params.clone().len() as i64) == 0))
                         && (n.connective.clone() == Connective::NoConnective))
-                        && !has_structure)
+                        && !has_structure.clone())
                     {
                         Rc::new(vec![make_error_node(
                             Rc::new(CompilerDiagnostic::ArityMismatch {
@@ -158,14 +158,14 @@ pub fn check_bare_containers(
         Rc::new({
             let mut __result = Vec::new();
             for d in Rc::new(vec![
-                self_diags,
-                child_diags,
-                param_diags,
-                type_ann_diags,
-                inferred_diags,
-                body_diags,
-                uses_diags,
-                prop_diags,
+                self_diags.clone(),
+                child_diags.clone(),
+                param_diags.clone(),
+                type_ann_diags.clone(),
+                inferred_diags.clone(),
+                body_diags.clone(),
+                uses_diags.clone(),
+                prop_diags.clone(),
             ])
             .iter()
             .cloned()
@@ -212,7 +212,7 @@ pub fn normalize_graph(
         });
         Rc::new(NormalizeResult {
             graph: graph.clone(),
-            diagnostics: diags,
+            diagnostics: diags.clone(),
         })
     }
 }

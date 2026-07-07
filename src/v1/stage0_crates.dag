@@ -205,6 +205,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
         ],
         dependencies: [
           CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
+          CargoDependency { name: "im-rc", source: RegistryDep { version: "15.1", features: ["serde"] } },
           CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
           CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } },
           CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", features: [] } },
@@ -231,6 +232,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
         ],
         dependencies: [
           CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
+          CargoDependency { name: "im-rc", source: RegistryDep { version: "15.1", features: ["serde"] } },
           CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
           CargoDependency { name: "v1-stage0-core", source: LocalPathDep { path: "../stage0_core" } }
         ],
