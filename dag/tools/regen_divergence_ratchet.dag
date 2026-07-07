@@ -1,0 +1,166 @@
+module tools.regen_divergence_ratchet
+
+import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Assign, If, AndOr, Pipe,
+  AndThen, OrElse,
+  Lit, VarRef, CmdSubst,
+  lit, var_ref, command, assign, serialize_bash
+}
+import tools.host_prelude { ensure_regen_stage0_built }
+import tools.self_host_realized_comparison_transport {
+  realized_comparison_stable_dir,
+  realized_comparison_roster_manifest_path
+}
+import std.types { String, Bool, Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data regen_divergence_baseline: Int = 31
+
+data regen_divergence_baseline_authority_path: String = "dag/tools/regen_divergence_ratchet.dag"
+
+data regen_divergence_baseline_grep_pattern: String = "regen_divergence_baseline: Int = [0-9]+"
+
+data regen_divergence_baseline_note: String = "SINGLE AUTHORITY for the sanctioned self-host divergence count (#6352, two-job split). The only place the sanctioned count lives; lowering it is the debt-paydown action, and the ratchet forbids raising it. When it reaches 0 the ratchet becomes the byte-identical hard gate (auto-promote, no manual flip)."
+
+data regen_divergence_ratchet_note: String = "The regen_divergence ratchet is the §5 no-escape-hatch guard for the two-job split (operator ruling 2026-07-07, #6352). The non-required ci_regen job shows honest byte-identical RED; this REQUIRED ratchet forbids the divergence GROWING behind that red door. Mechanism (B1, clever-koi-reviewed): actual = regen's real per-run count (regen_stage0 emits the 'regen_divergence_count=N' contract — real execution output, not prose-scrape, not a literal); TIGHTNESS actual==baseline forces the baseline to track true divergence exactly so every change is a visible baseline edit; DRIFT baseline(HEAD)<=baseline(origin/main) makes a baseline-RAISE mechanically unwritable (a grow-both-actual-and-baseline attack fails the drift). AUTO-PROMOTE: baseline==0 gives actual==0 required which is byte-identical which is the original hard gate — structural, no manual flip, bound to the same mismatches-empty oracle. A missing count (regen did not emit the contract) is a fail-CLOSED refusal, never a pass. Bootstrap (origin/main lacks this file on the introducing PR): drift falls back to baseline(HEAD), safe because tightness already pins baseline to the real actual. dissolve-on: the grep of main's committed .dag for the baseline value is an interim cross-ref read; dissolves when the scheduler emits the ratchet as one-realize-two-check-runs sharing the regen execution (the 2x-regen §2 dissolve-target) and reads the baseline through a structured cross-ref instead of git-show+grep."
+
+fn regen_capture_cmdsubst() -> ShellWord {
+  CmdSubst {
+    body: AndOr {
+      left: command(words: [
+        var_ref(name: "REGEN_STAGE0"),
+        lit(text: "--emit-fresh"), lit(text: realized_comparison_stable_dir),
+        lit(text: "--write-manifest"), lit(text: realized_comparison_roster_manifest_path),
+        lit(text: "--verify")
+      ]),
+      op: OrElse,
+      right: command(words: [lit(text: "true")])
+    }
+  }
+}
+
+fn actual_count_cmdsubst() -> ShellWord {
+  CmdSubst {
+    body: Pipe {
+      left: Pipe {
+        left: Pipe {
+          left: command(words: [lit(text: "echo"), var_ref(name: "REGEN_OUT")]),
+          right: command(words: [lit(text: "grep"), lit(text: "-oE"), lit(text: "regen_divergence_count=[0-9]+")])
+        },
+        right: command(words: [lit(text: "tail"), lit(text: "-1")])
+      },
+      right: command(words: [lit(text: "sed"), lit(text: "s/.*=//")])
+    }
+  }
+}
+
+fn concat_authority_ref() -> String {
+  concat("origin/main:", regen_divergence_baseline_authority_path)
+}
+
+fn baseline_main_cmdsubst() -> ShellWord {
+  CmdSubst {
+    body: AndOr {
+      left: Pipe {
+        left: Pipe {
+          left: command(words: [
+            lit(text: "git"), lit(text: "show"),
+            lit(text: concat_authority_ref())
+          ]),
+          right: command(words: [lit(text: "grep"), lit(text: "-oE"), lit(text: regen_divergence_baseline_grep_pattern)])
+        },
+        right: command(words: [lit(text: "grep"), lit(text: "-oE"), lit(text: "[0-9]+$")])
+      },
+      op: OrElse,
+      right: command(words: [lit(text: "echo"), lit(text: to_string(regen_divergence_baseline))])
+    }
+  }
+}
+
+fn baseline_literal_word() -> ShellWord {
+  lit(text: to_string(regen_divergence_baseline))
+}
+
+fn exit_code_stmt(code: Int) -> ShellStmt {
+  command(words: [lit(text: "exit"), lit(text: to_string(code))])
+}
+
+fn refuse_if_no_count() -> ShellStmt {
+  If {
+    cond: command(words: [lit(text: "["), lit(text: "-z"), var_ref(name: "ACTUAL"), lit(text: "]")]),
+    then: [
+      command(words: [lit(text: "echo"), lit(text: "regen_divergence_ratchet: REFUSED — regen emitted no regen_divergence_count contract (count unreadable); failing closed")]),
+      exit_code_stmt(code: 1)
+    ]
+  }
+}
+
+fn refuse_if_not_tight() -> ShellStmt {
+  If {
+    cond: command(words: [lit(text: "["), var_ref(name: "ACTUAL"), lit(text: "-ne"), baseline_literal_word(), lit(text: "]")]),
+    then: [
+      command(words: [lit(text: "echo"), lit(text: "regen_divergence_ratchet: divergence count != baseline — set regen_divergence_baseline to the real divergence (down = debt paid; upward mismatch = new self-host debt)")]),
+      exit_code_stmt(code: 1)
+    ]
+  }
+}
+
+fn refuse_if_baseline_raised() -> ShellStmt {
+  If {
+    cond: command(words: [lit(text: "["), baseline_literal_word(), lit(text: "-gt"), var_ref(name: "BASELINE_MAIN"), lit(text: "]")]),
+    then: [
+      command(words: [lit(text: "echo"), lit(text: "regen_divergence_ratchet: REFUSED — regen_divergence_baseline was RAISED above origin/main (the count may only shrink; growing self-host debt is not admissible behind the non-required regen job)")]),
+      exit_code_stmt(code: 1)
+    ]
+  }
+}
+
+fn regen_divergence_ratchet_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  ShellProgram {
+    set_e: false,
+    statements: concat(ensure_regen_stage0_built(), [
+      command(words: [lit(text: "cd"), root]),
+      assign(name: "REGEN_OUT", value: regen_capture_cmdsubst()),
+      assign(name: "ACTUAL", value: actual_count_cmdsubst()),
+      assign(name: "BASELINE_MAIN", value: baseline_main_cmdsubst()),
+      refuse_if_no_count(),
+      refuse_if_not_tight(),
+      refuse_if_baseline_raised(),
+      command(words: [lit(text: "echo"), lit(text: "regen_divergence_ratchet: OK — self-host divergence within the (shrinking) baseline")]),
+      exit_code_stmt(code: 0)
+    ])
+  }
+}
+
+data regen_divergence_ratchet_transport_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.bash.program",
+    decl_name: "serialize_bash",
+    field: WholeDeclaration
+  }
+}
+
+fn regen_divergence_ratchet_script() -> String {
+  serialize_bash(p: regen_divergence_ratchet_program())
+}
+
+fn run_regen_divergence_ratchet() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: regen_divergence_ratchet_program()))
+  result.success
+}
+
+fn regen_divergence_ratchet_gate() -> ProcessExit {
+  if run_regen_divergence_ratchet() {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      reason: "regen_divergence_ratchet: self-host divergence grew or the count contract was unreadable (see step log for the typed refusal)"
+    }
+  }
+}
