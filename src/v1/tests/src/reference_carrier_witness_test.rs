@@ -132,14 +132,16 @@ fn floor_scaling_curve_import_chain_sub_quadratic_receipt() {
     let d100 = time_import_chain_compile(100);
     let d200 = time_import_chain_compile(200);
     let d400 = time_import_chain_compile(400);
+    let d800 = time_import_chain_compile(800);
 
     let ratio_100_50 = d100.as_secs_f64() / d50.as_secs_f64().max(1e-9);
     let ratio_200_100 = d200.as_secs_f64() / d100.as_secs_f64().max(1e-9);
     let ratio_400_200 = d400.as_secs_f64() / d200.as_secs_f64().max(1e-9);
+    let ratio_800_400 = d800.as_secs_f64() / d400.as_secs_f64().max(1e-9);
 
     eprintln!(
-        "import-chain scaling receipt: d50={d50:?} d100={d100:?} d200={d200:?} d400={d400:?} \
-         ratio_100/50={ratio_100_50:.2} ratio_200/100={ratio_200_100:.2} ratio_400/200={ratio_400_200:.2}"
+        "import-chain scaling receipt: d50={d50:?} d100={d100:?} d200={d200:?} d400={d400:?} d800={d800:?} \
+         ratio_100/50={ratio_100_50:.2} ratio_200/100={ratio_200_100:.2} ratio_400/200={ratio_400_200:.2} ratio_800/400={ratio_800_400:.2}"
     );
 
     assert!(
