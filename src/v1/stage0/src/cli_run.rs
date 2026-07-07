@@ -2072,8 +2072,7 @@ fn reconcile_with_typed_cache(
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
     let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
-    let emit_graph_info =
-        v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
+    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
     Ok(Rc::new(ResolvedGraph {
         modules,
         item_registry: expanded_registry,
