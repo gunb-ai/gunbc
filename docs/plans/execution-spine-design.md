@@ -55,6 +55,22 @@ Realization is **downstream of** dependency (operator ruling, this is the intend
 
 The compiler runs at 1/128 not because folding is serial, but because (a) it is *implemented* serially even where independent, and (b) accumulator-threading adds false chains. Both are removable. **This is what the spine buys: `gunbc run X` approaches the critical-path bound on the modeled hardware, by construction.**
 
+## 3′. The fractal/structural guarantee — why *any* program is atomically parallelizable
+
+The point of §1–§3 is not that *we* parallelized the floor; it is that **parallelism is a theorem of the structure**, holding for any program built from the primitives, at every scale, with zero programmer effort. It rests on three properties, two already true:
+
+- **Fractal — by catamorphism (already true).** `dependency_view` is derived by a fold over the primitives (`topological_layers` *is* `fold_node` with a `NodeFold` algebra, `std/dependency.dag`). A catamorphism applies the same operation at every level, so the DependencyView is **self-similar at every scale by construction** — program ⊃ module ⊃ function ⊃ expression ⊃ atom, each a sub-DependencyView. You cannot define a node whose sub-structure lacks one; the fold is the definition.
+- **Parallelizable — by monoid (the one property to enforce).** A catamorphism parallelizes **iff its combine is associative — a monoid** (MapReduce's core law: reduction parallelizes iff the operator is associative). The *map* half (independent children) is always parallel in a pure fold; the *reduce* half is parallel iff associative → a balanced tree-reduce, log-depth. The measured 1/128 serialism is **not a limit** — it is **non-monoidal accumulator-threading** (the O(M²) ancestry copy is a left-fold threading order-dependent state across siblings). Make the combine inhabit `Monoid` (grounds in `std.algebra`/FreeMonoid) and the same fold becomes a parallel tree-reduce at every level, for free.
+- **Sound — by edge-completeness (mostly true, one hole).** Parallelizing is safe only if nothing hidden constrains it. The DependencyView edges every dependency kind (`type/data/effect/resource/module/placement_depends_on`) and the substrate is pure/effect-explicit (§4). So no ordering exists that the runner can't see — **except** an effect/resource dependency a node fails to declare as an edge. That is the one hole, and it is closed by a §5 wall: **performing an effect without declaring its resource edge is a hard error** (a hidden dependency is unwritable).
+
+**The three structural enforcements** (this is the answer to "how do we ensure it structurally, without having to think about it"):
+
+1. `dependency_view` is THE canonical catamorphism — single authority, can't-not-use (fractal by construction).
+2. every combine inhabits `Monoid` — a non-monoidal/accumulator-threaded fold is flagged as serial-in-disguise; the standard combines the substrate provides are monoidal, so parallelism is inherited, never written.
+3. every dependency is an edge — a hidden effect/resource dependency is unwritable (the wall).
+
+Then "atomically parallelizable without worry" is exact: **you write monoids and declare dependencies — both already compelled by the substrate — and realization derives maximum parallelism at every scale.** Parallelism is never annotated; it is a theorem, not a task. (This is also why the floor's batch-2 missing-Share and the compiler's O(M²) copy are *the same law violated* — a non-monoidal fold and a missing `Share` are two faces of one broken guarantee.)
+
 ## 4. The single `run` authority — the discipline made structural
 
 Make `run` (§2) the **only** way to execute a graph and **delete the bypasses** (the hand-built `RealizationPlan`, the serial fold, any direct executor). Then, exactly like `bazel run`, there is no unscheduled path *because one cannot be written* — scheduling is implicit in "run."
