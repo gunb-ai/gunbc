@@ -4,6 +4,7 @@ import std.disposition { SingleAuthority }
 import v2.lens.simulated_relationship { chain_is_simulated }
 import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.lens.complexity_lowering { cost_is_lowerable }
+import v2.lens.fn_family { sigma_families_of_defs }
 import v2.lens.cost { symbolic_cost_of_node }
 import v2.std.node { Node, Symbol }
 import std.algebra { FreeMonoid }
@@ -13,7 +14,7 @@ import v2.std.logic { Bool }
 
 type CostAxis = ChangeTime | RunTime
 
-type Representation = TermChain | TypeForest | ImportGraph
+type Representation = TermChain | TypeForest | ImportGraph | DeclForest
 
 type LinearityRule {
   name: Symbol
@@ -53,8 +54,17 @@ fn dup_type_to_generic_rule() -> LinearityRule {
   }
 }
 
+fn sigma_fn_family_rule() -> LinearityRule {
+  LinearityRule {
+    name: ^sigma_fn_family,
+    axis: ChangeTime,
+    representation: DeclForest,
+    detect: fn(s) { length(xs: sigma_families_of_defs(defs: s)) > 0 }
+  }
+}
+
 fn linearity_registry() -> FreeMonoid<LinearityRule> {
-  [ unroll_to_fold_rule(), complexity_reducible_rule(), dup_type_to_generic_rule() ]
+  [ unroll_to_fold_rule(), complexity_reducible_rule(), dup_type_to_generic_rule(), sigma_fn_family_rule() ]
 }
 
 data parallel_representation_wall_dissolved: String = "The ParallelRepresentationRule apparatus (ImportGraph declared-vs-derived closure wall, WallNow on import_closure_live) formerly lived here. It dissolved when its only subject — tools.rust_stage0_gates declared_consumed_input_closures, the hand-typed consumed-.dag path list — was replaced by construction: the gate now derives the closure from v2.lens.module_graph.import_closure_live directly, so a declared parallel representation of an import closure is no longer writable and a validation wall over it has no subject (§5: construction over validation; §6: an inert lens is a lie, so the machinery is deleted, not kept idle). If a future declared representation genuinely cannot be constructed away, re-derive the wall from git history rather than keeping it inert here."
@@ -72,9 +82,10 @@ fn cost_axis_equal(a: CostAxis, b: CostAxis) -> Bool {
 
 fn representation_eq(a: Representation, b: Representation) -> Bool {
   match a {
-    TermChain => match b { TermChain => true  TypeForest => false ImportGraph => false }
-    TypeForest => match b { TermChain => false TypeForest => true  ImportGraph => false }
-    ImportGraph => match b { TermChain => false TypeForest => false ImportGraph => true }
+    TermChain => match b { TermChain => true  TypeForest => false ImportGraph => false DeclForest => false }
+    TypeForest => match b { TermChain => false TypeForest => true  ImportGraph => false DeclForest => false }
+    ImportGraph => match b { TermChain => false TypeForest => false ImportGraph => true  DeclForest => false }
+    DeclForest => match b { TermChain => false TypeForest => false ImportGraph => false DeclForest => true }
   }
 }
 
@@ -99,6 +110,10 @@ fn forest_is_redundant(decls: FreeMonoid<Node>) -> Bool {
 
 fn chain_has_runtime_lowering_candidate(steps: FreeMonoid<Node>) -> Bool {
   input_fires(axis: RunTime, rep: TermChain, input: steps)
+}
+
+fn decl_forest_is_redundant(decls: FreeMonoid<Node>) -> Bool {
+  input_fires(axis: ChangeTime, rep: DeclForest, input: decls)
 }
 
 fn chain_residual(steps: FreeMonoid<Node>) -> Int {

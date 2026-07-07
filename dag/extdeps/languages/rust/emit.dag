@@ -165,6 +165,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "clamp",              bridge_name: "clamp",            passes_by_ref: false, wraps_result: false },
   { name: "atom_identity_hash", bridge_name: "atom_identity_hash", passes_by_ref: false, wraps_result: false },
   { name: "hash_combine",       bridge_name: "hash_combine",     passes_by_ref: false, wraps_result: false },
+  { name: "trace_mark",         bridge_name: "trace_mark",       passes_by_ref: false, wraps_result: false },
 
   { name: "rc_ptr_eq",          bridge_name: "rc_ptr_eq",        passes_by_ref: false, wraps_result: false },
   { name: "rc_vec_ptr_eq",      bridge_name: "rc_vec_ptr_eq",    passes_by_ref: false, wraps_result: false },

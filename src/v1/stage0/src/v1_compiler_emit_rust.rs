@@ -613,6 +613,56 @@ pub fn is_parametric_opaque_type_base(
     }
 }
 
+pub fn alias_base_is_zero_param_decl(
+    type_name: String,
+    def_mod_filename: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> bool {
+    match type_item_by_name_in_module_filename(
+        type_name,
+        def_mod_filename,
+        typed_modules,
+        source_indices,
+        module_index,
+    ) {
+        Some(item) => ((item.params.clone().len() as i64) == 0),
+        None => false,
+    }
+}
+
+pub fn type_param_is_collection_element_in_values(
+    param_name: String,
+    value_params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for vp in value_params.iter().cloned() {
+            if {
+                let te = param_node_type_expr(vp.clone());
+                (is_container_type(authored_name_at(source_indices.clone(), te.clone())) && {
+                    let mut __found = false;
+                    for c in te.children.clone().iter().cloned() {
+                        if (authored_name_at(source_indices.clone(), c.clone())
+                            == param_name.clone())
+                        {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                })
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn is_value_variant_type_arg(
     generic_param_names: Rc<Vec<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -1403,6 +1453,48 @@ pub fn render_rust_alias_rhs_type(
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
+        match n.type_annotation.clone() {
+            Some(_) => {
+                if ((n.connective.clone() == Connective::Conj)
+                    && ((n.children.clone().len() as i64) == 1))
+                {
+                    match n.children.clone().first().cloned() {
+                        Some(base_te) => {
+                            if (rust_seed_host_numeric_alias(
+                                authored_name_at(source_indices.clone(), base_te.clone()),
+                                corpus_repr.clone(),
+                            ) != None)
+                            {
+                                return render_rust_alias_rhs_type(
+                                    base_te.clone(),
+                                    generic_param_names.clone(),
+                                    shared_types.clone(),
+                                    corpus_repr.clone(),
+                                    source_indices.clone(),
+                                    scope.clone(),
+                                    imports.clone(),
+                                    registry.clone(),
+                                    module_name.clone(),
+                                    export_sets.clone(),
+                                    typed_modules.clone(),
+                                    module_index.clone(),
+                                    variant_to_enum.clone(),
+                                );
+                            } else {
+                                return render_rust_type(
+                                    base_te.clone(),
+                                    shared_types.clone(),
+                                    corpus_repr.clone(),
+                                    source_indices.clone(),
+                                );
+                            }
+                        }
+                        None => {}
+                    }
+                }
+            }
+            None => {}
+        }
         let name = authored_name_at(source_indices.clone(), n.clone());
         if (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
@@ -1454,12 +1546,15 @@ pub fn render_rust_alias_rhs_type(
                 if ((n.connective.clone() == Connective::NoConnective)
                     && ((n.children.clone().len() as i64) > 0))
                 {
-                    if let Some(host) =
-                        rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone())
                     {
-                        return host;
-                    }
-                    {
+                        let numeric_host_alias =
+                            rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone());
+                        if (numeric_host_alias.clone() != None) {
+                            return match numeric_host_alias.clone() {
+                                Some(host) => host.clone(),
+                                None => "".to_string(),
+                            };
+                        }
                         let local_mod = module_to_filename(module_name.clone());
                         let def_mod = alias_rhs_rust_qualify_module_filename(
                             name.clone(),
@@ -1491,6 +1586,25 @@ pub fn render_rust_alias_rhs_type(
                                 }
                             }
                         };
+                        let base_is_zero_param =
+                            ((rust_seed_host_container_base(name.clone(), corpus_repr.clone())
+                                == None)
+                                && alias_base_is_zero_param_decl(
+                                    name.clone(),
+                                    def_mod.clone(),
+                                    typed_modules.clone(),
+                                    source_indices.clone(),
+                                    module_index.clone(),
+                                ));
+                        if base_is_zero_param {
+                            return if (v1_rt::set_contains(&shared_types, name.clone())
+                                && !rust_type_is_rc_wrapped(base.clone()))
+                            {
+                                wrap_shared_type(RenderTarget::Rust, base.clone())
+                            } else {
+                                base.clone()
+                            };
+                        }
                         let peel = is_parametric_opaque_type_base(
                             name.clone(),
                             def_mod.clone(),
@@ -1542,7 +1656,7 @@ pub fn render_rust_alias_rhs_type(
                         })
                         .join(&", ".to_string());
                         let applied_ty = v1_rt::concat(
-                            v1_rt::concat(v1_rt::concat(base, "<".to_string()), args),
+                            v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), args),
                             ">".to_string(),
                         );
                         if (v1_rt::set_contains(&shared_types, name.clone())
@@ -9677,11 +9791,39 @@ pub fn emit_fn_def(
                 })
                 .len() as i64)
                     > 0);
-                let needs_clone_bound = (return_is_bare_generic && !body_is_param_ref);
+                let return_based_clone = (return_is_bare_generic && !body_is_param_ref.clone());
+                let element_clone_param = if body_is_param_ref.clone() {
+                    None
+                } else {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for g in generic_param_names.clone().iter().cloned() {
+                            if type_param_is_collection_element_in_values(
+                                g.clone(),
+                                value_params.clone(),
+                                si.clone(),
+                            ) {
+                                __result.push(g);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                };
+                let clone_param = if return_based_clone {
+                    ret_name.clone()
+                } else {
+                    match element_clone_param {
+                        Some(g) => g.clone(),
+                        None => "".to_string(),
+                    }
+                };
+                let needs_clone_bound = (clone_param.clone() != "".to_string());
                 let type_params_str = if needs_clone_bound {
                     emit_type_params_with_clone_bound(
                         type_params.clone(),
-                        ret_name.clone(),
+                        clone_param.clone(),
                         si.clone(),
                     )
                 } else {
@@ -13790,6 +13932,18 @@ pub fn is_map_typed_expr(
     }
 }
 
+pub fn is_collection_typed_expr(
+    texpr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match texpr.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: n, .. }) => {
+            node_is_collection(n.clone(), source_indices)
+        }
+        _ => false,
+    }
+}
+
 pub fn emit_discriminant_call_lowering(
     value_arg: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -16667,44 +16821,92 @@ pub fn emit_typed_method_call(
                 }
             }
             MethodSemantics::PlainMethodSemantics => {
-                let recv_str = emit_typed_expr(
-                    receiver.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    1024,
-                );
-                let arg_strs = Rc::new({
-                    let mut __result = Vec::new();
-                    for a in args.clone().iter().cloned() {
-                        __result.push(emit_typed_expr(
-                            arg_value(a.clone()),
+                if ((method.clone() == "get".to_string())
+                    && is_collection_typed_expr(
+                        receiver.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ))
+                {
+                    emit_rust_get_method_call(
+                        receiver.clone(),
+                        args.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    )
+                } else {
+                    {
+                        let recv_str = emit_typed_expr(
+                            receiver.clone(),
                             registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
                             emit_info.clone(),
                             1024,
-                        ));
+                        );
+                        match v1_rt::map_get(&rust_method_templates(), method.clone()) {
+                            Some(tmpl) => {
+                                let first_arg_str = emit_typed_first_arg(
+                                    args.clone(),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                );
+                                let bindings = v1_rt::rc_map_insert(
+                                    seed_bindings("recv".to_string(), recv_str),
+                                    "arg".to_string(),
+                                    first_arg_str,
+                                );
+                                let raw = apply_named_template(tmpl.clone(), bindings);
+                                if rust_runtime_bridge_wraps_collection_result_in_rc(method.clone())
+                                {
+                                    v1_rt::concat(
+                                        v1_rt::concat("Rc::new(".to_string(), raw),
+                                        ")".to_string(),
+                                    )
+                                } else {
+                                    raw
+                                }
+                            }
+                            None => {
+                                let arg_strs = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for a in args.clone().iter().cloned() {
+                                        __result.push(emit_typed_expr(
+                                            arg_value(a.clone()),
+                                            registry.clone(),
+                                            scope.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            emit_info.clone(),
+                                            1024,
+                                        ));
+                                    }
+                                    __result
+                                });
+                                let args_str = arg_strs.join(&", ".to_string());
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(recv_str, ".".to_string()),
+                                                emit_ident(method.clone(), RenderTarget::Rust),
+                                            ),
+                                            "(".to_string(),
+                                        ),
+                                        args_str,
+                                    ),
+                                    ")".to_string(),
+                                )
+                            }
+                        }
                     }
-                    __result
-                });
-                let args_str = arg_strs.join(&", ".to_string());
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(recv_str, ".".to_string()),
-                                emit_ident(method, RenderTarget::Rust),
-                            ),
-                            "(".to_string(),
-                        ),
-                        args_str,
-                    ),
-                    ")".to_string(),
-                )
+                }
             }
         }
     } else {
@@ -23802,6 +24004,8 @@ pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
+            LiteralValue::LitInt { value: i, .. } => Some((i.clone()).to_string()),
+            LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
             LiteralValue::LitBool { value: b, .. } => Some(if b.clone() {
                 "true".to_string()
             } else {
@@ -23813,10 +24017,29 @@ pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
     }
 }
 
+pub fn build_data_body_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
+    modules.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
+            tm.items.clone().iter().cloned().fold(
+                acc,
+                |inner: Rc<HashMap<String, Rc<Node>>>, i: Rc<Node>| match i.body.clone() {
+                    Some(b) => v1_rt::rc_map_insert(
+                        inner.clone(),
+                        authored_name_at(tm.type_env.clone().source_indices.clone(), i.clone()),
+                        b.clone(),
+                    ),
+                    None => inner.clone(),
+                },
+            )
+        },
+    )
+}
+
 pub fn resolve_param_default(
     param: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    module_items: Rc<Vec<Rc<Node>>>,
+    data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match param_node_default_value(param) {
@@ -23829,24 +24052,11 @@ pub fn resolve_param_default(
                 authored_name_at(source_indices.clone(), dv.clone()),
             ) {
                 Some(info) => match info.kind.clone() {
-                    ItemKind::DataItem => match Rc::new({
-                        let mut __result = Vec::new();
-                        for i in module_items.iter().cloned() {
-                            if (authored_name_at(source_indices.clone(), i.clone())
-                                == authored_name_at(source_indices.clone(), dv.clone()))
-                            {
-                                __result.push(i);
-                            }
-                        }
-                        __result
-                    })
-                    .first()
-                    .cloned()
-                    {
-                        Some(data_item) => match data_item.body.clone() {
-                            Some(body) => extract_literal_string(body.clone()),
-                            None => None,
-                        },
+                    ItemKind::DataItem => match v1_rt::map_get(
+                        &data_body_index,
+                        authored_name_at(source_indices.clone(), dv.clone()),
+                    ) {
+                        Some(body) => extract_literal_string(body.clone()),
                         None => None,
                     },
                     _ => None,
@@ -23863,7 +24073,7 @@ pub fn to_workflow_func(
     item: Rc<Node>,
     module_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    module_items: Rc<Vec<Rc<Node>>>,
+    data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 ) -> Rc<WorkflowFunc> {
@@ -23878,7 +24088,7 @@ pub fn to_workflow_func(
             |acc: Rc<HashMap<String, String>>, p: Rc<Node>| match resolve_param_default(
                 p.clone(),
                 registry.clone(),
-                module_items.clone(),
+                data_body_index.clone(),
                 source_indices.clone(),
             ) {
                 Some(lit) => v1_rt::rc_map_insert(
@@ -23938,48 +24148,51 @@ pub fn collect_workflow_funcs(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 ) -> Rc<Vec<Rc<WorkflowFunc>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for tm in modules.iter().cloned() {
-            __result.extend(
-                (*Rc::new({
-                    let mut __result = Vec::new();
-                    for item in Rc::new({
+    {
+        let data_body_index = build_data_body_index(modules.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for tm in modules.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
                         let mut __result = Vec::new();
-                        for item in tm.items.clone().iter().cloned() {
-                            if is_workflow_item(
-                                item.clone(),
-                                registry.clone(),
-                                tm.type_env.clone().source_indices.clone(),
-                            ) {
-                                __result.push(item);
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                if is_workflow_item(
+                                    item.clone(),
+                                    registry.clone(),
+                                    tm.type_env.clone().source_indices.clone(),
+                                ) {
+                                    __result.push(item);
+                                }
                             }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(to_workflow_func(
+                                item.clone(),
+                                authored_name_at(
+                                    tm.type_env.clone().source_indices.clone(),
+                                    tm.module.clone(),
+                                ),
+                                registry.clone(),
+                                data_body_index.clone(),
+                                tm.type_env.clone().source_indices.clone(),
+                                read_only_params_index.clone(),
+                            ));
                         }
                         __result
-                    })
+                    }))
                     .iter()
-                    .cloned()
-                    {
-                        __result.push(to_workflow_func(
-                            item.clone(),
-                            authored_name_at(
-                                tm.type_env.clone().source_indices.clone(),
-                                tm.module.clone(),
-                            ),
-                            registry.clone(),
-                            tm.items.clone(),
-                            tm.type_env.clone().source_indices.clone(),
-                            read_only_params_index.clone(),
-                        ));
-                    }
-                    __result
-                }))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
 }
 
 pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {

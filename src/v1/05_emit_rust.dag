@@ -420,6 +420,21 @@ fn is_parametric_opaque_type_base(type_name: String, def_mod_filename: String, t
   }
 }
 
+fn alias_base_is_zero_param_decl(type_name: String, def_mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  match type_item_by_name_in_module_filename(rhs_name: type_name, mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Present { value: item } => (item.params |> count) == 0
+    Absent => false
+  }
+}
+
+fn type_param_is_collection_element_in_values(param_name: String, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  value_params |> any(vp =>
+    let te = param_node_type_expr(n: vp)
+    is_container_type(name: authored_name_at(source_indices: source_indices, node: te))
+      && (te.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == param_name))
+  )
+}
+
 fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
   if generic_param_names |> any(g => g == name) {
     false
@@ -663,6 +678,21 @@ fn alias_rhs_container_arg(arg: Node, source_indices: Map<String, NewlineIndex>)
 
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  match n.type_annotation {
+    Present { value: _ } =>
+      if n.connective == Conj && (n.children |> count) == 1 {
+        match n.children |> first {
+          Present { value: base_te } =>
+            if rust_seed_host_numeric_alias(name: authored_name_at(source_indices: source_indices, node: base_te), corpus_repr: corpus_repr) != none {
+              return render_rust_alias_rhs_type(n: base_te, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+            } else {
+              return render_rust_type(n: base_te, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+            }
+          Absent => {}
+        }
+      }
+    Absent => {}
+  }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     to_pascal(name: name)
@@ -683,6 +713,10 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
+    let numeric_host_alias = rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr)
+    if numeric_host_alias != none {
+      return match numeric_host_alias { Present { value: host } => host  Absent => "" }
+    }
     let local_mod = module_to_filename(name: module_name)
     let def_mod = alias_rhs_rust_qualify_module_filename(name: name, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let base = match rust_seed_host_container_base(name: name, corpus_repr: corpus_repr) {
@@ -692,6 +726,10 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       } else {
         name
       }
+    }
+    let base_is_zero_param = rust_seed_host_container_base(name: name, corpus_repr: corpus_repr) == none && alias_base_is_zero_param_decl(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    if base_is_zero_param {
+      return if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
     }
     let peel = is_parametric_opaque_type_base(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let args = n.children |> map(arg =>
@@ -3826,9 +3864,16 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let ret_name = authored_name_at(source_indices: si, node: inferred)
   let return_is_bare_generic = (generic_param_names |> filter(g => g == ret_name) |> count) > 0
   let body_is_param_ref = (value_param_names |> filter(n => n == body.name) |> count) > 0
-  let needs_clone_bound = return_is_bare_generic && !body_is_param_ref
+  let return_based_clone = return_is_bare_generic && !body_is_param_ref
+  let element_clone_param = if body_is_param_ref { none } else {
+    generic_param_names |> filter(g => type_param_is_collection_element_in_values(param_name: g, value_params: value_params, source_indices: si)) |> first
+  }
+  let clone_param = if return_based_clone { ret_name } else {
+    match element_clone_param { Present { value: g } => g  Absent => "" }
+  }
+  let needs_clone_bound = clone_param != ""
   let type_params_str = if needs_clone_bound {
-    emit_type_params_with_clone_bound(params: type_params, clone_param: ret_name, source_indices: si)
+    emit_type_params_with_clone_bound(params: type_params, clone_param: clone_param, source_indices: si)
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
@@ -5192,6 +5237,13 @@ fn is_map_typed_expr(texpr: Node, source_indices: Map<String, NewlineIndex>) -> 
   }
 }
 
+fn is_collection_typed_expr(texpr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match texpr.inferred {
+    Present { value: Resolved { node: n } } => node_is_collection(n: n, source_indices: source_indices)
+    _ => false
+  }
+}
+
 fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let arg = arg_value(n: value_arg)
   let scrutinee = emit_typed_expr(texpr: arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -6051,10 +6103,24 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
     }
     }
     PlainMethodSemantics =>
+      if method == "get" && is_collection_typed_expr(texpr: receiver, source_indices: scope.type_env.source_indices) {
+        emit_rust_get_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      } else {
       let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-      let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-      let args_str = arg_strs |> join(separator: ", ")
-      concat(recv_str, ".", emit_ident(name: method, target: Rust), "(", args_str, ")")
+      match map_get(rust_method_templates(), method) {
+        Present { value: tmpl } =>
+          let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
+          let raw = apply_named_template(template: tmpl, bindings: bindings)
+          if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method) {
+            concat("Rc::new(", raw, ")")
+          } else { raw }
+        Absent =>
+          let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
+          let args_str = arg_strs |> join(separator: ", ")
+          concat(recv_str, ".", emit_ident(name: method, target: Rust), "(", args_str, ")")
+      }
+      }
   } }
   else { "compile_error!(\"method call missing reconcile semantics\")" }
 }
@@ -8360,6 +8426,8 @@ fn extract_literal_string(expr: Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: v } => match v {
       LitStr { value: s } => Present { value: s }
+      LitInt { value: i } => Present { value: to_string(value: i) }
+      LitFloat { value: f } => Present { value: f }
       LitBool { value: b } => Present { value: if b { "true" } else { "false" } }
       _ => none
     }
@@ -8367,7 +8435,18 @@ fn extract_literal_string(expr: Node) -> String? {
   }
 }
 
-fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, module_items: List<Node>, source_indices: Map<String, NewlineIndex>) -> String? {
+fn build_data_body_index(modules: List<TypedModule>) -> Map<String, Node> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    tm.items |> fold(init: acc, f: (inner, i) =>
+      match i.body {
+        Present { value: b } => map_insert(inner, authored_name_at(source_indices: tm.type_env.source_indices, node: i), b)
+        Absent => inner
+      }
+    )
+  )
+}
+
+fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> String? {
   match param_node_default_value(n: param) {
     Present { value: dv } => match dv.expr_data {
       ExprLiteral { value: _ } => extract_literal_string(expr: dv)
@@ -8375,11 +8454,8 @@ fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, module_it
         match lookup_item(registry: registry, name: authored_name_at(source_indices: source_indices, node: dv)) {
           Present { value: info } => match info.kind {
             DataItem =>
-              match module_items |> filter(i => authored_name_at(source_indices: source_indices, node: i) == authored_name_at(source_indices: source_indices, node: dv)) |> first {
-                Present { value: data_item } => match data_item.body {
-                  Present { value: body } => extract_literal_string(expr: body)
-                  Absent => none
-                }
+              match map_get(data_body_index, authored_name_at(source_indices: source_indices, node: dv)) {
+                Present { value: body } => extract_literal_string(expr: body)
                 Absent => none
               }
             _ => none
@@ -8392,14 +8468,14 @@ fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, module_it
   }
 }
 
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, module_items: List<Node>, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
+fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
   let item_name = authored_name_at(source_indices: source_indices, node: item)
   let svc_names = match lookup_item(registry: registry, name: item_name) {
     Present { value: info } => info.service_names
     Absent => []
   }
   let defaults = item.params |> fold(init: empty_map(), f: (acc, p) =>
-    match resolve_param_default(param: p, registry: registry, module_items: module_items, source_indices: source_indices) {
+    match resolve_param_default(param: p, registry: registry, data_body_index: data_body_index, source_indices: source_indices) {
       Present { value: lit } => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), lit)
       Absent => acc
     }
@@ -8435,10 +8511,11 @@ fn is_workflow_item(item: Node, registry: Map<String, ItemInfo>, source_indices:
 }
 
 fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>, read_only_params_index: Map<String, Set<String>>) -> List<WorkflowFunc> {
+  let data_body_index = build_data_body_index(modules: modules)
   modules |> flat_map(tm =>
     tm.items
       |> filter(item => is_workflow_item(item: item, registry: registry, source_indices: tm.type_env.source_indices))
-      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, module_items: tm.items, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
+      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, data_body_index: data_body_index, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
   )
 }
 
@@ -9073,7 +9150,7 @@ fn emit_resolve_transitively_fn(crate_name: String, pipeline_mod: String) -> Str
     "        }\n",
     "    }\n",
     "\n",
-    "    let mut result: Vec<_> = seen.into_values().collect();\n",
+    "    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();\n",
     "    result.sort_by(|a, b| a.path.cmp(&b.path));\n",
     "    result\n",
     "}\n\n")
