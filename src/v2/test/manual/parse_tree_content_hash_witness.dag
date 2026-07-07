@@ -1,0 +1,47 @@
+module v2.test.manual.parse_tree_content_hash_witness
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.parse { grammar_validate_for_parse, parse_production_tree }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.collection { Absent, Optional, Present }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, ParseGrammar }
+import v2.std.node { Hash, content_hash }
+
+data parse_tree_content_hash_witness_note: String = "adhoc-c328b166-bca fix-2/fix-3 verification receipt: content_hash(ParseTree) over a real corpus sample, run once against the pre-fix 02_parse.dag (checked out from main, built as its own release binary in a separate worktree) and once against the post-fix version -- byte-equal Hash across both runs proves parse_token_first (list_at_optional -> list_head) and parse_match_arm_stmt_body (fold_list -> parse_match_arm_stmt_step) are pure algorithmic rewrites, not semantic changes. The two revisions cannot both load in one interpreter run, so compare the printed Hash from two separate `gunbc run` invocations against two independently-built binaries, not in-process."
+
+fn parse_tree_content_hash_for_path(path: String) -> Optional<Hash> {
+  let lm = dag_language_model_wave1()
+  let at = port_locus(port: ^parse_stage_locus_port)
+  let source_text = filesystem_read(path: path).content
+  match tokenize(text: source_text, file: ^parse_tree_content_hash_file_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          match grammar_validate_for_parse(root: root, at: at) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: validated, diagnostics: _ } =>
+              match parse_production_tree(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: tree, diagnostics: _ } => Present { value: content_hash(n: tree) }
+              }
+          }
+        VoidGrammar => Absent
+      }
+  }
+}
+
+fn witness_parse_tree_content_hash_tiny() -> Optional<Hash> {
+  parse_tree_content_hash_for_path(path: "src/v2/std/witness.dag")
+}
+
+fn witness_parse_tree_content_hash_small() -> Optional<Hash> {
+  parse_tree_content_hash_for_path(path: "src/v2/std/execution_mode.dag")
+}

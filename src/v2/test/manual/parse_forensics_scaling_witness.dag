@@ -1,0 +1,75 @@
+module v2.test.manual.parse_forensics_scaling_witness
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.parse {
+  ParseMemoStats,
+  grammar_validate_for_parse,
+  parse_production_memo_stats
+}
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, ParseGrammar }
+import std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data forensics_scaling_witness_note: String = "adhoc-c328b166-bca interpreted-parse cost forensics: per-file packrat memo stats (hits/misses/lookup_calls) at increasing corpus-file sizes, timed externally via `time ./target/release/gunbc run --claim-run`. One fn per fixture file so each can be timed as an isolated process (amortizes nothing; each pays full corpus-load overhead, which is the point -- wall time here is (fixed load) + (parse cost) and the parse-cost delta across sizes is read off the growth curve, not the absolute number)."
+
+fn forensics_scaling_stats_for_path(path: String) -> ParseMemoStats {
+  let lm = dag_language_model_wave1()
+  let at = port_locus(port: ^parse_stage_locus_port)
+  let source_text = filesystem_read(path: path).content
+  match tokenize(text: source_text, file: ^parse_forensics_scaling_file_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } =>
+      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+    Accepted { value: stream, diagnostics: _ } =>
+      match lm.grammar {
+        ModeledGrammar { root: root } =>
+          match grammar_validate_for_parse(root: root, at: at) {
+            Rejected { diagnostics: _ } =>
+              ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+            Accepted { value: validated, diagnostics: _ } =>
+              parse_production_memo_stats(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              )
+          }
+        VoidGrammar =>
+          ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+      }
+  }
+}
+
+fn forensics_scaling_report(path: String) -> List<Int> {
+  let stats = forensics_scaling_stats_for_path(path: path)
+  Cons {
+    head: stats.hits,
+    tail: Cons {
+      head: stats.misses,
+      tail: Cons { head: stats.lookup_calls, tail: Empty }
+    }
+  }
+}
+
+fn witness_forensics_scale_tiny_report() -> List<Int> {
+  forensics_scaling_report(path: "src/v2/std/witness.dag")
+}
+
+fn witness_forensics_scale_small_report() -> List<Int> {
+  forensics_scaling_report(path: "src/v2/std/execution_mode.dag")
+}
+
+fn witness_forensics_scale_medium_report() -> List<Int> {
+  forensics_scaling_report(path: "src/v2/std/datetime.dag")
+}
+
+fn witness_forensics_scale_mediumlarge_report() -> List<Int> {
+  forensics_scaling_report(path: "src/v2/std/node.dag")
+}
+
+fn witness_forensics_scale_large_report() -> List<Int> {
+  forensics_scaling_report(path: "src/v2/std/grammar.dag")
+}
