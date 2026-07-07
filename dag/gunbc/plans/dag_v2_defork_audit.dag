@@ -119,6 +119,14 @@ fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
       li(text: "**The emit-seam (Root A) is jolly-cat's** — this lane does not touch `05_emit_rust.dag`."),
       li(text: "**Stage every file of a rename/collapse together** (the auto-committer atomicity hazard, §3 above)."),
     ]),
+    h3(text: "Execution update (#6341, 2026-07-07) — Root B narrowed to shadow-removal; three walls re-map the follow-ons"),
+    p(text: "`#6341` landed the **core of Root B**: the `FreeMonoid`/`Empty`/`Cons` variant-drop shadow is removed — the coproduct now lives once in `dag/std/algebra.dag:111`, `v2.std.algebra` imports it, 158 importers repointed. But implementing the *fuller* Root B (move the ops; unify the definition; promote QualifiedName) surfaced **three walls by-execution** that re-scope the remaining lanes. Full trace + census: **[algebra-grounding-unification-design.md §9](algebra-grounding-unification-design.md)**. Summary for the roadmap:"),
+    ul(items: [
+      li(text: "**A — reserved-name → builtin dissolution.** `dag/std/algebra.dag`'s templates *declare* the builtin collection-method names (`fold`/`map`/`filter`/`length`/`any`/`contains`/`skip`/…); a `std.*` free fn matching one breaks the whole method table (bare `fold(...)` fails corpus-wide). So the 8 ops `filter`/`length`/`any`/`contains`/`skip`/`is_empty` (+ `non_empty`/`bag_eq`) **cannot** move to `std.*` — they are free-fn duplicates of dag builtins and must *dissolve into* `.filter()`/`.length()` at v2 call sites (a lane, not a rename — a `list_filter` nickname is a §3 violation)."),
+      li(text: "**B — Root A is UNOWNED and confirmed load-bearing for the ops.** `src/v1/05_emit_rust.dag` hardcodes `crate::v2_std_algebra::\{freemonoid_empty,fold_list,list_snoc_item\}` for the `String=FreeMonoid<Char>` host bridge — so those 3 ops can't move until Root A relocates them. **jolly-cat (the assigned Root-A owner above) is no longer in the tree** (operator, 2026-07-06); the `String`/`List` alias grounding (§3b.2 above) is blocked until Root A is re-dispatched."),
+      li(text: "**C — QualifiedName is `node`-gated, not algebra-gated.** `src/v2/std/qualified_name.dag` imports `v2.std.node`/`v2.std.diagnostic`/`v2.std.compilers.lexing`, all v2-only (`dag→v2` denied). FreeMonoid single-authority was **necessary but not sufficient**; promoting QualifiedName to `std.qualified_name` (unparking `type-env-single-authority-design.md` §5.1) needs the deferred **`node` defork** too (category (c), v1-delete)."),
+    ]),
+    p(text: "Definition-unification (§3b.2: delete the dag record-of-methods *definition*) and the structure-record grounding (12 of 14 records diverge) remain deferred; the `flag-ANY` co-occurrence wall for the full `algebra` pair greens only after those. `#6341` removed the *dangerous* variant-drop shadow — the record shadow left is the benign record-with-record kind."),
   ]
 }
 
