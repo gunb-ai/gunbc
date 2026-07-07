@@ -1,0 +1,166 @@
+module v2.lens.fn_family
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import v2.std.anti_unification {
+  ChainGeneralization, anti_unify_chain, fillings_all_leaves, is_hole, is_leaf
+}
+import v2.extdeps.languages.dag { dag_node_is_fn_decl }
+import v2.std.fold_assembly { template_hole_count }
+import v2.std.node { Node, node_subtree_nodes }
+import v2.std.algebra {
+  FreeMonoid, fold_list, filter, any, length, list_snoc_item
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.text { String }
+
+data fn_family_charter: String = "sigma-family wall (intent-linearity, ChangeTime axis): k top-level fn decls whose parse subtrees anti-unify with leaf-only fillings over a shared internal spine are ONE parameterized core plus data rows, spelled as name-suffix copies (DESIGN section 2 horizontal redundancy). The criterion is EXACT, no similarity threshold: a family holds iff fillings_all_leaves(anti_unify_chain(members)) AND the template keeps at least one internal (childed, non-hole) node. Members differing at any internal position fall OUTSIDE the wall by construction - near-families are ratchet territory, counted separately, never conflated with the wall. Findings locate by module item ordinal because wave1 fn-decl ident terminals drop their name text at parse (qualified-name segments keep theirs) - the name-fidelity relation-row fix restores symbol-level location when it lands. Subject extraction reads the parse authority parse_production_emitted_identity_optional (the grammar_production_identity_node_projection named edge stamped by parse_wrap_production_captured) - never a hand-rolled node shape. Registry consolidation LANDED: this lens is consumed as the sigma_fn_family LinearityRule row (ChangeTime x DeclForest) in v2.lens.intent_linearity.linearity_registry."
+
+fn node_is_internal_non_hole(n: Node) -> Bool {
+  !is_hole(n: n) && !is_leaf(n: n)
+}
+
+fn template_has_shared_internal_structure(template: Node) -> Bool {
+  any(
+    xs: node_subtree_nodes(root: template),
+    predicate: fn(n) { node_is_internal_non_hole(n: n) }
+  )
+}
+
+fn sigma_family_related(a: Node, b: Node) -> Bool {
+  let g = anti_unify_chain(steps: [a, b])
+  if fillings_all_leaves(per_element: g.per_element) {
+    template_has_shared_internal_structure(template: g.template)
+  } else {
+    false
+  }
+}
+
+type FnFamilyGroup {
+  rep: Node
+  member_ordinals: FreeMonoid<Int>
+  members: FreeMonoid<Node>
+}
+
+type FnFamilyFinding {
+  member_count: Int
+  hole_count: Int
+  member_ordinals: FreeMonoid<Int>
+}
+
+type GroupInsertState {
+  placed: Bool
+  acc: FreeMonoid<FnFamilyGroup>
+}
+
+fn group_with_member(g: FnFamilyGroup, def: Node, ordinal: Int) -> FnFamilyGroup {
+  FnFamilyGroup {
+    rep: g.rep,
+    member_ordinals: list_snoc_item(xs: g.member_ordinals, item: ordinal),
+    members: list_snoc_item(xs: g.members, item: def)
+  }
+}
+
+fn insert_step(st: GroupInsertState, g: FnFamilyGroup, def: Node, ordinal: Int) -> GroupInsertState {
+  if st.placed {
+    GroupInsertState { placed: true, acc: list_snoc_item(xs: st.acc, item: g) }
+  } else {
+    if sigma_family_related(a: g.rep, b: def) {
+      GroupInsertState {
+        placed: true,
+        acc: list_snoc_item(xs: st.acc, item: group_with_member(g: g, def: def, ordinal: ordinal))
+      }
+    } else {
+      GroupInsertState { placed: false, acc: list_snoc_item(xs: st.acc, item: g) }
+    }
+  }
+}
+
+fn singleton_group(def: Node, ordinal: Int) -> FnFamilyGroup {
+  FnFamilyGroup { rep: def, member_ordinals: [ordinal], members: [def] }
+}
+
+fn insert_into_groups(groups: FreeMonoid<FnFamilyGroup>, def: Node, ordinal: Int) -> FreeMonoid<FnFamilyGroup> {
+  let s = fold_list(
+    xs: groups,
+    empty: GroupInsertState { placed: false, acc: [] },
+    cons: fn(st, g) { insert_step(st: st, g: g, def: def, ordinal: ordinal) }
+  )
+  if s.placed {
+    s.acc
+  } else {
+    list_snoc_item(xs: s.acc, item: singleton_group(def: def, ordinal: ordinal))
+  }
+}
+
+type GroupFoldState {
+  next_ordinal: Int
+  groups: FreeMonoid<FnFamilyGroup>
+}
+
+fn group_fn_defs(defs: FreeMonoid<Node>) -> FreeMonoid<FnFamilyGroup> {
+  let s = fold_list(
+    xs: defs,
+    empty: GroupFoldState { next_ordinal: 0, groups: [] },
+    cons: fn(st, def) {
+      GroupFoldState {
+        next_ordinal: st.next_ordinal + 1,
+        groups: insert_into_groups(groups: st.groups, def: def, ordinal: st.next_ordinal)
+      }
+    }
+  )
+  s.groups
+}
+
+fn finding_for_group(g: FnFamilyGroup) -> FnFamilyFinding {
+  let gen = anti_unify_chain(steps: g.members)
+  FnFamilyFinding {
+    member_count: length(xs: g.members),
+    hole_count: template_hole_count(template: gen.template),
+    member_ordinals: g.member_ordinals
+  }
+}
+
+fn no_findings() -> FreeMonoid<FnFamilyFinding> {
+  []
+}
+
+fn sigma_families_of_defs(defs: FreeMonoid<Node>) -> FreeMonoid<FnFamilyFinding> {
+  fold_list(
+    xs: filter(
+      xs: group_fn_defs(defs: defs),
+      predicate: fn(g) { length(xs: g.members) >= 2 }
+    ),
+    empty: no_findings(),
+    cons: fn(acc, g) { list_snoc_item(xs: acc, item: finding_for_group(g: g)) }
+  )
+}
+
+fn module_fn_decl_subtrees(tree: Node) -> FreeMonoid<Node> {
+  filter(
+    xs: node_subtree_nodes(root: tree),
+    predicate: fn(n) { dag_node_is_fn_decl(node: n) }
+  )
+}
+
+fn module_sigma_families(tree: Node) -> FreeMonoid<FnFamilyFinding> {
+  sigma_families_of_defs(defs: module_fn_decl_subtrees(tree: tree))
+}
+
+fn module_sigma_family_count(tree: Node) -> Int {
+  length(xs: module_sigma_families(tree: tree))
+}
+
+fn module_largest_family_member_count(tree: Node) -> Int {
+  fold_list(
+    xs: module_sigma_families(tree: tree),
+    empty: 0,
+    cons: fn(acc, f) { if f.member_count > acc { f.member_count } else { acc } }
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

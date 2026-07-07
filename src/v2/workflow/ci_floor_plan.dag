@@ -2,10 +2,11 @@ module v2.workflow.ci_floor_plan
 
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
-  gunbc_ci_spec, CiSpec,
+  gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
+  SourceRootIngestGate, RegenVerifyGate,
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
 }
 import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List }
@@ -74,6 +75,8 @@ data floor_source_root_ingest_gate_entry: String = "src/v2/workflow/source_root_
 
 data floor_self_host_realized_comparison_gate_entry: String = "src/v2/workflow/self_host_realized_comparison_gate.dag"
 
+data floor_self_host_realized_comparison_claims_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
+
 data floor_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_corpus } },
   children: []
@@ -134,7 +137,8 @@ fn gate_node(g: Gate) -> Node {
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
-    SelfHostRealizedComparisonGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_realized_comparison } }, children: [] }
+    SelfHostReadsRealBytesGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_reads_real_bytes } }, children: [] }
+    SelfHostStalenessGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_staleness } }, children: [] }
     EmitDeterminismGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit_determinism } }, children: [] }
   }
 }
@@ -169,7 +173,13 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
         spawns_host_compiler: true,
         memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
       )
-    SelfHostRealizedComparisonGate =>
+    SelfHostReadsRealBytesGate =>
+      runnable_resource_profile(
+        heavy_whole_tree_resolve: false,
+        spawns_host_compiler: false,
+        memory: per_shard
+      )
+    SelfHostStalenessGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: false,
@@ -209,9 +219,14 @@ fn gate_runnable(g: Gate) -> Runnable {
       profile: profile
     }
     RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes", profile: profile }
-    SelfHostRealizedComparisonGate => RunnableSingleClaim {
-      entry: floor_self_host_realized_comparison_gate_entry,
-      function: "self_host_realized_comparison_gate_passes",
+    SelfHostReadsRealBytesGate => RunnableSingleClaim {
+      entry: floor_self_host_realized_comparison_claims_entry,
+      function: "self_host_realized_comparison_reads_real_bytes_both_sides_holds",
+      profile: profile
+    }
+    SelfHostStalenessGate => RunnableSingleClaim {
+      entry: floor_self_host_realized_comparison_claims_entry,
+      function: "self_host_realized_comparison_staleness_gate_holds",
       profile: profile
     }
     EmitDeterminismGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_determinism_gate_passes", profile: profile }
@@ -333,36 +348,55 @@ fn floor_heavy_resolve_chain_resource_edges(spec: CiSpec) -> List<DependencyView
   )
 }
 
-fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
-  fold(
-    spec.gates,
-    init: fold(corpus_plan_nodes(spec: spec), init: [], f: fn(acc, corpus_node) {
-      list_snoc_item(xs: acc, item: floor_depends_on_compile(dependent: corpus_node))
-    }),
-    f: fn(acc, g) {
-      match g {
-        DagCompileCleanGate => acc
-        _ => list_snoc_item(
-          xs: acc,
-          item: floor_depends_on_compile(dependent: gate_node(g: g))
-        )
-      }
-    }
-  )
-}
-
-fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView> {
-  let has_self_host = fold(spec.gates, init: false, f: fn(acc, g) {
+fn floor_spec_has_compile_gate(spec: CiSpec) -> Bool {
+  fold(spec.gates, init: false, f: fn(acc, g) {
     match g {
-      SelfHostRealizedComparisonGate => true
+      DagCompileCleanGate => true
       _ => acc
     }
   })
-  if has_self_host {
+}
+
+fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
+  if floor_spec_has_compile_gate(spec: spec) {
+    fold(
+      spec.gates,
+      init: fold(corpus_plan_nodes(spec: spec), init: [], f: fn(acc, corpus_node) {
+        list_snoc_item(xs: acc, item: floor_depends_on_compile(dependent: corpus_node))
+      }),
+      f: fn(acc, g) {
+        match g {
+          DagCompileCleanGate => acc
+          _ => list_snoc_item(
+            xs: acc,
+            item: floor_depends_on_compile(dependent: gate_node(g: g))
+          )
+        }
+      }
+    )
+  } else {
+    []
+  }
+}
+
+fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView> {
+  let has_staleness = fold(spec.gates, init: false, f: fn(acc, g) {
+    match g {
+      SelfHostStalenessGate => true
+      _ => acc
+    }
+  })
+  let has_regen = fold(spec.gates, init: false, f: fn(acc, g) {
+    match g {
+      RegenVerifyGate => true
+      _ => acc
+    }
+  })
+  if has_staleness && has_regen {
     [
       floor_resource_depends_on(
         source: gate_node(g: RegenVerifyGate),
-        dependent: gate_node(g: SelfHostRealizedComparisonGate)
+        dependent: gate_node(g: SelfHostStalenessGate)
       )
     ]
   } else {
@@ -474,6 +508,10 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan().schedule
 }
 
+fn gunbc_ci_regen_floor_batches() -> List<List<Runnable>> {
+  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_regen_spec).schedule
+}
+
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
   match schedule_lens_verdict_for_ci_floor(
     plan: gunbc_ci_floor_realization_plan(),
@@ -513,6 +551,12 @@ fn gunbc_ci_floor_spawn_width_from_tree() -> HardwareThreadCount {
 
 fn gunbc_ci_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
   gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
+}
+
+data gunbc_ci_regen_floor_plan_spawn_width_note: String = "The claim_executor seed derives a plan's spawn-width function name from the plan-function name (spawn_width_function_name in src/v1/stage0/src/bin/claim_executor.rs: strip _batches, append _plan_spawn_width), so the regen floor plan gunbc_ci_regen_floor_batches reaches gunbc_ci_regen_floor_plan_spawn_width dynamically — the name is constructed at runtime and never appears as a literal reference, which is why the ci_regen job crashed at plan setup (spawn width eval failed: no main function found) on the two-job split (#6352) with no grep-visible reference. This function supplies it, reusing the required ci job's memory-budget-derived width (gunbc_ci_plan_spawn_width) since the regen job runs on the same srv1 runner under the same budget. Without it the non-required ci_regen job is crash-red on a wiring gap instead of honest-red on the true self-host divergence it exists to report."
+
+fn gunbc_ci_regen_floor_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
+  gunbc_ci_plan_spawn_width(memory_budget_bytes: memory_budget_bytes)
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {

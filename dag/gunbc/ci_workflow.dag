@@ -6,6 +6,7 @@ import gunbc.ci_workflow_expressions {
 }
 import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_floor_run,
+  gunbc_ci_regen_spec, gunbc_ci_regen_floor_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
   ci_release_build_script,
   gunbc_ci_rust_gate_only_script,
@@ -389,6 +390,41 @@ fn ci_job() -> Job {
   }
 }
 
+data ci_regen_job_non_required_note: String = "The ci_regen job is NON-required (operator two-job split, 2026-07-07, #6350): it runs the self-host fixed-point class (RegenVerifyGate + SelfHostStalenessGate) HARD and shows honest RED until the seed<->.dag reconcile lands, but it must be EXCLUDED from branch-protection required status checks so main goes green on the grounded invariants (the required ci + rust_tests jobs). continue_on_error stays none: the job reflects the true regen verdict; non-required-ness is the branch-protection reading, not a soft-pass. The former §5 anti-growth guard (the REQUIRED regen_divergence ratchet) was REMOVED 2026-07-07 as imminent-to-obsolete interim scaffolding — see ci_regen_ratchet_removed_note; until the accept-fresh fixpoint drives divergence to 0 (and RegenVerifyGate returns to the required surface), debt growth behind this non-required door is unguarded, recorded honestly as an interim trade."
+
+fn ci_regen_floor_step() -> Step {
+  RunStep {
+    name: Present { value: "gunbc ci regen (self-host fixed-point — non-required)" },
+    id: none,
+    run: gunbc_ci_regen_floor_run(spec: gunbc_ci_regen_spec),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_floor_step_timeout_minutes }
+  }
+}
+
+fn ci_regen_job() -> Job {
+  Job {
+    id: "ci_regen",
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_regen_floor_step()]),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    strategy: none,
+    timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none
+  }
+}
+
+data ci_regen_ratchet_removed_note: String = "The regen_divergence ratchet (formerly a REQUIRED ci_regen_ratchet job + tools/regen_divergence_ratchet.dag) was REMOVED (operator ruling 2026-07-07): it was interim scaffolding whose retirement condition — divergence count reaching 0, at which the byte-identical hard gate auto-promotes — is imminent via the accept-fresh self-host fixpoint (lively-raven-355), so the monotone-shrink guard is being retired slightly ahead of that auto-promote rather than maintained. It had also gone false-red on main after #6348 (emit → realization) moved the actual divergence off the pre-#6348 baseline (31), and refuse_if_baseline_raised makes a baseline re-calibration unwritable — so the guard was blocking merge on benign emit drift, not real new debt. Trade recorded honestly: until the fixpoint lands, self-host debt could grow behind the non-required ci_regen door unguarded; the non-required ci_regen job still shows the honest byte-identical verdict, and when divergence hits 0 the RegenVerifyGate returns to the required surface (the post-zero gate-placement decision, operator + owner)."
+
 fn rust_tests_job() -> Job {
   Job {
     id: "rust_tests",
@@ -442,5 +478,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_job(), rust_tests_job()], ci_deploy_jobs())
+  jobs: concat([ci_job(), ci_regen_job(), rust_tests_job()], ci_deploy_jobs())
 }

@@ -4,7 +4,7 @@ import std.types { SourceSpan, container_param_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
-  intern, intern_str,
+  intern, intern_str, empty_intern_table,
   authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
   module_node, module_imports, module_items, import_is_all, import_specific_names_at,
   make_param_node, param_node_name_at, param_node_type_expr,
@@ -830,7 +830,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       },
       kernel_diags: []
     }
-  } else if func_name == "map_keys" {
+  } else if func_name == "map_keys" || func_name == "sorted_map_keys" {
     match typed_args |> first {
       Present { value: receiver_arg } =>
         match arg_value(n: receiver_arg).inferred {
@@ -966,7 +966,7 @@ type MethodPipeFallback {
 }
 
 fn method_pipe_map_keys_values_fallback(recv_rt: Node, method_name: String, scope: InferScope, span: SourceSpan) -> MethodPipeFallback {
-  if method_name == "map_keys" {
+  if method_name == "map_keys" || method_name == "sorted_map_keys" {
     match map_key_type_in_env(type_node: recv_rt, env: scope.type_env) {
       Present { value: key_type } =>
         let lk = list_kernel_ty_from_element(element: key_type)
@@ -5713,9 +5713,9 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let new_cycle_names = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: local_str_bindings)
   let new_cycle_set_str = fold(new_cycle_names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let cycle_set_str = map_merge(map_merge(ancestry_cache.cycle_set_str, new_cycle_set_str), compiler_recursive_name_set())
-  let cycle_set = map(map_keys(cycle_set_str), name => intern(table: intern_table, s: name).id)
-  let cross_type_set = fold(map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  let cycle_set_for_inductive = fold(map_keys(cycle_set_str), init: empty_set(), f: (acc, name) => set_insert(acc, name))
+  let cycle_set = map(sorted_map_keys(cycle_set_str), name => intern(table: intern_table, s: name).id)
+  let cross_type_set = fold(sorted_map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
+  let cycle_set_for_inductive = fold(sorted_map_keys(cycle_set_str), init: empty_set(), f: (acc, name) => set_insert(acc, name))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_set_for_inductive, source_indices: source_indices)
   let parent_inductive_fields = fold(scope_parents, init: empty_map(), f: (acc, parent) =>
     merge_inductive_fields(left: acc, right: parent.inductive_fields)
@@ -5842,9 +5842,9 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let new_cycle_names = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: local_str_bindings)
   let new_cycle_set_str = fold(new_cycle_names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let cycle_set_str = map_merge(map_merge(ancestry_cache.cycle_set_str, new_cycle_set_str), compiler_recursive_name_set())
-  let cycle_set = map(map_keys(cycle_set_str), name => intern(table: intern_table, s: name).id)
-  let cross_type_set = fold(map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  let cycle_set_for_inductive = fold(map_keys(cycle_set_str), init: empty_set(), f: (acc, name) => set_insert(acc, name))
+  let cycle_set = map(sorted_map_keys(cycle_set_str), name => intern(table: intern_table, s: name).id)
+  let cross_type_set = fold(sorted_map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
+  let cycle_set_for_inductive = fold(sorted_map_keys(cycle_set_str), init: empty_set(), f: (acc, name) => set_insert(acc, name))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_set_for_inductive, source_indices: source_indices)
   let parent_inductive_fields = fold(scope_parents, init: empty_map(), f: (acc, parent) =>
     merge_inductive_fields(left: acc, right: parent.inductive_fields)
@@ -6804,16 +6804,12 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
   let index = fold(modules, init: empty_map(), f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
-  let shared_kernel = match fold(modules, init: Absent, f: (acc, m) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match m.type_env.parents |> last {
-          Present { value: kernel } => Present { value: kernel }
-          Absent => Absent
-        }
-    }
-  ) {
+  let shared_kernel = match modules |> flat_map(m =>
+      match m.type_env.parents |> last {
+        Present { value: kernel } => if map_is_empty(kernel.bindings) { [] } else { [kernel] }
+        Absent => []
+      }
+    ) |> first {
     Present { value: kernel } => kernel
     Absent =>
       match modules |> first {

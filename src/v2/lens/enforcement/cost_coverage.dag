@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
   dag_language_model_wave1,
-  parse_production_emitted_identity_optional,
+  dag_node_is_fn_decl,
   parse_subtree_find_production_captured
 }
 import v2.lens.cost {
@@ -94,15 +94,8 @@ data cost_coverage_file_anchor: Symbol = ^cost_coverage_file_anchor
 
 data cost_coverage_reject_probe: Symbol = ^cost_coverage_reject_probe
 
-fn cost_coverage_is_fn_decl(node: Node) -> Bool {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } => id == ^dag_surface_fn_decl
-    Absent => false
-  }
-}
-
 fn cost_coverage_collect_fn_decls(root: Node, acc: List<Node>) -> List<Node> {
-  let acc1 = if cost_coverage_is_fn_decl(node: root) {
+  let acc1 = if dag_node_is_fn_decl(node: root) {
     list_append(left: acc, right: [root])
   } else {
     acc
