@@ -1265,7 +1265,7 @@ mod shared_cache_collision_guard_tests {
 
 thread_local! {
     static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
-        const { RefCell::new(HashMap::new()) };
+        RefCell::new(HashMap::new());
 }
 
 #[cfg(test)]
@@ -9009,12 +9009,14 @@ pub fn fact_cardinality_decl_facts() -> Vec<FactCardinalityDeclFactRaw> {
     records
 }
 
+#[derive(Clone)]
 pub struct ImportResolutionFactRaw {
     pub path: String,
     pub import_module: String,
     pub target_declared: bool,
 }
 
+#[derive(Clone)]
 pub struct ModuleDeclarationFactRaw {
     pub module: String,
     pub path: String,
