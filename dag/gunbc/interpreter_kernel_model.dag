@@ -11,7 +11,7 @@ type V1InterpreterDissolutionPhase
   | PureEvalEmitWired
   | HostPhysicsPinnedTerminal
 
-data interpreter_kernel_d_current_phase: V1InterpreterDissolutionPhase = ModelAndWitnessOnly
+data interpreter_kernel_d_current_phase: V1InterpreterDissolutionPhase = PureEvalEmitWired
 
 data pure_eval_authority_modules: List<String> = [
   "src/v2/compiler/05_eval.dag",
@@ -52,6 +52,14 @@ fn interpreter_kernel_d_phase_is_model_only() -> Bool {
   match interpreter_kernel_d_current_phase {
     ModelAndWitnessOnly => true
     PureEvalEmitWired => false
+    HostPhysicsPinnedTerminal => false
+  }
+}
+
+fn interpreter_kernel_d_phase_is_pure_eval_emit_wired() -> Bool {
+  match interpreter_kernel_d_current_phase {
+    PureEvalEmitWired => true
+    ModelAndWitnessOnly => false
     HostPhysicsPinnedTerminal => false
   }
 }
