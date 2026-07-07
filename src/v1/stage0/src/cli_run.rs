@@ -3,7 +3,8 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::std_node::compiler_recursive_types;
@@ -858,19 +859,120 @@ fn compile_clean_scope_plan_from_touched_paths(
     }
 }
 
+/// `gunbc.ci_layer_roots.compile_clean_source_roots` — witness pool + `src/v1` for cross-tree
+/// import resolution in compile-clean scope disposition (not the gate receipt pool).
+fn compile_clean_source_roots() -> Vec<String> {
+    let mut roots = witness_layer_roots();
+    if !roots.iter().any(|r| r == "src/v1") {
+        roots.push("src/v1".to_string());
+    }
+    roots
+}
+
+fn compile_clean_touched_path_norm(path: &str) -> &str {
+    path.strip_prefix("./").unwrap_or(path)
+}
+
+fn compile_clean_touches_allow_skip(touched_paths: &[String]) -> bool {
+    touched_paths.is_empty()
+        || touched_paths
+            .iter()
+            .all(|p| compile_clean_touched_path_norm(p).starts_with("docs/"))
+}
+
+/// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
+/// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
+fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
+    let entry_root = witness_layer_roots()
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "dag".to_string());
+    let ws = workspace_root();
+    let abs_entry_root = ws.join(&entry_root).to_string_lossy().into_owned();
+    let mut paths: Vec<String> = module_declaration_facts(&[abs_entry_root])
+        .into_iter()
+        .map(|decl| workspace_relative_repo_path(&decl.path))
+        .collect();
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn entry_affected_by_touched_paths_with_facts(
+    entry_path: &str,
+    touched_paths: &[String],
+    facts: &ModuleGraphFactsLive,
+) -> bool {
+    let closure: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .collect();
+    touched_paths
+        .iter()
+        .any(|touched| touched_file_in_import_closure(touched, &closure))
+}
+
+/// Floor CI hot path: same disposition as `compile_clean_scope_disposition_from_touched` but
+/// uses cached `build_module_graph_facts_live` + Rust closure walks — avoids the Wet interpreter
+/// fold over `compile_clean_shard_entry_paths()` that times out the 10m floor step.
+fn compile_clean_scope_plan_from_touched_paths_floor_fast(
+    touched_paths: &[String],
+) -> CompileCleanScopePlan {
+    let pool_roots = compile_clean_source_roots();
+    let ws = workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let facts = build_module_graph_facts_live(&abs_pool_roots);
+    let mut affected = Vec::new();
+    for entry_path in compile_clean_shard_entry_paths_fast() {
+        if entry_affected_by_touched_paths_with_facts(&entry_path, touched_paths, &facts) {
+            affected.push(entry_path);
+        }
+    }
+    if !affected.is_empty() {
+        eprintln!(
+            "compile-clean scope: {} affected entr{} (floor fast path)",
+            affected.len(),
+            if affected.len() == 1 { "y" } else { "ies" }
+        );
+        return CompileCleanScopePlan::Scoped {
+            entry_paths: affected,
+        };
+    }
+    if compile_clean_touches_allow_skip(touched_paths) {
+        eprintln!(
+            "compile-clean scope: skipped (no compile-clean entry import-closure intersects touched paths)"
+        );
+        return CompileCleanScopePlan::SkipNoAffected {
+            reason: "no compile-clean entry import-closure intersects touched paths".to_string(),
+        };
+    }
+    eprintln!(
+        "compile-clean scope: non-empty non-docs diff with no shard intersection — whole-tree baseline"
+    );
+    CompileCleanScopePlan::WholeTree
+}
+
 fn compile_clean_scoping_active() -> bool {
-    std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
+    FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst)
+        || std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
         || std::env::var("GITHUB_ACTIONS")
             .map(|v| v == "true")
             .unwrap_or(false)
+        || std::env::var("CI").map(|v| v == "true").unwrap_or(false)
 }
 
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     if !compile_clean_scoping_active() {
+        eprintln!("compile-clean scope: whole-tree (ci diff scoping inactive)");
         return CompileCleanScopePlan::WholeTree;
     }
     match floor_git_diff_name_status_range() {
         Ok((changed_paths, _departed)) => {
+            if FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst) {
+                return compile_clean_scope_plan_from_touched_paths_floor_fast(&changed_paths);
+            }
             match compile_clean_scope_plan_from_touched_paths(&changed_paths) {
                 Ok(plan) => plan,
                 Err(msg) => CompileCleanScopePlan::Refused {
@@ -897,10 +999,14 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
             Ok(None)
         }
         CompileCleanScopePlan::WholeTree => {
+            eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
             let roots = witness_layer_roots();
             let index = build_module_index_primary_precedence(&roots);
             let facts = build_module_graph_facts_live(&roots);
-            load_compile_clean_entry_sources(&roots, &index, &facts, None).map(Some)
+            load_compile_clean_entry_sources(&roots, &index, &facts, None).map(|mut sources| {
+                append_test_floor_compile_clean_inject(&mut sources);
+                Some(sources)
+            })
         }
         CompileCleanScopePlan::Scoped { entry_paths } => {
             eprintln!(
@@ -918,6 +1024,153 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
             load_compile_clean_entry_sources(&roots, &index, &facts, Some(&filter)).map(Some)
         }
     }
+}
+
+/// Test-only inject: append an unresolved-import module to the compile-clean closure so
+/// `install_floor_compile_clean_receipt` + `consume_floor_compile_clean_gate_verdict` can be
+/// proven end-to-end (§5 discriminating RED) without mutating the workspace tree.
+fn append_test_floor_compile_clean_inject(sources: &mut Vec<Rc<v1_compiler_compile::SourceFile>>) {
+    if std::env::var("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        sources.push(Rc::new(v1_compiler_compile::SourceFile {
+            path: "dag/test/fixture/lever_a_e2e_unresolved_inject.dag".to_string(),
+            content: "module test.lever_a_e2e_unresolved_inject\nimport totally.nonexistent.lever_a_module { Foo }\nfn probe() -> Int { 42 }".to_string(),
+        }));
+    }
+}
+
+/// In-run receipt for the floor's ONE whole-tree `--target dag` compile (Lever A / §2 Share).
+/// `claim_executor` installs this before batch-1; `dag_compile_clean_gate` consumes it only —
+/// a second compile in the gate path is unwritable (§5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FloorCompileCleanReceipt {
+    Skipped { reason: String },
+    Refused { reason: String },
+    Compiled { ok: bool },
+}
+
+static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
+
+/// When set by `claim_executor` for `gunbc_ci_floor_batches`, the first gate consume installs
+/// the one whole-tree receipt (after plan resolve has warmed the module-graph facts cache).
+static FLOOR_COMPILE_CLEAN_LAZY_INSTALL: AtomicBool = AtomicBool::new(false);
+/// Floor CI runs through `claim_executor`; env-based scoping detection alone missed some
+/// self-hosted runners (silent whole-tree source load → step timeout). Tied to lazy install.
+static FLOOR_COMPILE_CLEAN_CI_SCOPING: AtomicBool = AtomicBool::new(false);
+
+pub fn enable_floor_compile_clean_lazy_install() {
+    FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(true, Ordering::SeqCst);
+    FLOOR_COMPILE_CLEAN_CI_SCOPING.store(true, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+fn disable_floor_compile_clean_lazy_install_for_test() {
+    FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(false, Ordering::SeqCst);
+    FLOOR_COMPILE_CLEAN_CI_SCOPING.store(false, Ordering::SeqCst);
+}
+
+fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
+    use crate::v1_compiler_artifact::RenderTarget;
+    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
+    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
+}
+
+fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
+    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+        Ok(None) => FloorCompileCleanReceipt::Skipped {
+            reason: "no compile-clean entry affected".to_string(),
+        },
+        Err(msg) => FloorCompileCleanReceipt::Refused { reason: msg },
+        Ok(Some(sources)) => FloorCompileCleanReceipt::Compiled {
+            ok: floor_compile_clean_emit_ok(sources),
+        },
+    }
+}
+
+/// Run the floor's single whole-tree `--target dag` compile and store the receipt for gate
+/// consumption. Exactly one install per `claim_executor` process; second install is an error.
+pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
+    let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT
+        .lock()
+        .map_err(|e| format!("floor compile-clean receipt lock poisoned: {e}"))?;
+    if guard.is_some() {
+        return Err(
+            "floor compile-clean receipt already installed — one whole-tree compile per run"
+                .to_string(),
+        );
+    }
+    eprintln!(
+        "claim_executor: floor compile-clean — one whole-tree --target dag compile (gate consumes receipt)"
+    );
+    let receipt = produce_floor_compile_clean_receipt();
+    if let FloorCompileCleanReceipt::Compiled { ok } = &receipt {
+        eprintln!("claim_executor: floor compile-clean receipt ok={ok}");
+    }
+    *guard = Some(receipt);
+    Ok(())
+}
+
+pub fn floor_compile_clean_receipt_installed() -> bool {
+    FLOOR_COMPILE_CLEAN_RECEIPT
+        .lock()
+        .ok()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
+}
+
+/// Gate consumer: reads the receipt from `install_floor_compile_clean_receipt` only.
+/// Refuses when no receipt exists — never runs a second compile.
+pub fn consume_floor_compile_clean_gate_verdict() -> bool {
+    if FLOOR_COMPILE_CLEAN_LAZY_INSTALL.load(Ordering::SeqCst)
+        && !floor_compile_clean_receipt_installed()
+    {
+        if let Err(msg) = install_floor_compile_clean_receipt() {
+            if !floor_compile_clean_receipt_installed() {
+                eprintln!("compile-clean gate: refused — receipt install failed ({msg})");
+                return false;
+            }
+            // Serial `run_walk` today; if a future scheduler fans out batch-1, a concurrent
+            // lazy install may win first — consume the installed receipt, do not refuse.
+        }
+    }
+    let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("compile-clean gate: refused — receipt lock poisoned ({e})");
+            return false;
+        }
+    };
+    match guard.as_ref() {
+        None => {
+            eprintln!(
+                "compile-clean gate: refused — no in-run compile receipt (gate must consume the executor's one whole-tree --target dag compile)"
+            );
+            false
+        }
+        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
+            eprintln!("compile-clean gate: skipped ({reason})");
+            true
+        }
+        Some(FloorCompileCleanReceipt::Refused { reason }) => {
+            eprintln!("compile-clean gate: refused ({reason})");
+            false
+        }
+        Some(FloorCompileCleanReceipt::Compiled { ok }) => *ok,
+    }
+}
+
+#[cfg(test)]
+fn reset_floor_compile_clean_receipt_for_test() {
+    let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
+    *guard = None;
+}
+
+#[cfg(test)]
+fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt) {
+    let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
+    *guard = Some(receipt);
 }
 
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
@@ -943,17 +1196,12 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
 }
 
 /// Emit leg: `--target dag` compile over witness layer roots without shell or disk write.
-/// Green-by-execution consumer for the batch-1 compile-clean gate (DESIGN §5).
+/// Direct-run oracle for non-floor contexts (cargo tests, enrolled witnesses). The CI
+/// floor gate consumes `consume_floor_compile_clean_gate_verdict` instead (Lever A).
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
-    use crate::v1_compiler_artifact::RenderTarget;
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
-        Ok(Some(sources)) => {
-            let result =
-                v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-            !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
-                && !result.files.is_empty()
-        }
+        Ok(Some(sources)) => floor_compile_clean_emit_ok(sources),
         Err(msg) => {
             eprintln!("compile-clean emit: source load failed ({msg})");
             false
@@ -1074,6 +1322,7 @@ pub fn import_closure_from_facts(
 /// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
 /// set. Built once per `MultiEntryIndex` / resolve pass so closure queries do not re-scan the
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
+#[derive(Clone)]
 pub struct ModuleGraphFactsLive {
     edges: Vec<ImportResolutionFactRaw>,
     nodes: Vec<ModuleDeclarationFactRaw>,
@@ -1125,7 +1374,17 @@ mod shared_cache_collision_guard_tests {
     }
 }
 
-pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsLive {
+thread_local! {
+    static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
+        RefCell::new(HashMap::new());
+}
+
+#[cfg(test)]
+pub(crate) fn reset_module_graph_facts_cache_for_test() {
+    MODULE_GRAPH_FACTS_CACHE.with(|cache| cache.borrow_mut().clear());
+}
+
+fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphFactsLive {
     #[cfg(test)]
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     const EXCLUDE: &[String] = &[];
@@ -1138,6 +1397,18 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
         nodes,
         adjacency,
     }
+}
+
+pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsLive {
+    let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
+    MODULE_GRAPH_FACTS_CACHE.with(|cache| {
+        if let Some(facts) = cache.borrow().get(&key) {
+            return facts.clone();
+        }
+        let facts = build_module_graph_facts_live_uncached(pool_roots);
+        cache.borrow_mut().insert(key, facts.clone());
+        facts
+    })
 }
 
 /// Host realization of `v2.lens.module_graph.import_closure_live`.
@@ -8849,12 +9120,14 @@ pub fn fact_cardinality_decl_facts() -> Vec<FactCardinalityDeclFactRaw> {
     records
 }
 
+#[derive(Clone)]
 pub struct ImportResolutionFactRaw {
     pub path: String,
     pub import_module: String,
     pub target_declared: bool,
 }
 
+#[derive(Clone)]
 pub struct ModuleDeclarationFactRaw {
     pub module: String,
     pub path: String,
@@ -10897,6 +11170,7 @@ mod witness_layer_roots_compile_clean_tests {
         let _guard = ENV_TEST_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        disable_floor_compile_clean_lazy_install_for_test();
         f();
     }
 
@@ -10953,6 +11227,129 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    /// §5 discriminating RED: gate without an installed receipt must refuse (never run a second compile).
+    #[test]
+    fn floor_compile_clean_gate_refuses_without_receipt() {
+        with_env_test_lock(|| {
+            reset_floor_compile_clean_receipt_for_test();
+            assert!(
+                !consume_floor_compile_clean_gate_verdict(),
+                "gate must refuse when no in-run compile receipt exists"
+            );
+            assert!(!floor_compile_clean_receipt_installed());
+        });
+    }
+
+    /// §5 discriminating RED: gate must refuse when the one compile produced hard errors.
+    #[test]
+    fn floor_compile_clean_gate_refuses_on_failed_compile_receipt() {
+        with_env_test_lock(|| {
+            reset_floor_compile_clean_receipt_for_test();
+            install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Compiled {
+                ok: false,
+            });
+            assert!(
+                !consume_floor_compile_clean_gate_verdict(),
+                "gate must refuse when the installed receipt records compile failure"
+            );
+        });
+    }
+
+    /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
+    /// must refuse through install_floor_compile_clean_receipt → consume_floor_compile_clean_gate_verdict.
+    /// Ignored in CI: ~minutes cold whole-tree compile; recorded execution receipt in PR #6361 body.
+    #[test]
+    #[ignore = "manual ~minutes whole-tree compile; recorded execution receipt in PR #6361 body (clever-koi demand 1)"]
+    fn floor_compile_clean_gate_e2e_refuses_on_broken_tree() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ga = EnvGuard::remove("GITHUB_ACTIONS");
+                let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+                let _inject =
+                    EnvGuard::set("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED", "1");
+                reset_floor_compile_clean_receipt_for_test();
+                install_floor_compile_clean_receipt()
+                    .expect("real whole-tree compile with injected unresolved import");
+                assert!(
+                    !consume_floor_compile_clean_gate_verdict(),
+                    "gate must refuse when the one real compile hits hard errors"
+                );
+            });
+        });
+    }
+
+    /// widen-never-narrow box (lively-raven-355): the dag/ entry closure has zero live `import v1.*`
+    /// lines — src/v1 is a shell-perturb resolution root only, not gate entry scope.
+    #[test]
+    fn compile_clean_dag_entry_tree_has_no_v1_module_imports() {
+        let dag_root = workspace_root().join("dag");
+        let mut offenders = Vec::new();
+        let mut stack = vec![dag_root];
+        while let Some(dir) = stack.pop() {
+            let entries =
+                std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read_dir {:?}: {e}", dir));
+            for entry in entries {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().and_then(|s| s.to_str()) == Some("dag") {
+                    let content = std::fs::read_to_string(&path)
+                        .unwrap_or_else(|e| panic!("read {:?}: {e}", path));
+                    for (i, line) in content.lines().enumerate() {
+                        let trimmed = line.trim_start();
+                        if trimmed.starts_with("import v1.") {
+                            offenders.push(format!("{}:{}: {}", path.display(), i + 1, trimmed));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "dag compile-clean entry tree must not import v1.* modules: {offenders:?}"
+        );
+    }
+
+    /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
+    #[test]
+    fn floor_fast_scoped_plan_skips_docs_only_touch() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
+                "docs/plans/example.md".to_string(),
+            ]);
+            assert_eq!(
+                plan,
+                CompileCleanScopePlan::SkipNoAffected {
+                    reason: "no compile-clean entry import-closure intersects touched paths"
+                        .to_string()
+                }
+            );
+        });
+    }
+
+    /// Lever-a PR touch receipt: dag transport edits scope (not silent whole-tree).
+    #[test]
+    fn floor_fast_scoped_plan_includes_lever_a_dag_transport_touch() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
+                "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                "src/v1/stage0/src/cli_run.rs".to_string(),
+            ]);
+            match plan {
+                CompileCleanScopePlan::Scoped { entry_paths } => {
+                    assert!(
+                        entry_paths
+                            .iter()
+                            .any(|p| p.contains("dag_compile_clean_transport")),
+                        "expected transport entry in {entry_paths:?}"
+                    );
+                }
+                other => panic!("expected ScopedRun for lever-A PR touch, got {other:?}"),
+            }
+        });
+    }
+
     /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
     #[test]
     #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
@@ -10968,6 +11365,30 @@ mod witness_layer_roots_compile_clean_tests {
                         .to_string()
                 }
             );
+        });
+    }
+
+    /// Lever-a PR touch receipt: dag transport edits scope (not silent whole-tree).
+    #[test]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold"]
+    fn scoped_plan_includes_lever_a_dag_transport_touch() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths(&[
+                "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                "src/v1/stage0/src/cli_run.rs".to_string(),
+            ])
+            .expect("scope disposition");
+            match plan {
+                CompileCleanScopePlan::Scoped { entry_paths } => {
+                    assert!(
+                        entry_paths
+                            .iter()
+                            .any(|p| p.contains("dag_compile_clean_transport")),
+                        "expected transport entry in {entry_paths:?}"
+                    );
+                }
+                other => panic!("expected ScopedRun for lever-A PR touch, got {other:?}"),
+            }
         });
     }
 

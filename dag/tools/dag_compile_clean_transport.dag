@@ -48,7 +48,7 @@ fn clean_tree_compile_program() -> ShellProgram {
 }
 
 fn run_clean_tree_compile() -> Bool {
-  witness_layer_roots_compile_clean_check()
+  consume_floor_compile_clean_gate_verdict()
 }
 
 data clean_tree_compile_gate_disposition: Disposition = Scaffold {
@@ -240,7 +240,9 @@ data dag_compile_clean_gate_program_disposition: Disposition = Scaffold {
   }
 }
 
-data dag_compile_clean_gate_program_note: String = "Composed shell program (clean-tree + all perturb/cross-tree/dag-shell body_stmts) kept for serialize-shape witness dag_compile_clean_gate_transport_serializes_dcc_invocation only — batch-1 dag_compile_clean_gate calls witness_layer_roots_compile_clean_check in-process; perturb receipts run via enrolled batch-2 corpus witness dag_compile_clean_perturb_receipts_test.dag."
+data dag_compile_clean_gate_program_note: String = "Composed shell program (clean-tree + all perturb/cross-tree/dag-shell body_stmts) kept for serialize-shape witness dag_compile_clean_gate_transport_serializes_dcc_invocation only — batch-1 dag_compile_clean_gate calls consume_floor_compile_clean_gate_verdict in-process (consumes the executor's ONE whole-tree --target dag compile receipt over witness_layer_roots; clean_tree_compile_body_stmts serializes compile_clean_source_roots for transport-shape only and is never executed on the floor); perturb receipts run via enrolled batch-2 corpus witness dag_compile_clean_perturb_receipts_test.dag."
+
+data lever_a_gate_pool_roots_note: String = "Gate receipt + in-process authority use witness_layer_roots (dag, src/v2) for primary-precedence pool indexing and dag/ entry scan. compile_clean_source_roots adds src/v1 for shell perturb/cross-tree transports only — zero live `import v1.*` lines exist under dag/ today (verified by compile_clean_dag_entry_tree_has_no_v1_module_imports in cli_run); v1_source_audit_witness_test uses filesystem_read grep, not v1 imports."
 
 fn dag_compile_clean_gate_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
