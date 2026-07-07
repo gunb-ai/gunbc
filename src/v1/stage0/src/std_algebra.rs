@@ -1081,6 +1081,21 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             callback_element_position: None,
         }),
         Rc::new(AlgebraFieldTemplate {
+            name: "get".to_string(),
+            param_types: Rc::new(vec![
+                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+                Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "Int".to_string(),
+                }),
+            ]),
+            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
+                inner: Rc::new(AlgebraTypeTemplate::ReceiverElement),
+            }),
+            size_effect: Some(CollectionSizeEffect::ProjectionEffect),
+            cost_shape: Some(CostShape::ShapeLinearScan),
+            callback_element_position: None,
+        }),
+        Rc::new(AlgebraFieldTemplate {
             name: "skip".to_string(),
             param_types: Rc::new(vec![
                 Rc::new(AlgebraTypeTemplate::ReceiverSelf),
