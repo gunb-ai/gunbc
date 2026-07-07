@@ -24014,54 +24014,29 @@ pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
     }
 }
 
-pub fn find_data_item_body(name: String, modules: Rc<Vec<Rc<TypedModule>>>) -> Option<Rc<Node>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for tm in modules.iter().cloned() {
-            __result.extend(
-                (*Rc::new({
-                    let mut __result = Vec::new();
-                    for i in Rc::new({
-                        let mut __result = Vec::new();
-                        for i in tm.items.clone().iter().cloned() {
-                            if (authored_name_at(
-                                tm.type_env.clone().source_indices.clone(),
-                                i.clone(),
-                            ) == name.clone())
-                            {
-                                __result.push(i);
-                            }
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    {
-                        __result.extend(
-                            (*match i.body.clone() {
-                                Some(b) => Rc::new(vec![b.clone()]),
-                                None => Rc::new(vec![]),
-                            })
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
-    .first()
-    .cloned()
+pub fn build_data_body_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
+    modules.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
+            tm.items.clone().iter().cloned().fold(
+                acc,
+                |inner: Rc<HashMap<String, Rc<Node>>>, i: Rc<Node>| match i.body.clone() {
+                    Some(b) => v1_rt::rc_map_insert(
+                        inner.clone(),
+                        authored_name_at(tm.type_env.clone().source_indices.clone(), i.clone()),
+                        b.clone(),
+                    ),
+                    None => inner.clone(),
+                },
+            )
+        },
+    )
 }
 
 pub fn resolve_param_default(
     param: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    modules: Rc<Vec<Rc<TypedModule>>>,
+    data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match param_node_default_value(param) {
@@ -24074,9 +24049,9 @@ pub fn resolve_param_default(
                 authored_name_at(source_indices.clone(), dv.clone()),
             ) {
                 Some(info) => match info.kind.clone() {
-                    ItemKind::DataItem => match find_data_item_body(
+                    ItemKind::DataItem => match v1_rt::map_get(
+                        &data_body_index,
                         authored_name_at(source_indices.clone(), dv.clone()),
-                        modules,
                     ) {
                         Some(body) => extract_literal_string(body.clone()),
                         None => None,
@@ -24095,7 +24070,7 @@ pub fn to_workflow_func(
     item: Rc<Node>,
     module_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    modules: Rc<Vec<Rc<TypedModule>>>,
+    data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 ) -> Rc<WorkflowFunc> {
@@ -24110,7 +24085,7 @@ pub fn to_workflow_func(
             |acc: Rc<HashMap<String, String>>, p: Rc<Node>| match resolve_param_default(
                 p.clone(),
                 registry.clone(),
-                modules.clone(),
+                data_body_index.clone(),
                 source_indices.clone(),
             ) {
                 Some(lit) => v1_rt::rc_map_insert(
@@ -24170,48 +24145,51 @@ pub fn collect_workflow_funcs(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 ) -> Rc<Vec<Rc<WorkflowFunc>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for tm in modules.clone().iter().cloned() {
-            __result.extend(
-                (*Rc::new({
-                    let mut __result = Vec::new();
-                    for item in Rc::new({
+    {
+        let data_body_index = build_data_body_index(modules.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for tm in modules.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
                         let mut __result = Vec::new();
-                        for item in tm.items.clone().iter().cloned() {
-                            if is_workflow_item(
-                                item.clone(),
-                                registry.clone(),
-                                tm.type_env.clone().source_indices.clone(),
-                            ) {
-                                __result.push(item);
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                if is_workflow_item(
+                                    item.clone(),
+                                    registry.clone(),
+                                    tm.type_env.clone().source_indices.clone(),
+                                ) {
+                                    __result.push(item);
+                                }
                             }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(to_workflow_func(
+                                item.clone(),
+                                authored_name_at(
+                                    tm.type_env.clone().source_indices.clone(),
+                                    tm.module.clone(),
+                                ),
+                                registry.clone(),
+                                data_body_index.clone(),
+                                tm.type_env.clone().source_indices.clone(),
+                                read_only_params_index.clone(),
+                            ));
                         }
                         __result
-                    })
+                    }))
                     .iter()
-                    .cloned()
-                    {
-                        __result.push(to_workflow_func(
-                            item.clone(),
-                            authored_name_at(
-                                tm.type_env.clone().source_indices.clone(),
-                                tm.module.clone(),
-                            ),
-                            registry.clone(),
-                            modules.clone(),
-                            tm.type_env.clone().source_indices.clone(),
-                            read_only_params_index.clone(),
-                        ));
-                    }
-                    __result
-                }))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
 }
 
 pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {

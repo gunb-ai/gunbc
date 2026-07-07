@@ -8433,15 +8433,18 @@ fn extract_literal_string(expr: Node) -> String? {
   }
 }
 
-fn find_data_item_body(name: String, modules: List<TypedModule>) -> Node? {
-  modules |> flat_map(tm =>
-    tm.items
-      |> filter(i => authored_name_at(source_indices: tm.type_env.source_indices, node: i) == name)
-      |> flat_map(i => match i.body { Present { value: b } => [b]  Absent => [] })
-  ) |> first
+fn build_data_body_index(modules: List<TypedModule>) -> Map<String, Node> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    tm.items |> fold(init: acc, f: (inner, i) =>
+      match i.body {
+        Present { value: b } => map_insert(inner, authored_name_at(source_indices: tm.type_env.source_indices, node: i), b)
+        Absent => inner
+      }
+    )
+  )
 }
 
-fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> String? {
+fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> String? {
   match param_node_default_value(n: param) {
     Present { value: dv } => match dv.expr_data {
       ExprLiteral { value: _ } => extract_literal_string(expr: dv)
@@ -8449,7 +8452,7 @@ fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, modules: 
         match lookup_item(registry: registry, name: authored_name_at(source_indices: source_indices, node: dv)) {
           Present { value: info } => match info.kind {
             DataItem =>
-              match find_data_item_body(name: authored_name_at(source_indices: source_indices, node: dv), modules: modules) {
+              match map_get(data_body_index, authored_name_at(source_indices: source_indices, node: dv)) {
                 Present { value: body } => extract_literal_string(expr: body)
                 Absent => none
               }
@@ -8463,14 +8466,14 @@ fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, modules: 
   }
 }
 
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
+fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
   let item_name = authored_name_at(source_indices: source_indices, node: item)
   let svc_names = match lookup_item(registry: registry, name: item_name) {
     Present { value: info } => info.service_names
     Absent => []
   }
   let defaults = item.params |> fold(init: empty_map(), f: (acc, p) =>
-    match resolve_param_default(param: p, registry: registry, modules: modules, source_indices: source_indices) {
+    match resolve_param_default(param: p, registry: registry, data_body_index: data_body_index, source_indices: source_indices) {
       Present { value: lit } => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), lit)
       Absent => acc
     }
@@ -8506,10 +8509,11 @@ fn is_workflow_item(item: Node, registry: Map<String, ItemInfo>, source_indices:
 }
 
 fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>, read_only_params_index: Map<String, Set<String>>) -> List<WorkflowFunc> {
+  let data_body_index = build_data_body_index(modules: modules)
   modules |> flat_map(tm =>
     tm.items
       |> filter(item => is_workflow_item(item: item, registry: registry, source_indices: tm.type_env.source_indices))
-      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, modules: modules, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
+      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, data_body_index: data_body_index, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
   )
 }
 
