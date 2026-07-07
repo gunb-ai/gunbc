@@ -86,6 +86,16 @@ The shard subsystem is a **manual approximation of the DependencyView's independ
 The spine is realization-agnostic; concrete runners are chosen, not universal. Land two, in order:
 
 1. **Single-process, multi-thread** (the 128-core box) — `realize` schedules independent DependencyView nodes across a thread pool (the existing `spawn_width` executor, now driven by node-level independence instead of a flat batch). This is the first target and the one that turns 1/128 into ~critical-path-bounded.
+
+   **`realize` is resource-aware — independence is necessary, not sufficient.** The achievable concurrency is bounded by *both* the DependencyView and the resource budget:
+
+   ```
+   achievable_concurrency = min( independence_width , resource_budget / per_node_peak_RSS )
+   ```
+
+   The DependencyView supplies `independence_width`; per-node **measured** memory profiles + the budget supply the packing (this is the `Placement`/resource dimension). The one trap: **pack on measured peaks, never guessed** — a memory-blind scheduler that packs by count OOMs (the exit-137 failure mode). So a serial node-series can be independence-parallel yet *memory*-serialized; the fix is accurate profiles + pack-to-real-budget, not "crank the width."
+
+   *First live instance — the CI floor's own gate-series.* The floor's gates (layering, extdeps_authority, artifact_drift, emit_host, source_root_ingest, regen_verify) are **dependency-independent** of each other (only compile-clean gates them) yet run **serially** — sequenced by memory profile, not by dependency. Measured floor peak is **4.8 GiB of a 33 GiB budget (~7× headroom)**, so the serialization is over-conservative: re-profile on measured peaks, then pack the independent gates → floor time collapses from **SUM(gates)** to **compile-clean + MAX(gate)**. This is `realize` (resource-aware, §6-1) proving itself on the spine's own CI, and it fits the floor in budget with no budget bump.
 2. **Multi-process, multi-thread** (distributed) — later; the DependencyView + `Placement` dimension already anticipate it.
 
 Everything past these (heterogeneous placement, remote, accelerators) is genuinely downstream and does not block the spine.
