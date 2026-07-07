@@ -1,0 +1,33 @@
+module v2.test.manual.s1_opt_probe
+
+import extdeps.filesystem.filesystem_io
+import v2.lens.enforcement.grammar_coverage {
+  ParsedClean,
+  ParseRejected,
+  grammar_coverage_ingest_path,
+  grammar_coverage_ingest_source_text
+}
+import v2.std.text { String }
+
+data s1_opt_src: String = "module probe.opt\n\ntype Scope\n  = ScopeRoot { module: Namespace }\n  | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }\n"
+
+fn s1_opt_verdict() -> String {
+  match grammar_coverage_ingest_source_text(source_text: s1_opt_src, file: ^s1_opt_probe_file) {
+    ParsedClean => "CLEAN"
+    ParseRejected { stage: s, reason: _ } => concat("REJECT@", s)
+  }
+}
+
+fn s1_tmp() -> String {
+  match grammar_coverage_ingest_path(path: "target/s1_item.dag") {
+    ParsedClean => "CLEAN"
+    ParseRejected { stage: s, reason: _ } => concat("REJECT@", s)
+  }
+}
+
+fn s1_00_compile() -> String {
+  match grammar_coverage_ingest_path(path: "src/v2/compiler/00_compile.dag") {
+    ParsedClean => "CLEAN"
+    ParseRejected { stage: s, reason: _ } => concat("REJECT@", s)
+  }
+}

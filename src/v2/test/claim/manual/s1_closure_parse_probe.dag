@@ -1,0 +1,23 @@
+module v2.test.manual.s1_closure_parse_probe
+
+import extdeps.filesystem.filesystem_io
+import v2.lens.enforcement.grammar_coverage {
+  ParsedClean,
+  ParseRejected,
+  grammar_coverage_ingest_path
+}
+import v2.std.text { String }
+
+fn s1_verdict_str(path: String) -> String {
+  match grammar_coverage_ingest_path(path: path) {
+    ParsedClean => concat(path, ": CLEAN")
+    ParseRejected { stage: s, reason: _ } => concat(concat(path, ": REJECT@"), s)
+  }
+}
+
+fn s1_resolve() -> String { s1_verdict_str(path: "src/v2/compiler/03_resolve.dag") }
+fn s1_types() -> String { s1_verdict_str(path: "dag/std/types.dag") }
+fn s1_runtime() -> String { s1_verdict_str(path: "src/v2/std/runtime.dag") }
+fn s1_sugar() -> String { s1_verdict_str(path: "src/v2/std/compilers/sugar.dag") }
+fn s1_algebra() -> String { s1_verdict_str(path: "dag/std/algebra.dag") }
+fn s1_nameres() -> String { s1_verdict_str(path: "src/v2/compiler/03_name_resolve.dag") }
