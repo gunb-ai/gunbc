@@ -14,7 +14,8 @@ import v2.extdeps.languages.dag {
   dag_surface_module_header_metadata_edge,
   qualified_name_from_module_node
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list }
 import v2.std.collection { Absent, Map, Present, empty_map, map_get, map_insert, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,

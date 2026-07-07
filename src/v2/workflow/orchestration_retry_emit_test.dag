@@ -17,7 +17,8 @@ import v2.std.orchestration {
   EnvUnset,
   LogMatches
 }
-import v2.std.algebra { FreeMonoid, list_head, HeadFound, HeadAbsent }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import v2.std.collection { Map }
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }

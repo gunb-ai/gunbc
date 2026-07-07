@@ -23,7 +23,7 @@ import v2.test.manual.rust_add_emit_translate {
   rust_add_target_model
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.collection { Map, empty_map }
 import v2.std.diagnostic {
   Diagnostic,
@@ -33,7 +33,7 @@ import v2.std.diagnostic {
   port_locus,
   Unavailable
 }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.node { Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 import v2.std.witness { Violates, Witness }

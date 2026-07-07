@@ -30,7 +30,7 @@ import v2.lens.cost {
   asymptotic_class_of_cost,
   cost_lens
 }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,

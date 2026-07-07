@@ -1,6 +1,7 @@
 module v2.test.algebra_laws.is_prefix_of_prefix_check
 
-import v2.std.algebra { Cons, Empty, FreeMonoid, is_prefix_of }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { is_prefix_of }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.verification {
   CompilesClaim,

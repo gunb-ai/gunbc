@@ -1,6 +1,7 @@
 module v2.extdeps.languages.bash
 
-import v2.std.algebra { Empty, FreeMonoid, fold_list, list_snoc_item }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.grammar {
   FormalGrammarSymbol,
   FormalProduction,

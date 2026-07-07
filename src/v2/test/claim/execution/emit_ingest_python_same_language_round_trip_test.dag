@@ -22,7 +22,8 @@ import v2.extdeps.languages.python {
 import v2.test.manual.python_wave1_grammar_claim {
   python_wave1_grammar_parse_fixture
 }
-import v2.std.algebra { Cons, Empty, list_append }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.compilers.target_model {
   concrete_syntax_token_class,

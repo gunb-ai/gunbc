@@ -16,7 +16,8 @@ import v2.lens.edit_locus {
 import v2.std.collection { List }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
-import v2.std.algebra { Cons, Empty, contains, count_equal, for_all, length }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { contains, count_equal, for_all, length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold

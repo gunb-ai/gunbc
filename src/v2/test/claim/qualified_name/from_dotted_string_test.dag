@@ -1,5 +1,5 @@
 module v2.test.claim.qualified_name.from_dotted_string
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 
 import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
 import v2.std.layer { LayerPrefixStd }

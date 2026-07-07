@@ -37,15 +37,8 @@ import v2.std.compilers.lexing {
 }
 import v2.std.collection { List, Map, Set }
 import v2.std.logic { Bool, bool_boolean_algebra }
-import v2.std.algebra {
-  BooleanAlgebra,
-  Cons,
-  Empty,
-  boolean_algebra_type_node,
-  commutative_ring_type_node,
-  fold_list,
-  list_snoc_item
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, fold_list, list_snoc_item }
 import v2.std.text { String }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,

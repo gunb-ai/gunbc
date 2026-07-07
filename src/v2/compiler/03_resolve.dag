@@ -9,7 +9,8 @@ import v2.extdeps.languages.dag {
   dag_surface_module_header_metadata_edge,
   dag_surface_operator_canonicalization_lookup
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, length, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection {
   Absent,
   Map,

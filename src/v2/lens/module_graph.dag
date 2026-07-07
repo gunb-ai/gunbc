@@ -2,7 +2,8 @@ module v2.lens.module_graph
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import v2.std.algebra { FreeMonoid, fold_list, contains, list_snoc_item, any }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { fold_list, contains, list_snoc_item, any }
 import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_get, map_insert }
 import v2.std.logic { Bool }
 import v2.std.text { String }

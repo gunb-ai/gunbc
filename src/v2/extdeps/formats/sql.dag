@@ -1,7 +1,8 @@
 module v2.extdeps.formats.sql
 
 import v2.std.grammar { GrammarSchema }
-import v2.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import v2.std.collection { Absent, List, Map, Optional, Present }
 import v2.std.diagnostic {
   Diagnostic,

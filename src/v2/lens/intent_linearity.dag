@@ -7,7 +7,8 @@ import v2.lens.complexity_lowering { cost_is_lowerable }
 import v2.lens.fn_family { sigma_families_of_defs }
 import v2.lens.cost { symbolic_cost_of_node }
 import v2.std.node { Node, Symbol }
-import v2.std.algebra { FreeMonoid, length, any, for_all }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { length, any, for_all }
 import v2.std.text { String }
 import v2.std.logic { Bool }
 

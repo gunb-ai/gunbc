@@ -7,7 +7,8 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.lens.coverage { dedupe_snoc }
 import v2.lens.enforcement.standing_intent { whole_corpus_scope }
-import v2.std.algebra { Empty, filter, fold_list, length, list_append }
+import std.algebra { Empty }
+import v2.std.algebra { filter, fold_list, length, list_append }
 import v2.std.collection { List }
 import v2.std.decl_index { DeclFact, decl_facts }
 import v2.std.diagnostic { Accepted, Rejected }

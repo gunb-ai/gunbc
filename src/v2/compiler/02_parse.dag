@@ -62,7 +62,8 @@ import v2.std.provenance {
   span_index_record
 }
 import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_insert }
-import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
 import v2.std.text { Char, CharAbsent, CharFound, string_head }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.compilers.lexing {

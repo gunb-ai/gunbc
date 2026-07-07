@@ -83,7 +83,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v2.std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid }
 
 fn lazy_arm_atom(s: Symbol) -> Node {
   Node {
