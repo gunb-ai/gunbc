@@ -3321,13 +3321,16 @@ fn eval_algebra_method(
             })
         }
 
-        "length" | "count" | "size" => match free_monoid_to_vec(&receiver) {
-            Some(items) => Ok(Value::Int(items.len() as i64)),
-            None => match &receiver {
-                Value::Map(m) => Ok(Value::Int(m.len() as i64)),
-                _ => Err(InterpError::TypeError {
-                    msg: format!("cannot get length of {}", receiver.type_label()),
-                }),
+        "length" | "count" | "size" => match native_len(&receiver) {
+            Some(n) => Ok(Value::Int(n)),
+            None => match free_monoid_to_vec(&receiver) {
+                Some(items) => Ok(Value::Int(items.len() as i64)),
+                None => match &receiver {
+                    Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+                    _ => Err(InterpError::TypeError {
+                        msg: format!("cannot get length of {}", receiver.type_label()),
+                    }),
+                },
             },
         },
 
@@ -5655,9 +5658,12 @@ fn eval_builtin(
 
         "length" => match positional.first() {
             Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
-            Some(v) => match free_monoid_to_vec(v) {
-                Some(items) => Ok(Some(Value::Int(items.len() as i64))),
-                None => Ok(None),
+            Some(v) => match native_len(v) {
+                Some(n) => Ok(Some(Value::Int(n))),
+                None => match free_monoid_to_vec(v) {
+                    Some(items) => Ok(Some(Value::Int(items.len() as i64))),
+                    None => Ok(None),
+                },
             },
             None => Ok(None),
         },
@@ -6689,6 +6695,20 @@ pub fn eval_profile_reset() {
     EVAL_SELF_NANOS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
     eval_subject_timing_reset();
     CHILD_NANOS.set(0);
+}
+
+/// O(1) length for values whose native realization already tracks it,
+/// bypassing `free_monoid_to_vec`'s O(n) materialization. `parse_current_position`
+/// (v2 02_parse.dag) calls `length` on the full token stream every parse
+/// attempt; without this fast path that is an O(n) clone per attempt, an
+/// O(n^2) tax the compiled (Rust-emitted) realization never pays.
+pub(crate) fn native_len(val: &Value) -> Option<i64> {
+    match val {
+        Value::List(items) => Some(items.len() as i64),
+        Value::Map(m) => Some(m.len() as i64),
+        Value::Set(s) => Some(s.len() as i64),
+        _ => None,
+    }
 }
 
 pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {

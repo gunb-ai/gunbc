@@ -1,0 +1,44 @@
+module v2.test.parse.parse_token_first_empty_semantics
+
+import std.algebra { Cons, Empty }
+import v2.compiler.parse { parse_token_first }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.compilers.lexing { Token }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data parse_token_first_empty_semantics_note: String = "adhoc-c328b166-bca fix-2 verification receipt: parse_token_first was rewritten from list_at_optional(xs, index: 0) (fold_list-based) to list_head (direct Empty/Cons match). Both must agree on the boundary case that motivated the rewrite -- an exhausted token stream -- and on the ordinary present case; this pins that agreement directly rather than trusting the rewrite by inspection."
+
+fn ptfes_token(class: Symbol, lexeme: String) -> Token {
+  Token { class: class, lexeme: lexeme, file: ^ptfes_file, start: 0, end: 1 }
+}
+
+data ptfes_empty: List<Token> = Empty
+
+data ptfes_one: List<Token> = Cons {
+  head: ptfes_token(class: ^ptfes_a, lexeme: "a"),
+  tail: Empty
+}
+
+test fn parse_token_first_agrees_with_list_at_optional_on_empty_holds() -> Bool {
+  match parse_token_first(tokens: ptfes_empty) {
+    Absent =>
+      match list_at_optional(xs: ptfes_empty, index: 0) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+test fn parse_token_first_agrees_with_list_at_optional_on_present_holds() -> Bool {
+  match parse_token_first(tokens: ptfes_one) {
+    Present { value: v } =>
+      match list_at_optional(xs: ptfes_one, index: 0) {
+        Present { value: base } => v.lexeme == base.lexeme
+        Absent => false
+      }
+    Absent => false
+  }
+}
