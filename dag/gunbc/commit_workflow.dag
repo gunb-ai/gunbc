@@ -4,7 +4,8 @@ import gunbc.ci_gate {
   Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
+  SourceRootIngestGate, RegenVerifyGate,
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
 }
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
@@ -24,6 +25,7 @@ type LocalTidyCheck
 
 type CommitWorkflowSurface
   = GithubActionsCiJob
+  | GithubActionsCiRegenJob
   | GithubActionsRustTestsJob
   | GitPrePushHook
 
@@ -74,11 +76,15 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: RegenVerifyGate },
+    surfaces: [GithubActionsCiRegenJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: SelfHostReadsRealBytesGate },
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
-    check: CommitSpecGate { gate: SelfHostRealizedComparisonGate },
-    surfaces: [GithubActionsCiJob]
+    check: CommitSpecGate { gate: SelfHostStalenessGate },
+    surfaces: [GithubActionsCiRegenJob]
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: EmitDeterminismGate },
@@ -188,6 +194,8 @@ fn commit_workflow_surface_eq(a: CommitWorkflowSurface, b: CommitWorkflowSurface
   match a {
     GithubActionsCiJob =>
       match b { GithubActionsCiJob => true  _ => false }
+    GithubActionsCiRegenJob =>
+      match b { GithubActionsCiRegenJob => true  _ => false }
     GithubActionsRustTestsJob =>
       match b { GithubActionsRustTestsJob => true  _ => false }
     GitPrePushHook =>
@@ -213,7 +221,8 @@ fn gate_eq(a: Gate, b: Gate) -> Bool {
     GeneratedArtifactDriftGate => match b { GeneratedArtifactDriftGate => true  _ => false }
     SourceRootIngestGate => match b { SourceRootIngestGate => true  _ => false }
     RegenVerifyGate => match b { RegenVerifyGate => true  _ => false }
-    SelfHostRealizedComparisonGate => match b { SelfHostRealizedComparisonGate => true  _ => false }
+    SelfHostReadsRealBytesGate => match b { SelfHostReadsRealBytesGate => true  _ => false }
+    SelfHostStalenessGate => match b { SelfHostStalenessGate => true  _ => false }
     EmitDeterminismGate => match b { EmitDeterminismGate => true  _ => false }
   }
 }
@@ -237,6 +246,12 @@ fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
 fn project_ci_rust_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
   gates_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsRustTestsJob))
+  )
+}
+
+fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
+  gates_from_enrollments(
+    rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiRegenJob))
   )
 }
 
