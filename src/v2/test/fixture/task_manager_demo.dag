@@ -13,7 +13,7 @@ import v2.extdeps.formats.sql {
   SqlTableDefinition,
   SqlTypeCharacterLargeObject
 }
-import v2.std.algebra { FreeMonoid, Empty }
+import std.algebra { FreeMonoid, Empty }
 import v2.std.collection { Absent, optional_present }
 import v2.std.diagnostic {
   Diagnostic,

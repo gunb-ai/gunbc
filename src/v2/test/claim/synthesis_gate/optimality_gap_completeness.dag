@@ -6,7 +6,8 @@ import v2.lens.synthesis {
   synthesis_lens,
   synthesis_lens_diagnostics
 }
-import v2.std.algebra { Empty, fold_list, is_empty, list_append, non_empty }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, is_empty, list_append, non_empty }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }

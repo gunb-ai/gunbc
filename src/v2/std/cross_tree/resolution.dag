@@ -1,6 +1,7 @@
 module v2.std.cross_tree.resolution
 
-import v2.std.algebra { Cons, Empty, FreeMonoid, HeadAbsent, HeadFound, fold_list, list_head }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list, list_head }
 import v2.std.cross_tree.import_model {
   CoFundamental,
   CrossTreeAdmitted,

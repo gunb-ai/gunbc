@@ -1,6 +1,7 @@
 module v2.std.concept_index
 
-import v2.std.algebra { Empty, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.node { Conj, Disj, Node, TypeNode }
 import v2.std.node_query {

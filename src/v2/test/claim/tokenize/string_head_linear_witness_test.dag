@@ -3,7 +3,8 @@ module v2.test.tokenize.string_head_linear_witness
 import extdeps.filesystem.filesystem_io
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import v2.std.algebra { Cons, Empty, fold_list, length }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, length }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.compilers.lexing { Token, token_stream_all }
 import v2.std.diagnostic { Accepted, Rejected }

@@ -4,7 +4,8 @@ import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production,
 }
-import v2.std.algebra { Cons, Empty, length }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { length }
 import v2.std.collection { List, list_nth }
 import v2.std.diagnostic {
   Accepted,

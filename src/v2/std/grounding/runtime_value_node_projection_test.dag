@@ -1,6 +1,6 @@
 module v2.test.std_grounding.runtime_value_node_projection
 
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }

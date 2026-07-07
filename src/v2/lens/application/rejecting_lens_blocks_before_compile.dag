@@ -15,7 +15,7 @@ import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.collection { empty_map }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_rejected, port_locus }
 import v2.std.logic { Bool }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.verification {
   EqualsClaim,

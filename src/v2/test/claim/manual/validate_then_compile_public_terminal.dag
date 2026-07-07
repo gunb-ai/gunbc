@@ -25,7 +25,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import v2.std.collection { empty_map }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.verification {

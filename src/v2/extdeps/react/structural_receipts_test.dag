@@ -42,7 +42,8 @@ import v2.extdeps.frameworks.react {
   UseTransition,
   ValueAbsent
 }
-import v2.std.algebra { Cons, Empty, length }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { length }
 import v2.std.logic { Bool }
 
 import v2.std.verification {

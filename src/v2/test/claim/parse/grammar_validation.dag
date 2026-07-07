@@ -27,7 +27,7 @@ import v2.compiler.parse {
 }
 import v2.std.witness { Holds, Violates }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.logic { Bool }

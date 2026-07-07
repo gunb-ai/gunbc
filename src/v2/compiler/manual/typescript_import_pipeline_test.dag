@@ -34,7 +34,7 @@ import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
-data ts_import_pipeline_source: String = "module v2.test.import_pipeline\nimport v2.std.algebra { Cons, Empty }\n"
+data ts_import_pipeline_source: String = "module v2.test.import_pipeline\nimport std.algebra { Cons, Empty }\n"
 data ts_import_pipeline_canonical_text: String = "import { Cons, Empty } from \"v2/std/algebra\";"
 
 data ts_import_pipeline_other_source: String = "module v2.test.import_pipeline_b\nimport v2.std.collection { Cons, Empty }\n"

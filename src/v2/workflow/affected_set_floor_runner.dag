@@ -1,7 +1,8 @@
 module v2.workflow.affected_set_floor_runner
 
 import gunbc.ci_spec { gunbc_ci_spec, DiffPolicy }
-import v2.std.algebra { any, Empty, fold_list, length, list_append }
+import std.algebra { Empty }
+import v2.std.algebra { any, fold_list, length, list_append }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Node }

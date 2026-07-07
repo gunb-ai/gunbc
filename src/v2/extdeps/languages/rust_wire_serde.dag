@@ -19,7 +19,8 @@ import v2.extdeps.languages.rust {
   rust_named_edge,
   rust_reference_layer_tokens
 }
-import v2.std.algebra { Empty, fold_list, list_append }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_append }
 import v2.std.collection { List, Map, empty_map }
 import v2.std.compilers.lexing {
   LexRule,

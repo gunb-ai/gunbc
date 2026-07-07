@@ -12,7 +12,7 @@ import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Rejected, port_locus }
 import v2.std.grammar { ModeledGrammar, VoidGrammar }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }

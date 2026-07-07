@@ -9,14 +9,8 @@ import v2.lens.cost {
   polynomial_degree_two,
   zero_cost
 }
-import v2.std.algebra {
-  Cons,
-  Empty,
-  CopiedPortFact,
-  copied_port_fact_registry,
-  fold_list,
-  list_append
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { CopiedPortFact, copied_port_fact_registry, fold_list, list_append }
 import v2.std.collection {
   List,
   Optional,

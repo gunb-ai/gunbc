@@ -1,5 +1,5 @@
 module v2.lens.extdeps_shape_transport_policy.module_refs
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 
 import v2.std.qualified_name { QualifiedName }
 
