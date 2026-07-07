@@ -4,9 +4,9 @@
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_emit::escape_json_string;
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::make_error_node;
 use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
@@ -17,88 +17,8 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec};
-use std::cell::RefCell;
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
-
-thread_local! {
-    static DAG_NODE_SURFACE_FP_MEMO: RefCell<HashMap<usize, String>> = RefCell::new(HashMap::new());
-}
-
-pub fn dag_collect_fp_memo_reset() {
-    DAG_NODE_SURFACE_FP_MEMO.with(|memo| memo.borrow_mut().clear());
-}
-
-pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
-    match (*node.expr_data.clone()).clone() {
-        ExprData::NoExprData => match node.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: _, .. }) => {
-                ((((node.body.clone() == None) && (node.transport.clone() == None))
-                    && ((node.children.clone().len() as i64) == 0))
-                    && ((node.params.clone().len() as i64) == 0))
-            }
-            _ => false,
-        },
-        _ => false,
-    }
-}
-
-pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
-    loop {
-        if dag_node_is_resolved_identity_shell(node.clone()) {
-            match node.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => {
-                    let __tco_0 = target.clone();
-                    node = __tco_0;
-                    continue;
-                }
-                _ => {
-                    break node.clone();
-                }
-            }
-        } else {
-            break node.clone();
-        }
-    }
-}
-
-fn dag_node_surface_fingerprint_compute(node: Rc<Node>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let child_hashes = Rc::new({
-            let mut __result = Vec::new();
-            for c in node.children.clone().iter().cloned() {
-                __result.push(dag_node_surface_fingerprint_memo(c.clone()));
-            }
-            __result
-        });
-        let param_hashes = Rc::new({
-            let mut __result = Vec::new();
-            for p in node.params.clone().iter().cloned() {
-                __result.push(dag_node_surface_fingerprint_memo(p.clone()));
-            }
-            __result
-        });
-        let with_children = v1_rt::hash_combine(
-            dag_node_surface_leaf_mix(node.clone()),
-            child_subtree_hash(node.connective.clone(), child_hashes),
-        );
-        v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes))
-    })
-}
-
-pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
-    let anchor = dag_node_collection_anchor(node);
-    let ptr = Rc::as_ptr(&anchor) as usize;
-    DAG_NODE_SURFACE_FP_MEMO.with(|memo| {
-        if let Some(fp) = memo.borrow().get(&ptr) {
-            return fp.clone();
-        }
-        let fp = dag_node_surface_fingerprint_compute(anchor);
-        memo.borrow_mut().insert(ptr, fp.clone());
-        fp
-    })
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectSlot {
@@ -116,27 +36,42 @@ pub struct DagCollectAcc {
 }
 
 pub fn dag_collect_slot_seq(slots: Rc<HashMap<String, Rc<DagCollectSlot>>>) -> i64 {
-    slots.len() as i64
+    slots.count()
 }
 
 pub fn dag_collect_pack_slots(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<DagCollectAcc> {
-    let mut ordered_slots: Vec<Rc<DagCollectSlot>> = slots.values().cloned().collect();
-    ordered_slots.sort_by(|a, b| a.seq.cmp(&b.seq));
-    let order: Vec<Rc<Node>> = ordered_slots.iter().map(|s| s.node.clone()).collect();
-    let seen = ordered_slots.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, s: Rc<DagCollectSlot>| {
-            v1_rt::rc_map_insert(acc, s.key.clone(), s.fp.clone())
-        },
-    );
-    Rc::new(DagCollectAcc {
-        seen,
-        order: Rc::new(order),
-        collision_errors,
-    })
+    {
+        let ordered_slots = Rc::new({
+            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&slots)).iter().cloned().collect();
+            __sorted.sort_by(|a: &Rc<DagCollectSlot>, b: &Rc<DagCollectSlot>| {
+                let __ka = (|s: Rc<DagCollectSlot>| s.seq.clone())(a.clone());
+                let __kb = (|s: Rc<DagCollectSlot>| s.seq.clone())(b.clone());
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            __sorted
+        });
+        let order = Rc::new({
+            let mut __result = Vec::new();
+            for s in ordered_slots.clone().iter().cloned() {
+                __result.push(s.node.clone());
+            }
+            __result
+        });
+        let seen = ordered_slots.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, s: Rc<DagCollectSlot>| {
+                v1_rt::rc_map_insert(acc, s.key.clone(), s.fp.clone())
+            },
+        );
+        Rc::new(DagCollectAcc {
+            seen: seen,
+            order: order,
+            collision_errors: collision_errors,
+        })
+    }
 }
 
 pub fn json_quote(s: String) -> String {
@@ -254,11 +189,48 @@ pub fn dag_node_surface_leaf_mix(node: Rc<Node>) -> String {
 }
 
 pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint_memo(node)
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let child_hashes = Rc::new({
+            let mut __result = Vec::new();
+            for c in node.children.clone().iter().cloned() {
+                __result.push(dag_node_surface_fingerprint_rec(c.clone()));
+            }
+            __result
+        });
+        let param_hashes = Rc::new({
+            let mut __result = Vec::new();
+            for p in node.params.clone().iter().cloned() {
+                __result.push(dag_node_surface_fingerprint_rec(p.clone()));
+            }
+            __result
+        });
+        let with_children = v1_rt::hash_combine(
+            dag_node_surface_leaf_mix(node.clone()),
+            child_subtree_hash(node.connective.clone(), child_hashes),
+        );
+        v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes))
+    })
 }
 
 pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint_memo(node)
+    dag_node_surface_fingerprint_rec(node)
+}
+
+pub fn dag_collect_fp_memo_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Dissolve-on: ground on std.content_hash + node-keyed memo table once v2 adoption clears for this stage. Realization threads a per-collect memo reset at collect_dag_nodes entry; Rust seed uses Rc::as_ptr until then.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn dag_collect_fp_memo_reset() -> bool {
+    true
+}
+
+pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
+    dag_node_surface_fingerprint(node)
 }
 
 pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {

@@ -260,12 +260,6 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
-pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
-    let mut keys = map_keys(m);
-    keys.sort();
-    keys
-}
-
 pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool {
     m.is_empty()
 }
@@ -295,7 +289,7 @@ pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
 }
 
 pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> {
-    list.push(item);
+    list.push_back(item);
     list
 }
 
@@ -371,6 +365,18 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // will call these. Read-only functions (map_get, map_keys, map_values, lookup,
 // map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
 
+// take_owned: move out of a uniquely-held Rc; clone when shared. With every
+// container realized persistently (im_rc), the shared-arm clone is cheap
+// structural sharing — an ordinary designed path, not a degradation arm, so
+// no counter and no refusal (the clone-fallback guard class was deleted with
+// the Rc<std container> carriers it policed).
+pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
+    match Rc::try_unwrap(x) {
+        Ok(v) => v,
+        Err(rc) => (*rc).clone(),
+    }
+}
+
 pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
     let mut v = list;
     Rc::make_mut(&mut v).push_back(item);
@@ -383,13 +389,10 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     result
 }
 
-// Map updates carry no shared-Rc guard: HashMap here is im_rc's persistent
-// HAMT (one realization with the interpreter's Value::Map), so make_mut's
-// clone arm is O(1) structural sharing and each insert copies an O(log n)
-// node path — a designed update, not a degradation arm. Lists (im_rc::Vector)
-// and sets (im_rc::OrdSet) above are likewise persistent carriers now, so
-// they carry no guard either — the guard's whole class dissolved with the
-// Rc<std container> carriers it existed to police.
+// Every rc_* update here rides a persistent carrier (im_rc HashMap/Vector/
+// OrdSet — one realization with the interpreter's Value::Map/List/Set), so
+// make_mut's clone arm is O(1) structural sharing and each update copies an
+// O(log n) node path — a designed update, never a degradation arm.
 pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     map: Rc<HashMap<K, V>>,
     key: K,
@@ -599,41 +602,6 @@ fn expect_hash_digest(s: &str, arg: &str) {
     }
 }
 
-/// Stage-boundary trace mark — the v1-seed interim realization of the v2 per-RealizedStep
-/// CostAccount (std.realization_measurement). One stderr line per mark; consecutive marks
-/// define the segments of a natural Gantt read directly off any run log.
-///
-/// **Dissolution trigger (DESIGN §6):** delete this fn, the `trace_mark` registry row in
-/// `04_method.dag` (+ hand-synced twin `v1_compiler_infer_method.rs`), the nine
-/// `trace_mark(...)` marks in `compile.dag` (+ hand-synced `v1_compiler_compile.rs`), and
-/// the interpreter arm in `v1_interpreter.rs` when realization_measurement_loop **Phase 0**
-/// (`docs/plans/realization-measurement-loop.md`) lands a `.dag` `PerformanceReceipt`
-/// per-stage carrier that a floor witness consumes by execution (the same retirement event
-/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `docs/plans/ci-floor-fractal-gantt.md`
-/// § dissolution). Receipt = that witness green with these marks deleted and stage walls
-/// still attributable from the model path.
-pub fn trace_mark(label: String) {
-    use std::sync::OnceLock;
-    use std::time::Instant;
-    static TRACE_T0: OnceLock<Instant> = OnceLock::new();
-    let ms = TRACE_T0.get_or_init(Instant::now).elapsed().as_millis();
-    let mut rss_mib = String::from("absent");
-    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
-        for line in status.lines() {
-            if let Some(rest) = line.strip_prefix("VmRSS:") {
-                if let Some(kib) = rest
-                    .split_whitespace()
-                    .next()
-                    .and_then(|k| k.parse::<i64>().ok())
-                {
-                    rss_mib = (kib / 1024).to_string();
-                }
-            }
-        }
-    }
-    eprintln!("[gantt] {} t_ms={} rss_mib={}", label, ms, rss_mib);
-}
-
 /// Content hash over raw bytes — the byte-level single authority. `atom_identity_hash`
 /// is the `String` projection of this. Use this directly for arbitrary binary content
 /// (e.g. an executable or serialized payload): routing bytes through `String`/
@@ -728,16 +696,4 @@ pub fn contiguous_loop_elementwise_kernel(
         out.push(int_relu(tmp));
     }
     out
-}
-
-// take_owned: move out of a uniquely-held Rc; clone when shared. With every
-// container realized persistently (im_rc), the shared-arm clone is cheap
-// structural sharing — an ordinary designed path, not a degradation arm, so
-// no counter and no refusal (the clone-fallback guard class was deleted with
-// the Rc<std container> carriers it policed).
-pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
-    match Rc::try_unwrap(x) {
-        Ok(v) => v,
-        Err(rc) => (*rc).clone(),
-    }
 }

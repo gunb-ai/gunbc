@@ -17,11 +17,13 @@ pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, node_is_keyed_collection, resolved_type,
 };
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::{ArityMismatch, InternalError, UnresolvedType};
+use crate::v1_std_core::CompilerDiagnostic::{
+    ArityMismatch, InternalError, UnlistedImportUse, UnresolvedType,
+};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
@@ -52,8 +54,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_unit_variant_node(variant: Rc<Node>) -> bool {
@@ -116,6 +117,15 @@ pub fn lookup_unit_variant_phantom_type(
             None
         }
     }
+}
+
+pub fn phantom_match_flat_scope() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Constructor-owner ruling (§1c): the nullary-variant-as-type fallback searches the FLAT visible set — the module's own str_bindings plus its direct parents' str_bindings, one level, never the recursive ancestry flatten. Unique match resolves; anything else falls through to the UnresolvedType error at the caller (fail-closed).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn collect_unit_variant_phantom_matches(
@@ -188,13 +198,22 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
     })
 }
 
+pub fn transparent_primitive_alias_rhs_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟢 intentional: resolve-side predicate for kernel-type transparent alias RHS — skip nominal re-brand in preserve_nominal_brand_on_resolve / peel_nominal_alias_identity until ParamKind partition lands.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn is_transparent_primitive_alias_rhs(
     structural: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((structural.connective.clone() == Connective::NoConnective)
         && ((structural.children.clone().len() as i64) == 0))
-        && is_kernel_type(authored_name_at(source_indices.clone(), structural.clone())))
+        && is_kernel_type(authored_name_at(source_indices, structural.clone())))
 }
 
 pub fn preserve_nominal_brand_on_resolve(
@@ -203,9 +222,9 @@ pub fn preserve_nominal_brand_on_resolve(
     brand_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if (((brand_name.clone() != "".to_string())
+    if ((((brand_name.clone() != "".to_string())
         && (brand_name.clone() != authored_name_at(source_indices.clone(), structural.clone())))
-        && !is_declared_container_alias_spelling(brand_name.clone())
+        && !is_declared_container_alias_spelling(brand_name.clone()))
         && !is_transparent_primitive_alias_rhs(structural.clone(), source_indices.clone()))
     {
         with_authored_identity(identity, structural.clone())
@@ -255,10 +274,10 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                     .resolved
                     .clone()
                 };
-                if (((brand.clone() != "".to_string())
+                if ((((brand.clone() != "".to_string())
                     && (brand.clone()
                         != authored_name_at(source_indices.clone(), structural.clone())))
-                    && !is_declared_container_alias_spelling(brand.clone())
+                    && !is_declared_container_alias_spelling(brand.clone()))
                     && !is_transparent_primitive_alias_rhs(
                         structural.clone(),
                         source_indices.clone(),
@@ -365,6 +384,66 @@ pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<No
     resolve_node_bounded(n, env, module_name, 0, true)
 }
 
+pub fn parameterized_use_site_prefers_parameterized_decl() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A use site WITH type arguments (children > 0) whose primary name lookup lands on a PARAMLESS decl is definitionally mis-resolved - type args imply a generic declaration. The concrete seam: the kernel prelude binding for a name (e.g. the kernel Optional) shadows an explicitly imported user generic of the same name in the ancestry rung, so v2's Optional<T> consumers resolved the paramless kernel decl, is_user_generic_use_site went false, the sig return was never expanded, and pattern bindings went error-typed with zero diagnostics (the interpreted-parse cascade; pre-existing on main). Retry the DIRECT import parents (str_bindings) for a parameterized decl before accepting the paramless one - the params filter naturally excludes the kernel parent, and the ancestry rung itself carries the kernel-shadowed entry so it cannot serve as the retry source.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn resolve_paramless_generic_use_decl_with_children(
+    env: Rc<TypeEnv>,
+    n: Rc<Node>,
+    decl: Rc<Node>,
+    brand: String,
+) -> Rc<Node> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for parent in env.parents.clone().iter().cloned() {
+            if match v1_rt::map_get(&parent.str_bindings.clone(), brand.clone()) {
+                Some(b) => ((b.resolved.clone().params.clone().len() as i64) > 0),
+                None => false,
+            } {
+                __result.push(parent);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(parent) => match v1_rt::map_get(&parent.str_bindings.clone(), brand.clone()) {
+            Some(b) => b.resolved.clone(),
+            None => decl,
+        },
+        None => {
+            if ((n.name.clone() != "".to_string()) && (n.name.clone() != brand.clone())) {
+                match lookup_type_by_name(env.clone(), n.name.clone()) {
+                    Some(structural) => structural.clone(),
+                    None => decl,
+                }
+            } else {
+                decl
+            }
+        }
+    }
+}
+
+pub fn resolve_paramless_generic_use_decl(
+    env: Rc<TypeEnv>,
+    n: Rc<Node>,
+    decl: Rc<Node>,
+    brand: String,
+) -> Rc<Node> {
+    if ((n.children.clone().len() as i64) == 0) {
+        decl
+    } else {
+        resolve_paramless_generic_use_decl_with_children(env, n.clone(), decl, brand)
+    }
+}
+
 pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
     {
         let brand = authored_name(env.clone(), n.clone());
@@ -372,45 +451,8 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
             Some(decl) => {
                 if ((decl.params.clone().len() as i64) > 0) {
                     decl.clone()
-                } else if ((n.children.clone().len() as i64) > 0) {
-                    // HAND-PATCH (parameterized use site prefers parameterized
-                    // decl; replaced at regen): a use site WITH type args whose
-                    // primary lookup lands paramless (kernel prelude shadowing
-                    // an imported user generic, e.g. Optional) retries the
-                    // ancestry binding for a parameterized decl.
-                    let ancestry_generic = env.parents.iter().fold(
-                        None,
-                        |acc: Option<Rc<Node>>, parent: &Rc<TypeEnv>| {
-                            if acc.is_some() {
-                                return acc;
-                            }
-                            match v1_rt::map_get(&parent.str_bindings, brand.clone()) {
-                                Some(b) => {
-                                    if ((b.resolved.params.clone().len() as i64) > 0) {
-                                        Some(b.resolved.clone())
-                                    } else {
-                                        acc
-                                    }
-                                }
-                                None => acc,
-                            }
-                        },
-                    );
-                    match ancestry_generic {
-                        Some(user_decl) => user_decl,
-                        None => {
-                            if ((n.name.clone() != "".to_string()) && (n.name.clone() != brand)) {
-                                match lookup_type_by_name(env.clone(), n.name.clone()) {
-                                    Some(structural) => structural.clone(),
-                                    None => decl.clone(),
-                                }
-                            } else {
-                                decl.clone()
-                            }
-                        }
-                    }
                 } else {
-                    decl.clone()
+                    resolve_paramless_generic_use_decl(env.clone(), n.clone(), decl.clone(), brand)
                 }
             }
             None => match lookup_type_by_name(env.clone(), n.name.clone()) {
@@ -685,6 +727,15 @@ pub fn resolve_nominal_alias_rhs(
     })
 }
 
+pub fn resolve_node_bounded_masked_boundary() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (peel_nominal_alias_identity :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn resolve_node_bounded(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -724,7 +775,7 @@ pub fn resolve_node_bounded(
                                     env.clone(),
                                     module_name.clone(),
                                     (depth.clone() + 1),
-                                    masked,
+                                    masked.clone(),
                                 );
                                 let base_resolved = base_result.resolved.clone();
                                 let base_diags = base_result.diagnostics.clone();
@@ -775,7 +826,7 @@ pub fn resolve_node_bounded(
                                                 env.clone(),
                                                 module_name.clone(),
                                                 (depth.clone() + 1),
-                                                masked,
+                                                masked.clone(),
                                             );
                                             let rt_resolved = rt_result.resolved.clone();
                                             let rt_diags = rt_result.diagnostics.clone();
@@ -867,7 +918,7 @@ pub fn resolve_node_bounded(
                                     env.clone(),
                                     module_name.clone(),
                                     (depth.clone() + 1),
-                                    masked,
+                                    masked.clone(),
                                 );
                                 let inner_resolved = inner_result.resolved.clone();
                                 let inner_diags = inner_result.diagnostics.clone();
@@ -926,7 +977,7 @@ pub fn resolve_node_bounded(
                                                                         env.clone(),
                                                                         module_name.clone(),
                                                                         (depth.clone() + 1),
-                                                                        masked,
+                                                                        masked.clone(),
                                                                     )
                                                                 };
                                                                 let rt_resolved =
@@ -1083,7 +1134,7 @@ pub fn resolve_node_bounded(
                                 env.clone(),
                                 module_name.clone(),
                                 (depth.clone() + 1),
-                                masked,
+                                masked.clone(),
                             ));
                         }
                         __result
@@ -1321,7 +1372,7 @@ pub fn resolve_node_bounded(
                                 env.clone(),
                                 module_name.clone(),
                                 (depth.clone() + 1),
-                                masked,
+                                masked.clone(),
                             );
                             let key_resolved = key_result.resolved.clone();
                             let key_diags = key_result.diagnostics.clone();
@@ -1330,7 +1381,7 @@ pub fn resolve_node_bounded(
                                 env.clone(),
                                 module_name.clone(),
                                 (depth.clone() + 1),
-                                masked,
+                                masked.clone(),
                             );
                             let val_resolved = val_result.resolved.clone();
                             let val_diags = val_result.diagnostics.clone();
@@ -1430,7 +1481,7 @@ pub fn resolve_node_bounded(
                                             env.clone(),
                                             module_name.clone(),
                                             (depth.clone() + 1),
-                                            masked,
+                                            masked.clone(),
                                         );
                                         let el_resolved = el_result.resolved.clone();
                                         let el_diags = el_result.diagnostics.clone();
@@ -1592,15 +1643,21 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     structurally_resolved
                                                 };
-                                                let unlisted_diags = if masked
-                                                    && !env.source_visible_names.is_empty()
-                                                    && !v1_rt::map_has(
+                                                let unlisted_diags = if ((masked.clone()
+                                                    && ((Rc::new(v1_rt::map_keys(
+                                                        &env.source_visible_names.clone(),
+                                                    ))
+                                                    .len()
+                                                        as i64)
+                                                        > 0))
+                                                    && (v1_rt::map_has(
                                                         &env.source_visible_names.clone(),
                                                         authored_name(env.clone(), n.clone()),
-                                                    ) {
+                                                    ) == false))
+                                                {
                                                     Rc::new(vec![make_error_node(
                                                         Rc::new(
-                                                            crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse {
+                                                            CompilerDiagnostic::UnlistedImportUse {
                                                                 name: authored_name(
                                                                     env.clone(),
                                                                     n.clone(),
@@ -3078,7 +3135,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                     str_bindings: v1_rt::rc_map_insert(
                         e.str_bindings.clone(),
                         tp_name.clone(),
-                        tp_binding,
+                        tp_binding.clone(),
                     ),
                     ancestry_str_bindings: e.ancestry_str_bindings.clone(),
                     parents: e.parents.clone(),

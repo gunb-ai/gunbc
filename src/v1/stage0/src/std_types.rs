@@ -10,13 +10,12 @@ use self::TopologyNodeKind::*;
 pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
 pub use crate::std_algebra::{BooleanAlgebra, FreeMonoid, PartialFunction};
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
@@ -216,7 +215,7 @@ pub type Set<Element> = Rc<crate::std_algebra::BooleanAlgebra<Element>>;
 
 pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
 
-pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
+pub fn list_length<T>(items: Rc<Vec<T>>) -> i64 {
     items.iter().fold(0, |acc: i64, _: _| (acc + 1))
 }
 

@@ -3,13 +3,12 @@
 
 pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn compute_in_graph_deps(
@@ -230,11 +229,10 @@ pub fn detect_type_cycles_kahn(
 ) -> Rc<Vec<String>> {
     {
         let all_names = Rc::new({
-            let mut __result: Vec<String> = Rc::new(v1_rt::map_values(&bindings))
-                .iter()
-                .map(|b| b.name.clone())
-                .collect();
-            __result.sort();
+            let mut __result = Vec::new();
+            for b in Rc::new(v1_rt::map_values(&bindings)).iter().cloned() {
+                __result.push(b.name.clone());
+            }
             __result
         });
         let name_set = all_names
