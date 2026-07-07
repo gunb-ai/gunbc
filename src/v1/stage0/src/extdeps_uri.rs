@@ -35,7 +35,7 @@ pub struct Uri {
 }
 
 pub fn uri_scheme_is_http(s: UriScheme) -> bool {
-    match s {
+    match s.clone() {
         UriScheme::Http => true,
         UriScheme::Https => true,
         UriScheme::File => false,
@@ -52,7 +52,7 @@ pub fn uri_is_url(uri: Rc<Uri>) -> bool {
 }
 
 pub fn uri_scheme_wire(s: UriScheme) -> String {
-    match s {
+    match s.clone() {
         UriScheme::Http => "http://".to_string(),
         UriScheme::Https => "https://".to_string(),
         UriScheme::File => "file://".to_string(),
@@ -95,7 +95,7 @@ pub fn href_is_relative_reference(s: String) -> bool {
 
 pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
     {
-        let s = v1_rt::trim(url);
+        let s = v1_rt::trim(url.clone());
         if v1_rt::starts_with(s.clone(), "//".to_string()) {
             Rc::new(ParsedHrefScheme::UnknownHref)
         } else {

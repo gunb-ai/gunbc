@@ -28,7 +28,7 @@ use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => rust_type_checkpoints(),
         RenderTarget::Python => python_type_checkpoints(),
         RenderTarget::Go => go_type_checkpoints(),
@@ -37,7 +37,7 @@ pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
 }
 
 pub fn target_inhabitants(target: RenderTarget) -> Rc<Vec<Rc<InhabitantDecl>>> {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => rust_algebra_inhabitants(),
         RenderTarget::Python => python_algebra_inhabitants(),
         RenderTarget::Go => go_algebra_inhabitants(),
@@ -46,7 +46,7 @@ pub fn target_inhabitants(target: RenderTarget) -> Rc<Vec<Rc<InhabitantDecl>>> {
 }
 
 pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => rust_callable(),
         RenderTarget::Python => python_callable(),
         RenderTarget::Go => go_callable(),
@@ -60,7 +60,7 @@ pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
 }
 
 pub fn target_optional_template(target: RenderTarget) -> String {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => rust_optional_template(),
         RenderTarget::Python => python_optional_template(),
         RenderTarget::Go => go_optional_template(),
@@ -69,7 +69,7 @@ pub fn target_optional_template(target: RenderTarget) -> String {
 }
 
 pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => Some(rust_cast_syntax()),
         RenderTarget::Python => Some(python_cast_syntax()),
         RenderTarget::Go => Some(go_cast_syntax()),
@@ -78,7 +78,7 @@ pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
 }
 
 pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> bool {
-    match target_cast_syntax(target) {
+    match target_cast_syntax(target.clone()) {
         Some(syntax) => {
             let mut __found = false;
             for r in syntax.cast_rules.clone().iter().cloned() {
@@ -97,7 +97,7 @@ pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) 
 
 pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
     {
-        let syntax = match target_cast_syntax(target) {
+        let syntax = match target_cast_syntax(target.clone()) {
             Some(s) => s.clone(),
             None => Rc::new(CastSyntax {
                 template: "{expr}".to_string(),
@@ -105,9 +105,13 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
             }),
         };
         v1_rt::replace(
-            v1_rt::replace(syntax.template.clone(), "{expr}".to_string(), expr_str),
+            v1_rt::replace(
+                syntax.template.clone(),
+                "{expr}".to_string(),
+                expr_str.clone(),
+            ),
             "{type}".to_string(),
-            type_str,
+            type_str.clone(),
         )
     }
 }
@@ -115,7 +119,7 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
 pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<TypeCheckpoint>> {
     Rc::new({
         let mut __result = Vec::new();
-        for cp in target_checkpoints(target).iter().cloned() {
+        for cp in target_checkpoints(target.clone()).iter().cloned() {
             if (cp.dag_name.clone() == dag_name.clone()) {
                 __result.push(cp);
             }
@@ -127,21 +131,21 @@ pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<Ty
 }
 
 pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
-    match lookup_checkpoint(target, dag_name.clone()) {
+    match lookup_checkpoint(target.clone(), dag_name.clone()) {
         Some(cp) => cp.target_type.clone(),
         None => dag_name.clone(),
     }
 }
 
 pub fn is_copy(target: RenderTarget, dag_name: String) -> Option<bool> {
-    match lookup_checkpoint(target, dag_name) {
+    match lookup_checkpoint(target.clone(), dag_name.clone()) {
         Some(cp) => cp.is_copy.clone(),
         None => None,
     }
 }
 
 pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> {
-    match lookup_checkpoint(target, dag_name) {
+    match lookup_checkpoint(target.clone(), dag_name.clone()) {
         Some(cp) => match cp.literal_suffix.clone() {
             Some(s) => Some(s.clone()),
             None => Some("".to_string()),
@@ -153,7 +157,7 @@ pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> 
 pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<InhabitantDecl>> {
     Rc::new({
         let mut __result = Vec::new();
-        for inh in target_inhabitants(target).iter().cloned() {
+        for inh in target_inhabitants(target.clone()).iter().cloned() {
             if (inh.algebra.clone() == algebra.clone()) {
                 __result.push(inh);
             }
@@ -165,8 +169,8 @@ pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<Inh
 }
 
 pub fn coerce_container_template(target: RenderTarget, container_name: String) -> Option<String> {
-    match container_template_algebra(container_name) {
-        Some(algebra) => match lookup_inhabitant(target, algebra.clone()) {
+    match container_template_algebra(container_name.clone()) {
+        Some(algebra) => match lookup_inhabitant(target.clone(), algebra.clone()) {
             Some(inh) => Some(inh.template.clone()),
             None => None,
         },
@@ -175,14 +179,14 @@ pub fn coerce_container_template(target: RenderTarget, container_name: String) -
 }
 
 pub fn apply_inhabitant_template1(template: String, inner: String) -> String {
-    v1_rt::replace(template, "{0}".to_string(), inner)
+    v1_rt::replace(template.clone(), "{0}".to_string(), inner.clone())
 }
 
 pub fn apply_inhabitant_template2(template: String, first: String, second: String) -> String {
     v1_rt::replace(
-        v1_rt::replace(template, "{0}".to_string(), first),
+        v1_rt::replace(template.clone(), "{0}".to_string(), first.clone()),
         "{1}".to_string(),
-        second,
+        second.clone(),
     )
 }
 
@@ -218,7 +222,7 @@ pub struct CoercionTestEntry {
 }
 
 pub fn target_label(target: RenderTarget) -> String {
-    match target {
+    match target.clone() {
         RenderTarget::Rust => "rust".to_string(),
         RenderTarget::Python => "python".to_string(),
         RenderTarget::Go => "go".to_string(),
@@ -235,7 +239,7 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
         } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
                 test_name: v1_rt::concat(
-                    v1_rt::concat("coercion_".to_string(), label),
+                    v1_rt::concat("coercion_".to_string(), label.clone()),
                     "_checkpoint_resolves_primitives".to_string(),
                 ),
                 assertions: Rc::new({
@@ -286,7 +290,7 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
         } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
                 test_name: v1_rt::concat(
-                    v1_rt::concat("coercion_".to_string(), label),
+                    v1_rt::concat("coercion_".to_string(), label.clone()),
                     "_inhabitant_resolves_containers".to_string(),
                 ),
                 assertions: assertions.clone(),
@@ -300,7 +304,7 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
         let cps = target_checkpoints(RenderTarget::Rust);
         let copy_assertions = Rc::new({
             let mut __result = Vec::new();
-            for cp in cps.iter().cloned() {
+            for cp in cps.clone().iter().cloned() {
                 __result.extend(
                     (*match cp.is_copy.clone() {
                         Some(v) => Rc::new(vec![Rc::new(CoercionAssertion::CopyAssertion {
@@ -336,7 +340,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
         ]);
         let assertions = Rc::new({
             let mut __result = Vec::new();
-            for t in targets.iter().cloned() {
+            for t in targets.clone().iter().cloned() {
                 __result.extend(
                     (*{
                         let inhs = target_inhabitants(t.clone());

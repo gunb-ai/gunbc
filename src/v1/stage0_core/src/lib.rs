@@ -111,20 +111,33 @@ pub mod v1_rt;
 #[path = "../../stage0/src/v1_std_core.rs"]
 pub mod v1_std_core;
 
-#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
-impl<T> NonEmptyVec<T> {
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for NonEmptyVec<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("NonEmptyVec").field(&self.0).finish()
+    }
+}
+
+impl<T: Clone> Clone for NonEmptyVec<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for NonEmptyVec<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<T: Clone> NonEmptyVec<T> {
     pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
         if items.is_empty() {
             Err("NonEmptyVec requires at least one element")
         } else {
             Ok(Self(items))
         }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
     }
 
     pub fn into_vec(self) -> Vec<T> {

@@ -7,10 +7,10 @@ pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::OrdSet as BTreeSet;
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub type Int8 =
@@ -59,4 +59,4 @@ pub type UIntPlatform = crate::std_machine_constraints::Compose<
 
 pub type NonNegativeInt = i64;
 
-pub type PositiveInt = Nat;
+pub type PositiveInt = i64;
