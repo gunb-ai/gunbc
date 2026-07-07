@@ -900,11 +900,10 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
             let roots = witness_layer_roots();
             let index = build_module_index_primary_precedence(&roots);
             let facts = build_module_graph_facts_live(&roots);
-            load_compile_clean_entry_sources(&roots, &index, &facts, None)
-                .map(|opt| opt.map(|mut sources| {
-                    append_test_floor_compile_clean_inject(&mut sources);
-                    sources
-                }))
+            load_compile_clean_entry_sources(&roots, &index, &facts, None).map(|mut sources| {
+                append_test_floor_compile_clean_inject(&mut sources);
+                Some(sources)
+            })
         }
         CompileCleanScopePlan::Scoped { entry_paths } => {
             eprintln!(
