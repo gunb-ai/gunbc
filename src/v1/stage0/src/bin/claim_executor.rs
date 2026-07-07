@@ -10,7 +10,8 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
+    compute_histogram_data, compute_witness_timing_rows, install_floor_compile_clean_receipt,
+    make_eval_context, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, FloorPhase,
     HistogramData, NodeFrontierSelectionMode, PhaseProfile, TimingPercentiles, WitnessTimingRow,
@@ -1863,6 +1864,14 @@ fn run() -> Result<ExitCode, ExitCode> {
             .unwrap_or("<serial>")
     );
     phase_mark("spawn width evaluated; starting batch walk");
+
+    if plan_function == "gunbc_ci_floor_batches" {
+        if let Err(msg) = install_floor_compile_clean_receipt() {
+            eprintln!("claim_executor: floor compile-clean receipt install failed: {msg}");
+            return Err(ExitCode::from(1));
+        }
+        phase_mark("floor compile-clean receipt installed");
+    }
 
     let outcome = run_walk(&source_roots, &batches, spawn_width);
     match peak_rss_bytes() {

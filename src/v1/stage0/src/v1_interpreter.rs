@@ -6133,6 +6133,9 @@ fn eval_builtin(
         "witness_layer_roots_compile_clean_emit_check" => Ok(Some(Value::Bool(
             crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
         ))),
+        "consume_floor_compile_clean_gate_verdict" => Ok(Some(Value::Bool(
+            crate::cli_run::consume_floor_compile_clean_gate_verdict(),
+        ))),
 
         "test_migration_debt_module_count" => Ok(Some(Value::Int(
             crate::cli_run::test_migration_debt_module_count(),

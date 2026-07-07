@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::std_node::compiler_recursive_types;
@@ -920,6 +920,112 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
     }
 }
 
+/// In-run receipt for the floor's ONE whole-tree `--target dag` compile (Lever A / §2 Share).
+/// `claim_executor` installs this before batch-1; `dag_compile_clean_gate` consumes it only —
+/// a second compile in the gate path is unwritable (§5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FloorCompileCleanReceipt {
+    Skipped { reason: String },
+    Refused { reason: String },
+    Compiled { ok: bool },
+}
+
+static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
+
+fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
+    use crate::v1_compiler_artifact::RenderTarget;
+    let result =
+        v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
+    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
+        && !result.files.is_empty()
+}
+
+fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
+    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+        Ok(None) => FloorCompileCleanReceipt::Skipped {
+            reason: "no compile-clean entry affected".to_string(),
+        },
+        Err(msg) => FloorCompileCleanReceipt::Refused { reason: msg },
+        Ok(Some(sources)) => FloorCompileCleanReceipt::Compiled {
+            ok: floor_compile_clean_emit_ok(sources),
+        },
+    }
+}
+
+/// Run the floor's single whole-tree `--target dag` compile and store the receipt for gate
+/// consumption. Exactly one install per `claim_executor` process; second install is an error.
+pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
+    let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT
+        .lock()
+        .map_err(|e| format!("floor compile-clean receipt lock poisoned: {e}"))?;
+    if guard.is_some() {
+        return Err(
+            "floor compile-clean receipt already installed — one whole-tree compile per run"
+                .to_string(),
+        );
+    }
+    eprintln!(
+        "claim_executor: floor compile-clean — one whole-tree --target dag compile (gate consumes receipt)"
+    );
+    let receipt = produce_floor_compile_clean_receipt();
+    if let FloorCompileCleanReceipt::Compiled { ok } = &receipt {
+        eprintln!("claim_executor: floor compile-clean receipt ok={ok}");
+    }
+    *guard = Some(receipt);
+    Ok(())
+}
+
+pub fn floor_compile_clean_receipt_installed() -> bool {
+    FLOOR_COMPILE_CLEAN_RECEIPT
+        .lock()
+        .ok()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
+}
+
+/// Gate consumer: reads the receipt from `install_floor_compile_clean_receipt` only.
+/// Refuses when no receipt exists — never runs a second compile.
+pub fn consume_floor_compile_clean_gate_verdict() -> bool {
+    let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("compile-clean gate: refused — receipt lock poisoned ({e})");
+            return false;
+        }
+    };
+    match guard.as_ref() {
+        None => {
+            eprintln!(
+                "compile-clean gate: refused — no in-run compile receipt (gate must consume the executor's one whole-tree --target dag compile)"
+            );
+            false
+        }
+        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
+            eprintln!("compile-clean gate: skipped ({reason})");
+            true
+        }
+        Some(FloorCompileCleanReceipt::Refused { reason }) => {
+            eprintln!("compile-clean gate: refused ({reason})");
+            false
+        }
+        Some(FloorCompileCleanReceipt::Compiled { ok }) => *ok,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn reset_floor_compile_clean_receipt_for_test() {
+    let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
+    *guard = None;
+}
+
+#[cfg(test)]
+pub(crate) fn install_floor_compile_clean_receipt_fixture(
+    receipt: FloorCompileCleanReceipt,
+) {
+    let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
+    *guard = Some(receipt);
+}
+
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
@@ -943,17 +1049,12 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
 }
 
 /// Emit leg: `--target dag` compile over witness layer roots without shell or disk write.
-/// Green-by-execution consumer for the batch-1 compile-clean gate (DESIGN §5).
+/// Direct-run oracle for non-floor contexts (cargo tests, enrolled witnesses). The CI
+/// floor gate consumes `consume_floor_compile_clean_gate_verdict` instead (Lever A).
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
-    use crate::v1_compiler_artifact::RenderTarget;
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
-        Ok(Some(sources)) => {
-            let result =
-                v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-            !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
-                && !result.files.is_empty()
-        }
+        Ok(Some(sources)) => floor_compile_clean_emit_ok(sources),
         Err(msg) => {
             eprintln!("compile-clean emit: source load failed ({msg})");
             false
@@ -10962,6 +11063,34 @@ mod witness_layer_roots_compile_clean_tests {
             if witness_layer_roots_compile_clean_emit_check() {
                 assert!(witness_layer_roots_compile_clean_check());
             }
+        });
+    }
+
+    /// §5 discriminating RED: gate without an installed receipt must refuse (never run a second compile).
+    #[test]
+    fn floor_compile_clean_gate_refuses_without_receipt() {
+        with_env_test_lock(|| {
+            reset_floor_compile_clean_receipt_for_test();
+            assert!(
+                !consume_floor_compile_clean_gate_verdict(),
+                "gate must refuse when no in-run compile receipt exists"
+            );
+            assert!(!floor_compile_clean_receipt_installed());
+        });
+    }
+
+    /// §5 discriminating RED: gate must refuse when the one compile produced hard errors.
+    #[test]
+    fn floor_compile_clean_gate_refuses_on_failed_compile_receipt() {
+        with_env_test_lock(|| {
+            reset_floor_compile_clean_receipt_for_test();
+            install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Compiled {
+                ok: false,
+            });
+            assert!(
+                !consume_floor_compile_clean_gate_verdict(),
+                "gate must refuse when the installed receipt records compile failure"
+            );
         });
     }
 
