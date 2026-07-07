@@ -6983,6 +6983,9 @@ mod shell_completion_trace_tests {
     #[test]
     fn shell_completion_trace_line_surfaces_nonzero_exit() {
         let line = shell_completion_trace_line(1, 0, 4096, Duration::from_secs(2));
-        assert_eq!(line, "[shell] done exit=1 stdout=0 stderr=4096 bytes wall=2.000s");
+        assert_eq!(
+            line,
+            "[shell] done exit=1 stdout=0 stderr=4096 bytes wall=2.000s"
+        );
     }
 }
