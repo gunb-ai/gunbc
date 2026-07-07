@@ -38,6 +38,7 @@ type Scale =
   | Micro
   | Milli
   | One
+  | Sixty
   | Kilo
   | Mega
   | Giga
@@ -59,6 +60,7 @@ fn scale_exponent(s: Scale) -> Int {
     Micro =>  -6
     Milli =>  -3
     One   =>   0
+    Sixty =>   0
     Kilo  =>   3
     Mega  =>   6
     Giga  =>   9
@@ -80,6 +82,33 @@ fn kibi_factor() -> Nat {
   1024
 }
 
+fn seconds_per_minute() -> Nat {
+  60
+}
+
+fn time_scale_factor_seconds(s: Scale) -> Nat? {
+  match s {
+    One => Present { value: 1 }
+    Sixty => Present { value: seconds_per_minute() }
+    Atto  => none
+    Femto => none
+    Pico  => none
+    Nano  => none
+    Micro => none
+    Milli => none
+    Kilo  => none
+    Mega  => none
+    Giga  => none
+    Tera  => none
+    Peta  => none
+    Exa   => none
+    Kibi  => none
+    Mebi  => none
+    Gibi  => none
+    Tebi  => none
+  }
+}
+
 fn memory_scale_factor_bytes(s: Scale) -> Nat? {
   match s {
     One  => Present { value: 1 }
@@ -93,6 +122,7 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     Nano  => none
     Micro => none
     Milli => none
+    Sixty => none
     Kilo  => none
     Mega  => none
     Giga  => none
@@ -310,7 +340,7 @@ fn second_count(s: Second) -> Nat {
   measure_count(s)
 }
 
-type Minute = Measure<Time, One, Nat>
+type Minute = Measure<Time, Sixty, Nat>
 
 fn minute(count: Nat) -> Minute {
   Minute { count: count }
