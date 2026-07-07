@@ -31,14 +31,14 @@ fn decl_belongs_to_module(decl: FnArrowDecl, module: String) -> Bool {
     || (decl.qualified_name == module)
 }
 
-fn module_path_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>) -> Optional<String> {
-  let best = fold(modules, init: Absent, f: fn(acc, fact) {
+fn longest_matching_module_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>) -> Optional<String> {
+  fold(modules, init: Absent, f: fn(acc, fact) {
     if decl_belongs_to_module(decl: decl, module: fact.module) {
       match acc {
-        Absent => Present { value: fact }
+        Absent => Present { value: fact.module }
         Present { value: prev } =>
-          if string_length(s: fact.module) > string_length(s: prev.module) {
-            Present { value: fact }
+          if string_length(s: fact.module) > string_length(s: prev) {
+            Present { value: fact.module }
           } else {
             Present { value: prev }
           }
@@ -47,8 +47,18 @@ fn module_path_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>)
       acc
     }
   })
-  match best {
-    Present { value: fact } => Present { value: fact.path }
+}
+
+fn module_path_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>) -> Optional<String> {
+  match longest_matching_module_for_decl(decl: decl, modules: modules) {
+    Present { value: target_module } =>
+      fold(modules, init: Absent, f: fn(acc, fact) {
+        if (fact.module == target_module) && decl_belongs_to_module(decl: decl, module: fact.module) {
+          Present { value: fact.path }
+        } else {
+          acc
+        }
+      })
     Absent => Absent
   }
 }
