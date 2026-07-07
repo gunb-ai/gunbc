@@ -48,7 +48,7 @@ fn clean_tree_compile_program() -> ShellProgram {
 }
 
 fn run_clean_tree_compile() -> Bool {
-  witness_layer_roots_compile_clean_check()
+  witness_layer_roots_compile_clean_emit_check()
 }
 
 data clean_tree_compile_gate_disposition: Disposition = Scaffold {
@@ -240,7 +240,7 @@ data dag_compile_clean_gate_program_disposition: Disposition = Scaffold {
   }
 }
 
-data dag_compile_clean_gate_program_note: String = "Composed shell program (clean-tree + all perturb/cross-tree/dag-shell body_stmts) kept for serialize-shape witness dag_compile_clean_gate_transport_serializes_dcc_invocation only — batch-1 dag_compile_clean_gate calls witness_layer_roots_compile_clean_check in-process; perturb receipts run via enrolled batch-2 corpus witness dag_compile_clean_perturb_receipts_test.dag."
+data dag_compile_clean_gate_program_note: String = "Composed shell program (clean-tree + all perturb/cross-tree/dag-shell body_stmts) kept for serialize-shape witness dag_compile_clean_gate_transport_serializes_dcc_invocation only — batch-1 dag_compile_clean_gate calls witness_layer_roots_compile_clean_emit_check in-process (ONE real --target dag compile; clean_tree_compile_body_stmts is serialize-only, never executed on the floor); perturb receipts run via enrolled batch-2 corpus witness dag_compile_clean_perturb_receipts_test.dag."
 
 fn dag_compile_clean_gate_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
