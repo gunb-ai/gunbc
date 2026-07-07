@@ -860,14 +860,17 @@ fn compile_clean_scope_plan_from_touched_paths(
 }
 
 fn compile_clean_scoping_active() -> bool {
-    std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
+    FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst)
+        || std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
         || std::env::var("GITHUB_ACTIONS")
             .map(|v| v == "true")
             .unwrap_or(false)
+        || std::env::var("CI").map(|v| v == "true").unwrap_or(false)
 }
 
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     if !compile_clean_scoping_active() {
+        eprintln!("compile-clean scope: whole-tree (ci diff scoping inactive)");
         return CompileCleanScopePlan::WholeTree;
     }
     match floor_git_diff_name_status_range() {
@@ -898,6 +901,7 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
             Ok(None)
         }
         CompileCleanScopePlan::WholeTree => {
+            eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
             let roots = witness_layer_roots();
             let index = build_module_index_primary_precedence(&roots);
             let facts = build_module_graph_facts_live(&roots);
@@ -954,14 +958,19 @@ static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mu
 /// When set by `claim_executor` for `gunbc_ci_floor_batches`, the first gate consume installs
 /// the one whole-tree receipt (after plan resolve has warmed the module-graph facts cache).
 static FLOOR_COMPILE_CLEAN_LAZY_INSTALL: AtomicBool = AtomicBool::new(false);
+/// Floor CI runs through `claim_executor`; env-based scoping detection alone missed some
+/// self-hosted runners (silent whole-tree source load → step timeout). Tied to lazy install.
+static FLOOR_COMPILE_CLEAN_CI_SCOPING: AtomicBool = AtomicBool::new(false);
 
 pub fn enable_floor_compile_clean_lazy_install() {
     FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(true, Ordering::SeqCst);
+    FLOOR_COMPILE_CLEAN_CI_SCOPING.store(true, Ordering::SeqCst);
 }
 
 #[cfg(test)]
 fn disable_floor_compile_clean_lazy_install_for_test() {
     FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(false, Ordering::SeqCst);
+    FLOOR_COMPILE_CLEAN_CI_SCOPING.store(false, Ordering::SeqCst);
 }
 
 fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
@@ -1020,8 +1029,12 @@ pub fn consume_floor_compile_clean_gate_verdict() -> bool {
         && !floor_compile_clean_receipt_installed()
     {
         if let Err(msg) = install_floor_compile_clean_receipt() {
-            eprintln!("compile-clean gate: refused — receipt install failed ({msg})");
-            return false;
+            if !floor_compile_clean_receipt_installed() {
+                eprintln!("compile-clean gate: refused — receipt install failed ({msg})");
+                return false;
+            }
+            // Serial `run_walk` today; if a future scheduler fans out batch-1, a concurrent
+            // lazy install may win first — consume the installed receipt, do not refuse.
         }
     }
     let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
@@ -11215,6 +11228,30 @@ mod witness_layer_roots_compile_clean_tests {
                         .to_string()
                 }
             );
+        });
+    }
+
+    /// Lever-a PR touch receipt: dag transport edits scope (not silent whole-tree).
+    #[test]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold"]
+    fn scoped_plan_includes_lever_a_dag_transport_touch() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths(&[
+                "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                "src/v1/stage0/src/cli_run.rs".to_string(),
+            ])
+            .expect("scope disposition");
+            match plan {
+                CompileCleanScopePlan::Scoped { entry_paths } => {
+                    assert!(
+                        entry_paths
+                            .iter()
+                            .any(|p| p.contains("dag_compile_clean_transport")),
+                        "expected transport entry in {entry_paths:?}"
+                    );
+                }
+                other => panic!("expected ScopedRun for lever-A PR touch, got {other:?}"),
+            }
         });
     }
 
