@@ -66,10 +66,6 @@ fn witness_forensics_scale_medium_report() -> List<Int> {
   forensics_scaling_report(path: "src/v2/std/datetime.dag")
 }
 
-fn witness_forensics_scale_bisect_report() -> List<Int> {
-  forensics_scaling_report(path: "/tmp/claude-1000/-home-briansrls--worktrees-gunbc-neat-stag-780/8faadfe5-0411-48d9-980a-f8a213df0415/scratchpad/bisect/datetime_half.dag")
-}
-
 fn witness_forensics_scale_mediumlarge_report() -> List<Int> {
   forensics_scaling_report(path: "src/v2/std/node.dag")
 }

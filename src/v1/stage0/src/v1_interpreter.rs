@@ -6392,6 +6392,12 @@ fn record_call_frequency(func_name: &str) {
         "parse_current_position",
         "parse_nonterminal_memoized",
         "parse_nonterminal_memoized_core",
+        "parse_table_record_lookup_call",
+        "parse_table_record_hit",
+        "parse_table_record_miss",
+        "parse_table_lookup",
+        "parse_table_insert",
+        "parse_choice_residue_backtrack",
     ];
     let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
         return;
