@@ -84,8 +84,20 @@ import v2.std.model_core {
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node, target_model_emit_transforms_empty, target_model_make_with_emit_transforms}
 import v2.std.compilers.target_model {
+  CanonicalOperation,
   InfixToken,
   canonical_operation_op_add,
+  canonical_operation_op_sub,
+  canonical_operation_op_mul,
+  canonical_operation_op_div,
+  canonical_operation_op_and,
+  canonical_operation_op_or,
+  canonical_operation_op_lt,
+  canonical_operation_op_le,
+  canonical_operation_op_gt,
+  canonical_operation_op_ge,
+  canonical_operation_op_eq,
+  canonical_operation_op_ne,
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
@@ -1130,15 +1142,51 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
   }
 }
 
-fn rust_add_operator_realization_row() -> Node {
+fn rust_operator_realization_row(operation: CanonicalOperation, token: Symbol) -> Node {
   target_operator_realization_node(
-    operation: canonical_operation_op_add(),
-    shape: InfixToken { token: ^rust_token_plus }
+    operation: operation,
+    shape: InfixToken { token: token }
   )
 }
 
+fn rust_add_operator_realization_row() -> Node {
+  rust_operator_realization_row(
+    operation: canonical_operation_op_add(),
+    token: ^rust_token_plus
+  )
+}
+
+fn rust_binop_operator_lex_rules() -> List<LexRule> {
+  [
+    rust_lex_rule(token_class: ^rust_token_oror, text: " || "),
+    rust_lex_rule(token_class: ^rust_token_andand, text: " && "),
+    rust_lex_rule(token_class: ^rust_token_eqeq, text: " == "),
+    rust_lex_rule(token_class: ^rust_token_neq, text: " != "),
+    rust_lex_rule(token_class: ^rust_token_le, text: " <= "),
+    rust_lex_rule(token_class: ^rust_token_ge, text: " >= "),
+    rust_lex_rule(token_class: ^rust_token_lt, text: " < "),
+    rust_lex_rule(token_class: ^rust_token_gt, text: " > "),
+    rust_lex_rule(token_class: ^rust_token_minus, text: " - "),
+    rust_lex_rule(token_class: ^rust_token_star, text: " * "),
+    rust_lex_rule(token_class: ^rust_token_slash, text: " / ")
+  ]
+}
+
 fn rust_operator_realizations_catalog_node() -> Node {
-  target_operator_realizations_catalog_node(rows: [rust_add_operator_realization_row()])
+  target_operator_realizations_catalog_node(rows: [
+    rust_operator_realization_row(operation: canonical_operation_op_or(), token: ^rust_token_oror),
+    rust_operator_realization_row(operation: canonical_operation_op_and(), token: ^rust_token_andand),
+    rust_operator_realization_row(operation: canonical_operation_op_eq(), token: ^rust_token_eqeq),
+    rust_operator_realization_row(operation: canonical_operation_op_ne(), token: ^rust_token_neq),
+    rust_operator_realization_row(operation: canonical_operation_op_lt(), token: ^rust_token_lt),
+    rust_operator_realization_row(operation: canonical_operation_op_le(), token: ^rust_token_le),
+    rust_operator_realization_row(operation: canonical_operation_op_gt(), token: ^rust_token_gt),
+    rust_operator_realization_row(operation: canonical_operation_op_ge(), token: ^rust_token_ge),
+    rust_add_operator_realization_row(),
+    rust_operator_realization_row(operation: canonical_operation_op_sub(), token: ^rust_token_minus),
+    rust_operator_realization_row(operation: canonical_operation_op_mul(), token: ^rust_token_star),
+    rust_operator_realization_row(operation: canonical_operation_op_div(), token: ^rust_token_slash)
+  ])
 }
 
 fn rust_add_signature_with_open() -> List<ConcreteSyntaxToken> {
@@ -1927,19 +1975,22 @@ fn rust_ident_lex_rule() -> LexRule {
 
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
-    rules: [
-      rust_lex_rule(token_class: ^rust_token_kw_fn, text: "fn "),
-      rust_ident_lex_rule(),
-      rust_lex_rule(token_class: ^rust_token_ty_i32, text: "i32"),
-      rust_lex_rule(token_class: ^rust_token_plus, text: " + "),
-      rust_lex_rule(token_class: ^rust_token_arrow, text: " -> "),
-      rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
-      rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
-      rust_lex_rule(token_class: ^rust_token_lparen, text: "("),
-      rust_lex_rule(token_class: ^rust_token_rparen, text: ")"),
-      rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
-      rust_lex_rule(token_class: ^rust_token_colon, text: ": ")
-    ]
+    rules: list_append(
+      left: [
+        rust_lex_rule(token_class: ^rust_token_kw_fn, text: "fn "),
+        rust_ident_lex_rule(),
+        rust_lex_rule(token_class: ^rust_token_ty_i32, text: "i32"),
+        rust_lex_rule(token_class: ^rust_token_plus, text: " + "),
+        rust_lex_rule(token_class: ^rust_token_arrow, text: " -> "),
+        rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
+        rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
+        rust_lex_rule(token_class: ^rust_token_lparen, text: "("),
+        rust_lex_rule(token_class: ^rust_token_rparen, text: ")"),
+        rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
+        rust_lex_rule(token_class: ^rust_token_colon, text: ": ")
+      ],
+      right: rust_binop_operator_lex_rules()
+    )
   }
 }
 
@@ -2403,17 +2454,7 @@ fn rust_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn rust_wave1_lex_token_symbol(sym: Symbol) -> Bool {
-  sym == ^rust_token_kw_fn ||
-    sym == ^rust_token_ident ||
-    sym == ^rust_token_ty_i32 ||
-    sym == ^rust_token_plus ||
-    sym == ^rust_token_arrow ||
-    sym == ^rust_token_lbrace ||
-    sym == ^rust_token_rbrace ||
-    sym == ^rust_token_lparen ||
-    sym == ^rust_token_rparen ||
-    sym == ^rust_token_comma ||
-    sym == ^rust_token_colon
+  lex_rule_set_token_class_member(rules: rust_wave1_lex_rules(), token_class: sym)
 }
 
 fn rust_language_model_canonical_symbols() -> Set<Symbol> {
