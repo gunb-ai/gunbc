@@ -199,7 +199,7 @@ jobs:
         timeout-minutes: 30
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 151
+    timeout-minutes: 106
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -273,7 +273,7 @@ jobs:
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
         timeout-minutes: 46
-      - name: v1 rust gate (fmt + clippy + nextest)
+      - name: v1 rust gate (fmt + nextest)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
@@ -297,7 +297,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-        timeout-minutes: 90
+        timeout-minutes: 45
       - name: rust_tests cgroup peak (placement divisor)
         run: |
           BIN="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/claim_executor"
