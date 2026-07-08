@@ -1429,6 +1429,29 @@ fn call_function(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
+    if !residual_hunt_forensics_enabled() {
+        return call_function_inner(ctx, fn_node, args, env);
+    }
+    let started = std::time::Instant::now();
+    DAG_PROF_CHILD_STACK.with(|s| s.borrow_mut().push(0));
+    let result = call_function_inner(ctx, fn_node, args, env);
+    let elapsed = started.elapsed().as_nanos() as u64;
+    let child_nanos = DAG_PROF_CHILD_STACK.with(|s| s.borrow_mut().pop().unwrap_or(0));
+    DAG_PROF_CHILD_STACK.with(|s| {
+        if let Some(parent) = s.borrow_mut().last_mut() {
+            *parent += elapsed;
+        }
+    });
+    record_dag_fn_self_time(&fn_node.name, elapsed.saturating_sub(child_nanos));
+    result
+}
+
+fn call_function_inner(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> InterpResult<Value> {
     if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
         return result;
     }
@@ -2761,6 +2784,9 @@ fn eval_fold_list_native(
     let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
         msg: format!("fold_list expects a list, got {}", xs.type_label()),
     })?;
+    if items.len() > 1000 {
+        record_big_fold_dag_site(cons, items.len());
+    }
     record_fold_caller(items.len(), items.first(), "left");
     let mut acc = (*empty).clone();
     for item in items {
@@ -3792,6 +3818,22 @@ fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
 }
 
 fn eval_algebra_method(
+    method: &str,
+    receiver: Value,
+    args: &[Value],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    if !residual_hunt_forensics_enabled() {
+        return eval_algebra_method_inner(method, receiver, args, env, ctx);
+    }
+    let started = std::time::Instant::now();
+    let result = eval_algebra_method_inner(method, receiver, args, env, ctx);
+    record_builtin_time_inclusive(method, true, started.elapsed().as_nanos() as u64);
+    result
+}
+
+fn eval_algebra_method_inner(
     method: &str,
     receiver: Value,
     args: &[Value],
@@ -6151,6 +6193,22 @@ fn eval_builtin(
     args: &[(Option<String>, Value)],
     ctx: &InterpContext,
 ) -> InterpResult<Option<Value>> {
+    if !residual_hunt_forensics_enabled() {
+        return eval_builtin_inner(name, args, ctx);
+    }
+    let started = std::time::Instant::now();
+    let result = eval_builtin_inner(name, args, ctx);
+    if matches!(result, Ok(Some(_))) {
+        record_builtin_time_inclusive(name, false, started.elapsed().as_nanos() as u64);
+    }
+    result
+}
+
+fn eval_builtin_inner(
+    name: &str,
+    args: &[(Option<String>, Value)],
+    ctx: &InterpContext,
+) -> InterpResult<Option<Value>> {
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
 
     match name {
@@ -7285,6 +7343,106 @@ pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u32, u64, u64)> {
         Some(m) => m
             .iter()
             .map(|((file, line), (calls, total))| (*file, *line, *calls, *total))
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+/// adhoc-c328b166-bca follow-on: `flatten_by_site_snapshot` attributes big
+/// materializations only to the interpreter-internal call site, which for the
+/// residual whale is always `eval_fold_list_native` -- useless granularity.
+/// This keys the same signal by the fold closure's .dag source span instead,
+/// so the dump names the v2-level fold that owns the cost.
+static BIG_FOLD_BY_DAG_SITE: std::sync::Mutex<
+    Option<std::collections::HashMap<String, (u64, u64)>>,
+> = std::sync::Mutex::new(None);
+
+fn record_big_fold_dag_site(closure: &Value, items: usize) {
+    let key = match closure {
+        Value::Closure { body, .. } => format!("{}:{}", body.span.file, body.span.start),
+        Value::Fn { node } => format!("fn@{}:{}", node.span.file, node.span.start),
+        other => format!("non-closure:{}", other.type_label()),
+    };
+    let mut guard = BIG_FOLD_BY_DAG_SITE.lock().unwrap();
+    let map = guard.get_or_insert_with(std::collections::HashMap::new);
+    let entry = map.entry(key).or_insert((0, 0));
+    entry.0 += 1;
+    entry.1 += items as u64;
+}
+
+pub fn big_fold_by_dag_site_snapshot() -> Vec<(String, u64, u64)> {
+    let guard = BIG_FOLD_BY_DAG_SITE.lock().unwrap();
+    match guard.as_ref() {
+        Some(m) => m
+            .iter()
+            .map(|(site, (calls, total))| (site.clone(), *calls, *total))
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+/// adhoc-c328b166-bca follow-on: inclusive wall-time per native builtin
+/// (function-style and method-style dispatch), to localize the residual
+/// whale when it lives in native code the fold counters cannot see (the
+/// medium-fixture run showed a ~10-minute window with frozen fold counters
+/// and climbing RSS). Inclusive: a fold's time contains its closure applies.
+static BUILTIN_TIME: std::sync::Mutex<Option<std::collections::HashMap<String, (u64, u64)>>> =
+    std::sync::Mutex::new(None);
+
+fn record_builtin_time_inclusive(name: &str, method_style: bool, nanos: u64) {
+    let key = if method_style {
+        format!("m:{}", name)
+    } else {
+        name.to_string()
+    };
+    let mut guard = BUILTIN_TIME.lock().unwrap();
+    let map = guard.get_or_insert_with(std::collections::HashMap::new);
+    let entry = map.entry(key).or_insert((0, 0));
+    entry.0 += 1;
+    entry.1 += nanos;
+}
+
+pub fn builtin_time_snapshot() -> Vec<(String, u64, u64)> {
+    let guard = BUILTIN_TIME.lock().unwrap();
+    match guard.as_ref() {
+        Some(m) => m
+            .iter()
+            .map(|(name, (calls, nanos))| (name.clone(), *calls, *nanos))
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+// adhoc-c328b166-bca follow-on: self-time profile per .dag function. The
+// builtin-time table showed native builtins near zero while wall-clock
+// climbed, so the residual whale is tree-walk residency inside .dag bodies;
+// this names the bodies. Self-time = inclusive minus child call_function
+// frames (closure applies inside a body attribute to that body).
+thread_local! {
+    static DAG_PROF_CHILD_STACK: std::cell::RefCell<Vec<u64>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+static DAG_FN_SELF_TIME: std::sync::Mutex<Option<std::collections::HashMap<String, (u64, u64)>>> =
+    std::sync::Mutex::new(None);
+
+fn record_dag_fn_self_time(name: &str, self_nanos: u64) {
+    let mut guard = DAG_FN_SELF_TIME.lock().unwrap();
+    let map = guard.get_or_insert_with(std::collections::HashMap::new);
+    if let Some(entry) = map.get_mut(name) {
+        entry.0 += 1;
+        entry.1 += self_nanos;
+    } else {
+        map.insert(name.to_string(), (1, self_nanos));
+    }
+}
+
+pub fn dag_fn_self_time_snapshot() -> Vec<(String, u64, u64)> {
+    let guard = DAG_FN_SELF_TIME.lock().unwrap();
+    match guard.as_ref() {
+        Some(m) => m
+            .iter()
+            .map(|(name, (calls, nanos))| (name.clone(), *calls, *nanos))
             .collect(),
         None => Vec::new(),
     }

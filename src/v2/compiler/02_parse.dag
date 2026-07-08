@@ -422,8 +422,13 @@ fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
   )
 }
 
-fn parse_current_position(all_tokens: List<Token>, tokens: List<Token>) -> Int {
-  length(xs: all_tokens) - length(xs: tokens)
+data parse_current_position_key_note: String = "memo position = head token's start byte + 1, with 0 reserved for the empty suffix. Token starts strictly increase (tokenize advances pos by a nonempty lexeme per token), so suffix -> key stays injective while the read is O(1); the prior length(all) - length(remaining) recounted the stream per nonterminal attempt, the residual superlinear driver behind grammar_coverage_p8_wall_clock_blocker (interpreted length() is fold_list, O(n) with a closure apply per cell). The +1 shift keeps the key a natural for byte_limb_hash_peano_digest."
+
+fn parse_current_position(tokens: List<Token>) -> Int {
+  match list_head(xs: tokens) {
+    HeadFound { value: t } => t.start + 1
+    HeadAbsent => 0
+  }
 }
 
 fn token_position_indices(tokens: List<Token>) -> List<Int> {
@@ -868,7 +873,7 @@ fn parse_nonterminal_memoized_core(
   prov: ParseProvenanceState
 ) -> ParseExprResult {
   let key = ParsePositionKey {
-    position: parse_current_position(all_tokens: all_tokens, tokens: tokens),
+    position: parse_current_position(tokens: tokens),
     production: prod_name
   }
   match grammar_lookup_production(root: root, name: prod_name) {
