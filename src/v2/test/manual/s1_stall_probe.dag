@@ -80,3 +80,7 @@ fn s1_stall_medium_report() -> List<Int> {
 fn s1_stall_dagmodel_report() -> List<Int> {
   [stall_offset(path: "src/v2/extdeps/languages/dag.dag")]
 }
+
+fn s1_stall_targetmodel_report() -> List<Int> {
+  [stall_offset(path: "src/v2/std/compilers/target_model.dag")]
+}
