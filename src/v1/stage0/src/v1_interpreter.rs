@@ -768,7 +768,15 @@ struct EvalRecomputeEntry {
     fn_name: String,
     count: u64,
     total_ns: u128,
+    // Distinct call-site node ptrs (capped) with "file:offset" labels. One site
+    // recomputing = same call expression re-evaluated (loop-invariant hoist or
+    // value coincidence — Share/memoize territory, invisible to static analysis
+    // when value-coincident). Multiple sites = a cross-site duplicate demand
+    // (static rewire candidate).
+    sites: Vec<(usize, String)>,
 }
+
+const EVAL_RECOMPUTE_SITE_CAP: usize = 4;
 
 pub fn eval_recompute_trace_enabled() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -2585,7 +2593,14 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             Some(key) => {
                 let started = Instant::now();
                 let result = call_function(ctx, &fn_node, &args, env);
-                eval_recompute_record(ctx, &fn_node, &func_name, key, started.elapsed().as_nanos());
+                eval_recompute_record(
+                    ctx,
+                    node,
+                    &fn_node,
+                    &func_name,
+                    key,
+                    started.elapsed().as_nanos(),
+                );
                 result
             }
             None => {
@@ -2788,6 +2803,7 @@ fn eval_recompute_key(
 
 fn eval_recompute_record(
     ctx: &InterpContext,
+    call_node: &Rc<Node>,
     fn_node: &Rc<Node>,
     func_name: &str,
     key: EvalRecomputeKey,
@@ -2803,9 +2819,19 @@ fn eval_recompute_record(
         fn_name: func_name.to_string(),
         count: 0,
         total_ns: 0,
+        sites: Vec::new(),
     });
     entry.count += 1;
     entry.total_ns += elapsed_ns;
+    let site_ptr = Rc::as_ptr(call_node) as usize;
+    if entry.sites.len() < EVAL_RECOMPUTE_SITE_CAP
+        && !entry.sites.iter().any(|(p, _)| *p == site_ptr)
+    {
+        entry.sites.push((
+            site_ptr,
+            format!("{}:{}", call_node.span.file, call_node.span.start),
+        ));
+    }
 }
 
 fn eval_recompute_record_unkeyed(ctx: &InterpContext, func_name: &str) {
@@ -2831,6 +2857,10 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
         .collect();
     duplicated.sort_by(|a, b| b.1.cmp(&a.1));
     let total_wasted_ns: u128 = duplicated.iter().map(|(_, w)| *w).sum();
+    let (single_site, multi_site): (Vec<_>, Vec<_>) =
+        duplicated.iter().partition(|(e, _)| e.sites.len() == 1);
+    let single_site_wasted_ns: u128 = single_site.iter().map(|(_, w)| *w).sum();
+    let multi_site_wasted_ns: u128 = multi_site.iter().map(|(_, w)| *w).sum();
     eprintln!(
         "[recompute-trace] keyed_calls={} unkeyed_calls={} distinct_keys={} duplicated_keys={} wasted_ms={} (durations inclusive of callees)",
         t.keyed_calls,
@@ -2839,13 +2869,33 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
         duplicated.len(),
         total_wasted_ns / 1_000_000
     );
+    eprintln!(
+        "[recompute-trace] gap: single_site_keys={} wasted_ms={} (same call expression re-hit — value-coincident/loop-borne, memoize/Share territory) | multi_site_keys={} wasted_ms={} (cross-site duplicate demand — static rewire candidates)",
+        single_site.len(),
+        single_site_wasted_ns / 1_000_000,
+        multi_site.len(),
+        multi_site_wasted_ns / 1_000_000
+    );
     for (e, wasted_ns) in duplicated.iter().take(20) {
+        let site_labels: Vec<&str> = e
+            .sites
+            .iter()
+            .take(2)
+            .map(|(_, label)| label.as_str())
+            .collect();
         eprintln!(
-            "[recompute-trace] dup fn={} count={} total_ms={} wasted_ms={}",
+            "[recompute-trace] dup fn={} count={} total_ms={} wasted_ms={} sites={}{} @{}",
             e.fn_name,
             e.count,
             e.total_ns / 1_000_000,
-            wasted_ns / 1_000_000
+            wasted_ns / 1_000_000,
+            e.sites.len(),
+            if e.sites.len() >= EVAL_RECOMPUTE_SITE_CAP {
+                "+"
+            } else {
+                ""
+            },
+            site_labels.join(" @")
         );
     }
     let mut unkeyed: Vec<(&String, &u64)> = t.unkeyed_by_fn.iter().collect();
