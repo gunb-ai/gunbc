@@ -8342,7 +8342,7 @@ fn target_type_expr_fold_named_metadata_edges(node: Node) -> TargetTypeExprNamed
   match fold(node.children, init: NamedMetadataFoldOk { kind_seen: false, surface_seen: false, extra_named: 0 }, f: fn(acc, e) {
     match acc {
       NamedMetadataFoldMalformed => acc
-      NamedMetadataFoldOk { kind_seen, surface_seen, extra_named } =>
+      NamedMetadataFoldOk { kind_seen: kind_seen, surface_seen: surface_seen, extra_named: extra_named } =>
         match e.label {
           Positional => acc
           Named { name: n } =>
@@ -8352,7 +8352,7 @@ fn target_type_expr_fold_named_metadata_edges(node: Node) -> TargetTypeExprNamed
               } else {
                 match e.target.kind {
                   TypeNode { connective: Atom { identity: _ } } =>
-                    NamedMetadataFoldOk { kind_seen: true, surface_seen, extra_named }
+                    NamedMetadataFoldOk { kind_seen: true, surface_seen: surface_seen, extra_named: extra_named }
                   _ => NamedMetadataFoldMalformed
                 }
               }
@@ -8363,20 +8363,20 @@ fn target_type_expr_fold_named_metadata_edges(node: Node) -> TargetTypeExprNamed
                 } else {
                   match e.target.kind {
                     TypeNode { connective: Atom { identity: _ } } =>
-                      NamedMetadataFoldOk { kind_seen, surface_seen: true, extra_named }
+                      NamedMetadataFoldOk { kind_seen: kind_seen, surface_seen: true, extra_named: extra_named }
                     _ => NamedMetadataFoldMalformed
                   }
                 }
               } else {
-                NamedMetadataFoldOk { kind_seen, surface_seen, extra_named: extra_named + 1 }
+                NamedMetadataFoldOk { kind_seen: kind_seen, surface_seen: surface_seen, extra_named: extra_named + 1 }
               }
             }
         }
     }
   }) {
-    NamedMetadataFoldOk { kind_seen, surface_seen, extra_named } =>
+    NamedMetadataFoldOk { kind_seen: kind_seen, surface_seen: surface_seen, extra_named: extra_named } =>
       if kind_seen && surface_seen {
-        NamedMetadataFoldOk { kind_seen, surface_seen, extra_named }
+        NamedMetadataFoldOk { kind_seen: kind_seen, surface_seen: surface_seen, extra_named: extra_named }
       } else {
         NamedMetadataFoldMalformed
       }

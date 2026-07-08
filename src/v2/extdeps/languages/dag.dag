@@ -2834,7 +2834,7 @@ fn emit_row_data_decl(
 }
 
 fn dag_wave1_grammar_root() -> GrammarRoot {
-  let module = dag_grammar_module_production()
+  let module_prod = dag_grammar_module_production()
   let module_header = dag_grammar_production(
     name: ^dag_production_module_header,
     expression: dag_grammar_module_header_expr(),
@@ -3008,7 +3008,7 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
   GrammarRoot {
     start: ^dag_production_module,
     productions: [
-      module,
+      module_prod,
       module_header,
       top_level_item,
       import_decl,
