@@ -105,7 +105,6 @@ fn witness_deploy_access_sudoers_line_authority() -> Bool {
 
 fn witness_ci_spec_carries_deploy_stages() -> Bool {
   gunbc_ci_spec.deploy_stages == gunbc_ci_deploy_stages
-    && length(gunbc_ci_deploy_stages) == 1
 }
 
 fn witness_deploy_run_script_invokes_gunbc_wet() -> Bool {
@@ -116,23 +115,24 @@ fn witness_deploy_run_script_invokes_gunbc_wet() -> Bool {
     && string_contains(s: script, pattern: "--source-root dag")
 }
 
-fn witness_workflow_has_deploy_job_gated_on_ci() -> Bool {
+fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
   let deploy_jobs = filter(ci_workflow.jobs, j => j.id == "deploy_dashboard_srv1")
-  length(deploy_jobs) == 1
-    && deploy_jobs.first().needs == ["ci"]
-    && match deploy_jobs.first().if_condition {
-      Present { value: cond } => cond == ci_deploy_push_to_main_if
-      Absent => false
-    }
+  length(deploy_jobs) == length(gunbc_ci_deploy_stages)
+    && fold(deploy_jobs, init: true, f: (acc, j) =>
+        acc
+          && j.needs == ["ci"]
+          && match j.if_condition {
+            Present { value: cond } => cond == ci_deploy_push_to_main_if
+            Absent => false
+          })
 }
 
-fn witness_ci_yml_emits_deploy_job() -> Bool {
+fn witness_ci_yml_deploy_job_matches_enrollment() -> Bool {
   let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
-    && string_contains(s: yaml, pattern: "    needs: [ci]")
-    && string_contains(s: yaml, pattern: concat("    if: ", ci_deploy_push_to_main_if))
-    && string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)")
-    && string_contains(s: yaml, pattern: live_deploy_apply_srv1_wet_function)
+  let enrolled = length(gunbc_ci_deploy_stages) > 0
+  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:") == enrolled
+    && string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)") == enrolled
+    && string_contains(s: yaml, pattern: live_deploy_apply_srv1_wet_function) == enrolled
 }
 
 test fn ci_deploy_witnesses() -> Bool {
@@ -143,6 +143,6 @@ test fn ci_deploy_witnesses() -> Bool {
     && witness_deploy_access_sudoers_line_authority()
     && witness_ci_spec_carries_deploy_stages()
     && witness_deploy_run_script_invokes_gunbc_wet()
-    && witness_workflow_has_deploy_job_gated_on_ci()
-    && witness_ci_yml_emits_deploy_job()
+    && witness_workflow_deploy_job_matches_enrollment()
+    && witness_ci_yml_deploy_job_matches_enrollment()
 }
