@@ -1,0 +1,82 @@
+module v2.test.manual.s1_stall_probe
+
+import extdeps.filesystem.filesystem_io
+import std.algebra { Cons, Empty }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse {
+  ParseExprAccepted,
+  ParseExprRejected,
+  grammar_lookup_production,
+  grammar_validate_for_parse,
+  parse_expr,
+  parse_prov_initial,
+  parse_table_for_production
+}
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.algebra { HeadAbsent, HeadFound, list_head }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar }
+import v2.std.integer { Int }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates }
+
+data s1_stall_probe_note: String = "diagnosis probe for S1 census failures: parses a file at the start production via parse_expr directly and reports the byte offset of the first token the parse could NOT consume (the packrat repeat accepts greedily, so Accepted-with-remaining pinpoints the first uncovered construct). Return codes: >=0 stall byte offset; -1 fully consumed (file parses); -2 rejected outright; -3 tokenize rejected; -4 grammar invalid; -5 start production missing; -6 void grammar."
+
+fn stall_offset(path: String) -> Int {
+  let lm = dag_language_model_wave1()
+  let at = port_locus(port: ^s1_stall_probe_locus)
+  let source = filesystem_read(path: path).content
+  match tokenize(text: source, file: ^s1_stall_probe_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => 0 - 3
+    Accepted { value: stream, diagnostics: _ } =>
+      match lm.grammar {
+        VoidGrammar => 0 - 6
+        ModeledGrammar { root: root } =>
+          match grammar_validate_for_parse(root: root, at: at) {
+            Rejected { diagnostics: _ } => 0 - 4
+            Accepted { value: validated, diagnostics: _ } =>
+              match grammar_lookup_production(root: validated.root, name: validated.root.start) {
+                Violates { diagnostic: _ } => 0 - 5
+                Holds { value: production } =>
+                  let tokens = token_stream_remaining(stream: stream)
+                  match parse_expr(
+                    expr: production.expression,
+                    tokens: tokens,
+                    all_tokens: tokens,
+                    root: validated.root,
+                    table: parse_table_for_production(validated: validated, all_tokens: tokens),
+                    prov: parse_prov_initial()
+                  ) {
+                    ParseExprRejected { diagnostics: _, table: _ } => 0 - 2
+                    ParseExprAccepted { remaining: remaining, captured: _, diagnostics: _, prov: _, table: _ } =>
+                      match list_head(xs: remaining) {
+                        HeadFound { value: t } => t.start
+                        HeadAbsent => 0 - 1
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn s1_stall_small_report() -> List<Int> {
+  [
+    stall_offset(path: "src/v2/std/runtime.dag"),
+    stall_offset(path: "src/v2/std/refinement.dag"),
+    stall_offset(path: "dag/std/algebra.dag")
+  ]
+}
+
+fn s1_stall_medium_report() -> List<Int> {
+  [
+    stall_offset(path: "src/v2/std/node.dag"),
+    stall_offset(path: "src/v2/std/grammar.dag")
+  ]
+}
+
+fn s1_stall_dagmodel_report() -> List<Int> {
+  [stall_offset(path: "src/v2/extdeps/languages/dag.dag")]
+}
