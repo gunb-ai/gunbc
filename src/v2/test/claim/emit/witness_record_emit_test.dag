@@ -1,0 +1,420 @@
+module v2.test.emit.witness_record_emit
+
+import v2.compiler.ingest {
+  grammar_relation_row_forward_token_selection
+}
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.translate {
+  grammar_relation_row_for_emitted,
+  grammar_relation_row_tokens_root,
+  serialize_concrete_syntax_tokens_to_source
+}
+import v2.extdeps.languages.rust {
+  rust_inhabitant_atom,
+  rust_struct_decl_productions_only_translation_rules,
+  rust_struct_decl_structural_formal_productions,
+  rust_struct_decl_structural_target_model
+}
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_append }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { Token, token_stream_all }
+import v2.std.compilers.target_model {
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
+  TargetModel,
+  concrete_syntax_token_list_from_node
+}
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.grammar { formal_productions_catalog_to_node }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Conj,
+  Disj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+
+data witness_record_emit_source_file: Symbol = ^witness_record_emit_source_file
+
+data witness_structural_property_witness_source_text: String = "struct StructuralPropertyWitness { property: Symbol, evidence: Node }"
+data witness_homomorphism_witness_source_text: String = "struct HomomorphismWitness { rule: Symbol, evidence: Node }"
+
+fn witness_interned_symbol(spelling: String) -> Symbol {
+  spelling
+}
+
+fn witness_qualified_name_emitted(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: rust_inhabitant_atom(id: name) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn witness_type_expr_emitted(type_name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: witness_qualified_name_emitted(name: type_name)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn witness_field_list_suffix_empty() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn witness_two_field_list_emitted(
+  f1: Symbol,
+  t1: Symbol,
+  f2: Symbol,
+  t2: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: rust_inhabitant_atom(id: f1) },
+      Edge { label: Positional, target: witness_type_expr_emitted(type_name: t1) },
+      Edge { label: Positional, target: rust_inhabitant_atom(id: f2) },
+      Edge { label: Positional, target: witness_type_expr_emitted(type_name: t2) },
+      Edge { label: Positional, target: witness_field_list_suffix_empty() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn witness_field_block_emitted(fields: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: fields }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn witness_record_emitted(name: Symbol, fields: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: rust_inhabitant_atom(id: name) },
+      Edge { label: Positional, target: witness_field_block_emitted(fields: fields) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn witness_structural_property_witness_emitted() -> Node {
+  witness_record_emitted(
+    name: witness_interned_symbol(spelling: "StructuralPropertyWitness"),
+    fields: witness_two_field_list_emitted(
+      f1: witness_interned_symbol(spelling: "property"),
+      t1: witness_interned_symbol(spelling: "Symbol"),
+      f2: witness_interned_symbol(spelling: "evidence"),
+      t2: witness_interned_symbol(spelling: "Node")
+    )
+  )
+}
+
+fn witness_homomorphism_witness_emitted() -> Node {
+  witness_record_emitted(
+    name: witness_interned_symbol(spelling: "HomomorphismWitness"),
+    fields: witness_two_field_list_emitted(
+      f1: witness_interned_symbol(spelling: "rule"),
+      t1: witness_interned_symbol(spelling: "Symbol"),
+      f2: witness_interned_symbol(spelling: "evidence"),
+      t2: witness_interned_symbol(spelling: "Node")
+    )
+  )
+}
+
+fn witness_rules() -> Node {
+  rust_struct_decl_productions_only_translation_rules()
+}
+
+fn witness_target() -> TargetModel {
+  rust_struct_decl_structural_target_model()
+}
+
+fn witness_emit_source_text(emitted: Node) -> Outcome<String> {
+  witness_emit_source_text_with_rules(emitted: emitted, rules: witness_rules())
+}
+
+fn witness_emit_source_text_with_rules(emitted: Node, rules: Node) -> Outcome<String> {
+  let target = witness_target()
+  bind_outcome(
+    o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+    f: fn(row) {
+      bind_outcome(
+        o: grammar_relation_row_tokens_root(row: row),
+        f: fn(tokens_root) {
+          bind_outcome(
+            o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+            f: fn(tokens) {
+              bind_outcome(
+                o: serialize_concrete_syntax_tokens_to_source(target: target, tokens: tokens),
+                f: fn(medium) {
+                  outcome_accepted(value: medium.carried)
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn witness_lexer_token_to_concrete(token: Token) -> ConcreteSyntaxToken {
+  if token.class == ^rust_token_ident {
+    BoundToken { token_class: ^rust_token_ident, binding: token.lexeme }
+  } else {
+    FixedToken { token_class: token.class }
+  }
+}
+
+fn witness_lexer_tokens_to_concrete_syntax(tokens: List<Token>) -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, t) {
+      list_append(
+        left: acc,
+        right: [witness_lexer_token_to_concrete(token: t)]
+      )
+    }
+  )
+}
+
+fn witness_tokenize_source_text(source: String) -> Outcome<List<Token>> {
+  bind_outcome(
+    o: tokenize(
+      text: source,
+      file: witness_record_emit_source_file,
+      rules: witness_target().lex
+    ),
+    f: fn(stream) {
+      outcome_accepted(value: token_stream_all(stream: stream))
+    }
+  )
+}
+
+fn witness_reparse_from_source_with_rules(source: String, rules: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: witness_tokenize_source_text(source: source),
+    f: fn(tokens) {
+      grammar_relation_row_forward_token_selection(
+        tokens: witness_lexer_tokens_to_concrete_syntax(tokens: tokens),
+        rules: rules,
+        start_lhs: ^rust_production_struct_decl
+      )
+    }
+  )
+}
+
+fn witness_emit_matches_golden(emitted: Node, golden: String) -> Bool {
+  match witness_emit_source_text(emitted: emitted) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_source_round_trips_with_rules(rules: Node, source: String) -> Bool {
+  match witness_reparse_from_source_with_rules(source: source, rules: rules) {
+    Accepted { value: node, diagnostics: _ } =>
+      match witness_emit_source_text_with_rules(emitted: node, rules: rules) {
+        Accepted { value: emitted_text, diagnostics: _ } => emitted_text == source
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_record_round_trips(source: String) -> Bool {
+  witness_source_round_trips_with_rules(rules: witness_rules(), source: source)
+}
+
+fn witness_both_records_distinct() -> Bool {
+  match witness_emit_source_text(emitted: witness_structural_property_witness_emitted()) {
+    Accepted { value: spw_text, diagnostics: _ } =>
+      match witness_emit_source_text(emitted: witness_homomorphism_witness_emitted()) {
+        Accepted { value: hw_text, diagnostics: _ } => spw_text != hw_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_translation_rules_with_row(row: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^grammar_relation_rules_formal_productions },
+        target: formal_productions_catalog_to_node(
+          productions: rust_struct_decl_structural_formal_productions()
+        )
+      },
+      Edge {
+        label: Named { name: ^witness_record_emit_perturbed_binding },
+        target: row
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn witness_perturbed_rules_for_spw_source() -> Outcome<Node> {
+  match grammar_relation_row_for_emitted(
+    rules: witness_rules(),
+    emitted: witness_homomorphism_witness_emitted()
+  ) {
+    Accepted { value: hw_row, diagnostics: _ } =>
+      outcome_accepted(value: witness_translation_rules_with_row(row: hw_row))
+    Rejected { diagnostics: _ } => Rejected { diagnostics: None }
+  }
+}
+
+fn witness_perturbed_row_breaks_round_trip() -> Bool {
+  match witness_perturbed_rules_for_spw_source() {
+    Accepted { value: perturbed_rules, diagnostics: _ } =>
+      witness_record_round_trips(source: witness_structural_property_witness_source_text)
+        && !witness_source_round_trips_with_rules(
+          rules: perturbed_rules,
+          source: witness_structural_property_witness_source_text
+        )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_coproduct_disj_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge {
+        label: Named { name: ^Holds },
+        target: rust_inhabitant_atom(id: witness_interned_symbol(spelling: "Holds"))
+      },
+      Edge {
+        label: Named { name: ^Violates },
+        target: rust_inhabitant_atom(id: witness_interned_symbol(spelling: "Violates"))
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn witness_generic_param_struct_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: rust_inhabitant_atom(id: witness_interned_symbol(spelling: "Witness"))
+      },
+      Edge {
+        label: Positional,
+        target: rust_inhabitant_atom(id: witness_interned_symbol(spelling: "C"))
+      },
+      Edge {
+        label: Positional,
+        target: witness_field_block_emitted(
+          fields: witness_two_field_list_emitted(
+            f1: witness_interned_symbol(spelling: "value"),
+            t1: witness_interned_symbol(spelling: "C"),
+            f2: witness_interned_symbol(spelling: "diagnostic"),
+            t2: witness_interned_symbol(spelling: "Diagnostic")
+          )
+        )
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn witness_construct_refused(emitted: Node) -> Bool {
+  match grammar_relation_row_for_emitted(rules: witness_rules(), emitted: emitted) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+type WitnessEmitConstructRow {
+  construct: Symbol
+  covered: Bool
+}
+
+data witness_emit_construct_rows: List<WitnessEmitConstructRow> = [
+  WitnessEmitConstructRow { construct: ^record_structural_property_witness, covered: true },
+  WitnessEmitConstructRow { construct: ^record_homomorphism_witness, covered: true },
+  WitnessEmitConstructRow { construct: ^coproduct_witness_alternation, covered: false },
+  WitnessEmitConstructRow { construct: ^coproduct_witness_generic_param, covered: false }
+]
+
+fn witness_covered_count() -> Int {
+  fold_list(
+    xs: witness_emit_construct_rows,
+    empty: 0,
+    cons: fn(acc, row) { if row.covered { acc + 1 } else { acc } }
+  )
+}
+
+fn witness_refused_count() -> Int {
+  fold_list(
+    xs: witness_emit_construct_rows,
+    empty: 0,
+    cons: fn(acc, row) { if row.covered { acc } else { acc + 1 } }
+  )
+}
+
+fn witness_records_covered_holds() -> Bool {
+  witness_emit_matches_golden(
+    emitted: witness_structural_property_witness_emitted(),
+    golden: witness_structural_property_witness_source_text
+  )
+    && witness_emit_matches_golden(
+      emitted: witness_homomorphism_witness_emitted(),
+      golden: witness_homomorphism_witness_source_text
+    )
+    && witness_record_round_trips(source: witness_structural_property_witness_source_text)
+    && witness_record_round_trips(source: witness_homomorphism_witness_source_text)
+    && witness_both_records_distinct()
+}
+
+fn witness_coproduct_refused_holds() -> Bool {
+  witness_construct_refused(emitted: witness_coproduct_disj_emitted())
+    && witness_construct_refused(emitted: witness_generic_param_struct_emitted())
+    && (witness_refused_count() == 2)
+    && (witness_covered_count() == 2)
+}
+
+test fn witness_record_emit_holds() -> Bool {
+  witness_records_covered_holds()
+    && witness_perturbed_row_breaks_round_trip()
+    && witness_coproduct_refused_holds()
+}
