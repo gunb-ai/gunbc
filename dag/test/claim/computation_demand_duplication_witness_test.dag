@@ -1,0 +1,38 @@
+module test.claim.computation_demand_duplication_witness
+
+import tools.dag_compile_clean_transport { clean_tree_compile_program }
+import tools.emit_determinism_transport {
+  emit_corpus_x2_diff_zero_program,
+  emit_determinism_replication_intent
+}
+import v2.lens.duplicate_computation {
+  SingleRun,
+  duplicate_computation_clean_holds,
+  duplicate_computation_violation_count,
+  shell_program_computation_demands
+}
+import v2.std.logic { Bool }
+
+test fn emit_determinism_oracle_pair_is_declared_and_admissible() -> Bool {
+  return duplicate_computation_clean_holds(facts: shell_program_computation_demands(
+    site: "tools.emit_determinism_transport.emit_corpus_x2_diff_zero_program",
+    program: emit_corpus_x2_diff_zero_program(),
+    replication: emit_determinism_replication_intent
+  ))
+}
+
+test fn emit_determinism_pair_without_declaration_reds() -> Bool {
+  return duplicate_computation_violation_count(facts: shell_program_computation_demands(
+    site: "tools.emit_determinism_transport.emit_corpus_x2_diff_zero_program",
+    program: emit_corpus_x2_diff_zero_program(),
+    replication: SingleRun
+  )) == 1
+}
+
+test fn compile_clean_transport_consumes_one_compile() -> Bool {
+  return duplicate_computation_clean_holds(facts: shell_program_computation_demands(
+    site: "tools.dag_compile_clean_transport.clean_tree_compile_program",
+    program: clean_tree_compile_program(),
+    replication: SingleRun
+  ))
+}
