@@ -1337,6 +1337,10 @@ fn call_function(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
+    if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
+        return result;
+    }
+
     let body = fn_node
         .body
         .as_ref()
@@ -2308,6 +2312,11 @@ pub(crate) const INERT_LENS_BRIDGE_FNS: &[&str] = &[
     "inert_lens_top_level_module_count",
 ];
 
+const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] =
+    &["empty_map", "empty_map_primitive_delegate", "map_insert"];
+
+const V2_STD_COLLECTION_MODULE: &str = "v2.std.collection";
+
 pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_BRIDGE_FNS
 }
@@ -2415,6 +2424,41 @@ fn is_v4_inert_lens_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
     ctx.item_registry
         .get(func_name)
         .is_some_and(|info| info.module_name == "v2.lens.inert_lens")
+}
+
+fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>) -> bool {
+    if !STD_COLLECTION_MAP_GROUNDED_FNS.contains(&fn_node.name.as_str()) {
+        return false;
+    }
+    ctx.item_registry
+        .get(&fn_node.name)
+        .is_some_and(|info| info.module_name == V2_STD_COLLECTION_MODULE)
+}
+
+fn try_v2_std_collection_map_primitive_grounding(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+) -> Option<InterpResult<Value>> {
+    if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
+        return None;
+    }
+    let builtin_name = match fn_node.name.as_str() {
+        "empty_map_primitive_delegate" | "empty_map" => "empty_map",
+        "map_insert" => "map_insert",
+        _ => return None,
+    };
+    match eval_builtin(builtin_name, args, ctx) {
+        Ok(Some(v)) => Some(Ok(v)),
+        Ok(None) if builtin_name == "empty_map" => Some(Err(InterpError::TypeError {
+            msg: format!(
+                "{V2_STD_COLLECTION_MODULE}.{}: native HAMT primitive missing from eval_builtin (host misconfiguration)",
+                fn_node.name
+            ),
+        })),
+        Ok(None) => None,
+        Err(e) => Some(Err(e)),
+    }
 }
 
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
@@ -2645,6 +2689,14 @@ fn witness_holds(value: Value, ctx: &InterpContext) -> Value {
     }
 }
 
+fn witness_violates(diagnostic: Value, ctx: &InterpContext) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("Witness"),
+        variant_name: ctx.sym("Violates"),
+        fields: Rc::new(vec![(ctx.sym("diagnostic"), diagnostic)]),
+    }
+}
+
 fn parse_table_memo_scope_and_key(
     ctx: &InterpContext,
     table: &Value,
@@ -2812,7 +2864,7 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         let key = args.first().ok_or_else(|| InterpError::TypeError {
             msg: "lookup requires a key argument".to_string(),
         })?;
-        return raw_map_lookup(&receiver_val, key, env, ctx);
+        return raw_map_lookup_witness(&receiver_val, key, env, ctx);
     }
 
     if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
@@ -7251,6 +7303,30 @@ fn is_map_lookup_receiver(val: &Value) -> bool {
             .map(|ctx| fields_get(fields, ctx.sym("lookup")).is_some())
             .unwrap_or(false),
         _ => false,
+    }
+}
+
+fn raw_map_lookup_witness(
+    map: &Value,
+    key: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    match map {
+        Value::Map(m) => match CanonKey::new(key.clone()) {
+            Some(ck) => match m.get(&ck) {
+                Some(v) => Ok(witness_holds(v.clone(), ctx)),
+                None => Ok(witness_violates(
+                    native_map_absent_diagnostic_value(ctx),
+                    ctx,
+                )),
+            },
+            None => Ok(witness_violates(
+                native_map_absent_diagnostic_value(ctx),
+                ctx,
+            )),
+        },
+        _ => raw_map_lookup(map, key, env, ctx),
     }
 }
 
