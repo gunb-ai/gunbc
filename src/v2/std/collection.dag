@@ -75,10 +75,10 @@ fn map_absent_diagnostic() -> Diagnostic {
   }
 }
 fn empty_map_primitive_delegate<K, V>() -> Map<K, V> {
-  empty_map_primitive_delegate<K, V>()
+  empty_map_primitive_delegate()
 }
 fn empty_map<K, V>() -> Map<K, V> {
-  empty_map_primitive_delegate<K, V>()
+  empty_map_primitive_delegate()
 }
 fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   Map {
