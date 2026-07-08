@@ -1795,499 +1795,6 @@ fn rust_wave1_formal_productions() -> List<FormalProduction> {
   [rust_formal_production_mvp1_fn_add()]
 }
 
-fn rust_struct_decl_structural_formal_productions() -> List<FormalProduction> {
-  [
-    grammar_formal_production(
-      lhs: ^rust_production_qualified_name,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^rust_token_ident)
-      ]
-    ),
-    grammar_formal_production(lhs: ^rust_production_qualified_name_repeat_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^rust_production_type_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_qualified_name)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_production_comma_field_decl_list,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_terminal(identity: ^rust_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_comma_field_decl_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_production_comma_field_decl_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_comma),
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_terminal(identity: ^rust_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_comma_field_decl_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: ^rust_production_comma_field_decl_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^rust_production_field_decl_block,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_comma_field_decl_list),
-        grammar_formal_terminal(identity: ^rust_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_production_struct_decl,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_kw_struct),
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_field_decl_block)
-      ]
-    )
-  ]
-}
-
-fn rust_struct_decl_productions_only_translation_rules() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^grammar_relation_rules_formal_productions,
-        target: formal_productions_catalog_to_node(
-          productions: rust_struct_decl_structural_formal_productions()
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn rust_struct_decl_structural_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: [
-      rust_whitespace_trivia_rule(),
-      rust_lex_rule(token_class: ^rust_token_kw_struct, text: "struct "),
-      rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
-      rust_lex_rule(token_class: ^rust_token_colon, text: ": "),
-      rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
-      rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
-      rust_ident_lex_rule()
-    ]
-  }
-}
-
-fn rust_struct_decl_structural_lex() -> LexRules {
-  ModeledLexRules { root: rust_struct_decl_structural_lex_rules() }
-}
-
-fn rust_struct_decl_structural_target_model() -> TargetModel {
-  TargetModel {
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        rust_named_edge(
-          name: ^target_model_edge_translation_rules,
-          target: rust_struct_decl_productions_only_translation_rules()
-        )
-      ],
-      occurrence_id: SyntheticOccurrence
-    },
-    lex: rust_struct_decl_structural_lex(),
-    binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: "",
-    runtime_row: target_emit_host_runtime_row_unconfigured
-  }
-}
-
-fn rust_enum_decl_structural_formal_productions() -> List<FormalProduction> {
-  [
-    grammar_formal_production(
-      lhs: ^rust_production_comma_variant_list,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_comma_variant_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_production_comma_variant_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_comma),
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_comma_variant_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: ^rust_production_comma_variant_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^rust_production_variant_decl_block,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_comma_variant_list),
-        grammar_formal_terminal(identity: ^rust_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_production_enum_decl,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_kw_enum),
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_production_variant_decl_block)
-      ]
-    )
-  ]
-}
-
-fn rust_enum_decl_productions_only_translation_rules() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^grammar_relation_rules_formal_productions,
-        target: formal_productions_catalog_to_node(
-          productions: rust_enum_decl_structural_formal_productions()
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn rust_enum_decl_structural_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: [
-      rust_whitespace_trivia_rule(),
-      rust_lex_rule(token_class: ^rust_token_kw_enum, text: "enum "),
-      rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
-      rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
-      rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
-      rust_ident_lex_rule()
-    ]
-  }
-}
-
-fn rust_enum_decl_structural_lex() -> LexRules {
-  ModeledLexRules { root: rust_enum_decl_structural_lex_rules() }
-}
-
-fn rust_enum_decl_structural_target_model() -> TargetModel {
-  TargetModel {
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        rust_named_edge(
-          name: ^target_model_edge_translation_rules,
-          target: rust_enum_decl_productions_only_translation_rules()
-        )
-      ],
-      occurrence_id: SyntheticOccurrence
-    },
-    lex: rust_enum_decl_structural_lex(),
-    binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: "",
-    runtime_row: target_emit_host_runtime_row_unconfigured
-  }
-}
-
-fn rust_generic_enum_decl_formal_productions() -> List<FormalProduction> {
-  [
-    grammar_formal_production(
-      lhs: ^rust_generic_qualified_name,
-      rhs: [ grammar_formal_terminal_free(identity: ^rust_token_ident) ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_type_expr,
-      rhs: [ grammar_formal_nonterminal_occurrence(identity: ^rust_generic_qualified_name) ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_field,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_terminal(identity: ^rust_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_type_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_field_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_field),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_field_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_field_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_field),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_field_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: ^rust_generic_field_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^rust_generic_field_block,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_field_list),
-        grammar_formal_terminal(identity: ^rust_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_variant,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_field_block)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_variant_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_variant),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_variant_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_variant_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_variant),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_variant_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: ^rust_generic_variant_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^rust_generic_variant_block,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_variant_list),
-        grammar_formal_terminal(identity: ^rust_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_type_param_list,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_type_param_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_type_param_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_comma),
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_type_param_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: ^rust_generic_type_param_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^rust_generic_params,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_generic_lt),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_type_param_list),
-        grammar_formal_terminal(identity: ^rust_token_generic_gt)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_enum_decl,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_kw_enum),
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_params),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_variant_block)
-      ]
-    )
-  ]
-}
-
-fn rust_generic_enum_decl_productions_only_translation_rules() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^grammar_relation_rules_formal_productions,
-        target: formal_productions_catalog_to_node(
-          productions: rust_generic_enum_decl_formal_productions()
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn rust_generic_enum_decl_structural_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: [
-      rust_whitespace_trivia_rule(),
-      rust_lex_rule(token_class: ^rust_token_kw_enum, text: "enum "),
-      rust_lex_rule(token_class: ^rust_token_generic_lt, text: "<"),
-      rust_lex_rule(token_class: ^rust_token_generic_gt, text: ">"),
-      rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
-      rust_lex_rule(token_class: ^rust_token_colon, text: ": "),
-      rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
-      rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
-      rust_ident_lex_rule()
-    ]
-  }
-}
-
-fn rust_generic_enum_decl_structural_lex() -> LexRules {
-  ModeledLexRules { root: rust_generic_enum_decl_structural_lex_rules() }
-}
-
-fn rust_generic_enum_decl_structural_target_model() -> TargetModel {
-  TargetModel {
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        rust_named_edge(
-          name: ^target_model_edge_translation_rules,
-          target: rust_generic_enum_decl_productions_only_translation_rules()
-        )
-      ],
-      occurrence_id: SyntheticOccurrence
-    },
-    lex: rust_generic_enum_decl_structural_lex(),
-    binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: "",
-    runtime_row: target_emit_host_runtime_row_unconfigured
-  }
-}
-
-fn rust_generic_struct_decl_structural_formal_productions() -> List<FormalProduction> {
-  [
-    grammar_formal_production(
-      lhs: ^rust_generic_struct_qualified_name,
-      rhs: [ grammar_formal_terminal_free(identity: ^rust_token_ident) ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_struct_type_expr,
-      rhs: [ grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_qualified_name) ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_struct_field,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_terminal(identity: ^rust_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_type_expr)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_struct_field_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_field),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_field_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_struct_field_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_field),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_field_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: ^rust_generic_struct_field_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^rust_generic_struct_field_block,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_field_list),
-        grammar_formal_terminal(identity: ^rust_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_struct_type_param_list,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_type_param_list_suffix)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_struct_type_param_list_suffix,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_comma),
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_type_param_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: ^rust_generic_struct_type_param_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^rust_generic_struct_params,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_generic_lt),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_type_param_list),
-        grammar_formal_terminal(identity: ^rust_token_generic_gt)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^rust_generic_struct_decl,
-      rhs: [
-        grammar_formal_terminal(identity: ^rust_token_kw_struct),
-        grammar_formal_terminal_free(identity: ^rust_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_params),
-        grammar_formal_nonterminal_occurrence(identity: ^rust_generic_struct_field_block)
-      ]
-    )
-  ]
-}
-
-fn rust_generic_struct_decl_productions_only_translation_rules() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^grammar_relation_rules_formal_productions,
-        target: formal_productions_catalog_to_node(
-          productions: rust_generic_struct_decl_structural_formal_productions()
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn rust_generic_struct_decl_structural_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: [
-      rust_whitespace_trivia_rule(),
-      rust_lex_rule(token_class: ^rust_token_kw_struct, text: "struct "),
-      rust_lex_rule(token_class: ^rust_token_generic_lt, text: "<"),
-      rust_lex_rule(token_class: ^rust_token_generic_gt, text: ">"),
-      rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
-      rust_lex_rule(token_class: ^rust_token_colon, text: ": "),
-      rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
-      rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
-      rust_ident_lex_rule()
-    ]
-  }
-}
-
-fn rust_generic_struct_decl_structural_lex() -> LexRules {
-  ModeledLexRules { root: rust_generic_struct_decl_structural_lex_rules() }
-}
-
-fn rust_generic_struct_decl_structural_target_model() -> TargetModel {
-  TargetModel {
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        rust_named_edge(
-          name: ^target_model_edge_translation_rules,
-          target: rust_generic_struct_decl_productions_only_translation_rules()
-        )
-      ],
-      occurrence_id: SyntheticOccurrence
-    },
-    lex: rust_generic_struct_decl_structural_lex(),
-    binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: "",
-    runtime_row: target_emit_host_runtime_row_unconfigured
-  }
-}
-
 fn rust_type_alias_decl_structural_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
@@ -2359,6 +1866,278 @@ fn rust_type_alias_decl_structural_target_model() -> TargetModel {
       occurrence_id: SyntheticOccurrence
     },
     lex: rust_type_alias_decl_structural_lex(),
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn rust_decl_shared_field_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^rust_decl_qualified_name,
+      rhs: [ grammar_formal_terminal_free(identity: ^rust_token_ident) ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_type_expr,
+      rhs: [ grammar_formal_nonterminal_occurrence(identity: ^rust_decl_qualified_name) ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_field,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_terminal(identity: ^rust_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_type_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_field_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_field_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^rust_decl_field_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^rust_decl_field_block,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_list),
+        grammar_formal_terminal(identity: ^rust_token_rbrace)
+      ]
+    )
+  ]
+}
+
+fn rust_decl_shared_generic_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^rust_decl_type_param_list,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_type_param_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_type_param_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_comma),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_type_param_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^rust_decl_type_param_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^rust_decl_generic_params,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_generic_lt),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_type_param_list),
+        grammar_formal_terminal(identity: ^rust_token_generic_gt)
+      ]
+    )
+  ]
+}
+
+fn rust_decl_shared_variant_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^rust_decl_variant,
+      rhs: [ grammar_formal_terminal_free(identity: ^rust_token_ident) ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_variant,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_variant_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_variant),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_variant_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_variant_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_variant),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_variant_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^rust_decl_variant_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^rust_decl_variant_block,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_variant_list),
+        grammar_formal_terminal(identity: ^rust_token_rbrace)
+      ]
+    )
+  ]
+}
+
+fn rust_enum_general_decl_top_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^rust_decl_enum,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_kw_enum),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_variant_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_enum,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_kw_enum),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_generic_params),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_variant_block)
+      ]
+    )
+  ]
+}
+
+fn rust_enum_general_decl_formal_productions() -> List<FormalProduction> {
+  list_append(
+    left: rust_decl_shared_field_productions(),
+    right: list_append(
+      left: rust_decl_shared_generic_productions(),
+      right: list_append(
+        left: rust_decl_shared_variant_productions(),
+        right: rust_enum_general_decl_top_productions()
+      )
+    )
+  )
+}
+
+fn rust_enum_general_decl_productions_only_translation_rules() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^grammar_relation_rules_formal_productions,
+        target: formal_productions_catalog_to_node(
+          productions: rust_enum_general_decl_formal_productions()
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_decl_general_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      rust_whitespace_trivia_rule(),
+      rust_lex_rule(token_class: ^rust_token_kw_struct, text: "struct "),
+      rust_lex_rule(token_class: ^rust_token_kw_enum, text: "enum "),
+      rust_lex_rule(token_class: ^rust_token_generic_lt, text: "<"),
+      rust_lex_rule(token_class: ^rust_token_generic_gt, text: ">"),
+      rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
+      rust_lex_rule(token_class: ^rust_token_colon, text: ": "),
+      rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
+      rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
+      rust_ident_lex_rule()
+    ]
+  }
+}
+
+fn rust_decl_general_lex() -> LexRules {
+  ModeledLexRules { root: rust_decl_general_lex_rules() }
+}
+
+fn rust_enum_general_decl_structural_target_model() -> TargetModel {
+  TargetModel {
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        rust_named_edge(
+          name: ^target_model_edge_translation_rules,
+          target: rust_enum_general_decl_productions_only_translation_rules()
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    lex: rust_decl_general_lex(),
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn rust_struct_general_decl_top_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^rust_decl_struct,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_kw_struct),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_struct,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_kw_struct),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_generic_params),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_block)
+      ]
+    )
+  ]
+}
+
+fn rust_struct_general_decl_formal_productions() -> List<FormalProduction> {
+  list_append(
+    left: rust_decl_shared_field_productions(),
+    right: list_append(
+      left: rust_decl_shared_generic_productions(),
+      right: rust_struct_general_decl_top_productions()
+    )
+  )
+}
+
+fn rust_struct_general_decl_productions_only_translation_rules() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^grammar_relation_rules_formal_productions,
+        target: formal_productions_catalog_to_node(
+          productions: rust_struct_general_decl_formal_productions()
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_struct_general_decl_structural_target_model() -> TargetModel {
+  TargetModel {
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        rust_named_edge(
+          name: ^target_model_edge_translation_rules,
+          target: rust_struct_general_decl_productions_only_translation_rules()
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    lex: rust_decl_general_lex(),
     binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",

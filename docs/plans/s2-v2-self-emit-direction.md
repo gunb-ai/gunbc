@@ -84,10 +84,13 @@ enum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }
 
 ---
 
-## 6. Consolidation debt (dissolution triggers already owed)
+## 6. Consolidation debt — RESOLVED (rung 7)
 
-- **Enum grammar fork.** `rust_enum_decl_structural_*` (nullary variants, no generics) and `rust_generic_enum_decl_structural_*` (required generics + required payloads) are two representations of "Rust enum declaration" (§3 fork). **Trigger:** unify into one general enum authority — *optional* generic params + *per-variant optional* payload — via ε-alternation (which emit already supports; §5 blocks only the reparse half). One authority; the two current grammars are its special cases.
-- **Struct/enum field-list duplication.** The `field`/`type_expr`/`qualified_name` productions are duplicated across the struct and generic-enum grammars. **Trigger:** factor into a shared production set once the general grammar lands.
+The declaration-grammar fork is paid down. The five special-case grammars (`rust_struct_decl_structural_*`, `rust_generic_struct_decl_*`, `rust_enum_decl_structural_*`, `rust_generic_enum_decl_*`) collapsed into **two general authorities** — `rust_struct_general_decl_*` and `rust_enum_general_decl_*` — over **shared sub-productions** (`rust_decl_shared_field_productions` / `_generic_productions` / `_variant_productions`, one definition each). One authority per decl-kind; the generic/non-generic and nullary/payload forms are **multiple productions per LHS selected by arity** (not ε-alternation), so emit disambiguates without needing the §5 reparse fix. The `field`/`type_expr`/`qualified_name` productions are now defined once and reused by struct fields *and* variant payloads.
+
+Five emit receipts + a probe collapsed into one `decl_emit_consolidated_test.dag` (10 covered constructs across both grammars — nullary enums 2/3/7, generic-payload `Witness<C>`, structs arity 1/2/3, generic structs — plus RED, executed empty-record / empty-enum refusals counted 10/2, and the witness.dag-module-closed check). Type aliases stay their own grammar/test (a distinct decl kind).
+
+**Remaining consolidation note:** type aliases could later fold their `qualified_name`/`type_expr` onto `rust_decl_shared_field_productions` too; low priority. Every *new* declaration construct (Track A) now extends the two general grammars, not a new fork.
 
 ---
 
