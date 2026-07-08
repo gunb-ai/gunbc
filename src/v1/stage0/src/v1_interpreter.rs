@@ -2602,27 +2602,45 @@ fn parse_table_memo_scope_and_key(
 ) -> Option<(String, String, i64, Symbol)> {
     let table_fields = match table {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
-        _ => return None,
+        _ => {
+            eprintln!("ADHOC-DEBUG scope_and_key: table not Record/Variant: {:?}", table.type_label());
+            return None;
+        }
     };
     let grammar_digest = match ctx.field(table_fields, "grammar_digest")? {
         Value::Str(s) => s.clone(),
-        _ => return None,
+        other => {
+            eprintln!("ADHOC-DEBUG scope_and_key: grammar_digest not Str: {:?}", other.type_label());
+            return None;
+        }
     };
     let token_stream_digest = match ctx.field(table_fields, "token_stream_digest")? {
         Value::Str(s) => s.clone(),
-        _ => return None,
+        other => {
+            eprintln!("ADHOC-DEBUG scope_and_key: token_stream_digest not Str: {:?}", other.type_label());
+            return None;
+        }
     };
     let key_fields = match key {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
-        _ => return None,
+        _ => {
+            eprintln!("ADHOC-DEBUG scope_and_key: key not Record/Variant: {:?}", key.type_label());
+            return None;
+        }
     };
     let position = match fields_get(key_fields, ctx.sym("position")) {
         Some(Value::Int(n)) => *n,
-        _ => return None,
+        other => {
+            eprintln!("ADHOC-DEBUG scope_and_key: position not Int: {:?}", other.map(|v| v.type_label()));
+            return None;
+        }
     };
     let production = match fields_get(key_fields, ctx.sym("production")) {
         Some(Value::Str(s)) => ctx.sym(s),
-        _ => return None,
+        other => {
+            eprintln!("ADHOC-DEBUG scope_and_key: production not Str: {:?}", other.map(|v| v.type_label()));
+            return None;
+        }
     };
     Some((grammar_digest, token_stream_digest, position, production))
 }
