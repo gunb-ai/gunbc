@@ -84,7 +84,9 @@ data gunbc_ci_deploy_srv1_stage: DeployStage = {
   runner: gunbc_ci_deploy_srv1_runner_spec(),
 }
 
-data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
+data gunbc_ci_deploy_stages_disable_note: String = "DISABLED (operator ask 2026-07-08): the srv1 auto-deploy stage is un-enrolled from CI. On every push to main the deploy_dashboard_srv1 job queued ~18m waiting for the [self-hosted, linux, arm64, srv1] runner to pick it up, then got cancel-in-progress'd by the next push (receipt: runs 28909628928 / 28908499073, deploy job cancelled after the ci job finished). deploy_stages is the single enrollment authority (CiSpec.deploy_stages, same opt-in shape as witness_entries) - an empty list emits NO deploy job (the regen spec already ships deploy_stages: []). The stage record gunbc_ci_deploy_srv1_stage and its access/target-host model stay defined and witness-covered so RE-ENABLING is one edit: gunbc_ci_deploy_stages = [gunbc_ci_deploy_srv1_stage]. DISSOLVE-ON: srv1 self-hosted runner restored, or dashboard deploy re-homed off push-to-main CI."
+
+data gunbc_ci_deploy_stages: List<DeployStage> = []
 
 data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,
