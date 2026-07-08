@@ -42,7 +42,7 @@ gunbc run --source-root src/v2 --source-root dag \
 Two receipt tiers, in preference order:
 
 1. **Normalized round-trip** (preferred): `emit(node) → source → reparse → structurally-equal node`. Immune to formatting; this is DESIGN's "normalized round-trip, not golden strings." **Currently available only for fixed-arity constructs** — see §5.
-2. **emit→golden** (fallback, path A): `emit(node) == exact Rust text`, plus a **golden-discrimination** control (`emit(node) != wrong_golden`) and an external perturbation check (perturb a fixture field/variant ⇒ receipt flips to `false`). This is what rungs 3–4 use for variable-arity constructs. Golden is a legitimate receipt (DESIGN: "a byte-diff is the terminal receipt"); the round-trip is stronger and returns once §5 is fixed.
+2. **emit→golden** (fallback, path A): `emit(node) == exact Rust text`, plus a **golden-discrimination** control (`emit(node) != wrong_golden`) and an external perturbation check (perturb a fixture field/variant ⇒ receipt flips to `false`). This is what rungs 3–4 use for variable-arity constructs. Golden is a legitimate **per-construct dev receipt** for a single rung's emit; the round-trip is stronger and returns once §5 is fixed. (This is a *construct-level* correctness receipt only — the **terminal self-host oracle** is behavioral-equivalence on a discriminating corpus, §9 / Track D2, **not** a byte-diff over the corpus, per the revised §1.)
 
 **Refusals are the worklist.** Every construct a rung does *not* cover is surfaced as an **executed** `grammar_relation_row_for_emitted` rejection with a count — never a fabricated skip (DESIGN §5). The refusal list *is* the backlog for the next rungs.
 
@@ -117,7 +117,7 @@ Byte-matching v1's *exact* decoration is **no longer required** (operator: drop 
 - **C1** `pub` visibility; **C2** `#[derive(…)]` attributes; **C3** `#[serde(tag = "_variant")]` on enums.
 - **C4** `Rc<T>` ownership wrapping (v1's Rc-insertion rules — the SG2 use-site-ownership rows in `06_translate` are the model).
 - **C5** `im_rc` collection carriers (`Vec`→`Vector`, `HashMap`, `OrdSet`) + the `use` preamble.
-- **C6** the `Symbol` carrier (**landmine**: v1 special-cases `Symbol` to `pub struct Symbol(pub String)` and lowers `Symbol`-typed fields to `String`; coordinate the newtype-vs-alias decision with the tactical lane before matching).
+- **C6** the `Symbol` carrier — **no longer a landmine** (byte-matching v1 dropped, per §116): v1 uses `pub struct Symbol(pub String)` with `Symbol`-typed fields lowered to `String`, but v2 need not reproduce that. Pick the cleanest newtype-or-alias that compiles and passes the behavioral-equivalence receipt.
 - **C7** `v1_rt.rs` runtime shim generation; **C8** `Cargo.toml`; **C9** `lib.rs` / `main.rs` framing + `NonEmptyVec`/`NonEmptyBTreeSet`; **C10** the workspace-members region.
 
 ### Track D — "v2 works" (REVISED 2026-07-08 — byte-diff → behavioral-equivalence oracle)
