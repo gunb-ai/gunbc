@@ -1,0 +1,107 @@
+module v2.test.manual.s1_closure_receipt
+
+import extdeps.filesystem.filesystem_io
+import std.algebra { Cons, Empty }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.algebra { fold_list, is_empty }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { LexRules, token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, ParseGrammar, VoidGrammar }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data s1_closure_receipt_note: String = "S1 self-hosting receipt: v2's own front half (tokenize -> parse -> normalize, interpreted) accepts every file in the parse pipeline's transitive import closure -- the union of import closures rooted at 01_tokenize, 02_parse, 03_normalize, and extdeps/languages/dag (the language model). That set IS 'v2's parser parsing itself': every module the parser needs in order to exist. This harness's OWN loader closure is wider (extdeps.filesystem.filesystem_io and its uri/types subtree, imported here only to read the subject files at test time) -- that plumbing is test infrastructure, not part of the parser, and is deliberately not in the subject; the subject rows are the pipeline-rooted closure, drift-checkable by re-deriving the import BFS from those four roots. The grammar is validated ONCE per run (parse_module revalidates per call, a ~20s/file base this harness amortizes away). Fail-closed: a Void or invalid grammar fails every path, a Rejected stage fails that path by name; the claim is failures == []."
+
+data s1_closure_paths: List<String> = [
+  "dag/std/algebra.dag",
+  "dag/std/error_primitives.dag",
+  "src/v2/compiler/01_tokenize.dag",
+  "src/v2/compiler/02_parse.dag",
+  "src/v2/compiler/03_normalize.dag",
+  "src/v2/compiler/parse_engine_hooks.dag",
+  "src/v2/extdeps/languages/dag.dag",
+  "src/v2/extdeps/languages/fidelity.dag",
+  "src/v2/std/algebra.dag",
+  "src/v2/std/artifact.dag",
+  "src/v2/std/collection.dag",
+  "src/v2/std/compilers/lexing.dag",
+  "src/v2/std/compilers/sugar.dag",
+  "src/v2/std/compilers/target_model.dag",
+  "src/v2/std/constraint_satisfaction_predicate.dag",
+  "src/v2/std/diagnostic.dag",
+  "src/v2/std/exact_structural_equality_zip_fold_predicate.dag",
+  "src/v2/std/find_witness.dag",
+  "src/v2/std/grammar.dag",
+  "src/v2/std/host_transport.dag",
+  "src/v2/std/integer.dag",
+  "src/v2/std/integer_value_set.dag",
+  "src/v2/std/language_model.dag",
+  "src/v2/std/logic.dag",
+  "src/v2/std/machine.dag",
+  "src/v2/std/model_core.dag",
+  "src/v2/std/nat.dag",
+  "src/v2/std/node.dag",
+  "src/v2/std/node_query.dag",
+  "src/v2/std/node_shape.dag",
+  "src/v2/std/occurrence_id.dag",
+  "src/v2/std/passing_candidate_fold.dag",
+  "src/v2/std/project_to_core_predicate.dag",
+  "src/v2/std/provenance.dag",
+  "src/v2/std/qualified_name.dag",
+  "src/v2/std/refinement.dag",
+  "src/v2/std/refinement_widening_predicate.dag",
+  "src/v2/std/runtime.dag",
+  "src/v2/std/text.dag",
+  "src/v2/std/witness.dag"
+]
+
+fn s1_file_parses(lex: LexRules, validated: ValidatedGrammarRoot, path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  match tokenize(text: source, file: ^s1_closure_file_anchor, rules: lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_production(
+        tokens: token_stream_remaining(stream: stream),
+        validated: validated,
+        production_name: validated.root.start
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+          }
+      }
+  }
+}
+
+fn s1_closure_failures() -> List<String> {
+  let lm = dag_language_model_wave1()
+  let at = port_locus(port: ^s1_closure_locus_port)
+  match lm.grammar {
+    VoidGrammar => s1_closure_paths
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => s1_closure_paths
+        Accepted { value: validated, diagnostics: _ } =>
+          fold_list(
+            xs: s1_closure_paths,
+            empty: Empty,
+            cons: fn(acc, path) {
+              match s1_file_parses(lex: lm.lex, validated: validated, path: path) {
+                true => acc
+                false => Cons { head: path, tail: acc }
+              }
+            }
+          )
+      }
+  }
+}
+
+test fn s1_closure_parses_holds() -> Bool {
+  is_empty(xs: s1_closure_failures())
+}

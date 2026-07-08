@@ -155,33 +155,85 @@ fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult
   }
 }
 
-fn lex_repeat_loop(elem_r: LexMatchThunk, init: RepeatState) -> RepeatState {
-  if init.done {
-    init
-  } else {
-    match elem_r.apply(init.remaining) {
-      LexMatchRejected =>
-        RepeatState { remaining: init.remaining, lexeme: init.lexeme, done: true }
-      LexMatchAccepted { remaining: rest, lexeme: consumed } =>
-        match string_is_empty(s: consumed) {
-          true =>
-            RepeatState { remaining: init.remaining, lexeme: init.lexeme, done: true }
-          false =>
-            lex_repeat_loop(
-              elem_r: elem_r,
-              init: RepeatState {
-                remaining: rest,
-                lexeme: list_append(left: init.lexeme, right: consumed),
-                done: false
-              }
-            )
-        }
-    }
+data lex_repeat_loop_short_circuit_note: String = "genuinely short-circuiting recursive walk, same repair shape as parse_match_arm_stmt_step: the prior fold_list over init.remaining kept no-op-iterating every remaining source char after done flipped true, an O(remaining) tax per repeat attempt at every lex position (O(n^2) per file; the residual whale behind grammar_coverage_p8_wall_clock_blocker, attributed by the big-fold .dag-site dump). Recursion depth is bounded by the matched run's length and rides stacker::maybe_grow in the interpreter."
+
+fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
+  match state.done {
+    true => state
+    false =>
+      match elem_r.apply(state.remaining) {
+        LexMatchRejected =>
+          RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+        LexMatchAccepted { remaining: rest, lexeme: consumed } =>
+          match string_is_empty(s: consumed) {
+            true =>
+              RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+            false =>
+              lex_repeat_step(
+                elem_r: elem_r,
+                state: RepeatState {
+                  remaining: rest,
+                  lexeme: list_append(left: state.lexeme, right: consumed),
+                  done: false
+                }
+              )
+          }
+      }
   }
 }
 
-fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
-  let thunk = fold_lex_pattern(
+fn lex_repeat_loop(elem_r: LexMatchThunk, init: RepeatState) -> RepeatState {
+  lex_repeat_step(elem_r: elem_r, state: init)
+}
+
+data lex_delimited_step_short_circuit_note: String = "same short-circuit repair as lex_repeat_step, for the delimited combinator (string literals, block comments): the prior fold_list over the post-open remaining source kept no-op-iterating every char after done flipped true. Termination: every non-done arm either sets done or consumes a nonempty body_lex, strictly shrinking remaining; a source-exhausted state rejects via body_r on the empty remainder (done + failed), matching the fold version's unterminated-delimiter rejection."
+
+fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: DelimitedState) -> DelimitedState {
+  match state.done {
+    true => state
+    false =>
+      match close_r.apply(state.remaining) {
+        LexMatchAccepted { remaining: after_close, lexeme: close_lex } =>
+          DelimitedState {
+            remaining: after_close,
+            lexeme: list_append(left: state.lexeme, right: close_lex),
+            done: true,
+            failed: false
+          }
+        LexMatchRejected =>
+          match body_r.apply(state.remaining) {
+            LexMatchRejected =>
+              DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
+            LexMatchAccepted { remaining: after_body, lexeme: body_lex } =>
+              match string_is_empty(s: body_lex) {
+                true =>
+                  DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
+                false =>
+                  lex_delimited_step(
+                    close_r: close_r,
+                    body_r: body_r,
+                    state: DelimitedState {
+                      remaining: after_body,
+                      lexeme: list_append(left: state.lexeme, right: body_lex),
+                      done: false,
+                      failed: false
+                    }
+                  )
+              }
+          }
+      }
+  }
+}
+
+data lex_compiled_rule_note: String = "a rule's matcher thunk is a pure function of the rule alone, so it is derived once per tokenize (lex_compile_rules at walk init) and reused at every source position -- the prior shape re-ran fold_lex_pattern per (rule, position) attempt, ~400k rebuilds/min on a medium file (.dag self-time profile). lex_try_rule keeps its one-shot signature for external claim tests and compiles on the fly."
+
+type CompiledLexRule {
+  rule: LexRule
+  thunk: LexMatchThunk
+}
+
+fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
+  fold_lex_pattern(
     pattern: lex_rule_pattern(rule: rule),
     algebra: LexPatternFold {
       empty: LexMatchThunk { apply: fn(s) {
@@ -276,42 +328,7 @@ fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
             LexMatchRejected => LexMatchRejected
             LexMatchAccepted { remaining: after_open, lexeme: open_lex } =>
               let init = DelimitedState { remaining: after_open, lexeme: open_lex, done: false, failed: false }
-              let result = fold_list(
-                xs: after_open,
-                empty: init,
-                cons: fn(state, _) {
-                  match state.done {
-                    true => state
-                    false =>
-                      match close_r.apply(state.remaining) {
-                        LexMatchAccepted { remaining: after_close, lexeme: close_lex } =>
-                          DelimitedState {
-                            remaining: after_close,
-                            lexeme: list_append(left: state.lexeme, right: close_lex),
-                            done: true,
-                            failed: false
-                          }
-                        LexMatchRejected =>
-                          match body_r.apply(state.remaining) {
-                            LexMatchRejected =>
-                              DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
-                            LexMatchAccepted { remaining: after_body, lexeme: body_lex } =>
-                              match string_is_empty(s: body_lex) {
-                                true =>
-                                  DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
-                                false =>
-                                  DelimitedState {
-                                    remaining: after_body,
-                                    lexeme: list_append(left: state.lexeme, right: body_lex),
-                                    done: false,
-                                    failed: false
-                                  }
-                              }
-                          }
-                      }
-                  }
-                }
-              )
+              let result = lex_delimited_step(close_r: close_r, body_r: body_r, state: init)
               match result.done {
                 false => LexMatchRejected
                 true =>
@@ -325,16 +342,37 @@ fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
       }
     }
   )
-  match thunk.apply(source) {
+}
+
+fn lex_try_compiled(compiled: CompiledLexRule, source: String) -> LexRuleApply {
+  match compiled.thunk.apply(source) {
     LexMatchRejected => LexRuleNoMatch
     LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
-      match rule {
+      match compiled.rule {
         TokenRule { token_class: class, pattern: _ } =>
           LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
         TriviaRule { pattern: _ } =>
           LexRuleTrivia { lexeme: lexeme, remaining: remaining }
       }
   }
+}
+
+fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
+  let reversed = fold_list(
+    xs: rules,
+    empty: Empty,
+    cons: fn(acc, rule) {
+      Cons { head: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) }, tail: acc }
+    }
+  )
+  reversed.reverse()
+}
+
+fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
+  lex_try_compiled(
+    compiled: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) },
+    source: source
+  )
 }
 
 fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
@@ -361,14 +399,14 @@ fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> Le
   }
 }
 
-fn lex_try_rules(rules: List<LexRule>, source: String) -> LexRuleApply {
+fn lex_try_rules(rules: List<CompiledLexRule>, source: String) -> LexRuleApply {
   fold_list(
     xs: rules,
     empty: LexRuleNoMatch,
-    cons: fn(acc, rule) {
+    cons: fn(acc, compiled) {
       lex_try_rules_prefer_longer(
         acc: acc,
-        candidate: lex_try_rule(rule: rule, source: source)
+        candidate: lex_try_compiled(compiled: compiled, source: source)
       )
     }
   )
@@ -381,7 +419,7 @@ type LexWalkAcc {
   done: Bool
   error: Bool
   file: Symbol
-  rules: LexRuleSet
+  rules: List<CompiledLexRule>
 }
 
 fn lex_walk_init(src: String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
@@ -392,7 +430,7 @@ fn lex_walk_init(src: String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
     done: false,
     error: false,
     file: file,
-    rules: rules
+    rules: lex_compile_rules(rules: rules.rules)
   }
 }
 
@@ -413,7 +451,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
         rules: acc.rules
       }
     false =>
-      match lex_try_rules(rules: acc.rules.rules, source: acc.remaining) {
+      match lex_try_rules(rules: acc.rules, source: acc.remaining) {
         LexRuleNoMatch =>
           LexWalkAcc {
             remaining: acc.remaining,

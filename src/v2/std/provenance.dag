@@ -1,9 +1,8 @@
 module v2.std.provenance
 
 import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.collection { List }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.diagnostic {
   ByteRange,
   Diagnostic,
@@ -14,7 +13,6 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.node { Node, OccurrenceId, Symbol }
-import v2.std.occurrence_id { occurrence_id_eq }
 import v2.std.witness { Holds, Violates, Witness }
 
 type OriginEvent
@@ -26,25 +24,19 @@ fn origin_event_from_source(locus: Locus) -> OriginEvent {
   FromSource { locus: locus }
 }
 
-type SpanIndexEntry {
-  occurrence: OccurrenceId
-  event: OriginEvent
-}
+data span_index_map_carrier_note: String = "entries is a Map keyed on OccurrenceId (a single-Int record, so native structural key equality coincides with occurrence_id_eq), the same carrier pattern ParseTable.entries already uses. The prior FreeMonoid<SpanIndexEntry> assoc list paid O(index) per record (snoc), O(index) per lookup (head-first scan), and O(base x incoming) per merge -- 13.4M lookup frames / 242s self-time on one medium-file parse (.dag self-time profile); the same disease as the reconcile merge_envs root fix. Ids are minted fresh per stamp, so record never sees a duplicate key; merge dedup stays explicitly base-wins."
 
 type SpanIndex {
-  entries: FreeMonoid<SpanIndexEntry>
+  entries: Map<OccurrenceId, OriginEvent>
 }
 
 fn span_index_empty() -> SpanIndex {
-  SpanIndex { entries: Empty }
+  SpanIndex { entries: empty_map() }
 }
 
 fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> SpanIndex {
   SpanIndex {
-    entries: list_snoc_item(
-      xs: index.entries,
-      item: SpanIndexEntry { occurrence: id, event: event }
-    )
+    entries: map_insert(m: index.entries, key: id, value: event)
   }
 }
 
@@ -56,45 +48,30 @@ fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
   }
 }
 
-fn span_index_lookup_entries(
-  entries: FreeMonoid<SpanIndexEntry>,
-  id: OccurrenceId
-) -> Witness<OriginEvent> {
-  match entries {
-    Empty => Violates { diagnostic: span_index_occurrence_absent_diagnostic() }
-    Cons { head: head, tail: rest } =>
-      if occurrence_id_eq(left: head.occurrence, right: id) {
-        Holds { value: head.event }
-      } else {
-        span_index_lookup_entries(entries: rest, id: id)
-      }
-  }
-}
-
 fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent> {
-  span_index_lookup_entries(entries: index.entries, id: id)
-}
-
-fn span_index_merge_entries(
-  base: FreeMonoid<SpanIndexEntry>,
-  incoming: FreeMonoid<SpanIndexEntry>
-) -> FreeMonoid<SpanIndexEntry> {
-  fold_list(
-    xs: incoming,
-    empty: base,
-    cons: fn(acc, entry) {
-      match span_index_lookup_entries(entries: acc, id: entry.occurrence) {
-        Holds { value: _ } => acc
-        Violates { diagnostic: _ } =>
-          list_snoc_item(xs: acc, item: entry)
-      }
-    }
-  )
+  match index.entries.lookup(id) {
+    Holds { value: event } => Holds { value: event }
+    Violates { diagnostic: _ } =>
+      Violates { diagnostic: span_index_occurrence_absent_diagnostic() }
+  }
 }
 
 fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
   SpanIndex {
-    entries: span_index_merge_entries(base: base.entries, incoming: incoming.entries)
+    entries: fold_list(
+      xs: incoming.entries.keys(),
+      empty: base.entries,
+      cons: fn(acc, id) {
+        match acc.lookup(id) {
+          Holds { value: _ } => acc
+          Violates { diagnostic: _ } =>
+            match incoming.entries.lookup(id) {
+              Holds { value: event } => map_insert(m: acc, key: id, value: event)
+              Violates { diagnostic: _ } => acc
+            }
+        }
+      }
+    )
   }
 }
 

@@ -520,21 +520,30 @@ fn named_edge_sort_key(e: Edge) -> Symbol {
 }
 
 fn arrow_signature_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
+  filter(children, fn(e) {
+    match e.label {
+      Positional => true
+      Named { name: _ } => false
+    }
+  })
 }
 fn arrow_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, e => match e.label {
-    Named { name: sym } => sym == ^arrow_body_edge
-    Positional => false
+  filter(children, fn(e) {
+    match e.label {
+      Named { name: sym } => sym == ^arrow_body_edge
+      Positional => false
+    }
   })
 }
 fn arrow_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   sort_by(
-    filter(children, e => match e.label {
-      Named { name: sym } => sym != ^arrow_body_edge
-      Positional => false
+    filter(children, fn(e) {
+      match e.label {
+        Named { name: sym } => sym != ^arrow_body_edge
+        Positional => false
+      }
     }),
-    e => named_edge_sort_key(e: e)
+    fn(e) { named_edge_sort_key(e: e) }
   )
 }
 fn canonicalize_arrow_children_for_content_hash(children: List<Edge>) -> List<Edge> {
@@ -547,21 +556,30 @@ fn canonicalize_arrow_children_for_content_hash(children: List<Edge>) -> List<Ed
   )
 }
 fn loop_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
+  filter(children, fn(e) {
+    match e.label {
+      Positional => true
+      Named { name: _ } => false
+    }
+  })
 }
 fn loop_bound_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, e => match e.label {
-    Named { name: sym } => sym == ^loop_bound_edge
-    Positional => false
+  filter(children, fn(e) {
+    match e.label {
+      Named { name: sym } => sym == ^loop_bound_edge
+      Positional => false
+    }
   })
 }
 fn loop_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   sort_by(
-    filter(children, e => match e.label {
-      Named { name: sym } => sym != ^loop_bound_edge
-      Positional => false
+    filter(children, fn(e) {
+      match e.label {
+        Named { name: sym } => sym != ^loop_bound_edge
+        Positional => false
+      }
     }),
-    e => named_edge_sort_key(e: e)
+    fn(e) { named_edge_sort_key(e: e) }
   )
 }
 fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edge> {
@@ -579,7 +597,7 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
     LabeledEdges =>
       Node {
         kind: base.kind,
-        children: sort_by(base.children, e => named_edge_sort_key(e: e)),
+        children: sort_by(base.children, fn(e) { named_edge_sort_key(e: e) }),
         occurrence_id: SyntheticOccurrence
       }
     NoEdges =>
@@ -1420,7 +1438,7 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
 
 fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   fold(
-    sort_by(xs, h => h),
+    sort_by(xs, fn(h) { h }),
     init: empty,
     f: fn(acc, h) {
       combine_hash(a: acc, b: h)

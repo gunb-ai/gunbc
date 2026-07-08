@@ -419,9 +419,9 @@ fn dag_string_literal_lex_rule() -> LexRule {
   TokenRule {
     token_class: ^dag_token_string_literal,
     pattern: DelimitedPattern {
-      open: LiteralPattern { text: "\"" },
+      open: CharPattern { char: 34 },
       body: RepeatPattern { element: dag_string_body_element_pattern() },
-      close: LiteralPattern { text: "\"" }
+      close: CharPattern { char: 34 }
     }
   }
 }
@@ -2289,7 +2289,7 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
       element: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_dot),
         right: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_ident),
+          left: dag_grammar_binding_name_terminal(),
           right: dag_grammar_optional(element: dag_grammar_postfix_call_suffix_expr())
         )
       )
@@ -2834,7 +2834,7 @@ fn emit_row_data_decl(
 }
 
 fn dag_wave1_grammar_root() -> GrammarRoot {
-  let module = dag_grammar_module_production()
+  let module_prod = dag_grammar_module_production()
   let module_header = dag_grammar_production(
     name: ^dag_production_module_header,
     expression: dag_grammar_module_header_expr(),
@@ -3008,7 +3008,7 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
   GrammarRoot {
     start: ^dag_production_module,
     productions: [
-      module,
+      module_prod,
       module_header,
       top_level_item,
       import_decl,

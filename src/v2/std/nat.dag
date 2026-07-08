@@ -30,15 +30,16 @@ fn nat_mul(a: Nat, b: Nat) -> Nat {
   nat_cata(n: a, zero: Zero, succ: fn(acc) { nat_add(a: b, b: acc) })
 }
 
+data nat_compare_grounding_note: String = "ordering-side grounding of the numeric tower (construction side landed in #5428: Nat values ARE native Ints at runtime). The prior arm-wise Peano recursion re-derived per-comparison what the grounded realization answers in one native op -- ~66 call frames per compare, 5.2M frames/min in the tokenize char-class path (.dag self-time profile). The realization's < and == on Int are the grounded surface; a genuinely Peano-shaped operand (extinct post-#5428) fails closed as a typed operator error, never a fabricated ordering."
+
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
-  match a {
-    Zero => match b {
-      Zero => Equal
-      Succ { prev: _ } => Less
-    }
-    Succ { prev: ap } => match b {
-      Zero => Greater
-      Succ { prev: bp } => nat_compare(a: ap, b: bp)
+  if a == b {
+    Equal
+  } else {
+    if a < b {
+      Less
+    } else {
+      Greater
     }
   }
 }
