@@ -107,15 +107,8 @@ Rungs are **additive rows** and mostly independent — the point of the row mech
 - **A6 [→A1..A5]** `data` declarations (`data x: T = <value-expr>`) — needs the value-expression subset (Track B constructors + literals).
 - **A7 [P]** module + import framing, `use` statements, `uses`/effect clauses on signatures.
 
-### Track B — the expression language (fn bodies; the bulk, ~5,100 fns)
-Ordered by dependency; most are `[P]` once B1 (signatures) lands. The add-fn MVP already emits arrows + `x + y`, so B-lits/B-binop have a seed.
-- **B1** function signature framing (params, return type, generics, `uses`).
-- **B2 [→B1]** literals — int, bool, and **rope-strings** (emitted text is Cons-chain `FreeMonoid`, not `Value::Str`; use `free_monoid_to_string` at the boundary — landmine).
-- **B3 [→B1]** named-argument calls; **B4 [→B1]** field access / projection (`.`).
-- **B5 [→B1]** constructor expressions (record/variant construction).
-- **B6 [→B1]** `if` / `else`; **B7 [→B1]** `let` bindings; **B8 [→B1]** lambdas (`fn(x) { … }`).
-- **B9 [→B4,B5]** `match` — patterns + arms. The largest single sub-track; decompose per pattern kind (variant, record, binding, wildcard).
-- **B10 [→B1]** binops / operator surface beyond `+`.
+### Track B — the expression language (fn bodies; the bulk, ~5,100 fns) — see §10 for the scoped decomposition
+Superseded by §10 below. Scoping (rung-7 follow-up) found the compositional body-emission engine already exists and is target-agnostic; Rust just isn't wired in. Read §10, not this stub.
 
 ### Track C — decoration parity (clean Rust → v1's *exact* Rust; ~12.7k-line surface in `src/v1/05_emit_rust.dag`)
 v2 currently emits **clean** Rust; the fixed point requires byte-matching the v1 seed's decorated Rust. Each `[P]` after Track A/B basics exist.
@@ -151,3 +144,54 @@ Cross-boundary changes (e.g. the `Symbol` carrier decision C6, the reparse fix �
 ## 9. Definition of done (the lane)
 
 `v2-emit(all 40 closure modules)` builds cargo-green and **byte-matches** v1's emit, terminating in the self-emit fixed point (D3). At that point `regen_stage0` is deletable and the Rust seed is one realization of the `.dag` truth.
+
+---
+
+## 10. Track B — expression bodies: scoping result & decomposition (post-rung-7)
+
+### 10.1 The finding (reframes Track B)
+
+The compositional body-emission **engine already exists and is target-agnostic**, and is validated end-to-end on **TypeScript, Python, C++, and Go** for all 6 behaviors + record-construct + field-access. **Rust is not wired into it.** The Rust `add` MVP is a *dead-end monolithic golden* — `TypeNode{Arrow}(i32,i32,i32)` + a flat baked 18-token spine + `rust_mvp1_source_text` — that composes nothing and does not scale to real bodies.
+
+So Track B is **not** "build a compositional emitter" (it exists) and **not** "add rows to a live Rust path" (there is none). It is: **wire Rust into the existing value-expression subsystem and supply Rust token synthesis per expression form, copying the 4 reference targets.**
+
+Key machinery (all present):
+- **Node model** (`std/node.dag`): expressions are `ComputationNode { behavior }`, `Behavior = Value | Transform | Branch | Loop | Bind | Match` (6, not 5); record-construct is `TypeNode{Conj}` gated at value position. Edge discipline: Value 0 / Transform ≥1 / Branch 3 (as arrow body) / Bind 3 / Loop LoopBoundEdges.
+- **Projector** (`std/compilers/target_model.dag`): `target_project_arrow_body_to_value_expression` (~`:11298-11352`) dispatches each behavior → `handle_transform` / `target_project_field_access` / `target_project_branch_bool_if_else` / `target_project_bind_let` / `target_project_loop` / `target_project_match` / `target_project_record_construct`, producing a `TargetValueExpression`. `TargetValueExpressionKind` (~`:491-511`) enumerates **18 emit-able forms** (symbol, bool/char/string literals, Rc/Box ref, binding-ref, primitive/effect/callable apply, closure, conditional, bind-let, loop, record-construct, field-access, match).
+- **Bodied-arrow path** (`compiler/06_translate.dag`): `translate_bodied_arrow_preserve_producer_ir` (`:534`, identity — keeps the ComputationNode body) → serialize via `target_serialize_bodied_arrow_from_model` (`:871-917`): fetch signature **scaffold**, project body → value-expression, synthesize body tokens, splice. Gated by `target_value_expr_arrow_has_value_expression_body`.
+- **Source→node lowering** (`std/compilers/body_lowering.dag`, target-agnostic): `lower_binary_infix` → `Transform`, plus Branch/Loop/Bind/Match constructors.
+- **Reference target** to copy: `ts_value_expression_projection` (`extdeps/languages/typescript.dag:527`), wired via edge `target_model_edge_value_expression_projection` (`:1455`); bodied scaffold attached by `grammar_relation_row_attach_bodied_scaffold` (`target_model.dag:~2630-2695`). Rust has **zero** `value_expression` references today.
+- **Reference tests** to mirror (each *discriminates* — operand/op swap changes output, proving composition): `add_body_emit_typescript_test` (Transform/binop), `branch_if_then_else_emit_test`, `match_bool_emit_test`, `bind_emit_test`, `loop_emit_test`, `field_access_emit_test`, `record_construct_emit_test`, `fold_call_closure_emit_test`, `typescript_effect_io_emit_test`.
+
+### 10.2 Decomposition
+
+**B0 — wire Rust into the value-expression engine [GATING, serial, by lead].** Author `rust_value_expression_projection` (mirror `ts_value_expression_projection`), wire `target_model_edge_value_expression_projection` into the Rust bundle, attach the bodied-arrow signature scaffold, and supply Rust token synthesis for the *minimal* set to emit a **composed** `fn add(x: i32, y: i32) -> i32 { x + y }` — body built from a `ComputationNode{Transform}` (`+`) over two binding-refs, **discriminating** on operand-swap (`y + x`) and op-swap (`x - y`) like `add_body_emit_typescript_test`. This retires the monolithic `rust_mvp1_*` add golden as the body template. Receipt: `src/v2/test/claim/emit/rust_body_add_emit_test.dag`. **Everything below depends on B0.**
+
+Per-form token synthesis (each = Rust arm of one `TargetValueExpressionKind` + a Rust `*_emit_test` mirroring the named TS reference; all `[P]` after B0):
+- **B1 [P]** literals (Value): int, bool, char, **rope-string** (`FreeMonoid` Cons-chain → `free_monoid_to_string` at the boundary — landmine).
+- **B2 [P]** binding-ref (a bare variable).
+- **B3 [P]** primitive apply / binops (Transform): the operator surface (`+ - * / == && ...`).
+- **B4 [P]** callable apply (Transform): function/method calls (named-arg model → Rust call syntax).
+- **B5 [P]** field access (Transform-gated): `x.field` — mirror `field_access_emit_test`.
+- **B6 [P]** conditional (Branch): `if c { t } else { e }` — mirror `branch_if_then_else_emit_test`.
+- **B7 [P]** bind-let (Bind): `let x = v; …` (Rust block/`let-in`) — mirror `bind_emit_test`.
+- **B8 [P]** loop (Loop) — mirror `loop_emit_test`. (Watch the open `body-lowering` FLAG thread in DESIGN — loop termination facts; park if it bites.)
+- **B9 [P] but large]** match (Match) — mirror `match_bool_emit_test`; then decompose per pattern kind (variant / record / binding / wildcard) into sub-rungs.
+- **B10 [P]** record-construct (`TypeNode{Conj}` at value position): `Name { field: v }` — mirror `record_construct_emit_test`.
+- **B11 [P]** closure (Arrow body at value position): `|x| …`.
+- **B12 [P]** Rc/Box reference forms (overlaps Track C ownership — coordinate).
+
+**Net-new (not modeled on any target — design first):**
+- **BN1** generic parameters on `fn` signatures (`fn f<T>(...)`), and generic instantiation in value position — no target models this yet.
+- **BN2** `uses`/effect clauses on signatures — `effects.dag` exists but is unwired into signatures; `TargetValueExprEffectApply` exists on the value side (see `typescript_effect_io_emit_test`). Design the signature-level surface.
+
+### 10.3 Recommended sequencing
+
+1. **B0 first, serially** (I do it) — it re-establishes the fn-body path and is the dependency root; it also validates the Rust wiring against the TS reference before any fan-out.
+2. Then a **parallel batch** of the highest-frequency body forms: **B1 (literals), B3 (binops), B6 (conditional), B7 (let)** — these cover most fn bodies and are mutually independent. The pilot brief template (worktree base = lane branch; absolute source-roots with the shared binary) applies; each agent copies the named TS reference test + the TS projection arm.
+3. Then **B4/B5/B10/B9/B11** as a second batch; **B9 (match)** likely wants its own sub-decomposition.
+4. **BN1/BN2** (generics, effects) are design-first and coordinated — not fire-and-forget.
+
+### 10.4 Revised size note
+
+Track B is **smaller and safer** than §7's original estimate: the engine, node model, projectors, body-lowering, and 4 reference implementations already exist, so B is ~1 gating rung (B0) + ~12 token-synthesis rungs that copy existing references + 2 net-new design rungs — not "build an emitter." The real-inferred-body path (`translate` preserves bodied arrows; serialize composes) is already supported, so this track also carries Rust toward the D-track fixed point, not just fixtures.
