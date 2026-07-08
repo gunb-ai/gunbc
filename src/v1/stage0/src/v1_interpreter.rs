@@ -4256,6 +4256,32 @@ fn render_shell_trace(argv: &[String]) {
     }
 }
 
+fn shell_completion_trace_line(
+    exit_code: i32,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+    wall: std::time::Duration,
+) -> String {
+    format!(
+        "[shell] done exit={exit_code} stdout={stdout_bytes} stderr={stderr_bytes} bytes wall={:.3}s",
+        wall.as_secs_f64()
+    )
+}
+
+/// Post-wait completion trace for every shell transport: exit, stdout/stderr bytes,
+/// spawn-to-wait wall seconds. Pairs with `render_shell_trace` (pre-spawn).
+fn render_shell_completion_trace(
+    exit_code: i32,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+    wall: std::time::Duration,
+) {
+    trace_emit(
+        OutputChannel::ShellTrace,
+        &shell_completion_trace_line(exit_code, stdout_bytes, stderr_bytes, wall),
+    );
+}
+
 fn shell_stdin_payload(val: &Value) -> InterpResult<Vec<u8>> {
     match val {
         Value::Str(s) => Ok(s.as_bytes().to_vec()),
@@ -4292,6 +4318,7 @@ fn dispatch_shell(
         let stdin_val = eval_expr(&stdin_node, param_env, ctx)?;
         let stdin_bytes = shell_stdin_payload(&stdin_val)?;
 
+        let wall_start = std::time::Instant::now();
         let mut child = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .stdin(Stdio::piped())
@@ -4313,22 +4340,39 @@ fn dispatch_shell(
                 })?;
         }
 
-        child
+        let output = child
             .wait_with_output()
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to wait on '{}': {}", argv[0], e),
-            })?
+            })?;
+        render_shell_completion_trace(
+            output.status.code().unwrap_or(-1),
+            output.stdout.len(),
+            output.stderr.len(),
+            wall_start.elapsed(),
+        );
+        output
     } else {
-        std::process::Command::new(&argv[0])
+        let wall_start = std::time::Instant::now();
+        let output = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .output()
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to execute '{}': {}", argv[0], e),
-            })?
+            })?;
+        render_shell_completion_trace(
+            output.status.code().unwrap_or(-1),
+            output.stdout.len(),
+            output.stderr.len(),
+            wall_start.elapsed(),
+        );
+        output
     };
 
+    let exit_code = output.status.code().unwrap_or(-1);
+
     Ok(ShellResult {
-        exit_code: output.status.code().unwrap_or(-1),
+        exit_code,
         stdout: String::from_utf8_lossy(&output.stdout)
             .trim_end()
             .to_string(),
@@ -7204,5 +7248,29 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Str(x), Value::Str(y)) => x.cmp(y),
         (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
         _ => std::cmp::Ordering::Equal,
+    }
+}
+
+#[cfg(test)]
+mod shell_completion_trace_tests {
+    use super::shell_completion_trace_line;
+    use std::time::Duration;
+
+    #[test]
+    fn shell_completion_trace_line_formats_exit_stdout_stderr_wall() {
+        let line = shell_completion_trace_line(0, 1234, 56, Duration::from_millis(5150));
+        assert_eq!(
+            line,
+            "[shell] done exit=0 stdout=1234 stderr=56 bytes wall=5.150s"
+        );
+    }
+
+    #[test]
+    fn shell_completion_trace_line_surfaces_nonzero_exit() {
+        let line = shell_completion_trace_line(1, 0, 4096, Duration::from_secs(2));
+        assert_eq!(
+            line,
+            "[shell] done exit=1 stdout=0 stderr=4096 bytes wall=2.000s"
+        );
     }
 }
