@@ -40,7 +40,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.logic { Bool }
-import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
+import v2.std.node { Conj, Disj, Node, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Violates, Witness }
 import v2.std.algebra { free_monoid_type_node }
 import v2.std.compilers.target_model { char_kernel_type_node }
@@ -199,7 +199,7 @@ fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
 
 fn rust_literal_bind_string_rope_carrier_is_free_monoid() -> Bool {
   match free_monoid_type_node(inhabitant: char_kernel_type_node()).kind {
-    TypeNode { connective: Conj } => true
+    TypeNode { connective: Disj } => true
     _ => false
   }
 }

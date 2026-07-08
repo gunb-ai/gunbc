@@ -1577,7 +1577,15 @@ fn rust_mvp1_literal_emit_binding_spellings() -> Map<Symbol, String> {
 fn rust_literal_emit_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_wave2_lex_rules().rules,
+      left: list_append(
+        left: rust_wave1_lex_rules().rules,
+        right: [
+          rust_int_literal_lex_rule(),
+          rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
+          rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
+          rust_lex_rule(token_class: ^rust_token_semicolon, text: "; ")
+        ]
+      ),
       right: [
         rust_lex_rule(token_class: ^rust_token_lit_true, text: "true"),
         rust_lex_rule(token_class: ^rust_token_lit_false, text: "false"),
