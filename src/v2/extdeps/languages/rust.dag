@@ -1106,9 +1106,9 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       else_token: ^rust_token_unwired_else
     },
     let_form: TargetBindLetShape {
-      let_token: ^rust_token_unwired_let,
-      assign_token: ^rust_token_unwired_assign,
-      in_token: ^rust_token_unwired_bind_in
+      let_token: ^rust_token_kw_let,
+      assign_token: ^rust_token_equal,
+      in_token: ^rust_token_semicolon
     },
     loop_form: TargetLoopShape { loop_token: ^rust_token_unwired_loop },
     record_construct_form: TargetRecordConstructShape {
