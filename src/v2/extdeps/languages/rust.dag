@@ -1101,8 +1101,8 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       separator: ^rust_token_comma
     },
     conditional_form: TargetConditionalShape {
-      if_token: ^rust_token_unwired_if,
-      then_token: ^rust_token_unwired_then,
+      if_token: ^rust_token_kw_if,
+      then_token: ^rust_token_lbrace,
       else_token: ^rust_token_unwired_else
     },
     let_form: TargetBindLetShape {
