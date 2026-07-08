@@ -2289,7 +2289,7 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
       element: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_dot),
         right: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_ident),
+          left: dag_grammar_binding_name_terminal(),
           right: dag_grammar_optional(element: dag_grammar_postfix_call_suffix_expr())
         )
       )
