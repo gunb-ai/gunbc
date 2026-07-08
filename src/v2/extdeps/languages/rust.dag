@@ -84,6 +84,35 @@ import v2.std.model_core {
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node, target_model_emit_transforms_empty, target_model_make_with_emit_transforms}
 import v2.std.compilers.target_model {
+  InfixToken,
+  canonical_operation_op_add,
+  TargetBindingRefShape,
+  TargetBodiedArrowStatementScaffold,
+  TargetCallApplyShape,
+  TargetClosureShape,
+  TargetEffectApplyShape,
+  TargetEffectCalleeRow,
+  TargetConditionalShape,
+  TargetPrimitiveApplyShape,
+  TargetBindLetShape,
+  TargetLoopShape,
+  TargetRecordConstructShape,
+  TargetFieldAccessShape,
+  TargetMatchShape,
+  TargetValueExpressionProjection,
+  grammar_relation_row_attach_bodied_scaffold,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  value_expr_projection_bundle_node,
+  RecordLiteralTypeNaming,
+  Omit,
+  Prepend,
+  BlockEvaluationMode,
+  ValueProducing,
+  StatementSequenced,
+  derive_bodied_arrow_scaffold
+}
+import v2.std.compilers.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
   TargetTypeExpression,
@@ -1042,13 +1071,127 @@ fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
 }
 }
 
+fn rust_value_expression_projection() -> TargetValueExpressionProjection {
+  TargetValueExpressionProjection {
+    binding_ref_form: TargetBindingRefShape { ident_token: ^rust_token_ident },
+    primitive_apply_form: TargetPrimitiveApplyShape {
+      open: ^rust_token_lparen,
+      close: ^rust_token_rparen,
+      separator: ^rust_token_comma
+    },
+    callable_apply_form: TargetCallApplyShape {
+      callee_ident_token: ^rust_token_ident,
+      open: ^rust_token_lparen,
+      separator: ^rust_token_comma,
+      close: ^rust_token_rparen
+    },
+    closure_form: TargetClosureShape {
+      fn_token: ^rust_token_unwired_closure_fn,
+      open: ^rust_token_unwired_closure_open,
+      separator: ^rust_token_comma,
+      close: ^rust_token_unwired_closure_close,
+      body_open: ^rust_token_lbrace,
+      body_close: ^rust_token_rbrace,
+      param_ident_token: ^rust_token_ident
+    },
+    effect_apply_form: TargetEffectApplyShape {
+      callees: [],
+      open: ^rust_token_lparen,
+      close: ^rust_token_rparen,
+      separator: ^rust_token_comma
+    },
+    conditional_form: TargetConditionalShape {
+      if_token: ^rust_token_unwired_if,
+      then_token: ^rust_token_unwired_then,
+      else_token: ^rust_token_unwired_else
+    },
+    let_form: TargetBindLetShape {
+      let_token: ^rust_token_unwired_let,
+      assign_token: ^rust_token_unwired_assign,
+      in_token: ^rust_token_unwired_bind_in
+    },
+    loop_form: TargetLoopShape { loop_token: ^rust_token_unwired_loop },
+    record_construct_form: TargetRecordConstructShape {
+      open: ^rust_token_lbrace,
+      close: ^rust_token_rbrace,
+      separator: ^rust_token_comma,
+      assign: ^rust_token_colon,
+      record_literal_names_type: Prepend
+    },
+    field_access_form: TargetFieldAccessShape { dot: ^rust_token_unwired_dot },
+    match_form: TargetMatchShape {
+      match_token: ^rust_token_unwired_match,
+      open: ^rust_token_lbrace,
+      close: ^rust_token_rbrace,
+      fat_arrow: ^rust_token_unwired_fat_arrow,
+      arm_separator: ^rust_token_comma
+    },
+    block_evaluation_mode: ValueProducing
+  }
+}
+
+fn rust_add_operator_realization_row() -> Node {
+  target_operator_realization_node(
+    operation: canonical_operation_op_add(),
+    shape: InfixToken { token: ^rust_token_plus }
+  )
+}
+
+fn rust_operator_realizations_catalog_node() -> Node {
+  target_operator_realizations_catalog_node(rows: [rust_add_operator_realization_row()])
+}
+
+fn rust_add_signature_with_open() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_kw_fn },
+    BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_fn_add },
+    FixedToken { token_class: ^rust_token_lparen },
+    BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_param_x },
+    FixedToken { token_class: ^rust_token_colon },
+    FixedToken { token_class: ^rust_token_ty_i32 },
+    FixedToken { token_class: ^rust_token_comma },
+    BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_param_y },
+    FixedToken { token_class: ^rust_token_colon },
+    FixedToken { token_class: ^rust_token_ty_i32 },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_arrow },
+    FixedToken { token_class: ^rust_token_ty_i32 },
+    FixedToken { token_class: ^rust_token_lbrace }
+  ]
+}
+
+fn rust_add_block_close() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_rbrace }
+  ]
+}
+
+fn rust_mvp1_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+  derive_bodied_arrow_scaffold(
+    signature_with_open: rust_add_signature_with_open(),
+    block_close: rust_add_block_close(),
+    mode: ValueProducing
+  )
+}
+
+fn rust_mvp1_fn_add_scaffold_relation_row_node() -> Node {
+  rust_grammar_relation_row_node(row: rust_mvp1_grammar_relation_row())
+}
+
+fn rust_mvp1_fn_add_bodied_relation_row_node() -> Node {
+  grammar_relation_row_attach_bodied_scaffold(
+    row: rust_mvp1_fn_add_scaffold_relation_row_node(),
+    scaffold: rust_mvp1_bodied_arrow_statement_scaffold()
+  )
+}
+
 fn rust_mvp1_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
         name: ^rust_relation_rule_mvp1_fn_add,
-        target: rust_grammar_relation_row_node(row: rust_mvp1_grammar_relation_row())
+        target: rust_mvp1_fn_add_bodied_relation_row_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -1303,7 +1446,7 @@ fn rust_collection_realization_catalog_node() -> Node {
   )
 }
 
-fn rust_mvp1_target_model_core_edges() -> List<Edge> {
+fn rust_mvp1_target_model_core_edges_with_operators(operator_catalog: Node) -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
@@ -1344,8 +1487,32 @@ fn rust_mvp1_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
       target: rust_type_expression_projection_bundle_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_value_expression_projection,
+      target: value_expr_projection_bundle_node(
+        projection: rust_value_expression_projection()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_operator_realizations,
+      target: operator_catalog
     )
   ]
+}
+
+fn rust_mvp1_target_model_core_edges() -> List<Edge> {
+  rust_mvp1_target_model_core_edges_with_operators(
+    operator_catalog: rust_operator_realizations_catalog_node()
+  )
+}
+
+fn rust_mvp1_target_model_bundle_core_with_operators(operator_catalog: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: rust_mvp1_target_model_core_edges_with_operators(operator_catalog: operator_catalog),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_mvp1_target_model_bundle_core() -> Node {
@@ -1356,11 +1523,24 @@ fn rust_mvp1_target_model_bundle_core() -> Node {
 }
 }
 
+fn rust_mvp1_target_model_with_operators_and_lex(operator_catalog: Node, lex: LexRules) -> TargetModel {
+  TargetModel {
+    bundle: rust_mvp1_target_model_bundle_core_with_operators(operator_catalog: operator_catalog),
+    lex: lex,
+    binding_spellings: rust_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_mvp1_source_text_authority(),
+    runtime_row: rust_mvp1_runtime_row()
+  }
+}
+
 fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
   let m1 = map_insert(m0, ^rust_binding_param_x, "x")
   let m2 = map_insert(m1, ^rust_binding_param_y, "y")
-  let m3 = map_insert(m2, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let mx = map_insert(m2, ^dag_binding_param_x, "x")
+  let my = map_insert(mx, ^dag_binding_param_y, "y")
+  let m3 = map_insert(my, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
   let m4 = map_insert(m3, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m5 = map_insert(m4, ^rust_collection_surface_vec, "Vec")
   map_insert(m5, ^target_collection_set_carrier, "Set")
