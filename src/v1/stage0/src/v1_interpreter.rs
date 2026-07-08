@@ -2309,11 +2309,8 @@ pub(crate) const INERT_LENS_BRIDGE_FNS: &[&str] = &[
     "inert_lens_top_level_module_count",
 ];
 
-const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] = &[
-    "empty_map",
-    "empty_map_primitive_delegate",
-    "map_insert",
-];
+const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] =
+    &["empty_map", "empty_map_primitive_delegate", "map_insert"];
 
 const V2_STD_COLLECTION_MODULE: &str = "v2.std.collection";
 
