@@ -45,3 +45,7 @@ fn witness_parse_tree_content_hash_tiny() -> Optional<Hash> {
 fn witness_parse_tree_content_hash_small() -> Optional<Hash> {
   parse_tree_content_hash_for_path(path: "src/v2/std/execution_mode.dag")
 }
+
+fn witness_parse_tree_content_hash_datetime_probe() -> Optional<Hash> {
+  parse_tree_content_hash_for_path(path: "src/v2/std/datetime.dag")
+}
