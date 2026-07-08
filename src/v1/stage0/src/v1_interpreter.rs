@@ -6384,8 +6384,9 @@ fn record_list_cons_tail_split(receiver_len: usize) {
 /// `compute_production_first_rows`). A named, tiny watchlist (not a general
 /// profiler) so the ladder answers "how many times, relative to file size"
 /// by execution.
-static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<Option<std::collections::HashMap<&'static str, u64>>> =
-    std::sync::Mutex::new(None);
+static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<
+    Option<std::collections::HashMap<&'static str, u64>>,
+> = std::sync::Mutex::new(None);
 
 /// adhoc-c328b166-bca memo-effectiveness discriminator: distinct (grammar_digest,
 /// token_stream_digest, position, production) keys ever looked up, vs total lookups/hits.
