@@ -1,23 +1,5 @@
 module v2.test.duplicate_computation.placement_grain_witness
 
-# Placement-grain discriminating witness for the codebase-wide duplicate-work
-# lens (docs/plans/duplicate-work-graph-lens-design.md §8).
-#
-# Claim under test: the flagship real case — CI building the release binary
-# on THREE independent jobs (ci_job / ci_regen_job / rust_tests warm step, all
-# `needs:[]`, no artifact Share edge; ci_workflow.dag:255/381/414) — is
-# duplicate work, and it is caught by the SAME violation logic #6372 already
-# ships, once each independently-building job is projected as one demand for
-# the shared build identity. This proves the design's central claim: the
-# general lens SUBSUMES #6372 (the argv/shell grain and the placement/job
-# grain are one law), and the only piece #6372 lacked was the cross-job
-# projection (the "MissingConcept: placement" the design names) — NOT new
-# violation logic.
-#
-# Multiplicity source = placement (one identity, N runners, no Share edge),
-# not fork. Reuse (a job that consumes the shared artifact) emits no build
-# demand and never flags — that is exactly the fix the lens forces.
-
 import v2.lens.duplicate_computation {
   ComputationDemandFact,
   UnguardedDemand, GuardedFallbackDemand,
@@ -28,16 +10,9 @@ import v2.lens.duplicate_computation {
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-# The one shared computation-identity: the release build script, run identically
-# on every runner. At argv grain this is the `computation_key` #6372 already
-# projects from a ShellProgram; at placement grain it is the same key demanded
-# from N job sites. Same identity, different grain — the design's core point.
-data release_build_key: String = "cargo build -p v1-compiler --release --bins"
+data placement_grain_witness_note: String = "Placement-grain discriminating witness for the codebase-wide duplicate-work lens (docs/plans/duplicate-work-graph-lens-design.md). Flagship real case: CI builds the release binary on THREE independent jobs (ci_job / ci_regen_job / rust_tests warm step; all needs:[], no artifact Share edge; ci_workflow.dag:255/381/414). This proves the SAME violation logic #6372 ships already catches placement duplication once each independently-building job is projected as one demand for the shared build identity — the general lens SUBSUMES #6372 (argv grain and job/placement grain are one law); the only piece #6372 lacked was the cross-job projection. Multiplicity source = placement (one identity, N runners, no Share edge), not fork. A job that consumes the shared artifact emits no build demand and never flags — exactly the fix the lens forces. Per the materialization reframe this is the content-hash generalization of std.realization reconcile keyed on the identity lattice; the ComputationDemandFact rows here stand in for materialization records pending that unification."
 
-# --- Case RED: three independent jobs each re-materialize the build ---------
-# ci_job, ci_regen_job, rust_tests each run ci_release_build_script() on their
-# own runner with needs:[] and no upload/download — three cold compiles of one
-# identity. Projected as three unguarded demands under SingleRun.
+data release_build_key: String = "cargo build -p v1-compiler --release --bins"
 
 data ci_job_build_demand: ComputationDemandFact = {
   site: "ci_workflow.ci_job",
@@ -60,10 +35,6 @@ data rust_tests_job_build_demand: ComputationDemandFact = {
   replication: SingleRun
 }
 
-# --- Case GREEN: the fix — one build job produces the artifact, the others
-# consume it via `needs: build` + download. A consumer emits NO build demand
-# (it computes nothing — it downloads), so only the producer's demand remains.
-
 data producer_only_build_demand: ComputationDemandFact = {
   site: "ci_workflow.build_job",
   computation_key: release_build_key,
@@ -71,19 +42,12 @@ data producer_only_build_demand: ComputationDemandFact = {
   replication: SingleRun
 }
 
-# A job that keeps a local rebuild ONLY as a fallback when the artifact
-# download fails is guarded — it never duplicates in the common path.
 data consumer_guarded_fallback_demand: ComputationDemandFact = {
   site: "ci_workflow.consumer_job",
   computation_key: release_build_key,
   guard: GuardedFallbackDemand,
   replication: SingleRun
 }
-
-# --- Case ADMISSIBLE: a computation that genuinely MUST run per-placement
-# (cannot be shared as one artifact — e.g. a per-runner arch-specific build)
-# declares ReplicatedOracle { runs: N } at each site, exactly as the
-# emit-determinism x2 oracle does. Observed == declared -> admissible.
 
 data per_placement_a: ComputationDemandFact = {
   site: "ci_workflow.arch_amd64",
@@ -99,10 +63,6 @@ data per_placement_b: ComputationDemandFact = {
   replication: ReplicatedOracle { runs: 2 }
 }
 
-# --- Witnesses --------------------------------------------------------------
-
-# RED control: three independent building jobs, one identity, no Share edge
-# -> exactly one placement-duplication violation. This is the flagship pain.
 test fn ci_build_across_three_jobs_is_one_violation() -> Bool {
   duplicate_computation_violation_count(facts: [
     ci_job_build_demand,
@@ -111,8 +71,6 @@ test fn ci_build_across_three_jobs_is_one_violation() -> Bool {
   ]) == 1
 }
 
-# GREEN: the rewire — one producer + one artifact-consuming (guarded) job ->
-# clean. Adding the Share edge dissolves the violation (the fix the lens forces).
 test fn shared_artifact_rewire_is_clean() -> Bool {
   duplicate_computation_clean_holds(facts: [
     producer_only_build_demand,
@@ -120,21 +78,14 @@ test fn shared_artifact_rewire_is_clean() -> Bool {
   ])
 }
 
-# GREEN: a single building job (all consumers share) -> clean by construction.
 test fn single_producer_is_clean() -> Bool {
   duplicate_computation_clean_holds(facts: [producer_only_build_demand])
 }
 
-# ADMISSIBLE: genuinely-per-placement work with a declared ReplicatedOracle
-# whose declared run count matches the observed placements -> not flagged.
 test fn declared_per_placement_is_admissible() -> Bool {
   duplicate_computation_clean_holds(facts: [per_placement_a, per_placement_b])
 }
 
-# RED control on the escape: three observed placements but only 2 declared ->
-# the declaration does not cover the observed multiplicity -> violation.
-# (Proves the escape is a declaration, not a blanket silence — a third
-# undeclared runner re-opens the arm.)
 test fn per_placement_observed_exceeds_declared_is_violation() -> Bool {
   duplicate_computation_violation_count(facts: [
     per_placement_a,
