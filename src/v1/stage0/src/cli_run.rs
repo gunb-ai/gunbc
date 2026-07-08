@@ -2844,6 +2844,15 @@ fn dump_residual_hunt_instrumentation() {
         "--- parse memo effectiveness discriminator: lookups={} hits={} distinct_keys={} (lookups>>distinct & hits==0 => memo never serves a re-attempted span) ---",
         memo_lookups, memo_hits, memo_distinct
     );
+    let mut callers = v1_interpreter::fold_caller_snapshot();
+    callers.sort_by(|a, b| b.2.cmp(&a.2));
+    eprintln!("--- LARGE fold_list callers (items>=100/call), top 15 by total items; .dag fn [left|right], elem type ---");
+    for (caller, calls, total, maxlen, elem) in callers.iter().take(15) {
+        eprintln!(
+            "  {}  calls={}  total_items={}  max_len={}  elem={}",
+            caller, calls, total, maxlen, elem
+        );
+    }
 }
 
 pub fn handle_run_with_options(

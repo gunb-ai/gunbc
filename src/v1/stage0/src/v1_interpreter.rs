@@ -1344,6 +1344,8 @@ fn call_function(
             msg: format!("'{}' has no body", fn_node.name),
         })?;
 
+    let _dag_fn_guard = DagFnGuard::enter(fn_node.name.as_str());
+
     let cached_params = {
         let key = Rc::as_ptr(fn_node) as usize;
         // Bind the lookup to a local so the immutable borrow is released before the
@@ -2586,9 +2588,23 @@ fn eval_fold_list_native(
             })
         }
     };
+    // NOTE (nimble-otter-476, adhoc-c328b166-bca): a streaming left-fold that
+    // walks the Cons-chain without materializing this Vec was BUILT, proven
+    // byte-identical (parse-tree content hash equal on tiny/small across two
+    // independently-built binaries), and MEASURED -- it moved neither wall-clock
+    // (~20s both, within run-to-run noise) nor peak RSS (~168 MiB both) on the
+    // small file. Reason: the datetime driver folds `elem=Int` codepoint lists
+    // (trivial copy, not a deep clone) and the intermediate Vec is transient
+    // (freed each fold, so it never contributes to peak RSS), so removing it is
+    // a clean zero. The real O(n^2) is the CALLER re-folding the whole source
+    // (`lex_repeat_loop`, 01_tokenize.dag:158 -- routed to the tokenize lane),
+    // not this per-call materialization. Kept as `free_monoid_to_vec` rather
+    // than churning the seed for a measured-zero rewrite (DESIGN §6: denominate
+    // in displaced cost; a no-op displaces nothing).
     let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
         msg: format!("fold_list expects a list, got {}", xs.type_label()),
     })?;
+    record_fold_caller(items.len(), items.first(), "left");
     let mut acc = (*empty).clone();
     for item in items {
         acc = apply_closure(*cons, &[acc, item], env, ctx)?;
@@ -2613,6 +2629,7 @@ fn eval_fold_list_right_native(
     let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
         msg: format!("fold_list_right expects a list, got {}", xs.type_label()),
     })?;
+    record_fold_caller(items.len(), items.first(), "right");
     let mut acc = (*empty).clone();
     for item in items.into_iter().rev() {
         acc = apply_closure(*snoc, &[acc, item], env, ctx)?;
@@ -6649,6 +6666,88 @@ pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u32, u64, u64)> {
         Some(m) => m
             .iter()
             .map(|((file, line), (calls, total))| (*file, *line, *calls, *total))
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+// SCAFFOLD (adhoc-c328b166-bca residual hunt, nimble-otter-476): the innermost
+// `.dag` function name, pushed on each `call_function` entry (RAII-popped on
+// exit). `fold_list` is a builtin dispatched WITHOUT its own `call_function`
+// frame, so the top of this stack names the `.dag` function that CONTAINS the
+// fold_list call -- the O(n^2) re-fold caller the datetime DNF hunt is chasing.
+// Gated behind `GUNBC_FLATTEN_SITE_DUMP_SECS`; a no-op (no push/pop) otherwise.
+// dissolve-on: same as the recorders above -- delete with the residual-hunt
+// work item, not a permanent profiler.
+thread_local! {
+    static CURRENT_DAG_FN: std::cell::RefCell<Vec<Rc<str>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub(crate) struct DagFnGuard(bool);
+impl DagFnGuard {
+    pub(crate) fn enter(name: &str) -> Self {
+        if residual_hunt_forensics_enabled() {
+            CURRENT_DAG_FN.with(|s| s.borrow_mut().push(Rc::from(name)));
+            DagFnGuard(true)
+        } else {
+            DagFnGuard(false)
+        }
+    }
+}
+impl Drop for DagFnGuard {
+    fn drop(&mut self) {
+        if self.0 {
+            CURRENT_DAG_FN.with(|s| {
+                s.borrow_mut().pop();
+            });
+        }
+    }
+}
+
+fn current_dag_fn() -> String {
+    CURRENT_DAG_FN.with(|s| {
+        s.borrow()
+            .last()
+            .map(|r| r.to_string())
+            .unwrap_or_else(|| "<none>".to_string())
+    })
+}
+
+/// Caller attribution for LARGE left-folds (`eval_fold_list_native`, the datetime
+/// driver: ~5k-element lists folded thousands of times). Keyed by the `.dag`
+/// function containing the `fold_list` call. Tuple = (calls, total_items,
+/// max_len, sample element `type_label`) -- the element type answers clever-koi's
+/// deep-clone-vs-Rc-bump axis (Str => deep, Variant/List => Rc-bump).
+static FOLD_CALLER_STATS: std::sync::Mutex<
+    Option<std::collections::HashMap<String, (u64, u64, u64, &'static str)>>,
+> = std::sync::Mutex::new(None);
+
+fn record_fold_caller(items_len: usize, sample_elem: Option<&Value>, kind: &'static str) {
+    if !residual_hunt_forensics_enabled() || items_len < 100 {
+        return;
+    }
+    let caller = format!("{} [{}]", current_dag_fn(), kind);
+    let tl = sample_elem
+        .map(|v| v.type_label_public())
+        .unwrap_or("<empty>");
+    let mut guard = FOLD_CALLER_STATS.lock().unwrap();
+    let m = guard.get_or_insert_with(std::collections::HashMap::new);
+    let e = m.entry(caller).or_insert((0, 0, 0, tl));
+    e.0 += 1;
+    e.1 += items_len as u64;
+    if items_len as u64 > e.2 {
+        e.2 = items_len as u64;
+    }
+    e.3 = tl;
+}
+
+pub fn fold_caller_snapshot() -> Vec<(String, u64, u64, u64, &'static str)> {
+    let guard = FOLD_CALLER_STATS.lock().unwrap();
+    match guard.as_ref() {
+        Some(m) => m
+            .iter()
+            .map(|(k, (c, t, mx, tl))| (k.clone(), *c, *t, *mx, *tl))
             .collect(),
         None => Vec::new(),
     }
