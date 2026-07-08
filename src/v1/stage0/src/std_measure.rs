@@ -52,6 +52,7 @@ pub enum Scale {
     Micro,
     Milli,
     One,
+    Sixty,
     Kilo,
     Mega,
     Giga,
@@ -64,25 +65,44 @@ pub enum Scale {
     Tebi,
 }
 
-pub fn scale_exponent(s: Scale) -> i64 {
+pub fn sixty_scale_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Scale.Sixty is the sexagesimal time factor (60 seconds per unit); Minute = Measure<Time, Sixty, Nat> is distinct from Second = Measure<Time, One, Nat>. Conversion authority: time_scale_factor_seconds. scale_exponent refuses Sixty (none) — not a decimal 10^k exponent.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn scale_non_decimal_taxonomy_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: Scale currently mixes decimal SI prefixes (Milli…Exa), binary memory prefixes (Kibi…Tebi), and sexagesimal time (Sixty). Each new non-decimal factor requires arms in time_scale_factor_seconds / memory_scale_factor_bytes / scale_exponent. DISSOLVES WHEN gunbc.plans.realization_measurement_loop Phase 0 \"Converge the time authorities\" splits per-quantity Scale at the type level (TimeScale vs DecimalScale vs BinaryMemoryScale) — ROADMAP plan row dag/gunbc/plans/realization_measurement_loop.dag § Phase 0; not blocking #6335 merge.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn scale_exponent(s: Scale) -> Option<i64> {
     match s.clone() {
-        Scale::Atto => -18,
-        Scale::Femto => -15,
-        Scale::Pico => -12,
-        Scale::Nano => -9,
-        Scale::Micro => -6,
-        Scale::Milli => -3,
-        Scale::One => 0,
-        Scale::Kilo => 3,
-        Scale::Mega => 6,
-        Scale::Giga => 9,
-        Scale::Tera => 12,
-        Scale::Peta => 15,
-        Scale::Exa => 18,
-        Scale::Kibi => 10,
-        Scale::Mebi => 20,
-        Scale::Gibi => 30,
-        Scale::Tebi => 40,
+        Scale::Atto => Some(-18),
+        Scale::Femto => Some(-15),
+        Scale::Pico => Some(-12),
+        Scale::Nano => Some(-9),
+        Scale::Micro => Some(-6),
+        Scale::Milli => Some(-3),
+        Scale::One => Some(0),
+        Scale::Sixty => None,
+        Scale::Kilo => Some(3),
+        Scale::Mega => Some(6),
+        Scale::Giga => Some(9),
+        Scale::Tera => Some(12),
+        Scale::Peta => Some(15),
+        Scale::Exa => Some(18),
+        Scale::Kibi => Some(10),
+        Scale::Mebi => Some(20),
+        Scale::Gibi => Some(30),
+        Scale::Tebi => Some(40),
     }
 }
 
@@ -92,6 +112,33 @@ pub fn gibibyte_scale_factor_bytes() -> Nat {
 
 pub fn kibi_factor() -> Nat {
     1024
+}
+
+pub fn seconds_per_minute() -> Nat {
+    60
+}
+
+pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
+    match s.clone() {
+        Scale::One => Some(1),
+        Scale::Sixty => Some(seconds_per_minute()),
+        Scale::Atto => None,
+        Scale::Femto => None,
+        Scale::Pico => None,
+        Scale::Nano => None,
+        Scale::Micro => None,
+        Scale::Milli => None,
+        Scale::Kilo => None,
+        Scale::Mega => None,
+        Scale::Giga => None,
+        Scale::Tera => None,
+        Scale::Peta => None,
+        Scale::Exa => None,
+        Scale::Kibi => None,
+        Scale::Mebi => None,
+        Scale::Gibi => None,
+        Scale::Tebi => None,
+    }
 }
 
 pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
@@ -107,6 +154,7 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
         Scale::Nano => None,
         Scale::Micro => None,
         Scale::Milli => None,
+        Scale::Sixty => None,
         Scale::Kilo => None,
         Scale::Mega => None,
         Scale::Giga => None,
@@ -385,6 +433,19 @@ pub fn microsecond_count(m: Microsecond) -> Nat {
     measure_count(m.clone())
 }
 
+pub type Millisecond = Rc<Measure<(), (), i64>>;
+
+pub fn millisecond(count: Nat) -> Millisecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn millisecond_count(m: Millisecond) -> Nat {
+    measure_count(m.clone())
+}
+
 pub type Second = Rc<Measure<(), (), i64>>;
 
 pub fn second(count: Nat) -> Second {
@@ -396,6 +457,19 @@ pub fn second(count: Nat) -> Second {
 
 pub fn second_count(s: Second) -> Nat {
     measure_count(s.clone())
+}
+
+pub type Minute = Rc<Measure<(), (), i64>>;
+
+pub fn minute(count: Nat) -> Minute {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn minute_count(m: Minute) -> Nat {
+    measure_count(m.clone())
 }
 
 pub type Percent = Rc<Measure<(), (), i64>>;
@@ -465,6 +539,8 @@ pub struct Micro;
 pub struct Milli;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct One;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Sixty;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Kilo;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

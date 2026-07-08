@@ -38,6 +38,7 @@ type Scale =
   | Micro
   | Milli
   | One
+  | Sixty
   | Kilo
   | Mega
   | Giga
@@ -50,25 +51,30 @@ type Scale =
   | Gibi
   | Tebi
 
-fn scale_exponent(s: Scale) -> Int {
+data sixty_scale_note: String = "Scale.Sixty is the sexagesimal time factor (60 seconds per unit); Minute = Measure<Time, Sixty, Nat> is distinct from Second = Measure<Time, One, Nat>. Conversion authority: time_scale_factor_seconds. scale_exponent refuses Sixty (none) — not a decimal 10^k exponent."
+
+data scale_non_decimal_taxonomy_dissolution_trigger: String = "🟡 dissolve-on: Scale currently mixes decimal SI prefixes (Milli…Exa), binary memory prefixes (Kibi…Tebi), and sexagesimal time (Sixty). Each new non-decimal factor requires arms in time_scale_factor_seconds / memory_scale_factor_bytes / scale_exponent. DISSOLVES WHEN gunbc.plans.realization_measurement_loop Phase 0 \"Converge the time authorities\" splits per-quantity Scale at the type level (TimeScale vs DecimalScale vs BinaryMemoryScale) — ROADMAP plan row dag/gunbc/plans/realization_measurement_loop.dag § Phase 0; not blocking #6335 merge."
+
+fn scale_exponent(s: Scale) -> Int? {
   match s {
-    Atto  => -18
-    Femto => -15
-    Pico  => -12
-    Nano  =>  -9
-    Micro =>  -6
-    Milli =>  -3
-    One   =>   0
-    Kilo  =>   3
-    Mega  =>   6
-    Giga  =>   9
-    Tera  =>  12
-    Peta  =>  15
-    Exa   =>  18
-    Kibi  =>  10
-    Mebi  =>  20
-    Gibi  =>  30
-    Tebi  =>  40
+    Atto  => Present { value: -18 }
+    Femto => Present { value: -15 }
+    Pico  => Present { value: -12 }
+    Nano  =>  Present { value:  -9 }
+    Micro =>  Present { value:  -6 }
+    Milli =>  Present { value:  -3 }
+    One   =>  Present { value:   0 }
+    Sixty =>  none
+    Kilo  =>  Present { value:   3 }
+    Mega  =>  Present { value:   6 }
+    Giga  =>  Present { value:   9 }
+    Tera  =>  Present { value:  12 }
+    Peta  =>  Present { value:  15 }
+    Exa   =>  Present { value:  18 }
+    Kibi  =>  Present { value:  10 }
+    Mebi  =>  Present { value:  20 }
+    Gibi  =>  Present { value:  30 }
+    Tebi  =>  Present { value:  40 }
   }
 }
 
@@ -78,6 +84,33 @@ fn gibibyte_scale_factor_bytes() -> Nat {
 
 fn kibi_factor() -> Nat {
   1024
+}
+
+fn seconds_per_minute() -> Nat {
+  60
+}
+
+fn time_scale_factor_seconds(s: Scale) -> Nat? {
+  match s {
+    One => Present { value: 1 }
+    Sixty => Present { value: seconds_per_minute() }
+    Atto  => none
+    Femto => none
+    Pico  => none
+    Nano  => none
+    Micro => none
+    Milli => none
+    Kilo  => none
+    Mega  => none
+    Giga  => none
+    Tera  => none
+    Peta  => none
+    Exa   => none
+    Kibi  => none
+    Mebi  => none
+    Gibi  => none
+    Tebi  => none
+  }
 }
 
 fn memory_scale_factor_bytes(s: Scale) -> Nat? {
@@ -93,6 +126,7 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     Nano  => none
     Micro => none
     Milli => none
+    Sixty => none
     Kilo  => none
     Mega  => none
     Giga  => none
@@ -290,6 +324,16 @@ fn microsecond_count(m: Microsecond) -> Nat {
   measure_count(m)
 }
 
+type Millisecond = Measure<Time, Milli, Nat>
+
+fn millisecond(count: Nat) -> Millisecond {
+  Millisecond { count: count }
+}
+
+fn millisecond_count(m: Millisecond) -> Nat {
+  measure_count(m)
+}
+
 type Second = Measure<Time, One, Nat>
 
 fn second(count: Nat) -> Second {
@@ -298,6 +342,16 @@ fn second(count: Nat) -> Second {
 
 fn second_count(s: Second) -> Nat {
   measure_count(s)
+}
+
+type Minute = Measure<Time, Sixty, Nat>
+
+fn minute(count: Nat) -> Minute {
+  Minute { count: count }
+}
+
+fn minute_count(m: Minute) -> Nat {
+  measure_count(m)
 }
 
 type Percent = Measure<Dimensionless, One, Nat>

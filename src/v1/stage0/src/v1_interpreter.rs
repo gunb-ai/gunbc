@@ -2293,7 +2293,13 @@ pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhab
 
 pub(crate) const STD_CONCEPT_INDEX_BRIDGE_FNS: &[&str] = &["concept_decl_facts_live"];
 
-pub(crate) const STD_FN_INDEX_BRIDGE_FNS: &[&str] = &["fn_arrow_decl_facts_live"];
+pub(crate) const STD_FN_INDEX_BRIDGE_FNS: &[&str] = &[
+    "fn_arrow_decl_facts_live",
+    "fn_arrow_decl_substrate_is_whole_tree",
+];
+
+pub(crate) const CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS: &[&str] =
+    &["corpus_dependency_view_per_pr_substrate_refuse"];
 
 pub(crate) const STD_DATA_INDEX_BRIDGE_FNS: &[&str] = &["data_init_decl_facts_live"];
 
@@ -2316,6 +2322,10 @@ pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {
 
 pub fn std_fn_index_bridge_fn_names() -> &'static [&'static str] {
     STD_FN_INDEX_BRIDGE_FNS
+}
+
+pub fn corpus_dependency_view_bridge_fn_names() -> &'static [&'static str] {
+    CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS
 }
 
 pub fn std_data_index_bridge_fn_names() -> &'static [&'static str] {
@@ -2360,6 +2370,15 @@ fn is_v4_std_fn_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool 
     ctx.item_registry
         .get(func_name)
         .is_some_and(|info| info.module_name == "v2.std.fn_index")
+}
+
+fn is_v4_corpus_dependency_view_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v2.lens.affected_set.corpus_dependency_view")
 }
 
 fn is_v4_std_data_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
@@ -2473,7 +2492,21 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             "fn_arrow_decl_facts_live" => {
                 crate::coproduct_reflection::eval_fn_arrow_decl_facts_live(ctx, &args)
             }
+            "fn_arrow_decl_substrate_is_whole_tree" => {
+                crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree(ctx, &args)
+            }
             _ => unreachable!("fn_index bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_corpus_dependency_view_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "corpus_dependency_view_per_pr_substrate_refuse" => {
+                crate::coproduct_reflection::eval_corpus_dependency_view_per_pr_substrate_refuse(
+                    ctx, &args,
+                )
+            }
+            _ => unreachable!("corpus_dependency_view bridge fn set mismatch"),
         };
     }
 
@@ -4246,6 +4279,32 @@ fn render_shell_trace(argv: &[String]) {
     }
 }
 
+fn shell_completion_trace_line(
+    exit_code: i32,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+    wall: std::time::Duration,
+) -> String {
+    format!(
+        "[shell] done exit={exit_code} stdout={stdout_bytes} stderr={stderr_bytes} bytes wall={:.3}s",
+        wall.as_secs_f64()
+    )
+}
+
+/// Post-wait completion trace for every shell transport: exit, stdout/stderr bytes,
+/// spawn-to-wait wall seconds. Pairs with `render_shell_trace` (pre-spawn).
+fn render_shell_completion_trace(
+    exit_code: i32,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+    wall: std::time::Duration,
+) {
+    trace_emit(
+        OutputChannel::ShellTrace,
+        &shell_completion_trace_line(exit_code, stdout_bytes, stderr_bytes, wall),
+    );
+}
+
 fn shell_stdin_payload(val: &Value) -> InterpResult<Vec<u8>> {
     match val {
         Value::Str(s) => Ok(s.as_bytes().to_vec()),
@@ -4282,6 +4341,7 @@ fn dispatch_shell(
         let stdin_val = eval_expr(&stdin_node, param_env, ctx)?;
         let stdin_bytes = shell_stdin_payload(&stdin_val)?;
 
+        let wall_start = std::time::Instant::now();
         let mut child = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .stdin(Stdio::piped())
@@ -4303,22 +4363,39 @@ fn dispatch_shell(
                 })?;
         }
 
-        child
+        let output = child
             .wait_with_output()
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to wait on '{}': {}", argv[0], e),
-            })?
+            })?;
+        render_shell_completion_trace(
+            output.status.code().unwrap_or(-1),
+            output.stdout.len(),
+            output.stderr.len(),
+            wall_start.elapsed(),
+        );
+        output
     } else {
-        std::process::Command::new(&argv[0])
+        let wall_start = std::time::Instant::now();
+        let output = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .output()
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to execute '{}': {}", argv[0], e),
-            })?
+            })?;
+        render_shell_completion_trace(
+            output.status.code().unwrap_or(-1),
+            output.stdout.len(),
+            output.stderr.len(),
+            wall_start.elapsed(),
+        );
+        output
     };
 
+    let exit_code = output.status.code().unwrap_or(-1);
+
     Ok(ShellResult {
-        exit_code: output.status.code().unwrap_or(-1),
+        exit_code,
         stdout: String::from_utf8_lossy(&output.stdout)
             .trim_end()
             .to_string(),
@@ -5205,6 +5282,251 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
     })
 }
 
+/// Host tap for `v2.compiler.emit_host.run_host_process` (kernel-D emit_host transport):
+/// materialize a workspace from resolved `{path, text}` rows, run the build argvs then the
+/// run argv with typed argv (no shell), and return exit/stdout/stderr/build-log as data.
+/// Wet-mode only — hermetic execution refuses instead of mocking (no fabricated receipt).
+fn eval_emit_host_run_transport_builtin(
+    files_arg: Option<&Value>,
+    build_arg: Option<&Value>,
+    run_arg: Option<&Value>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    if ctx.execution_mode.is_hermetic() {
+        return Err(InterpError::TypeError {
+            msg: "hermetic mode: emit_host_run_transport refuses host process execution \
+                  (no mock arm; run wet or record a fixture)"
+                .to_string(),
+        });
+    }
+
+    let files_val = files_arg.ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport requires (files, build, run) arguments".to_string(),
+    })?;
+    let files = free_monoid_to_vec(files_val).ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport: files must be a List of {path, text} records".to_string(),
+    })?;
+    let mut workspace_files: Vec<(String, String)> = Vec::with_capacity(files.len());
+    for f in &files {
+        match f {
+            Value::Record { fields, .. } => {
+                let path = ctx
+                    .field(fields, "path")
+                    .and_then(free_monoid_to_string)
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "emit_host_run_transport: workspace file missing String path"
+                            .to_string(),
+                    })?;
+                let text = ctx
+                    .field(fields, "text")
+                    .and_then(free_monoid_to_string)
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "emit_host_run_transport: workspace file missing String text"
+                            .to_string(),
+                    })?;
+                workspace_files.push((path, text));
+            }
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport: workspace entry must be a record, got {}",
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+
+    let build_val = build_arg.ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport requires (files, build, run) arguments".to_string(),
+    })?;
+    let build_lists = free_monoid_to_vec(build_val).ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport: build must be a List of argv Lists".to_string(),
+    })?;
+    let mut build_argvs: Vec<Vec<String>> = Vec::with_capacity(build_lists.len());
+    for argv_val in &build_lists {
+        let argv_items = free_monoid_to_vec(argv_val).ok_or_else(|| InterpError::TypeError {
+            msg: "emit_host_run_transport: build argv must be a List<String>".to_string(),
+        })?;
+        let mut argv: Vec<String> = Vec::with_capacity(argv_items.len());
+        for item in &argv_items {
+            let s = free_monoid_to_string(item).ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport: build argv element must be String, got {}",
+                    item.type_label()
+                ),
+            })?;
+            argv.push(s);
+        }
+        if argv.is_empty() {
+            return Err(InterpError::TypeError {
+                msg: "emit_host_run_transport: empty build argv".to_string(),
+            });
+        }
+        build_argvs.push(argv);
+    }
+
+    let run_arg_items =
+        run_arg
+            .and_then(free_monoid_to_vec)
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "emit_host_run_transport: run must be a List<String>".to_string(),
+            })?;
+    let mut run_argv: Vec<String> = Vec::with_capacity(run_arg_items.len());
+    for item in &run_arg_items {
+        let s = free_monoid_to_string(item).ok_or_else(|| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport: run argv element must be String, got {}",
+                item.type_label()
+            ),
+        })?;
+        run_argv.push(s);
+    }
+    if run_argv.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "emit_host_run_transport: empty run argv".to_string(),
+        });
+    }
+
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static EMIT_HOST_WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let workspace = std::env::temp_dir().join(format!(
+        "gunbc-emit-host-{}-{}",
+        std::process::id(),
+        EMIT_HOST_WORKSPACE_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
+        msg: format!("emit_host_run_transport: workspace create failed: {e}"),
+    })?;
+
+    let result = emit_host_run_transport_in_workspace(
+        &workspace,
+        &workspace_files,
+        &build_argvs,
+        &run_argv,
+        ctx,
+    );
+    if let Err(cleanup) = std::fs::remove_dir_all(&workspace) {
+        eprintln!(
+            "emit_host_run_transport: workspace cleanup failed ({}): {cleanup}",
+            workspace.display()
+        );
+    }
+    result
+}
+
+fn emit_host_run_transport_in_workspace(
+    workspace: &std::path::Path,
+    files: &[(String, String)],
+    build_argvs: &[Vec<String>],
+    run_argv: &[String],
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    use std::path::Component;
+
+    for (rel, text) in files {
+        let p = std::path::Path::new(rel);
+        if p.is_absolute() || p.components().any(|c| matches!(c, Component::ParentDir)) {
+            return Err(InterpError::TypeError {
+                msg: format!("emit_host_run_transport: workspace path escapes workspace: {rel}"),
+            });
+        }
+        let full = workspace.join(p);
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport: mkdir {} failed: {e}",
+                    parent.display()
+                ),
+            })?;
+        }
+        std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport: write {} failed: {e}",
+                full.display()
+            ),
+        })?;
+    }
+
+    let target_dir = workspace.join("target");
+    let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
+        std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .current_dir(workspace)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .map_err(|e| InterpError::TypeError {
+                msg: format!("emit_host_run_transport: spawn {:?} failed: {e}", argv[0]),
+            })
+    };
+
+    let transport_result = |phase: &str,
+                            success: bool,
+                            exit_code: i64,
+                            stdout: &[u8],
+                            stderr: &[u8],
+                            build_log: Vec<Value>|
+     -> Value {
+        Value::Record {
+            type_name: ctx.sym("EmitHostTransportResult"),
+            fields: Rc::new(vec![
+                (ctx.sym("phase"), Value::Str(phase.to_string())),
+                (ctx.sym("success"), Value::Bool(success)),
+                (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (
+                    ctx.sym("stdout_octets"),
+                    list_value(
+                        stdout
+                            .iter()
+                            .map(|b| Value::Int(*b as i64))
+                            .collect::<Vec<Value>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("stderr_octets"),
+                    list_value(
+                        stderr
+                            .iter()
+                            .map(|b| Value::Int(*b as i64))
+                            .collect::<Vec<Value>>(),
+                    ),
+                ),
+                (ctx.sym("build_log"), list_value(build_log)),
+            ]),
+        }
+    };
+
+    let mut build_log: Vec<Value> = Vec::new();
+    for argv in build_argvs {
+        let out = run_command(argv)?;
+        let code = out.status.code().map(i64::from).unwrap_or(-1);
+        build_log.push(Value::Str(format!("{} -> exit {code}", argv.join(" "))));
+        if !out.status.success() {
+            build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
+            return Ok(transport_result(
+                "build",
+                false,
+                code,
+                &out.stdout,
+                &out.stderr,
+                build_log,
+            ));
+        }
+    }
+
+    let out = run_command(run_argv)?;
+    let code = out.status.code().map(i64::from).unwrap_or(-1);
+    build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+    Ok(transport_result(
+        "run",
+        out.status.success(),
+        code,
+        &out.stdout,
+        &out.stderr,
+        build_log,
+    ))
+}
+
 fn eval_builtin(
     name: &str,
     args: &[(Option<String>, Value)],
@@ -5655,6 +5977,13 @@ fn eval_builtin(
             let path = expect_str(positional.first().copied(), "filesystem_read")?;
             Ok(Some(eval_filesystem_read_builtin(path, ctx)?))
         }
+
+        "emit_host_run_transport" => Ok(Some(eval_emit_host_run_transport_builtin(
+            positional.first().copied(),
+            positional.get(1).copied(),
+            positional.get(2).copied(),
+            ctx,
+        )?)),
 
         "contiguous_loop_elementwise_kernel" => {
             let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
@@ -6162,6 +6491,9 @@ fn eval_builtin(
         "witness_layer_roots_compile_clean_emit_check" => Ok(Some(Value::Bool(
             crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
         ))),
+        "consume_floor_compile_clean_gate_verdict" => Ok(Some(Value::Bool(
+            crate::cli_run::consume_floor_compile_clean_gate_verdict(),
+        ))),
 
         "test_migration_debt_module_count" => Ok(Some(Value::Int(
             crate::cli_run::test_migration_debt_module_count(),
@@ -6339,6 +6671,7 @@ pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u32, u64, u64)> {
     }
 }
 
+<<<<<<< HEAD
 // SCAFFOLD (adhoc-c328b166-bca residual hunt, nimble-otter-476): the innermost
 // `.dag` function name, pushed on each `call_function` entry (RAII-popped on
 // exit). `fold_list` is a builtin dispatched WITHOUT its own `call_function`
@@ -6421,6 +6754,8 @@ pub fn fold_caller_snapshot() -> Vec<(String, u64, u64, u64, &'static str)> {
     }
 }
 
+=======
+>>>>>>> origin/main
 /// SCAFFOLD (adhoc-c328b166-bca residual hunt): the recorders below are
 /// opt-in, not always-on -- gated on the same env var that gates the dump
 /// (`GUNBC_FLATTEN_SITE_DUMP_SECS`), read once via OnceLock so the default
@@ -7209,5 +7544,29 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Str(x), Value::Str(y)) => x.cmp(y),
         (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
         _ => std::cmp::Ordering::Equal,
+    }
+}
+
+#[cfg(test)]
+mod shell_completion_trace_tests {
+    use super::shell_completion_trace_line;
+    use std::time::Duration;
+
+    #[test]
+    fn shell_completion_trace_line_formats_exit_stdout_stderr_wall() {
+        let line = shell_completion_trace_line(0, 1234, 56, Duration::from_millis(5150));
+        assert_eq!(
+            line,
+            "[shell] done exit=0 stdout=1234 stderr=56 bytes wall=5.150s"
+        );
+    }
+
+    #[test]
+    fn shell_completion_trace_line_surfaces_nonzero_exit() {
+        let line = shell_completion_trace_line(1, 0, 4096, Duration::from_secs(2));
+        assert_eq!(
+            line,
+            "[shell] done exit=1 stdout=0 stderr=4096 bytes wall=2.000s"
+        );
     }
 }

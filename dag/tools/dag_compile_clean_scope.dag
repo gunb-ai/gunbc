@@ -3,8 +3,11 @@ module tools.dag_compile_clean_scope
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
 import tools.dag_compile_clean_shard_roster { compile_clean_shard_entry_paths }
-import v2.lens.module_graph {
-  entry_affected_by_touched_paths
+import v2.lens.affected_set.corpus_dependency_view {
+  corpus_dependency_view_per_pr_substrate_ready
+}
+import v2.lens.affected_set.entry_selection {
+  entry_affected_by_dependency_view
 }
 import std.types { String, Bool, List, list_length }
 
@@ -53,7 +56,7 @@ fn compile_clean_affected_entry_paths(
     compile_clean_shard_entry_paths(),
     init: [],
     f: fn(acc, entry_path) {
-      if entry_affected_by_touched_paths(
+      if entry_affected_by_dependency_view(
         entry_path: entry_path,
         pool_roots: pool_roots,
         touched_paths: touched_paths
@@ -69,20 +72,32 @@ fn compile_clean_affected_entry_paths(
 fn compile_clean_scope_disposition_from_touched(
   touched_paths: List<String>
 ) -> CompileCleanScopeDisposition {
-  let pool_roots = compile_clean_pool_roots()
-  let affected = compile_clean_affected_entry_paths(
-    pool_roots: pool_roots,
-    touched_paths: touched_paths
-  )
-  if list_length(items: affected) > 0 {
-    ScopedRun { entry_paths: affected }
-  } else if compile_clean_touches_allow_skip(touched_paths: touched_paths) {
-    SkipNoAffectedEntries {
-      reason: "no compile-clean entry import-closure intersects touched paths"
+  if compile_clean_touches_allow_skip(touched_paths: touched_paths) {
+    if list_length(items: touched_paths) == 0 {
+      SkipNoAffectedEntries {
+        reason: "no compile-clean entry DependencyView frontier intersects touched paths"
+      }
+    } else {
+      SkipNoAffectedEntries {
+        reason: "docs-only diff — no compile-clean entry selection required"
+      }
+    }
+  } else if corpus_dependency_view_per_pr_substrate_ready() == false {
+    RequireWholeTree {
+      reason: "DependencyView per-PR selection blocked-on-#6239 (fn_arrow_decl_substrate_is_whole_tree false)"
     }
   } else {
-    RequireWholeTree {
-      reason: "non-empty non-docs diff with no shard intersection — whole-tree baseline"
+    let pool_roots = compile_clean_pool_roots()
+    let affected = compile_clean_affected_entry_paths(
+      pool_roots: pool_roots,
+      touched_paths: touched_paths
+    )
+    if list_length(items: affected) > 0 {
+      ScopedRun { entry_paths: affected }
+    } else {
+      RequireWholeTree {
+        reason: "non-empty non-docs diff with no shard intersection — whole-tree baseline"
+      }
     }
   }
 }
@@ -144,7 +159,8 @@ fn touched_path_disposition_matches(row: ScopeDispositionRow) -> Bool {
     RequireWholeTree { reason: _ } =>
       match row.expect {
         ExpectSkip => false
-        ExpectScopedContaining { required_entry: _ } => false
+        ExpectScopedContaining { required_entry: _ } =>
+          !corpus_dependency_view_per_pr_substrate_ready()
         ExpectWholeTree => true
       }
   }
@@ -163,4 +179,4 @@ fn lever_a_local_receipts_hold() -> Bool {
     && witness_pool_roots_match_witness_layer_roots()
 }
 
-data lever_a_local_verify_scaffold_note: String = "LOCAL-DEV-ONLY scaffold (scripts/lever_a_local_verify.sh is a pure claim_batch sequencer — no bash verdict logic). dissolves-on: GATE 3 CI self-demonstration of scoped compile-clean in budget retires the script. GATE 1d host refusal (cli_run Refused on diff/disposition failure): cargo test scoped_plan_refuses_on_invalid_diff_base until a host witness enrolls. GATE 1b/1c: inject break inside vs outside disposition entry_paths closure — scoped RED vs GREEN; nightly whole-tree #6299 is catcher. GATE 2: replay merged PR diffs locally; whole-tree baseline cited from runs 28780252806 and 28748751115 only. Core-query soundness: cite #6274 (entry_affected_by_touched_paths equivalent to Rust frontier on 25 entries)."
+data lever_a_local_verify_scaffold_note: String = "LOCAL-DEV-ONLY scaffold (scripts/lever_a_local_verify.sh is a pure claim_batch sequencer — no bash verdict logic). dissolves-on: GATE 3 CI self-demonstration of scoped compile-clean in budget retires the script. GATE 1d host refusal (cli_run Refused on diff/disposition failure): cargo test scoped_plan_refuses_on_invalid_diff_base until a host witness enrolls. GATE 1b/1c: inject break inside vs outside disposition entry_paths closure — scoped RED vs GREEN; nightly whole-tree #6299 is catcher. GATE 2: replay merged PR diffs locally; whole-tree baseline cited from runs 28780252806 and 28748751115 only. Core-query soundness: production selection is entry_affected_by_dependency_view (entry_selection.dag); #6274 import-closure equivalence is a separate orphan host receipt (module_grain_affected_equivalence_tests), dissolves when deliverable-3 DependencyView differential receipt lands."
