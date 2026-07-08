@@ -465,16 +465,16 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             false =>
               LexWalkAcc {
                 remaining: remaining,
-                tokens: list_snoc_item(
-                  xs: acc.tokens,
-                  item: Token {
+                tokens: Cons {
+                  head: Token {
                     class: class,
                     lexeme: lexeme,
                     file: acc.file,
                     start: acc.pos,
                     end: acc.pos + length(xs: lexeme)
-                  }
-                ),
+                  },
+                  tail: acc.tokens
+                },
                 pos: acc.pos + length(xs: lexeme),
                 done: false,
                 error: false,
@@ -503,7 +503,7 @@ fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStr
   if result.error {
     Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
   } else {
-    Accepted { value: token_stream_new(all: result.tokens), diagnostics: None }
+    Accepted { value: token_stream_new(all: result.tokens.reverse()), diagnostics: None }
   }
 }
 

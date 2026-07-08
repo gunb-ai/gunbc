@@ -789,8 +789,8 @@ fn parse_match_arm_stmt_step(
             root: root,
             acc: ParseMatchArmStmtAcc {
               remaining: rest,
-              acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
-              acc_diags: list_append(left: acc.acc_diags, right: diags),
+              acc_nodes: Cons { head: cap, tail: acc.acc_nodes },
+              acc_diags: list_append(left: diags.reverse(), right: acc.acc_diags),
               done: false,
               prov: prov1,
               table: table1
@@ -832,11 +832,12 @@ fn parse_match_arm_stmt_body(
     if is_empty(xs: result.acc_nodes) {
       ParseExprRejected { diagnostics: [], table: result.table }
     } else {
-      let stamped = parse_stamp_match_arm_stmt_nodes(acc_nodes: result.acc_nodes, prov: result.prov)
+      let ordered_nodes = result.acc_nodes.reverse()
+      let stamped = parse_stamp_match_arm_stmt_nodes(acc_nodes: ordered_nodes, prov: result.prov)
       ParseExprAccepted {
         remaining: result.remaining,
         captured: stamped.node,
-        diagnostics: result.acc_diags,
+        diagnostics: result.acc_diags.reverse(),
         prov: stamped.prov,
         table: result.table
       }
@@ -1824,6 +1825,62 @@ fn parse_expr_optional(
   }
 }
 
+fn parse_expr_repeat_step(
+  element: GrammarExpr,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  acc: ParseRepeatAcc
+) -> ParseRepeatAcc {
+  if acc.done {
+    acc
+  } else {
+    match parse_expr_with_first(
+      expr: element,
+      tokens: acc.remaining,
+      all_tokens: all_tokens,
+      root: root,
+      table: acc.table,
+      prov: acc.prov
+    ) {
+      ParseExprRejected { diagnostics: _, table: table1 } =>
+        ParseRepeatAcc {
+          remaining: acc.remaining,
+          acc_nodes: acc.acc_nodes,
+          acc_diags: acc.acc_diags,
+          done: true,
+          prov: acc.prov,
+          table: table1
+        }
+      ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+        match length(xs: rest) != length(xs: acc.remaining) {
+          true =>
+            parse_expr_repeat_step(
+              element: element,
+              all_tokens: all_tokens,
+              root: root,
+              acc: ParseRepeatAcc {
+                remaining: rest,
+                acc_nodes: Cons { head: cap, tail: acc.acc_nodes },
+                acc_diags: list_append(left: diags.reverse(), right: acc.acc_diags),
+                done: false,
+                prov: prov1,
+                table: table1
+              }
+            )
+          false =>
+            ParseRepeatAcc {
+              remaining: acc.remaining,
+              acc_nodes: acc.acc_nodes,
+              acc_diags: acc.acc_diags,
+              done: true,
+              prov: acc.prov,
+              table: table1
+            }
+        }
+    }
+  }
+}
+
 fn parse_expr_repeat(
   element: GrammarExpr,
   tokens: List<Token>,
@@ -1840,60 +1897,12 @@ fn parse_expr_repeat(
     prov: prov,
     table: table
   }
-  let result = fold_list(
-    xs: tokens,
-    empty: init,
-    cons: fn(acc, _) {
-      match acc.done {
-        true => acc
-        false =>
-          match parse_expr_with_first(
-            expr: element,
-            tokens: acc.remaining,
-            all_tokens: all_tokens,
-            root: root,
-            table: acc.table,
-            prov: acc.prov
-          ) {
-            ParseExprRejected { diagnostics: _, table: table1 } =>
-              ParseRepeatAcc {
-                remaining: acc.remaining,
-                acc_nodes: acc.acc_nodes,
-                acc_diags: acc.acc_diags,
-                done: true,
-                prov: acc.prov,
-                table: table1
-              }
-            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
-              match length(xs: rest) != length(xs: acc.remaining) {
-                true =>
-                  ParseRepeatAcc {
-                    remaining: rest,
-                    acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
-                    acc_diags: list_append(left: acc.acc_diags, right: diags),
-                    done: false,
-                    prov: prov1,
-                    table: table1
-                  }
-                false =>
-                  ParseRepeatAcc {
-                    remaining: acc.remaining,
-                    acc_nodes: acc.acc_nodes,
-                    acc_diags: acc.acc_diags,
-                    done: true,
-                    prov: acc.prov,
-                    table: table1
-                  }
-              }
-          }
-      }
-    }
-  )
-  let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes, prov: result.prov)
+  let result = parse_expr_repeat_step(element: element, all_tokens: all_tokens, root: root, acc: init)
+  let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes.reverse(), prov: result.prov)
   ParseExprAccepted {
     remaining: result.remaining,
     captured: stamped.node,
-    diagnostics: result.acc_diags,
+    diagnostics: result.acc_diags.reverse(),
     prov: stamped.prov,
     table: result.table
   }
