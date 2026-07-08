@@ -6,11 +6,13 @@ This doc is the **single authority** for the lane's direction, receipt disciplin
 
 ---
 
-## 1. Objective (the milestone)
+## 1. Objective (the milestone) — REVISED 2026-07-08 (operator: drop byte-fixed-point)
 
-v2's own emitter — `emit = serialize_target ∘ translate`, the one-grammar-read-backward machine (DESIGN §4) — covers v2's own language surface, proven module-by-module against the v1 seed's emit of the same sources, terminating in the **byte-fixed-point self-emit** that makes `regen_stage0` unnecessary. After that, the Rust seed (`src/v1/stage0/src/*.rs`) is "one realization" of the `.dag` truth and S3 (delete `src/v1`) is mechanical.
+v2's own emitter — `emit = serialize_target ∘ translate`, the one-grammar-read-backward machine (DESIGN §4) — covers v2's own language surface, emitting the **cleanest principled Rust** and proven **by execution**: each self-emitted module compiles cargo-green and is **behaviorally equivalent** to the v1 seed on a discriminating corpus. **Byte-identity with the seed is explicitly NOT the goal** (operator, 2026-07-08) — the fixed point is a *quality drag* that would force v2 to reproduce v1's hacky/rusty warts to match bytes, cementing poor decisions (§1: spending future time to preserve the present seed's accidents); dropping it *raises* the bar. Self-discipline (§1–§7) is fully retained — "impure" means *honestly-fenced*, never *sloppy*.
 
-Target language is **Rust** (confirmed: `regen_stage0` emits `src/v1/stage0/src/*.rs`; the per-module receipt compares against `gunbc compile --target rust`).
+The seed (`src/v1/stage0/src/*.rs`) is "one realization" of the `.dag` truth and shrinks across a **typed self-host frontier**: each module is *self-emitted* (green-by-execution) or *seed-retained* (a declared row with a reason + migration trigger — countable, prioritizable, **never** a silent escape hatch, §5; the `DecodeFidelity`/`Lossless` boundary, §4). "v2 obviously works" once the self-emitted set compiles + runs + links against the retained seed; S3 (delete `src/v1`) becomes mechanical as the retained set drains to zero on its triggers.
+
+Target language is **Rust**. The per-module receipt is: **emitted module compiles cargo-green + behavioral-equivalence to the seed on a discriminating corpus** (NOT `emit(node) == seed bytes`).
 
 ---
 
@@ -40,7 +42,7 @@ gunbc run --source-root src/v2 --source-root dag \
 Two receipt tiers, in preference order:
 
 1. **Normalized round-trip** (preferred): `emit(node) → source → reparse → structurally-equal node`. Immune to formatting; this is DESIGN's "normalized round-trip, not golden strings." **Currently available only for fixed-arity constructs** — see §5.
-2. **emit→golden** (fallback, path A): `emit(node) == exact Rust text`, plus a **golden-discrimination** control (`emit(node) != wrong_golden`) and an external perturbation check (perturb a fixture field/variant ⇒ receipt flips to `false`). This is what rungs 3–4 use for variable-arity constructs. Golden is a legitimate receipt (DESIGN: "a byte-diff is the terminal receipt"); the round-trip is stronger and returns once §5 is fixed.
+2. **emit→golden** (fallback, path A): `emit(node) == exact Rust text`, plus a **golden-discrimination** control (`emit(node) != wrong_golden`) and an external perturbation check (perturb a fixture field/variant ⇒ receipt flips to `false`). This is what rungs 3–4 use for variable-arity constructs. Golden is a legitimate **per-construct dev receipt** for a single rung's emit; the round-trip is stronger and returns once §5 is fixed. (This is a *construct-level* correctness receipt only — the **terminal self-host oracle** is behavioral-equivalence on a discriminating corpus, §9 / Track D2, **not** a byte-diff over the corpus, per the revised §1.)
 
 **Refusals are the worklist.** Every construct a rung does *not* cover is surfaced as an **executed** `grammar_relation_row_for_emitted` rejection with a count — never a fabricated skip (DESIGN §5). The refusal list *is* the backlog for the next rungs.
 
@@ -110,21 +112,21 @@ Rungs are **additive rows** and mostly independent — the point of the row mech
 ### Track B — the expression language (fn bodies; the bulk, ~5,100 fns) — see §10 for the scoped decomposition
 Superseded by §10 below. Scoping (rung-7 follow-up) found the compositional body-emission engine already exists and is target-agnostic; Rust just isn't wired in. Read §10, not this stub.
 
-### Track C — decoration parity (clean Rust → v1's *exact* Rust; ~12.7k-line surface in `src/v1/05_emit_rust.dag`)
-v2 currently emits **clean** Rust; the fixed point requires byte-matching the v1 seed's decorated Rust. Each `[P]` after Track A/B basics exist.
+### Track C — decoration (REVISED 2026-07-08 — mostly DISSOLVED)
+Byte-matching v1's *exact* decoration is **no longer required** (operator: drop byte-fixed-point). v2 emits only the decorations Rust **requires to compile and behave correctly**, **derived from the model, not matched to v1**: the derives actually used, `Rc<T>` where ownership demands it, `serde` where a wire format is consumed, the `im_rc` carriers the runtime needs. **C6 (Symbol carrier) stops being a landmine** — pick a representation that compiles and behaves, do not reverse-engineer v1's `pub struct Symbol(pub String)`. The C1–C10 items below are retained **only insofar as compilation/behavior needs them** (e.g. a `#[derive]` that a trait bound requires is in; a cosmetic `pub`/attribute that only matches v1 is out). The invariant measure is no longer v1's 12.7k-line surface.
 - **C1** `pub` visibility; **C2** `#[derive(…)]` attributes; **C3** `#[serde(tag = "_variant")]` on enums.
 - **C4** `Rc<T>` ownership wrapping (v1's Rc-insertion rules — the SG2 use-site-ownership rows in `06_translate` are the model).
 - **C5** `im_rc` collection carriers (`Vec`→`Vector`, `HashMap`, `OrdSet`) + the `use` preamble.
-- **C6** the `Symbol` carrier (**landmine**: v1 special-cases `Symbol` to `pub struct Symbol(pub String)` and lowers `Symbol`-typed fields to `String`; coordinate the newtype-vs-alias decision with the tactical lane before matching).
+- **C6** the `Symbol` carrier — **no longer a landmine** (byte-matching v1 dropped, per §116): v1 uses `pub struct Symbol(pub String)` with `Symbol`-typed fields lowered to `String`, but v2 need not reproduce that. Pick the cleanest newtype-or-alias that compiles and passes the behavioral-equivalence receipt.
 - **C7** `v1_rt.rs` runtime shim generation; **C8** `Cargo.toml`; **C9** `lib.rs` / `main.rs` framing + `NonEmptyVec`/`NonEmptyBTreeSet`; **C10** the workspace-members region.
 
-### Track D — the fixed point
+### Track D — "v2 works" (REVISED 2026-07-08 — byte-diff → behavioral-equivalence oracle)
 - **D1 [→A,B,C]** emit the whole 40-file parse-pipeline closure (`s1_closure_receipt_test.dag` enumerates it) cargo-green.
-- **D2 [→D1]** byte-match v1's emit over the closure (terminal byte-diff receipt).
-- **D3 [→D2]** self-emit fixed point: `v2-emit(v2 sources) == committed seed`, via `src/v2/compiler/self_host.dag`'s digest/promotion harness (already scaffolded).
-- **D4 [→D3]** retire `regen_stage0`; S3 (delete `src/v1`) becomes mechanical.
+- **D2 [→D1] REPLACED.** The terminal receipt is a **behavioral-equivalence oracle**, not a byte-diff: the self-emitted module compiles cargo-green **and** produces the same outputs as the v1 seed on a **discriminating corpus** (green-by-execution + a RED that goes red when the emitted behavior is wrong, §5). This is cheaper and more honest than the byte-diff, and it is the §5 replacement for byte-identity's lost correctness-oracle role.
+- **D3 [→D2] REPLACED by the typed self-host frontier.** No byte-fixed-point. Instead: the self-emitted set links against the seed-retained set; each seed-retained module is a declared boundary row (reason + migration trigger). `src/v2/compiler/self_host.dag`'s harness is repurposed from digest/promotion to **frontier bookkeeping + behavioral-equivalence checks**.
+- **D4 [→D3]** retire `regen_stage0` once the self-emitted set covers the closure with a green behavioral-equivalence receipt; S3 (delete `src/v1`) follows as the seed-retained set drains to zero on its triggers.
 
-**Rough size:** ~35–45 small rungs remaining, dominated by Track B (expression language) and Track C (decoration parity). The invariant measure is the ~5,100 fn bodies + v1's ~12.7k-line decoration surface, not the rung count.
+**Rough size (REVISED 2026-07-08):** dominated by Track B (expression language); Track C is reduced to the **compile/behavior-required** decorations (no longer v1 decoration parity — see the revised Track C header). The invariant measure is the ~5,100 fn bodies reaching a green **behavioral-equivalence** receipt over the self-emitted closure — **not** v1's ~12.7k-line decoration surface, and not the rung count.
 
 ---
 
@@ -141,9 +143,9 @@ Cross-boundary changes (e.g. the `Symbol` carrier decision C6, the reparse fix �
 
 ---
 
-## 9. Definition of done (the lane)
+## 9. Definition of done (the lane) — REVISED 2026-07-08
 
-`v2-emit(all 40 closure modules)` builds cargo-green and **byte-matches** v1's emit, terminating in the self-emit fixed point (D3). At that point `regen_stage0` is deletable and the Rust seed is one realization of the `.dag` truth.
+The self-emitted module set builds **cargo-green** and is **behaviorally equivalent** to the v1 seed on a discriminating corpus (green-by-execution, §5), linked against the seed-retained set across the typed self-host frontier. **Byte-identity is dropped as a requirement** (operator, 2026-07-08); the behavioral-equivalence oracle is its §5 replacement. `regen_stage0` retires when the self-emitted set covers the parse-pipeline closure with a green behavioral-equivalence receipt; S3 (delete `src/v1`) follows as the seed-retained set drains to zero on its migration triggers. Each seed-retained module remains a declared, counted boundary row — the frontier is honest and prioritizable, never a silent hatch.
 
 ---
 
@@ -196,4 +198,4 @@ Per-form token synthesis (each = Rust arm of one `TargetValueExpressionKind` + a
 
 ### 10.4 Revised size note
 
-Track B is **smaller and safer** than §7's original estimate: the engine, node model, projectors, body-lowering, and 4 reference implementations already exist, so B is ~1 gating rung (B0) + ~12 token-synthesis rungs that copy existing references + 2 net-new design rungs — not "build an emitter." The real-inferred-body path (`translate` preserves bodied arrows; serialize composes) is already supported, so this track also carries Rust toward the D-track fixed point, not just fixtures.
+Track B is **smaller and safer** than §7's original estimate: the engine, node model, projectors, body-lowering, and 4 reference implementations already exist, so B is ~1 gating rung (B0) + ~12 token-synthesis rungs that copy existing references + 2 net-new design rungs — not "build an emitter." The real-inferred-body path (`translate` preserves bodied arrows; serialize composes) is already supported, so this track also carries Rust toward the D-track **behavioral-equivalence milestone** ("v2 works"), not just fixtures.
