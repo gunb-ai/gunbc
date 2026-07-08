@@ -2141,6 +2141,7 @@ fn match_pattern(
                         if items.is_empty() {
                             None
                         } else {
+                            record_list_cons_tail_split(items.len());
                             let head = items[0].clone();
                             let tail = {
                                 let mut rest = (**items).clone();
@@ -2427,6 +2428,8 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             }
         }
     };
+    record_call_frequency(&func_name);
+
     let arg_nodes = &node.children;
 
     let args: Vec<(Option<String>, Value)> = arg_nodes
@@ -2678,9 +2681,12 @@ fn try_parse_table_memo_dispatch(
             st.lookups += 1;
             if let Some(v) = st.map.get(&memo_key).cloned() {
                 st.hits += 1;
+                drop(st);
+                record_parse_memo_lookup(&memo_key, true);
                 return Ok(Some(witness_holds(v, ctx)));
             }
             drop(st);
+            record_parse_memo_lookup(&memo_key, false);
             let result = call_function(ctx, fn_node, args, env)?;
             Ok(Some(result))
         }
@@ -6622,8 +6628,42 @@ thread_local! {
     static FLATTEN_COUNTERS: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
 }
 
+/// Process-global (not thread-local): a background dump thread reads this
+/// concurrently with the interpreting thread, so this map must be visible
+/// across threads rather than per-thread like `FLATTEN_COUNTERS` above.
+static FLATTEN_BY_SITE: std::sync::Mutex<
+    Option<std::collections::HashMap<(&'static str, u32), (u64, u64)>>,
+> = std::sync::Mutex::new(None);
+
 pub fn flatten_counters_snapshot() -> (u64, u64) {
     FLATTEN_COUNTERS.with(|c| c.get())
+}
+
+/// Per-call-site attribution for the `free_monoid_to_vec` O(n) materialization
+/// cost, keyed by the immediate caller's `file:line` (`#[track_caller]`).
+/// Residual-hunt instrumentation for adhoc-c328b166-bca's follow-on (datetime.dag
+/// still DNF after the three parse-stage fixes) -- MEASURE FIRST before any cut.
+pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u32, u64, u64)> {
+    let guard = FLATTEN_BY_SITE.lock().unwrap();
+    match guard.as_ref() {
+        Some(m) => m
+            .iter()
+            .map(|((file, line), (calls, total))| (*file, *line, *calls, *total))
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+/// SCAFFOLD (adhoc-c328b166-bca residual hunt): the recorders below are
+/// opt-in, not always-on -- gated on the same env var that gates the dump
+/// (`GUNBC_FLATTEN_SITE_DUMP_SECS`), read once via OnceLock so the default
+/// (unset) production path pays a single relaxed load, not a mutex lock or
+/// HashMap/HashSet write, per call. dissolve-on: the residual-hunt work item
+/// closes (adhoc-c328b166-bca) -- delete these recorders and their call
+/// sites, they are not a permanent profiler.
+fn residual_hunt_forensics_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok())
 }
 
 fn record_flatten(items: usize) {
@@ -6631,6 +6671,155 @@ fn record_flatten(items: usize) {
         let (calls, total) = c.get();
         c.set((calls + 1, total + items as u64));
     });
+}
+
+fn record_flatten_site(items: usize, loc: &'static std::panic::Location<'static>) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
+    let mut guard = FLATTEN_BY_SITE.lock().unwrap();
+    let m = guard.get_or_insert_with(std::collections::HashMap::new);
+    let entry = m.entry((loc.file(), loc.line())).or_insert((0, 0));
+    entry.0 += 1;
+    entry.1 += items as u64;
+}
+
+/// Hypothesis-B instrumentation (adhoc-c328b166-bca residual hunt): every
+/// `Cons { head, tail }` pattern match against a native `Value::List` clones
+/// the receiver and `split_off(1)`s it to build `tail`. `im_rc::Vector` makes
+/// this O(log n) once tree-ified, not the O(n) `free_monoid_to_vec` disease --
+/// but `list_tail`'s call volume across a memoized parse (one call per
+/// position, threaded through `parse_current_position`) could still sum to a
+/// superlinear total. `calls` and `receiver_len_sum` let the ladder answer
+/// that by execution instead of by reading `im_rc`'s source.
+static LIST_CONS_TAIL_SPLIT: (std::sync::atomic::AtomicU64, std::sync::atomic::AtomicU64) = (
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+);
+
+fn record_list_cons_tail_split(receiver_len: usize) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
+    LIST_CONS_TAIL_SPLIT
+        .0
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    LIST_CONS_TAIL_SPLIT
+        .1
+        .fetch_add(receiver_len as u64, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Hypothesis-A instrumentation (adhoc-c328b166-bca residual hunt): call
+/// frequency for the grammar-analysis entry points S1's brief named as
+/// candidates for a fixed, file-size-independent per-parse-module recompute
+/// (`grammar_validate_for_parse`, `compute_nullable_set`,
+/// `compute_production_first_rows`). A named, tiny watchlist (not a general
+/// profiler) so the ladder answers "how many times, relative to file size"
+/// by execution.
+static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<
+    Option<std::collections::HashMap<&'static str, u64>>,
+> = std::sync::Mutex::new(None);
+
+/// adhoc-c328b166-bca memo-effectiveness discriminator: distinct (grammar_digest,
+/// token_stream_digest, position, production) keys ever looked up, vs total lookups/hits.
+/// `lookups >> distinct` with `hits == 0` is the smoking gun for "memo never serves a
+/// re-attempted span" (a real cache-effectiveness bug); `lookups == distinct` is the
+/// benign "every position visited exactly once" signature. Global (not per-InterpContext)
+/// so the periodic dump thread (GUNBC_FLATTEN_SITE_DUMP_SECS), which never enters
+/// with_active_context, can still read it -- survives a DNF, unlike ctx-scoped stats.
+static PARSE_MEMO_LOOKUPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PARSE_MEMO_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PARSE_MEMO_DISTINCT_KEYS: std::sync::Mutex<
+    Option<std::collections::HashSet<(String, String, i64, Symbol)>>,
+> = std::sync::Mutex::new(None);
+
+fn record_parse_memo_lookup(key: &(String, String, i64, Symbol), hit: bool) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
+    PARSE_MEMO_LOOKUPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if hit {
+        PARSE_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    let mut guard = PARSE_MEMO_DISTINCT_KEYS.lock().unwrap();
+    guard
+        .get_or_insert_with(std::collections::HashSet::new)
+        .insert(key.clone());
+}
+
+pub fn parse_memo_global_snapshot() -> (u64, u64, u64) {
+    let lookups = PARSE_MEMO_LOOKUPS.load(std::sync::atomic::Ordering::Relaxed);
+    let hits = PARSE_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed);
+    let distinct = PARSE_MEMO_DISTINCT_KEYS
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|s| s.len() as u64)
+        .unwrap_or(0);
+    (lookups, hits, distinct)
+}
+
+fn record_call_frequency(func_name: &str) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
+    const WATCHLIST: &[&str] = &[
+        "grammar_validate_for_parse",
+        "compute_nullable_set",
+        "compute_production_first_rows",
+        "parse_diags_to_diagnostics",
+        "parse_diags_to_non_empty",
+        "parse_diag_cons",
+        "parse_production",
+        "parse_expr",
+        "list_snoc_item",
+        "list_append",
+        "parse_sync_step",
+        "parse_match_arm_stmt_step",
+        "parse_expr_repeat",
+        "parse_expr_repeat_step",
+        "parse_skip_to_sync",
+        "parse_expr_sequence",
+        "parse_expr_choice",
+        "parse_expr_optional",
+        "parse_production_memo_stats",
+        "filter",
+        "upsert_production_first_row",
+        "parse_current_position",
+        "parse_nonterminal_memoized",
+        "parse_nonterminal_memoized_core",
+        "parse_table_record_lookup_call",
+        "parse_table_record_hit",
+        "parse_table_record_miss",
+        "parse_table_lookup",
+        "parse_table_insert",
+        "parse_choice_residue_backtrack",
+    ];
+    let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
+        return;
+    };
+    let mut guard = CALL_FREQUENCY_WATCHLIST.lock().unwrap();
+    let m = guard.get_or_insert_with(std::collections::HashMap::new);
+    *m.entry(*key).or_insert(0) += 1;
+}
+
+pub fn call_frequency_snapshot() -> Vec<(&'static str, u64)> {
+    let guard = CALL_FREQUENCY_WATCHLIST.lock().unwrap();
+    match guard.as_ref() {
+        Some(m) => m.iter().map(|(k, v)| (*k, *v)).collect(),
+        None => Vec::new(),
+    }
+}
+
+pub fn list_cons_tail_split_snapshot() -> (u64, u64) {
+    (
+        LIST_CONS_TAIL_SPLIT
+            .0
+            .load(std::sync::atomic::Ordering::Relaxed),
+        LIST_CONS_TAIL_SPLIT
+            .1
+            .load(std::sync::atomic::Ordering::Relaxed),
+    )
 }
 
 pub const EXPR_VARIANT_COUNT: usize = 22;
@@ -6791,7 +6980,9 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
     }
 }
 
+#[track_caller]
 pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+    let site = std::panic::Location::caller();
     let mut out = Vec::new();
     let mut cur = val.clone();
     let monoid_syms = active_ctx().map(|ctx| {
@@ -6807,11 +6998,13 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
             Value::List(items) => {
                 out.extend(items.iter().cloned());
                 record_flatten(out.len());
+                record_flatten_site(out.len(), site);
                 return Some(out);
             }
             Value::Str(s) => {
                 out.extend(s.chars().map(char_value));
                 record_flatten(out.len());
+                record_flatten_site(out.len(), site);
                 return Some(out);
             }
             Value::Variant {
@@ -6822,6 +7015,7 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 let (empty_sym, cons_sym, head_sym, tail_sym) = monoid_syms?;
                 if *variant_name == empty_sym {
                     record_flatten(out.len());
+                    record_flatten_site(out.len(), site);
                     return Some(out);
                 }
                 if *variant_name == cons_sym {
