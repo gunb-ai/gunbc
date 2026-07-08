@@ -730,6 +730,51 @@ pub struct ParseTableMemoStats {
     pub inserts: u64,
 }
 
+// Recompute-trace ledger (diagnostic READ mode: reports, never gates — DESIGN §5
+// stopped-line audit). Counts evaluations of pure named fns (empty `uses` row) per
+// (fn identity, argument identity). Keying is SOUND-ONLY: an argument without a
+// cheap sound identity (composite values) puts the call in the unkeyed bucket
+// instead of guessing — the ledger never merges distinct work. Durations are
+// inclusive of callees. Enabled via GUNBC_RECOMPUTE_TRACE=1.
+#[derive(Default)]
+struct EvalRecomputeTrace {
+    map: std::collections::HashMap<EvalRecomputeKey, EvalRecomputeEntry>,
+    unkeyed_by_fn: std::collections::HashMap<String, u64>,
+    // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
+    // (same discipline as PureCallMemo.keepalive_fns).
+    keepalive_fns: Vec<Rc<Node>>,
+    keyed_calls: u64,
+    unkeyed_calls: u64,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+struct EvalRecomputeKey {
+    fn_ptr: usize,
+    args: Vec<EvalRecomputeArgKey>,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+enum EvalRecomputeArgKey {
+    Null,
+    Bool(bool),
+    Int(i64),
+    FloatBits(u64),
+    StrHash(u64),
+    UnitVariant(u32, u32),
+    EmptyList,
+}
+
+struct EvalRecomputeEntry {
+    fn_name: String,
+    count: u64,
+    total_ns: u128,
+}
+
+pub fn eval_recompute_trace_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("GUNBC_RECOMPUTE_TRACE").is_ok_and(|v| v != "0"))
+}
+
 #[derive(Default, Clone)]
 pub struct MutationCounters {
     pub map_insert_calls: u64,
@@ -1020,6 +1065,7 @@ pub struct InterpContext {
     call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
+    eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
@@ -1163,6 +1209,7 @@ impl InterpContext {
             call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
+            eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
             published_mock_keys: RefCell::new(None),
@@ -2533,6 +2580,20 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         pure_call_memo_put(ctx, &fn_node, key, &args, result.clone());
         return Ok(result);
     }
+    if eval_recompute_trace_enabled() && fn_node.uses.is_empty() {
+        return match eval_recompute_key(&fn_node, &args) {
+            Some(key) => {
+                let started = Instant::now();
+                let result = call_function(ctx, &fn_node, &args, env);
+                eval_recompute_record(ctx, &fn_node, &func_name, key, started.elapsed().as_nanos());
+                result
+            }
+            None => {
+                eval_recompute_record_unkeyed(ctx, &func_name);
+                call_function(ctx, &fn_node, &args, env)
+            }
+        };
+    }
     call_function(ctx, &fn_node, &args, env)
 }
 
@@ -2682,6 +2743,119 @@ fn is_structural_pure_fn(name: &str) -> bool {
             | "fold_node_content_hash"
             | "node_subtree_count"
     )
+}
+
+fn eval_recompute_str_hash(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
+fn eval_recompute_arg_key(v: &Value) -> Option<EvalRecomputeArgKey> {
+    match v {
+        Value::Null => Some(EvalRecomputeArgKey::Null),
+        Value::Bool(b) => Some(EvalRecomputeArgKey::Bool(*b)),
+        Value::Int(i) => Some(EvalRecomputeArgKey::Int(*i)),
+        Value::Float(f) => Some(EvalRecomputeArgKey::FloatBits(f.to_bits())),
+        Value::Str(s) => Some(EvalRecomputeArgKey::StrHash(eval_recompute_str_hash(s))),
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } if fields.is_empty() => Some(EvalRecomputeArgKey::UnitVariant(
+            type_name.0,
+            variant_name.0,
+        )),
+        Value::List(xs) if xs.is_empty() => Some(EvalRecomputeArgKey::EmptyList),
+        _ => None,
+    }
+}
+
+fn eval_recompute_key(
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+) -> Option<EvalRecomputeKey> {
+    let mut keys = Vec::with_capacity(args.len());
+    for (_, v) in args {
+        keys.push(eval_recompute_arg_key(v)?);
+    }
+    Some(EvalRecomputeKey {
+        fn_ptr: Rc::as_ptr(fn_node) as usize,
+        args: keys,
+    })
+}
+
+fn eval_recompute_record(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    key: EvalRecomputeKey,
+    elapsed_ns: u128,
+) {
+    let mut t = ctx.eval_recompute_trace.borrow_mut();
+    let tr = &mut *t;
+    if !tr.map.contains_key(&key) {
+        tr.keepalive_fns.push(fn_node.clone());
+    }
+    tr.keyed_calls += 1;
+    let entry = tr.map.entry(key).or_insert_with(|| EvalRecomputeEntry {
+        fn_name: func_name.to_string(),
+        count: 0,
+        total_ns: 0,
+    });
+    entry.count += 1;
+    entry.total_ns += elapsed_ns;
+}
+
+fn eval_recompute_record_unkeyed(ctx: &InterpContext, func_name: &str) {
+    let mut t = ctx.eval_recompute_trace.borrow_mut();
+    t.unkeyed_calls += 1;
+    *t.unkeyed_by_fn.entry(func_name.to_string()).or_insert(0) += 1;
+}
+
+/// Print the recompute-trace ledger to stderr. A no-op unless
+/// GUNBC_RECOMPUTE_TRACE=1. Report-only: prints ranked re-evaluated pure calls
+/// (count >= 2), the unkeyed-coverage disclosure, and totals; it never alters
+/// the run's outcome.
+pub fn print_eval_recompute_trace(ctx: &InterpContext) {
+    if !eval_recompute_trace_enabled() {
+        return;
+    }
+    let t = ctx.eval_recompute_trace.borrow();
+    let mut duplicated: Vec<(&EvalRecomputeEntry, u128)> = t
+        .map
+        .values()
+        .filter(|e| e.count >= 2)
+        .map(|e| (e, e.total_ns - e.total_ns / u128::from(e.count)))
+        .collect();
+    duplicated.sort_by(|a, b| b.1.cmp(&a.1));
+    let total_wasted_ns: u128 = duplicated.iter().map(|(_, w)| *w).sum();
+    eprintln!(
+        "[recompute-trace] keyed_calls={} unkeyed_calls={} distinct_keys={} duplicated_keys={} wasted_ms={} (durations inclusive of callees)",
+        t.keyed_calls,
+        t.unkeyed_calls,
+        t.map.len(),
+        duplicated.len(),
+        total_wasted_ns / 1_000_000
+    );
+    for (e, wasted_ns) in duplicated.iter().take(20) {
+        eprintln!(
+            "[recompute-trace] dup fn={} count={} total_ms={} wasted_ms={}",
+            e.fn_name,
+            e.count,
+            e.total_ns / 1_000_000,
+            wasted_ns / 1_000_000
+        );
+    }
+    let mut unkeyed: Vec<(&String, &u64)> = t.unkeyed_by_fn.iter().collect();
+    unkeyed.sort_by(|a, b| b.1.cmp(a.1));
+    for (name, count) in unkeyed.iter().take(10) {
+        eprintln!(
+            "[recompute-trace] unkeyed fn={} calls={} (composite args — identity not tracked in slice 1)",
+            name, count
+        );
+    }
 }
 fn value_rc_identity(v: &Value) -> Option<usize> {
     match v {
