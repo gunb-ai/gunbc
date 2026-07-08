@@ -1337,15 +1337,8 @@ fn call_function(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    if fn_node.name == "empty_map" {
-        if let Some(v) = eval_builtin("empty_map", args, ctx)? {
-            return Ok(v);
-        }
-    }
-    if fn_node.name == "map_insert" {
-        if let Some(v) = eval_builtin("map_insert", args, ctx)? {
-            return Ok(v);
-        }
+    if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
+        return result;
     }
 
     let body = fn_node
@@ -2316,6 +2309,14 @@ pub(crate) const INERT_LENS_BRIDGE_FNS: &[&str] = &[
     "inert_lens_top_level_module_count",
 ];
 
+const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] = &[
+    "empty_map",
+    "empty_map_primitive_delegate",
+    "map_insert",
+];
+
+const V2_STD_COLLECTION_MODULE: &str = "v2.std.collection";
+
 pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_BRIDGE_FNS
 }
@@ -2423,6 +2424,41 @@ fn is_v4_inert_lens_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
     ctx.item_registry
         .get(func_name)
         .is_some_and(|info| info.module_name == "v2.lens.inert_lens")
+}
+
+fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>) -> bool {
+    if !STD_COLLECTION_MAP_GROUNDED_FNS.contains(&fn_node.name.as_str()) {
+        return false;
+    }
+    ctx.item_registry
+        .get(&fn_node.name)
+        .is_some_and(|info| info.module_name == V2_STD_COLLECTION_MODULE)
+}
+
+fn try_v2_std_collection_map_primitive_grounding(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+) -> Option<InterpResult<Value>> {
+    if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
+        return None;
+    }
+    let builtin_name = match fn_node.name.as_str() {
+        "empty_map_primitive_delegate" | "empty_map" => "empty_map",
+        "map_insert" => "map_insert",
+        _ => return None,
+    };
+    match eval_builtin(builtin_name, args, ctx) {
+        Ok(Some(v)) => Some(Ok(v)),
+        Ok(None) if builtin_name == "empty_map" => Some(Err(InterpError::TypeError {
+            msg: format!(
+                "{V2_STD_COLLECTION_MODULE}.{}: native HAMT primitive missing from eval_builtin (host misconfiguration)",
+                fn_node.name
+            ),
+        })),
+        Ok(None) => None,
+        Err(e) => Some(Err(e)),
+    }
 }
 
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
