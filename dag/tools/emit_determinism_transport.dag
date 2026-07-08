@@ -11,8 +11,11 @@ import extdeps.languages.bash.program {
   lit, var_ref, command, assign, serialize_bash
 }
 import tools.host_prelude { ensure_gunbc_built }
+import v2.lens.duplicate_computation { ReplicationIntent, ReplicatedOracle }
 
 data emit_determinism_corpus_roots: List<String> = ["dag", "src/v2"]
+
+data emit_determinism_replication_intent: ReplicationIntent = ReplicatedOracle { runs: 2 }
 
 fn ed_source_root_flags() -> List<ShellWord> {
   fold(emit_determinism_corpus_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))

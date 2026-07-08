@@ -1,0 +1,154 @@
+module v2.test.duplicate_computation.duplicate_computation
+
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt,
+  If, CmdSubst,
+  lit, var_ref, command, assign, test_not_executable
+}
+import v2.lens.duplicate_computation {
+  ComputationDemandFact,
+  UnguardedDemand, GuardedFallbackDemand,
+  ReplicationIntent, SingleRun, ReplicatedOracle,
+  shell_program_computation_demands,
+  duplicate_computation_violation_count,
+  duplicate_computation_clean_holds
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data synthetic_compile_key: String = "gunbc compile --source-root dag --target rust"
+data synthetic_other_key: String = "cargo build -p v1-compiler --release --bin gunbc"
+
+data synthetic_unguarded_a: ComputationDemandFact = {
+  site: "synthetic.site_a",
+  computation_key: synthetic_compile_key,
+  guard: UnguardedDemand,
+  replication: SingleRun
+}
+
+data synthetic_unguarded_b: ComputationDemandFact = {
+  site: "synthetic.site_b",
+  computation_key: synthetic_compile_key,
+  guard: UnguardedDemand,
+  replication: SingleRun
+}
+
+data synthetic_guarded_b: ComputationDemandFact = {
+  site: "synthetic.site_b",
+  computation_key: synthetic_compile_key,
+  guard: GuardedFallbackDemand,
+  replication: SingleRun
+}
+
+data synthetic_other_unguarded: ComputationDemandFact = {
+  site: "synthetic.site_c",
+  computation_key: synthetic_other_key,
+  guard: UnguardedDemand,
+  replication: SingleRun
+}
+
+data synthetic_oracle_a: ComputationDemandFact = {
+  site: "synthetic.site_a",
+  computation_key: synthetic_compile_key,
+  guard: UnguardedDemand,
+  replication: ReplicatedOracle { runs: 2 }
+}
+
+data synthetic_oracle_b: ComputationDemandFact = {
+  site: "synthetic.site_b",
+  computation_key: synthetic_compile_key,
+  guard: UnguardedDemand,
+  replication: ReplicatedOracle { runs: 2 }
+}
+
+data synthetic_oracle_c: ComputationDemandFact = {
+  site: "synthetic.site_c",
+  computation_key: synthetic_compile_key,
+  guard: UnguardedDemand,
+  replication: ReplicatedOracle { runs: 2 }
+}
+
+test fn duplicate_unguarded_demands_are_violations() -> Bool {
+  duplicate_computation_violation_count(facts: [synthetic_unguarded_a, synthetic_unguarded_b]) == 1
+}
+
+test fn guarded_fallback_does_not_duplicate() -> Bool {
+  duplicate_computation_clean_holds(facts: [synthetic_unguarded_a, synthetic_guarded_b])
+}
+
+test fn declared_oracle_pair_is_admissible() -> Bool {
+  duplicate_computation_clean_holds(facts: [synthetic_oracle_a, synthetic_oracle_b])
+}
+
+test fn oracle_declaration_must_match_observed_runs() -> Bool {
+  duplicate_computation_violation_count(facts: [synthetic_oracle_a, synthetic_oracle_b, synthetic_oracle_c]) == 1
+}
+
+test fn distinct_computations_do_not_collide() -> Bool {
+  duplicate_computation_clean_holds(facts: [synthetic_unguarded_a, synthetic_other_unguarded])
+}
+
+fn synthetic_compile_to_dir(out_var: String) -> ShellStmt {
+  command(words: [
+    var_ref(name: "GUNBC"), lit(text: "compile"),
+    lit(text: "--source-root"), lit(text: "dag"),
+    lit(text: "--source-root"), lit(text: "src/v2"),
+    lit(text: "--target"), lit(text: "rust"),
+    lit(text: "--output-dir"), var_ref(name: out_var)
+  ])
+}
+
+fn synthetic_double_compile_program() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: [
+      assign(name: "OUT1", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      assign(name: "OUT2", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      synthetic_compile_to_dir(out_var: "OUT1"),
+      synthetic_compile_to_dir(out_var: "OUT2"),
+      command(words: [lit(text: "diff"), lit(text: "-r"), var_ref(name: "OUT1"), var_ref(name: "OUT2")])
+    ]
+  }
+}
+
+fn synthetic_guarded_build_program() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: [
+      If {
+        cond: test_not_executable(path: var_ref(name: "GUNBC")),
+        then: [command(words: [
+          lit(text: "cargo"), lit(text: "build"),
+          lit(text: "-p"), lit(text: "v1-compiler"),
+          lit(text: "--release"), lit(text: "--bin"), lit(text: "gunbc")
+        ])]
+      },
+      synthetic_compile_to_dir(out_var: "OUT1")
+    ]
+  }
+}
+
+test fn projected_double_compile_program_reds() -> Bool {
+  duplicate_computation_violation_count(facts: shell_program_computation_demands(
+    site: "synthetic.double_compile_program",
+    program: synthetic_double_compile_program(),
+    replication: SingleRun
+  )) == 1
+}
+
+test fn projected_double_compile_declared_oracle_is_admissible() -> Bool {
+  duplicate_computation_clean_holds(facts: shell_program_computation_demands(
+    site: "synthetic.double_compile_program",
+    program: synthetic_double_compile_program(),
+    replication: ReplicatedOracle { runs: 2 }
+  ))
+}
+
+test fn projected_guarded_ensure_built_is_clean() -> Bool {
+  duplicate_computation_clean_holds(facts: shell_program_computation_demands(
+    site: "synthetic.guarded_build_program",
+    program: synthetic_guarded_build_program(),
+    replication: SingleRun
+  ))
+}
