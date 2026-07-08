@@ -1,0 +1,24 @@
+module test.claim.time_scale_factor_derivation
+
+import std.logic { Bool }
+import std.nat { Nat }
+import std.measure { Scale, One, Sixty, time_scale_factor_seconds, scale_exponent }
+
+fn factor_is(s: Scale, expected: Nat) -> Bool {
+  match time_scale_factor_seconds(s: s) {
+    Present { value: n } => n == expected
+    Absent => false
+  }
+}
+
+test fn time_scale_factors_derive_correctly() -> Bool {
+  factor_is(s: One, expected: 1)
+    && factor_is(s: Sixty, expected: 60)
+}
+
+test fn scale_exponent_refuses_sixty() -> Bool {
+  match scale_exponent(s: Sixty) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}

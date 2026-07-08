@@ -176,14 +176,14 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
     SelfHostReadsRealBytesGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
-        spawns_host_compiler: false,
-        memory: per_shard
+        spawns_host_compiler: true,
+        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
       )
     SelfHostStalenessGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
-        spawns_host_compiler: false,
-        memory: per_shard
+        spawns_host_compiler: true,
+        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
       )
     EmitDeterminismGate =>
       runnable_resource_profile(
@@ -220,12 +220,12 @@ fn gate_runnable(g: Gate) -> Runnable {
     }
     RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes", profile: profile }
     SelfHostReadsRealBytesGate => RunnableSingleClaim {
-      entry: floor_self_host_realized_comparison_claims_entry,
-      function: "self_host_realized_comparison_reads_real_bytes_both_sides_holds",
+      entry: floor_self_host_realized_comparison_gate_entry,
+      function: "self_host_realized_comparison_reads_real_bytes_gate_holds",
       profile: profile
     }
     SelfHostStalenessGate => RunnableSingleClaim {
-      entry: floor_self_host_realized_comparison_claims_entry,
+      entry: floor_self_host_realized_comparison_gate_entry,
       function: "self_host_realized_comparison_staleness_gate_holds",
       profile: profile
     }

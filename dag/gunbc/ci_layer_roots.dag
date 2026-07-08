@@ -24,6 +24,20 @@ data witness_exclusion_substrings: List<String> = [
   "test/claim/execution/"
 ]
 
+data whole_tree_strict_resolve_exclusion_note: String = "Whole-tree strict-resolve policy beyond floor witness_exclusion_substrings: test trees, eval scaffolds, and modules that cannot strict-resolve under dag+src/v2 but are not floor-discovery roster members. Consumed by whole_tree_resolved_ctx hosts (measure_dependency_view_build, measure_whole_tree_resolve, fn_arrow_decl_substrate_is_whole_tree census, wiring_liveness_whole_tree). NOT folded into witness_exclusion_substrings — floor RunnableDiscoveryBatch scan-dir enrollment must keep src/v2/test/claim/manual visible while whole-tree resolve excludes the broader /test/ tree."
+
+data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
+  "test/fixture/",
+  "/test/",
+  "nat_semiring_rung",
+  "lens/application/empty_required_lenses_skip_gate.dag",
+  "lens/application/rejecting_lens_blocks_before_compile.dag"
+]
+
+fn whole_tree_resolve_exclusion_substrings() -> List<String> {
+  concat(witness_exclusion_substrings, whole_tree_strict_resolve_exclusion_substrings)
+}
+
 fn witness_layer_source_flags(roots: List<String>) -> String {
   fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --source-root ", r)))
 }
