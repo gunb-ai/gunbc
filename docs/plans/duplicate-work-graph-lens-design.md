@@ -1,107 +1,147 @@
 # Codebase-wide duplicate-work lens — design
 
-**Status:** DESIGN (pre-implementation). Grounds entirely on authorities that exist today; **no S2 / execution-spine dependency** (see §7). Discriminant must be proven by the four-case witness (§6) before any corpus fold is written — if the discriminant is wrong the lens is noise, and that is the whole risk.
+**Status:** DESIGN (pre-implementation). Grounds entirely on authorities that exist today; **no S2 / execution-spine dependency** (§7). The discriminant must be proven by the witness (§8) before any corpus fold — if the discriminant is wrong the lens is noise, and that is the whole risk.
 
-**Origin:** the operator's original framing — "detect a redundant dependency and force a rewire; kill compile → … → recompile" — generalized from the point-instance `v2.lens.duplicate_computation` (shell/argv transports, #6372) to the whole codebase. This doc is the general mechanism; the existing shell lens becomes one instance of it (§5).
+**Origin:** the operator's original framing — "detect a redundant dependency and force a rewire; kill compile → … → recompile" — generalized from the point-instance `v2.lens.duplicate_computation` (shell/argv transports, #6372) to the whole codebase, then sharpened through five refinements (recorded in §2–§5). This doc is the converged model; the existing shell lens becomes one instance of it (§6).
 
-**Principle roots:** DESIGN.md §2 (minimize redundancy — the *horizontal* direction: one computation, one producer), §3 (single authority — a forked realization is a §3 violation at the realization layer), §5 (correctness by construction: Delete > Share > Cache; hash-consing makes the pure fork *unwritable*), §6 (priced in displaced cost, not elegance — the cost floor).
+**Principle roots:** §2 (minimize redundancy — one computation, one producer), §3 (single authority — a forked realization is a §3 violation at the realization layer; and **an undecidable identity often *is* a §3 fork**, §5), §4 (closed + bounded ⇒ decidable-with-constraints — the "richer source always exists"), §5 (correctness by construction: Delete > Share > Cache; fail-closed bottom, no absorbing fallback), §6 (priced in displaced cost — the moat is the located root cause, not the symptom), §7 (the same lattice the complexity/termination lenses already use).
 
 ---
 
-## 1. The question — "how could we possibly catch redundant work in the graph?"
+## 1. The law — duplication is materialization, not fork
 
-Redundant work is **the same computation demanded more than once as independently-produced nodes**, rather than produced once and shared. The substrate makes this decidable because of two facts, both re-verified against the live tree (2026-07-08):
+The first design drove at *structural forks* (the same work written twice as two nodes). Testing that against real pain (§3) broke it: the flagship case — CI building the release binary three times across independent jobs — is **not** a fork. It is **one** modeled computation materialized N times with no sharing. The correct, unifying law is `materialize` itself:
 
-- **`content_hash` is occurrence-independent** (`src/v2/std/node.dag:1449`; `canonicalize_node_for_content_hash` stamps `SyntheticOccurrence` at `:594`). It folds `kind` + edge-labels + child-hashes and never reads `occurrence_id`. So two nodes that are *the same operation applied to content-identical input subgraphs* hash-equal, at any position. **content_hash is the intent identity** — "same expected inputs and outputs at an intent level," made a decidable structural fact.
-- **The substrate does not hash-cons.** `node_with_occurrence_id` (`node.dag:115`) mints an explicit, distinct `occurrence_id` per constructed node. Structural twins therefore genuinely exist as separate nodes. If construction auto-deduped there would be nothing to catch; because it does not, forks are real and findable.
+> **Duplication = N materializations of one computation-identity with no Share edge between them.**
 
-So the detector is: over the whole-corpus `Node` graph, `content_hash` every node, group by hash. Each group of size > 1 is candidate duplication. Everything after is *discrimination* — which groups are real, fixable redundancy (§2), and which are noise.
+Two independent pieces:
 
-## 2. The discriminant — four conditions, all required
+- **computation-identity** — "is this the same work?" Answered by `content_hash` (`src/v2/std/node.dag:1449`), which is **occurrence-independent** (`canonicalize_node_for_content_hash` stamps `SyntheticOccurrence`, `:594`) — so the same operation on content-identical inputs hashes equal at any position. This is "same expected inputs and outputs at an intent level," made a decidable structural fact. Identity is a *lattice*, not a boolean (§4).
+- **multiplicity without sharing** — the same identity is materialized more than once and no Share edge connects the materializations. The **source** of the multiplicity (§5) is the axis that picks the fix.
 
-A content-hash group is a **fixable-redundancy wall** only if all four hold. This is the crux; each condition is grounded on an existing authority.
+The substrate does **not** hash-cons (`node_with_occurrence_id`, `:115`, mints a distinct `occurrence_id` per node), so forks genuinely exist — but a fork is only the *degenerate* multiplicity source, not the general case.
 
-### D1 — Same computation *(content-hash equal)*
-The grouping key itself (§1). Sound and decidable: zero false positives on "is this the same work." The only strength question is *how much* structural normalization we ground into the key — see §4.
+## 2. Computation-identity is a bounded lattice (§4), not a boolean
 
-### D2 — Fork, not reuse *(distinct occurrences)*
-This is the condition `occurrence_id` exists to draw, and it is the difference between DRY and redundant:
+"Same intent-level inputs/outputs" has graded strength. In a **Turing-complete** language the strongest form (semantic equivalence of structurally-different programs) is Rice-undecidable and permanent. But `.dag` is **closed, bounded, and total** (§4: forward execution, finite measures, `Int` grounded on machine widths `Int8..UInt128`, no non-termination). Over a bounded domain, extensional equivalence is **decidable by enumeration** — it terminates because everything terminates. So semantic equivalence here is not Rice-impossible; it is decidable *once the bound is supplied*, at a cost equal to the domain size (§6-priced). The lattice, mirroring `DescentEvidence` (`dag/std/termination.dag`) and `UnknownComplexity { diagnostic }` (`src/v2/lens/complexity.dag`):
 
-- **Reuse** = **one** node, **N in-edges** — N consumers point at one shared producer. Already DRY, correct, the goal state. **Never flagged.**
-- **Fork** = **N distinct-occurrence** nodes, one content-hash — the same computation authored/demanded N separate times. **This is the redundant work.** The fix turns a fork into reuse: delete N−1, rewire consumers to the survivor.
+```
+type ComputationIdentity
+  = StructurallyIdentical                       -- content_hash equal          (cheap wall, top)
+  | NormalizedIdentical    { normalizer: ... }  -- equal under a declared normalizer (cheap wall)
+  | ExtensionallyIdentical { bound: ... }       -- equal on the modeled bounded domain (§6-priced wall)
+  | IdentityUnknown        { cause: IdentityUnknownCause }  -- fail-closed BOTTOM
+```
 
-Mechanically: within a content-hash group, count distinct `occurrence_id`s. Group of one occurrence with many parents → reuse. Group of many occurrences → fork. `SyntheticOccurrence` twins (freshly built, e.g. by a fold) need care — see §6 case notes; the corpus signal is *minted* occurrences (`MintedOccurrence`) that repeat a hash.
+The top three are **walls** (decidable, sound; the second relative to a declared normalizer, the third relative to a modeled bound). `IdentityUnknown` is the fail-closed bottom — but see §4: it is never a permanent "undecidable."
 
-### D3 — Safe to collapse *(purity is the license, idempotency is the effect-case proof)*
-The operator's key refinement: **purity is not what makes work duplicated — D1 already settled that. Purity is what makes the fix provably safe.**
+## 3. Testing the law against real pain — the corrected coverage table
 
-- **Pure node** → deleting one twin and rewiring its consumers to the other is behavior-preserving *by construction*. Certain. This is "certainly duplicated work." Purity is read from the model's own effect boundary — a node whose realization carries **no effect** (the empty-`uses` boundary the recompute-trace already keys on, `v1_interpreter.rs`; the modeled surface is `std.effects`).
-- **Effectful node** → deleting one twin is safe **only if the effect is idempotent / collapsible**, which is a proof obligation `dag/std/effects.dag` already discharges: `is_idempotent_effect` (`:31`), and pairwise `create_double_init_collapsible` (`:73`) / `create_effect_is_dedupable` (`:62`). Two content-identical `AppendEffect`s (non-idempotent) genuinely happen twice — *not* redundant, must not be flagged. Two `CreateIfAbsent` with equal key-source collapse — flagged.
+Five real, painful cases from the live tree / receipts, each run through the law:
 
-So D3 splits exactly on the S2 boundary (§7): the **effect** case is a static structural fact (two producer nodes, one hash, effect idempotent) decidable now; the **pure** case's *runtime* elimination (Share/memoize the eval) needs the interpreter's spine — but the pure *fork* is still statically detectable and statically rewireable (delete the duplicate node), which is what the operator wants. Pure-value runtime Share is the deferred part; pure-node static rewire is not.
+| # | Case | identity | multiplicity source | verdict |
+|---|---|---|---|---|
+| 1 | **Lever-A double compile** — two `gunbc compile` in one script (#6361) | content-hash eq | **fork** (2 nodes, 1 hash) | wall **now** — caught by #6372 |
+| 2 | **CI release build ×3** — `ci_release_build_script()` run by `ci_job`(:381) / `ci_regen_job`(:414) / `rust_tests` warm(:255), all `needs:[]`, no artifact edge | content-hash eq (same fn) | **placement** (1 node, 3 runners, no Share edge) | wall **after modeling** placement — **the flagship** |
+| 3 | **resolve ×4 cross-batch** (M1) — one `resolve_entry_graph`, 4 batch call-sites | content-hash eq | **runtime-call** (1 node, N demands) | wall **now** (static demand count); shipped fix was a *cache* (M1) — dispreferred |
+| 4 | **merge_envs O(M²)** — parent surface recomputed per fold iteration (#6360) | content-hash eq per-iter | **runtime-loop** (loop-invariant) | wall **after modeling** free-variable scope |
+| 5 | **intern_table per-module** O(corpus²) (#5867) — each module builds its own table | wholes **differ**; shared *sub*-tree eq | **wrong-scope** | 5a shared-subtree: wall **now** (content_hash over subtrees). 5b genuinely-different-but-equivalent: wall **after supplying bound** |
 
-> Generalization debt: `create_double_init_collapsible` is **pairwise**. A content-hash group is N-ary. The lens needs a group-collapse predicate `effect_group_collapsible(shapes)` = all shapes idempotent *and* mutually collapsible — a fold over the group reusing the pairwise authority, not a new authority. Named here as the one real extension D3 requires.
+The first design caught only case 1 — the rarest class. The law + multiplicity axis covers all five.
 
-### D4 — Worth collapsing *(cost floor — §6 priced in displaced cost)*
-Every `[]`, `True`, `Int(0)`, bare atom is a content-twin. Flagging them is the purity-trap flood (§6): infinite, elegant, worthless. Only a fork whose **shared computation clears a cost floor** is a wall. Grounds on the existing cost lens (`src/v2/lens/cost.dag`): a fork of compile-whole-tree (~500s) is a wall; a fork of `[]` is noise. The floor is a declared threshold on the group's shared-subtree cost — and per §5/§6 a threshold is a smuggled heuristic *only if it selects a degradation arm*; here it selects *what to report*, never *whether to fail open*, so it is a reporting scope, not an absorbing fallback.
+## 4. Undecidability = missing concept or missing enforcement (the reframe that empties the bottom)
 
-## 3. The fix hierarchy — Delete > Share > Cache (why the operator prefers rewire over cache)
+`IdentityUnknown` is **not** "the universe forbids knowing." In a closed, bounded, grounded substrate, an undecidable identity is a **symptom of anemic modeling** (§2/§4): we are missing the *concept* that unifies two things, or the *enforcement* that canonicalizes them. §4 states it — "in a closed system a heuristic is never necessary; the richer source always exists or can be written" — so reaching for "undecidable" *is* reaching for a heuristic where a richer source was available but unmodeled.
 
-The operator's ordering, and it is DESIGN §2/§5 exactly:
+The sharpest instance: **the undecidability often *is* the §3 fork.** Two computations are "hard to prove equal" precisely because they are two structures for one concept. Ground them on a single authority and structural identity becomes trivial. (Receipt: the old "vendor" fork — `CpuVendor` closed enum vs `GpuFacts.vendor` stringly — made "same computation?" hard; grounding on `Vendor<Domain>` made identity trivially structural. The undecidability *was* the fork.)
 
-1. **Cache / Memoize — dispreferred.** Keep the duplicate nodes, memoize the result. This is the *confession that the redundancy was not removed* (§2's "eleven hand-rolled `HashMap` caches"). Sharp corollary: **every cache in the tree is a map of known redundancy** — `pure_call_memo`, `ParseTable` memo, `resolved_graph_cache`, sccache each exist because someone knew the work would be redone. The caches are therefore this lens's own candidate-site list.
-2. **Share / rewire — preferred.** One node, N in-edges. The lens's actionable output: "these N are one computation; wire consumers to one, delete the rest." This is the "reorganize / delete the redundant work" the operator asked for, over a cache.
-3. **Construction / hash-cons — endgame (§5 strongest).** Content-addressed construction returns the existing node, so a pure fork is **unwritable** — you never reach for the cache because the duplicate cannot be created. This is a substrate change (share content, keep `occurrence_id` as provenance). The lens finds forks now; hash-consing makes them impossible later. The lens is *sizing* that endgame.
+So the bottom carries a **typed cause** — conflating the causes would be the state-space-conflation failure mode (§5):
 
-## 4. Honesty boundary — which strengths are walls, which is the §5 "never" trap
+```
+type IdentityUnknownCause
+  = MissingConcept     { candidate_authority: ... }  -- two structures, one concept: ground them (§3)
+  | MissingEnforcement { mechanism: ... }            -- canonical construction / normalizer absent
+  | BoundUnmodeled     { domain: ... }               -- extensional check available once bound declared
+```
 
-"Same inputs/outputs at an intent level" has three reachable strengths. Naming which are walls is a §5 obligation (do not let a ratchet masquerade as a wall):
+Every entry in §3's "after modeling" / "after bound" column resolves to one of these:
 
-- **Structural** (content-hash equal): decidable, sound, zero false positives. **A wall.** This is what ships.
-- **Normalized** (canonicalize commutative ops; apply the algebra-grounded rewrites the codebase already has, e.g. `a+b` ≡ `b+a`): decidable *up to the chosen normalization*. Each normalization is a bounded, deliberate step — a wall relative to its declared normalizer. Additive, later.
-- **Semantic** (same input→output function regardless of structure): **undecidable (Rice's theorem)** — can *never* be a wall. This is the §5 "never" trap: a lens finds *some* semantic dupes, never all. Honestly the permanent ratchet, never promised as complete.
+| symptom | cause | missing |
+|---|---|---|
+| `sort(sort x)` vs `sort x` | idempotence law undeclared | `MissingConcept` (algebraic law) |
+| build ×3 runners redundant? | placement + share-edge unmodeled | `MissingConcept` (`PlacementDependsOn` exists, unused) |
+| will this loop recompute? | free-variable scope uncomputed | `MissingEnforcement` (the analysis) |
+| pure fork writable at all? | construction not canonical | `MissingEnforcement` (hash-consing) |
+| two different algos, same fn | input domain bound undeclared | `BoundUnmodeled` |
 
-So: the wall is **structural + declared normalization**; full "intent-level equivalence" is the honestly-named ratchet. The lens's `ConstructionJustification` must say `WallAfterGrounding` for the structural core and carry the ratchet residue explicitly.
+**Consequence for the lens's product.** Its deliverable is not "here are dups." It is **"here is redundant work, and here is the specific concept or enforcement whose absence lets it exist."** That is the moat framing (§6): the lens locates the *root* (a missing authority), not the symptom. It closes the loop to §2/§3 — a duplicate is a failed decomposition, and the lens names which one. This makes the lens, at its limit, the **leaf-side decomposition-debt detector** parked as an open thread ("can a lens mechanically diagnose the leaf-side of decomposition?"): `IdentityUnknown { cause: MissingConcept }` *is* that finger.
 
-## 5. Relationship to the existing shell lens — it becomes an instance
+The bottom is therefore a **located, typed modeling backlog item**, never a graveyard. The undecidable *categorization* is itself decidable (which cause applies is a decidable classification) — exactly as `UnknownComplexity { diagnostic }` categorizes decidably what it cannot compute.
 
-`v2.lens.duplicate_computation` (#6372) already models exactly this shape at one grain: `ComputationDemandFact { computation_key, guard, replication }`, grouped by key, refused when N unguarded demands share a key, with a declared-`ReplicatedOracle` escape for intentional duplication (the emit-determinism x2 oracle). Its `computation_key` is an argv projection; the general lens's key is `content_hash`. Its guard/replication discriminants (guarded fallback never duplicates; declared oracle is admissible) are **exactly D2's reuse-vs-fork and the declared-exception escape D3 needs**. So the general lens **subsumes** it: the shell/argv key and the CI-job key both become "compute a `content_hash`-grade identity for this demand." Do not build the CI-job lens as a separate point-thing — it is this lens at job grain (where Share is a file download, hence shippable today; §7).
+## 5. The multiplicity-source axis — same law, one axis picks the fix
 
-The declared-exception escape carries over verbatim: `ReplicatedOracle { runs: N }` at the site admits a genuinely-intentional duplication (known-nondeterministic emit), refused if observed ≠ declared. Same §5 discipline — the exception is *declared and counted*, never a silent widen.
+Identity (§2) says "same work." The **source** of the multiplicity says how to fix it. This is the axis the first design collapsed by assuming every source was "fork":
 
-## 6. De-risking — the four-case discriminating witness (build FIRST)
+| Source | Detect via | Fix | Static now? |
+|---|---|---|---|
+| **fork** | dup content_hash, distinct `occurrence_id` | delete → rewire consumers to survivor | ✅ (case 1) |
+| **placement** | one identity, N consumers across a placement boundary, no Share edge | add artifact-Share edge (`needs: build` + upload/download) | ✅ after modeling placement (case 2) |
+| **runtime-call** | one node, N `DataDependsOn` demands | memoize / hoist producer | ✅ static count (case 3) |
+| **runtime-loop** | loop-invariant subtree in a fold (free-var ∌ loop var) | hoist out of loop | ✅ after free-var analysis (case 4) |
+| **wrong-scope** | shared content-identical *subtree* recomputed at wrong grain | re-scope the intent to one authority | ✅ subtree-hash (case 5a) |
 
-Before any corpus fold, one witness proves the discriminant is right. If it discriminates correctly the corpus lens is a mechanical fold over it; if it cannot, the lens would be noise. Four cases, each a `test fn` with a discriminating input that goes **red** when the behavior is wrong:
+Reuse (one node, N in-edges) is the goal state, never flagged — it is what every fix *produces*.
 
-1. **GREEN — reuse.** One node (single occurrence), two parents/in-edges → **must not flag.** Red control: if the lens flags reuse, D2 is broken.
-2. **RED — pure fork.** Two distinct-occurrence, content-identical **pure** nodes above the cost floor → **must flag exactly one violation**, naming the survivor as rewire target. Red control: perturb one node's subtree so hashes differ → violation disappears (proves it is content-identity, not position).
-3. **ADMISSIBLE — declared oracle.** Two content-identical nodes carrying a declared `ReplicatedOracle` (the emit-determinism case) → **not flagged**; observed ≠ declared → flagged. Same escape as the shell lens.
-4. **EFFECT-GATED.** Two content-identical `AppendEffect` nodes → **not flagged** (genuinely twice, non-idempotent); two content-identical `CreateIfAbsent`-equal-key nodes → **flagged** (collapsible). Proves D3 reads `effects.dag`, not just purity.
+### Safe-to-collapse and worth-collapsing (the two gates that survive from the first design)
 
-A fifth guard (cost floor, D4): two content-identical `[]`/`Int(0)` nodes below the floor → **not flagged**, proving D4 suppresses the purity-trap flood. Red control: drop the floor to zero → they flag, confirming the floor is what suppressed them (not an accident of the fold).
+- **Safe to collapse (purity = license, idempotency = the effect-case proof).** Purity is not what makes work duplicated (identity settled that); it is what makes the fix *provably safe*. Pure node → delete-and-rewire is behavior-preserving by construction. Effectful node → safe only if the effect is idempotent/collapsible, a proof `dag/std/effects.dag` already discharges: `is_idempotent_effect` (`:31`), pairwise `create_double_init_collapsible` (`:73`). Two content-identical `AppendEffect`s (non-idempotent) genuinely happen twice — *not* redundant. **Extension owed:** a content-hash group is N-ary but `create_double_init_collapsible` is pairwise, so the lens needs `effect_group_collapsible(shapes)` = a fold over the group reusing the pairwise authority (not a new authority). This is the one genuinely-new piece.
+- **Worth collapsing (cost floor, §6).** Every `[]`, `Int(0)`, bare atom is a content-twin; flagging them is the purity-trap flood. Only a group whose shared computation clears a cost floor (`src/v2/lens/cost.dag`) is a wall. The threshold selects *what to report*, never *whether to fail open* — a reporting scope, not an absorbing fallback (§5).
+
+## 6. Fix hierarchy and the relationship to #6372
+
+**Delete > Share > Cache** (the operator's ordering, = §2/§5):
+
+1. **Cache / Memoize — dispreferred.** Keep the duplicates, memoize. The confession that the redundancy was *not* removed (§2's "eleven hand-rolled `HashMap` caches"). Sharp corollary: **every cache in the tree is a map of known redundancy** — `pure_call_memo`, `ParseTable`, `resolved_graph_cache`, sccache, and M1's `walk_memo` (case 3's shipped fix) each exist because someone knew work would be redone. The caches are this lens's own candidate-site list.
+2. **Share / rewire — preferred.** One node / one artifact, N consumers. The actionable output.
+3. **Construction / hash-cons — endgame (§5 strongest).** Content-addressed construction returns the existing node; a pure fork becomes **unwritable** (`MissingEnforcement` supplied). The lens sizes this endgame.
+
+**#6372 becomes an instance.** `v2.lens.duplicate_computation` already models this shape at argv grain: `ComputationDemandFact { computation_key, guard, replication }`, grouped by key, refused when N unguarded demands share a key, with a declared-`ReplicatedOracle { runs: N }` escape for intentional duplication (the emit-determinism x2 oracle, refused if observed ≠ declared). Its `computation_key` is the argv projection of `content_hash`; its guard is the guarded-fallback-never-duplicates rule; its replication escape is the declared-exception the general lens needs verbatim. So the general lens **subsumes** it — the CI-job lens is not a separate point-thing, it is this lens at placement grain.
 
 ## 7. Why no S2 dependency
 
-The confusion that chained this to S2 was conflating three threads; only the third needed the spine:
+Three threads were conflated; only the third needed the spine:
 
-| Thread | Needs spine? | Where it lives |
+| Thread | Needs spine? | Home |
 |---|---|---|
-| Detect/enforce duplicate **dependencies** (the original ask) | **No** — static structural fact over `content_hash` + `occurrence_id` | this lens |
-| **Measure** re-evaluation (recompute-trace) | No — already a diagnostic (#6372) | landed |
-| Make **eval-grain** duplication cheap (Share/memoize the pure runtime) | **Yes** | deferred to execution-spine `materialize`/Share |
+| detect/enforce duplicate **dependencies** (the original ask) | **No** — static structural fact | this lens |
+| **measure** re-evaluation (recompute-trace) | No — a diagnostic | landed #6372 |
+| make **eval-grain** duplication cheap (runtime Share/memoize) | **Yes** | execution-spine `materialize`/Share |
 
-D3 is exactly this split: the **effect half** is a static wall (two producer nodes, one hash, effect idempotent — decidable now, no interpreter). The **pure-value runtime** half (the ~135k eval-duplicates the recompute-trace found) is the spine's `Share`, correctly deferred. The half the operator actually wants — "kill compile → recompile" — is the effect half, a static wall today. And effect/producer nodes are **sparse** (hundreds corpus-wide, not the millions of eval nodes), so a one-pass content-hash grouping over the effect set does **not** inherit the enforcement-witness's whole-corpus N² eval cost — cheap-interpreted, no S2.
+The safe-to-collapse split *is* this boundary: the **effect / placement** grain is a static wall (decidable now — sparse effect/placement nodes, one-pass content-hash grouping, no whole-corpus N² eval walk). The **pure-value runtime** grain (the ~135k eval-duplicates the recompute-trace found) is the spine's `Share`, correctly deferred — but the pure *node* fork is still statically detectable and rewireable, which is what the operator wants. **One law, several grains; the placement/effect grains ship now, the eval grain waits for the spine.**
 
-This is the spine's own **materialize: Recompute-vs-Share** law delivered at the one grain where it is a static wall today (job/effect grain = sharing is a rewire/file), with the eval grain (sharing is runtime memoization) left to the spine. **One law, two grains, one shippable now.**
+## 8. De-risking — the witness (build FIRST), placement-grain first
 
-## 8. Scope and sequence
+Before any corpus fold, a witness proves the discriminant. **Placement-grain is the first witness** (the flagship, and the grain where the missing concept is nameable and the fix concrete):
 
-- **In scope now:** the structural (D1) + fork (D2) + effect-idempotency (D3-effect) + cost-floor (D4) lens over the corpus `Node` graph, with the declared-oracle escape. The four-case witness first.
-- **Deferred to the spine:** pure-value *runtime* Share (eval-grain memoization). The lens still statically detects and rewires pure *node* forks — only the runtime elimination waits.
-- **Sequence:** (a) four-case discriminating witness proving the discriminant; (b) the `effect_group_collapsible` N-ary fold over the pairwise `effects.dag` authority; (c) corpus fold grouping `content_hash` over the effect/producer node set, gated by D4 cost floor; (d) fold the shell lens (#6372) in as the argv-grain instance.
+- **RED — placement duplication.** The three-job CI model: one `ci_release_build_script` identity materialized at 3 `needs:[]` jobs with no artifact Share edge → **exactly one** flagged materialization-without-share, naming the rewire (one build job → artifact → `needs: build` + download). Red control: add the Share edge (model `needs: build` + upload/download) → violation disappears.
+- **ADMISSIBLE — declared per-placement.** A computation legitimately required per-placement (e.g. a per-runner health check) carries a declared escape (the `ReplicatedOracle` analogue) → not flagged; observed ≠ declared → flagged.
 
-## 9. Dissolution triggers
+Then the identity-lattice cases (fork/effect/cost), carried from the first design:
 
-- **Endgame — hash-consing (§3):** when construction is content-addressed (share content, keep `occurrence_id` as provenance), pure forks become unwritable and the *pure* arm of this lens dissolves into construction (§5 strongest form). The effect arm persists (effects are not value-shared by hash-consing).
-- **Spine `Share`:** when demands are execution-spine `DependencyView` nodes and `materialize` dedups by construction, the eval-grain residue this lens does not cover retires to the undeclared-demand residue — the same dissolution the shell lens (#6372) already declares (`WallAfterGrounding → RealizationDispatch`).
-- **Normalization ratchet (§4):** never fully dissolves — semantic equivalence is undecidable. Honestly permanent; new normalizers are additive walls, not a path to "never."
+- **GREEN — reuse.** One node, two in-edges → must not flag (red control: flag reuse ⇒ multiplicity-source axis is broken).
+- **RED — pure fork.** Two distinct-occurrence content-identical pure nodes above the cost floor → one violation (red control: perturb one subtree so hashes differ → violation disappears, proving content-identity not position).
+- **EFFECT-GATED.** Two `AppendEffect` (non-idempotent) → not flagged; two `CreateIfAbsent`-equal-key → flagged (proves D3 reads `effects.dag`).
+- **COST-FLOOR.** Two `Int(0)` below floor → not flagged; drop floor to 0 → flagged (proves the floor suppresses the flood).
+- **BOTTOM.** A structurally-distinct pair with no declared normalizer/bound → classified `IdentityUnknown { cause }` with the *typed cause*, reported never-merged (red control: a silent merge here is the absorbing-fallback §5 forbids).
+
+## 9. Sequence and scope
+
+- **In scope now:** the `materialize`-law lens over the corpus — identity lattice (structural + normalized), multiplicity-source axis (fork + placement + runtime-call + subtree), effect-idempotency + cost gates, declared-exception escape, and the typed `IdentityUnknown` bottom. Placement-grain witness first.
+- **Deferred to the spine:** pure-value *runtime* Share (eval-grain memoization). Static detection/rewire of pure node forks stays in scope.
+- **Order:** (a) placement-grain witness on the CI build ×3 case; (b) the identity-lattice + effect/cost witnesses; (c) `effect_group_collapsible` N-ary fold over the pairwise `effects.dag` authority; (d) corpus fold; (e) fold #6372 in as the argv-grain instance.
+
+## 10. Dissolution triggers
+
+- **Hash-consing (§3/§5):** content-addressed construction (`MissingEnforcement` supplied) makes pure forks unwritable; the pure arm dissolves into construction. The effect/placement arms persist (not value-shared by hash-consing).
+- **Spine `Share`:** when demands are execution-spine `DependencyView` nodes and `materialize` dedups by construction, the eval-grain residue retires to the undeclared-demand residue — the same dissolution #6372 declares (`WallAfterGrounding → RealizationDispatch`).
+- **`IdentityUnknown` drain:** each typed-cause bottom dissolves when its named concept is grounded or enforcement added — the lens's own backlog, shrinking as the model matures. It never becomes a permanent "undecidable" (§4).
