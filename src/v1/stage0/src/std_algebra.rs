@@ -281,18 +281,42 @@ pub struct AlgebraFieldTemplate {
     pub callback_element_position: Option<i64>,
 }
 
+pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
+    v1_rt::rc_map_insert(
+        v1_rt::rc_map_insert(
+            v1_rt::rc_map_insert(
+                v1_rt::rc_map_insert(
+                    v1_rt::rc_map_insert(
+                        v1_rt::rc_map_insert(
+                            v1_rt::rc_map_insert(
+                                v1_rt::rc_empty_map::<String, AlgebraProfile>(),
+                                "Int".to_string(),
+                                AlgebraProfile::OrderedRingProfile,
+                            ),
+                            "Float".to_string(),
+                            AlgebraProfile::ApproximateFieldProfile,
+                        ),
+                        "Bool".to_string(),
+                        AlgebraProfile::BooleanAlgebraProfile,
+                    ),
+                    "String".to_string(),
+                    AlgebraProfile::FreeMonoidScalarProfile,
+                ),
+                "List".to_string(),
+                AlgebraProfile::FreeMonoidCollectionProfile,
+            ),
+            "Set".to_string(),
+            AlgebraProfile::BooleanAlgebraCollectionProfile,
+        ),
+        "Map".to_string(),
+        AlgebraProfile::PartialFunctionProfile,
+    )
+}
+
 pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, AlgebraProfile>> = {
-            let mut __m = HashMap::new();
-            __m.insert("Int".to_string(), AlgebraProfile::OrderedRingProfile);
-            __m.insert("Float".to_string(), AlgebraProfile::ApproximateFieldProfile);
-            __m.insert("Bool".to_string(), AlgebraProfile::BooleanAlgebraProfile);
-            __m.insert("String".to_string(), AlgebraProfile::FreeMonoidScalarProfile);
-            __m.insert("List".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
-            __m.insert("Set".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
-            __m.insert("Map".to_string(), AlgebraProfile::PartialFunctionProfile);
-            Rc::new(__m)
+            kernel_algebra_profile_value()
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, AlgebraProfile>>| c.clone())
