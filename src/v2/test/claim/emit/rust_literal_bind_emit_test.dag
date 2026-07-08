@@ -1,0 +1,216 @@
+module v2.test.emit.rust_literal_bind_emit
+
+import v2.compiler.body_producer {
+  produce_mvp1_bind_arrow_with_body,
+  produce_mvp1_bind_arrow_with_body_wrong_value
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust {
+  rust_literal_emit_string_refusal_note,
+  rust_mvp1_bind_bool_literal_arrow_node,
+  rust_mvp1_bind_bool_literal_source_text,
+  rust_mvp1_bind_bool_literal_wrong_arrow_node,
+  rust_mvp1_bind_bool_literal_wrong_source_text,
+  rust_mvp1_bind_char_literal_arrow_node,
+  rust_mvp1_bind_char_literal_source_text,
+  rust_mvp1_bind_char_literal_wrong_arrow_node,
+  rust_mvp1_bind_char_literal_wrong_source_text,
+  rust_mvp1_bind_int_literal_source_text,
+  rust_mvp1_bind_int_literal_wrong_source_text,
+  rust_mvp1_bind_literal_target_model
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model {
+  TargetModel,
+  target_value_expression_string_literal,
+  target_value_expression_tokens_from_target,
+  target_value_expression_projection_from_target
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
+import v2.std.witness { Violates, Witness }
+import v2.std.algebra { free_monoid_type_node }
+import v2.std.compilers.target_model { char_kernel_type_node }
+
+fn rust_literal_bind_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_literal_bind_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_literal_bind_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: rust_literal_bind_facts_miss }
+  }
+}
+
+fn rust_literal_bind_emit_from_root(root: Node, target: TargetModel) -> Outcome<Medium<String>> {
+  emit(tree: rust_literal_bind_inferred_tree_for(root: root), target: target)
+}
+
+fn rust_literal_bind_int_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: produce_mvp1_bind_arrow_with_body(),
+    f: fn(root) {
+      rust_literal_bind_emit_from_root(root: root, target: target)
+    }
+  )
+}
+
+fn rust_literal_bind_int_wrong_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: produce_mvp1_bind_arrow_with_body_wrong_value(),
+    f: fn(root) {
+      rust_literal_bind_emit_from_root(root: root, target: target)
+    }
+  )
+}
+
+fn rust_literal_bind_int_emit_accepts() -> Bool {
+  match rust_literal_bind_int_emit_from_producer(target: rust_mvp1_bind_literal_target_model()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_mvp1_bind_int_literal_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_literal_bind_int_wrong_value_discriminates() -> Bool {
+  match rust_literal_bind_int_emit_from_producer(target: rust_mvp1_bind_literal_target_model()) {
+    Accepted { value: canonical, diagnostics: dc } =>
+      match rust_literal_bind_int_wrong_emit_from_producer(target: rust_mvp1_bind_literal_target_model()) {
+        Accepted { value: wrong, diagnostics: dw } =>
+          (wrong.carried == rust_mvp1_bind_int_literal_wrong_source_text) &&
+          (wrong.carried != canonical.carried) &&
+          (dc == None) &&
+          (dw == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_literal_bind_bool_emit_accepts() -> Bool {
+  match rust_literal_bind_emit_from_root(
+    root: rust_mvp1_bind_bool_literal_arrow_node(),
+    target: rust_mvp1_bind_literal_target_model()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_mvp1_bind_bool_literal_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_literal_bind_bool_wrong_value_discriminates() -> Bool {
+  match rust_literal_bind_emit_from_root(
+    root: rust_mvp1_bind_bool_literal_arrow_node(),
+    target: rust_mvp1_bind_literal_target_model()
+  ) {
+    Accepted { value: canonical, diagnostics: dc } =>
+      match rust_literal_bind_emit_from_root(
+        root: rust_mvp1_bind_bool_literal_wrong_arrow_node(),
+        target: rust_mvp1_bind_literal_target_model()
+      ) {
+        Accepted { value: wrong, diagnostics: dw } =>
+          (wrong.carried == rust_mvp1_bind_bool_literal_wrong_source_text) &&
+          (wrong.carried != canonical.carried) &&
+          (dc == None) &&
+          (dw == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_literal_bind_char_emit_accepts() -> Bool {
+  match rust_literal_bind_emit_from_root(
+    root: rust_mvp1_bind_char_literal_arrow_node(),
+    target: rust_mvp1_bind_literal_target_model()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_mvp1_bind_char_literal_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_literal_bind_char_wrong_value_discriminates() -> Bool {
+  match rust_literal_bind_emit_from_root(
+    root: rust_mvp1_bind_char_literal_arrow_node(),
+    target: rust_mvp1_bind_literal_target_model()
+  ) {
+    Accepted { value: canonical, diagnostics: dc } =>
+      match rust_literal_bind_emit_from_root(
+        root: rust_mvp1_bind_char_literal_wrong_arrow_node(),
+        target: rust_mvp1_bind_literal_target_model()
+      ) {
+        Accepted { value: wrong, diagnostics: dw } =>
+          (wrong.carried == rust_mvp1_bind_char_literal_wrong_source_text) &&
+          (wrong.carried != canonical.carried) &&
+          (dc == None) &&
+          (dw == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
+  match target_value_expression_projection_from_target(
+    target: rust_mvp1_bind_literal_target_model()
+  ) {
+    Accepted { value: projection, diagnostics: pd } =>
+      match target_value_expression_tokens_from_target(
+        expr: target_value_expression_string_literal(
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [],
+            occurrence_id: SyntheticOccurrence
+          }
+        ),
+        target: rust_mvp1_bind_literal_target_model(),
+        projection: projection
+      ) {
+        Rejected { diagnostics: d } =>
+          (d.head.reason == ^target_value_expression_emit_unsupported_kind) &&
+          (pd == None) &&
+          (rust_literal_emit_string_refusal_note != "")
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_literal_bind_string_rope_carrier_is_free_monoid() -> Bool {
+  match free_monoid_type_node(inhabitant: char_kernel_type_node()).kind {
+    TypeNode { connective: Conj } => true
+    _ => false
+  }
+}
+
+test fn rust_literal_bind_emit_holds() -> Bool {
+  rust_literal_bind_int_emit_accepts()
+    && rust_literal_bind_int_wrong_value_discriminates()
+    && rust_literal_bind_bool_emit_accepts()
+    && rust_literal_bind_bool_wrong_value_discriminates()
+    && rust_literal_bind_char_emit_accepts()
+    && rust_literal_bind_char_wrong_value_discriminates()
+    && rust_literal_bind_string_rope_refusal_is_executed()
+    && rust_literal_bind_string_rope_carrier_is_free_monoid()
+}
