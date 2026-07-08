@@ -181,7 +181,7 @@ type ParseTableRealization {
   memo_misses: Int
   memo_lookup_calls: Int
   nullable_set: Set<Symbol>
-  first_rows: List<ProductionFirstRow>
+  first_rows: Map<Symbol, List<Symbol>>
 }
 
 type ParseTable = ParseTableRealization
@@ -408,7 +408,7 @@ fn parse_table_empty() -> ParseTable {
     memo_misses: 0,
     memo_lookup_calls: 0,
     nullable_set: Set { member: fn(_) { false } },
-    first_rows: Empty
+    first_rows: empty_map()
   }
 }
 
@@ -972,11 +972,6 @@ type GrammarExprFirstFold {
   nullable: Bool
 }
 
-type ProductionFirstRow {
-  name: Symbol
-  terminals: List<Symbol>
-}
-
 type GrammarChoiceAmbiguityRow {
   production: Symbol
   overlap_terminals: List<Symbol>
@@ -985,7 +980,7 @@ type GrammarChoiceAmbiguityRow {
 
 type GrammarFirstAnalysis {
   nullable_set: Set<Symbol>
-  first_rows: List<ProductionFirstRow>
+  first_rows: Map<Symbol, List<Symbol>>
 }
 
 fn grammar_empty_terminal_list() -> List<Symbol> {
