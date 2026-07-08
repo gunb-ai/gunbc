@@ -1,0 +1,98 @@
+module v2.lens.affected_set.corpus_dependency_view
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Millisecond, Minute, millisecond, minute }
+import std.nat { Nat }
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.dependency { DependencyView, append_dependency_views, dependency_lens }
+import v2.std.fn_index { fn_arrow_decl_facts_live, fn_arrow_decl_substrate_is_whole_tree }
+import v2.std.integer { Int }
+import v2.std.text { String }
+
+data corpus_dependency_view_measurement_note: String = "Phase-0 DependencyView build probe (lever-a slice 2). Folds dependency_lens over every FnArrowDecl in the resolved whole-tree context (fn_arrow_decl_facts_live) — the same whole-corpus substrate wiring_liveness uses. Production affected_set uses dependency_lens(root: InferredTree.root) once; whole-tree InferredTree root is gated on resolve grounding (#6239). This probe upper-bounds single-root fold cost by summing per-decl folds; dissolve-on: InferredTree.root lands, repoint probe at dependency_lens(root: tree.root) and delete the per-decl aggregation."
+
+data corpus_dependency_view_resolve_budget: Minute = minute(count: 90)
+
+data corpus_dependency_view_resolve_budget_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: corpus_dependency_view_resolve_budget names the measure_dependency_view_build --resolve-budget-minutes host cap; Minute count projects to Int at the Rust emit seam only once CI budgets ground on std.measure end-to-end."
+
+type CorpusDependencyViewResolvePhaseMark {
+  frontend_done: Millisecond
+  normalize_done: Millisecond
+  reconcile_done: Millisecond
+  view_build_done: Millisecond
+}
+
+type CorpusDependencyViewMeasurementVerdict
+  = Completed {
+      resolve_wall: Millisecond,
+      view_build_wall: Millisecond,
+      edge_count: Int,
+      decl_count: Int
+    }
+  | WallPricedAbort {
+      aborted_wall: Millisecond
+      budget: Minute
+      phase_marks: CorpusDependencyViewResolvePhaseMark
+      last_phase: String
+    }
+
+data corpus_dependency_view_measurement_receipt: CorpusDependencyViewMeasurementVerdict = WallPricedAbort {
+  aborted_wall: millisecond(count: 3220703),
+  budget: corpus_dependency_view_resolve_budget,
+  phase_marks: CorpusDependencyViewResolvePhaseMark {
+    frontend_done: millisecond(count: 4104),
+    normalize_done: millisecond(count: 4677),
+    reconcile_done: millisecond(count: 0),
+    view_build_done: millisecond(count: 0)
+  },
+  last_phase: "post_normalize_stuck_in_reconcile"
+}
+
+data corpus_dependency_view_per_pr_execution_gate: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.lens.affected_set.corpus_dependency_view",
+    decl_name: "corpus_dependency_views_live",
+    field: WholeDeclaration
+  }
+}
+
+data corpus_dependency_view_per_pr_execution_gate_note: String = "Per-PR DependencyView execution (compile-clean scoping + floor witness entry_file_touched axis over live corpus) is blocked-on-#6239 on-carrier: fn_arrow_decl_substrate_is_whole_tree must be true before corpus_dependency_views_live runs. Receipt: corpus_dependency_view_measurement_receipt = WallPricedAbort @3220703ms. Dissolve-on: #6239 lands, delete gate row and re-run measure_dependency_view_build under the 90m cap."
+
+fn corpus_dependency_view_per_pr_substrate_ready() -> Bool {
+  fn_arrow_decl_substrate_is_whole_tree()
+}
+
+fn corpus_dependency_view_per_pr_substrate_refuse() -> Bool {
+  corpus_dependency_view_per_pr_substrate_refuse()
+}
+
+data corpus_dependency_view_per_pr_substrate_refuse_host_intrinsic_note: String = "Host-intrinsic stub (v2.std.fn_index pattern): self-call body is not executed; v1_interpreter routes to eval_corpus_dependency_view_per_pr_substrate_refuse → InterpError::TypeError naming #6239 (coproduct_reflection.rs). Interim Bool carrier is not an honest value — runtime is fail-closed refusal, not false. Callers that need model honesty use corpus_dependency_view_per_pr_substrate_ready() guard (compile-clean RequireWholeTree, cli_run must-run) before reaching refuse. DISSOLVES WHEN #6239 lands: delete refuse fn, bridge, and ensure_* helper; live corpus_dependency_views_live runs without gate."
+
+fn ensure_corpus_dependency_view_per_pr_substrate() -> Bool {
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    true
+  } else {
+    corpus_dependency_view_per_pr_substrate_refuse()
+  }
+}
+
+fn corpus_dependency_views_live() -> List<DependencyView> {
+  let _ready = ensure_corpus_dependency_view_per_pr_substrate()
+  fold(fn_arrow_decl_facts_live(), init: [], f: fn(acc, decl) {
+    append_dependency_views(
+      left: acc,
+      right: dependency_lens(root: decl.output)
+    )
+  })
+}
+
+fn corpus_dependency_view_edge_count() -> Int {
+  length(xs: corpus_dependency_views_live())
+}
+
+fn corpus_dependency_view_decl_count() -> Int {
+  length(xs: fn_arrow_decl_facts_live())
+}

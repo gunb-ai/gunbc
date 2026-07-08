@@ -6515,13 +6515,16 @@ fn build_positional_payload_variants(modules: List<TypedModule>, type_summaries:
   )
 }
 
-fn rust_corpus_repr(modules: List<TypedModule>) -> RustCorpusRepr {
-  let has_seed = modules |> any(m =>
+fn corpus_has_v1_seed_source_indices(modules: List<TypedModule>) -> Bool {
+  modules |> any(m =>
     map_keys(m.type_env.source_indices) |> any(k => contains(k, "/v1/") || contains(k, "src/v1")))
-  if has_seed { HostNative } else { FaithfulFreeMonoid }
 }
 
-fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
+fn rust_corpus_repr(has_v1_seed: Bool) -> RustCorpusRepr {
+  if has_v1_seed { HostNative } else { FaithfulFreeMonoid }
+}
+
+fn build_emit_graph_info(modules: List<TypedModule>, has_v1_seed: Bool) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map()
   }
@@ -6551,7 +6554,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
-    corpus_repr: rust_corpus_repr(modules: modules)
+    corpus_repr: rust_corpus_repr(has_v1_seed: has_v1_seed)
   }
 }
 
@@ -6882,6 +6885,7 @@ fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
-  let emit_info = build_emit_graph_info(modules: modules)
+  let has_v1_seed = corpus_has_v1_seed_source_indices(modules: modules)
+  let emit_info = build_emit_graph_info(modules: modules, has_v1_seed: has_v1_seed)
   ResolvedGraph { modules: modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info }
 }

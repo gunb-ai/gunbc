@@ -9,7 +9,9 @@
 use std::process::ExitCode;
 
 use serde::Serialize;
-use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVERY_EXCLUDES};
+use v1_compiler::cli_run::{
+    whole_corpus_semantic_oracle_snapshot, whole_tree_resolve_exclusion_substrings,
+};
 
 #[derive(Serialize)]
 struct CaptureOutput<'a> {
@@ -25,17 +27,7 @@ struct CaptureOutput<'a> {
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut exclude_subpaths: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|sub| (*sub).to_string())
-        .collect();
-    exclude_subpaths.extend([
-        "test/fixture/".to_string(),
-        "/test/".to_string(),
-        "nat_semiring_rung".to_string(),
-        "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
-        "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
-    ]);
+    let mut exclude_subpaths = whole_tree_resolve_exclusion_substrings();
 
     let mut i = 1;
     while i < args.len() {

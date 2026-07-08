@@ -809,6 +809,25 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
+/// module census (same exclude set as `whole_tree_resolved_ctx` / measurement probe).
+pub fn eval_fn_arrow_decl_substrate_is_whole_tree(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    Ok(Value::Bool(
+        crate::cli_run::fn_arrow_decl_substrate_is_whole_tree_for_census(ctx.modules.len()),
+    ))
+}
+
+pub fn eval_corpus_dependency_view_per_pr_substrate_refuse(
+    _ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    Err(InterpError::TypeError {
+        msg: "corpus_dependency_view per-PR execution refused: fn_arrow_decl_substrate_is_whole_tree is false (blocked-on-#6239)".to_string(),
+    })
+}
+
 fn literal_source_lexeme(
     node: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,

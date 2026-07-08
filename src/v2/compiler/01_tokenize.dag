@@ -156,31 +156,28 @@ fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult
 }
 
 fn lex_repeat_loop(elem_r: LexMatchThunk, init: RepeatState) -> RepeatState {
-  fold_list(
-    xs: init.remaining,
-    empty: init,
-    cons: fn(state, _) {
-      match state.done {
-        true => state
-        false =>
-          match elem_r.apply(state.remaining) {
-            LexMatchRejected =>
-              RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
-            LexMatchAccepted { remaining: rest, lexeme: consumed } =>
-              match string_is_empty(s: consumed) {
-                true =>
-                  RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
-                false =>
-                  RepeatState {
-                    remaining: rest,
-                    lexeme: list_append(left: state.lexeme, right: consumed),
-                    done: false
-                  }
+  if init.done {
+    init
+  } else {
+    match elem_r.apply(init.remaining) {
+      LexMatchRejected =>
+        RepeatState { remaining: init.remaining, lexeme: init.lexeme, done: true }
+      LexMatchAccepted { remaining: rest, lexeme: consumed } =>
+        match string_is_empty(s: consumed) {
+          true =>
+            RepeatState { remaining: init.remaining, lexeme: init.lexeme, done: true }
+          false =>
+            lex_repeat_loop(
+              elem_r: elem_r,
+              init: RepeatState {
+                remaining: rest,
+                lexeme: list_append(left: init.lexeme, right: consumed),
+                done: false
               }
-          }
-      }
+            )
+        }
     }
-  )
+  }
 }
 
 fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
@@ -465,16 +462,16 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             false =>
               LexWalkAcc {
                 remaining: remaining,
-                tokens: list_snoc_item(
-                  xs: acc.tokens,
-                  item: Token {
+                tokens: Cons {
+                  head: Token {
                     class: class,
                     lexeme: lexeme,
                     file: acc.file,
                     start: acc.pos,
                     end: acc.pos + length(xs: lexeme)
-                  }
-                ),
+                  },
+                  tail: acc.tokens
+                },
                 pos: acc.pos + length(xs: lexeme),
                 done: false,
                 error: false,
@@ -503,7 +500,7 @@ fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStr
   if result.error {
     Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
   } else {
-    Accepted { value: token_stream_new(all: result.tokens), diagnostics: None }
+    Accepted { value: token_stream_new(all: result.tokens.reverse()), diagnostics: None }
   }
 }
 

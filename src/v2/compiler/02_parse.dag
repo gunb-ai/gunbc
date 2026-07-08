@@ -61,7 +61,7 @@ import v2.std.provenance {
   span_index_merge,
   span_index_record
 }
-import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_insert }
+import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_get, map_insert }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_snoc_item, list_tail, unique }
 import v2.std.text { Char, CharAbsent, CharFound, string_head }
@@ -152,7 +152,7 @@ type ParseSyncState {
 type ParseRepeatAcc {
   remaining: List<Token>
   acc_nodes: List<Node>
-  acc_diags: List<Diagnostic>
+  acc_diags: List<List<Diagnostic>>
   done: Bool
   prov: ParseProvenanceState
   table: ParseTable
@@ -181,7 +181,7 @@ type ParseTableRealization {
   memo_misses: Int
   memo_lookup_calls: Int
   nullable_set: Set<Symbol>
-  first_rows: List<ProductionFirstRow>
+  first_rows: Map<Symbol, List<Symbol>>
 }
 
 type ParseTable = ParseTableRealization
@@ -408,7 +408,7 @@ fn parse_table_empty() -> ParseTable {
     memo_misses: 0,
     memo_lookup_calls: 0,
     nullable_set: Set { member: fn(_) { false } },
-    first_rows: Empty
+    first_rows: empty_map()
   }
 }
 
@@ -644,10 +644,24 @@ fn parse_nonterminal_memoized(
 type ParseMatchArmStmtAcc {
   remaining: List<Token>
   acc_nodes: List<Node>
-  acc_diags: List<Diagnostic>
+  acc_diags: List<List<Diagnostic>>
   done: Bool
   prov: ParseProvenanceState
   table: ParseTable
+}
+
+fn parse_flatten_diag_batches(batches: List<List<Diagnostic>>) -> List<Diagnostic> {
+  fold_list(
+    xs: batches,
+    empty: Empty,
+    cons: fn(acc, batch) {
+      fold_list(
+        xs: batch,
+        empty: acc,
+        cons: fn(inner_acc, d) { Cons { head: d, tail: inner_acc } }
+      )
+    }
+  ).reverse()
 }
 
 fn parse_char_is_arm_pattern_lead(c: Char) -> Bool {
@@ -789,8 +803,8 @@ fn parse_match_arm_stmt_step(
             root: root,
             acc: ParseMatchArmStmtAcc {
               remaining: rest,
-              acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
-              acc_diags: list_append(left: acc.acc_diags, right: diags),
+              acc_nodes: Cons { head: cap, tail: acc.acc_nodes },
+              acc_diags: Cons { head: diags, tail: acc.acc_diags },
               done: false,
               prov: prov1,
               table: table1
@@ -832,11 +846,12 @@ fn parse_match_arm_stmt_body(
     if is_empty(xs: result.acc_nodes) {
       ParseExprRejected { diagnostics: [], table: result.table }
     } else {
-      let stamped = parse_stamp_match_arm_stmt_nodes(acc_nodes: result.acc_nodes, prov: result.prov)
+      let ordered_nodes = result.acc_nodes.reverse()
+      let stamped = parse_stamp_match_arm_stmt_nodes(acc_nodes: ordered_nodes, prov: result.prov)
       ParseExprAccepted {
         remaining: result.remaining,
         captured: stamped.node,
-        diagnostics: result.acc_diags,
+        diagnostics: parse_flatten_diag_batches(batches: result.acc_diags.reverse()),
         prov: stamped.prov,
         table: result.table
       }
@@ -971,11 +986,6 @@ type GrammarExprFirstFold {
   nullable: Bool
 }
 
-type ProductionFirstRow {
-  name: Symbol
-  terminals: List<Symbol>
-}
-
 type GrammarChoiceAmbiguityRow {
   production: Symbol
   overlap_terminals: List<Symbol>
@@ -984,7 +994,7 @@ type GrammarChoiceAmbiguityRow {
 
 type GrammarFirstAnalysis {
   nullable_set: Set<Symbol>
-  first_rows: List<ProductionFirstRow>
+  first_rows: Map<Symbol, List<Symbol>>
 }
 
 fn grammar_empty_terminal_list() -> List<Symbol> {
@@ -1016,13 +1026,11 @@ fn first_list_intersect(left: List<Symbol>, right: List<Symbol>) -> List<Symbol>
   )
 }
 
-fn production_first_row_lookup(rows: List<ProductionFirstRow>, name: Symbol) -> List<Symbol> {
-  match list_at_optional(
-    xs: filter(xs: rows, predicate: fn(r) { r.name == name }),
-    index: 0
-  ) {
-    Present { value: row } => row.terminals
-    Absent => grammar_empty_terminal_list()
+fn production_first_row_lookup(rows: Map<Symbol, List<Symbol>>, name: Symbol) -> List<Symbol> {
+  match map_get(m: rows, key: name) {
+    Accepted { value: Present { value: terminals }, diagnostics: _ } => terminals
+    Accepted { value: Absent, diagnostics: _ } => grammar_empty_terminal_list()
+    Rejected { diagnostics: _ } => grammar_empty_terminal_list()
   }
 }
 
@@ -1036,7 +1044,7 @@ fn expr_first_fold_terminal(token_class: Symbol) -> GrammarExprFirstFold {
 fn expr_first_fold_nonterminal(
   name: Symbol,
   nullable_set: Set<Symbol>,
-  first_rows: List<ProductionFirstRow>
+  first_rows: Map<Symbol, List<Symbol>>
 ) -> GrammarExprFirstFold {
   GrammarExprFirstFold {
     terminals: production_first_row_lookup(rows: first_rows, name: name),
@@ -1072,7 +1080,7 @@ fn expr_first_fold_repeat(element: GrammarExprFirstFold) -> GrammarExprFirstFold
 fn expr_first_fold(
   expr: GrammarExpr,
   nullable_set: Set<Symbol>,
-  first_rows: List<ProductionFirstRow>
+  first_rows: Map<Symbol, List<Symbol>>
 ) -> GrammarExprFirstFold {
   fold_grammar_expr(
     expr: expr,
@@ -1089,44 +1097,34 @@ fn expr_first_fold(
   )
 }
 
-fn upsert_production_first_row(
-  rows: List<ProductionFirstRow>,
-  row: ProductionFirstRow
-) -> List<ProductionFirstRow> {
-  list_snoc_item(
-    xs: filter(xs: rows, predicate: fn(r) { r.name != row.name }),
-    item: row
-  )
-}
-
-fn compute_production_first_row_step(
-  rows: List<ProductionFirstRow>,
+fn compute_production_first_row_terminals(
+  rows: Map<Symbol, List<Symbol>>,
   p: GrammarProduction,
   nullable_set: Set<Symbol>
-) -> ProductionFirstRow {
-  let folded = expr_first_fold(
+) -> List<Symbol> {
+  expr_first_fold(
     expr: p.expression,
     nullable_set: nullable_set,
     first_rows: rows
-  )
-  ProductionFirstRow { name: p.name, terminals: folded.terminals }
+  ).terminals
 }
 
 fn compute_production_first_rows(
   root: GrammarRoot,
   nullable_set: Set<Symbol>
-) -> List<ProductionFirstRow> {
+) -> Map<Symbol, List<Symbol>> {
   fold_list(
     xs: root.productions,
-    empty: Empty,
+    empty: empty_map(),
     cons: fn(acc, _) {
       fold_list(
         xs: root.productions,
         empty: acc,
         cons: fn(rows, p) {
-          upsert_production_first_row(
-            rows: rows,
-            row: compute_production_first_row_step(
+          map_insert(
+            m: rows,
+            key: p.name,
+            value: compute_production_first_row_terminals(
               rows: rows,
               p: p,
               nullable_set: nullable_set
@@ -1170,7 +1168,7 @@ fn collect_choice_ambiguities_in_expr(
   expr: GrammarExpr,
   production: Symbol,
   nullable_set: Set<Symbol>,
-  first_rows: List<ProductionFirstRow>,
+  first_rows: Map<Symbol, List<Symbol>>,
   acc: List<GrammarChoiceAmbiguityRow>
 ) -> List<GrammarChoiceAmbiguityRow> {
   match expr {
@@ -1824,6 +1822,62 @@ fn parse_expr_optional(
   }
 }
 
+fn parse_expr_repeat_step(
+  element: GrammarExpr,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  acc: ParseRepeatAcc
+) -> ParseRepeatAcc {
+  if acc.done {
+    acc
+  } else {
+    match parse_expr_with_first(
+      expr: element,
+      tokens: acc.remaining,
+      all_tokens: all_tokens,
+      root: root,
+      table: acc.table,
+      prov: acc.prov
+    ) {
+      ParseExprRejected { diagnostics: _, table: table1 } =>
+        ParseRepeatAcc {
+          remaining: acc.remaining,
+          acc_nodes: acc.acc_nodes,
+          acc_diags: acc.acc_diags,
+          done: true,
+          prov: acc.prov,
+          table: table1
+        }
+      ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+        match length(xs: rest) != length(xs: acc.remaining) {
+          true =>
+            parse_expr_repeat_step(
+              element: element,
+              all_tokens: all_tokens,
+              root: root,
+              acc: ParseRepeatAcc {
+                remaining: rest,
+                acc_nodes: Cons { head: cap, tail: acc.acc_nodes },
+                acc_diags: Cons { head: diags, tail: acc.acc_diags },
+                done: false,
+                prov: prov1,
+                table: table1
+              }
+            )
+          false =>
+            ParseRepeatAcc {
+              remaining: acc.remaining,
+              acc_nodes: acc.acc_nodes,
+              acc_diags: acc.acc_diags,
+              done: true,
+              prov: acc.prov,
+              table: table1
+            }
+        }
+    }
+  }
+}
+
 fn parse_expr_repeat(
   element: GrammarExpr,
   tokens: List<Token>,
@@ -1840,60 +1894,12 @@ fn parse_expr_repeat(
     prov: prov,
     table: table
   }
-  let result = fold_list(
-    xs: tokens,
-    empty: init,
-    cons: fn(acc, _) {
-      match acc.done {
-        true => acc
-        false =>
-          match parse_expr_with_first(
-            expr: element,
-            tokens: acc.remaining,
-            all_tokens: all_tokens,
-            root: root,
-            table: acc.table,
-            prov: acc.prov
-          ) {
-            ParseExprRejected { diagnostics: _, table: table1 } =>
-              ParseRepeatAcc {
-                remaining: acc.remaining,
-                acc_nodes: acc.acc_nodes,
-                acc_diags: acc.acc_diags,
-                done: true,
-                prov: acc.prov,
-                table: table1
-              }
-            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
-              match length(xs: rest) != length(xs: acc.remaining) {
-                true =>
-                  ParseRepeatAcc {
-                    remaining: rest,
-                    acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
-                    acc_diags: list_append(left: acc.acc_diags, right: diags),
-                    done: false,
-                    prov: prov1,
-                    table: table1
-                  }
-                false =>
-                  ParseRepeatAcc {
-                    remaining: acc.remaining,
-                    acc_nodes: acc.acc_nodes,
-                    acc_diags: acc.acc_diags,
-                    done: true,
-                    prov: acc.prov,
-                    table: table1
-                  }
-              }
-          }
-      }
-    }
-  )
-  let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes, prov: result.prov)
+  let result = parse_expr_repeat_step(element: element, all_tokens: all_tokens, root: root, acc: init)
+  let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes.reverse(), prov: result.prov)
   ParseExprAccepted {
     remaining: result.remaining,
     captured: stamped.node,
-    diagnostics: result.acc_diags,
+    diagnostics: parse_flatten_diag_batches(batches: result.acc_diags.reverse()),
     prov: stamped.prov,
     table: result.table
   }

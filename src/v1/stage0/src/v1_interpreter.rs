@@ -1344,6 +1344,8 @@ fn call_function(
             msg: format!("'{}' has no body", fn_node.name),
         })?;
 
+    let _dag_fn_guard = DagFnGuard::enter(fn_node.name.as_str());
+
     let cached_params = {
         let key = Rc::as_ptr(fn_node) as usize;
         // Bind the lookup to a local so the immutable borrow is released before the
@@ -2141,6 +2143,7 @@ fn match_pattern(
                         if items.is_empty() {
                             None
                         } else {
+                            record_list_cons_tail_split(items.len());
                             let head = items[0].clone();
                             let tail = {
                                 let mut rest = (**items).clone();
@@ -2290,7 +2293,13 @@ pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhab
 
 pub(crate) const STD_CONCEPT_INDEX_BRIDGE_FNS: &[&str] = &["concept_decl_facts_live"];
 
-pub(crate) const STD_FN_INDEX_BRIDGE_FNS: &[&str] = &["fn_arrow_decl_facts_live"];
+pub(crate) const STD_FN_INDEX_BRIDGE_FNS: &[&str] = &[
+    "fn_arrow_decl_facts_live",
+    "fn_arrow_decl_substrate_is_whole_tree",
+];
+
+pub(crate) const CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS: &[&str] =
+    &["corpus_dependency_view_per_pr_substrate_refuse"];
 
 pub(crate) const STD_DATA_INDEX_BRIDGE_FNS: &[&str] = &["data_init_decl_facts_live"];
 
@@ -2313,6 +2322,10 @@ pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {
 
 pub fn std_fn_index_bridge_fn_names() -> &'static [&'static str] {
     STD_FN_INDEX_BRIDGE_FNS
+}
+
+pub fn corpus_dependency_view_bridge_fn_names() -> &'static [&'static str] {
+    CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS
 }
 
 pub fn std_data_index_bridge_fn_names() -> &'static [&'static str] {
@@ -2357,6 +2370,15 @@ fn is_v4_std_fn_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool 
     ctx.item_registry
         .get(func_name)
         .is_some_and(|info| info.module_name == "v2.std.fn_index")
+}
+
+fn is_v4_corpus_dependency_view_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v2.lens.affected_set.corpus_dependency_view")
 }
 
 fn is_v4_std_data_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
@@ -2408,6 +2430,8 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             }
         }
     };
+    record_call_frequency(&func_name);
+
     let arg_nodes = &node.children;
 
     let args: Vec<(Option<String>, Value)> = arg_nodes
@@ -2468,7 +2492,21 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             "fn_arrow_decl_facts_live" => {
                 crate::coproduct_reflection::eval_fn_arrow_decl_facts_live(ctx, &args)
             }
+            "fn_arrow_decl_substrate_is_whole_tree" => {
+                crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree(ctx, &args)
+            }
             _ => unreachable!("fn_index bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_corpus_dependency_view_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "corpus_dependency_view_per_pr_substrate_refuse" => {
+                crate::coproduct_reflection::eval_corpus_dependency_view_per_pr_substrate_refuse(
+                    ctx, &args,
+                )
+            }
+            _ => unreachable!("corpus_dependency_view bridge fn set mismatch"),
         };
     }
 
@@ -2550,9 +2588,23 @@ fn eval_fold_list_native(
             })
         }
     };
+    // NOTE (nimble-otter-476, adhoc-c328b166-bca): a streaming left-fold that
+    // walks the Cons-chain without materializing this Vec was BUILT, proven
+    // byte-identical (parse-tree content hash equal on tiny/small across two
+    // independently-built binaries), and MEASURED -- it moved neither wall-clock
+    // (~20s both, within run-to-run noise) nor peak RSS (~168 MiB both) on the
+    // small file. Reason: the datetime driver folds `elem=Int` codepoint lists
+    // (trivial copy, not a deep clone) and the intermediate Vec is transient
+    // (freed each fold, so it never contributes to peak RSS), so removing it is
+    // a clean zero. The real O(n^2) is the CALLER re-folding the whole source
+    // (`lex_repeat_loop`, 01_tokenize.dag:158 -- routed to the tokenize lane),
+    // not this per-call materialization. Kept as `free_monoid_to_vec` rather
+    // than churning the seed for a measured-zero rewrite (DESIGN §6: denominate
+    // in displaced cost; a no-op displaces nothing).
     let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
         msg: format!("fold_list expects a list, got {}", xs.type_label()),
     })?;
+    record_fold_caller(items.len(), items.first(), "left");
     let mut acc = (*empty).clone();
     for item in items {
         acc = apply_closure(*cons, &[acc, item], env, ctx)?;
@@ -2577,6 +2629,7 @@ fn eval_fold_list_right_native(
     let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
         msg: format!("fold_list_right expects a list, got {}", xs.type_label()),
     })?;
+    record_fold_caller(items.len(), items.first(), "right");
     let mut acc = (*empty).clone();
     for item in items.into_iter().rev() {
         acc = apply_closure(*snoc, &[acc, item], env, ctx)?;
@@ -2645,9 +2698,12 @@ fn try_parse_table_memo_dispatch(
             st.lookups += 1;
             if let Some(v) = st.map.get(&memo_key).cloned() {
                 st.hits += 1;
+                drop(st);
+                record_parse_memo_lookup(&memo_key, true);
                 return Ok(Some(witness_holds(v, ctx)));
             }
             drop(st);
+            record_parse_memo_lookup(&memo_key, false);
             let result = call_function(ctx, fn_node, args, env)?;
             Ok(Some(result))
         }
@@ -4223,6 +4279,32 @@ fn render_shell_trace(argv: &[String]) {
     }
 }
 
+fn shell_completion_trace_line(
+    exit_code: i32,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+    wall: std::time::Duration,
+) -> String {
+    format!(
+        "[shell] done exit={exit_code} stdout={stdout_bytes} stderr={stderr_bytes} bytes wall={:.3}s",
+        wall.as_secs_f64()
+    )
+}
+
+/// Post-wait completion trace for every shell transport: exit, stdout/stderr bytes,
+/// spawn-to-wait wall seconds. Pairs with `render_shell_trace` (pre-spawn).
+fn render_shell_completion_trace(
+    exit_code: i32,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+    wall: std::time::Duration,
+) {
+    trace_emit(
+        OutputChannel::ShellTrace,
+        &shell_completion_trace_line(exit_code, stdout_bytes, stderr_bytes, wall),
+    );
+}
+
 fn shell_stdin_payload(val: &Value) -> InterpResult<Vec<u8>> {
     match val {
         Value::Str(s) => Ok(s.as_bytes().to_vec()),
@@ -4259,6 +4341,7 @@ fn dispatch_shell(
         let stdin_val = eval_expr(&stdin_node, param_env, ctx)?;
         let stdin_bytes = shell_stdin_payload(&stdin_val)?;
 
+        let wall_start = std::time::Instant::now();
         let mut child = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .stdin(Stdio::piped())
@@ -4280,22 +4363,39 @@ fn dispatch_shell(
                 })?;
         }
 
-        child
+        let output = child
             .wait_with_output()
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to wait on '{}': {}", argv[0], e),
-            })?
+            })?;
+        render_shell_completion_trace(
+            output.status.code().unwrap_or(-1),
+            output.stdout.len(),
+            output.stderr.len(),
+            wall_start.elapsed(),
+        );
+        output
     } else {
-        std::process::Command::new(&argv[0])
+        let wall_start = std::time::Instant::now();
+        let output = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .output()
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to execute '{}': {}", argv[0], e),
-            })?
+            })?;
+        render_shell_completion_trace(
+            output.status.code().unwrap_or(-1),
+            output.stdout.len(),
+            output.stderr.len(),
+            wall_start.elapsed(),
+        );
+        output
     };
 
+    let exit_code = output.status.code().unwrap_or(-1);
+
     Ok(ShellResult {
-        exit_code: output.status.code().unwrap_or(-1),
+        exit_code,
         stdout: String::from_utf8_lossy(&output.stdout)
             .trim_end()
             .to_string(),
@@ -6545,8 +6645,124 @@ thread_local! {
     static FLATTEN_COUNTERS: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
 }
 
+/// Process-global (not thread-local): a background dump thread reads this
+/// concurrently with the interpreting thread, so this map must be visible
+/// across threads rather than per-thread like `FLATTEN_COUNTERS` above.
+static FLATTEN_BY_SITE: std::sync::Mutex<
+    Option<std::collections::HashMap<(&'static str, u32), (u64, u64)>>,
+> = std::sync::Mutex::new(None);
+
 pub fn flatten_counters_snapshot() -> (u64, u64) {
     FLATTEN_COUNTERS.with(|c| c.get())
+}
+
+/// Per-call-site attribution for the `free_monoid_to_vec` O(n) materialization
+/// cost, keyed by the immediate caller's `file:line` (`#[track_caller]`).
+/// Residual-hunt instrumentation for adhoc-c328b166-bca's follow-on (datetime.dag
+/// still DNF after the three parse-stage fixes) -- MEASURE FIRST before any cut.
+pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u32, u64, u64)> {
+    let guard = FLATTEN_BY_SITE.lock().unwrap();
+    match guard.as_ref() {
+        Some(m) => m
+            .iter()
+            .map(|((file, line), (calls, total))| (*file, *line, *calls, *total))
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+// SCAFFOLD (adhoc-c328b166-bca residual hunt, nimble-otter-476): the innermost
+// `.dag` function name, pushed on each `call_function` entry (RAII-popped on
+// exit). `fold_list` is a builtin dispatched WITHOUT its own `call_function`
+// frame, so the top of this stack names the `.dag` function that CONTAINS the
+// fold_list call -- the O(n^2) re-fold caller the datetime DNF hunt is chasing.
+// Gated behind `GUNBC_FLATTEN_SITE_DUMP_SECS`; a no-op (no push/pop) otherwise.
+// dissolve-on: same as the recorders above -- delete with the residual-hunt
+// work item, not a permanent profiler.
+thread_local! {
+    static CURRENT_DAG_FN: std::cell::RefCell<Vec<Rc<str>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub(crate) struct DagFnGuard(bool);
+impl DagFnGuard {
+    pub(crate) fn enter(name: &str) -> Self {
+        if residual_hunt_forensics_enabled() {
+            CURRENT_DAG_FN.with(|s| s.borrow_mut().push(Rc::from(name)));
+            DagFnGuard(true)
+        } else {
+            DagFnGuard(false)
+        }
+    }
+}
+impl Drop for DagFnGuard {
+    fn drop(&mut self) {
+        if self.0 {
+            CURRENT_DAG_FN.with(|s| {
+                s.borrow_mut().pop();
+            });
+        }
+    }
+}
+
+fn current_dag_fn() -> String {
+    CURRENT_DAG_FN.with(|s| {
+        s.borrow()
+            .last()
+            .map(|r| r.to_string())
+            .unwrap_or_else(|| "<none>".to_string())
+    })
+}
+
+/// Caller attribution for LARGE left-folds (`eval_fold_list_native`, the datetime
+/// driver: ~5k-element lists folded thousands of times). Keyed by the `.dag`
+/// function containing the `fold_list` call. Tuple = (calls, total_items,
+/// max_len, sample element `type_label`) -- the element type answers clever-koi's
+/// deep-clone-vs-Rc-bump axis (Str => deep, Variant/List => Rc-bump).
+static FOLD_CALLER_STATS: std::sync::Mutex<
+    Option<std::collections::HashMap<String, (u64, u64, u64, &'static str)>>,
+> = std::sync::Mutex::new(None);
+
+fn record_fold_caller(items_len: usize, sample_elem: Option<&Value>, kind: &'static str) {
+    if !residual_hunt_forensics_enabled() || items_len < 100 {
+        return;
+    }
+    let caller = format!("{} [{}]", current_dag_fn(), kind);
+    let tl = sample_elem
+        .map(|v| v.type_label_public())
+        .unwrap_or("<empty>");
+    let mut guard = FOLD_CALLER_STATS.lock().unwrap();
+    let m = guard.get_or_insert_with(std::collections::HashMap::new);
+    let e = m.entry(caller).or_insert((0, 0, 0, tl));
+    e.0 += 1;
+    e.1 += items_len as u64;
+    if items_len as u64 > e.2 {
+        e.2 = items_len as u64;
+    }
+    e.3 = tl;
+}
+
+pub fn fold_caller_snapshot() -> Vec<(String, u64, u64, u64, &'static str)> {
+    let guard = FOLD_CALLER_STATS.lock().unwrap();
+    match guard.as_ref() {
+        Some(m) => m
+            .iter()
+            .map(|(k, (c, t, mx, tl))| (k.clone(), *c, *t, *mx, *tl))
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+/// SCAFFOLD (adhoc-c328b166-bca residual hunt): the recorders below are
+/// opt-in, not always-on -- gated on the same env var that gates the dump
+/// (`GUNBC_FLATTEN_SITE_DUMP_SECS`), read once via OnceLock so the default
+/// (unset) production path pays a single relaxed load, not a mutex lock or
+/// HashMap/HashSet write, per call. dissolve-on: the residual-hunt work item
+/// closes (adhoc-c328b166-bca) -- delete these recorders and their call
+/// sites, they are not a permanent profiler.
+fn residual_hunt_forensics_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok())
 }
 
 fn record_flatten(items: usize) {
@@ -6554,6 +6770,155 @@ fn record_flatten(items: usize) {
         let (calls, total) = c.get();
         c.set((calls + 1, total + items as u64));
     });
+}
+
+fn record_flatten_site(items: usize, loc: &'static std::panic::Location<'static>) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
+    let mut guard = FLATTEN_BY_SITE.lock().unwrap();
+    let m = guard.get_or_insert_with(std::collections::HashMap::new);
+    let entry = m.entry((loc.file(), loc.line())).or_insert((0, 0));
+    entry.0 += 1;
+    entry.1 += items as u64;
+}
+
+/// Hypothesis-B instrumentation (adhoc-c328b166-bca residual hunt): every
+/// `Cons { head, tail }` pattern match against a native `Value::List` clones
+/// the receiver and `split_off(1)`s it to build `tail`. `im_rc::Vector` makes
+/// this O(log n) once tree-ified, not the O(n) `free_monoid_to_vec` disease --
+/// but `list_tail`'s call volume across a memoized parse (one call per
+/// position, threaded through `parse_current_position`) could still sum to a
+/// superlinear total. `calls` and `receiver_len_sum` let the ladder answer
+/// that by execution instead of by reading `im_rc`'s source.
+static LIST_CONS_TAIL_SPLIT: (std::sync::atomic::AtomicU64, std::sync::atomic::AtomicU64) = (
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+);
+
+fn record_list_cons_tail_split(receiver_len: usize) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
+    LIST_CONS_TAIL_SPLIT
+        .0
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    LIST_CONS_TAIL_SPLIT
+        .1
+        .fetch_add(receiver_len as u64, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Hypothesis-A instrumentation (adhoc-c328b166-bca residual hunt): call
+/// frequency for the grammar-analysis entry points S1's brief named as
+/// candidates for a fixed, file-size-independent per-parse-module recompute
+/// (`grammar_validate_for_parse`, `compute_nullable_set`,
+/// `compute_production_first_rows`). A named, tiny watchlist (not a general
+/// profiler) so the ladder answers "how many times, relative to file size"
+/// by execution.
+static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<
+    Option<std::collections::HashMap<&'static str, u64>>,
+> = std::sync::Mutex::new(None);
+
+/// adhoc-c328b166-bca memo-effectiveness discriminator: distinct (grammar_digest,
+/// token_stream_digest, position, production) keys ever looked up, vs total lookups/hits.
+/// `lookups >> distinct` with `hits == 0` is the smoking gun for "memo never serves a
+/// re-attempted span" (a real cache-effectiveness bug); `lookups == distinct` is the
+/// benign "every position visited exactly once" signature. Global (not per-InterpContext)
+/// so the periodic dump thread (GUNBC_FLATTEN_SITE_DUMP_SECS), which never enters
+/// with_active_context, can still read it -- survives a DNF, unlike ctx-scoped stats.
+static PARSE_MEMO_LOOKUPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PARSE_MEMO_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PARSE_MEMO_DISTINCT_KEYS: std::sync::Mutex<
+    Option<std::collections::HashSet<(String, String, i64, Symbol)>>,
+> = std::sync::Mutex::new(None);
+
+fn record_parse_memo_lookup(key: &(String, String, i64, Symbol), hit: bool) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
+    PARSE_MEMO_LOOKUPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if hit {
+        PARSE_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    let mut guard = PARSE_MEMO_DISTINCT_KEYS.lock().unwrap();
+    guard
+        .get_or_insert_with(std::collections::HashSet::new)
+        .insert(key.clone());
+}
+
+pub fn parse_memo_global_snapshot() -> (u64, u64, u64) {
+    let lookups = PARSE_MEMO_LOOKUPS.load(std::sync::atomic::Ordering::Relaxed);
+    let hits = PARSE_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed);
+    let distinct = PARSE_MEMO_DISTINCT_KEYS
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|s| s.len() as u64)
+        .unwrap_or(0);
+    (lookups, hits, distinct)
+}
+
+fn record_call_frequency(func_name: &str) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
+    const WATCHLIST: &[&str] = &[
+        "grammar_validate_for_parse",
+        "compute_nullable_set",
+        "compute_production_first_rows",
+        "parse_diags_to_diagnostics",
+        "parse_diags_to_non_empty",
+        "parse_diag_cons",
+        "parse_production",
+        "parse_expr",
+        "list_snoc_item",
+        "list_append",
+        "parse_sync_step",
+        "parse_match_arm_stmt_step",
+        "parse_expr_repeat",
+        "parse_expr_repeat_step",
+        "parse_skip_to_sync",
+        "parse_expr_sequence",
+        "parse_expr_choice",
+        "parse_expr_optional",
+        "parse_production_memo_stats",
+        "filter",
+        "upsert_production_first_row",
+        "parse_current_position",
+        "parse_nonterminal_memoized",
+        "parse_nonterminal_memoized_core",
+        "parse_table_record_lookup_call",
+        "parse_table_record_hit",
+        "parse_table_record_miss",
+        "parse_table_lookup",
+        "parse_table_insert",
+        "parse_choice_residue_backtrack",
+    ];
+    let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
+        return;
+    };
+    let mut guard = CALL_FREQUENCY_WATCHLIST.lock().unwrap();
+    let m = guard.get_or_insert_with(std::collections::HashMap::new);
+    *m.entry(*key).or_insert(0) += 1;
+}
+
+pub fn call_frequency_snapshot() -> Vec<(&'static str, u64)> {
+    let guard = CALL_FREQUENCY_WATCHLIST.lock().unwrap();
+    match guard.as_ref() {
+        Some(m) => m.iter().map(|(k, v)| (*k, *v)).collect(),
+        None => Vec::new(),
+    }
+}
+
+pub fn list_cons_tail_split_snapshot() -> (u64, u64) {
+    (
+        LIST_CONS_TAIL_SPLIT
+            .0
+            .load(std::sync::atomic::Ordering::Relaxed),
+        LIST_CONS_TAIL_SPLIT
+            .1
+            .load(std::sync::atomic::Ordering::Relaxed),
+    )
 }
 
 pub const EXPR_VARIANT_COUNT: usize = 22;
@@ -6714,7 +7079,9 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
     }
 }
 
+#[track_caller]
 pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+    let site = std::panic::Location::caller();
     let mut out = Vec::new();
     let mut cur = val.clone();
     let monoid_syms = active_ctx().map(|ctx| {
@@ -6730,11 +7097,13 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
             Value::List(items) => {
                 out.extend(items.iter().cloned());
                 record_flatten(out.len());
+                record_flatten_site(out.len(), site);
                 return Some(out);
             }
             Value::Str(s) => {
                 out.extend(s.chars().map(char_value));
                 record_flatten(out.len());
+                record_flatten_site(out.len(), site);
                 return Some(out);
             }
             Value::Variant {
@@ -6745,6 +7114,7 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 let (empty_sym, cons_sym, head_sym, tail_sym) = monoid_syms?;
                 if *variant_name == empty_sym {
                     record_flatten(out.len());
+                    record_flatten_site(out.len(), site);
                     return Some(out);
                 }
                 if *variant_name == cons_sym {
@@ -7171,5 +7541,29 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Str(x), Value::Str(y)) => x.cmp(y),
         (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
         _ => std::cmp::Ordering::Equal,
+    }
+}
+
+#[cfg(test)]
+mod shell_completion_trace_tests {
+    use super::shell_completion_trace_line;
+    use std::time::Duration;
+
+    #[test]
+    fn shell_completion_trace_line_formats_exit_stdout_stderr_wall() {
+        let line = shell_completion_trace_line(0, 1234, 56, Duration::from_millis(5150));
+        assert_eq!(
+            line,
+            "[shell] done exit=0 stdout=1234 stderr=56 bytes wall=5.150s"
+        );
+    }
+
+    #[test]
+    fn shell_completion_trace_line_surfaces_nonzero_exit() {
+        let line = shell_completion_trace_line(1, 0, 4096, Duration::from_secs(2));
+        assert_eq!(
+            line,
+            "[shell] done exit=1 stdout=0 stderr=4096 bytes wall=2.000s"
+        );
     }
 }

@@ -3,7 +3,10 @@ module tools.rust_stage0_gates
 import std.list { List }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.lens.module_graph { entry_affected_by_touched_paths }
+import v2.lens.affected_set.corpus_dependency_view {
+  corpus_dependency_view_per_pr_substrate_ready
+}
+import v2.lens.affected_set.entry_selection { entry_affected_by_dependency_view }
 import gunbc.ci_layer_roots { witness_layer_roots }
 
 fn rust_monolith_suffixes() -> List<String> {
@@ -20,7 +23,7 @@ fn any_rust_monolith(paths: List<String>) -> Bool {
 }
 
 data consumed_input_closure_concept_note: Disposition = Terminal {
-  reason: "consume-input vs produce-artifact is a permanent §3 distinction (different direction + domain from NodeArtifactProvenance). The declared fact here is ENROLLMENT ONLY (unit + entry_path): the consumed .dag closure itself is DERIVED at read time from the single authority v2.lens.module_graph.import_closure_live (via entry_affected_by_touched_paths over gunbc.ci_layer_roots.witness_layer_roots), so declared-vs-derived closure drift is unwritable by construction. The former drift walls (src/v1 consumed_input_closure_drift_test.rs and the import_closure_completeness floor witness) were deleted with the hand-typed path list they guarded, not relocated"
+  reason: "consume-input vs produce-artifact is a permanent §3 distinction (different direction + domain from NodeArtifactProvenance). The declared fact here is ENROLLMENT ONLY (unit + entry_path): the consumed .dag closure itself is DERIVED at read time from v2.lens.affected_set.entry_selection.entry_affected_by_dependency_view over gunbc.ci_layer_roots.witness_layer_roots (DependencyView reverse-reachability, replacing import_closure_live). Per-PR live execution gated on #6239 via corpus_dependency_view_per_pr_execution_gate. The former drift walls (src/v1 consumed_input_closure_drift_test.rs and the import_closure_completeness floor witness) were deleted with the hand-typed path list they guarded, not relocated"
 }
 
 type ConsumedInputUnit {
@@ -37,12 +40,20 @@ data declared_consumed_input_units: List<ConsumedInputUnit> = [
   coproduct_reflection_conformance_consumed_unit
 ]
 
+data unit_is_affected_substrate_not_ready_must_run_note: String = "Interim must-run when corpus_dependency_view_per_pr_substrate_ready is false (blocked-on-#6239): unit_is_affected returns true — coverage-fire Edge-(b), only ever ADDS rust-gate fires, never newly skips. NOT §5 absorbing fallback: the guard is explicit at ready() and COUNTED by rust_stage0_gates_substrate_ready_witness_scaffold_note (witness trio asserts opposite outcomes per substrate branch in rust_stage0_gates_witness_test.dag). Typed refusal for the selection axis lives in dag_compile_clean_scope RequireWholeTree; floor/cli_run mirror this must-run widen. Bool return defers variant modeling until per_unit_test_selector lands (unit_must_run_staged_note). DISSOLVES WHEN #6239: delete must-run arm + witness trio; live entry_affected_by_dependency_view only."
+
+data rust_stage0_gates_substrate_ready_witness_scaffold_note: String = "Branch-diagnostic scaffold trio (witness_dag_only_gates_when_substrate_ready / witness_empty_paths_gates_when_substrate_ready / witness_declared_unit_unaffected_by_other_dag_when_substrate_ready): tautology-by-construction — each fn is `if ready() { live-path predicate } else { must-run predicate }` enrolled in rust_stage0_gates_witness_test.dag so the substrate deficit frequency is observable (false branch must-run, true branch live selection). NOT permanent coverage; delete alongside unit_is_affected must-run arm when #6239 lands."
+
 fn unit_is_affected(u: ConsumedInputUnit, paths: List<String>) -> Bool {
-  entry_affected_by_touched_paths(
-    entry_path: u.entry_path,
-    pool_roots: witness_layer_roots,
-    touched_paths: paths
-  )
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    entry_affected_by_dependency_view(
+      entry_path: u.entry_path,
+      pool_roots: witness_layer_roots,
+      touched_paths: paths
+    )
+  } else {
+    true
+  }
 }
 
 fn any_declared_unit_affected(paths: List<String>) -> Bool {
@@ -77,5 +88,35 @@ fn should_run_gates(paths: List<String>, git_success: Bool) -> Bool {
     any_rust_monolith(paths: paths) || any_declared_unit_affected(paths: paths)
   } else {
     true
+  }
+}
+
+fn witness_dag_only_gates_when_substrate_ready() -> Bool {
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == false
+  } else {
+    should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == true
+  }
+}
+
+fn witness_empty_paths_gates_when_substrate_ready() -> Bool {
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    should_run_gates(paths: [], git_success: true) == false
+  } else {
+    should_run_gates(paths: [], git_success: true) == true
+  }
+}
+
+fn witness_declared_unit_unaffected_by_other_dag_when_substrate_ready() -> Bool {
+  if corpus_dependency_view_per_pr_substrate_ready() {
+    unit_must_run(
+      unit: "coproduct_reflection_conformance_test",
+      paths: ["src/v2/std/text.dag"]
+    ) == false
+  } else {
+    unit_must_run(
+      unit: "coproduct_reflection_conformance_test",
+      paths: ["src/v2/std/text.dag"]
+    ) == true
   }
 }
