@@ -1438,7 +1438,7 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
 
 fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   fold(
-    sort_by(xs, h => h),
+    sort_by(xs, fn(h) { h }),
     init: empty,
     f: fn(acc, h) {
       combine_hash(a: acc, b: h)

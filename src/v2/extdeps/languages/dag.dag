@@ -419,9 +419,9 @@ fn dag_string_literal_lex_rule() -> LexRule {
   TokenRule {
     token_class: ^dag_token_string_literal,
     pattern: DelimitedPattern {
-      open: LiteralPattern { text: "\"" },
+      open: CharPattern { char: 34 },
       body: RepeatPattern { element: dag_string_body_element_pattern() },
-      close: LiteralPattern { text: "\"" }
+      close: CharPattern { char: 34 }
     }
   }
 }
