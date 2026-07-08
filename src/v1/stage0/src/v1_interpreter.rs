@@ -2648,9 +2648,12 @@ fn try_parse_table_memo_dispatch(
             st.lookups += 1;
             if let Some(v) = st.map.get(&memo_key).cloned() {
                 st.hits += 1;
+                drop(st);
+                record_parse_memo_lookup(&memo_key, true);
                 return Ok(Some(witness_holds(v, ctx)));
             }
             drop(st);
+            record_parse_memo_lookup(&memo_key, false);
             let result = call_function(ctx, fn_node, args, env)?;
             Ok(Some(result))
         }
@@ -6365,6 +6368,42 @@ fn record_list_cons_tail_split(receiver_len: usize) {
 /// by execution.
 static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<Option<std::collections::HashMap<&'static str, u64>>> =
     std::sync::Mutex::new(None);
+
+/// adhoc-c328b166-bca memo-effectiveness discriminator: distinct (grammar_digest,
+/// token_stream_digest, position, production) keys ever looked up, vs total lookups/hits.
+/// `lookups >> distinct` with `hits == 0` is the smoking gun for "memo never serves a
+/// re-attempted span" (a real cache-effectiveness bug); `lookups == distinct` is the
+/// benign "every position visited exactly once" signature. Global (not per-InterpContext)
+/// so the periodic dump thread (GUNBC_FLATTEN_SITE_DUMP_SECS), which never enters
+/// with_active_context, can still read it -- survives a DNF, unlike ctx-scoped stats.
+static PARSE_MEMO_LOOKUPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PARSE_MEMO_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PARSE_MEMO_DISTINCT_KEYS: std::sync::Mutex<
+    Option<std::collections::HashSet<(String, String, i64, Symbol)>>,
+> = std::sync::Mutex::new(None);
+
+fn record_parse_memo_lookup(key: &(String, String, i64, Symbol), hit: bool) {
+    PARSE_MEMO_LOOKUPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if hit {
+        PARSE_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    let mut guard = PARSE_MEMO_DISTINCT_KEYS.lock().unwrap();
+    guard
+        .get_or_insert_with(std::collections::HashSet::new)
+        .insert(key.clone());
+}
+
+pub fn parse_memo_global_snapshot() -> (u64, u64, u64) {
+    let lookups = PARSE_MEMO_LOOKUPS.load(std::sync::atomic::Ordering::Relaxed);
+    let hits = PARSE_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed);
+    let distinct = PARSE_MEMO_DISTINCT_KEYS
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|s| s.len() as u64)
+        .unwrap_or(0);
+    (lookups, hits, distinct)
+}
 
 fn record_call_frequency(func_name: &str) {
     const WATCHLIST: &[&str] = &[

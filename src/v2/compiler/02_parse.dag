@@ -152,7 +152,7 @@ type ParseSyncState {
 type ParseRepeatAcc {
   remaining: List<Token>
   acc_nodes: List<Node>
-  acc_diags: List<Diagnostic>
+  acc_diags: List<List<Diagnostic>>
   done: Bool
   prov: ParseProvenanceState
   table: ParseTable
@@ -644,10 +644,24 @@ fn parse_nonterminal_memoized(
 type ParseMatchArmStmtAcc {
   remaining: List<Token>
   acc_nodes: List<Node>
-  acc_diags: List<Diagnostic>
+  acc_diags: List<List<Diagnostic>>
   done: Bool
   prov: ParseProvenanceState
   table: ParseTable
+}
+
+fn parse_flatten_diag_batches(batches: List<List<Diagnostic>>) -> List<Diagnostic> {
+  fold_list(
+    xs: batches,
+    empty: Empty,
+    cons: fn(acc, batch) {
+      fold_list(
+        xs: batch,
+        empty: acc,
+        cons: fn(inner_acc, d) { Cons { head: d, tail: inner_acc } }
+      )
+    }
+  ).reverse()
 }
 
 fn parse_char_is_arm_pattern_lead(c: Char) -> Bool {
@@ -790,7 +804,7 @@ fn parse_match_arm_stmt_step(
             acc: ParseMatchArmStmtAcc {
               remaining: rest,
               acc_nodes: Cons { head: cap, tail: acc.acc_nodes },
-              acc_diags: list_append(left: diags.reverse(), right: acc.acc_diags),
+              acc_diags: Cons { head: diags, tail: acc.acc_diags },
               done: false,
               prov: prov1,
               table: table1
@@ -837,7 +851,7 @@ fn parse_match_arm_stmt_body(
       ParseExprAccepted {
         remaining: result.remaining,
         captured: stamped.node,
-        diagnostics: result.acc_diags.reverse(),
+        diagnostics: parse_flatten_diag_batches(batches: result.acc_diags.reverse()),
         prov: stamped.prov,
         table: result.table
       }
@@ -1844,7 +1858,7 @@ fn parse_expr_repeat_step(
               acc: ParseRepeatAcc {
                 remaining: rest,
                 acc_nodes: Cons { head: cap, tail: acc.acc_nodes },
-                acc_diags: list_append(left: diags.reverse(), right: acc.acc_diags),
+                acc_diags: Cons { head: diags, tail: acc.acc_diags },
                 done: false,
                 prov: prov1,
                 table: table1
@@ -1885,7 +1899,7 @@ fn parse_expr_repeat(
   ParseExprAccepted {
     remaining: result.remaining,
     captured: stamped.node,
-    diagnostics: result.acc_diags.reverse(),
+    diagnostics: parse_flatten_diag_batches(batches: result.acc_diags.reverse()),
     prov: stamped.prov,
     table: result.table
   }

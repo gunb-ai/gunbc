@@ -2457,6 +2457,11 @@ fn dump_residual_hunt_instrumentation() {
     for (name, calls) in freq.iter() {
         eprintln!("  {}  calls={}", name, calls);
     }
+    let (memo_lookups, memo_hits, memo_distinct) = v1_interpreter::parse_memo_global_snapshot();
+    eprintln!(
+        "--- parse memo effectiveness discriminator: lookups={} hits={} distinct_keys={} (lookups>>distinct & hits==0 => memo never serves a re-attempted span) ---",
+        memo_lookups, memo_hits, memo_distinct
+    );
 }
 
 pub fn handle_run_with_options(
