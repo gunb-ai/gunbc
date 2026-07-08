@@ -50,8 +50,8 @@ pub use crate::v1_compiler_emit_core_support::{
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
-    build_emit_graph_info, build_params_scope, expand_type_for_field_access, expr_span,
-    extend_scope, resolved_type_name,
+    build_emit_graph_info, build_params_scope, corpus_has_v1_seed_source_indices,
+    expand_type_for_field_access, expr_span, extend_scope, resolved_type_name,
 };
 use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
@@ -3611,7 +3611,8 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
 
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
-        let base_info = build_emit_graph_info(typed.modules.clone());
+        let has_v1_seed = corpus_has_v1_seed_source_indices(typed.modules.clone());
+        let base_info = build_emit_graph_info(typed.modules.clone(), has_v1_seed.clone());
         let ownership = build_ownership_results(typed.modules.clone());
         let shared = build_shared_types(
             base_info.type_summaries.clone(),
@@ -3876,7 +3877,9 @@ pub fn emit_module(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
-        let base_info = build_emit_graph_info(Rc::new(vec![typed_module.clone()]));
+        let has_v1_seed = corpus_has_v1_seed_source_indices(Rc::new(vec![typed_module.clone()]));
+        let base_info =
+            build_emit_graph_info(Rc::new(vec![typed_module.clone()]), has_v1_seed.clone());
         let shared = build_shared_types(
             base_info.type_summaries.clone(),
             base_info.recursive_type_set.clone(),

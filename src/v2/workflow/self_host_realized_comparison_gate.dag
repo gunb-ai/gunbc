@@ -10,6 +10,7 @@ import extdeps.languages.bash.program {
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import tools.host_prelude { ensure_gunbc_built }
+import tools.self_host_realized_comparison_transport { realized_comparison_program }
 
 data srfc_gate_test_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
 data srfc_staleness_gate_witness: String = "self_host_realized_comparison_staleness_gate_holds"
@@ -39,18 +40,53 @@ fn srfc_gunbc_claim_run(function: String) -> ShellStmt {
   ))
 }
 
-fn realized_comparison_gate_program() -> ShellProgram {
+fn srfc_reads_real_bytes_gate_program() -> ShellProgram {
+  let emit_prog = realized_comparison_program()
   ShellProgram {
     set_e: true,
     statements: concat(
       ensure_gunbc_built(),
+      emit_prog.statements,
+      [srfc_gunbc_claim_run(function: srfc_provenance_witness)]
+    )
+  }
+}
+
+fn realized_comparison_gate_program() -> ShellProgram {
+  let emit_prog = realized_comparison_program()
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      ensure_gunbc_built(),
+      emit_prog.statements,
       [
-        command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
         srfc_gunbc_claim_run(function: srfc_provenance_witness),
         srfc_gunbc_claim_run(function: srfc_staleness_gate_witness)
       ]
     )
   }
+}
+
+fn srfc_staleness_gate_program() -> ShellProgram {
+  let emit_prog = realized_comparison_program()
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      ensure_gunbc_built(),
+      emit_prog.statements,
+      [srfc_gunbc_claim_run(function: srfc_staleness_gate_witness)]
+    )
+  }
+}
+
+func self_host_realized_comparison_reads_real_bytes_gate_holds() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: srfc_reads_real_bytes_gate_program()))
+  result.success
+}
+
+func self_host_realized_comparison_staleness_gate_holds() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: srfc_staleness_gate_program()))
+  result.success
 }
 
 func run_self_host_realized_comparison_gate() -> Bool {

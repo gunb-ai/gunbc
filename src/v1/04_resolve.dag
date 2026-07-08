@@ -567,7 +567,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
           } else { resolved }
           let is_optional = n.return_cardinality == CardOptional
           let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
-          let unlisted_diags = if masked && map_keys(env.source_visible_names) |> count > 0 && map_has(m: env.source_visible_names, key: authored_name(env: env, node: n)) == false {
+          let unlisted_diags = if masked && map_is_empty(m: env.source_visible_names) == false && map_has(m: env.source_visible_names, key: authored_name(env: env, node: n)) == false {
             [make_error_node(diagnostic: UnlistedImportUse { name: authored_name(env: env, node: n), span: n.span }, module_name: module_name)]
           } else { [] }
           NodeResolveResult { resolved: final_resolved, diagnostics: unlisted_diags }

@@ -93,6 +93,7 @@ import v1.compiler.infer {
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
+  corpus_has_v1_seed_source_indices,
   expr_span,
   resolved_type_name,
   expand_type_for_field_access
@@ -1659,7 +1660,8 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
 }
 
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
-  let base_info = build_emit_graph_info(modules: typed.modules)
+  let has_v1_seed = corpus_has_v1_seed_source_indices(modules: typed.modules)
+  let base_info = build_emit_graph_info(modules: typed.modules, has_v1_seed: has_v1_seed)
   let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let emit_info = EmitGraphInfo {
@@ -1761,7 +1763,8 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
 }
 
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
-  let base_info = build_emit_graph_info(modules: [typed_module])
+  let has_v1_seed = corpus_has_v1_seed_source_indices(modules: [typed_module])
+  let base_info = build_emit_graph_info(modules: [typed_module], has_v1_seed: has_v1_seed)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,

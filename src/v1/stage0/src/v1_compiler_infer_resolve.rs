@@ -1663,12 +1663,9 @@ pub fn resolve_node_bounded(
                                                     structurally_resolved.clone()
                                                 };
                                                 let unlisted_diags = if ((masked.clone()
-                                                    && ((Rc::new(v1_rt::map_keys(
+                                                    && (v1_rt::map_is_empty(
                                                         &env.source_visible_names.clone(),
-                                                    ))
-                                                    .len()
-                                                        as i64)
-                                                        > 0))
+                                                    ) == false))
                                                     && (v1_rt::map_has(
                                                         &env.source_visible_names.clone(),
                                                         authored_name(env.clone(), n.clone()),

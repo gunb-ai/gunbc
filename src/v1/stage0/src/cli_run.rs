@@ -3,7 +3,8 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::std_node::compiler_recursive_types;
@@ -336,6 +337,9 @@ pub fn compile_dag_rust_emit_check(
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
+const WITNESS_EXCLUSION_SUBSTRINGS_DATA_NAME: &str = "witness_exclusion_substrings";
+const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
+    "whole_tree_strict_resolve_exclusion_substrings";
 
 fn ci_layer_roots_authority_content() -> &'static str {
     static CONTENT: OnceLock<String> = OnceLock::new();
@@ -454,6 +458,21 @@ pub(crate) fn witness_discovery_scan_dirs_from_source(content: &str) -> Vec<Stri
     string_list_data_from_ci_layer_roots_source(content, WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME)
 }
 
+/// Project `witness_exclusion_substrings` out of the ci_layer_roots authority.
+pub(crate) fn witness_exclusion_substrings_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(content, WITNESS_EXCLUSION_SUBSTRINGS_DATA_NAME)
+}
+
+/// Project `whole_tree_strict_resolve_exclusion_substrings` out of the ci_layer_roots authority.
+pub(crate) fn whole_tree_strict_resolve_exclusion_substrings_from_source(
+    content: &str,
+) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(
+        content,
+        WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME,
+    )
+}
+
 /// The witness layer roots, read live from the single .dag authority and memoized.
 pub(crate) fn witness_layer_roots() -> Vec<String> {
     static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
@@ -468,6 +487,52 @@ pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
     SCAN_DIRS
         .get_or_init(|| witness_discovery_scan_dirs_from_source(ci_layer_roots_authority_content()))
         .clone()
+}
+
+/// Floor discovery path exclusions — single authority `gunbc.ci_layer_roots.witness_exclusion_substrings`.
+pub fn witness_exclusion_substrings() -> Vec<String> {
+    static EXCLUDES: OnceLock<Vec<String>> = OnceLock::new();
+    EXCLUDES
+        .get_or_init(
+            || witness_exclusion_substrings_from_source(ci_layer_roots_authority_content()),
+        )
+        .clone()
+}
+
+/// Whole-tree strict-resolve probe exclusions — `gunbc.ci_layer_roots.whole_tree_strict_resolve_exclusion_substrings`.
+pub fn whole_tree_strict_resolve_exclusion_substrings() -> Vec<String> {
+    static EXCLUDES: OnceLock<Vec<String>> = OnceLock::new();
+    EXCLUDES
+        .get_or_init(|| {
+            whole_tree_strict_resolve_exclusion_substrings_from_source(
+                ci_layer_roots_authority_content(),
+            )
+        })
+        .clone()
+}
+
+/// Floor discovery ∪ whole-tree probe policy — `gunbc.ci_layer_roots.whole_tree_resolve_exclusion_substrings`.
+pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
+    let mut excludes = witness_exclusion_substrings();
+    excludes.extend(whole_tree_strict_resolve_exclusion_substrings());
+    excludes
+}
+
+/// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs
+/// `loaded` modules in the current resolve context (same exclude set as `whole_tree_resolved_ctx`).
+pub fn fn_arrow_decl_substrate_is_whole_tree_for_census(loaded: usize) -> bool {
+    let roots = default_source_roots();
+    let excludes = whole_tree_resolve_exclusion_substrings();
+    let index = build_module_path_index(&roots);
+    let expected = index
+        .iter()
+        .filter(|(module_path, rel_path)| {
+            !excludes
+                .iter()
+                .any(|sub| rel_path.contains(sub) || module_path.contains(sub))
+        })
+        .count();
+    loaded >= expected
 }
 
 pub fn census_corpus_roots_follow_layer_authority() -> bool {
@@ -776,6 +841,28 @@ fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNo
     })
 }
 
+fn eprint_compile_clean_hard_diagnostics(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let mut count = 0usize;
+    for d in diagnostics.iter() {
+        if matches!(
+            *d.diagnostic.clone(),
+            CompilerDiagnostic::ComplexityUnknown { .. }
+        ) {
+            continue;
+        }
+        eprintln!(
+            "compile-clean: {}",
+            diagnostic_to_message(d.diagnostic.clone())
+        );
+        count += 1;
+        if count >= 20 {
+            eprintln!("compile-clean: (truncated hard diagnostics at 20)");
+            break;
+        }
+    }
+}
+
 const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -858,19 +945,139 @@ fn compile_clean_scope_plan_from_touched_paths(
     }
 }
 
+/// `gunbc.ci_layer_roots.compile_clean_source_roots` — witness pool + `src/v1` for cross-tree
+/// import resolution in compile-clean scope disposition (not the gate receipt pool).
+fn compile_clean_source_roots() -> Vec<String> {
+    let mut roots = witness_layer_roots();
+    if !roots.iter().any(|r| r == "src/v1") {
+        roots.push("src/v1".to_string());
+    }
+    roots
+}
+
+fn compile_clean_touched_path_norm(path: &str) -> &str {
+    path.strip_prefix("./").unwrap_or(path)
+}
+
+fn compile_clean_touches_allow_skip(touched_paths: &[String]) -> bool {
+    touched_paths.is_empty()
+        || touched_paths
+            .iter()
+            .all(|p| compile_clean_touched_path_norm(p).starts_with("docs/"))
+}
+
+/// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
+/// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
+fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
+    let entry_root = witness_layer_roots()
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "dag".to_string());
+    let ws = workspace_root();
+    let abs_entry_root = ws.join(&entry_root).to_string_lossy().into_owned();
+    let mut paths: Vec<String> = module_declaration_facts(&[abs_entry_root])
+        .into_iter()
+        .map(|decl| workspace_relative_repo_path(&decl.path))
+        .collect();
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+/// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_touched` (DependencyView +
+/// `#6239` substrate gate) without the Wet interpreter fold over `compile_clean_shard_entry_paths()`.
+fn compile_clean_scope_plan_from_touched_paths_floor_fast(
+    touched_paths: &[String],
+) -> CompileCleanScopePlan {
+    if compile_clean_touches_allow_skip(touched_paths) {
+        let reason = if touched_paths.is_empty() {
+            "no compile-clean entry DependencyView frontier intersects touched paths".to_string()
+        } else {
+            "docs-only diff — no compile-clean entry selection required".to_string()
+        };
+        eprintln!("compile-clean scope: skipped ({reason})");
+        return CompileCleanScopePlan::SkipNoAffected { reason };
+    }
+
+    // `dag_compile_clean_scope.dag:85-88` — RequireWholeTree when substrate not ready.
+    // floor_fast has no whole-tree resolve context (loaded=0) until #6239; live substrate is false.
+    if !fn_arrow_decl_substrate_is_whole_tree_for_census(0) {
+        eprintln!(
+            "compile-clean scope: DependencyView per-PR selection blocked-on-#6239 (fn_arrow_decl_substrate_is_whole_tree false)"
+        );
+        return CompileCleanScopePlan::WholeTree;
+    }
+
+    let pool_roots = compile_clean_source_roots();
+    let roots = default_source_roots();
+    let (graph, indices) = match resolve_entry_graph_shared(&roots, ENTRY_SELECTION_ENTRY) {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!(
+                "compile-clean scope: entry_selection resolve failed ({msg}) — whole-tree baseline"
+            );
+            return CompileCleanScopePlan::WholeTree;
+        }
+    };
+    let es_ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    if !fn_arrow_decl_substrate_is_whole_tree_for_census(es_ctx.modules.len()) {
+        eprintln!(
+            "compile-clean scope: DependencyView per-PR selection blocked-on-#6239 (fn_arrow_decl_substrate_is_whole_tree false)"
+        );
+        return CompileCleanScopePlan::WholeTree;
+    }
+
+    let mut affected = Vec::new();
+    for entry_path in compile_clean_shard_entry_paths_fast() {
+        match call_entry_affected_by_dependency_view(
+            &es_ctx,
+            &entry_path,
+            &pool_roots,
+            touched_paths,
+        ) {
+            Ok(true) => affected.push(entry_path),
+            Ok(false) => {}
+            Err(msg) => {
+                eprintln!("compile-clean scope: {msg} — whole-tree baseline");
+                return CompileCleanScopePlan::WholeTree;
+            }
+        }
+    }
+    if !affected.is_empty() {
+        eprintln!(
+            "compile-clean scope: {} affected entr{} (floor fast path)",
+            affected.len(),
+            if affected.len() == 1 { "y" } else { "ies" }
+        );
+        return CompileCleanScopePlan::Scoped {
+            entry_paths: affected,
+        };
+    }
+    eprintln!(
+        "compile-clean scope: non-empty non-docs diff with no shard intersection — whole-tree baseline"
+    );
+    CompileCleanScopePlan::WholeTree
+}
+
 fn compile_clean_scoping_active() -> bool {
-    std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
+    FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst)
+        || std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
         || std::env::var("GITHUB_ACTIONS")
             .map(|v| v == "true")
             .unwrap_or(false)
+        || std::env::var("CI").map(|v| v == "true").unwrap_or(false)
 }
 
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     if !compile_clean_scoping_active() {
+        eprintln!("compile-clean scope: whole-tree (ci diff scoping inactive)");
         return CompileCleanScopePlan::WholeTree;
     }
     match floor_git_diff_name_status_range() {
         Ok((changed_paths, _departed)) => {
+            if FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst) {
+                return compile_clean_scope_plan_from_touched_paths_floor_fast(&changed_paths);
+            }
             match compile_clean_scope_plan_from_touched_paths(&changed_paths) {
                 Ok(plan) => plan,
                 Err(msg) => CompileCleanScopePlan::Refused {
@@ -897,10 +1104,14 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
             Ok(None)
         }
         CompileCleanScopePlan::WholeTree => {
+            eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
             let roots = witness_layer_roots();
             let index = build_module_index_primary_precedence(&roots);
             let facts = build_module_graph_facts_live(&roots);
-            load_compile_clean_entry_sources(&roots, &index, &facts, None).map(Some)
+            load_compile_clean_entry_sources(&roots, &index, &facts, None).map(|mut sources| {
+                append_test_floor_compile_clean_inject(&mut sources);
+                Some(sources)
+            })
         }
         CompileCleanScopePlan::Scoped { entry_paths } => {
             eprintln!(
@@ -920,6 +1131,153 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
     }
 }
 
+/// Test-only inject: append an unresolved-import module to the compile-clean closure so
+/// `install_floor_compile_clean_receipt` + `consume_floor_compile_clean_gate_verdict` can be
+/// proven end-to-end (§5 discriminating RED) without mutating the workspace tree.
+fn append_test_floor_compile_clean_inject(sources: &mut Vec<Rc<v1_compiler_compile::SourceFile>>) {
+    if std::env::var("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        sources.push(Rc::new(v1_compiler_compile::SourceFile {
+            path: "dag/test/fixture/lever_a_e2e_unresolved_inject.dag".to_string(),
+            content: "module test.lever_a_e2e_unresolved_inject\nimport totally.nonexistent.lever_a_module { Foo }\nfn probe() -> Int { 42 }".to_string(),
+        }));
+    }
+}
+
+/// In-run receipt for the floor's ONE whole-tree `--target dag` compile (Lever A / §2 Share).
+/// `claim_executor` installs this before batch-1; `dag_compile_clean_gate` consumes it only —
+/// a second compile in the gate path is unwritable (§5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FloorCompileCleanReceipt {
+    Skipped { reason: String },
+    Refused { reason: String },
+    Compiled { ok: bool },
+}
+
+static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
+
+/// When set by `claim_executor` for `gunbc_ci_floor_batches`, the first gate consume installs
+/// the one whole-tree receipt (after plan resolve has warmed the module-graph facts cache).
+static FLOOR_COMPILE_CLEAN_LAZY_INSTALL: AtomicBool = AtomicBool::new(false);
+/// Floor CI runs through `claim_executor`; env-based scoping detection alone missed some
+/// self-hosted runners (silent whole-tree source load → step timeout). Tied to lazy install.
+static FLOOR_COMPILE_CLEAN_CI_SCOPING: AtomicBool = AtomicBool::new(false);
+
+pub fn enable_floor_compile_clean_lazy_install() {
+    FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(true, Ordering::SeqCst);
+    FLOOR_COMPILE_CLEAN_CI_SCOPING.store(true, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+fn disable_floor_compile_clean_lazy_install_for_test() {
+    FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(false, Ordering::SeqCst);
+    FLOOR_COMPILE_CLEAN_CI_SCOPING.store(false, Ordering::SeqCst);
+}
+
+fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
+    use crate::v1_compiler_artifact::RenderTarget;
+    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
+    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
+}
+
+fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
+    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+        Ok(None) => FloorCompileCleanReceipt::Skipped {
+            reason: "no compile-clean entry affected".to_string(),
+        },
+        Err(msg) => FloorCompileCleanReceipt::Refused { reason: msg },
+        Ok(Some(sources)) => FloorCompileCleanReceipt::Compiled {
+            ok: floor_compile_clean_emit_ok(sources),
+        },
+    }
+}
+
+/// Run the floor's single whole-tree `--target dag` compile and store the receipt for gate
+/// consumption. Exactly one install per `claim_executor` process; second install is an error.
+pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
+    let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT
+        .lock()
+        .map_err(|e| format!("floor compile-clean receipt lock poisoned: {e}"))?;
+    if guard.is_some() {
+        return Err(
+            "floor compile-clean receipt already installed — one whole-tree compile per run"
+                .to_string(),
+        );
+    }
+    eprintln!(
+        "claim_executor: floor compile-clean — one whole-tree --target dag compile (gate consumes receipt)"
+    );
+    let receipt = produce_floor_compile_clean_receipt();
+    if let FloorCompileCleanReceipt::Compiled { ok } = &receipt {
+        eprintln!("claim_executor: floor compile-clean receipt ok={ok}");
+    }
+    *guard = Some(receipt);
+    Ok(())
+}
+
+pub fn floor_compile_clean_receipt_installed() -> bool {
+    FLOOR_COMPILE_CLEAN_RECEIPT
+        .lock()
+        .ok()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
+}
+
+/// Gate consumer: reads the receipt from `install_floor_compile_clean_receipt` only.
+/// Refuses when no receipt exists — never runs a second compile.
+pub fn consume_floor_compile_clean_gate_verdict() -> bool {
+    if FLOOR_COMPILE_CLEAN_LAZY_INSTALL.load(Ordering::SeqCst)
+        && !floor_compile_clean_receipt_installed()
+    {
+        if let Err(msg) = install_floor_compile_clean_receipt() {
+            if !floor_compile_clean_receipt_installed() {
+                eprintln!("compile-clean gate: refused — receipt install failed ({msg})");
+                return false;
+            }
+            // Serial `run_walk` today; if a future scheduler fans out batch-1, a concurrent
+            // lazy install may win first — consume the installed receipt, do not refuse.
+        }
+    }
+    let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("compile-clean gate: refused — receipt lock poisoned ({e})");
+            return false;
+        }
+    };
+    match guard.as_ref() {
+        None => {
+            eprintln!(
+                "compile-clean gate: refused — no in-run compile receipt (gate must consume the executor's one whole-tree --target dag compile)"
+            );
+            false
+        }
+        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
+            eprintln!("compile-clean gate: skipped ({reason})");
+            true
+        }
+        Some(FloorCompileCleanReceipt::Refused { reason }) => {
+            eprintln!("compile-clean gate: refused ({reason})");
+            false
+        }
+        Some(FloorCompileCleanReceipt::Compiled { ok }) => *ok,
+    }
+}
+
+#[cfg(test)]
+fn reset_floor_compile_clean_receipt_for_test() {
+    let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
+    *guard = None;
+}
+
+#[cfg(test)]
+fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt) {
+    let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
+    *guard = Some(receipt);
+}
+
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
@@ -933,7 +1291,12 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
         Ok(None) => true,
         Ok(Some(sources)) => {
             let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-            !compile_clean_resolve_has_hard_errors(&result)
+            if compile_clean_resolve_has_hard_errors(&result) {
+                eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
+                false
+            } else {
+                true
+            }
         }
         Err(msg) => {
             eprintln!("compile-clean: source load failed ({msg})");
@@ -943,17 +1306,12 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
 }
 
 /// Emit leg: `--target dag` compile over witness layer roots without shell or disk write.
-/// Green-by-execution consumer for the batch-1 compile-clean gate (DESIGN §5).
+/// Direct-run oracle for non-floor contexts (cargo tests, enrolled witnesses). The CI
+/// floor gate consumes `consume_floor_compile_clean_gate_verdict` instead (Lever A).
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
-    use crate::v1_compiler_artifact::RenderTarget;
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
-        Ok(Some(sources)) => {
-            let result =
-                v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-            !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
-                && !result.files.is_empty()
-        }
+        Ok(Some(sources)) => floor_compile_clean_emit_ok(sources),
         Err(msg) => {
             eprintln!("compile-clean emit: source load failed ({msg})");
             false
@@ -1074,6 +1432,7 @@ pub fn import_closure_from_facts(
 /// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
 /// set. Built once per `MultiEntryIndex` / resolve pass so closure queries do not re-scan the
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
+#[derive(Clone)]
 pub struct ModuleGraphFactsLive {
     edges: Vec<ImportResolutionFactRaw>,
     nodes: Vec<ModuleDeclarationFactRaw>,
@@ -1125,7 +1484,17 @@ mod shared_cache_collision_guard_tests {
     }
 }
 
-pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsLive {
+thread_local! {
+    static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
+        RefCell::new(HashMap::new());
+}
+
+#[cfg(test)]
+pub(crate) fn reset_module_graph_facts_cache_for_test() {
+    MODULE_GRAPH_FACTS_CACHE.with(|cache| cache.borrow_mut().clear());
+}
+
+fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphFactsLive {
     #[cfg(test)]
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     const EXCLUDE: &[String] = &[];
@@ -1138,6 +1507,18 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
         nodes,
         adjacency,
     }
+}
+
+pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsLive {
+    let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
+    MODULE_GRAPH_FACTS_CACHE.with(|cache| {
+        if let Some(facts) = cache.borrow().get(&key) {
+            return facts.clone();
+        }
+        let facts = build_module_graph_facts_live_uncached(pool_roots);
+        cache.borrow_mut().insert(key, facts.clone());
+        facts
+    })
 }
 
 /// Host realization of `v2.lens.module_graph.import_closure_live`.
@@ -1800,7 +2181,8 @@ fn reconcile_with_typed_cache(
     );
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
-    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
+    let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
+    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
     Ok(Rc::new(ResolvedGraph {
         modules,
         item_registry: expanded_registry,
@@ -3817,33 +4199,10 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     Some(kb.saturating_mul(1024))
 }
 
-/// Mirror of `gunbc.ci_layer_roots.witness_exclusion_substrings` — the .dag model is the
-/// single authority; plan-driven paths (`claim_executor` + `ci_floor_plan.dag`) read from
-/// `RunnableDiscoveryBatch.exclude_substrings`. SCAFFOLD — two remaining consumers to migrate:
-/// (a) `claim_batch.rs`: pre-push hook runner reads this constant directly (not plan-driven);
-///     dissolve when pre-push hooks fold over a `RunnableDiscoveryBatch` from the model, or
-///     when `claim_batch` reads `witness_exclusion_substrings` from the v2 evaluator;
-/// (b) `DiscoveryCorpusOptions::default()` + test call sites in `pipeline.rs` /
-///     `wet_hermetic_equivalence_test.rs`: pass explicit excludes from the model authority.
-/// Dissolution trigger: FLOOR_DISCOVERY_EXCLUDES has zero call sites outside this comment.
-pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
-    "impossible_bug",
-    "test/manual/",
-    "glob_discovery.dag",
-    "glob_discovery_law.dag",
-    "host_discovered_owned_data_manifest.dag",
-    "host_source_root_ingest_manifest.dag",
-    "program_assembly/real_ingest_test.dag",
-    "self_host/compiler_closure_emit_from_ingest_test.dag",
-    "unified_test_claim_substrate_equivalence.dag",
-    "ci_exclusion_proof_test.dag",
-    "test/claim/execution/",
-];
-
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
-    FLOOR_DISCOVERY_EXCLUDES
+    witness_exclusion_substrings()
         .iter()
-        .any(|sub| path.contains(sub))
+        .any(|sub| path.contains(sub.as_str()))
 }
 
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -4120,10 +4479,7 @@ fn build_floor_lens_hygiene_graph(
 }
 
 fn default_floor_lens_hygiene_excludes() -> Vec<String> {
-    FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+    witness_exclusion_substrings()
 }
 
 /// Floor witness builtin (#5433 sibling to `doc_graph_orphan_count`): unreached top-level
@@ -4413,8 +4769,9 @@ pub enum NodeFrontierSelectionMode {
 pub struct DiscoveryCorpusOptions {
     pub node_frontier_selection: NodeFrontierSelectionMode,
     pub explicit_roster_only: bool,
-    /// Path-substring exclusion list. Non-plan callers default to FLOOR_DISCOVERY_EXCLUDES;
-    /// plan-driven paths supply this from RunnableDiscoveryBatch.exclude_substrings (the model authority).
+    /// Path-substring exclusion list. Non-plan callers default to
+    /// `witness_exclusion_substrings()`; plan-driven paths supply this from
+    /// RunnableDiscoveryBatch.exclude_substrings (the model authority).
     pub exclude_substrings: Vec<String>,
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
@@ -4430,10 +4787,7 @@ impl Default for DiscoveryCorpusOptions {
         Self {
             node_frontier_selection: NodeFrontierSelectionMode::Off,
             explicit_roster_only: false,
-            exclude_substrings: FLOOR_DISCOVERY_EXCLUDES
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
             spawn_width_cap: 0,
         }
@@ -4791,8 +5145,11 @@ fn collect_sorted_decl_lines_for_file(
 // (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) remain host
 // realization until provenance ingest lands. Skip/precompute **verdicts** read `.dag`
 // via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; the
-// `entry_file_touched` axis now reads `.dag` via `entry_affected_by_touched_paths`
-// (`v2.lens.module_graph`, #6274 equivalence receipt).
+// `entry_file_touched` axis reads `.dag` via `entry_file_touched_via_dependency_view`
+// (`v2.lens.affected_set.entry_selection`, lever-a slice 2). Host guards partial-resolve
+// floor discovery: when `fn_arrow_decl_substrate_is_whole_tree` is false, returns must-run
+// (`true`) until #6239 — same interim as `rust_stage0_gates.unit_is_affected`. Per-PR live
+// DependencyView execution blocked-on-#6239 on-carrier (`corpus_dependency_view_per_pr_execution_gate`).
 // Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
 // `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
@@ -4810,9 +5167,80 @@ struct FloorDiffEdits {
 }
 
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+const ENTRY_SELECTION_ENTRY: &str = "src/v2/lens/affected_set/entry_selection.dag";
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // Keep in sync with `floor_host_scaffold_witness_marker` in affected_set_floor_runner.dag.
 const FLOOR_HOST_SCAFFOLD_WITNESS_MARKER: &str = "floor:host_scaffold";
+
+/// Floor `entry_file_touched` via DependencyView when whole-tree substrate is ready;
+/// interim must-run (`true`) when blocked-on-#6239 (mirrors `rust_stage0_gates.unit_is_affected`).
+fn entry_file_touched_via_dependency_view(
+    es_ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+    pool_roots: &[String],
+    touched_paths: &[String],
+) -> Result<bool, String> {
+    match crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree(es_ctx, &[]) {
+        Ok(v1_interpreter::Value::Bool(true)) => {}
+        Ok(v1_interpreter::Value::Bool(false)) => return Ok(true),
+        Ok(other) => {
+            return Err(format!(
+                "fn_arrow_decl_substrate_is_whole_tree returned `{}`, expected Bool",
+                es_ctx.format_value(&other)
+            ));
+        }
+        Err(e) => return Err(format!("fn_arrow_decl_substrate_is_whole_tree: {e}")),
+    }
+    call_entry_affected_by_dependency_view(es_ctx, entry_path, pool_roots, touched_paths)
+}
+
+fn call_entry_affected_by_dependency_view(
+    ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+    pool_roots: &[String],
+    touched_paths: &[String],
+) -> Result<bool, String> {
+    if !ctx
+        .item_registry
+        .contains_key("entry_affected_by_dependency_view")
+    {
+        return Err(
+            "entry_affected_by_dependency_view missing from entry_selection context".to_string(),
+        );
+    }
+    let roots: Vec<v1_interpreter::Value> = pool_roots
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let touched: Vec<v1_interpreter::Value> = touched_paths
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [
+        (
+            Some("entry_path".to_string()),
+            v1_interpreter::Value::Str(entry_path.to_string()),
+        ),
+        (Some("pool_roots".to_string()), list_value_from_vec(roots)),
+        (
+            Some("touched_paths".to_string()),
+            list_value_from_vec(touched),
+        ),
+    ];
+    match v1_interpreter::run_in_context_with_args(
+        ctx,
+        "entry_affected_by_dependency_view",
+        &args,
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "entry_affected_by_dependency_view returned `{}`, expected Bool",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("entry_affected_by_dependency_view: {e}")),
+    }
+}
 
 fn call_entry_affected_by_touched_paths(
     ctx: &v1_interpreter::InterpContext,
@@ -5550,15 +5978,15 @@ pub fn run_discovery_corpus_with_options(
     } else {
         None
     };
-    let module_graph_ctx = if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
-        match resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY) {
+    let entry_selection_ctx = if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
+        match resolve_entry_with_index(&index, ENTRY_SELECTION_ENTRY) {
             Ok((graph, source_indices)) => {
                 Some(make_eval_context(&graph, source_indices, execution_mode))
             }
             Err(msg) => {
                 return Err(format!(
-                    "module_graph resolve failed ({msg}) — a non-Off node_frontier_selection \
-                     declares the module-grain affected-set query ({MODULE_GRAPH_ENTRY}) \
+                    "entry_selection resolve failed ({msg}) — a non-Off node_frontier_selection \
+                     declares the DependencyView entry selector ({ENTRY_SELECTION_ENTRY}) \
                      and it must resolve; no silent full-corpus fallback"
                 ));
             }
@@ -5633,7 +6061,7 @@ pub fn run_discovery_corpus_with_options(
             &changed_paths,
             &diff_edits,
             floor_runner_ctx.as_ref(),
-            module_graph_ctx.as_ref(),
+            entry_selection_ctx.as_ref(),
             whole_tree_published_keys.clone(),
         );
     }
@@ -5679,15 +6107,15 @@ pub fn run_discovery_corpus_with_options(
             } else {
                 None
             };
-            let module_graph = if selection_for_shards != NodeFrontierSelectionMode::Off {
-                match resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY) {
+            let entry_selection = if selection_for_shards != NodeFrontierSelectionMode::Off {
+                match resolve_entry_with_index(&index, ENTRY_SELECTION_ENTRY) {
                     Ok((graph, source_indices)) => {
                         Some(make_eval_context(&graph, source_indices, execution_mode))
                     }
                     Err(msg) => {
                         return Err(format!(
-                            "module_graph resolve failed in shard ({msg}) — declared \
-                             module-grain affected-set query must resolve; no silent \
+                            "entry_selection resolve failed in shard ({msg}) — declared \
+                             DependencyView entry selector must resolve; no silent \
                              run-everything fallback"
                         ));
                     }
@@ -5703,7 +6131,7 @@ pub fn run_discovery_corpus_with_options(
                 &paths,
                 &seeds,
                 runner.as_ref(),
-                module_graph.as_ref(),
+                entry_selection.as_ref(),
                 keys,
             )
         }));
@@ -5789,7 +6217,7 @@ fn run_discovery_rows(
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
-    module_graph_ctx: Option<&v1_interpreter::InterpContext>,
+    entry_selection_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
@@ -5859,18 +6287,18 @@ fn run_discovery_rows(
                 current_entry_file_touched = if touched_entry_paths.is_empty() {
                     false
                 } else {
-                    match module_graph_ctx {
-                        Some(mg_ctx) => call_entry_affected_by_touched_paths(
-                            mg_ctx,
+                    match entry_selection_ctx {
+                        Some(es_ctx) => entry_file_touched_via_dependency_view(
+                            es_ctx,
                             &workspace_relative_repo_path(&row.entry),
                             &pool_roots,
                             &touched_entry_paths,
                         )?,
                         None => {
                             return Err(format!(
-                                "module_graph context missing for entry {} — \
-                                 a non-Off node_frontier_selection declares the module-grain \
-                                 affected-set query and it must resolve; no silent \
+                                "entry_selection context missing for entry {} — \
+                                 a non-Off node_frontier_selection declares the DependencyView \
+                                 entry selector and it must resolve; no silent \
                                  run-everything fallback",
                                 row.entry
                             ));
@@ -6818,6 +7246,17 @@ mod floor_witness_a_prove {
 // BLOCKED (unaffordable resolve); this receipt is re-scoped to MODULE grain, using the landed
 // `import_closure_live` authority (#6210/#6231).
 //
+// ORPHAN #6274 SCAFFOLD (lever-a slice 2 — NOT production): Live floor discovery
+// (`run_discovery_rows`, cli_run.rs:5923) exercises `entry_file_touched_via_dependency_view`
+// over `ENTRY_SELECTION_ENTRY` (`entry_affected_by_dependency_view`, DependencyView).
+// This harness intentionally keeps the superseded import-closure pair —
+// `entry_affected_by_touched_paths` (MODULE_GRAPH_ENTRY) vs Rust `import_closure_files_from_graph`
+// oracle — to prove #6274 decision-level agreement only. It does NOT certify production
+// selection after slice 2; a divergence in `entry_affected_by_dependency_view` would not
+// surface here (§5 specification-without-execution if mislabeled as production receipt).
+// DISSOLVES WHEN deliverable-3 DependencyView differential receipt lands (≥5 merged PR diffs,
+// `entry_affected_by_dependency_view` vs import-closure oracle); then retire this harness.
+//
 // SCAFFOLD: dissolves into a .dag execution witness when the discovery/diff seed plumbing
 // migrates off the v1 host layer (same trigger as `node_frontier_plumbing_controls` below,
 // §6 dissolution trigger) — the equivalence lens itself moves on-carrier at that point, this
@@ -6826,27 +7265,23 @@ mod floor_witness_a_prove {
 // It proves the module-grain "affected" decision computed by the `.dag` authority
 // (`v2.lens.module_graph.entry_affected_by_touched_paths`, a thin projection over
 // `import_closure_live`) agrees with an independent Rust oracle (`touched_file_in_import_closure`
-// over `import_closure_files_from_graph`) on real merged-commit diffs. Live production
-// (`run_discovery_rows`) now calls the `.dag` query directly via
-// `call_entry_affected_by_touched_paths`; this receipt keeps the Rust closure walk as a
-// deliberately separate implementation so agreement is proved by execution, not tautology.
+// over `import_closure_files_from_graph`) on real merged-commit diffs. Deliberately separate
+// implementations so agreement is proved by execution, not tautology.
 // Both sides are fed by the same host-realized `import_resolution_facts`/
 // `module_declaration_facts`, so this is a decision-level proof (§5: execution, not a
 // grep/typecheck spec), not a re-proof of closure membership (already covered by
 // `import_closure_equivalence_tests` above).
 //
 // Touched-paths derivation (fixed post-#6274 review): the input fed to BOTH sides is NOT the raw
-// `git show --name-only` file list. `entry_file_touched` in live production
-// (`run_discovery_rows`, cli_run.rs:5376-5395) is decided over `diff_edits.touched_entry_files`
-// — the FILTERED set `floor_diff_edits_from_line_ranges` produces after excluding pure data-item
-// edits (→ `overlapping_data_items`) and test-fn edits (→ `edited_test_fns`); only non-data,
-// non-test-fn declaration edits land in `touched_entry_files`. A raw touched-path superset can
-// diverge from this filtered set, so proving equivalence against raw paths only proves a
-// stronger/looser predicate, not the live decision. This receipt instead runs the exact same
-// production call the floor uses — `floor_diff_edits_from_diff_text(&index, &git_show_diff_text)`
-// — on each commit's full unified diff (`git show <sha>`, not `--name-only`) and feeds
-// `.touched_entry_files` to both `dag_entry_affected` and `rust_entry_affected`, matching the
-// sibling `green_import_closure_helper_fn_edit_runs_importer_entry` pattern above.
+// `git show --name-only` file list. Live production `entry_file_touched` is decided over
+// `diff_edits.touched_entry_files` — the FILTERED set `floor_diff_edits_from_line_ranges`
+// produces after excluding pure data-item edits (→ `overlapping_data_items`) and test-fn edits
+// (→ `edited_test_fns`); only non-data, non-test-fn declaration edits land in
+// `touched_entry_files`. A raw touched-path superset can diverge from this filtered set, so
+// proving equivalence against raw paths only proves a stronger/looser predicate, not the live
+// decision. This receipt runs `floor_diff_edits_from_diff_text(&index, &git_show_diff_text)`
+// on each commit's full unified diff (`git show <sha>`, not `--name-only`) and feeds
+// `.touched_entry_files` to both `dag_entry_affected` and `rust_entry_affected`.
 //
 // `floor_diff_edits_from_line_ranges` fail-closes (`Err`) when a touched `.dag` file's diff
 // includes changed line 1 (the module declaration line) — see cli_run.rs:4831-4832 — so a commit
@@ -6925,6 +7360,8 @@ mod module_grain_affected_equivalence_tests {
         )
     }
 
+    /// #6274 orphan scaffold only — superseded import-closure query (`module_graph.dag`).
+    /// Production floor uses `entry_affected_by_dependency_view` via `ENTRY_SELECTION_ENTRY`.
     fn dag_entry_affected(
         ctx: &v1_interpreter::InterpContext,
         entry_rel: &str,
@@ -8182,8 +8619,8 @@ mod source_root_ingest_manifest_tests {
 mod inert_lens_hygiene_tests {
     use super::{
         default_source_roots, discover_floor_corpus_rows, inert_lens_modules,
-        is_top_level_lens_module, witness_discovery_scan_dirs, DiscoveryRow,
-        FLOOR_DISCOVERY_EXCLUDES,
+        is_top_level_lens_module, witness_discovery_scan_dirs, witness_exclusion_substrings,
+        DiscoveryRow,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -8280,10 +8717,7 @@ mod inert_lens_hygiene_tests {
         std::env::set_current_dir(&ws).expect("chdir to workspace root");
         let roots = default_source_roots();
         let scan_dirs = witness_discovery_scan_dirs();
-        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let excludes = witness_exclusion_substrings();
         let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
         assert!(
             result.is_ok(),
@@ -8298,7 +8732,7 @@ mod construction_justification_hygiene_tests {
     use super::{
         construction_authority_graph_unresolved, construction_authority_unresolved,
         declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
-        wall_now_authority_refs, FLOOR_DISCOVERY_EXCLUDES,
+        wall_now_authority_refs, witness_exclusion_substrings,
     };
     use std::collections::BTreeSet;
     use std::collections::HashMap;
@@ -8369,10 +8803,7 @@ mod construction_justification_hygiene_tests {
             "dag/test/claim".to_string(),
             "src/v2/test/claim/manual".to_string(),
         ];
-        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let excludes = witness_exclusion_substrings();
         let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
         assert!(
             result.is_ok(),
@@ -8890,12 +9321,14 @@ pub fn fact_cardinality_decl_facts() -> Vec<FactCardinalityDeclFactRaw> {
     records
 }
 
+#[derive(Clone)]
 pub struct ImportResolutionFactRaw {
     pub path: String,
     pub import_module: String,
     pub target_declared: bool,
 }
 
+#[derive(Clone)]
 pub struct ModuleDeclarationFactRaw {
     pub module: String,
     pub path: String,
@@ -10938,6 +11371,7 @@ mod witness_layer_roots_compile_clean_tests {
         let _guard = ENV_TEST_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        disable_floor_compile_clean_lazy_install_for_test();
         f();
     }
 
@@ -10994,6 +11428,119 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    /// §5 discriminating RED: gate without an installed receipt must refuse (never run a second compile).
+    #[test]
+    fn floor_compile_clean_gate_refuses_without_receipt() {
+        with_env_test_lock(|| {
+            reset_floor_compile_clean_receipt_for_test();
+            assert!(
+                !consume_floor_compile_clean_gate_verdict(),
+                "gate must refuse when no in-run compile receipt exists"
+            );
+            assert!(!floor_compile_clean_receipt_installed());
+        });
+    }
+
+    /// §5 discriminating RED: gate must refuse when the one compile produced hard errors.
+    #[test]
+    fn floor_compile_clean_gate_refuses_on_failed_compile_receipt() {
+        with_env_test_lock(|| {
+            reset_floor_compile_clean_receipt_for_test();
+            install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Compiled {
+                ok: false,
+            });
+            assert!(
+                !consume_floor_compile_clean_gate_verdict(),
+                "gate must refuse when the installed receipt records compile failure"
+            );
+        });
+    }
+
+    /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
+    /// must refuse through install_floor_compile_clean_receipt → consume_floor_compile_clean_gate_verdict.
+    /// Ignored in CI: ~minutes cold whole-tree compile; recorded execution receipt in PR #6361 body.
+    #[test]
+    #[ignore = "manual ~minutes whole-tree compile; recorded execution receipt in PR #6361 body (clever-koi demand 1)"]
+    fn floor_compile_clean_gate_e2e_refuses_on_broken_tree() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ga = EnvGuard::remove("GITHUB_ACTIONS");
+                let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+                let _inject =
+                    EnvGuard::set("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED", "1");
+                reset_floor_compile_clean_receipt_for_test();
+                install_floor_compile_clean_receipt()
+                    .expect("real whole-tree compile with injected unresolved import");
+                assert!(
+                    !consume_floor_compile_clean_gate_verdict(),
+                    "gate must refuse when the one real compile hits hard errors"
+                );
+            });
+        });
+    }
+
+    /// widen-never-narrow box (lively-raven-355): the dag/ entry closure has zero live `import v1.*`
+    /// lines — src/v1 is a shell-perturb resolution root only, not gate entry scope.
+    #[test]
+    fn compile_clean_dag_entry_tree_has_no_v1_module_imports() {
+        let dag_root = workspace_root().join("dag");
+        let mut offenders = Vec::new();
+        let mut stack = vec![dag_root];
+        while let Some(dir) = stack.pop() {
+            let entries =
+                std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read_dir {:?}: {e}", dir));
+            for entry in entries {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().and_then(|s| s.to_str()) == Some("dag") {
+                    let content = std::fs::read_to_string(&path)
+                        .unwrap_or_else(|e| panic!("read {:?}: {e}", path));
+                    for (i, line) in content.lines().enumerate() {
+                        let trimmed = line.trim_start();
+                        if trimmed.starts_with("import v1.") {
+                            offenders.push(format!("{}:{}: {}", path.display(), i + 1, trimmed));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "dag compile-clean entry tree must not import v1.* modules: {offenders:?}"
+        );
+    }
+
+    /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
+    #[test]
+    fn floor_fast_scoped_plan_skips_docs_only_touch() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
+                "docs/plans/example.md".to_string(),
+            ]);
+            assert_eq!(
+                plan,
+                CompileCleanScopePlan::SkipNoAffected {
+                    reason: "docs-only diff — no compile-clean entry selection required"
+                        .to_string()
+                }
+            );
+        });
+    }
+
+    /// Interim #6239: substrate not ready → whole-tree (not import-closure Scoped).
+    #[test]
+    fn floor_fast_plan_whole_tree_when_substrate_not_ready() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
+                "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                "src/v1/stage0/src/cli_run.rs".to_string(),
+            ]);
+            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+        });
+    }
+
     /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
     #[test]
     #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
@@ -11009,6 +11556,30 @@ mod witness_layer_roots_compile_clean_tests {
                         .to_string()
                 }
             );
+        });
+    }
+
+    /// Lever-a PR touch receipt: dag transport edits scope (not silent whole-tree).
+    #[test]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold"]
+    fn scoped_plan_includes_lever_a_dag_transport_touch() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths(&[
+                "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                "src/v1/stage0/src/cli_run.rs".to_string(),
+            ])
+            .expect("scope disposition");
+            match plan {
+                CompileCleanScopePlan::Scoped { entry_paths } => {
+                    assert!(
+                        entry_paths
+                            .iter()
+                            .any(|p| p.contains("dag_compile_clean_transport")),
+                        "expected transport entry in {entry_paths:?}"
+                    );
+                }
+                other => panic!("expected ScopedRun for lever-A PR touch, got {other:?}"),
+            }
         });
     }
 
