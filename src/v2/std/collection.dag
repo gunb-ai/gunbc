@@ -1,6 +1,7 @@
 module v2.std.collection
 
 import std.algebra { FreeMonoid }
+import std.primitives { empty_map_contract, map_insert_contract, PrimitiveContract }
 import v2.std.algebra { PointwisePower, fold_list, is_empty }
 import v2.std.diagnostic {
   Diagnostic,
@@ -47,6 +48,13 @@ fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
 
+data map_native_realization_note: String = "Map<K,V> realization = native HAMT (value_carrier.map_carrier: hash_array_mapped_trie, O(log32 n) insert/lookup). empty_map_host_binding/map_insert_host_binding cite std.primitives contracts; empty_map delegates to empty_map_primitive_delegate (host intrinsic, not interpreted). map_insert tries the host builtin before the closure-chain fallback for hand-built Map { lookup: ... } rows (malformed_map witness)."
+
+data empty_map_host_binding: PrimitiveContract = empty_map_contract
+data map_insert_host_binding: PrimitiveContract = map_insert_contract
+
+data empty_map_primitive_delegate_host_intrinsic_note: String = "Host-intrinsic delegate (v2.std.collection): routes to eval_builtin empty_map / Value::Map HAMT per empty_map_host_binding. Body is not interpreted; host misconfiguration surfaces as typed InterpError (Ok(None) on empty_map), not silent recursion. Registry drift guard: is_v2_std_collection_map_grounded_fn must stay module-scoped to v2.std.collection — if it ever fails to match, body self-call would recurse instead of diagnosing."
+
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
 }
@@ -66,12 +74,11 @@ fn map_absent_diagnostic() -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+fn empty_map_primitive_delegate<K, V>() -> Map<K, V> {
+  empty_map_primitive_delegate()
+}
 fn empty_map<K, V>() -> Map<K, V> {
-  Map {
-    lookup: fn(_) {
-      Violates { diagnostic: map_absent_diagnostic() }
-    }
-  }
+  empty_map_primitive_delegate()
 }
 fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   Map {
