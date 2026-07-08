@@ -1816,6 +1816,12 @@ fn rust_struct_decl_structural_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal_free(identity: ^rust_token_ident),
         grammar_formal_terminal(identity: ^rust_token_colon),
         grammar_formal_nonterminal_occurrence(identity: ^rust_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_comma_field_decl_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_production_comma_field_decl_list_suffix,
+      rhs: [
         grammar_formal_terminal(identity: ^rust_token_comma),
         grammar_formal_terminal_free(identity: ^rust_token_ident),
         grammar_formal_terminal(identity: ^rust_token_colon),
@@ -1902,6 +1908,12 @@ fn rust_enum_decl_structural_formal_productions() -> List<FormalProduction> {
       lhs: ^rust_production_comma_variant_list,
       rhs: [
         grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_production_comma_variant_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_production_comma_variant_list_suffix,
+      rhs: [
         grammar_formal_terminal(identity: ^rust_token_comma),
         grammar_formal_terminal_free(identity: ^rust_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^rust_production_comma_variant_list_suffix)

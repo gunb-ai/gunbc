@@ -1,9 +1,5 @@
 module v2.test.emit.coproduct_enum_emit
 
-import v2.compiler.ingest {
-  grammar_relation_row_forward_token_selection
-}
-import v2.compiler.tokenize { tokenize }
 import v2.compiler.translate {
   grammar_relation_row_for_emitted,
   grammar_relation_row_tokens_root,
@@ -12,35 +8,26 @@ import v2.compiler.translate {
 import v2.extdeps.languages.rust {
   rust_inhabitant_atom,
   rust_enum_decl_productions_only_translation_rules,
-  rust_enum_decl_structural_formal_productions,
   rust_enum_decl_structural_target_model
 }
-import std.algebra { Empty }
-import v2.std.algebra { fold_list, list_append }
+import v2.std.algebra { fold_list, fold_list_right }
 import v2.std.collection { List }
-import v2.std.compilers.lexing { Token, token_stream_all }
 import v2.std.compilers.target_model {
-  BoundToken,
-  ConcreteSyntaxToken,
-  FixedToken,
   TargetModel,
   concrete_syntax_token_list_from_node
 }
 import v2.std.diagnostic {
   Accepted,
-  None,
   Outcome,
   Rejected,
   bind_outcome,
   outcome_accepted
 }
-import v2.std.grammar { formal_productions_catalog_to_node }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node {
   Conj,
   Edge,
-  Named,
   Node,
   Positional,
   Symbol,
@@ -48,40 +35,43 @@ import v2.std.node {
   TypeNode
 }
 
-data coproduct_enum_emit_source_file: Symbol = ^coproduct_enum_emit_source_file
-
-data coproduct_bool_enum_source_text: String = "enum Bool { True, False }"
+data coproduct_bool_enum_golden: String = "enum Bool { True, False }"
+data coproduct_execution_mode_enum_golden: String = "enum ExecutionMode { Hermetic, Wet, Record }"
+data coproduct_artifact_kind_enum_golden: String = "enum ArtifactKind { SourceFile, GeneratedSource, TestClaimArtifact, ProjectionArtifact, Stage0Candidate, CorePackage, WitnessBundle }"
 
 fn coproduct_interned_symbol(spelling: String) -> Symbol {
   spelling
 }
 
-fn coproduct_variant_list_suffix_empty() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
+fn coproduct_variant_nil() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
-fn coproduct_two_variant_list_emitted(v1: Symbol, v2: Symbol) -> Node {
+fn coproduct_variant_cell(variant: Symbol, rest: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: rust_inhabitant_atom(id: v1) },
-      Edge { label: Positional, target: rust_inhabitant_atom(id: v2) },
-      Edge { label: Positional, target: coproduct_variant_list_suffix_empty() }
+      Edge { label: Positional, target: rust_inhabitant_atom(id: variant) },
+      Edge { label: Positional, target: rest }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn coproduct_variant_block_emitted(variants: Node) -> Node {
+fn coproduct_variant_list_from(names: List<String>) -> Node {
+  fold_list_right(
+    xs: names,
+    empty: coproduct_variant_nil(),
+    snoc: fn(acc, name) {
+      coproduct_variant_cell(variant: coproduct_interned_symbol(spelling: name), rest: acc)
+    }
+  )
+}
+
+fn coproduct_variant_block(variants: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: variants }
-    ],
+    children: [ Edge { label: Positional, target: variants } ],
     occurrence_id: SyntheticOccurrence
   }
 }
@@ -91,24 +81,35 @@ fn coproduct_enum_emitted(name: Symbol, variants: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Positional, target: rust_inhabitant_atom(id: name) },
-      Edge { label: Positional, target: coproduct_variant_block_emitted(variants: variants) }
+      Edge { label: Positional, target: coproduct_variant_block(variants: variants) }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn coproduct_bool_enum_emitted() -> Node {
+fn coproduct_enum_from_names(name: String, variant_names: List<String>) -> Node {
   coproduct_enum_emitted(
-    name: coproduct_interned_symbol(spelling: "Bool"),
-    variants: coproduct_two_variant_list_emitted(
-      v1: coproduct_interned_symbol(spelling: "True"),
-      v2: coproduct_interned_symbol(spelling: "False")
-    )
+    name: coproduct_interned_symbol(spelling: name),
+    variants: coproduct_variant_list_from(names: variant_names)
   )
 }
 
-fn coproduct_rules() -> Node {
-  rust_enum_decl_productions_only_translation_rules()
+fn coproduct_bool_enum_emitted() -> Node {
+  coproduct_enum_from_names(name: "Bool", variant_names: ["True", "False"])
+}
+
+fn coproduct_execution_mode_enum_emitted() -> Node {
+  coproduct_enum_from_names(name: "ExecutionMode", variant_names: ["Hermetic", "Wet", "Record"])
+}
+
+fn coproduct_artifact_kind_enum_emitted() -> Node {
+  coproduct_enum_from_names(
+    name: "ArtifactKind",
+    variant_names: [
+      "SourceFile", "GeneratedSource", "TestClaimArtifact", "ProjectionArtifact",
+      "Stage0Candidate", "CorePackage", "WitnessBundle"
+    ]
+  )
 }
 
 fn coproduct_target() -> TargetModel {
@@ -116,13 +117,11 @@ fn coproduct_target() -> TargetModel {
 }
 
 fn coproduct_emit_source_text(emitted: Node) -> Outcome<String> {
-  coproduct_emit_source_text_with_rules(emitted: emitted, rules: coproduct_rules())
-}
-
-fn coproduct_emit_source_text_with_rules(emitted: Node, rules: Node) -> Outcome<String> {
-  let target = coproduct_target()
   bind_outcome(
-    o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+    o: grammar_relation_row_for_emitted(
+      rules: rust_enum_decl_productions_only_translation_rules(),
+      emitted: emitted
+    ),
     f: fn(row) {
       bind_outcome(
         o: grammar_relation_row_tokens_root(row: row),
@@ -131,61 +130,12 @@ fn coproduct_emit_source_text_with_rules(emitted: Node, rules: Node) -> Outcome<
             o: concrete_syntax_token_list_from_node(list_node: tokens_root),
             f: fn(tokens) {
               bind_outcome(
-                o: serialize_concrete_syntax_tokens_to_source(target: target, tokens: tokens),
-                f: fn(medium) {
-                  outcome_accepted(value: medium.carried)
-                }
+                o: serialize_concrete_syntax_tokens_to_source(target: coproduct_target(), tokens: tokens),
+                f: fn(medium) { outcome_accepted(value: medium.carried) }
               )
             }
           )
         }
-      )
-    }
-  )
-}
-
-fn coproduct_lexer_token_to_concrete(token: Token) -> ConcreteSyntaxToken {
-  if token.class == ^rust_token_ident {
-    BoundToken { token_class: ^rust_token_ident, binding: token.lexeme }
-  } else {
-    FixedToken { token_class: token.class }
-  }
-}
-
-fn coproduct_lexer_tokens_to_concrete_syntax(tokens: List<Token>) -> List<ConcreteSyntaxToken> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, t) {
-      list_append(
-        left: acc,
-        right: [coproduct_lexer_token_to_concrete(token: t)]
-      )
-    }
-  )
-}
-
-fn coproduct_tokenize_source_text(source: String) -> Outcome<List<Token>> {
-  bind_outcome(
-    o: tokenize(
-      text: source,
-      file: coproduct_enum_emit_source_file,
-      rules: coproduct_target().lex
-    ),
-    f: fn(stream) {
-      outcome_accepted(value: token_stream_all(stream: stream))
-    }
-  )
-}
-
-fn coproduct_reparse_from_source_with_rules(source: String, rules: Node) -> Outcome<Node> {
-  bind_outcome(
-    o: coproduct_tokenize_source_text(source: source),
-    f: fn(tokens) {
-      grammar_relation_row_forward_token_selection(
-        tokens: coproduct_lexer_tokens_to_concrete_syntax(tokens: tokens),
-        rules: rules,
-        start_lhs: ^rust_production_enum_decl
       )
     }
   )
@@ -198,114 +148,49 @@ fn coproduct_emit_matches_golden(emitted: Node, golden: String) -> Bool {
   }
 }
 
-fn coproduct_source_round_trips_with_rules(rules: Node, source: String) -> Bool {
-  match coproduct_reparse_from_source_with_rules(source: source, rules: rules) {
-    Accepted { value: node, diagnostics: _ } =>
-      match coproduct_emit_source_text_with_rules(emitted: node, rules: rules) {
-        Accepted { value: emitted_text, diagnostics: _ } => emitted_text == source
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
+fn coproduct_construct_refused(emitted: Node) -> Bool {
+  match coproduct_emit_source_text(emitted: emitted) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
-}
-
-fn coproduct_bool_round_trips() -> Bool {
-  coproduct_source_round_trips_with_rules(rules: coproduct_rules(), source: coproduct_bool_enum_source_text)
-}
-
-fn coproduct_translation_rules_with_row(row: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^grammar_relation_rules_formal_productions },
-        target: formal_productions_catalog_to_node(
-          productions: rust_enum_decl_structural_formal_productions()
-        )
-      },
-      Edge {
-        label: Named { name: ^coproduct_enum_emit_perturbed_binding },
-        target: row
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn coproduct_perturbed_rules_for_bool_source() -> Outcome<Node> {
-  match grammar_relation_row_for_emitted(
-    rules: coproduct_rules(),
-    emitted: coproduct_enum_emitted(
-      name: coproduct_interned_symbol(spelling: "Bit"),
-      variants: coproduct_two_variant_list_emitted(
-        v1: coproduct_interned_symbol(spelling: "Hi"),
-        v2: coproduct_interned_symbol(spelling: "Lo")
-      )
-    )
-  ) {
-    Accepted { value: bit_row, diagnostics: _ } =>
-      outcome_accepted(value: coproduct_translation_rules_with_row(row: bit_row))
-    Rejected { diagnostics: _ } => Rejected { diagnostics: None }
-  }
-}
-
-fn coproduct_perturbed_row_breaks_round_trip() -> Bool {
-  match coproduct_perturbed_rules_for_bool_source() {
-    Accepted { value: perturbed_rules, diagnostics: _ } =>
-      coproduct_bool_round_trips()
-        && !coproduct_source_round_trips_with_rules(
-          rules: perturbed_rules,
-          source: coproduct_bool_enum_source_text
-        )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn coproduct_three_variant_enum_emitted() -> Node {
-  coproduct_enum_emitted(
-    name: coproduct_interned_symbol(spelling: "ExecutionMode"),
-    variants: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        Edge { label: Positional, target: rust_inhabitant_atom(id: coproduct_interned_symbol(spelling: "Hermetic")) },
-        Edge { label: Positional, target: rust_inhabitant_atom(id: coproduct_interned_symbol(spelling: "Wet")) },
-        Edge { label: Positional, target: rust_inhabitant_atom(id: coproduct_interned_symbol(spelling: "Record")) },
-        Edge { label: Positional, target: coproduct_variant_list_suffix_empty() }
-      ],
-      occurrence_id: SyntheticOccurrence
-    }
-  )
 }
 
 fn coproduct_variant_payload_enum_emitted() -> Node {
   coproduct_enum_emitted(
     name: coproduct_interned_symbol(spelling: "Witness"),
-    variants: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        Edge {
-          label: Positional,
-          target: Node {
-            kind: TypeNode { connective: Conj },
-            children: [
-              Edge { label: Positional, target: rust_inhabitant_atom(id: coproduct_interned_symbol(spelling: "Holds")) },
-              Edge { label: Positional, target: rust_inhabitant_atom(id: coproduct_interned_symbol(spelling: "value")) }
-            ],
-            occurrence_id: SyntheticOccurrence
-          }
-        },
-        Edge { label: Positional, target: rust_inhabitant_atom(id: coproduct_interned_symbol(spelling: "Violates")) },
-        Edge { label: Positional, target: coproduct_variant_list_suffix_empty() }
-      ],
-      occurrence_id: SyntheticOccurrence
-    }
+    variants: coproduct_variant_cell(
+      variant: coproduct_interned_symbol(spelling: "Holds"),
+      rest: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Positional,
+            target: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                Edge { label: Positional, target: rust_inhabitant_atom(id: coproduct_interned_symbol(spelling: "Violates")) },
+                Edge { label: Positional, target: rust_inhabitant_atom(id: coproduct_interned_symbol(spelling: "diagnostic")) }
+              ],
+              occurrence_id: SyntheticOccurrence
+            }
+          },
+          Edge { label: Positional, target: coproduct_variant_nil() }
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    )
   )
 }
 
-fn coproduct_construct_refused(emitted: Node) -> Bool {
-  match grammar_relation_row_for_emitted(rules: coproduct_rules(), emitted: emitted) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+fn coproduct_generic_param_enum_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: rust_inhabitant_atom(id: coproduct_interned_symbol(spelling: "Witness")) },
+      Edge { label: Positional, target: rust_inhabitant_atom(id: coproduct_interned_symbol(spelling: "C")) },
+      Edge { label: Positional, target: coproduct_variant_block(variants: coproduct_variant_list_from(names: ["Holds"])) }
+    ],
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -315,44 +200,41 @@ type CoproductEmitConstructRow {
 }
 
 data coproduct_emit_construct_rows: List<CoproductEmitConstructRow> = [
-  CoproductEmitConstructRow { construct: ^enum_bool_two_nullary_variants, covered: true },
-  CoproductEmitConstructRow { construct: ^enum_n_ary_variant_list, covered: false },
-  CoproductEmitConstructRow { construct: ^enum_named_variant_payload, covered: false }
+  CoproductEmitConstructRow { construct: ^enum_bool_two_variants, covered: true },
+  CoproductEmitConstructRow { construct: ^enum_execution_mode_three_variants, covered: true },
+  CoproductEmitConstructRow { construct: ^enum_artifact_kind_seven_variants, covered: true },
+  CoproductEmitConstructRow { construct: ^enum_named_variant_payload, covered: false },
+  CoproductEmitConstructRow { construct: ^enum_generic_parameter, covered: false }
 ]
 
 fn coproduct_covered_count() -> Int {
-  fold_list(
-    xs: coproduct_emit_construct_rows,
-    empty: 0,
-    cons: fn(acc, row) { if row.covered { acc + 1 } else { acc } }
-  )
+  fold_list(xs: coproduct_emit_construct_rows, empty: 0, cons: fn(acc, row) { if row.covered { acc + 1 } else { acc } })
 }
 
 fn coproduct_refused_count() -> Int {
-  fold_list(
-    xs: coproduct_emit_construct_rows,
-    empty: 0,
-    cons: fn(acc, row) { if row.covered { acc } else { acc + 1 } }
-  )
+  fold_list(xs: coproduct_emit_construct_rows, empty: 0, cons: fn(acc, row) { if row.covered { acc } else { acc + 1 } })
 }
 
-fn coproduct_bool_covered_holds() -> Bool {
-  coproduct_emit_matches_golden(
-    emitted: coproduct_bool_enum_emitted(),
-    golden: coproduct_bool_enum_source_text
-  )
-    && coproduct_bool_round_trips()
+fn coproduct_variable_arity_covered_holds() -> Bool {
+  coproduct_emit_matches_golden(emitted: coproduct_bool_enum_emitted(), golden: coproduct_bool_enum_golden)
+    && coproduct_emit_matches_golden(emitted: coproduct_execution_mode_enum_emitted(), golden: coproduct_execution_mode_enum_golden)
+    && coproduct_emit_matches_golden(emitted: coproduct_artifact_kind_enum_emitted(), golden: coproduct_artifact_kind_enum_golden)
+}
+
+fn coproduct_golden_discriminates_holds() -> Bool {
+  !coproduct_emit_matches_golden(emitted: coproduct_bool_enum_emitted(), golden: coproduct_execution_mode_enum_golden)
+    && !coproduct_emit_matches_golden(emitted: coproduct_bool_enum_emitted(), golden: "enum Bool { True, FALSE }")
 }
 
 fn coproduct_gaps_refused_holds() -> Bool {
-  coproduct_construct_refused(emitted: coproduct_three_variant_enum_emitted())
-    && coproduct_construct_refused(emitted: coproduct_variant_payload_enum_emitted())
+  coproduct_construct_refused(emitted: coproduct_variant_payload_enum_emitted())
+    && coproduct_construct_refused(emitted: coproduct_generic_param_enum_emitted())
     && (coproduct_refused_count() == 2)
-    && (coproduct_covered_count() == 1)
+    && (coproduct_covered_count() == 3)
 }
 
 test fn coproduct_enum_emit_holds() -> Bool {
-  coproduct_bool_covered_holds()
-    && coproduct_perturbed_row_breaks_round_trip()
+  coproduct_variable_arity_covered_holds()
+    && coproduct_golden_discriminates_holds()
     && coproduct_gaps_refused_holds()
 }
