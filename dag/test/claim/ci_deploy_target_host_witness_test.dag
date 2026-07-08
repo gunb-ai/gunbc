@@ -15,7 +15,7 @@ import gunbc.ci_deploy_target_host {
   gunbc_ci_deploy_srv1_runner_spec,
   deploy_target_host_refusal_local,
 }
-import gunbc.ci_spec { gunbc_ci_deploy_srv1_stage }
+import gunbc.ci_spec { gunbc_ci_deploy_srv1_stage, gunbc_ci_deploy_stages }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet_intent { srv1_host }
 import gunbc.host_effect { LocalShell, SshShell }
@@ -110,8 +110,9 @@ fn witness_preflight_script_checks_target_host() -> Bool {
 
 fn witness_ci_yml_deploy_job_pins_srv1_runner() -> Bool {
   let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
-    && string_contains(s: yaml, pattern: "    runs-on: [self-hosted, linux, arm64, srv1]")
+  let enrolled = length(gunbc_ci_deploy_stages) > 0
+  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:") == enrolled
+    && string_contains(s: yaml, pattern: "    runs-on: [self-hosted, linux, arm64, srv1]") == enrolled
     && !string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:\n    runs-on: ubicloud-standard-16-arm")
 }
 

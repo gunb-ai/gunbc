@@ -26,8 +26,7 @@ fn w_diag_includes_stderr() -> Bool {
 fn w_quiet_on_passing_fmt() -> Bool {
   let reason = rust_gate_reason(
     fmt_success: true, fmt_stdout: "SENTINEL_SHOULD_NOT_APPEAR", fmt_stderr: "",
-    clippy_success: false, clippy_stdout: "", clippy_stderr: "some clippy error",
-    test_success: true, test_stdout: "", test_stderr: ""
+    test_success: false, test_stdout: "", test_stderr: "some test error"
   )
   !string_contains(s: reason, pattern: "SENTINEL_SHOULD_NOT_APPEAR")
 }
@@ -35,7 +34,6 @@ fn w_quiet_on_passing_fmt() -> Bool {
 fn w_red_surfaces_nextest() -> Bool {
   let reason = rust_gate_reason(
     fmt_success: true, fmt_stdout: "", fmt_stderr: "",
-    clippy_success: true, clippy_stdout: "", clippy_stderr: "",
     test_success: false, test_stdout: "", test_stderr: "FAILED test::x_failure"
   )
   string_contains(s: reason, pattern: "FAILED test::x_failure") &&
