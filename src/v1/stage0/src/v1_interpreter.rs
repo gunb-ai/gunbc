@@ -743,9 +743,19 @@ struct EvalRecomputeTrace {
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
     // (same discipline as PureCallMemo.keepalive_fns).
     keepalive_fns: Vec<Rc<Node>>,
+    // fn_ptr -> interned display name, so millions of ledger entries share
+    // one allocation per function instead of a String clone per key.
+    fn_names: std::collections::HashMap<usize, Rc<str>>,
     keyed_calls: u64,
     unkeyed_calls: u64,
+    // Calls refused a NEW ledger key once map hits EVAL_RECOMPUTE_KEY_CAP —
+    // disclosed, never silently dropped (existing keys keep counting).
+    overflow_calls: u64,
 }
+
+// Ceiling on distinct ledger keys so a diagnostic run cannot OOM the host;
+// overflow is counted and disclosed in the report.
+const EVAL_RECOMPUTE_KEY_CAP: usize = 4_000_000;
 
 #[derive(PartialEq, Eq, Hash)]
 struct EvalRecomputeKey {
@@ -762,10 +772,35 @@ enum EvalRecomputeArgKey {
     StrHash(u64),
     UnitVariant(u32, u32),
     EmptyList,
+    // Recursive content hash of a composite value (Record/Variant/List/Map/
+    // Set/Fn/Unit), memoized per allocation with Weak-liveness validation so
+    // a reused address can never serve a stale hash. Closures are the one
+    // remaining unkeyed class (captured-env identity is not computed).
+    ContentHash(u64),
 }
 
+enum CompositeWeak {
+    List(std::rc::Weak<RrbVector<Value>>),
+    Fields(std::rc::Weak<Vec<(Symbol, Value)>>),
+    Map(std::rc::Weak<HamtMap<CanonKey, Value>>),
+    Set(std::rc::Weak<OrdSet<String>>),
+}
+
+impl CompositeWeak {
+    fn alive(&self) -> bool {
+        match self {
+            CompositeWeak::List(w) => w.strong_count() > 0,
+            CompositeWeak::Fields(w) => w.strong_count() > 0,
+            CompositeWeak::Map(w) => w.strong_count() > 0,
+            CompositeWeak::Set(w) => w.strong_count() > 0,
+        }
+    }
+}
+
+type EvalRecomputeHashMemo = std::collections::HashMap<usize, (CompositeWeak, u64)>;
+
 struct EvalRecomputeEntry {
-    fn_name: String,
+    fn_name: Rc<str>,
     count: u64,
     total_ns: u128,
     // Distinct call-site node ptrs (capped) with "file:offset" labels. One site
@@ -1074,6 +1109,7 @@ pub struct InterpContext {
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
+    eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
@@ -1218,6 +1254,7 @@ impl InterpContext {
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
+            eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
             published_mock_keys: RefCell::new(None),
@@ -2589,7 +2626,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(result);
     }
     if eval_recompute_trace_enabled() && fn_node.uses.is_empty() {
-        return match eval_recompute_key(&fn_node, &args) {
+        return match eval_recompute_key(ctx, &fn_node, &args) {
             Some(key) => {
                 let started = Instant::now();
                 let result = call_function(ctx, &fn_node, &args, env);
@@ -2767,7 +2804,300 @@ fn eval_recompute_str_hash(s: &str) -> u64 {
     h.finish()
 }
 
-fn eval_recompute_arg_key(v: &Value) -> Option<EvalRecomputeArgKey> {
+fn eval_recompute_mix(seed: u64, x: u64) -> u64 {
+    (seed.rotate_left(5) ^ x).wrapping_mul(0x100000001b3)
+}
+
+fn eval_recompute_canon_key_hash(k: &CanonKey) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    k.hash(&mut h);
+    h.finish()
+}
+
+// Content hash of a Value, memoized per composite allocation. Equal values
+// (per Value::eq's structural semantics) hash equal; the pointer memo is
+// validated by Weak-liveness so a freed-then-reused address recomputes
+// instead of serving a stale hash. Returns None when the value contains a
+// Closure (no computed identity for captured envs) — the caller routes that
+// call to the disclosed unkeyed bucket. Iterative (explicit frame stack):
+// corpus values include Cons-chain lists and deep node trees whose depth is
+// data-sized, so recursion here would overflow the host stack.
+enum EvalRecomputeFrameKind {
+    List {
+        rc: Rc<RrbVector<Value>>,
+    },
+    Fields {
+        rc: Rc<Vec<(Symbol, Value)>>,
+        type_sym: u32,
+        variant_sym: u32,
+        is_variant: bool,
+    },
+    Map {
+        rc: Rc<HamtMap<CanonKey, Value>>,
+        key_hashes: Vec<u64>,
+        values: Vec<Value>,
+    },
+}
+
+struct EvalRecomputeFrame {
+    kind: EvalRecomputeFrameKind,
+    idx: usize,
+    h: u64,
+}
+
+fn eval_recompute_frame_child(f: &EvalRecomputeFrame, idx: usize) -> Option<Value> {
+    match &f.kind {
+        EvalRecomputeFrameKind::List { rc } => rc.get(idx).cloned(),
+        EvalRecomputeFrameKind::Fields { rc, .. } => rc.get(idx).map(|(_, v)| v.clone()),
+        EvalRecomputeFrameKind::Map { values, .. } => values.get(idx).cloned(),
+    }
+}
+
+fn eval_recompute_frame_integrate(f: &mut EvalRecomputeFrame, child_h: u64) {
+    match &f.kind {
+        EvalRecomputeFrameKind::List { .. } => {
+            f.h = eval_recompute_mix(f.h, child_h);
+        }
+        EvalRecomputeFrameKind::Fields { rc, .. } => {
+            let sym = (rc[f.idx].0).0;
+            let mixed = eval_recompute_mix(f.h, u64::from(sym));
+            f.h = eval_recompute_mix(mixed, child_h);
+        }
+        EvalRecomputeFrameKind::Map { key_hashes, .. } => {
+            // Order-independent combine: im_rc map iteration order is not
+            // content-canonical, so entries fold commutatively.
+            f.h =
+                f.h.wrapping_add(eval_recompute_mix(key_hashes[f.idx], child_h));
+        }
+    }
+}
+
+fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomputeFrame) -> u64 {
+    let EvalRecomputeFrame { kind, h, .. } = f;
+    match kind {
+        EvalRecomputeFrameKind::List { rc } => {
+            memo.insert(
+                Rc::as_ptr(&rc) as usize,
+                (CompositeWeak::List(Rc::downgrade(&rc)), h),
+            );
+            h
+        }
+        EvalRecomputeFrameKind::Fields {
+            rc,
+            type_sym,
+            variant_sym,
+            is_variant,
+        } => {
+            // The fields-content hash is memoized independently of the owning
+            // type/variant symbols (a fields Rc could in principle be shared
+            // across constructions), so the memo entry never bakes in the
+            // wrapper identity.
+            memo.insert(
+                Rc::as_ptr(&rc) as usize,
+                (CompositeWeak::Fields(Rc::downgrade(&rc)), h),
+            );
+            if is_variant {
+                eval_recompute_mix(
+                    eval_recompute_mix(
+                        eval_recompute_mix(0xA5A5_0080, u64::from(type_sym)),
+                        u64::from(variant_sym),
+                    ),
+                    h,
+                )
+            } else {
+                eval_recompute_mix(eval_recompute_mix(0xA5A5_0070, u64::from(type_sym)), h)
+            }
+        }
+        EvalRecomputeFrameKind::Map { rc, .. } => {
+            let vh = eval_recompute_mix(0xA5A5_0090, h);
+            memo.insert(
+                Rc::as_ptr(&rc) as usize,
+                (CompositeWeak::Map(Rc::downgrade(&rc)), vh),
+            );
+            vh
+        }
+    }
+}
+
+enum EvalRecomputeStep {
+    Have(u64),
+    Opened,
+    Bail,
+}
+
+fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> Option<u64> {
+    let mut frames: Vec<EvalRecomputeFrame> = Vec::new();
+    let mut cursor: Value = root.clone();
+    loop {
+        // Phase 1: reduce cursor to a hash, opening frames for uncached composites.
+        let mut child_h: u64 = loop {
+            let step = match &cursor {
+                Value::Null => EvalRecomputeStep::Have(0xA5A5_0001),
+                Value::Unit => EvalRecomputeStep::Have(0xA5A5_0002),
+                Value::Bool(b) => EvalRecomputeStep::Have(0xA5A5_0010 ^ u64::from(*b)),
+                Value::Int(i) => {
+                    EvalRecomputeStep::Have(eval_recompute_mix(0xA5A5_0020, *i as u64))
+                }
+                Value::Float(f) => {
+                    EvalRecomputeStep::Have(eval_recompute_mix(0xA5A5_0030, f.to_bits()))
+                }
+                Value::Str(s) => EvalRecomputeStep::Have(eval_recompute_mix(
+                    0xA5A5_0040,
+                    eval_recompute_str_hash(s),
+                )),
+                Value::Fn { node } => EvalRecomputeStep::Have(eval_recompute_mix(
+                    0xA5A5_0050,
+                    Rc::as_ptr(node) as u64,
+                )),
+                Value::Closure { .. } => EvalRecomputeStep::Bail,
+                Value::Set(s) => {
+                    let ptr = Rc::as_ptr(s) as usize;
+                    match memo.get(&ptr) {
+                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                        _ => {
+                            let mut h: u64 = 0xA5A5_00A0;
+                            for item in s.iter() {
+                                h = eval_recompute_mix(h, eval_recompute_str_hash(item));
+                            }
+                            memo.insert(ptr, (CompositeWeak::Set(Rc::downgrade(s)), h));
+                            EvalRecomputeStep::Have(h)
+                        }
+                    }
+                }
+                Value::List(xs) => {
+                    let ptr = Rc::as_ptr(xs) as usize;
+                    match memo.get(&ptr) {
+                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                        _ => {
+                            frames.push(EvalRecomputeFrame {
+                                kind: EvalRecomputeFrameKind::List { rc: xs.clone() },
+                                idx: 0,
+                                h: 0xA5A5_0060,
+                            });
+                            EvalRecomputeStep::Opened
+                        }
+                    }
+                }
+                Value::Record { type_name, fields } => {
+                    let ptr = Rc::as_ptr(fields) as usize;
+                    match memo.get(&ptr) {
+                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
+                            eval_recompute_mix(0xA5A5_0070, u64::from(type_name.0)),
+                            *h,
+                        )),
+                        _ => {
+                            frames.push(EvalRecomputeFrame {
+                                kind: EvalRecomputeFrameKind::Fields {
+                                    rc: fields.clone(),
+                                    type_sym: type_name.0,
+                                    variant_sym: 0,
+                                    is_variant: false,
+                                },
+                                idx: 0,
+                                h: 0xA5A5_00F0,
+                            });
+                            EvalRecomputeStep::Opened
+                        }
+                    }
+                }
+                Value::Variant {
+                    type_name,
+                    variant_name,
+                    fields,
+                } => {
+                    let ptr = Rc::as_ptr(fields) as usize;
+                    match memo.get(&ptr) {
+                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
+                            eval_recompute_mix(
+                                eval_recompute_mix(0xA5A5_0080, u64::from(type_name.0)),
+                                u64::from(variant_name.0),
+                            ),
+                            *h,
+                        )),
+                        _ => {
+                            frames.push(EvalRecomputeFrame {
+                                kind: EvalRecomputeFrameKind::Fields {
+                                    rc: fields.clone(),
+                                    type_sym: type_name.0,
+                                    variant_sym: variant_name.0,
+                                    is_variant: true,
+                                },
+                                idx: 0,
+                                h: 0xA5A5_00F0,
+                            });
+                            EvalRecomputeStep::Opened
+                        }
+                    }
+                }
+                Value::Map(m) => {
+                    let ptr = Rc::as_ptr(m) as usize;
+                    match memo.get(&ptr) {
+                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                        _ => {
+                            let mut key_hashes = Vec::with_capacity(m.len());
+                            let mut values = Vec::with_capacity(m.len());
+                            for (k, v) in m.iter() {
+                                key_hashes.push(eval_recompute_canon_key_hash(k));
+                                values.push(v.clone());
+                            }
+                            frames.push(EvalRecomputeFrame {
+                                kind: EvalRecomputeFrameKind::Map {
+                                    rc: m.clone(),
+                                    key_hashes,
+                                    values,
+                                },
+                                idx: 0,
+                                h: 0,
+                            });
+                            EvalRecomputeStep::Opened
+                        }
+                    }
+                }
+            };
+            match step {
+                EvalRecomputeStep::Have(h) => break h,
+                EvalRecomputeStep::Bail => return None,
+                EvalRecomputeStep::Opened => {
+                    let top = frames.last().expect("frame just pushed");
+                    match eval_recompute_frame_child(top, 0) {
+                        Some(c) => cursor = c,
+                        None => {
+                            let f = frames.pop().expect("frame just pushed");
+                            break eval_recompute_frame_finalize(memo, f);
+                        }
+                    }
+                }
+            }
+        };
+        // Phase 2: feed the completed child hash upward until a frame needs
+        // its next child (back to phase 1) or all frames close (done).
+        loop {
+            match frames.last_mut() {
+                None => return Some(child_h),
+                Some(f) => {
+                    eval_recompute_frame_integrate(f, child_h);
+                    f.idx += 1;
+                    match eval_recompute_frame_child(f, f.idx) {
+                        Some(next) => {
+                            cursor = next;
+                            break;
+                        }
+                        None => {
+                            let done = frames.pop().expect("frame present");
+                            child_h = eval_recompute_frame_finalize(memo, done);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn eval_recompute_arg_key(
+    memo: &mut EvalRecomputeHashMemo,
+    v: &Value,
+) -> Option<EvalRecomputeArgKey> {
     match v {
         Value::Null => Some(EvalRecomputeArgKey::Null),
         Value::Bool(b) => Some(EvalRecomputeArgKey::Bool(*b)),
@@ -2783,17 +3113,19 @@ fn eval_recompute_arg_key(v: &Value) -> Option<EvalRecomputeArgKey> {
             variant_name.0,
         )),
         Value::List(xs) if xs.is_empty() => Some(EvalRecomputeArgKey::EmptyList),
-        _ => None,
+        other => eval_recompute_value_hash(memo, other).map(EvalRecomputeArgKey::ContentHash),
     }
 }
 
 fn eval_recompute_key(
+    ctx: &InterpContext,
     fn_node: &Rc<Node>,
     args: &[(Option<String>, Value)],
 ) -> Option<EvalRecomputeKey> {
+    let mut memo = ctx.eval_recompute_hash_memo.borrow_mut();
     let mut keys = Vec::with_capacity(args.len());
     for (_, v) in args {
-        keys.push(eval_recompute_arg_key(v)?);
+        keys.push(eval_recompute_arg_key(&mut memo, v)?);
     }
     Some(EvalRecomputeKey {
         fn_ptr: Rc::as_ptr(fn_node) as usize,
@@ -2811,12 +3143,22 @@ fn eval_recompute_record(
 ) {
     let mut t = ctx.eval_recompute_trace.borrow_mut();
     let tr = &mut *t;
+    tr.keyed_calls += 1;
     if !tr.map.contains_key(&key) {
+        if tr.map.len() >= EVAL_RECOMPUTE_KEY_CAP {
+            tr.overflow_calls += 1;
+            return;
+        }
         tr.keepalive_fns.push(fn_node.clone());
     }
-    tr.keyed_calls += 1;
+    let fn_ptr = Rc::as_ptr(fn_node) as usize;
+    let interned_name = tr
+        .fn_names
+        .entry(fn_ptr)
+        .or_insert_with(|| Rc::from(func_name))
+        .clone();
     let entry = tr.map.entry(key).or_insert_with(|| EvalRecomputeEntry {
-        fn_name: func_name.to_string(),
+        fn_name: interned_name,
         count: 0,
         total_ns: 0,
         sites: Vec::new(),
@@ -2862,9 +3204,10 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
     let single_site_wasted_ns: u128 = single_site.iter().map(|(_, w)| *w).sum();
     let multi_site_wasted_ns: u128 = multi_site.iter().map(|(_, w)| *w).sum();
     eprintln!(
-        "[recompute-trace] keyed_calls={} unkeyed_calls={} distinct_keys={} duplicated_keys={} wasted_ms={} (durations inclusive of callees)",
+        "[recompute-trace] keyed_calls={} unkeyed_calls={} overflow_calls={} distinct_keys={} duplicated_keys={} wasted_ms={} (durations inclusive of callees)",
         t.keyed_calls,
         t.unkeyed_calls,
+        t.overflow_calls,
         t.map.len(),
         duplicated.len(),
         total_wasted_ns / 1_000_000
