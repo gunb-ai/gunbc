@@ -60,7 +60,9 @@ fn rust_bind_let_binding_spellings() -> Map<Symbol, String> {
   let m2 = map_insert(m1, ^rust_binding_param_y, "y")
   let m3 = map_insert(m2, ^dag_binding_mvp1_bind_x, "x")
   let m4 = map_insert(m3, ^dag_mvp1_pick_lit_one, "1")
-  map_insert(m4, ^dag_mvp1_pick_lit_two, "2")
+  let m5 = map_insert(m4, ^dag_mvp1_pick_lit_two, "2")
+  let m6 = map_insert(m5, ^dag_binding_mvp1_pick_lit_one, "1")
+  map_insert(m6, ^dag_binding_mvp1_pick_lit_two, "2")
 }
 
 fn rust_bind_let_target_model() -> TargetModel {
