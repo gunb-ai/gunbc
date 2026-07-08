@@ -1,0 +1,384 @@
+module v2.lens.duplicate_computation
+
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Assign, If, Subshell, BraceGroup, AndOr, Pipe,
+  EnvPrefixed, WithRedir, Heredoc, Exit, Negation, RawLine,
+  Lit, VarRef, Concat, CmdSubst, Raw,
+  AndOrOp, AndThen, OrElse
+}
+import std.disposition { RealizationDispatch }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.algebra { any, fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+type DemandGuard
+  = UnguardedDemand
+  | GuardedFallbackDemand
+
+type ReplicationIntent
+  = SingleRun
+  | ReplicatedOracle { runs: Int }
+
+type ComputationDemandFact {
+  site: String
+  computation_key: String
+  guard: DemandGuard
+  replication: ReplicationIntent
+}
+
+type DuplicateComputationViolation
+  = DuplicateComputationDemand {
+      computation_key: String
+      unguarded_count: Int
+      sites: List<String>
+    }
+
+data empty_computation_demand_facts: List<ComputationDemandFact> = []
+data empty_duplicate_computation_violations: List<DuplicateComputationViolation> = []
+data empty_computation_key_tokens: List<String> = []
+data empty_computation_demand_sites: List<String> = []
+
+fn computation_word_token(w: ShellWord) -> String {
+  match w {
+    Lit { text: t } => t
+    VarRef { name: n } => concat("$", n)
+    Raw { text: t } => t
+    Concat { parts: ps } => fold_list(
+      xs: ps,
+      empty: "",
+      cons: fn(acc, p) { concat(acc, computation_word_token(w: p)) }
+    )
+    CmdSubst { body: _ } => "$(_)"
+  }
+}
+
+fn computation_tool_token(token: String) -> String {
+  if token == "$GUNBC" { "gunbc" } else { token }
+}
+
+fn computation_command_tokens(words: List<ShellWord>) -> List<String> {
+  fold_list(
+    xs: words,
+    empty: empty_computation_key_tokens,
+    cons: fn(acc, w) { list_snoc_item(xs: acc, item: computation_word_token(w: w)) }
+  )
+}
+
+type ComputationTokenPick {
+  index: Int
+  picked: String
+}
+
+fn computation_token_at(tokens: List<String>, at: Int) -> String {
+  let folded = fold_list(
+    xs: tokens,
+    empty: ComputationTokenPick { index: 0, picked: "" },
+    cons: fn(acc, t) {
+      if acc.index == at {
+        ComputationTokenPick { index: acc.index + 1, picked: t }
+      } else {
+        ComputationTokenPick { index: acc.index + 1, picked: acc.picked }
+      }
+    }
+  )
+  folded.picked
+}
+
+fn computation_command_is_compile_class(tokens: List<String>) -> Bool {
+  let first = computation_tool_token(token: computation_token_at(tokens: tokens, at: 0))
+  let second = computation_token_at(tokens: tokens, at: 1)
+  ((first == "cargo") && (second == "build")) || ((first == "gunbc") && (second == "compile"))
+}
+
+fn computation_placement_flag(token: String) -> Bool {
+  token == "--output-dir"
+}
+
+type ComputationKeyFold {
+  skip_next: Bool
+  kept: List<String>
+}
+
+fn computation_key_tokens(tokens: List<String>) -> List<String> {
+  let folded = fold_list(
+    xs: tokens,
+    empty: ComputationKeyFold { skip_next: false, kept: empty_computation_key_tokens },
+    cons: fn(acc, t) {
+      if acc.skip_next {
+        ComputationKeyFold { skip_next: false, kept: acc.kept }
+      } else if computation_placement_flag(token: t) {
+        ComputationKeyFold { skip_next: true, kept: acc.kept }
+      } else {
+        ComputationKeyFold {
+          skip_next: false,
+          kept: list_snoc_item(xs: acc.kept, item: computation_tool_token(token: t))
+        }
+      }
+    }
+  )
+  folded.kept
+}
+
+fn computation_join_tokens(tokens: List<String>) -> String {
+  fold_list(
+    xs: tokens,
+    empty: "",
+    cons: fn(acc, t) {
+      if acc == "" { t } else { concat(acc, concat(" ", t)) }
+    }
+  )
+}
+
+fn merge_computation_demand_facts(
+  a: List<ComputationDemandFact>,
+  b: List<ComputationDemandFact>
+) -> List<ComputationDemandFact> {
+  fold_list(
+    xs: b,
+    empty: a,
+    cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }
+  )
+}
+
+fn command_computation_demands(
+  site: String,
+  words: List<ShellWord>,
+  guarded: Bool,
+  replication: ReplicationIntent
+) -> List<ComputationDemandFact> {
+  let tokens = computation_command_tokens(words: words)
+  let nested = shell_words_computation_demands(site: site, words: words, guarded: guarded, replication: replication)
+  if computation_command_is_compile_class(tokens: tokens) {
+    let guard = if guarded { GuardedFallbackDemand } else { UnguardedDemand }
+    merge_computation_demand_facts(
+      a: [ComputationDemandFact {
+        site: site,
+        computation_key: computation_join_tokens(tokens: computation_key_tokens(tokens: tokens)),
+        guard: guard,
+        replication: replication
+      }],
+      b: nested
+    )
+  } else {
+    nested
+  }
+}
+
+fn shell_word_computation_demands(
+  site: String,
+  w: ShellWord,
+  guarded: Bool,
+  replication: ReplicationIntent
+) -> List<ComputationDemandFact> {
+  match w {
+    CmdSubst { body: b } => shell_stmt_computation_demands(site: site, stmt: b, guarded: guarded, replication: replication)
+    Concat { parts: ps } => shell_words_computation_demands(site: site, words: ps, guarded: guarded, replication: replication)
+    Lit { text: _ } => empty_computation_demand_facts
+    VarRef { name: _ } => empty_computation_demand_facts
+    Raw { text: _ } => empty_computation_demand_facts
+  }
+}
+
+fn shell_words_computation_demands(
+  site: String,
+  words: List<ShellWord>,
+  guarded: Bool,
+  replication: ReplicationIntent
+) -> List<ComputationDemandFact> {
+  fold_list(
+    xs: words,
+    empty: empty_computation_demand_facts,
+    cons: fn(acc, w) {
+      merge_computation_demand_facts(
+        a: acc,
+        b: shell_word_computation_demands(site: site, w: w, guarded: guarded, replication: replication)
+      )
+    }
+  )
+}
+
+fn computation_demands_with_env_prefix(
+  facts: List<ComputationDemandFact>,
+  name: String,
+  value_token: String
+) -> List<ComputationDemandFact> {
+  fold_list(
+    xs: facts,
+    empty: empty_computation_demand_facts,
+    cons: fn(acc, f) {
+      list_snoc_item(xs: acc, item: ComputationDemandFact {
+        site: f.site,
+        computation_key: concat(name, concat("=", concat(value_token, concat(" ", f.computation_key)))),
+        guard: f.guard,
+        replication: f.replication
+      })
+    }
+  )
+}
+
+fn and_or_right_guarded(op: AndOrOp, guarded: Bool) -> Bool {
+  match op {
+    AndThen => guarded
+    OrElse => true
+  }
+}
+
+fn shell_stmt_computation_demands(
+  site: String,
+  stmt: ShellStmt,
+  guarded: Bool,
+  replication: ReplicationIntent
+) -> List<ComputationDemandFact> {
+  match stmt {
+    Command { words: ws } => command_computation_demands(site: site, words: ws, guarded: guarded, replication: replication)
+    Assign { name: _, value: v } => shell_word_computation_demands(site: site, w: v, guarded: guarded, replication: replication)
+    If { cond: c, then: body } => merge_computation_demand_facts(
+      a: shell_stmt_computation_demands(site: site, stmt: c, guarded: guarded, replication: replication),
+      b: shell_stmts_computation_demands(site: site, stmts: body, guarded: true, replication: replication)
+    )
+    Subshell { body: b } => shell_stmts_computation_demands(site: site, stmts: b, guarded: guarded, replication: replication)
+    BraceGroup { body: b } => shell_stmts_computation_demands(site: site, stmts: b, guarded: guarded, replication: replication)
+    AndOr { left: l, op: o, right: r } => merge_computation_demand_facts(
+      a: shell_stmt_computation_demands(site: site, stmt: l, guarded: guarded, replication: replication),
+      b: shell_stmt_computation_demands(site: site, stmt: r, guarded: and_or_right_guarded(op: o, guarded: guarded), replication: replication)
+    )
+    Pipe { left: l, right: r } => merge_computation_demand_facts(
+      a: shell_stmt_computation_demands(site: site, stmt: l, guarded: guarded, replication: replication),
+      b: shell_stmt_computation_demands(site: site, stmt: r, guarded: guarded, replication: replication)
+    )
+    EnvPrefixed { name: n, value: v, command: c } => computation_demands_with_env_prefix(
+      facts: shell_stmt_computation_demands(site: site, stmt: c, guarded: guarded, replication: replication),
+      name: n,
+      value_token: computation_word_token(w: v)
+    )
+    WithRedir { stmt: st, redir: _ } => shell_stmt_computation_demands(site: site, stmt: st, guarded: guarded, replication: replication)
+    Negation { stmt: st } => shell_stmt_computation_demands(site: site, stmt: st, guarded: guarded, replication: replication)
+    Heredoc { path: _, delimiter: _, body: _ } => empty_computation_demand_facts
+    Exit { code: _ } => empty_computation_demand_facts
+    RawLine { text: _ } => empty_computation_demand_facts
+  }
+}
+
+fn shell_stmts_computation_demands(
+  site: String,
+  stmts: List<ShellStmt>,
+  guarded: Bool,
+  replication: ReplicationIntent
+) -> List<ComputationDemandFact> {
+  fold_list(
+    xs: stmts,
+    empty: empty_computation_demand_facts,
+    cons: fn(acc, s) {
+      merge_computation_demand_facts(
+        a: acc,
+        b: shell_stmt_computation_demands(site: site, stmt: s, guarded: guarded, replication: replication)
+      )
+    }
+  )
+}
+
+fn shell_program_computation_demands(
+  site: String,
+  program: ShellProgram,
+  replication: ReplicationIntent
+) -> List<ComputationDemandFact> {
+  shell_stmts_computation_demands(site: site, stmts: program.statements, guarded: false, replication: replication)
+}
+
+fn demand_guard_is_unguarded(g: DemandGuard) -> Bool {
+  match g {
+    UnguardedDemand => true
+    GuardedFallbackDemand => false
+  }
+}
+
+fn replication_admits_observed_runs(r: ReplicationIntent, observed: Int) -> Bool {
+  match r {
+    SingleRun => observed <= 1
+    ReplicatedOracle { runs: declared } => observed == declared
+  }
+}
+
+fn computation_keys_contain(keys: List<String>, key: String) -> Bool {
+  any(xs: keys, predicate: fn(k) { k == key })
+}
+
+fn distinct_computation_keys(facts: List<ComputationDemandFact>) -> List<String> {
+  fold_list(
+    xs: facts,
+    empty: empty_computation_key_tokens,
+    cons: fn(acc, f) {
+      if computation_keys_contain(keys: acc, key: f.computation_key) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: f.computation_key)
+      }
+    }
+  )
+}
+
+fn unguarded_demands_for_key(facts: List<ComputationDemandFact>, key: String) -> List<ComputationDemandFact> {
+  fold_list(
+    xs: facts,
+    empty: empty_computation_demand_facts,
+    cons: fn(acc, f) {
+      if (f.computation_key == key) && demand_guard_is_unguarded(g: f.guard) {
+        list_snoc_item(xs: acc, item: f)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn demand_sites_of(facts: List<ComputationDemandFact>) -> List<String> {
+  fold_list(
+    xs: facts,
+    empty: empty_computation_demand_sites,
+    cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.site) }
+  )
+}
+
+fn computation_demand_group_admissible(group: List<ComputationDemandFact>) -> Bool {
+  let observed = length(xs: group)
+  if observed <= 1 {
+    true
+  } else {
+    !(any(xs: group, predicate: fn(f) { !(replication_admits_observed_runs(r: f.replication, observed: observed)) }))
+  }
+}
+
+fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<DuplicateComputationViolation> {
+  fold_list(
+    xs: distinct_computation_keys(facts: facts),
+    empty: empty_duplicate_computation_violations,
+    cons: fn(acc, key) {
+      let group = unguarded_demands_for_key(facts: facts, key: key)
+      if computation_demand_group_admissible(group: group) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: DuplicateComputationDemand {
+          computation_key: key,
+          unguarded_count: length(xs: group),
+          sites: demand_sites_of(facts: group)
+        })
+      }
+    }
+  )
+}
+
+fn duplicate_computation_violation_count(facts: List<ComputationDemandFact>) -> Int {
+  length(xs: duplicate_computation_violations(facts: facts))
+}
+
+fn duplicate_computation_clean_holds(facts: List<ComputationDemandFact>) -> Bool {
+  duplicate_computation_violation_count(facts: facts) == 0
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

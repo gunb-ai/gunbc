@@ -2952,7 +2952,9 @@ pub fn handle_run_with_options(
     let ctx =
         v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
     v1_interpreter::with_active_context(&ctx, || {
-        match v1_interpreter::run_in_context(&ctx, &function, !claim_run) {
+        let run_outcome = v1_interpreter::run_in_context(&ctx, &function, !claim_run);
+        v1_interpreter::print_eval_recompute_trace(&ctx);
+        match run_outcome {
             Ok(val) => {
                 println!("{}", val);
                 if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
