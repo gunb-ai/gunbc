@@ -126,7 +126,7 @@ Byte-matching v1's *exact* decoration is **no longer required** (operator: drop 
 - **D3 [→D2] REPLACED by the typed self-host frontier.** No byte-fixed-point. Instead: the self-emitted set links against the seed-retained set; each seed-retained module is a declared boundary row (reason + migration trigger). `src/v2/compiler/self_host.dag`'s harness is repurposed from digest/promotion to **frontier bookkeeping + behavioral-equivalence checks**.
 - **D4 [→D3]** retire `regen_stage0` once the self-emitted set covers the closure with a green behavioral-equivalence receipt; S3 (delete `src/v1`) follows as the seed-retained set drains to zero on its triggers.
 
-**Rough size:** ~35–45 small rungs remaining, dominated by Track B (expression language) and Track C (decoration parity). The invariant measure is the ~5,100 fn bodies + v1's ~12.7k-line decoration surface, not the rung count.
+**Rough size (REVISED 2026-07-08):** dominated by Track B (expression language); Track C is reduced to the **compile/behavior-required** decorations (no longer v1 decoration parity — see the revised Track C header). The invariant measure is the ~5,100 fn bodies reaching a green **behavioral-equivalence** receipt over the self-emitted closure — **not** v1's ~12.7k-line decoration surface, and not the rung count.
 
 ---
 
@@ -198,4 +198,4 @@ Per-form token synthesis (each = Rust arm of one `TargetValueExpressionKind` + a
 
 ### 10.4 Revised size note
 
-Track B is **smaller and safer** than §7's original estimate: the engine, node model, projectors, body-lowering, and 4 reference implementations already exist, so B is ~1 gating rung (B0) + ~12 token-synthesis rungs that copy existing references + 2 net-new design rungs — not "build an emitter." The real-inferred-body path (`translate` preserves bodied arrows; serialize composes) is already supported, so this track also carries Rust toward the D-track fixed point, not just fixtures.
+Track B is **smaller and safer** than §7's original estimate: the engine, node model, projectors, body-lowering, and 4 reference implementations already exist, so B is ~1 gating rung (B0) + ~12 token-synthesis rungs that copy existing references + 2 net-new design rungs — not "build an emitter." The real-inferred-body path (`translate` preserves bodied arrows; serialize composes) is already supported, so this track also carries Rust toward the D-track **behavioral-equivalence milestone** ("v2 works"), not just fixtures.
