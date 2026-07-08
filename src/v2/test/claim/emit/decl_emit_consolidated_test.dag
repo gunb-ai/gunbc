@@ -1,0 +1,333 @@
+module v2.test.emit.decl_emit_consolidated
+
+import v2.compiler.translate {
+  grammar_relation_row_for_emitted,
+  grammar_relation_row_tokens_root,
+  serialize_concrete_syntax_tokens_to_source
+}
+import v2.extdeps.languages.rust {
+  rust_inhabitant_atom,
+  rust_enum_general_decl_productions_only_translation_rules,
+  rust_enum_general_decl_structural_target_model,
+  rust_struct_general_decl_productions_only_translation_rules,
+  rust_struct_general_decl_structural_target_model
+}
+import v2.std.algebra { fold_list, fold_list_right }
+import v2.std.collection { List }
+import v2.std.compilers.target_model {
+  TargetModel,
+  concrete_syntax_token_list_from_node
+}
+import v2.std.diagnostic {
+  Accepted,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+
+data dc_bool_golden: String = "enum Bool { True, False }"
+data dc_execmode_golden: String = "enum ExecutionMode { Hermetic, Wet, Record }"
+data dc_artifactkind_golden: String = "enum ArtifactKind { SourceFile, GeneratedSource, TestClaimArtifact, ProjectionArtifact, Stage0Candidate, CorePackage, WitnessBundle }"
+data dc_witness_golden: String = "enum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }"
+data dc_spw_golden: String = "struct StructuralPropertyWitness { property: Symbol, evidence: Node }"
+data dc_hw_golden: String = "struct HomomorphismWitness { rule: Symbol, evidence: Node }"
+data dc_artifact_golden: String = "struct Artifact { kind: ArtifactKind, id: Symbol, file_path: String }"
+data dc_occ_golden: String = "struct OccurrenceIdAllocator { next_id: Int }"
+data dc_vendor_golden: String = "struct Vendor<Domain> { legal_name: String }"
+data dc_pair_golden: String = "struct Pair<K, V> { key: K, value: V }"
+
+fn dc_conj(children: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
+}
+
+fn dc_pos(target: Node) -> Edge { Edge { label: Positional, target: target } }
+
+fn dc_nil() -> Node { dc_conj(children: []) }
+
+fn dc_atom(s: String) -> Node { rust_inhabitant_atom(id: s) }
+
+fn dc_qualified_name(t: String) -> Node { dc_conj(children: [ dc_pos(target: dc_atom(s: t)) ]) }
+
+fn dc_type_expr(t: String) -> Node { dc_conj(children: [ dc_pos(target: dc_qualified_name(t: t)) ]) }
+
+fn dc_field(name: String, t: String) -> Node {
+  dc_conj(children: [ dc_pos(target: dc_atom(s: name)), dc_pos(target: dc_type_expr(t: t)) ])
+}
+
+fn dc_cell(item: Node, rest: Node) -> Node {
+  dc_conj(children: [ dc_pos(target: item), dc_pos(target: rest) ])
+}
+
+fn dc_field_list(fields: List<Node>) -> Node {
+  fold_list_right(xs: fields, empty: dc_nil(), snoc: fn(acc, f) { dc_cell(item: f, rest: acc) })
+}
+
+fn dc_field_block(fields: List<Node>) -> Node {
+  dc_conj(children: [ dc_pos(target: dc_field_list(fields: fields)) ])
+}
+
+fn dc_type_param_list(params: List<String>) -> Node {
+  fold_list_right(xs: params, empty: dc_nil(), snoc: fn(acc, p) { dc_cell(item: dc_atom(s: p), rest: acc) })
+}
+
+fn dc_generic_params(params: List<String>) -> Node {
+  dc_conj(children: [ dc_pos(target: dc_type_param_list(params: params)) ])
+}
+
+fn dc_variant_nullary(name: String) -> Node {
+  dc_conj(children: [ dc_pos(target: dc_atom(s: name)) ])
+}
+
+fn dc_variant_payload(name: String, fields: List<Node>) -> Node {
+  dc_conj(children: [ dc_pos(target: dc_atom(s: name)), dc_pos(target: dc_field_block(fields: fields)) ])
+}
+
+fn dc_variant_list(variants: List<Node>) -> Node {
+  fold_list_right(xs: variants, empty: dc_nil(), snoc: fn(acc, v) { dc_cell(item: v, rest: acc) })
+}
+
+fn dc_variant_block(variants: List<Node>) -> Node {
+  dc_conj(children: [ dc_pos(target: dc_variant_list(variants: variants)) ])
+}
+
+fn dc_enum_nongeneric(name: String, variants: List<Node>) -> Node {
+  dc_conj(children: [ dc_pos(target: dc_atom(s: name)), dc_pos(target: dc_variant_block(variants: variants)) ])
+}
+
+fn dc_enum_generic(name: String, params: List<String>, variants: List<Node>) -> Node {
+  dc_conj(children: [
+    dc_pos(target: dc_atom(s: name)),
+    dc_pos(target: dc_generic_params(params: params)),
+    dc_pos(target: dc_variant_block(variants: variants))
+  ])
+}
+
+fn dc_struct_nongeneric(name: String, fields: List<Node>) -> Node {
+  dc_conj(children: [ dc_pos(target: dc_atom(s: name)), dc_pos(target: dc_field_block(fields: fields)) ])
+}
+
+fn dc_struct_generic(name: String, params: List<String>, fields: List<Node>) -> Node {
+  dc_conj(children: [
+    dc_pos(target: dc_atom(s: name)),
+    dc_pos(target: dc_generic_params(params: params)),
+    dc_pos(target: dc_field_block(fields: fields))
+  ])
+}
+
+fn dc_emit(rules: Node, target: TargetModel, emitted: Node) -> Outcome<String> {
+  bind_outcome(
+    o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+    f: fn(row) {
+      bind_outcome(
+        o: grammar_relation_row_tokens_root(row: row),
+        f: fn(tokens_root) {
+          bind_outcome(
+            o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+            f: fn(tokens) {
+              bind_outcome(
+                o: serialize_concrete_syntax_tokens_to_source(target: target, tokens: tokens),
+                f: fn(medium) { outcome_accepted(value: medium.carried) }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn dc_enum_text(emitted: Node) -> Outcome<String> {
+  dc_emit(
+    rules: rust_enum_general_decl_productions_only_translation_rules(),
+    target: rust_enum_general_decl_structural_target_model(),
+    emitted: emitted
+  )
+}
+
+fn dc_struct_text(emitted: Node) -> Outcome<String> {
+  dc_emit(
+    rules: rust_struct_general_decl_productions_only_translation_rules(),
+    target: rust_struct_general_decl_structural_target_model(),
+    emitted: emitted
+  )
+}
+
+fn dc_enum_matches(emitted: Node, golden: String) -> Bool {
+  match dc_enum_text(emitted: emitted) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn dc_struct_matches(emitted: Node, golden: String) -> Bool {
+  match dc_struct_text(emitted: emitted) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn dc_enum_refused(emitted: Node) -> Bool {
+  match dc_enum_text(emitted: emitted) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn dc_struct_refused(emitted: Node) -> Bool {
+  match dc_struct_text(emitted: emitted) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn dc_bool_emitted() -> Node {
+  dc_enum_nongeneric(name: "Bool", variants: [ dc_variant_nullary(name: "True"), dc_variant_nullary(name: "False") ])
+}
+
+fn dc_execmode_emitted() -> Node {
+  dc_enum_nongeneric(
+    name: "ExecutionMode",
+    variants: [ dc_variant_nullary(name: "Hermetic"), dc_variant_nullary(name: "Wet"), dc_variant_nullary(name: "Record") ]
+  )
+}
+
+fn dc_artifactkind_emitted() -> Node {
+  dc_enum_nongeneric(
+    name: "ArtifactKind",
+    variants: [
+      dc_variant_nullary(name: "SourceFile"),
+      dc_variant_nullary(name: "GeneratedSource"),
+      dc_variant_nullary(name: "TestClaimArtifact"),
+      dc_variant_nullary(name: "ProjectionArtifact"),
+      dc_variant_nullary(name: "Stage0Candidate"),
+      dc_variant_nullary(name: "CorePackage"),
+      dc_variant_nullary(name: "WitnessBundle")
+    ]
+  )
+}
+
+fn dc_witness_emitted() -> Node {
+  dc_enum_generic(
+    name: "Witness",
+    params: ["C"],
+    variants: [
+      dc_variant_payload(name: "Holds", fields: [ dc_field(name: "value", t: "C") ]),
+      dc_variant_payload(name: "Violates", fields: [ dc_field(name: "diagnostic", t: "Diagnostic") ])
+    ]
+  )
+}
+
+fn dc_spw_emitted() -> Node {
+  dc_struct_nongeneric(name: "StructuralPropertyWitness", fields: [ dc_field(name: "property", t: "Symbol"), dc_field(name: "evidence", t: "Node") ])
+}
+
+fn dc_hw_emitted() -> Node {
+  dc_struct_nongeneric(name: "HomomorphismWitness", fields: [ dc_field(name: "rule", t: "Symbol"), dc_field(name: "evidence", t: "Node") ])
+}
+
+fn dc_artifact_emitted() -> Node {
+  dc_struct_nongeneric(name: "Artifact", fields: [ dc_field(name: "kind", t: "ArtifactKind"), dc_field(name: "id", t: "Symbol"), dc_field(name: "file_path", t: "String") ])
+}
+
+fn dc_occ_emitted() -> Node {
+  dc_struct_nongeneric(name: "OccurrenceIdAllocator", fields: [ dc_field(name: "next_id", t: "Int") ])
+}
+
+fn dc_vendor_emitted() -> Node {
+  dc_struct_generic(name: "Vendor", params: ["Domain"], fields: [ dc_field(name: "legal_name", t: "String") ])
+}
+
+fn dc_pair_emitted() -> Node {
+  dc_struct_generic(name: "Pair", params: ["K", "V"], fields: [ dc_field(name: "key", t: "K"), dc_field(name: "value", t: "V") ])
+}
+
+fn dc_empty_record_emitted() -> Node {
+  dc_struct_nongeneric(name: "BoolWidthFact", fields: [])
+}
+
+fn dc_empty_enum_emitted() -> Node {
+  dc_enum_nongeneric(name: "Never", variants: [])
+}
+
+type DeclEmitConstructRow {
+  construct: Symbol
+  covered: Bool
+}
+
+data dc_construct_rows: List<DeclEmitConstructRow> = [
+  DeclEmitConstructRow { construct: ^enum_bool_nullary_two, covered: true },
+  DeclEmitConstructRow { construct: ^enum_execmode_nullary_three, covered: true },
+  DeclEmitConstructRow { construct: ^enum_artifactkind_nullary_seven, covered: true },
+  DeclEmitConstructRow { construct: ^enum_witness_generic_payload, covered: true },
+  DeclEmitConstructRow { construct: ^struct_spw_two_fields, covered: true },
+  DeclEmitConstructRow { construct: ^struct_hw_two_fields, covered: true },
+  DeclEmitConstructRow { construct: ^struct_artifact_three_fields, covered: true },
+  DeclEmitConstructRow { construct: ^struct_occ_one_field, covered: true },
+  DeclEmitConstructRow { construct: ^struct_vendor_generic_one_param, covered: true },
+  DeclEmitConstructRow { construct: ^struct_pair_generic_two_params, covered: true },
+  DeclEmitConstructRow { construct: ^record_empty_zero_fields, covered: false },
+  DeclEmitConstructRow { construct: ^enum_empty_zero_variants, covered: false }
+]
+
+fn dc_covered_count() -> Int {
+  fold_list(xs: dc_construct_rows, empty: 0, cons: fn(acc, row) { if row.covered { acc + 1 } else { acc } })
+}
+
+fn dc_refused_count() -> Int {
+  fold_list(xs: dc_construct_rows, empty: 0, cons: fn(acc, row) { if row.covered { acc } else { acc + 1 } })
+}
+
+fn dc_enums_covered_holds() -> Bool {
+  dc_enum_matches(emitted: dc_bool_emitted(), golden: dc_bool_golden)
+    && dc_enum_matches(emitted: dc_execmode_emitted(), golden: dc_execmode_golden)
+    && dc_enum_matches(emitted: dc_artifactkind_emitted(), golden: dc_artifactkind_golden)
+    && dc_enum_matches(emitted: dc_witness_emitted(), golden: dc_witness_golden)
+}
+
+fn dc_structs_covered_holds() -> Bool {
+  dc_struct_matches(emitted: dc_spw_emitted(), golden: dc_spw_golden)
+    && dc_struct_matches(emitted: dc_hw_emitted(), golden: dc_hw_golden)
+    && dc_struct_matches(emitted: dc_artifact_emitted(), golden: dc_artifact_golden)
+    && dc_struct_matches(emitted: dc_occ_emitted(), golden: dc_occ_golden)
+    && dc_struct_matches(emitted: dc_vendor_emitted(), golden: dc_vendor_golden)
+    && dc_struct_matches(emitted: dc_pair_emitted(), golden: dc_pair_golden)
+}
+
+fn dc_golden_discriminates_holds() -> Bool {
+  !dc_enum_matches(emitted: dc_bool_emitted(), golden: dc_execmode_golden)
+    && !dc_enum_matches(emitted: dc_bool_emitted(), golden: "enum Bool { True, FALSE }")
+    && !dc_struct_matches(emitted: dc_spw_emitted(), golden: "struct StructuralPropertyWitness { property: Symbol, evidence: NODE }")
+}
+
+fn dc_gaps_refused_holds() -> Bool {
+  dc_struct_refused(emitted: dc_empty_record_emitted())
+    && dc_enum_refused(emitted: dc_empty_enum_emitted())
+    && (dc_refused_count() == 2)
+    && (dc_covered_count() == 10)
+}
+
+fn dc_witness_module_fully_emitted_holds() -> Bool {
+  dc_struct_matches(emitted: dc_spw_emitted(), golden: dc_spw_golden)
+    && dc_struct_matches(emitted: dc_hw_emitted(), golden: dc_hw_golden)
+    && dc_enum_matches(emitted: dc_witness_emitted(), golden: dc_witness_golden)
+}
+
+test fn decl_emit_consolidated_holds() -> Bool {
+  dc_enums_covered_holds()
+    && dc_structs_covered_holds()
+    && dc_golden_discriminates_holds()
+    && dc_gaps_refused_holds()
+    && dc_witness_module_fully_emitted_holds()
+}
