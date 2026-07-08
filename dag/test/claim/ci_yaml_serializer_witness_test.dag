@@ -220,12 +220,12 @@ fn witness_warm_step_budgeted_separately_from_gate() -> Bool {
 fn witness_rust_tests_yaml_has_observable_warm_step_before_gate() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(s: yaml, pattern: "sccache warm (release bins + cache prime)") &&
-    string_contains(s: yaml, pattern: "timeout-minutes: 46\n      - name: v1 rust gate (fmt + clippy + nextest)") &&
+    string_contains(s: yaml, pattern: "timeout-minutes: 46\n      - name: v1 rust gate (fmt + nextest)") &&
     string_contains(s: yaml, pattern: "dag/tools/rust_gates_ci.dag") &&
     !string_contains(
       s: yaml,
       pattern: concat(
-        "      - name: v1 rust gate (fmt + clippy + nextest)\n        run: |\n          ROOT=",
+        "      - name: v1 rust gate (fmt + nextest)\n        run: |\n          ROOT=",
         concat(concat("", ""), "\"$CARGO_HOME/bin/cargo\" build -p v1-compiler")
       )
     )
