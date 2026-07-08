@@ -312,7 +312,7 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 90
 
-data gunbc_ci_floor_step_timeout_minutes: Duration = 10
+data gunbc_ci_floor_step_timeout_minutes: Duration = 30
 
 data gunbc_ci_floor_step_timeout_minutes_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: gunbc_ci_floor_step_timeout_minutes names GitHub Actions step timeout-minutes on the wire (extdeps/github/actions.dag RunStep.timeout_minutes projects Int). Carrier is std.types.Duration (minute magnitude, interim until CI budgets ground on std.measure time with explicit unit at the model layer and Int projection moves to GHA emit-only realization). DISSOLVES WHEN all gunbc CI step timeout authorities use a grounded measure carrier and timeout_minutes Int is derived at the workflow emit seam only."
 
@@ -336,7 +336,7 @@ data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 
 data gunbc_ci_release_build_step_budget_note: String = "Interim release-build step budget until cold v1-compiler fits 15m: 45 = prior 30m + margin after main merge (CARGO_BUILD_JOBS=6, text_lookup_work_counter). Receipt: job 85235032962 timed out at 30m still Compiling v1-compiler (~25m dep prelude + compile in progress; run 28745277854 on 1ba1895). Prior: job 85194701830 at 15m. Re-derive DOWNWARD when fleet cache/build path stabilizes."
 
-data gunbc_ci_floor_gate_step_budget_note: String = "Floor-step budget gunbc_ci_floor_step_timeout_minutes=10m (operator ruling 2026-07-06): step-level RED-by-failure; job backstop gunbc_ci_job_backstop_timeout_minutes() covers release build separately. dissolve-on: compile-clean scoping/memoization (S2a node store) may justify raising floor step when batch-1 completes inside measured envelope."
+data gunbc_ci_floor_gate_step_budget_note: String = "Floor-step budget raised to 30m (#6361 Lever A dissolve-on, receipt run 28902523405 @ e1a27e4286): the 10m cap was sized when batch-1 compile-clean never finished (~600s cap-kill) and downstream gates never ran. Lever A un-masked batches 1-3 green in ~5m; EmitDeterminismGate (batch 4, x2 gunbc compile oracle) then hit the 10m step kill mid-oracle (~5m into batch 4, zero gate verdict). Measured need: ~5m batches 1-3 + ~18m EmitDeterminism (2× ~537s compile legs per floor-shared-compute-memoization.md). 30m = envelope + margin. Job backstop gunbc_ci_job_backstop_timeout_minutes() = 45+30+5+5 = 85m."
 
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
 
@@ -349,7 +349,7 @@ fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
 }
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI budget semantics (operator ruling 2026-07-06): floor step gunbc_ci_floor_step_timeout_minutes (10m) enforced at STEP level (RED-by-failure); ci job backstop gunbc_ci_job_backstop_timeout_minutes() = release build + floor + aux + prelude (65m) so cold release build is not killed by a job cap shorter than gunbc_ci_release_build_step_timeout_minutes (receipt run 28819559597 @ 201371c: 10m job kill aborted cargo mid-build). rust_tests keeps step-sum job backstop gunbc_ci_rust_job_backstop_timeout_minutes() = warm + gate + aux + prelude (106m at current step carriers: 46+45+5+5+5; warm strictly > gate is the serializer-witnessed separation - cold-cache storms land in warm, never eat the gate budget) — job cap must cover step budgets so gates reach RED-by-step-failure, not job-cancelled silent-pass (#6323 starvation-kill scoped to ci/floor only on main). dissolve-on: compile-clean scoping/memoization shrinks floor under measured envelope."
+  reason: "gunbc CI budget semantics (operator ruling 2026-07-06): floor step gunbc_ci_floor_step_timeout_minutes enforced at STEP level (RED-by-failure); ci job backstop gunbc_ci_job_backstop_timeout_minutes() = release build + floor + aux + prelude (85m at floor=30m after #6361 Lever A dissolve-on; was 65m at floor=10m) so cold release build is not killed by a job cap shorter than gunbc_ci_release_build_step_timeout_minutes (receipt run 28819559597 @ 201371c: 10m job kill aborted cargo mid-build). rust_tests keeps step-sum job backstop gunbc_ci_rust_job_backstop_timeout_minutes() = warm + gate + aux + prelude (106m at current step carriers: 46+45+5+5+5; warm strictly > gate is the serializer-witnessed separation - cold-cache storms land in warm, never eat the gate budget) — job cap must cover step budgets so gates reach RED-by-step-failure, not job-cancelled silent-pass (#6323 starvation-kill scoped to ci/floor only on main). dissolve-on: compile-clean scoping/memoization shrinks batch-1; floor step raised when batch-1 completes inside measured envelope (receipt run 28902523405 @ e1a27e4286)."
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {

@@ -208,6 +208,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "emit_host_run_transport".to_string(),
+            type_variable_node("emit_host_run_transport_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "contiguous_loop_elementwise_kernel".to_string(),
             list_of_type_variable("collection_element".to_string()),
         );
@@ -281,6 +286,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "witness_layer_roots_compile_clean_emit_check".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_floor_compile_clean_gate_verdict".to_string(),
             bool_type(),
         );
         let m = v1_rt::rc_map_insert(

@@ -314,6 +314,16 @@ The current selective-import mask is thereby the **interim realization** of the
 `import-scoped` policy value — it is not thrown away mid-flight, it is the thing the policy
 flip retires, subtree by subtree, until step 5 deletes the syntax outright.
 
+**Import-from-definer migration (PR-4 scope; census seeded 2026-07-07).** The corpus currently relies on
+**re-export transitivity** — `import M { X }` where `M` re-exports `X` from the module that actually defines it
+(proven by execution in `type-env-single-authority-design.md` §3.1: `compile.dag` imports `EmitResult` from
+`v1.compiler.emit`, which re-exports it from `emit_core_support`). The PR-2 perf reform *preserves* this (own
+bindings + a memoized re-export-chain walk), so it is byte-identical. This step (PR-4) **migrates each import to
+name the *defining* module**, eliminating re-export reliance so `container.member` references derive the true
+dependency edge (Rule-1 end-state). First concrete census rows from the PR-2 refutation receipt: `EmitResult`,
+`parse_with_table`, `default_artifact_plan`, `Rust` — extend by re-running the direct-import experiment and
+collecting every unresolved-name error.
+
 ## 9. Open / to-verify
 
 - **Root-prefix map** (`src/v1/**` ↔ `v1.*`, `dag/**` ↔ `v2.*`) and whether the `module`

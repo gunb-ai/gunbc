@@ -1,0 +1,26 @@
+module v2.test.manual.s1_parse_harness
+
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.node { Symbol }
+
+fn s1_parse_ok(source: String, file: Symbol) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source, file: file, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

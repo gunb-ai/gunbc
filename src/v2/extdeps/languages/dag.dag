@@ -482,7 +482,8 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_lbracket, text: "["),
       dag_literal_lex_rule(token_class: ^dag_token_rbracket, text: "]"),
       dag_literal_lex_rule(token_class: ^dag_token_lt, text: "<"),
-      dag_literal_lex_rule(token_class: ^dag_token_gt, text: ">")
+      dag_literal_lex_rule(token_class: ^dag_token_gt, text: ">"),
+      dag_literal_lex_rule(token_class: ^dag_token_question, text: "?")
     ]
   }
 }
@@ -1902,7 +1903,7 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
 
 fn dag_grammar_typed_param_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_ident),
+    left: dag_grammar_binding_name_terminal(),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_colon),
       right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
@@ -1924,19 +1925,24 @@ fn dag_grammar_param_list_expr() -> GrammarExpr {
 
 fn dag_grammar_qualified_type_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
-    right: dag_grammar_optional(
-      element: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_lt),
-        right: dag_grammar_sequence(
-          left: dag_grammar_optional(
-            element: dag_grammar_comma_list_expr(
-              item: dag_grammar_nonterminal(production: ^dag_production_type_expr)
-            )
-          ),
-          right: dag_grammar_terminal(token_class: ^dag_token_gt)
+    left: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
+      right: dag_grammar_optional(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_lt),
+          right: dag_grammar_sequence(
+            left: dag_grammar_optional(
+              element: dag_grammar_comma_list_expr(
+                item: dag_grammar_nonterminal(production: ^dag_production_type_expr)
+              )
+            ),
+            right: dag_grammar_terminal(token_class: ^dag_token_gt)
+          )
         )
       )
+    ),
+    right: dag_grammar_optional(
+      element: dag_grammar_terminal(token_class: ^dag_token_question)
     )
   )
 }
@@ -1983,9 +1989,41 @@ fn dag_grammar_import_block_expr() -> GrammarExpr {
   )
 }
 
+fn dag_binding_name_keyword_tokens() -> List<Symbol> {
+  [
+    ^dag_token_kw_module,
+    ^dag_token_kw_import,
+    ^dag_token_kw_type,
+    ^dag_token_kw_data,
+    ^dag_token_kw_fn,
+    ^dag_token_kw_let,
+    ^dag_token_kw_in,
+    ^dag_token_kw_loop,
+    ^dag_token_kw_match,
+    ^dag_token_kw_if,
+    ^dag_token_kw_then,
+    ^dag_token_kw_else,
+    ^dag_token_kw_true,
+    ^dag_token_kw_false
+  ]
+}
+
+fn dag_grammar_binding_name_terminal() -> GrammarExpr {
+  fold_list(
+    xs: dag_binding_name_keyword_tokens(),
+    empty: dag_grammar_terminal(token_class: ^dag_token_ident),
+    cons: fn(acc, tok) {
+      dag_grammar_choice(
+        left: acc,
+        right: dag_grammar_terminal(token_class: tok)
+      )
+    }
+  )
+}
+
 fn dag_grammar_field_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_ident),
+    left: dag_grammar_binding_name_terminal(),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_colon),
       right: dag_grammar_nonterminal(production: ^dag_production_type_expr)

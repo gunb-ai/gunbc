@@ -8,7 +8,7 @@ import gunbc.interpreter_kernel_model {
   is_pinned_host_physics_stage0_file,
   pinned_host_physics_file_count,
   pure_eval_authority_module_count,
-  interpreter_kernel_d_phase_is_model_only,
+  interpreter_kernel_d_phase_is_pure_eval_emit_wired,
   v1_interpreter_not_classified_as_pinned_host_physics,
   seam_class_for_authority_module,
   seam_class_for_pinned_basename,
@@ -40,8 +40,8 @@ fn w_hybrid_interpreter_file_boundary() -> Bool {
   v1_interpreter_not_classified_as_pinned_host_physics()
 }
 
-fn w_kernel_d_phase_model_only() -> Bool {
-  interpreter_kernel_d_phase_is_model_only()
+fn w_kernel_d_phase_pure_eval_emit_wired() -> Bool {
+  interpreter_kernel_d_phase_is_pure_eval_emit_wired()
 }
 
 fn w_seam_class_authority_modules() -> Bool {
@@ -71,7 +71,7 @@ test fn interpreter_kernel_model_witnesses() -> Bool {
   w_pure_eval_authority_modules() &&
   w_pinned_host_physics_roster() &&
   w_hybrid_interpreter_file_boundary() &&
-  w_kernel_d_phase_model_only() &&
+  w_kernel_d_phase_pure_eval_emit_wired() &&
   w_seam_class_authority_modules() &&
   w_hybrid_seed_seam_unclassified()
 }

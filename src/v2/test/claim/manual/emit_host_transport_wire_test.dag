@@ -1,0 +1,132 @@
+module v2.test.manual.emit_host_transport_wire
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_emit_host,
+  run_host_process,
+  runtime_value_parse
+}
+import v2.compiler.eval { Inputs, inputs_root_only }
+import v2.extdeps.languages.rust {
+  rust_mvp1_emit_host_cargo_manifest,
+  rust_mvp1_source_text,
+  rust_mvp1_target_model_staging
+}
+import v2.std.diagnostic { Accepted, Rejected, None }
+import v2.std.host_run { HostLogicalRun }
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  FixedText,
+  FixedWidthBytes,
+  HostTransportDescriptor,
+  LiteralArg,
+  ProcessInvocation,
+  WorkspaceFile
+}
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.text { String }
+
+fn wire_probe_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^emit_host_wire_probe } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wire_inputs() -> Inputs {
+  inputs_root_only(root: wire_probe_node())
+}
+
+fn wire_source() -> Medium<String> {
+  Medium { carried: rust_mvp1_source_text, fidelity: Lossless }
+}
+
+fn wire_fixed_main_row(main_text: String) -> EmitHostRuntimeRow {
+  EmitHostRuntimeRow {
+    transport: HostTransportDescriptor {
+      identity: ^emit_host_wire_probe_fixed_main,
+      workspace: [
+        WorkspaceFile {
+          path: "Cargo.toml",
+          content: FixedText { text: rust_mvp1_emit_host_cargo_manifest }
+        },
+        WorkspaceFile {
+          path: "src/main.rs",
+          content: FixedText { text: main_text }
+        }
+      ],
+      build: [],
+      run: ProcessInvocation {
+        tool: ^host_tool_cargo,
+        args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      },
+      runtime_value_codec: FixedWidthBytes { width: 5 }
+    },
+    runtime_primitive_type: wire_probe_node()
+  }
+}
+
+test fn emit_host_transport_green_run_holds() -> Bool {
+  match run_emit_host(
+    target: rust_mvp1_target_model_staging(),
+    source: wire_source(),
+    fixture_inputs: wire_inputs()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+          match runtime_value_parse(target: rust_mvp1_target_model_staging(), stdout: stdout) {
+            Accepted { value: _, diagnostics: _ } =>
+              stdout.bytes == emit_host_octets_byte_string(octets: [0, 5, 0, 0, 0])
+            Rejected { diagnostics: _ } => false
+          }
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_transport_nonzero_exit_refuses_holds() -> Bool {
+  match run_host_process(
+    row: wire_fixed_main_row(main_text: "fn main() { std::process::exit(3); }"),
+    target: rust_mvp1_target_model_staging(),
+    source: wire_source(),
+    fixture_inputs: wire_inputs()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_transport_byte_width_mismatch_refuses_holds() -> Bool {
+  match run_host_process(
+    row: wire_fixed_main_row(main_text: "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 4]); }"),
+    target: rust_mvp1_target_model_staging(),
+    source: wire_source(),
+    fixture_inputs: wire_inputs()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+          match runtime_value_parse(target: rust_mvp1_target_model_staging(), stdout: stdout) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_transport_wire_all_holds() -> Bool {
+  emit_host_transport_green_run_holds()
+    && emit_host_transport_nonzero_exit_refuses_holds()
+    && emit_host_transport_byte_width_mismatch_refuses_holds()
+}
