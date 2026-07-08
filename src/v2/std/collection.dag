@@ -47,6 +47,8 @@ fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
 
+data map_native_realization_note: String = "Map<K,V> realization = native HAMT (value_carrier.map_carrier: hash_array_mapped_trie, O(log32 n) insert/lookup). empty_map/map_insert delegate to eval_builtin at the realization boundary; the lookup field is the modeled witness surface over raw_map_lookup_witness on Value::Map. Closure-chain fallback in map_insert remains only for hand-built Map { lookup: ... } rows (malformed_map witness); never for empty_map()-seeded maps."
+
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
 }
@@ -67,11 +69,7 @@ fn map_absent_diagnostic() -> Diagnostic {
   }
 }
 fn empty_map<K, V>() -> Map<K, V> {
-  Map {
-    lookup: fn(_) {
-      Violates { diagnostic: map_absent_diagnostic() }
-    }
-  }
+  empty_map()
 }
 fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   Map {

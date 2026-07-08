@@ -1337,6 +1337,17 @@ fn call_function(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
+    if fn_node.name == "empty_map" {
+        if let Some(v) = eval_builtin("empty_map", args, ctx)? {
+            return Ok(v);
+        }
+    }
+    if fn_node.name == "map_insert" {
+        if let Some(v) = eval_builtin("map_insert", args, ctx)? {
+            return Ok(v);
+        }
+    }
+
     let body = fn_node
         .body
         .as_ref()
@@ -2625,6 +2636,14 @@ fn witness_holds(value: Value, ctx: &InterpContext) -> Value {
     }
 }
 
+fn witness_violates(diagnostic: Value, ctx: &InterpContext) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("Witness"),
+        variant_name: ctx.sym("Violates"),
+        fields: Rc::new(vec![(ctx.sym("diagnostic"), diagnostic)]),
+    }
+}
+
 fn parse_table_memo_scope_and_key(
     ctx: &InterpContext,
     table: &Value,
@@ -2789,7 +2808,7 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         let key = args.first().ok_or_else(|| InterpError::TypeError {
             msg: "lookup requires a key argument".to_string(),
         })?;
-        return raw_map_lookup(&receiver_val, key, env, ctx);
+        return raw_map_lookup_witness(&receiver_val, key, env, ctx);
     }
 
     if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
@@ -6958,6 +6977,30 @@ fn is_map_lookup_receiver(val: &Value) -> bool {
             .map(|ctx| fields_get(fields, ctx.sym("lookup")).is_some())
             .unwrap_or(false),
         _ => false,
+    }
+}
+
+fn raw_map_lookup_witness(
+    map: &Value,
+    key: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    match map {
+        Value::Map(m) => match CanonKey::new(key.clone()) {
+            Some(ck) => match m.get(&ck) {
+                Some(v) => Ok(witness_holds(v.clone(), ctx)),
+                None => Ok(witness_violates(
+                    native_map_absent_diagnostic_value(ctx),
+                    ctx,
+                )),
+            },
+            None => Ok(witness_violates(
+                native_map_absent_diagnostic_value(ctx),
+                ctx,
+            )),
+        },
+        _ => raw_map_lookup(map, key, env, ctx),
     }
 }
 
