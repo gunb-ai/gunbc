@@ -2602,45 +2602,27 @@ fn parse_table_memo_scope_and_key(
 ) -> Option<(String, String, i64, Symbol)> {
     let table_fields = match table {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
-        _ => {
-            eprintln!("ADHOC-DEBUG scope_and_key: table not Record/Variant: {:?}", table.type_label());
-            return None;
-        }
+        _ => return None,
     };
     let grammar_digest = match ctx.field(table_fields, "grammar_digest")? {
         Value::Str(s) => s.clone(),
-        other => {
-            eprintln!("ADHOC-DEBUG scope_and_key: grammar_digest not Str: {:?}", other.type_label());
-            return None;
-        }
+        _ => return None,
     };
     let token_stream_digest = match ctx.field(table_fields, "token_stream_digest")? {
         Value::Str(s) => s.clone(),
-        other => {
-            eprintln!("ADHOC-DEBUG scope_and_key: token_stream_digest not Str: {:?}", other.type_label());
-            return None;
-        }
+        _ => return None,
     };
     let key_fields = match key {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
-        _ => {
-            eprintln!("ADHOC-DEBUG scope_and_key: key not Record/Variant: {:?}", key.type_label());
-            return None;
-        }
+        _ => return None,
     };
     let position = match fields_get(key_fields, ctx.sym("position")) {
         Some(Value::Int(n)) => *n,
-        other => {
-            eprintln!("ADHOC-DEBUG scope_and_key: position not Int: {:?}", other.map(|v| v.type_label()));
-            return None;
-        }
+        _ => return None,
     };
     let production = match fields_get(key_fields, ctx.sym("production")) {
         Some(Value::Str(s)) => ctx.sym(s),
-        other => {
-            eprintln!("ADHOC-DEBUG scope_and_key: production not Str: {:?}", other.map(|v| v.type_label()));
-            return None;
-        }
+        _ => return None,
     };
     Some((grammar_digest, token_stream_digest, position, production))
 }
@@ -6340,6 +6322,18 @@ pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u32, u64, u64)> {
     }
 }
 
+/// SCAFFOLD (adhoc-c328b166-bca residual hunt): the recorders below are
+/// opt-in, not always-on -- gated on the same env var that gates the dump
+/// (`GUNBC_FLATTEN_SITE_DUMP_SECS`), read once via OnceLock so the default
+/// (unset) production path pays a single relaxed load, not a mutex lock or
+/// HashMap/HashSet write, per call. dissolve-on: the residual-hunt work item
+/// closes (adhoc-c328b166-bca) -- delete these recorders and their call
+/// sites, they are not a permanent profiler.
+fn residual_hunt_forensics_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok())
+}
+
 fn record_flatten(items: usize) {
     FLATTEN_COUNTERS.with(|c| {
         let (calls, total) = c.get();
@@ -6348,6 +6342,9 @@ fn record_flatten(items: usize) {
 }
 
 fn record_flatten_site(items: usize, loc: &'static std::panic::Location<'static>) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
     let mut guard = FLATTEN_BY_SITE.lock().unwrap();
     let m = guard.get_or_insert_with(std::collections::HashMap::new);
     let entry = m.entry((loc.file(), loc.line())).or_insert((0, 0));
@@ -6369,6 +6366,9 @@ static LIST_CONS_TAIL_SPLIT: (std::sync::atomic::AtomicU64, std::sync::atomic::A
 );
 
 fn record_list_cons_tail_split(receiver_len: usize) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
     LIST_CONS_TAIL_SPLIT
         .0
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -6401,6 +6401,9 @@ static PARSE_MEMO_DISTINCT_KEYS: std::sync::Mutex<
 > = std::sync::Mutex::new(None);
 
 fn record_parse_memo_lookup(key: &(String, String, i64, Symbol), hit: bool) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
     PARSE_MEMO_LOOKUPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if hit {
         PARSE_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -6424,6 +6427,9 @@ pub fn parse_memo_global_snapshot() -> (u64, u64, u64) {
 }
 
 fn record_call_frequency(func_name: &str) {
+    if !residual_hunt_forensics_enabled() {
+        return;
+    }
     const WATCHLIST: &[&str] = &[
         "grammar_validate_for_parse",
         "compute_nullable_set",
