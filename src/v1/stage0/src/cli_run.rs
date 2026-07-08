@@ -2839,6 +2839,24 @@ fn dump_residual_hunt_instrumentation() {
     for (name, calls) in freq.iter() {
         eprintln!("  {}  calls={}", name, calls);
     }
+    let mut big_folds = v1_interpreter::big_fold_by_dag_site_snapshot();
+    big_folds.sort_by(|a, b| b.2.cmp(&a.2));
+    eprintln!("--- fold_list receivers >1000 items, by .dag closure site (top 10) ---");
+    for (site, calls, total) in big_folds.iter().take(10) {
+        eprintln!("  {}  calls={}  items={}", site, calls, total);
+    }
+    let mut times = v1_interpreter::builtin_time_snapshot();
+    times.sort_by(|a, b| b.2.cmp(&a.2));
+    eprintln!("--- builtin inclusive wall time (top 15 by nanos) ---");
+    for (name, calls, nanos) in times.iter().take(15) {
+        eprintln!("  {}  calls={}  ms={}", name, calls, nanos / 1_000_000);
+    }
+    let mut self_times = v1_interpreter::dag_fn_self_time_snapshot();
+    self_times.sort_by(|a, b| b.2.cmp(&a.2));
+    eprintln!("--- .dag fn self time (top 20 by ms) ---");
+    for (name, calls, nanos) in self_times.iter().take(20) {
+        eprintln!("  {}  calls={}  self_ms={}", name, calls, nanos / 1_000_000);
+    }
 }
 
 pub fn handle_run_with_options(
