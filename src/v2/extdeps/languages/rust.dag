@@ -1446,7 +1446,7 @@ fn rust_collection_realization_catalog_node() -> Node {
   )
 }
 
-fn rust_mvp1_target_model_core_edges() -> List<Edge> {
+fn rust_mvp1_target_model_core_edges_with_operators(operator_catalog: Node) -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
@@ -1487,8 +1487,32 @@ fn rust_mvp1_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
       target: rust_type_expression_projection_bundle_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_value_expression_projection,
+      target: value_expr_projection_bundle_node(
+        projection: rust_value_expression_projection()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_operator_realizations,
+      target: operator_catalog
     )
   ]
+}
+
+fn rust_mvp1_target_model_core_edges() -> List<Edge> {
+  rust_mvp1_target_model_core_edges_with_operators(
+    operator_catalog: rust_operator_realizations_catalog_node()
+  )
+}
+
+fn rust_mvp1_target_model_bundle_core_with_operators(operator_catalog: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: rust_mvp1_target_model_core_edges_with_operators(operator_catalog: operator_catalog),
+    occurrence_id: SyntheticOccurrence
+}
 }
 
 fn rust_mvp1_target_model_bundle_core() -> Node {
@@ -1499,11 +1523,24 @@ fn rust_mvp1_target_model_bundle_core() -> Node {
 }
 }
 
+fn rust_mvp1_target_model_with_operators_and_lex(operator_catalog: Node, lex: LexRules) -> TargetModel {
+  TargetModel {
+    bundle: rust_mvp1_target_model_bundle_core_with_operators(operator_catalog: operator_catalog),
+    lex: lex,
+    binding_spellings: rust_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_mvp1_source_text_authority(),
+    runtime_row: rust_mvp1_runtime_row()
+  }
+}
+
 fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
   let m1 = map_insert(m0, ^rust_binding_param_x, "x")
   let m2 = map_insert(m1, ^rust_binding_param_y, "y")
-  let m3 = map_insert(m2, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let mx = map_insert(m2, ^dag_binding_param_x, "x")
+  let my = map_insert(mx, ^dag_binding_param_y, "y")
+  let m3 = map_insert(my, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
   let m4 = map_insert(m3, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m5 = map_insert(m4, ^rust_collection_surface_vec, "Vec")
   map_insert(m5, ^target_collection_set_carrier, "Set")
