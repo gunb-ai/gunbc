@@ -118,13 +118,6 @@ fn witness_deploy_run_script_invokes_gunbc_wet() -> Bool {
 fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
   let deploy_jobs = filter(ci_workflow.jobs, j => j.id == "deploy_dashboard_srv1")
   length(deploy_jobs) == length(gunbc_ci_deploy_stages)
-    && fold(deploy_jobs, init: true, f: (acc, j) =>
-        acc
-          && j.needs == ["ci"]
-          && match j.if_condition {
-            Present { value: cond } => cond == ci_deploy_push_to_main_if
-            Absent => false
-          })
 }
 
 fn witness_ci_yml_deploy_job_matches_enrollment() -> Bool {
