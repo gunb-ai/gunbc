@@ -6671,7 +6671,6 @@ pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u32, u64, u64)> {
     }
 }
 
-<<<<<<< HEAD
 // SCAFFOLD (adhoc-c328b166-bca residual hunt, nimble-otter-476): the innermost
 // `.dag` function name, pushed on each `call_function` entry (RAII-popped on
 // exit). `fold_list` is a builtin dispatched WITHOUT its own `call_function`
@@ -6754,8 +6753,6 @@ pub fn fold_caller_snapshot() -> Vec<(String, u64, u64, u64, &'static str)> {
     }
 }
 
-=======
->>>>>>> origin/main
 /// SCAFFOLD (adhoc-c328b166-bca residual hunt): the recorders below are
 /// opt-in, not always-on -- gated on the same env var that gates the dump
 /// (`GUNBC_FLATTEN_SITE_DUMP_SECS`), read once via OnceLock so the default

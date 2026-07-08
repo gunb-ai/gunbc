@@ -2844,7 +2844,6 @@ fn dump_residual_hunt_instrumentation() {
         "--- parse memo effectiveness discriminator: lookups={} hits={} distinct_keys={} (lookups>>distinct & hits==0 => memo never serves a re-attempted span) ---",
         memo_lookups, memo_hits, memo_distinct
     );
-<<<<<<< HEAD
     let mut callers = v1_interpreter::fold_caller_snapshot();
     callers.sort_by(|a, b| b.2.cmp(&a.2));
     eprintln!("--- LARGE fold_list callers (items>=100/call), top 15 by total items; .dag fn [left|right], elem type ---");
@@ -2854,8 +2853,6 @@ fn dump_residual_hunt_instrumentation() {
             caller, calls, total, maxlen, elem
         );
     }
-=======
->>>>>>> origin/main
 }
 
 pub fn handle_run_with_options(
