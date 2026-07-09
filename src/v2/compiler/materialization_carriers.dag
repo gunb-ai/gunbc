@@ -1,4 +1,4 @@
-module v2.std.materialization_carriers
+module v2.compiler.materialization_carriers
 
 import std.types { List, String }
 import std.cache_identity {
@@ -126,6 +126,18 @@ fn parse_table_memo_materialization() -> Materialization {
 
 fn compile_stage_memo_materialization() -> Materialization {
   Memoize
+}
+
+type CachedStageRealization {
+  provider_id: CacheInterfaceId
+  materialization: Materialization
+}
+
+fn cached_stage_realization() -> CachedStageRealization {
+  CachedStageRealization {
+    provider_id: compile_stage_memo_provider_id(),
+    materialization: compile_stage_memo_materialization(),
+  }
 }
 
 fn parse_table_realized_step() -> RealizedStep<Nano> {
