@@ -50,7 +50,8 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.node_query {
-  find_named_child
+  find_named_child,
+  node_positional_child_targets
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -128,9 +129,9 @@ fn emit_variant_construct_eval_diagnostic(reason: Symbol, node: Node) -> Diagnos
 }
 
 fn emit_variant_construct_eval_variant_tag_id(node: Node) -> Outcome<Symbol> {
-  match list_at_optional(xs: node.children, index: 0) {
-    Present { value: child } =>
-      match child.target.kind {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Present { value: tag_node } =>
+      match tag_node.kind {
         TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
         _ =>
           outcome_rejected(
