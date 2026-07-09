@@ -129,16 +129,24 @@ fn emit_variant_construct_eval_diagnostic(reason: Symbol, node: Node) -> Diagnos
 }
 
 fn emit_variant_construct_eval_variant_tag_id(node: Node) -> Outcome<Symbol> {
-  match list_at_optional(xs: node_child_targets(node: node), index: 0) {
-    Present { value: tag_node } =>
-      match tag_node.kind {
-        TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
-        _ =>
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: node_child_targets(node: node), index: 0) {
+        Present { value: tag_node } =>
+          match tag_node.kind {
+            TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
+            _ =>
+              outcome_rejected(
+                d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
+              )
+          }
+        Absent =>
           outcome_rejected(
             d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
           )
       }
-    Absent =>
+    _ =>
       outcome_rejected(
         d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
       )
