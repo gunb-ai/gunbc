@@ -36,6 +36,24 @@ So the "duplicate-work lens" is the qualification step *inside* `materialize`, a
 - **computation-identity** — `content_hash` (`src/v2/std/node.dag:1449`), **occurrence-independent** (`canonicalize_node_for_content_hash` stamps `SyntheticOccurrence`, `:594`): the same operation on content-identical inputs hashes equal at any position. Identity is a *lattice* (§4).
 - **N materializations, no Share** — the multiplicity's **source** (§5) picks the fix. The substrate does not hash-cons (`node_with_occurrence_id`, `:115`, mints distinct `occurrence_id`), so a *fork* is only the degenerate source, not the general case.
 
+### The state × decision table — the final verdict logic (operator-signed 2026-07-09; implemented `dag/std/materialization_ladder.dag`, 14/14 witnesses green)
+
+One axis decides everything: **when the redundancy is knowable, and whether what was knowable was prepared for.** Redundancy itself is never the error — *knowable-but-unprepared* is. Scopes nest (eval → plan → process → emitted shell → CI run — a "run" at any layer is a frame one scope up, all emitted from one substrate), and **plurality of demand per identity** is the primitive throughout:
+
+| state — plurality × frame | decision | if unprepared |
+|---|---|---|
+| 0 × pure computation | `DeadComputation` — authored waste (the degenerate rule-1) | the error is the verdict |
+| 0 × effect | `AcceptedEffectIsTheUse` — valid; the effect *is* the use | — |
+| 1, no declaring frame | `AcceptedSingleRecompute` — a cache is dead weight | — |
+| ≥2, LCA = shared-state frame (rewireable) | `AuthoredDuplication` — ERROR; fix = rewire/Share, never a cache | the error is the verdict |
+| ≥2, LCA = isolation boundary | **memo obligation at the LCA** — must be `Discharged` by a covering, content-keyed provider with declared eviction | `RefusedNoProvider` / `RefusedScopeTooNarrow` / `RefusedExistenceKeyed` |
+| 1 under a **declared-emergent** frame (`ReplayedFrame attempts>1`, `UnboundedSiblingsFrame`) | obligates **up front** — checkpointing and cross-run caches are *derived*, prepare-before-demand | `RefusedNoProvider` at the declaring frame |
+| unexpected-emergent (measurement-only, e.g. recompute-trace) | typed **acceptance + finding** — converts to a declared row for the next run | not an error the first time |
+
+Nature gates ride on top: `FreshEffect` never memoizes (duplicated measurement is intentional → `ExemptFreshEffect`); a redundant `WorldRead` without a declared staleness envelope is `RefusedUnmodeledWorldRead` — **a TTL is always one of two confessions: an unmodeled dependency (fix: into the key) or a tolerated staleness (fix: declare the envelope)**; below-cost-floor duplication is `AcceptedBelowCostFloor` (roster-visible; deleting the roster row flips red — witnessed). Rule-3 eviction is by construction: `CacheProvider` cannot be written without an `EvictionPolicy` (`ScopeExit` scoped — eviction = frame exit, derived; `SpacePacked` persistent — dropping pure facts only ever costs recompute). Rule-4 keying wall: `ExistenceKeyed` providers are refused even when covering — existence ≠ identity (receipt: build-if-absent stale binary, #6352).
+
+**§3 convergence — `v1.compiler.ownership` is the eval-frame instance** (found on operator recall, consolidated 2026-07-09): `binding_fan_out` = demand plurality with `Threaded` (iteration-carry) excluded — exactly the reduce-spine exclusion; `SoleOwner` = single-demand move; fan_out>1 in a function body (a shared-state frame) = the emitter's Share/clone decision; `SharedError{consumer_count, sites}` = plurality refused in an affine-uniqueness context (a context-requirement refinement the std ladder does not yet carry — the residue keeping the v1 instance load-bearing); the v3-era zero arm (`fan_out==0 ∧ pure → dead code; ==0 ∧ effect → valid`) is `DeadComputation`/`AcceptedEffectIsTheUse`, back-ported into the ladder. Dissolution: emit-stage migration onto the v2/std spine grounds ownership on the ladder; the v1 instance retires with the seed (convergence note on the ladder module, seed untouched to avoid regen churn).
+
 ## 4. Computation-identity is a bounded lattice (§4), not a boolean
 
 In a Turing-complete language the strongest form (semantic equivalence of structurally-different programs) is Rice-undecidable and permanent. `.dag` is **closed, bounded, total** (forward execution, finite measures, `Int` on machine widths, no non-termination), so extensional equivalence over a bounded domain is **decidable by enumeration**. Semantic equivalence here is not Rice-impossible — it is decidable once the bound is supplied, §6-priced. Mirrors `DescentEvidence` (`dag/std/termination.dag`) and `UnknownComplexity { diagnostic }` (`src/v2/lens/complexity.dag`):
