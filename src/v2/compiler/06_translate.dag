@@ -182,7 +182,12 @@ import std.algebra { Cons, Empty }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, is_empty, length, list_append, list_snoc_item, list_tail, zip_eq }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.grammar { grammar_relation_row_reverse_parse_selection }
+import v2.std.grammar {
+  GrammarRowAbsentForNode,
+  GrammarRowFound,
+  grammar_relation_row_reverse_parse_select,
+  grammar_relation_row_reverse_parse_selection
+}
 type TargetNodeTree = Node
 
 type TargetBundleChildLookup
@@ -3587,10 +3592,6 @@ type TranslationRowSelection
   = TranslationRowSelected
   | TranslationRowAbsentForNode
 
-fn translate_row_selection_reason_is_row_absent(r: NonEmptyDiagnostics) -> Bool {
-  r.head.reason == ^grammar_relation_production_not_found
-}
-
 fn translate_grammar_relation_row_select(
   target: TargetModel,
   emitted: Node
@@ -3598,15 +3599,12 @@ fn translate_grammar_relation_row_select(
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
-      match grammar_relation_row_reverse_parse_selection(rules: rules, emitted: emitted) {
-        Accepted { value: _, diagnostics: d } =>
+      match grammar_relation_row_reverse_parse_select(rules: rules, emitted: emitted) {
+        Accepted { value: GrammarRowFound { row: _ }, diagnostics: d } =>
           Accepted { value: TranslationRowSelected, diagnostics: d }
-        Rejected { diagnostics: r } =>
-          if translate_row_selection_reason_is_row_absent(r: r) {
-            outcome_accepted(TranslationRowAbsentForNode)
-          } else {
-            Rejected { diagnostics: r }
-          }
+        Accepted { value: GrammarRowAbsentForNode, diagnostics: d } =>
+          Accepted { value: TranslationRowAbsentForNode, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     }
   )

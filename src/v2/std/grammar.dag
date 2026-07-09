@@ -2233,6 +2233,78 @@ fn grammar_relation_rules_node_malformed_diagnostic(rules: Node) -> Diagnostic {
   }
 }
 
+type GrammarRowSelection
+  = GrammarRowFound { row: Node }
+  | GrammarRowAbsentForNode
+
+fn grammar_relation_row_reverse_parse_select_rows(
+  rules: Node,
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> Outcome<GrammarRowSelection> {
+  match fold(
+    rules.children,
+    init: BackwardRowNone,
+    f: fn(acc, edge) {
+      match edge.label {
+        Named { name: n } =>
+          if n == ^grammar_relation_rules_formal_productions {
+            acc
+          } else {
+            backward_row_select_step(
+              acc: acc,
+              productions: productions,
+              emitted: emitted,
+              row: edge.target
+            )
+          }
+        Positional => acc
+      }
+    }
+  ) {
+    BackwardRowOne { row: row } => outcome_accepted(value: GrammarRowFound { row: row })
+    BackwardRowMany =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^grammar_relation_row_backward_selection_ambiguous,
+          at: node_locus(node: emitted),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    BackwardRowNone =>
+      match grammar_relation_row_derived_from_productions(
+        productions: productions,
+        emitted: emitted
+      ) {
+        Accepted { value: row, diagnostics: d } =>
+          Accepted { value: GrammarRowFound { row: row }, diagnostics: d }
+        Rejected { diagnostics: _ } =>
+          outcome_accepted(value: GrammarRowAbsentForNode)
+      }
+  }
+}
+
+fn grammar_relation_row_reverse_parse_select(
+  rules: Node,
+  emitted: Node
+) -> Outcome<GrammarRowSelection> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: grammar_relation_rules_formal_productions(rules: rules),
+        f: fn(productions) {
+          grammar_relation_row_reverse_parse_select_rows(
+            rules: rules,
+            productions: productions,
+            emitted: emitted
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(grammar_relation_rules_node_malformed_diagnostic(rules: rules))
+  }
+}
+
 fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> Outcome<Node> {
   bind_outcome(
     o: grammar_relation_rules_formal_productions(rules: rules),

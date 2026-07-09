@@ -1,0 +1,170 @@
+module v2.test.emit.translate_row_select_fail_closed
+
+import v2.compiler.translate {
+  TranslationRowAbsentForNode,
+  TranslationRowSelected,
+  translate_grammar_relation_row_select
+}
+import v2.extdeps.languages.rust {
+  rust_inhabitant_atom,
+  rust_type_alias_decl_structural_target_model
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+
+fn row_select_interned_symbol(spelling: String) -> Symbol {
+  spelling
+}
+
+fn row_select_atom(spelling: String) -> Node {
+  rust_inhabitant_atom(id: row_select_interned_symbol(spelling: spelling))
+}
+
+fn row_select_qualified_name_emitted(type_name: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: row_select_atom(spelling: type_name) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn row_select_type_expr_emitted(type_name: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: row_select_qualified_name_emitted(type_name: type_name) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn row_select_known_decl_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: row_select_atom(spelling: "CoreNode") },
+      Edge { label: Positional, target: row_select_type_expr_emitted(type_name: "Node") }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn row_select_unmatched_emitted() -> Node {
+  row_select_atom(spelling: "NoProductionEmitsThisNode")
+}
+
+fn row_select_good_target() -> TargetModel {
+  rust_type_alias_decl_structural_target_model()
+}
+
+fn row_select_target_with_bundle(bundle: Node) -> TargetModel {
+  TargetModel {
+    bundle: bundle,
+    lex: row_select_good_target().lex,
+    binding_spellings: row_select_good_target().binding_spellings,
+    token_class_emit_transforms: row_select_good_target().token_class_emit_transforms,
+    authority_source_text: row_select_good_target().authority_source_text,
+    runtime_row: row_select_good_target().runtime_row
+  }
+}
+
+fn row_select_bundle_missing_rules_edge() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn row_select_bundle_rules_not_conjunction() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^target_model_edge_translation_rules },
+        target: row_select_atom(spelling: "RulesNodeThatIsNotAConjunction")
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn row_select_is_selected(target: TargetModel, emitted: Node) -> Bool {
+  match translate_grammar_relation_row_select(target: target, emitted: emitted) {
+    Accepted { value: TranslationRowSelected, diagnostics: _ } => true
+    Accepted { value: TranslationRowAbsentForNode, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn row_select_is_absent_for_node(target: TargetModel, emitted: Node) -> Bool {
+  match translate_grammar_relation_row_select(target: target, emitted: emitted) {
+    Accepted { value: TranslationRowSelected, diagnostics: _ } => false
+    Accepted { value: TranslationRowAbsentForNode, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn row_select_is_refused(target: TargetModel, emitted: Node) -> Bool {
+  match translate_grammar_relation_row_select(target: target, emitted: emitted) {
+    Accepted { value: TranslationRowSelected, diagnostics: _ } => false
+    Accepted { value: TranslationRowAbsentForNode, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn translate_row_select_selects_row_for_known_decl_holds() -> Bool {
+  row_select_is_selected(
+    target: row_select_good_target(),
+    emitted: row_select_known_decl_emitted()
+  )
+}
+
+test fn translate_row_select_answers_absent_for_unmatched_node_holds() -> Bool {
+  row_select_is_absent_for_node(
+    target: row_select_good_target(),
+    emitted: row_select_unmatched_emitted()
+  )
+}
+
+test fn translate_row_select_refuses_bundle_missing_rules_edge_holds() -> Bool {
+  row_select_is_refused(
+    target: row_select_target_with_bundle(bundle: row_select_bundle_missing_rules_edge()),
+    emitted: row_select_known_decl_emitted()
+  )
+    && !row_select_is_absent_for_node(
+      target: row_select_target_with_bundle(bundle: row_select_bundle_missing_rules_edge()),
+      emitted: row_select_known_decl_emitted()
+    )
+}
+
+test fn translate_row_select_refuses_non_conjunction_rules_node_holds() -> Bool {
+  row_select_is_refused(
+    target: row_select_target_with_bundle(bundle: row_select_bundle_rules_not_conjunction()),
+    emitted: row_select_known_decl_emitted()
+  )
+    && !row_select_is_absent_for_node(
+      target: row_select_target_with_bundle(bundle: row_select_bundle_rules_not_conjunction()),
+      emitted: row_select_known_decl_emitted()
+    )
+}
+
+test fn translate_row_select_separates_absent_from_refused_holds() -> Bool {
+  row_select_is_absent_for_node(
+    target: row_select_good_target(),
+    emitted: row_select_unmatched_emitted()
+  )
+    && row_select_is_refused(
+      target: row_select_target_with_bundle(bundle: row_select_bundle_missing_rules_edge()),
+      emitted: row_select_unmatched_emitted()
+    )
+}
