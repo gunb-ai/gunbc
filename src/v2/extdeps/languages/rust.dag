@@ -1118,10 +1118,10 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^rust_token_rparen
     },
     closure_form: TargetClosureShape {
-      fn_token: ^rust_token_unwired_closure_fn,
-      open: ^rust_token_unwired_closure_open,
+      fn_token: ^rust_token_closure_pipe,
+      open: ^rust_token_closure_nop,
       separator: ^rust_token_comma,
-      close: ^rust_token_unwired_closure_close,
+      close: ^rust_token_closure_pipe,
       body_open: ^rust_token_lbrace,
       body_close: ^rust_token_rbrace,
       param_ident_token: ^rust_token_ident
@@ -1866,6 +1866,85 @@ fn rust_match_lex_rules() -> LexRuleSet {
 
 fn rust_match_lex() -> LexRules {
   ModeledLexRules { root: rust_match_lex_rules() }
+}
+
+fn rust_call_closure_additional_lex_rules() -> List<LexRule> {
+  [
+    rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
+    rust_lex_rule(token_class: ^rust_token_closure_nop, text: "")
+  ]
+}
+
+fn rust_call_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: rust_wave1_lex_rules().rules,
+      right: rust_call_closure_additional_lex_rules()
+    )
+  }
+}
+
+fn rust_call_lex() -> LexRules {
+  ModeledLexRules { root: rust_call_lex_rules() }
+}
+
+fn rust_call_binding_spellings() -> Map<Symbol, String> {
+  let m0 = rust_binding_spellings()
+  let m1 = map_insert(m0, ^rust_call_callee_fold, "fold_call")
+  let m2 = map_insert(m1, ^rust_call_callee_helper, "helper")
+  let m3 = map_insert(m2, ^rust_call_closure_acc, "acc")
+  map_insert(m3, ^rust_call_closure_h, "h")
+}
+
+data rust_call_host_source_text: String = "fn add(x: i32, y: i32) -> i32 { helper(x, y) }"
+
+data rust_call_emit_host_helper_suffix: String = "\n\nfn helper(a: i32, b: i32) -> i32 { a + b }\n\nfn main() { let value = add(3, 4); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+fn rust_call_host_transport_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^rust_host_transport_call_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "Cargo.toml",
+        content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "src/main.rs",
+        content: EmittedWithSuffix { suffix: rust_call_emit_host_helper_suffix }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        tool: ^host_tool_cargo,
+        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+      }
+    ],
+    run: ProcessInvocation {
+      tool: ^host_tool_cargo,
+      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn rust_call_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_call_host_transport_descriptor(),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn rust_call_target_model_staging() -> TargetModel {
+  TargetModel {
+    bundle: rust_target_model_bundle_core(),
+    lex: rust_call_lex(),
+    binding_spellings: rust_call_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_call_host_source_text,
+    runtime_row: rust_call_runtime_row()
+  }
 }
 
 fn rust_match_target_model_core_edges() -> List<Edge> {
