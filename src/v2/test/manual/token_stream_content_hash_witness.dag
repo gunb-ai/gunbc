@@ -8,6 +8,8 @@ import v2.std.compilers.lexing { Token, TokenStream, symbol_intern_lexeme, token
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Hash, combine_hash, symbol_identity_digest }
 
+data token_stream_content_hash_witness_note: String = "adhoc-c328b166-bca fix-4 verification receipt: order-sensitive hash over the tokenize() output (class + interned lexeme per token, in stream order) run once against the pre-fix 01_tokenize.dag (checked out from main, built as its own release binary in a separate worktree) and once against the post-fix version (lex_walk_step reverse-cons + tokenize()'s .reverse()) -- byte-equal Hash across both runs proves the accumulation rewrite is a pure algorithmic change (same token sequence, cheaper to build), not a semantic one. Position fields (start/end) are intentionally excluded: they are derived from the class+lexeme sequence under a deterministic lexer, so hashing them is redundant with hashing the sequence itself, not independent evidence. The two revisions cannot both load in one interpreter run, so compare the printed Hash from two separate `gunbc run` invocations against two independently-built binaries, not in-process."
+
 fn token_hash_step(acc: Hash, t: Token) -> Hash {
   combine_hash(
     a: acc,
