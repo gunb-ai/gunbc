@@ -27,7 +27,7 @@ import v2.std.text { String }
 
 data self_host_module_emit_frontier_note: String = "Drives v2's OWN pipeline (assemble->infer->emit_for_target via rust_target_model()) on real .dag SOURCE TEXT, ledgering the current self-emit-from-source frontier by execution. Two staged blockers are upstream of emit fidelity; each _refuses witness matches its TYPED refusal symbol on the pipeline Outcome (no stringification), names its dissolution trigger, and flips to assert ACCEPT once the trigger lands."
 
-data self_host_frontier_trigger_multi_arm_match: String = "TRIGGER: wave1 grammar dag_production_match_expr (dag/extdeps/languages/dag.dag) parses SINGLE-arm match only; multi-arm (comma-separated) arms reject at parse (^parse_e1_syntax_error) while a single-arm control accepts. Add a repeated match-arm production, then flip self_host_frontier_parse_multi_arm_match_refuses to assert ACCEPT."
+data self_host_frontier_trigger_multi_arm_match: String = "TRIGGER: wave1 grammar dag_production_match_expr (dag/extdeps/languages/dag.dag) parses SINGLE-arm match only; multi-arm (comma-separated) arms reject at parse with ^parse_grammar_choice_overlap_residue (the single-arm match_arm choice overlaps on multi-arm input) while a single-arm control accepts. Add a repeated match-arm production resolving the choice overlap, then flip self_host_frontier_parse_multi_arm_match_refuses to assert ACCEPT."
 
 data self_host_frontier_trigger_ownership_miss: String = "TRIGGER: whole-program emit via rust_target_model() rejects user-defined coproduct/record types with ^target_use_site_ownership_lookup_miss (per-fn staging targets carry the rows; the real whole-program target does not). Land whole-program use-site ownership realization for user types, then flip self_host_frontier_emit_ownership_miss_refuses to assert ACCEPT."
 
@@ -129,7 +129,7 @@ test fn self_host_frontier_infer_single_arm_module_holds() -> Bool {
 }
 
 test fn self_host_frontier_parse_multi_arm_match_refuses() -> Bool {
-  derisk_assemble_rejects_with(src: src_multi_arm_match, reason: ^parse_e1_syntax_error)
+  derisk_assemble_rejects_with(src: src_multi_arm_match, reason: ^parse_grammar_choice_overlap_residue)
     && derisk_assemble_accepts(src: src_single_arm_match)
 }
 
