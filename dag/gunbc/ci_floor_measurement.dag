@@ -83,8 +83,8 @@ fn witness_falsifier_per_shard_exceeds_floor_gate_peak() -> Bool {
   byte_size_count(b: gunbc_falsifier_per_shard_peak_rss_bytes()) > byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
 }
 
-fn witness_falsifier_derived_width_at_live_cap_is_three() -> Bool {
-  gunbc_falsifier_memory_derived_width(cap: gunbc_ci_runner_slot_memory_max_live, cpu_bound: 128) == 3
+fn witness_falsifier_derived_width_at_live_cap_is_two() -> Bool {
+  gunbc_falsifier_memory_derived_width(cap: gunbc_ci_runner_slot_memory_max_live, cpu_bound: 128) == 2
 }
 
 data gunbc_ci_runner_cgroup_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
