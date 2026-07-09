@@ -1,5 +1,6 @@
 module v2.test.emit.rust_record_construct_emit_host_equals_eval
 
+import v2.compiler.emit { emit }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -8,8 +9,10 @@ import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
+  eval,
   eval_context_with_semantics,
-  eval_test_claim_subject
+  eval_test_claim_subject,
+  inputs_root_only
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
@@ -20,17 +23,23 @@ import v2.extdeps.languages.dag {
 }
 import v2.extdeps.languages.rust {
   rust_emit_host_runtime_primitive_type_node,
+  rust_rec_nine_source_text,
   rust_rec_nine_target_model_staging,
   rust_rec_nine_wrong_field_target_model_staging
 }
+import extdeps.communication.medium { Medium }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.algebra { length }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { List, Map, list_at_optional }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
   Outcome,
+  Rejected,
   Unavailable,
   node_locus,
   outcome_accepted,
@@ -185,8 +194,12 @@ fn rust_rec_nine_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) 
     TypeNode { connective: Conj } =>
       outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 9))
     TypeNode { connective: Atom { identity: id } } =>
-      if id == ^dag_rec_lit_nine {
+      if id == ^dag_binding_type_rec {
+        outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
+      } else if id == ^dag_rec_lit_nine {
         outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 9))
+      } else if id == ^dag_binding_rec_v {
+        outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
       } else {
         outcome_rejected(
           d: rust_rec_nine_eval_diagnostic(
@@ -213,15 +226,24 @@ fn rust_rec_nine_eval_call_primitive(
   match rust_rec_nine_eval_field_index_from_transform(node: node) {
     Accepted { value: field_index, diagnostics: _ } =>
       if field_index == 0 {
-        match list_at_optional(xs: args, index: 0) {
-          Present { value: base } => outcome_accepted(value: base)
-          Absent =>
-            outcome_rejected(
-              d: rust_rec_nine_eval_diagnostic(
-                reason: ^rust_rec_nine_eval_args_bad,
-                node: node
+        if length(xs: args) == 2 {
+          match list_at_optional(xs: args, index: 0) {
+            Present { value: base } => outcome_accepted(value: base)
+            Absent =>
+              outcome_rejected(
+                d: rust_rec_nine_eval_diagnostic(
+                  reason: ^rust_rec_nine_eval_args_bad,
+                  node: node
+                )
               )
+          }
+        } else {
+          outcome_rejected(
+            d: rust_rec_nine_eval_diagnostic(
+              reason: ^rust_rec_nine_eval_args_bad,
+              node: node
             )
+          )
         }
       } else {
         outcome_accepted(value: rust_rec_nine_eval_octet_value(n: 0))
@@ -339,6 +361,28 @@ fn rust_rec_nine_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> 
     Fail { actual: _, falsification: _ } => true
     Pass => false
     Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+fn rust_rec_nine_emit_accepts() -> Bool {
+  match emit(
+    tree: rust_rec_nine_eval_inferred_tree(),
+    target: rust_rec_nine_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_rec_nine_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_rec_nine_eval_expected_accepts() -> Bool {
+  match eval(
+    tree: rust_rec_nine_eval_inferred_tree(),
+    interpretation: rust_rec_nine_eval_interpretation(),
+    inputs: inputs_root_only(root: rust_rec_nine_eval_subgraph_node)
+  ) {
+    Accepted { value: _, diagnostics: None } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
