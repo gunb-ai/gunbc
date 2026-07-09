@@ -70,11 +70,11 @@ type ExecutorBaseOverhead
   | ExecutorBaseOverheadUnmeasured
 
 data gunbc_ci_floor_executor_base_overhead: ExecutorBaseOverhead = ExecutorBaseOverheadMeasured {
-  bytes: byte_size(1610612736)
+  bytes: byte_size(8910036989)
 }
 
 data gunbc_ci_floor_executor_base_overhead_source: Disposition = Terminal {
-  reason: "Measured derivation run 28331500155 width=2: cgroup_peak_at_memory_max(8589934592) - width(2) * per_shard(3489660928) = 1610612736 bytes (~1.5GiB executor+children base before shard RSS scales)."
+  reason: "Re-measured 2026-07-09 under the discovery flip (gunbc.ci_spec ci_spec_discovery_flip_note): the corpus discovery batch's whole-tree resolve + walk memo is executor-resident base, not shard RSS, so the pre-flip 1610612736 (run 28331500155: 8-explicit-entry corpus) understated it ~6x and the width fold overshot - PR #6395 ci job and falsifier run 28993330753 both OOM-killed exit 137 on the ~24GiB live slot. Same derivation convention, flip pre-flight receipt: cgroup_peak(18175750144) - width(5) * per_shard_local_calibration(1853142631) = 8910036989 bytes (~8.3GiB). Local run under 33.5GiB budget completed; runner width now derives to 2 on the live 24GiB slot (committed 8.91+2*4.56=18.0GiB <= 21.9GiB usable)."
 }
 
 data gunbc_ci_floor_width_usable_fraction_num: Int = 17
