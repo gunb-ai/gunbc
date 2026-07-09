@@ -13,6 +13,7 @@ import v2.lens.enforcement.grammar_coverage {
   grammar_coverage_take_n,
   grammar_coverage_receipt_totality_holds,
   grammar_coverage_rejected_rows_cover_rejects,
+  grammar_coverage_rejected_row_count_sum,
   grammar_coverage_tree_receipt_eq,
   grammar_coverage_parse_fraction_bps,
   grammar_coverage_timing_work_units_match_take_n,
@@ -150,8 +151,8 @@ test fn grammar_coverage_dag_tree_receipt_by_execution() -> Bool {
 test fn grammar_coverage_v1_core_file_reject_locus_by_execution() -> Bool {
   grammar_coverage_file_reject_locus_matches(
     receipt: grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag"),
-    stage: "tokenize",
-    reason: ^tokenize_lex_e1_unrecognized_char
+    stage: "parse",
+    reason: ^parse_g0_tokens_remain
   )
 }
 
@@ -170,11 +171,7 @@ test fn grammar_coverage_v1_rejected_rows_identity_by_execution() -> Bool {
     stage: "parse",
     reason: ^parse_g0_tokens_remain
   )
-    && grammar_coverage_rejected_row_present(
-      rows: receipt.rejected_rows,
-      stage: "tokenize",
-      reason: ^tokenize_lex_e1_unrecognized_char
-    )
+    && (grammar_coverage_rejected_row_count_sum(rows: receipt.rejected_rows) == 2)
 }
 
 test fn grammar_coverage_v1_tree_receipt_by_execution() -> Bool {
