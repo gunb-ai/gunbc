@@ -5153,6 +5153,74 @@ fn rust_struct_decl_surface_from_record(name: Symbol, record: Node) -> Outcome<N
   }
 }
 
+fn rust_decl_surface_type_param_list(params: List<Symbol>) -> Node {
+  fold_list_right(
+    xs: params,
+    empty: rust_decl_surface_nil(),
+    snoc: fn(acc, p) { rust_decl_surface_cell(item: rust_decl_surface_atom(id: p), rest: acc) }
+  )
+}
+
+fn rust_decl_surface_generic_params(params: List<Symbol>) -> Node {
+  rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_type_param_list(params: params)) ])
+}
+
+fn rust_decl_surface_enum_generic(name: Symbol, params: List<Symbol>, variants: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_generic_params(params: params)),
+    rust_decl_surface_pos(target: rust_decl_surface_variant_block(variants: variants))
+  ])
+}
+
+fn rust_decl_surface_struct_generic(name: Symbol, params: List<Symbol>, fields: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_generic_params(params: params)),
+    rust_decl_surface_pos(target: rust_decl_surface_field_block(fields: fields))
+  ])
+}
+
+fn rust_enum_decl_surface_from_coproduct_generic(
+  name: Symbol,
+  params: List<Symbol>,
+  coproduct: Node
+) -> Outcome<Node> {
+  match coproduct.kind {
+    TypeNode { connective: Disj } =>
+      bind_outcome(
+        o: rust_coproduct_variant_surfaces(edges: coproduct.children),
+        f: fn(variants) {
+          outcome_accepted(value: rust_decl_surface_enum_generic(name: name, params: params, variants: variants))
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_enum_decl_surface_source_not_coproduct, node: coproduct)
+      )
+  }
+}
+
+fn rust_struct_decl_surface_from_record_generic(
+  name: Symbol,
+  params: List<Symbol>,
+  record: Node
+) -> Outcome<Node> {
+  match record.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: rust_coproduct_field_surfaces(edges: record.children),
+        f: fn(fields) {
+          outcome_accepted(value: rust_decl_surface_struct_generic(name: name, params: params, fields: fields))
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_struct_decl_surface_source_not_record, node: record)
+      )
+  }
+}
+
 fn rust_grammar_production_fn_add() -> GrammarProduction {
   GrammarProduction {
     name: ^rust_production_fn_add,
