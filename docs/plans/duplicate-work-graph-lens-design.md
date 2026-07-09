@@ -124,6 +124,44 @@ This lane does **not** fork the spine's materialization work. The boundary:
 
 Remaining witnesses (carried from the identity lattice): pure fork (perturb-subtree red control), effect-gated (`Append` vs `CreateIfAbsent`), cost-floor, and the typed `IdentityUnknown` bottom classification.
 
+## 10a. Consolidation plan — realization ⊕ materialization ⊕ ownership are one law (operator, 2026-07-09)
+
+**The unification.** Three concepts overlap because they are one law read at three places: **Materialization** (`Recompute | Memoize | Share`, authority `dag/std/realization.dag`) is the *verdict vocabulary*; **ownership** (`v1.compiler.ownership`) is the *verdict computation at the eval frame* (plurality via `binding_fan_out`); **realization** is the *provider selection* that discharges the verdict at each frame's carrier. Nothing merges structurally yet — the consolidation is (a) one verdict vocabulary everywhere, (b) every hand-rolled instance named as a provider/instance row with a dissolution trigger, (c) new instances unwritable outside the qualifier.
+
+**Share's realization spectrum — layer-aware providers.** `Share` is one verdict; its *handler* is picked by frame-carrier capability × readonly-ness. The cheapest cache is a **reference**: if the demanders live in the same program, the carrier supports reference passing, and the value is readonly (nobody's reads are disturbed), the provider is *point-at-it* — no memory destroyed, no copy built. Demotion down the spectrum must be **priced, never silent** (#6249's silent clone-fallback O(n²) is the receipt for what silent demotion costs):
+
+| frame carrier | Share handler | requirement gate |
+|---|---|---|
+| same process, ref-capable | reference (`&T` / `Rc` / arena index) | **readonly** + same carrier (the D3 analog at value grain) |
+| same process, value-semantic structures | structural sharing (im-rc HAMT, #6369) | persistent carrier |
+| process lifetime | content-keyed in-memory memo | scope-derived lifetime (evict = frame exit) |
+| cross process, one run | artifact hand-off | content-keyed |
+| cross run / fleet | CAS tier (sccache) | content-keyed + space budget (sound-to-drop) |
+
+**The census — every hand-rolled instance found, its cell, its action** (the tracker for this consolidation; hunt 2026-07-09):
+
+| instance | frame | today | ladder cell | action → trigger |
+|---|---|---|---|---|
+| `v1.compiler.ownership` (`src/v1/ownership.dag`) | eval | fan-out move/share/affine-error | Share-at-eval verdict | ✅ consolidated (convergence note; zero arms back-ported); retires with seed |
+| interpreter `Rc` + arena; im-rc HAMT (#6369) | eval/value | reference & structural-share handlers | Share realizations | keep; name as provider rows (reference tier) |
+| emitter clone-fallback (#6249, fixed instance) | eval | silent demotion to copy | priced demotion | wall: demotion requires a priced reason (C4) |
+| `ParseTable` (v2 parse; DESIGN §2 debt) | process | hand-rolled memo | Memoize@process | ground on Realization carrier (C5) |
+| `cached_stage` (`src/v2/std/staging.dag`) | process | hand-rolled stage memo | Memoize@process | fold into qualifier; fold-ergonomics #1 names it (C5) |
+| M1 within-walk resolve memo (claim_batch "resolved once") | plan | correct Share@plan | Discharged | declare provider row (C2) |
+| `PROCESS_RESOLVE_STORE` (`cli_run.rs`) | **process (wrong scope)** | memo, ⊤-lifetime → 9 GB | scope = demand span | **W4/C3: entry-scope + evict-at-exit; receipt = 9 GB → ~2 GB** |
+| intern / `resolved_graph_cache` (one-shared #5867) | process | Share of canonical values | Discharged | declare provider row (C2) |
+| assumed-green node-frontier skip (re-verify) | plan | cone-keyed verdict memo | Memoize, content-keyed done right | declare provider row (C2) |
+| affected-set witness skip (#6061) | plan | verdict memo on affected closure | **peer, not instance** | stays a peer (forward-only; consumes same identity facts) |
+| sccache | fleet/CAS | content-keyed compile cache | Discharged | provider row + honesty receipt (exit-0-no-binary class) (C2) |
+| build-if-absent (#6352, removed) | CI | existence-keyed | `RefusedExistenceKeyed` | ✅ landed as the keying wall |
+| Cargo cache action (`ci_cache_key`) | CI | hand-rolled key string | Memoize@CI | provider row, SpacePacked (C2/F) |
+| resolve-cache default-on (#5789 reverted) | cross-run | persistent memo, IO 11× | rule-4 *cannot meet requirements* | typed requirement row; revisit under provider reqs (C2) |
+| recompute-trace (unbundled extension) | eval, dynamic | unexpected-emergent detector | state-4 finding source | own follow-up PR; findings convert to declared rows |
+
+**What stays distinct** (anti-over-merge): `Independence`/`Placement` remain sibling *readings* of the DependencyView (FLAG D); the affected set is a forward-only **peer**, not a materialization instance; mutable keyed state is a database, out of scope by construction.
+
+**Sequence:** **C1** (this PR) ladder + zero arms + convergence + docs + live CI gate. **C2** provider rows for the correct live instances, each with a warm==cold receipt. **C3** = W4, the resolve-store scope fix (first *derived* eviction; the 9 GB receipt). **C4** emitter reference-tier demotion pricing (ownership officially = eval-frame provider selection; seed-touching, time with emit-stage work). **C5** ParseTable/`cached_stage` grounding on the Realization carrier (the standing DESIGN §2 debt, now with a home).
+
 ## 10. Dissolution triggers
 
 - **Hash-consing (§3/§5):** content-addressed construction makes pure forks unwritable; the pure arm dissolves into construction. The effect/placement arms persist.
