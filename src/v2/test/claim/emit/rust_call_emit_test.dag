@@ -4,18 +4,13 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
   rust_mvp1_call_binding_spellings,
+  rust_mvp1_call_host_source_text,
   rust_mvp1_call_lex,
   rust_mvp1_target_model_bundle_core
 }
-import v2.std.algebra { list_append }
-import v2.std.collection { Map }
 import v2.std.compilers.target_model {
-  InfixToken,
   TargetModel,
-  canonical_operation_op_add,
-  target_model_emit_transforms_empty,
-  target_operator_realization_node,
-  target_operator_realizations_catalog_node
+  target_model_emit_transforms_empty
 }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic {
@@ -43,6 +38,7 @@ import v2.std.node {
   SyntheticOccurrence,
   Transform,
   TypeNode,
+  Value,
   node_synthetic
 }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -163,32 +159,58 @@ fn rust_call_fold_swapped_arrow() -> Node {
   )
 }
 
-fn rust_call_operator_catalog() -> Node {
-  target_operator_realizations_catalog_node(
-    rows: [
-      target_operator_realization_node(
-        operation: canonical_operation_op_add(),
-        shape: InfixToken { token: ^rust_token_plus }
+fn rust_call_helper_body() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      rust_call_positional(target: rust_call_type_atom(id: ^rust_call_callee_helper)),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_param_x)),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_param_y))
+    ]
+  )
+}
+
+fn rust_call_helper_arrow() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      rust_call_positional(target: rust_call_add_domain_conj()),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
+      rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
+      rust_call_named_edge(
+        name: ^arrow_body_edge,
+        target: rust_call_helper_body()
       )
     ]
   )
 }
 
+data rust_call_helper_body_fixture: Node = rust_call_helper_body()
+
+data rust_call_eval_three_literal: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data rust_call_eval_four_literal: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data rust_call_helper_eval_subgraph: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge { label: Positional, target: rust_call_eval_three_literal },
+    Edge { label: Positional, target: rust_call_eval_four_literal }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
 fn rust_call_target_model(authority_source_text: String) -> TargetModel {
   TargetModel {
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: list_append(
-        left: rust_mvp1_target_model_bundle_core().children,
-        right: [
-          Edge {
-            label: Named { name: ^target_model_edge_operator_realizations },
-            target: rust_call_operator_catalog()
-          }
-        ]
-      ),
-      occurrence_id: SyntheticOccurrence
-    },
+    bundle: rust_mvp1_target_model_bundle_core(),
     lex: rust_mvp1_call_lex(),
     binding_spellings: rust_mvp1_call_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
@@ -244,6 +266,13 @@ test fn rust_call_fold_closure_swap_discriminates() -> Bool {
   && rust_call_emit_matches(
     arrow: rust_call_fold_swapped_arrow(),
     authority: rust_call_fold_swapped_source_text
+  )
+}
+
+test fn rust_call_helper_emit_holds() -> Bool {
+  rust_call_emit_matches(
+    arrow: rust_call_helper_arrow(),
+    authority: rust_mvp1_call_host_source_text
   )
 }
 
