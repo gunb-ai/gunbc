@@ -56,7 +56,7 @@ fn typescript_gap_census_body() -> List<MarkdownBlock> {
       li(text: "**FAIL-CLOSED:** 2 (#11–#12)"),
       li(text: "**FAIL-OPEN compiler-scale gaps:** 8 (#13–#20)"),
       li(text: "**tsc-green (bar c):** 0/N wet — add fixture attempted, red in execution (#19)"),
-      li(text: "**Grammar-inverse rows:** 1 committed / 3 in witness bundle / ~15 wave2a productions defined"),
+      li(text: "**Grammar-inverse rows:** 1 committed / 3 in witness bundle / ~15 type-decl productions defined"),
     ]),
     h2(text: "4. Size call"),
     p(text: "**LARGE multi-slice** — not a single row PR. Cheap tranche = grammar-row extensions (#17) + operator catalog derivation onto default TargetModel if row-only (#16). Load-bearing tranche = Match (#13) + loop/bind forms (#14–#15) + Branch (#18) — **HOLD for parent sign** before authoring TargetModel surfaces. Whole-tree tsc (#20) is terminal after per-construct gaps close."),

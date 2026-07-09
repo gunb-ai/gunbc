@@ -2,12 +2,12 @@ module v2.test.languages.gap4_parse_tokens_remain
 
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_module }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.language_model { LanguageModel }
 import v2.std.logic { Bool }
 
-data gap4_cached_lm: LanguageModel = dag_language_model_wave1()
+data gap4_cached_lm: LanguageModel = dag_language_model()
 
 fn parses(src: String) -> Bool {
   let lm = gap4_cached_lm
@@ -22,7 +22,7 @@ fn parses(src: String) -> Bool {
 }
 
 fn rejects_parse_g0_tokens_remain(src: String) -> Bool {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match tokenize(text: src, file: ^probe, rules: lm.lex) {
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {

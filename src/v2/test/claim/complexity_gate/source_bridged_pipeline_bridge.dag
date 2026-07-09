@@ -4,7 +4,7 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production_tree }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { Token, token_stream_all, token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, port_locus }
@@ -18,7 +18,7 @@ fn source_bridged_resolved_root(
   production_name: Symbol,
   file: Symbol
 ) -> Outcome<Node> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match grammar_validate_for_parse(
     root: parse_root,
     at: port_locus(port: ^source_bridged_pipeline_bridge_grammar_locus)

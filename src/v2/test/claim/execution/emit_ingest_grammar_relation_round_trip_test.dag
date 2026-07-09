@@ -12,7 +12,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.translate { grammar_relation_row_for_emitted }
 import v2.extdeps.languages.dag {
   dag_grammar_production_fn_add,
-  dag_language_model_wave1,
+  dag_language_model,
   dag_fixture_emitted_add_fn,
   dag_add_grammar_relation_row_node,
   dag_source_text,
@@ -174,7 +174,7 @@ fn emit_ingest_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
 }
 
 fn emit_ingest_parsed_add_tree() -> Outcome<ParseTree> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: tokenize(
       text: dag_source_text,

@@ -13,7 +13,7 @@ import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_grammar_production_fn_add,
-  dag_language_model_wave1_modeled
+  dag_language_model
 }
 import v2.std.compilers.lexing { TokenStream, token_stream_remaining }
 import v2.std.grammar { GrammarRoot, grammar_empty_sync_tokens }
@@ -148,7 +148,7 @@ fn parse_dag_source_ast(source: Medium<String>) -> Outcome<DagSourceAst> {
   parse_dag_source_ast_with_model(
     source: source,
     compilation_unit: ^source_authority_port,
-    lm: dag_language_model_wave1_modeled()
+    lm: dag_language_model()
   )
 }
 
@@ -196,7 +196,7 @@ fn semantic_ir_from_source(source: Medium<String>) -> Outcome<DagSemanticIr> {
   semantic_ir_from_source_with_model(
     source: source,
     compilation_unit: ^source_authority_port,
-    lm: dag_language_model_wave1_modeled()
+    lm: dag_language_model()
   )
 }
 
@@ -271,7 +271,7 @@ fn source_ir_artifact_provenance(
 ) -> Outcome<SourceIrArtifactProvenance> {
   source_ir_artifact_provenance_from_model(
     source_read: source_read,
-    lm: dag_language_model_wave1_modeled()
+    lm: dag_language_model()
   )
 }
 
@@ -296,7 +296,7 @@ fn source_ir_node_artifact_provenance(
 ) -> Outcome<NodeArtifactProvenance> {
   source_ir_node_artifact_provenance_from_model(
     source_read: source_read,
-    lm: dag_language_model_wave1_modeled()
+    lm: dag_language_model()
   )
 }
 
@@ -336,7 +336,7 @@ fn source_ir_node_artifact_provenance_add(
 ) -> Outcome<NodeArtifactProvenance> {
   source_ir_node_artifact_provenance_add_from_model(
     source_read: source_read,
-    lm: dag_language_model_wave1_modeled()
+    lm: dag_language_model()
   )
 }
 
@@ -629,7 +629,7 @@ fn canonical_dag_source_parse_print_law(
       bind_outcome(
         o: semantic_ir_from_ast_with_model(
           ast: original_ast,
-          lm: dag_language_model_wave1_modeled()
+          lm: dag_language_model()
         ),
         f: fn(original_ir) {
           bind_outcome(
@@ -672,6 +672,6 @@ fn source_authority_round_trip(
   source_authority_round_trip_with_model(
     source: source,
     canonical_source_target: canonical_source_target,
-    lm: dag_language_model_wave1_modeled()
+    lm: dag_language_model()
   )
 }

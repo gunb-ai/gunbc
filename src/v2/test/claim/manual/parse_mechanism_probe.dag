@@ -8,7 +8,7 @@ import v2.compiler.parse {
   parse_production_memo_stats
 }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Rejected, port_locus }
 import v2.std.grammar { ModeledGrammar, VoidGrammar }
@@ -21,7 +21,7 @@ import v2.std.text { String }
 data pmp_anchor: Symbol = ^pmp_anchor
 
 fn pmp_tokenize_parse_text(source_text: String) -> Bool {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match tokenize(text: source_text, file: pmp_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } => false
     Accepted { value: stream, diagnostics: _ } =>
@@ -38,7 +38,7 @@ fn pmp_tokenize_parse_path(path: String) -> Bool {
 }
 
 fn pmp_memo_stats_text(source_text: String) -> ParseMemoStats {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(text: source_text, file: pmp_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } =>

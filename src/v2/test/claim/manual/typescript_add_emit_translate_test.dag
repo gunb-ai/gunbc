@@ -30,7 +30,7 @@ import v2.extdeps.languages.typescript {
   ts_number_arithmetic_semantics_node,
   ts_number_bitwise_semantics_node,
   ts_number_facts_node,
-  ts_wave1_lex
+  ts_fn_add_lex
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
@@ -103,7 +103,7 @@ data typescript_add_target_model: TargetModel = ts_target_model()
 
 data typescript_add_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: ts_target_model_node(),
-  lex: ts_wave1_lex(),
+  lex: ts_fn_add_lex(),
   binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: typescript_add_forbidden_authority_source_text,
@@ -118,7 +118,7 @@ data typescript_add_empty_translation_rules_bundle: Node = Node {
 
 data typescript_add_missing_translation_rules_target: TargetModel = TargetModel {
   bundle: typescript_add_empty_translation_rules_bundle,
-  lex: ts_wave1_lex(),
+  lex: ts_fn_add_lex(),
   binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: "",

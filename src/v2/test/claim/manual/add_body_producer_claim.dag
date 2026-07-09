@@ -15,7 +15,7 @@ import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_grammar_production_fn_add,
-  dag_language_model_wave1,
+  dag_language_model,
   dag_source_text
 }
 import v2.std.diagnostic {
@@ -173,7 +173,7 @@ fn add_body_parse_add_fn_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
 }
 
 fn source_bridged_resolved_add_arrow() -> Outcome<Node> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: dag_source_text, file: ^add_body_producer_source_file, rules: lm.lex),
     f: fn(tokens) {

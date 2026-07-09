@@ -21,7 +21,7 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_language_model_wave1,
+  dag_language_model,
   dag_source_text
 }
 import v2.std.collection { Absent, List, Map, Present, list_at_optional, map_insert }
@@ -308,7 +308,7 @@ fn add_arrow_eval_context() -> EvalContext {
 }
 
 fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: dag_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
@@ -333,7 +333,7 @@ fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
 }
 
 fn add_arrow_eval_tokenize_source() -> Outcome<List<Token>> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: dag_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
@@ -376,7 +376,7 @@ fn add_arrow_eval_normalize_holds() -> Bool {
 }
 
 fn add_arrow_eval_resolve_holds() -> Bool {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
       match source_bridged_add_parse_tokens(tokens: tokens) {

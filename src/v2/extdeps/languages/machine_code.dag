@@ -415,7 +415,7 @@ fn mc_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn machine_code_model_core_wave1() -> ModelCore {
+fn machine_code_model_core() -> ModelCore {
   ModelCore {
     primitives: mc_primitive_bundles_from_integer_catalog(),
     inhabitance: [],
@@ -432,7 +432,7 @@ fn machine_code_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn machine_code_wave1_lex(token_class: Symbol, spelling: String) -> LexRules {
+fn machine_code_lex(token_class: Symbol, spelling: String) -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
@@ -443,7 +443,7 @@ fn machine_code_wave1_lex(token_class: Symbol, spelling: String) -> LexRules {
   }
 }
 
-fn machine_code_wave1_grammar(
+fn machine_code_grammar(
   production_name: Symbol,
   token_class: Symbol,
   emitted_identity: Symbol
@@ -462,19 +462,19 @@ fn machine_code_wave1_grammar(
   }
 }
 
-fn machine_code_wave1_formal_production(production_name: Symbol, token_class: Symbol) -> FormalProduction {
+fn machine_code_formal_production(production_name: Symbol, token_class: Symbol) -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: production_name),
     rhs: [grammar_formal_terminal(identity: token_class)]
   }
 }
 
-fn machine_code_x86_64_wave1_lex() -> LexRules {
-  machine_code_wave1_lex(token_class: ^machine_code_token_x86_64_nop, spelling: "nop")
+fn machine_code_x86_64_lex() -> LexRules {
+  machine_code_lex(token_class: ^machine_code_token_x86_64_nop, spelling: "nop")
 }
 
-fn machine_code_x86_64_wave1_grammar() -> ParseGrammar {
-  machine_code_wave1_grammar(
+fn machine_code_x86_64_grammar() -> ParseGrammar {
+  machine_code_grammar(
     production_name: ^machine_code_production_x86_64_nop,
     token_class: ^machine_code_token_x86_64_nop,
     emitted_identity: ^machine_code_surface_x86_64_nop_instruction
@@ -483,8 +483,8 @@ fn machine_code_x86_64_wave1_grammar() -> ParseGrammar {
 
 fn machine_code_x86_64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: machine_code_x86_64_wave1_lex(),
-    grammar: machine_code_x86_64_wave1_grammar()
+    lex: machine_code_x86_64_lex(),
+    grammar: machine_code_x86_64_grammar()
   }
 }
 
@@ -493,7 +493,7 @@ fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     schema: machine_code_x86_64_ingest_grammar_schema(),
     probe: GrammarSchemaProbe {
       fixture: "nop",
-      production: machine_code_wave1_formal_production(
+      production: machine_code_formal_production(
         production_name: ^machine_code_production_x86_64_nop,
         token_class: ^machine_code_token_x86_64_nop
       ),
@@ -502,12 +502,12 @@ fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   }
 }
 
-fn machine_code_aarch64_wave1_lex() -> LexRules {
-  machine_code_wave1_lex(token_class: ^machine_code_token_aarch64_nop, spelling: "nop")
+fn machine_code_aarch64_lex() -> LexRules {
+  machine_code_lex(token_class: ^machine_code_token_aarch64_nop, spelling: "nop")
 }
 
-fn machine_code_aarch64_wave1_grammar() -> ParseGrammar {
-  machine_code_wave1_grammar(
+fn machine_code_aarch64_grammar() -> ParseGrammar {
+  machine_code_grammar(
     production_name: ^machine_code_production_aarch64_nop,
     token_class: ^machine_code_token_aarch64_nop,
     emitted_identity: ^machine_code_surface_aarch64_nop_instruction
@@ -516,8 +516,8 @@ fn machine_code_aarch64_wave1_grammar() -> ParseGrammar {
 
 fn machine_code_aarch64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: machine_code_aarch64_wave1_lex(),
-    grammar: machine_code_aarch64_wave1_grammar()
+    lex: machine_code_aarch64_lex(),
+    grammar: machine_code_aarch64_grammar()
   }
 }
 
@@ -526,7 +526,7 @@ fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     schema: machine_code_aarch64_ingest_grammar_schema(),
     probe: GrammarSchemaProbe {
       fixture: "nop",
-      production: machine_code_wave1_formal_production(
+      production: machine_code_formal_production(
         production_name: ^machine_code_production_aarch64_nop,
         token_class: ^machine_code_token_aarch64_nop
       ),
@@ -535,12 +535,12 @@ fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   }
 }
 
-fn machine_code_riscv64_wave1_lex() -> LexRules {
-  machine_code_wave1_lex(token_class: ^machine_code_token_riscv64_nop, spelling: "nop")
+fn machine_code_riscv64_lex() -> LexRules {
+  machine_code_lex(token_class: ^machine_code_token_riscv64_nop, spelling: "nop")
 }
 
-fn machine_code_riscv64_wave1_grammar() -> ParseGrammar {
-  machine_code_wave1_grammar(
+fn machine_code_riscv64_grammar() -> ParseGrammar {
+  machine_code_grammar(
     production_name: ^machine_code_production_riscv64_nop,
     token_class: ^machine_code_token_riscv64_nop,
     emitted_identity: ^machine_code_surface_riscv64_nop_instruction
@@ -549,8 +549,8 @@ fn machine_code_riscv64_wave1_grammar() -> ParseGrammar {
 
 fn machine_code_riscv64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: machine_code_riscv64_wave1_lex(),
-    grammar: machine_code_riscv64_wave1_grammar()
+    lex: machine_code_riscv64_lex(),
+    grammar: machine_code_riscv64_grammar()
   }
 }
 
@@ -559,7 +559,7 @@ fn machine_code_riscv64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     schema: machine_code_riscv64_ingest_grammar_schema(),
     probe: GrammarSchemaProbe {
       fixture: "nop",
-      production: machine_code_wave1_formal_production(
+      production: machine_code_formal_production(
         production_name: ^machine_code_production_riscv64_nop,
         token_class: ^machine_code_token_riscv64_nop
       ),

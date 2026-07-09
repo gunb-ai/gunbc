@@ -679,7 +679,7 @@ fn kotlin_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundl
   )
 }
 
-fn kotlin_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn kotlin_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: kotlin_primitive_bundles_from_integer_catalog(),
@@ -1370,7 +1370,7 @@ fn kotlin_binding_spellings() -> Map<Symbol, String> {
 fn kotlin_target_model() -> TargetModel {
   TargetModel {
     bundle: kotlin_target_model_node(),
-    lex: kotlin_wave1_lex(),
+    lex: kotlin_lex(),
     binding_spellings: kotlin_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: kotlin_source_text_authority(),
@@ -1575,7 +1575,7 @@ fn kotlin_string_literal_lex_rule() -> LexRule {
   }
 }
 
-fn kotlin_wave1_lex_rules() -> LexRuleSet {
+fn kotlin_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       kotlin_whitespace_trivia_rule(),
@@ -1618,8 +1618,8 @@ fn kotlin_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn kotlin_wave1_lex() -> LexRules {
-  ModeledLexRules { root: kotlin_wave1_lex_rules() }
+fn kotlin_lex() -> LexRules {
+  ModeledLexRules { root: kotlin_lex_rules() }
 }
 
 fn kotlin_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
@@ -1642,7 +1642,7 @@ fn kotlin_formal_production_fn_add() -> FormalProduction {
   )
 }
 
-fn kotlin_wave1_formal_productions() -> List<FormalProduction> {
+fn kotlin_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(lhs: ^kotlin_production_type_expr, rhs: [grammar_formal_terminal(identity: ^kotlin_token_ident)]),
     grammar_formal_production(
@@ -2468,7 +2468,7 @@ fn kotlin_grammar_fn_decl_expr() -> GrammarExpr {
   )
 }
 
-fn kotlin_wave1_grammar_root() -> GrammarRoot {
+fn kotlin_grammar_root() -> GrammarRoot {
   let start = kotlin_grammar_production_fn_add()
   let fn_decl = kotlin_grammar_production_fn_decl()
   let typed_param = kotlin_grammar_production_typed_param()
@@ -2515,13 +2515,13 @@ fn kotlin_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn kotlin_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: kotlin_wave1_grammar_root() }
+fn kotlin_grammar() -> ParseGrammar {
+  ModeledGrammar { root: kotlin_grammar_root() }
 }
 
-fn kotlin_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn kotlin_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
-    rules: kotlin_wave1_lex_rules(),
+    rules: kotlin_lex_rules(),
     token_class: sym
   )
 }
@@ -2530,8 +2530,8 @@ fn kotlin_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       kotlin_catalog_surface_symbol(sym: sym) ||
-        kotlin_wave1_lex_token_symbol(sym: sym) ||
-        grammar_carries_symbol(grammar: kotlin_wave1_grammar(), sym: sym) ||
+        kotlin_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: kotlin_grammar(), sym: sym) ||
         sym == ^kotlin_surface_fn_item ||
         sym == ^kotlin_production_fn_add ||
         sym == ^kotlin_source_literal ||
@@ -2543,9 +2543,9 @@ fn kotlin_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn kotlin_model_core_wave1() -> ModelCore {
+fn kotlin_model_core() -> ModelCore {
   ModelCore {
-    primitives: kotlin_wave1_primitive_fact_bundles(),
+    primitives: kotlin_primitive_fact_bundles(),
     inhabitance: kotlin_model_core_inhabitance_decls(),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
@@ -2553,12 +2553,12 @@ fn kotlin_model_core_wave1() -> ModelCore {
   }
 }
 
-fn kotlin_language_model_wave1() -> LanguageModel {
+fn kotlin_language_model() -> LanguageModel {
   LanguageModel {
-    lex: kotlin_wave1_lex(),
-    grammar: kotlin_wave1_grammar(),
+    lex: kotlin_lex(),
+    grammar: kotlin_grammar(),
     language_identity: ^kotlin_language_model_surface_id,
     canonical_symbols: kotlin_language_model_canonical_symbols(),
-    core: kotlin_model_core_wave1()
+    core: kotlin_model_core()
   }
 }

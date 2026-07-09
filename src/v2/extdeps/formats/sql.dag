@@ -369,7 +369,7 @@ fn sql_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> 
   )
 }
 
-fn sql_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn sql_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: sql_primitive_bundles_from_integer_catalog(),

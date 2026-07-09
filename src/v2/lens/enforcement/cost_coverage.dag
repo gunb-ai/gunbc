@@ -7,7 +7,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
-  dag_language_model_wave1,
+  dag_language_model,
   dag_node_is_fn_decl,
   parse_subtree_find_production_captured
 }
@@ -273,7 +273,7 @@ fn cost_coverage_ingest_source_text(
   source_text: String,
   file: Symbol
 ) -> Outcome<Node> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: d } =>
       Rejected { diagnostics: d }

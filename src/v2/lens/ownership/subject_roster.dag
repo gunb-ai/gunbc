@@ -2,7 +2,7 @@ module v2.test.lens_ownership.subject_roster
 
 import v2.compiler.eval {
   TestClaimEvalSubject,
-  eval_context_v4_evaluator_wave1,
+  eval_context_v4_evaluator,
   eval_test_claim_subject
 }
 import v2.std.collection { List }
@@ -55,7 +55,7 @@ data claim_lens_ownership_resource_dependency: TestClaim = EqualsClaim {
 
 data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = eval_test_claim_subject(
   claim: claim_lens_ownership_resource_dependency,
-  context: eval_context_v4_evaluator_wave1(),
+  context: eval_context_v4_evaluator(),
   tree: ownership_claim_tree(),
   evaluator_pin: ^lens_ownership_resource_dependency_pin
 )
