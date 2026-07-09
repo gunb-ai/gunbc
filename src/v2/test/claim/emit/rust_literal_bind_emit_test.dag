@@ -1,24 +1,24 @@
 module v2.test.emit.rust_literal_bind_emit
 
 import v2.compiler.body_producer {
-  produce_mvp1_bind_arrow_with_body,
-  produce_mvp1_bind_arrow_with_body_wrong_value
+  produce_bind_arrow_with_body,
+  produce_bind_arrow_with_body_wrong_value
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
   rust_literal_emit_string_refusal_note,
-  rust_mvp1_bind_bool_literal_arrow_node,
-  rust_mvp1_bind_bool_literal_source_text,
-  rust_mvp1_bind_bool_literal_wrong_arrow_node,
-  rust_mvp1_bind_bool_literal_wrong_source_text,
-  rust_mvp1_bind_char_literal_arrow_node,
-  rust_mvp1_bind_char_literal_source_text,
-  rust_mvp1_bind_char_literal_wrong_arrow_node,
-  rust_mvp1_bind_char_literal_wrong_source_text,
-  rust_mvp1_bind_int_literal_source_text,
-  rust_mvp1_bind_int_literal_wrong_source_text,
-  rust_mvp1_bind_literal_target_model
+  rust_bind_bool_literal_arrow_node,
+  rust_bind_bool_literal_source_text,
+  rust_bind_bool_literal_wrong_arrow_node,
+  rust_bind_bool_literal_wrong_source_text,
+  rust_bind_char_literal_arrow_node,
+  rust_bind_char_literal_source_text,
+  rust_bind_char_literal_wrong_arrow_node,
+  rust_bind_char_literal_wrong_source_text,
+  rust_bind_int_literal_source_text,
+  rust_bind_int_literal_wrong_source_text,
+  rust_bind_literal_target_model
 }
 import extdeps.communication.medium { Medium }
 import v2.std.collection { Map }
@@ -68,7 +68,7 @@ fn rust_literal_bind_emit_from_root(root: Node, target: TargetModel) -> Outcome<
 
 fn rust_literal_bind_int_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
-    o: produce_mvp1_bind_arrow_with_body(),
+    o: produce_bind_arrow_with_body(),
     f: fn(root) {
       rust_literal_bind_emit_from_root(root: root, target: target)
     }
@@ -77,7 +77,7 @@ fn rust_literal_bind_int_emit_from_producer(target: TargetModel) -> Outcome<Medi
 
 fn rust_literal_bind_int_wrong_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
-    o: produce_mvp1_bind_arrow_with_body_wrong_value(),
+    o: produce_bind_arrow_with_body_wrong_value(),
     f: fn(root) {
       rust_literal_bind_emit_from_root(root: root, target: target)
     }
@@ -85,19 +85,19 @@ fn rust_literal_bind_int_wrong_emit_from_producer(target: TargetModel) -> Outcom
 }
 
 fn rust_literal_bind_int_emit_accepts() -> Bool {
-  match rust_literal_bind_int_emit_from_producer(target: rust_mvp1_bind_literal_target_model()) {
+  match rust_literal_bind_int_emit_from_producer(target: rust_bind_literal_target_model()) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_mvp1_bind_int_literal_source_text) && (d == None)
+      (source.carried == rust_bind_int_literal_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn rust_literal_bind_int_wrong_value_discriminates() -> Bool {
-  match rust_literal_bind_int_emit_from_producer(target: rust_mvp1_bind_literal_target_model()) {
+  match rust_literal_bind_int_emit_from_producer(target: rust_bind_literal_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
-      match rust_literal_bind_int_wrong_emit_from_producer(target: rust_mvp1_bind_literal_target_model()) {
+      match rust_literal_bind_int_wrong_emit_from_producer(target: rust_bind_literal_target_model()) {
         Accepted { value: wrong, diagnostics: dw } =>
-          (wrong.carried == rust_mvp1_bind_int_literal_wrong_source_text) &&
+          (wrong.carried == rust_bind_int_literal_wrong_source_text) &&
           (wrong.carried != canonical.carried) &&
           (dc == None) &&
           (dw == None)
@@ -109,27 +109,27 @@ fn rust_literal_bind_int_wrong_value_discriminates() -> Bool {
 
 fn rust_literal_bind_bool_emit_accepts() -> Bool {
   match rust_literal_bind_emit_from_root(
-    root: rust_mvp1_bind_bool_literal_arrow_node(),
-    target: rust_mvp1_bind_literal_target_model()
+    root: rust_bind_bool_literal_arrow_node(),
+    target: rust_bind_literal_target_model()
   ) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_mvp1_bind_bool_literal_source_text) && (d == None)
+      (source.carried == rust_bind_bool_literal_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn rust_literal_bind_bool_wrong_value_discriminates() -> Bool {
   match rust_literal_bind_emit_from_root(
-    root: rust_mvp1_bind_bool_literal_arrow_node(),
-    target: rust_mvp1_bind_literal_target_model()
+    root: rust_bind_bool_literal_arrow_node(),
+    target: rust_bind_literal_target_model()
   ) {
     Accepted { value: canonical, diagnostics: dc } =>
       match rust_literal_bind_emit_from_root(
-        root: rust_mvp1_bind_bool_literal_wrong_arrow_node(),
-        target: rust_mvp1_bind_literal_target_model()
+        root: rust_bind_bool_literal_wrong_arrow_node(),
+        target: rust_bind_literal_target_model()
       ) {
         Accepted { value: wrong, diagnostics: dw } =>
-          (wrong.carried == rust_mvp1_bind_bool_literal_wrong_source_text) &&
+          (wrong.carried == rust_bind_bool_literal_wrong_source_text) &&
           (wrong.carried != canonical.carried) &&
           (dc == None) &&
           (dw == None)
@@ -141,27 +141,27 @@ fn rust_literal_bind_bool_wrong_value_discriminates() -> Bool {
 
 fn rust_literal_bind_char_emit_accepts() -> Bool {
   match rust_literal_bind_emit_from_root(
-    root: rust_mvp1_bind_char_literal_arrow_node(),
-    target: rust_mvp1_bind_literal_target_model()
+    root: rust_bind_char_literal_arrow_node(),
+    target: rust_bind_literal_target_model()
   ) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_mvp1_bind_char_literal_source_text) && (d == None)
+      (source.carried == rust_bind_char_literal_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn rust_literal_bind_char_wrong_value_discriminates() -> Bool {
   match rust_literal_bind_emit_from_root(
-    root: rust_mvp1_bind_char_literal_arrow_node(),
-    target: rust_mvp1_bind_literal_target_model()
+    root: rust_bind_char_literal_arrow_node(),
+    target: rust_bind_literal_target_model()
   ) {
     Accepted { value: canonical, diagnostics: dc } =>
       match rust_literal_bind_emit_from_root(
-        root: rust_mvp1_bind_char_literal_wrong_arrow_node(),
-        target: rust_mvp1_bind_literal_target_model()
+        root: rust_bind_char_literal_wrong_arrow_node(),
+        target: rust_bind_literal_target_model()
       ) {
         Accepted { value: wrong, diagnostics: dw } =>
-          (wrong.carried == rust_mvp1_bind_char_literal_wrong_source_text) &&
+          (wrong.carried == rust_bind_char_literal_wrong_source_text) &&
           (wrong.carried != canonical.carried) &&
           (dc == None) &&
           (dw == None)
@@ -173,7 +173,7 @@ fn rust_literal_bind_char_wrong_value_discriminates() -> Bool {
 
 fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
   match target_value_expression_projection_from_target(
-    target: rust_mvp1_bind_literal_target_model()
+    target: rust_bind_literal_target_model()
   ) {
     Accepted { value: projection, diagnostics: pd } =>
       match target_value_expression_tokens_from_target(
@@ -184,7 +184,7 @@ fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
             occurrence_id: SyntheticOccurrence
           }
         ),
-        target: rust_mvp1_bind_literal_target_model(),
+        target: rust_bind_literal_target_model(),
         projection: projection
       ) {
         Rejected { diagnostics: d } =>

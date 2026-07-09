@@ -138,9 +138,9 @@ type EcmascriptSingletonPrimitiveFacts {
   std_projection: Symbol
 }
 
-data ecmascript_mvp1_source_text: String = "function add(x, y) { return x + y; }"
+data ecmascript_source_text: String = "function add(x, y) { return x + y; }"
 
-fn ecmascript_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn ecmascript_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^ecmascript_token_kw_function },
     BoundToken { token_class: ^ecmascript_token_ident, binding: ^ecmascript_binding_fn_add },
@@ -703,11 +703,11 @@ fn ecmascript_declared_inhabitants_root() -> Node {
 }
 }
 
-fn ecmascript_mvp1_selection_policy_node() -> Node {
+fn ecmascript_selection_policy_node() -> Node {
   ecmascript_number_inhabitant_node()
 }
 
-fn ecmascript_mvp1_emitted_add_fn_node() -> Node {
+fn ecmascript_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
@@ -724,17 +724,17 @@ fn ecmascript_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn ecmascript_mvp1_serialize_source_children() -> List<Edge> {
+fn ecmascript_serialize_source_children() -> List<Edge> {
   list_append(
     left: [
-      ecmascript_named_edge(name: ^serialize_source_field_source_text, target: ecmascript_inhabitant_atom(id: ^ecmascript_mvp1_source_literal)),
-      ecmascript_named_edge(name: ^serialize_source_field_source_grammar, target: ecmascript_inhabitant_atom(id: ^ecmascript_production_mvp1_fn_add))
+      ecmascript_named_edge(name: ^serialize_source_field_source_text, target: ecmascript_inhabitant_atom(id: ^ecmascript_source_literal)),
+      ecmascript_named_edge(name: ^serialize_source_field_source_grammar, target: ecmascript_inhabitant_atom(id: ^ecmascript_production_fn_add))
     ],
     right: [
       ecmascript_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: ecmascript_mvp1_concrete_tokens(),
+          tokens: ecmascript_concrete_tokens(),
           token_to_node: ecmascript_concrete_token_node
         )
       )
@@ -742,17 +742,17 @@ fn ecmascript_mvp1_serialize_source_children() -> List<Edge> {
   )
 }
 
-fn ecmascript_mvp1_serialize_source_node() -> Node {
+fn ecmascript_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: ecmascript_mvp1_serialize_source_children(),
+    children: ecmascript_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
 }
 
 fn ecmascript_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   fold_list(
-    xs: ecmascript_mvp1_concrete_tokens(),
+    xs: ecmascript_concrete_tokens(),
     empty: Empty,
     cons: fn(acc, token) {
       list_snoc_item(
@@ -871,32 +871,32 @@ fn ecmascript_formal_productions_to_grammar_production(
   }
 }
 
-fn ecmascript_formal_production_mvp1_fn_add() -> FormalProduction {
+fn ecmascript_formal_production_fn_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: ^ecmascript_production_mvp1_fn_add,
+    lhs: ^ecmascript_production_fn_add,
     rhs: ecmascript_formal_rhs_from_token_classes()
   )
 }
 
 fn ecmascript_wave1_formal_productions() -> List<FormalProduction> {
-  [ecmascript_formal_production_mvp1_fn_add()]
+  [ecmascript_formal_production_fn_add()]
 }
 
-fn ecmascript_grammar_production_mvp1_fn_add() -> GrammarProduction {
+fn ecmascript_grammar_production_fn_add() -> GrammarProduction {
   GrammarProduction {
-    name: ^ecmascript_production_mvp1_fn_add,
+    name: ^ecmascript_production_fn_add,
     expression: ecmascript_formal_productions_to_grammar_expr(
-      prods: [ecmascript_formal_production_mvp1_fn_add()]
+      prods: [ecmascript_formal_production_fn_add()]
     ),
-    emitted: ecmascript_mvp1_emitted_add_fn_node()
+    emitted: ecmascript_emitted_add_fn_node()
   }
 }
 
-fn ecmascript_mvp1_grammar_relation_row() -> EcmascriptGrammarRelationRow {
+fn ecmascript_grammar_relation_row() -> EcmascriptGrammarRelationRow {
   EcmascriptGrammarRelationRow {
-    production: ecmascript_formal_production_mvp1_fn_add(),
-    emitted: ecmascript_mvp1_emitted_add_fn_node(),
-    tokens: ecmascript_mvp1_concrete_tokens()
+    production: ecmascript_formal_production_fn_add(),
+    emitted: ecmascript_emitted_add_fn_node(),
+    tokens: ecmascript_concrete_tokens()
   }
 }
 
@@ -918,33 +918,33 @@ fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> No
 }
 }
 
-fn ecmascript_mvp1_translation_rules_node() -> Node {
+fn ecmascript_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       ecmascript_named_edge(
-        name: ^ecmascript_relation_rule_mvp1_fn_add,
-        target: ecmascript_grammar_relation_row_node(row: ecmascript_mvp1_grammar_relation_row())
+        name: ^ecmascript_relation_rule_fn_add,
+        target: ecmascript_grammar_relation_row_node(row: ecmascript_grammar_relation_row())
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn ecmascript_mvp1_target_model_node() -> Node {
+fn ecmascript_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      ecmascript_named_edge(name: ^target_model_edge_selection_policy, target: ecmascript_mvp1_selection_policy_node()),
+      ecmascript_named_edge(name: ^target_model_edge_selection_policy, target: ecmascript_selection_policy_node()),
       ecmascript_named_edge(name: ^target_model_edge_declared_inhabitants, target: ecmascript_declared_inhabitants_root()),
-      ecmascript_named_edge(name: ^target_model_edge_translation_rules, target: ecmascript_mvp1_translation_rules_node()),
-      ecmascript_named_edge(name: ^target_model_edge_serialize_source, target: ecmascript_mvp1_serialize_source_node())
+      ecmascript_named_edge(name: ^target_model_edge_translation_rules, target: ecmascript_translation_rules_node()),
+      ecmascript_named_edge(name: ^target_model_edge_serialize_source, target: ecmascript_serialize_source_node())
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn ecmascript_mvp1_binding_spellings() -> Map<Symbol, String> {
+fn ecmascript_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^ecmascript_binding_fn_add, "add"),
@@ -956,13 +956,13 @@ fn ecmascript_mvp1_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn ecmascript_mvp1_target_model() -> TargetModel {
+fn ecmascript_target_model() -> TargetModel {
   TargetModel {
-    bundle: ecmascript_mvp1_target_model_node(),
+    bundle: ecmascript_target_model_node(),
     lex: ecmascript_wave1_lex(),
-    binding_spellings: ecmascript_mvp1_binding_spellings(),
+    binding_spellings: ecmascript_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: ecmascript_mvp1_source_text,
+    authority_source_text: ecmascript_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -1072,7 +1072,7 @@ fn ecmascript_wave1_grammar_root() -> GrammarRoot {
   GrammarRoot {
     start: ^ecmascript_production_fn_decl,
     productions: [
-      ecmascript_grammar_production_mvp1_fn_add(),
+      ecmascript_grammar_production_fn_add(),
 
       ecmascript_formal_productions_to_grammar_production(
         head: grammar_formal_production(
@@ -1321,8 +1321,8 @@ fn ecmascript_language_model_canonical_symbols() -> Set<Symbol> {
         ecmascript_wave1_lex_token_symbol(sym: sym) ||
         grammar_carries_symbol(grammar: ecmascript_wave1_grammar(), sym: sym) ||
         sym == ^ecmascript_surface_fn_item ||
-        sym == ^ecmascript_production_mvp1_fn_add ||
-        sym == ^ecmascript_mvp1_source_literal
+        sym == ^ecmascript_production_fn_add ||
+        sym == ^ecmascript_source_literal
     }
   }
 }

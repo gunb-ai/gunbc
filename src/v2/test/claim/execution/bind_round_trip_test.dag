@@ -10,12 +10,12 @@ import v2.compiler.translate {
 }
 import v2.extdeps.languages.dag {
   dag_inhabitant_atom,
-  dag_mvp1_bind_target_model,
-  dag_mvp1_bind_let_body_fixture,
-  dag_mvp1_fixture_emitted_bind_fn,
-  dag_mvp1_fixture_int_inhabitant,
-  dag_mvp1_pick_arrow_domain_conj_node,
-  dag_mvp1_type_atom_node
+  dag_bind_target_model,
+  dag_bind_let_body_fixture,
+  dag_fixture_emitted_bind_fn,
+  dag_fixture_int_inhabitant,
+  dag_pick_arrow_domain_conj_node,
+  dag_type_atom_node
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality { termination_proof_witness_for_node }
@@ -45,8 +45,8 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-data bind_emitted_root: Node = dag_mvp1_fixture_emitted_bind_fn
-data bind_target_model: TargetModel = dag_mvp1_bind_target_model()
+data bind_emitted_root: Node = dag_fixture_emitted_bind_fn
+data bind_target_model: TargetModel = dag_bind_target_model()
 
 fn bind_canonical_grounding(
   node: Node,
@@ -68,11 +68,11 @@ fn bind_canonical_grounding(
 }
 
 fn bind_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == dag_mvp1_fixture_emitted_bind_fn {
+  if node == dag_fixture_emitted_bind_fn {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_fixture_int_inhabitant {
+  } else if node == dag_fixture_int_inhabitant {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
@@ -80,44 +80,44 @@ fn bind_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
     Holds {
       value: bind_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
   } else if node == dag_inhabitant_atom(id: ^dag_surface_spelling_int) {
     Holds {
       value: bind_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) {
+  } else if node == dag_type_atom_node(identity: ^dag_binding_type_int) {
     Holds {
       value: bind_canonical_grounding(
         node: node,
-        algebra: dag_mvp1_fixture_int_inhabitant
+        algebra: dag_fixture_int_inhabitant
       )
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one) {
+  } else if node == dag_type_atom_node(identity: ^dag_pick_lit_one) {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two) {
+  } else if node == dag_type_atom_node(identity: ^dag_pick_lit_two) {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_bind_let_body_fixture {
+  } else if node == dag_bind_let_body_fixture {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_pick_arrow_domain_conj_node() {
+  } else if node == dag_pick_arrow_domain_conj_node() {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_fn_one) {
+  } else if node == dag_type_atom_node(identity: ^dag_binding_fn_one) {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_bind_x) {
+  } else if node == dag_type_atom_node(identity: ^dag_binding_bind_x) {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
@@ -206,7 +206,7 @@ fn bind_ingest_via_coerce_matches_canonical() -> Bool {
     target: bind_target_model
   ) {
     Accepted { value: result, diagnostics: d } =>
-      (result.target == dag_mvp1_fixture_emitted_bind_fn)
+      (result.target == dag_fixture_emitted_bind_fn)
         && bind_coercion_quality_is_faithful(q: result.quality)
         && (d == None)
     Rejected { diagnostics: _ } => false

@@ -2,18 +2,18 @@ module tools.emit_host_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import tools.emit_host_transport {
-  run_rust_mvp2_smoke,
-  run_python_mvp2_smoke,
-  run_go_mvp2_smoke,
-  run_ts_mvp1_smoke,
+  run_rust_smoke,
+  run_python_smoke,
+  run_go_smoke,
+  run_ts_smoke,
   run_node_http_serve_smoke
 }
 
 func run_emit_host_gate_body() -> ProcessExit {
-  rust = run_rust_mvp2_smoke()
-  python = run_python_mvp2_smoke()
-  go = run_go_mvp2_smoke()
-  ts = run_ts_mvp1_smoke()
+  rust = run_rust_smoke()
+  python = run_python_smoke()
+  go = run_go_smoke()
+  ts = run_ts_smoke()
   node_http = run_node_http_serve_smoke()
   return if rust && python && go && ts && node_http {
     ExitSuccess

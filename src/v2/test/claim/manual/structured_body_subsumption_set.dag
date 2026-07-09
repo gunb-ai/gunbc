@@ -11,14 +11,14 @@ import v2.std.node {
 }
 import v2.compiler.body_producer { produce_arrow_with_structured_body }
 import v2.extdeps.languages.dag {
-  dag_mvp1_bind_arrow_with_body_node,
-  dag_mvp1_bind_let_body_node,
-  dag_mvp1_loop_arrow_with_body_node,
-  dag_mvp1_loop_body_node,
-  dag_mvp1_pick_arrow_domain_conj_node,
-  dag_mvp1_pick_arrow_with_body_node,
-  dag_mvp1_pick_if_body_node,
-  dag_mvp1_type_atom_node
+  dag_bind_arrow_with_body_node,
+  dag_bind_let_body_node,
+  dag_loop_arrow_with_body_node,
+  dag_loop_body_node,
+  dag_pick_arrow_domain_conj_node,
+  dag_pick_arrow_with_body_node,
+  dag_pick_if_body_node,
+  dag_type_atom_node
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -50,9 +50,9 @@ fn int_pair_arrow_signature() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: dag_mvp1_pick_arrow_domain_conj_node() },
-      Edge { label: Positional, target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
-      Edge { label: Positional, target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) }
+      Edge { label: Positional, target: dag_pick_arrow_domain_conj_node() },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
     ]
   )
 }
@@ -68,15 +68,15 @@ fn subsumes(structured_body: Node, table_target: Node) -> Bool {
 }
 
 fn subsumption_pick() -> Bool {
-  subsumes(structured_body: dag_mvp1_pick_if_body_node(), table_target: dag_mvp1_pick_arrow_with_body_node())
+  subsumes(structured_body: dag_pick_if_body_node(), table_target: dag_pick_arrow_with_body_node())
 }
 
 fn subsumption_loop() -> Bool {
-  subsumes(structured_body: dag_mvp1_loop_body_node(), table_target: dag_mvp1_loop_arrow_with_body_node())
+  subsumes(structured_body: dag_loop_body_node(), table_target: dag_loop_arrow_with_body_node())
 }
 
 fn subsumption_bind() -> Bool {
-  subsumes(structured_body: dag_mvp1_bind_let_body_node(), table_target: dag_mvp1_bind_arrow_with_body_node())
+  subsumes(structured_body: dag_bind_let_body_node(), table_target: dag_bind_arrow_with_body_node())
 }
 
 data claim_subsumption_pick: TestClaim = EqualsClaim {
