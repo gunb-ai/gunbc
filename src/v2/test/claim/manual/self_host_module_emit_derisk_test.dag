@@ -18,6 +18,7 @@ import v2.compiler.source_authority {
 }
 import v2.extdeps.languages.rust { rust_target_model }
 import std.algebra { Cons, Empty }
+import v2.std.algebra { any }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
@@ -79,6 +80,18 @@ fn derisk_assemble_rejects_with(src: String, reason: Symbol) -> Bool {
     Rejected { diagnostics: d } => d.head.reason == reason
   }
 }
+
+fn derisk_assemble_rejects_containing(src: String, reason: Symbol) -> Bool {
+  match derisk_assemble_for(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (d.head.reason == reason) || any(xs: d.tail, predicate: fn(x) { x.reason == reason })
+  }
+}
+
+test fn probe_g0() -> Bool { derisk_assemble_rejects_containing(src: src_multi_arm_match, reason: ^parse_g0_tokens_remain) }
+test fn probe_e1() -> Bool { derisk_assemble_rejects_containing(src: src_multi_arm_match, reason: ^parse_e1_syntax_error) }
+test fn probe_nomatch() -> Bool { derisk_assemble_rejects_containing(src: src_multi_arm_match, reason: ^parse_tree_to_emitted_node_no_matching_row) }
 
 fn derisk_infer_outcome_for(src: String) -> Outcome<InferredTree> {
   bind_outcome(o: derisk_assemble_for(src: src), f: fn(resolved) { infer(tree: resolved) })
