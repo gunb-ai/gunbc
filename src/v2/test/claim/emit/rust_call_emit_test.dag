@@ -186,13 +186,7 @@ fn rust_call_helper_arrow() -> Node {
 
 data rust_call_helper_body_fixture: Node = rust_call_helper_body()
 
-data rust_call_eval_three_literal: Node = Node {
-  kind: ComputationNode { behavior: Value },
-  children: [],
-  occurrence_id: SyntheticOccurrence
-}
-
-data rust_call_eval_four_literal: Node = Node {
+data rust_call_eval_arg_literal: Node = Node {
   kind: ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -201,8 +195,8 @@ data rust_call_eval_four_literal: Node = Node {
 data rust_call_helper_eval_subgraph: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: rust_call_eval_three_literal },
-    Edge { label: Positional, target: rust_call_eval_four_literal }
+    Edge { label: Positional, target: rust_call_eval_arg_literal },
+    Edge { label: Positional, target: rust_call_eval_arg_literal }
   ],
   occurrence_id: SyntheticOccurrence
 }
