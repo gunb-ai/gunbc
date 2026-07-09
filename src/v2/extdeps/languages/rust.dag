@@ -3,6 +3,7 @@ import v2.std.language_model { LanguageModel }
 import v2.std.grammar {
   StampClass,
   grammar_formal_terminal,
+  grammar_formal_terminal_bound,
   grammar_formal_terminal_free,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
@@ -269,6 +270,12 @@ import v2.std.integer {
   uint_platform_interval_spec
 }
 import v2.std.text { String }
+import extdeps.languages.rust.emit {
+  rust_enum_derives,
+  rust_enum_derives_copy,
+  rust_struct_derives,
+  rust_struct_derives_copy
+}
 
 type RustIntKind
   = Signed
@@ -2041,6 +2048,113 @@ fn rust_formal_production_fn_add() -> FormalProduction {
   )
 }
 
+fn rust_decl_derive_lex_spelling(text: String) -> String {
+  concat(text, "\n")
+}
+
+fn rust_decl_derive_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  rust_lex_rule(token_class: token_class, text: rust_decl_derive_lex_spelling(text: text))
+}
+
+fn rust_decl_shared_derive_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^rust_decl_derive_attr,
+      rhs: [
+        grammar_formal_terminal_bound(
+          identity: ^rust_token_derive_struct,
+          binding: ^rust_decl_derive_struct_binding
+        )
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_derive_attr,
+      rhs: [
+        grammar_formal_terminal_bound(
+          identity: ^rust_token_derive_struct_copy,
+          binding: ^rust_decl_derive_struct_copy_binding
+        )
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_derive_attr,
+      rhs: [
+        grammar_formal_terminal_bound(
+          identity: ^rust_token_derive_enum,
+          binding: ^rust_decl_derive_enum_binding
+        )
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_derive_attr,
+      rhs: [
+        grammar_formal_terminal_bound(
+          identity: ^rust_token_derive_enum_copy,
+          binding: ^rust_decl_derive_enum_copy_binding
+        )
+      ]
+    )
+  ]
+}
+
+fn rust_coproduct_variant_edge_has_payload(edge: Edge) -> Bool {
+  match edge.target.kind {
+    TypeNode { connective: Conj } =>
+      match edge.target.children {
+        Empty => false
+        Cons { head: _, tail: _ } => true
+      }
+    _ => false
+  }
+}
+
+fn rust_coproduct_all_variants_nullary(edges: List<Edge>) -> Bool {
+  fold_list(
+    xs: edges,
+    empty: true,
+    cons: fn(acc, edge) { acc && !rust_coproduct_variant_edge_has_payload(edge: edge) }
+  )
+}
+
+fn rust_decl_struct_derive_binding() -> Symbol {
+  ^rust_decl_derive_struct_binding
+}
+
+fn rust_decl_enum_derive_binding_for_coproduct(coproduct: Node) -> Symbol {
+  match coproduct.kind {
+    TypeNode { connective: Disj } =>
+      if rust_coproduct_all_variants_nullary(edges: coproduct.children) {
+        ^rust_decl_derive_enum_copy_binding
+      } else {
+        ^rust_decl_derive_enum_binding
+      }
+    _ => ^rust_decl_derive_enum_binding
+  }
+}
+
+fn rust_decl_derive_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(
+    empty_map(),
+    ^rust_decl_derive_struct_binding,
+    rust_decl_derive_lex_spelling(text: rust_struct_derives)
+  )
+  let m1 = map_insert(
+    m0,
+    ^rust_decl_derive_struct_copy_binding,
+    rust_decl_derive_lex_spelling(text: rust_struct_derives_copy)
+  )
+  let m2 = map_insert(
+    m1,
+    ^rust_decl_derive_enum_binding,
+    rust_decl_derive_lex_spelling(text: rust_enum_derives)
+  )
+  map_insert(
+    m2,
+    ^rust_decl_derive_enum_copy_binding,
+    rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
+  )
+}
+
 fn rust_decl_shared_field_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
@@ -2160,6 +2274,7 @@ fn rust_enum_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_enum,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_enum),
         grammar_formal_terminal_free(identity: ^rust_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_variant_block)
@@ -2168,6 +2283,7 @@ fn rust_enum_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_enum,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_enum),
         grammar_formal_terminal_free(identity: ^rust_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_generic_params),
@@ -2179,12 +2295,15 @@ fn rust_enum_general_decl_top_productions() -> List<FormalProduction> {
 
 fn rust_enum_general_decl_formal_productions() -> List<FormalProduction> {
   list_append(
-    left: rust_decl_shared_field_productions(),
+    left: rust_decl_shared_derive_productions(),
     right: list_append(
-      left: rust_decl_shared_generic_productions(),
+      left: rust_decl_shared_field_productions(),
       right: list_append(
-        left: rust_decl_shared_variant_productions(),
-        right: rust_enum_general_decl_top_productions()
+        left: rust_decl_shared_generic_productions(),
+        right: list_append(
+          left: rust_decl_shared_variant_productions(),
+          right: rust_enum_general_decl_top_productions()
+        )
       )
     )
   )
@@ -2209,6 +2328,10 @@ fn rust_decl_general_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       rust_whitespace_trivia_rule(),
+      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_struct, text: rust_struct_derives),
+      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_struct_copy, text: rust_struct_derives_copy),
+      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_enum, text: rust_enum_derives),
+      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_enum_copy, text: rust_enum_derives_copy),
       rust_lex_rule(token_class: ^rust_token_kw_struct, text: "struct "),
       rust_lex_rule(token_class: ^rust_token_kw_enum, text: "enum "),
       rust_lex_rule(token_class: ^rust_token_generic_lt, text: "<"),
@@ -2239,7 +2362,7 @@ fn rust_enum_general_decl_structural_target_model() -> TargetModel {
       occurrence_id: SyntheticOccurrence
     },
     lex: rust_decl_general_lex(),
-    binding_spellings: empty_map(),
+    binding_spellings: rust_decl_derive_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
@@ -2251,6 +2374,7 @@ fn rust_struct_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_struct,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_struct),
         grammar_formal_terminal_free(identity: ^rust_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_block)
@@ -2259,6 +2383,7 @@ fn rust_struct_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_struct,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_struct),
         grammar_formal_terminal_free(identity: ^rust_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_generic_params),
@@ -2270,10 +2395,13 @@ fn rust_struct_general_decl_top_productions() -> List<FormalProduction> {
 
 fn rust_struct_general_decl_formal_productions() -> List<FormalProduction> {
   list_append(
-    left: rust_decl_shared_field_productions(),
+    left: rust_decl_shared_derive_productions(),
     right: list_append(
-      left: rust_decl_shared_generic_productions(),
-      right: rust_struct_general_decl_top_productions()
+      left: rust_decl_shared_field_productions(),
+      right: list_append(
+        left: rust_decl_shared_generic_productions(),
+        right: rust_struct_general_decl_top_productions()
+      )
     )
   )
 }
@@ -2306,7 +2434,7 @@ fn rust_struct_general_decl_structural_target_model() -> TargetModel {
       occurrence_id: SyntheticOccurrence
     },
     lex: rust_decl_general_lex(),
-    binding_spellings: empty_map(),
+    binding_spellings: rust_decl_derive_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
@@ -2369,15 +2497,23 @@ fn rust_decl_surface_variant_payload(name: Symbol, fields: List<Node>) -> Node {
   ])
 }
 
-fn rust_decl_surface_enum_nongeneric(name: Symbol, variants: List<Node>) -> Node {
+fn rust_decl_surface_derive_attr(binding: Symbol) -> Node {
   rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: binding))
+  ])
+}
+
+fn rust_decl_surface_enum_nongeneric(name: Symbol, derive_binding: Symbol, variants: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_derive_attr(binding: derive_binding)),
     rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
     rust_decl_surface_pos(target: rust_decl_surface_variant_block(variants: variants))
   ])
 }
 
-fn rust_decl_surface_struct_nongeneric(name: Symbol, fields: List<Node>) -> Node {
+fn rust_decl_surface_struct_nongeneric(name: Symbol, derive_binding: Symbol, fields: List<Node>) -> Node {
   rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_derive_attr(binding: derive_binding)),
     rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
     rust_decl_surface_pos(target: rust_decl_surface_field_block(fields: fields))
   ])
@@ -2469,13 +2605,21 @@ fn rust_coproduct_variant_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
 
 fn rust_enum_decl_surface_from_coproduct(name: Symbol, coproduct: Node) -> Outcome<Node> {
   match coproduct.kind {
-    TypeNode { connective: Disj } =>
+    TypeNode { connective: Disj } => {
+      let derive_binding = rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct)
       bind_outcome(
         o: rust_coproduct_variant_surfaces(edges: coproduct.children),
         f: fn(variants) {
-          outcome_accepted(value: rust_decl_surface_enum_nongeneric(name: name, variants: variants))
+          outcome_accepted(
+            value: rust_decl_surface_enum_nongeneric(
+              name: name,
+              derive_binding: derive_binding,
+              variants: variants
+            )
+          )
         }
       )
+    }
     _ =>
       outcome_rejected(
         d: rust_signature_diagnostic(reason: ^rust_enum_decl_surface_source_not_coproduct, node: coproduct)
@@ -2489,7 +2633,13 @@ fn rust_struct_decl_surface_from_record(name: Symbol, record: Node) -> Outcome<N
       bind_outcome(
         o: rust_coproduct_field_surfaces(edges: record.children),
         f: fn(fields) {
-          outcome_accepted(value: rust_decl_surface_struct_nongeneric(name: name, fields: fields))
+          outcome_accepted(
+            value: rust_decl_surface_struct_nongeneric(
+              name: name,
+              derive_binding: rust_decl_struct_derive_binding(),
+              fields: fields
+            )
+          )
         }
       )
     _ =>
@@ -2511,16 +2661,28 @@ fn rust_decl_surface_generic_params(params: List<Symbol>) -> Node {
   rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_type_param_list(params: params)) ])
 }
 
-fn rust_decl_surface_enum_generic(name: Symbol, params: List<Symbol>, variants: List<Node>) -> Node {
+fn rust_decl_surface_enum_generic(
+  name: Symbol,
+  derive_binding: Symbol,
+  params: List<Symbol>,
+  variants: List<Node>
+) -> Node {
   rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_derive_attr(binding: derive_binding)),
     rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
     rust_decl_surface_pos(target: rust_decl_surface_generic_params(params: params)),
     rust_decl_surface_pos(target: rust_decl_surface_variant_block(variants: variants))
   ])
 }
 
-fn rust_decl_surface_struct_generic(name: Symbol, params: List<Symbol>, fields: List<Node>) -> Node {
+fn rust_decl_surface_struct_generic(
+  name: Symbol,
+  derive_binding: Symbol,
+  params: List<Symbol>,
+  fields: List<Node>
+) -> Node {
   rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_derive_attr(binding: derive_binding)),
     rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
     rust_decl_surface_pos(target: rust_decl_surface_generic_params(params: params)),
     rust_decl_surface_pos(target: rust_decl_surface_field_block(fields: fields))
@@ -2533,13 +2695,22 @@ fn rust_enum_decl_surface_from_coproduct_generic(
   coproduct: Node
 ) -> Outcome<Node> {
   match coproduct.kind {
-    TypeNode { connective: Disj } =>
+    TypeNode { connective: Disj } => {
+      let derive_binding = rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct)
       bind_outcome(
         o: rust_coproduct_variant_surfaces(edges: coproduct.children),
         f: fn(variants) {
-          outcome_accepted(value: rust_decl_surface_enum_generic(name: name, params: params, variants: variants))
+          outcome_accepted(
+            value: rust_decl_surface_enum_generic(
+              name: name,
+              derive_binding: derive_binding,
+              params: params,
+              variants: variants
+            )
+          )
         }
       )
+    }
     _ =>
       outcome_rejected(
         d: rust_signature_diagnostic(reason: ^rust_enum_decl_surface_source_not_coproduct, node: coproduct)
@@ -2557,7 +2728,14 @@ fn rust_struct_decl_surface_from_record_generic(
       bind_outcome(
         o: rust_coproduct_field_surfaces(edges: record.children),
         f: fn(fields) {
-          outcome_accepted(value: rust_decl_surface_struct_generic(name: name, params: params, fields: fields))
+          outcome_accepted(
+            value: rust_decl_surface_struct_generic(
+              name: name,
+              derive_binding: rust_decl_struct_derive_binding(),
+              params: params,
+              fields: fields
+            )
+          )
         }
       )
     _ =>
