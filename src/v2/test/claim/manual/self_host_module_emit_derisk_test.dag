@@ -98,10 +98,16 @@ test fn self_host_frontier_emit_ownership_miss_accepts() -> Bool {
     && derisk_infer_accepts(src: src_single_arm_match)
 }
 
+test fn self_host_frontier_emit_two_user_types_accepts() -> Bool {
+  derisk_emit_accepts(src: src_two_user_types)
+    && derisk_infer_accepts(src: src_two_user_types)
+}
+
 data src_module_header: String = "module derisk_pilot\n"
 data src_type_decl: String = "module derisk_pilot\n\ntype Flag = On | Off\n"
 data src_fn_simple_body: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn keep(f: Flag) -> Flag { f }\n"
 data src_single_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off } }\n"
+data src_two_user_types: String = "module derisk_pilot\n\ntype Flag = On | Off\n\ntype Mode = A | B\n\nfn pick(f: Flag, m: Mode) -> Flag { f }\n"
 data src_multi_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off, Off => On } }\n"
 
 test fn self_host_frontier_parse_module_header_holds() -> Bool {
@@ -141,4 +147,5 @@ test fn self_host_module_emit_frontier_all_holds() -> Bool {
     && self_host_frontier_infer_single_arm_module_holds()
     && self_host_frontier_parse_multi_arm_match_holds()
     && self_host_frontier_emit_ownership_miss_refuses()
+    && self_host_frontier_emit_two_user_types_accepts()
 }
