@@ -73,3 +73,25 @@ test fn probe_fn_tree_has_On() -> Bool { probe_tree_contains(src: src_fn_simple_
 test fn probe_fn_tree_has_Off() -> Bool { probe_tree_contains(src: src_fn_simple_body, sym: ^Off) }
 test fn probe_fn_tree_has_Flag() -> Bool { probe_tree_contains(src: src_fn_simple_body, sym: ^Flag) }
 test fn probe_fn_tree_has_keep() -> Bool { probe_tree_contains(src: src_fn_simple_body, sym: ^keep) }
+
+fn first_decl_semantic(tree: InferredTree) -> Optional<Node> {
+  match partition_user_semantic_types_from_root(root: tree.root) {
+    Cons { head: d, tail: _ } =>
+      match d { PartitionUserSemanticType { name: _, semantic: s } => Present { value: s } }
+    Empty => Absent
+  }
+}
+
+fn probe_semantic_contains(src: String, sym: Symbol) -> Bool {
+  match derisk_infer_outcome_for(src: src) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match first_decl_semantic(tree: tree) {
+        Present { value: s } => node_contains_atom_identity(node: s, sym: sym)
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn probe_semantic_has_Flag() -> Bool { probe_semantic_contains(src: src_fn_simple_body, sym: ^Flag) }
+test fn probe_semantic_has_On() -> Bool { probe_semantic_contains(src: src_fn_simple_body, sym: ^On) }
