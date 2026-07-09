@@ -42,7 +42,7 @@ fn shift_deeper(profile: List<Int>) -> List<Int> {
   Cons { head: 0, tail: profile }
 }
 
-fn profile_fold_init(n: Node) -> List<Int> {
+fn profile_fold_init(_n: Node) -> List<Int> {
   Cons { head: 1, tail: Empty }
 }
 
