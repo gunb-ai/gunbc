@@ -3199,8 +3199,6 @@ fn rust_rec_nine_wrong_field_target_model_staging() -> TargetModel {
     runtime_row: rust_rec_nine_runtime_row()
   }
 }
-  }
-}
 
 fn rust_translation_rules_node() -> Node {
   Node {
