@@ -20,7 +20,7 @@ import extdeps.communication.medium { Lossless, Medium }
 import v2.extdeps.languages.rust {
   rust_binding_spellings,
   rust_target_model_node,
-  rust_wave1_lex
+  rust_fn_add_lex
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { List, Map }
@@ -77,7 +77,7 @@ data nominal_distinct_brands_source: Medium<String> = Medium { carried: "module 
 data nominal_distinct_control_source: Medium<String> = Medium { carried: "module nominal.distinct.control.probe\n\ntype WrapA {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(a: WrapA) -> Int = expects_a(a)\n", fidelity: Lossless }
 data nominal_distinct_compile_target: TargetModel = TargetModel {
   bundle: rust_target_model_node(),
-  lex: rust_wave1_lex(),
+  lex: rust_fn_add_lex(),
   binding_spellings: rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: nominal_distinct_forbidden_authority_source_text,

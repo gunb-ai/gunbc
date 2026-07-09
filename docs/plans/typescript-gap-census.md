@@ -53,7 +53,7 @@
 - **FAIL-CLOSED:** 2 (#11–#12)
 - **FAIL-OPEN compiler-scale gaps:** 8 (#13–#20)
 - **tsc-green (bar c):** 0/N wet — add fixture attempted, red in execution (#19)
-- **Grammar-inverse rows:** 1 committed / 3 in witness bundle / ~15 wave2a productions defined
+- **Grammar-inverse rows:** 1 committed / 3 in witness bundle / ~15 type-decl productions defined
 
 ## 4. Size call
 

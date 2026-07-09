@@ -126,8 +126,8 @@ import v2.extdeps.languages.rust {
   rust_type_expression_projection_bundle_node,
   rust_value_expression_projection,
   rust_value_semantics_carrier_atoms,
-  rust_wave1_lex,
-  rust_wave1_lex_rules,
+  rust_fn_add_lex,
+  rust_fn_add_lex_rules,
   rust_whitespace_trivia_rule
 }
 
@@ -317,7 +317,7 @@ fn rust_pick_additional_lex_rules() -> List<LexRule> {
 fn rust_pick_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_wave1_lex_rules().rules,
+      left: rust_fn_add_lex_rules().rules,
       right: rust_pick_additional_lex_rules()
     )
   }
@@ -579,7 +579,7 @@ fn rust_match_additional_lex_rules() -> List<LexRule> {
 fn rust_match_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_wave1_lex_rules().rules,
+      left: rust_fn_add_lex_rules().rules,
       right: rust_match_additional_lex_rules()
     )
   }
@@ -599,7 +599,7 @@ fn rust_call_closure_additional_lex_rules() -> List<LexRule> {
 fn rust_call_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_wave1_lex_rules().rules,
+      left: rust_fn_add_lex_rules().rules,
       right: rust_call_closure_additional_lex_rules()
     )
   }
@@ -1050,7 +1050,7 @@ fn rust_field_access_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_field_access_target_model_staging() -> TargetModel {
   TargetModel {
     bundle: rust_field_access_target_model_bundle_core(),
-    lex: rust_wave1_lex(),
+    lex: rust_fn_add_lex(),
     binding_spellings: rust_field_access_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_field_access_source_text,
@@ -1249,7 +1249,7 @@ fn rust_variant_construct_additional_lex_rules() -> List<LexRule> {
 fn rust_variant_construct_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_wave1_lex_rules().rules,
+      left: rust_fn_add_lex_rules().rules,
       right: rust_variant_construct_additional_lex_rules()
     )
   }
@@ -1550,7 +1550,7 @@ fn rust_logic_complement_additional_lex_rules() -> List<LexRule> {
 fn rust_logic_complement_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_wave1_lex_rules().rules,
+      left: rust_fn_add_lex_rules().rules,
       right: rust_logic_complement_additional_lex_rules()
     )
   }
@@ -1805,7 +1805,7 @@ fn rust_bool_fn_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: list_append(
-        left: rust_wave1_lex_rules().rules,
+        left: rust_fn_add_lex_rules().rules,
         right: rust_bool_fn_additional_lex_rules()
       )
     }
@@ -2273,7 +2273,7 @@ fn rust_rec_target_model_bundle_core() -> Node {
 fn rust_rec_target_model_staging() -> TargetModel {
   TargetModel {
     bundle: rust_rec_target_model_bundle_core(),
-    lex: rust_wave1_lex(),
+    lex: rust_fn_add_lex(),
     binding_spellings: rust_rec_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_rec_source_text,
@@ -2284,7 +2284,7 @@ fn rust_rec_target_model_staging() -> TargetModel {
 fn rust_rec_wrong_field_target_model_staging() -> TargetModel {
   TargetModel {
     bundle: rust_rec_target_model_bundle_core(),
-    lex: rust_wave1_lex(),
+    lex: rust_fn_add_lex(),
     binding_spellings: rust_rec_wrong_field_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_rec_wrong_value_source_text,
@@ -2567,7 +2567,7 @@ fn rust_rec_nine_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_rec_nine_target_model_staging() -> TargetModel {
   TargetModel {
     bundle: rust_rec_nine_target_model_bundle_core(),
-    lex: rust_wave1_lex(),
+    lex: rust_fn_add_lex(),
     binding_spellings: rust_rec_nine_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_rec_nine_source_text,
@@ -2578,7 +2578,7 @@ fn rust_rec_nine_target_model_staging() -> TargetModel {
 fn rust_rec_nine_wrong_field_target_model_staging() -> TargetModel {
   TargetModel {
     bundle: rust_rec_nine_target_model_bundle_core(),
-    lex: rust_wave1_lex(),
+    lex: rust_fn_add_lex(),
     binding_spellings: rust_rec_nine_wrong_field_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_rec_nine_wrong_value_source_text,
@@ -2924,7 +2924,7 @@ fn rust_literal_emit_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
       left: list_append(
-        left: rust_wave1_lex_rules().rules,
+        left: rust_fn_add_lex_rules().rules,
         right: [
           rust_int_literal_lex_rule(),
           rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
@@ -3386,7 +3386,7 @@ fn rust_emit_directive_target_model(d: EmitDirective) -> TargetModel {
   )
 }
 
-fn rust_wave1_formal_productions() -> List<FormalProduction> {
+fn rust_fn_add_formal_productions() -> List<FormalProduction> {
   [rust_formal_production_fn_add()]
 }
 

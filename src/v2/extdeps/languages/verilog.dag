@@ -615,7 +615,7 @@ fn verilog_identifier_pattern() -> LexPattern {
   }
 }
 
-fn verilog_wave1_lex() -> LexRules {
+fn verilog_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
@@ -642,7 +642,7 @@ fn verilog_source_text_module_expr() -> GrammarExpr {
   )
 }
 
-fn verilog_wave1_grammar() -> ParseGrammar {
+fn verilog_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: ^verilog_production_source_text_module,
     expression: verilog_source_text_module_expr(),
@@ -671,8 +671,8 @@ fn verilog_source_text_module_formal_production() -> FormalProduction {
 
 fn verilog_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: verilog_wave1_lex(),
-    grammar: verilog_wave1_grammar()
+    lex: verilog_lex(),
+    grammar: verilog_grammar()
   }
 }
 

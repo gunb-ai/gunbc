@@ -541,7 +541,7 @@ fn ecmascript_primitive_bundles_from_singleton_catalog() -> List<PrimitiveFactBu
   )
 }
 
-fn ecmascript_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn ecmascript_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: list_append(
@@ -657,9 +657,9 @@ fn ecmascript_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn ecmascript_model_core_wave1() -> ModelCore {
+fn ecmascript_model_core() -> ModelCore {
   ModelCore {
-    primitives: ecmascript_wave1_primitive_fact_bundles(),
+    primitives: ecmascript_primitive_fact_bundles(),
     inhabitance: ecmascript_model_core_inhabitance_decls(),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
@@ -878,7 +878,7 @@ fn ecmascript_formal_production_fn_add() -> FormalProduction {
   )
 }
 
-fn ecmascript_wave1_formal_productions() -> List<FormalProduction> {
+fn ecmascript_formal_productions() -> List<FormalProduction> {
   [ecmascript_formal_production_fn_add()]
 }
 
@@ -959,7 +959,7 @@ fn ecmascript_binding_spellings() -> Map<Symbol, String> {
 fn ecmascript_target_model() -> TargetModel {
   TargetModel {
     bundle: ecmascript_target_model_node(),
-    lex: ecmascript_wave1_lex(),
+    lex: ecmascript_lex(),
     binding_spellings: ecmascript_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: ecmascript_source_text,
@@ -1030,7 +1030,7 @@ fn ecmascript_int_literal_lex_rule() -> LexRule {
   }
 }
 
-fn ecmascript_wave1_lex_rules() -> LexRuleSet {
+fn ecmascript_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       ecmascript_lex_rule(token_class: ^ecmascript_token_rparen_lbrace_inner_open, text: ") {\n        "),
@@ -1060,15 +1060,15 @@ fn ecmascript_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn ecmascript_wave1_lex() -> LexRules {
-  ModeledLexRules { root: ecmascript_wave1_lex_rules() }
+fn ecmascript_lex() -> LexRules {
+  ModeledLexRules { root: ecmascript_lex_rules() }
 }
 
 fn ecmascript_grammar_atom(id: Symbol) -> Node {
   ecmascript_inhabitant_atom(id: id)
 }
 
-fn ecmascript_wave1_grammar_root() -> GrammarRoot {
+fn ecmascript_grammar_root() -> GrammarRoot {
   GrammarRoot {
     start: ^ecmascript_production_fn_decl,
     productions: [
@@ -1246,13 +1246,13 @@ fn ecmascript_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn ecmascript_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: ecmascript_wave1_grammar_root() }
+fn ecmascript_grammar() -> ParseGrammar {
+  ModeledGrammar { root: ecmascript_grammar_root() }
 }
 
-fn ecmascript_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn ecmascript_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
-    rules: ecmascript_wave1_lex_rules(),
+    rules: ecmascript_lex_rules(),
     token_class: sym
   )
 }
@@ -1318,8 +1318,8 @@ fn ecmascript_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       ecmascript_catalog_surface_symbol(sym: sym) ||
-        ecmascript_wave1_lex_token_symbol(sym: sym) ||
-        grammar_carries_symbol(grammar: ecmascript_wave1_grammar(), sym: sym) ||
+        ecmascript_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: ecmascript_grammar(), sym: sym) ||
         sym == ^ecmascript_surface_fn_item ||
         sym == ^ecmascript_production_fn_add ||
         sym == ^ecmascript_source_literal
@@ -1327,12 +1327,12 @@ fn ecmascript_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn ecmascript_language_model_wave1() -> LanguageModel {
+fn ecmascript_language_model() -> LanguageModel {
   LanguageModel {
-    lex: ecmascript_wave1_lex(),
-    grammar: ecmascript_wave1_grammar(),
+    lex: ecmascript_lex(),
+    grammar: ecmascript_grammar(),
     language_identity: ^ecmascript_language_model_surface_id,
     canonical_symbols: ecmascript_language_model_canonical_symbols(),
-    core: ecmascript_model_core_wave1()
+    core: ecmascript_model_core()
   }
 }

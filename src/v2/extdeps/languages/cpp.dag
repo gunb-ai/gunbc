@@ -714,7 +714,7 @@ fn cpp_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn cpp_wave1_primitive_fact_bundles(
+fn cpp_primitive_fact_bundles(
   target_profile: Node
 ) -> List<PrimitiveFactBundle> {
   list_append(
@@ -865,7 +865,7 @@ fn cpp_fail_closed_partial_operation(
   }
 }
 
-fn cpp_partiality_semantics_wave1() -> PartialitySemanticsDecl {
+fn cpp_partiality_semantics() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
       cpp_fail_closed_partial_operation(
@@ -887,23 +887,23 @@ fn cpp_partiality_semantics_wave1() -> PartialitySemanticsDecl {
   }
 }
 
-fn cpp_model_core_wave1(target_profile: Node) -> ModelCore {
+fn cpp_model_core(target_profile: Node) -> ModelCore {
   ModelCore {
-    primitives: cpp_wave1_primitive_fact_bundles(target_profile: target_profile),
+    primitives: cpp_primitive_fact_bundles(target_profile: target_profile),
     inhabitance: cpp_model_core_inhabitance_decls(target_profile: target_profile),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
-    partiality: cpp_partiality_semantics_wave1()
+    partiality: cpp_partiality_semantics()
   }
 }
 
-fn cpp_language_model_wave1(target_profile: Node) -> LanguageModel {
+fn cpp_language_model(target_profile: Node) -> LanguageModel {
   LanguageModel {
     lex: VoidLexRules,
     grammar: VoidGrammar,
     language_identity: ^cpp_language_model_surface_id,
     canonical_symbols: cpp_language_model_canonical_symbols(target_profile: target_profile),
-    core: cpp_model_core_wave1(target_profile: target_profile)
+    core: cpp_model_core(target_profile: target_profile)
   }
 }
 
@@ -1076,7 +1076,7 @@ fn cpp_formal_production_fn_add() -> FormalProduction {
   )
 }
 
-fn cpp_wave1_formal_productions() -> List<FormalProduction> {
+fn cpp_formal_productions() -> List<FormalProduction> {
   [cpp_formal_production_fn_add()]
 }
 
@@ -1195,7 +1195,7 @@ fn cpp_target_model() -> TargetModel {
 fn cpp_target_model_for_profile(target_profile: Node) -> TargetModel {
   TargetModel {
     bundle: cpp_target_model_node(target_profile: target_profile),
-    lex: cpp_wave1_lex(),
+    lex: cpp_lex(),
     binding_spellings: cpp_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: cpp_source_text,
@@ -1207,7 +1207,7 @@ fn cpp_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
-fn cpp_wave1_lex_rules() -> List<LexRule> {
+fn cpp_lex_rules() -> List<LexRule> {
   [
     cpp_lex_rule(token_class: ^cpp_token_ty_int, text: "int "),
     cpp_lex_rule(token_class: ^cpp_token_lparen, text: "("),
@@ -1221,8 +1221,8 @@ fn cpp_wave1_lex_rules() -> List<LexRule> {
   ]
 }
 
-fn cpp_wave1_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: cpp_wave1_lex_rules() } }
+fn cpp_lex() -> LexRules {
+  ModeledLexRules { root: LexRuleSet { rules: cpp_lex_rules() } }
 }
 
 data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

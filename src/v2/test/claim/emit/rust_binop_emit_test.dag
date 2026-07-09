@@ -14,7 +14,7 @@ import v2.extdeps.languages.rust {
   rust_target_model_staging,
   rust_operator_realizations_catalog_node,
   rust_value_expression_projection,
-  rust_wave1_lex
+  rust_fn_add_lex
 }
 import v2.extdeps.languages.rust_test { rust_target_model_with_operators_and_lex }
 import v2.std.collection { Map }
@@ -134,7 +134,7 @@ fn rust_binop_sub_mistoken_catalog() -> Node {
 fn rust_binop_target_model(catalog: Node) -> TargetModel {
   rust_target_model_with_operators_and_lex(
     operator_catalog: catalog,
-    lex: rust_wave1_lex()
+    lex: rust_fn_add_lex()
   )
 }
 

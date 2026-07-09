@@ -12,7 +12,7 @@ import v2.compiler.parse {
   parse_prov_initial,
   parse_table_for_production
 }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { HeadAbsent, HeadFound, list_head }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { token_stream_remaining }
@@ -25,7 +25,7 @@ import v2.std.witness { Holds, Violates }
 data s1_stall_probe_note: String = "diagnosis probe for S1 census failures: parses a file at the start production via parse_expr directly and reports the byte offset of the first token the parse could NOT consume (the packrat repeat accepts greedily, so Accepted-with-remaining pinpoints the first uncovered construct). Return codes: >=0 stall byte offset; -1 fully consumed (file parses); -2 rejected outright; -3 tokenize rejected; -4 grammar invalid; -5 start production missing; -6 void grammar."
 
 fn stall_offset(path: String) -> Int {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   let at = port_locus(port: ^s1_stall_probe_locus)
   let source = filesystem_read(path: path).content
   match tokenize(text: source, file: ^s1_stall_probe_anchor, rules: lm.lex) {

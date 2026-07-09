@@ -121,13 +121,13 @@ type ModelCore {
   partiality: PartialitySemanticsDecl
 }
 
-type ModelCoreWave1BoolLawKey
-  = ModelCoreWave1BoolBoundedLatticeIdentities
-  | ModelCoreWave1BoolDistributivity
-  | ModelCoreWave1BoolComplementInvolution
-  | ModelCoreWave1BoolComplementBounds
+type ModelCoreBoolLawKey
+  = ModelCoreBoolBoundedLatticeIdentities
+  | ModelCoreBoolDistributivity
+  | ModelCoreBoolComplementInvolution
+  | ModelCoreBoolComplementBounds
 
-fn model_core_wave1_atom(id: Symbol) -> Node {
+fn model_core_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
@@ -135,7 +135,7 @@ fn model_core_wave1_atom(id: Symbol) -> Node {
 }
 }
 
-fn model_core_wave1_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witness<Node> {
+fn model_core_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witness<Node> {
   if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
     Holds { value: bool_width_fact_node(width: facts.width) }
   } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
@@ -147,88 +147,85 @@ fn model_core_wave1_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) ->
   }
 }
 
-fn model_core_wave1_bool_spec_facts(facts: BoolPrimitiveFacts) -> Map<Symbol, Node> {
+fn model_core_bool_spec_facts(facts: BoolPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      model_core_wave1_bool_fact_lookup(facts: facts, axis: axis)
+      model_core_bool_fact_lookup(facts: facts, axis: axis)
     }
   }
 }
 
-fn model_core_wave1_bool_primitive_bundle() -> PrimitiveFactBundle {
+fn model_core_bool_primitive_bundle() -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: bool_primitive_facts_node(facts: bool_primitive_facts),
-    spec_facts: model_core_wave1_bool_spec_facts(facts: bool_primitive_facts)
+    spec_facts: model_core_bool_spec_facts(facts: bool_primitive_facts)
   }
 }
 
-fn model_core_wave1_bool_inhabitance_witness() -> Node {
+fn model_core_bool_inhabitance_witness() -> Node {
   bool_boolean_algebra_node()
 }
 
-fn model_core_wave1_bool_algebra_node() -> Node {
+fn model_core_bool_algebra_node() -> Node {
   bool_boolean_algebra_type_node()
 }
 
-fn model_core_wave1_bool_inhabitance() -> AlgebraInhabitanceDecl {
-  let witness = model_core_wave1_bool_inhabitance_witness()
+fn model_core_bool_inhabitance() -> AlgebraInhabitanceDecl {
+  let witness = model_core_bool_inhabitance_witness()
   AlgebraInhabitanceDecl {
-    algebra: model_core_wave1_bool_algebra_node(),
+    algebra: model_core_bool_algebra_node(),
     inhabitant: bool_node(),
     witness: witness
   }
 }
 
-fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
+fn model_core_law_node(key: ModelCoreBoolLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^model_core_wave1_law_field_subject },
-        target: model_core_wave1_bool_inhabitance_witness()
+        label: Named { name: ^model_core_law_field_subject },
+        target: model_core_bool_inhabitance_witness()
       },
       Edge {
-        label: Named { name: ^model_core_wave1_law_field_algebra },
-        target: model_core_wave1_bool_algebra_node()
+        label: Named { name: ^model_core_law_field_algebra },
+        target: model_core_bool_algebra_node()
       },
       Edge {
-        label: Named { name: ^model_core_wave1_law_field_kind },
-        target: model_core_wave1_atom(id: discriminant(v: key))
+        label: Named { name: ^model_core_law_field_kind },
+        target: model_core_atom(id: discriminant(v: key))
       },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolLawKey) -> AlgebraLawObligation {
+fn model_core_bool_law_obligation(key: ModelCoreBoolLawKey) -> AlgebraLawObligation {
   AlgebraLawObligation {
-    inhabitance_witness: model_core_wave1_bool_inhabitance_witness(),
-    law: model_core_wave1_law_node(key: key)
+    inhabitance_witness: model_core_bool_inhabitance_witness(),
+    law: model_core_law_node(key: key)
   }
 }
 
-fn wave1_model_core() -> ModelCore {
+fn bool_model_core() -> ModelCore {
   ModelCore {
     primitives: [
-      model_core_wave1_bool_primitive_bundle(),
+      model_core_bool_primitive_bundle(),
     ],
     inhabitance: [
-      model_core_wave1_bool_inhabitance(),
+      model_core_bool_inhabitance(),
     ],
     laws: [
-      model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolBoundedLatticeIdentities),
-      model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolDistributivity),
-      model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementInvolution),
-      model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementBounds),
+      model_core_bool_law_obligation(key: ModelCoreBoolBoundedLatticeIdentities),
+      model_core_bool_law_obligation(key: ModelCoreBoolDistributivity),
+      model_core_bool_law_obligation(key: ModelCoreBoolComplementInvolution),
+      model_core_bool_law_obligation(key: ModelCoreBoolComplementBounds),
     ],
     effects: EffectSemanticsDecl { operations: [] },
     partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
 
-fn wave1_void() -> ModelCore {
-  wave1_model_core()
-}
 
 type PrimitiveBundleSubstrateHead
   = PrimitiveBundleSubstrateHeadMissing

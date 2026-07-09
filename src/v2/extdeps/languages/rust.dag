@@ -1478,7 +1478,7 @@ fn rust_produced_decl_target(signature_with_open: List<ConcreteSyntaxToken>) -> 
       ),
       occurrence_id: SyntheticOccurrence
     },
-    lex: rust_wave1_lex(),
+    lex: rust_fn_add_lex(),
     binding_spellings: rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_source_text_authority(),
@@ -1875,7 +1875,7 @@ fn rust_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_target_model_staging() -> TargetModel {
   TargetModel {
     bundle: rust_target_model_bundle_core(),
-    lex: rust_wave1_lex(),
+    lex: rust_fn_add_lex(),
     binding_spellings: rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_source_text_authority(),
@@ -1962,7 +1962,7 @@ fn rust_target_model_node() -> Node {
 fn rust_target_model() -> TargetModel {
   TargetModel {
     bundle: rust_target_model_node(),
-    lex: rust_wave1_lex(),
+    lex: rust_fn_add_lex(),
     binding_spellings: rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_source_text_authority(),
@@ -1991,7 +1991,7 @@ fn rust_ident_lex_rule() -> LexRule {
   }
 }
 
-fn rust_wave1_lex_rules() -> LexRuleSet {
+fn rust_fn_add_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
       left: [
@@ -2013,8 +2013,8 @@ fn rust_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn rust_wave1_lex() -> LexRules {
-  ModeledLexRules { root: rust_wave1_lex_rules() }
+fn rust_fn_add_lex() -> LexRules {
+  ModeledLexRules { root: rust_fn_add_lex_rules() }
 }
 
 fn rust_grammar_atom(id: Symbol) -> Node {
@@ -2575,13 +2575,13 @@ fn rust_grammar_production_fn_add() -> GrammarProduction {
   }
 }
 
-fn rust_wave1_grammar_root() -> GrammarRoot {
+fn rust_fn_add_grammar_root() -> GrammarRoot {
   let start = rust_grammar_production_fn_add()
   GrammarRoot { start: ^rust_production_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
 }
 
-fn rust_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: rust_wave1_grammar_root() }
+fn rust_fn_add_grammar() -> ParseGrammar {
+  ModeledGrammar { root: rust_fn_add_grammar_root() }
 }
 
 fn rust_integer_catalog_surface_symbol_step(
@@ -2644,15 +2644,15 @@ fn rust_catalog_surface_symbol(sym: Symbol) -> Bool {
     rust_noninteger_catalog_surface_symbol(sym: sym)
 }
 
-fn rust_wave1_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(rules: rust_wave1_lex_rules(), token_class: sym)
+fn rust_fn_add_lex_token_symbol(sym: Symbol) -> Bool {
+  lex_rule_set_token_class_member(rules: rust_fn_add_lex_rules(), token_class: sym)
 }
 
 fn rust_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       rust_catalog_surface_symbol(sym: sym) ||
-        rust_wave1_lex_token_symbol(sym: sym) ||
+        rust_fn_add_lex_token_symbol(sym: sym) ||
         sym == ^rust_surface_fn_item ||
         sym == ^rust_production_fn_add ||
         sym == ^rust_source_literal
@@ -2766,10 +2766,10 @@ fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawK
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: ^model_core_wave1_law_field_subject, target: witness),
-      rust_named_edge(name: ^model_core_wave1_law_field_algebra, target: algebra),
+      rust_named_edge(name: ^model_core_law_field_subject, target: witness),
+      rust_named_edge(name: ^model_core_law_field_algebra, target: algebra),
       rust_named_edge(
-        name: ^model_core_wave1_law_field_kind,
+        name: ^model_core_law_field_kind,
         target: rust_inhabitant_atom(id: discriminant(v: key))
       )
     ],
@@ -2927,7 +2927,7 @@ fn rust_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
   }
 }
 
-fn rust_effect_semantics_wave2() -> EffectSemanticsDecl {
+fn rust_effect_semantics() -> EffectSemanticsDecl {
   EffectSemanticsDecl {
     operations: [
       rust_pure_operation(operation: ^rust_op_integer_add),
@@ -2961,7 +2961,7 @@ fn rust_fail_closed_partial_operation(
   }
 }
 
-fn rust_partiality_semantics_wave2() -> PartialitySemanticsDecl {
+fn rust_partiality_semantics() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
       rust_fail_closed_partial_operation(
@@ -3270,7 +3270,7 @@ fn rust_append_primitive_bundle_outcomes(
   }
 }
 
-fn rust_wave1_primitive_fact_bundles_from_registry(
+fn rust_primitive_fact_bundles_from_registry(
   registry: PerLanguageFactBundleRegistry
 ) -> Outcome<List<PrimitiveFactBundle>> {
   rust_append_primitive_bundle_outcomes(
@@ -3282,18 +3282,18 @@ fn rust_wave1_primitive_fact_bundles_from_registry(
   )
 }
 
-fn rust_model_core_wave1() -> Outcome<ModelCore> {
+fn rust_model_core() -> Outcome<ModelCore> {
   match rust_per_language_fact_bundle_registry() {
     Accepted { value: registry, diagnostics: _ } =>
-      match rust_wave1_primitive_fact_bundles_from_registry(registry: registry) {
+      match rust_primitive_fact_bundles_from_registry(registry: registry) {
         Accepted { value: primitives, diagnostics: d } =>
           Accepted {
             value: ModelCore {
               primitives: primitives,
               inhabitance: rust_model_core_inhabitance_decls(),
               laws: rust_model_core_law_obligations(),
-              effects: rust_effect_semantics_wave2(),
-              partiality: rust_partiality_semantics_wave2()
+              effects: rust_effect_semantics(),
+              partiality: rust_partiality_semantics()
             },
             diagnostics: d
           }
@@ -3303,13 +3303,13 @@ fn rust_model_core_wave1() -> Outcome<ModelCore> {
   }
 }
 
-fn rust_language_model_wave1() -> Outcome<LanguageModel> {
-  match rust_model_core_wave1() {
+fn rust_fn_add_language_model() -> Outcome<LanguageModel> {
+  match rust_model_core() {
     Accepted { value: core, diagnostics: d } =>
       Accepted {
         value: LanguageModel {
-          lex: rust_wave1_lex(),
-          grammar: rust_wave1_grammar(),
+          lex: rust_fn_add_lex(),
+          grammar: rust_fn_add_grammar(),
           language_identity: ^rust_language_model_surface_id,
           canonical_symbols: rust_language_model_canonical_symbols(),
           core: core
@@ -3333,7 +3333,7 @@ fn rust_int_literal_lex_rule() -> LexRule {
   }
 }
 
-fn rust_wave2_additional_lex_rules() -> List<LexRule> {
+fn rust_extended_lex_rules() -> List<LexRule> {
   [
     rust_whitespace_trivia_rule(),
     rust_int_literal_lex_rule(),
@@ -3347,20 +3347,20 @@ fn rust_wave2_additional_lex_rules() -> List<LexRule> {
   ]
 }
 
-fn rust_wave2_lex_rules() -> LexRuleSet {
+fn rust_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_wave1_lex_rules().rules,
-      right: rust_wave2_additional_lex_rules()
+      left: rust_fn_add_lex_rules().rules,
+      right: rust_extended_lex_rules()
     )
   }
 }
 
-fn rust_wave2_lex() -> LexRules {
-  ModeledLexRules { root: rust_wave2_lex_rules() }
+fn rust_lex() -> LexRules {
+  ModeledLexRules { root: rust_lex_rules() }
 }
 
-fn rust_wave2_formal_productions() -> List<FormalProduction> {
+fn rust_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(lhs: ^rust_production_type, rhs: [grammar_formal_terminal(identity: ^rust_token_ty_i32)]),
     grammar_formal_production(
@@ -3824,7 +3824,7 @@ fn rust_grammar_fn_item_expr() -> GrammarExpr {
   )
 }
 
-fn rust_wave2_grammar_root() -> GrammarRoot {
+fn rust_grammar_root() -> GrammarRoot {
   let fn_item = rust_grammar_production(
     name: ^rust_production_fn_item,
     expression: rust_grammar_fn_item_expr(),
@@ -3931,16 +3931,16 @@ fn rust_wave2_grammar_root() -> GrammarRoot {
   }
 }
 
-fn rust_wave2_grammar() -> ParseGrammar {
-  ModeledGrammar { root: rust_wave2_grammar_root() }
+fn rust_grammar() -> ParseGrammar {
+  ModeledGrammar { root: rust_grammar_root() }
 }
 
-fn rust_language_model_wave2_canonical_symbols() -> Set<Symbol> {
+fn rust_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       rust_catalog_surface_symbol(sym: sym) ||
-        lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: sym) ||
-        grammar_carries_symbol(grammar: rust_wave2_grammar(), sym: sym) ||
+        lex_rule_set_token_class_member(rules: rust_lex_rules(), token_class: sym) ||
+        grammar_carries_symbol(grammar: rust_grammar(), sym: sym) ||
         sym == ^rust_surface_fn_item ||
         sym == ^rust_production_fn_add ||
         sym == ^rust_source_literal
@@ -3948,15 +3948,15 @@ fn rust_language_model_wave2_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn rust_language_model_wave2() -> Outcome<LanguageModel> {
-  match rust_model_core_wave1() {
+fn rust_language_model() -> Outcome<LanguageModel> {
+  match rust_model_core() {
     Accepted { value: core, diagnostics: d } =>
       Accepted {
         value: LanguageModel {
-          lex: rust_wave2_lex(),
-          grammar: rust_wave2_grammar(),
+          lex: rust_lex(),
+          grammar: rust_grammar(),
           language_identity: ^rust_language_model_surface_id,
-          canonical_symbols: rust_language_model_wave2_canonical_symbols(),
+          canonical_symbols: rust_canonical_symbols(),
           core: core
         },
         diagnostics: d
@@ -4179,7 +4179,7 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
   let m19 = map_insert(m18, ^rust_sg_rc_ctor_rc_new, "Rc::new")
   map_insert(m19, ^rust_sg_rc_ctor_box_new, "Box::new")
 }
-fn rust_sg2_wave1_lex_rules() -> LexRuleSet {
+fn rust_sg2_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       rust_ident_lex_rule(),
@@ -4297,7 +4297,7 @@ fn rust_sg2_serialize_source_node() -> Node {
 fn rust_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
     bundle: rust_sg2_type_expr_target_model_node(),
-    lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
+    lex: ModeledLexRules { root: rust_sg2_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_sg2_type_alias_text,
@@ -4312,7 +4312,7 @@ fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
 fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
   TargetModel {
     bundle: rust_sg2_type_expr_projection_probe_bundle_core(),
-    lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
+    lex: ModeledLexRules { root: rust_sg2_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_sg2_type_alias_text,
@@ -4323,7 +4323,7 @@ fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
 fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
   TargetModel {
     bundle: rust_sg2_type_expr_target_model_bundle_core(),
-    lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
+    lex: ModeledLexRules { root: rust_sg2_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_sg2_type_alias_text,

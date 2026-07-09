@@ -3,7 +3,7 @@ module v2.test.parse.parse_table_memo_amortization
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
@@ -66,7 +66,7 @@ data memo_amort_ingest_bisect_add: SourceRootIngest = Cons {
 fn memo_amort_single_root_content_hash(ingest: SourceRootIngest) -> Outcome<Hash> {
   match module_roots_from_source_root_ingest(
     ingest: ingest,
-    lm: dag_language_model_wave1()
+    lm: dag_language_model()
   ) {
     Accepted { value: roots, diagnostics: _ } =>
       match length(xs: roots) == 1 {
@@ -89,7 +89,7 @@ fn memo_amort_single_root_content_hash(ingest: SourceRootIngest) -> Outcome<Hash
 fn memo_amort_parse_one_file_holds() -> Bool {
   match module_roots_from_source_root_ingest(
     ingest: memo_amort_ingest_one_file,
-    lm: dag_language_model_wave1()
+    lm: dag_language_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -99,7 +99,7 @@ fn memo_amort_parse_one_file_holds() -> Bool {
 fn memo_amort_parse_two_files_holds() -> Bool {
   match module_roots_from_source_root_ingest(
     ingest: memo_amort_ingest_two_files,
-    lm: dag_language_model_wave1()
+    lm: dag_language_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

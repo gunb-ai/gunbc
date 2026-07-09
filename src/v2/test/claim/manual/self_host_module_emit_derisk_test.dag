@@ -11,7 +11,7 @@ import v2.compiler.self_host.compiler_closure_emit {
 }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.infer { InferredTree, infer }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest
@@ -60,7 +60,7 @@ fn derisk_assemble_for(src: String) -> Outcome<Node> {
   assemble_program_from_ingest(
     ingest: derisk_ingest_for(src: src),
     admission: derisk_module_admission(),
-    lm: dag_language_model_wave1()
+    lm: dag_language_model()
   )
 }
 

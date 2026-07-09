@@ -6,7 +6,7 @@ import v2.compiler.parse {
   parse_production_memo_stats
 }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Rejected, port_locus }
 import v2.std.grammar { ModeledGrammar, ParseGrammar }
@@ -20,7 +20,7 @@ fn parse_memo_counter_stats_for_grammar(
   source_text: String,
   grammar: ParseGrammar
 ) -> ParseMemoStats {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(text: source_text, file: ^probe, rules: lm.lex) {
     Rejected { diagnostics: _ } =>
@@ -47,7 +47,7 @@ fn parse_memo_counter_stats_for_grammar(
 fn parse_memo_counter_fixture_stats() -> ParseMemoStats {
   parse_memo_counter_stats_for_grammar(
     source_text: parse_memo_counter_fixture_source,
-    grammar: dag_language_model_wave1().grammar
+    grammar: dag_language_model().grammar
   )
 }
 
