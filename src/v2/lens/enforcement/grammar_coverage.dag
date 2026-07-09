@@ -180,29 +180,6 @@ fn grammar_coverage_symbol_reason_eq(a: Symbol, b: Symbol) -> Bool {
   symbol_identity_digest(sym: a) == symbol_identity_digest(sym: b)
 }
 
-fn grammar_coverage_reason_is_one_of(reason: Symbol, candidates: List<Symbol>) -> Bool {
-  fold_list(
-    xs: candidates,
-    empty: false,
-    cons: fn(acc, candidate) {
-      acc || grammar_coverage_symbol_reason_eq(a: reason, b: candidate)
-    }
-  )
-}
-
-fn grammar_coverage_parse_reject_reasons() -> List<Symbol> {
-  [
-    ^parse_g0_tokens_remain,
-    ^parse_e1_syntax_error,
-    ^parse_grammar_not_well_formed,
-    ^parse_grammar_left_recursive,
-    ^parse_grammar_undefined_nonterminal,
-    ^parse_grammar_duplicate_production,
-    ^parse_grammar_choice_ambiguity,
-    ^parse_grammar_choice_overlap_residue
-  ]
-}
-
 fn grammar_coverage_file_reject_locus_matches(
   receipt: GrammarCoverageFileReceipt,
   stage: String,
