@@ -1992,6 +1992,48 @@ fn rust_translation_rules_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
+
+fn rust_bodied_relation_rules_node_with_scaffold(
+  scaffold: TargetBodiedArrowStatementScaffold
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^rust_relation_rule_fn_add,
+        target: grammar_relation_row_attach_bodied_scaffold(
+          row: rust_fn_add_scaffold_relation_row_node(),
+          scaffold: scaffold
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn rust_produced_decl_target(signature_with_open: List<ConcreteSyntaxToken>) -> TargetModel {
+  TargetModel {
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: rust_target_model_core_edges_full(
+        operator_catalog: rust_operator_realizations_catalog_node(),
+        rules: rust_bodied_relation_rules_node_with_scaffold(
+          scaffold: derive_bodied_arrow_scaffold(
+            signature_with_open: signature_with_open,
+            block_close: rust_add_block_close(),
+            mode: ValueProducing
+          )
+        )
+      ),
+      occurrence_id: SyntheticOccurrence
+    },
+    lex: rust_wave1_lex(),
+    binding_spellings: rust_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_source_text_authority(),
+    runtime_row: rust_runtime_row()
+  }
+}
 fn rust_set_collection_apply_btree() -> TargetGenericApply {
   TargetGenericApply {
     surface: ^rust_collection_surface_btree_set,
@@ -2242,6 +2284,13 @@ fn rust_collection_realization_catalog_node() -> Node {
 }
 
 fn rust_target_model_core_edges_with_operators(operator_catalog: Node) -> List<Edge> {
+  rust_target_model_core_edges_full(
+    operator_catalog: operator_catalog,
+    rules: rust_translation_rules_node()
+  )
+}
+
+fn rust_target_model_core_edges_full(operator_catalog: Node, rules: Node) -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
@@ -2253,7 +2302,7 @@ fn rust_target_model_core_edges_with_operators(operator_catalog: Node) -> List<E
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
-      target: rust_translation_rules_node()
+      target: rules
     ),
     rust_named_edge(
       name: ^target_model_edge_serialize_source,
@@ -2331,7 +2380,8 @@ fn rust_target_model_with_operators_and_lex(operator_catalog: Node, lex: LexRule
 
 fn rust_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
-  let m1 = map_insert(m0, ^rust_binding_param_x, "x")
+  let ma2 = map_insert(m0, ^rust_binding_fn_add2, "add2")
+  let m1 = map_insert(ma2, ^rust_binding_param_x, "x")
   let m2 = map_insert(m1, ^rust_binding_param_y, "y")
   let mx = map_insert(m2, ^dag_binding_param_x, "x")
   let my = map_insert(mx, ^dag_binding_param_y, "y")
