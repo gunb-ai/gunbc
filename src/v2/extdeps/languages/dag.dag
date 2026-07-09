@@ -4801,6 +4801,8 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
     },
     match_form: TargetMatchShape {
       match_token: ^dag_token_kw_match,
+      scrutinee_open: ^dag_token_lparen,
+      scrutinee_close: ^dag_token_rparen,
       open: ^dag_token_lbrace,
       close: ^dag_token_rbrace,
       fat_arrow: ^dag_token_fat_arrow,

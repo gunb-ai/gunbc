@@ -27,7 +27,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
 
-data rust_variant_construct_emit_wrong_value_source_text: String = "fn one_or_two() -> i32 { match Holds { value: 1 } { Holds { value: v } => v, True => 2 } }"
+data rust_variant_construct_emit_wrong_value_source_text: String = "fn one_or_two() -> i32 { match (Holds { value: 1 }) { Holds { value: v } => v, True => 2 } }"
 
 fn rust_variant_construct_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
   Violates {
