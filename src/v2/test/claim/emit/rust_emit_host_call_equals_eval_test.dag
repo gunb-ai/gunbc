@@ -17,7 +17,6 @@ import v2.compiler.eval {
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
   rust_emit_host_runtime_primitive_type_node,
-  rust_mvp1_call_host_source_text,
   rust_mvp1_call_target_model_staging
 }
 import v2.test.emit.rust_call_emit {
