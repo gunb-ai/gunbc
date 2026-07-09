@@ -6,7 +6,8 @@ import std.termination {
   Strict,
   NonIncreasing,
   DescentUnknown,
-  descent_evidence_lattice_meet
+  descent_evidence_lattice_meet,
+  evidence_rank
 }
 import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.diagnostic {
@@ -335,11 +336,7 @@ fn dimension_rows_meet(rows: List<MeasureDimensionEvidence>) -> DescentEvidence 
 }
 
 fn dimension_row_is_strict(row: MeasureDimensionEvidence) -> Bool {
-  match row.evidence {
-    Strict => true
-    NonIncreasing => false
-    DescentUnknown => false
-  }
+  evidence_rank(e: row.evidence) == evidence_rank(e: Strict)
 }
 
 fn ranking_dimension_some(d: RankingDimension) -> Optional<RankingDimension> {
