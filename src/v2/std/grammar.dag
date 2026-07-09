@@ -2276,7 +2276,7 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
           }
         _ =>
           outcome_rejected(
-            grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: emitted)
+            grammar_relation_rules_node_malformed_diagnostic(rules: rules)
           )
       }
     }

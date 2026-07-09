@@ -3583,10 +3583,32 @@ fn translate_projection_absent_fold_init(
   }
 }
 
-fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> Outcome<Node> {
+type TranslationRowSelection
+  = TranslationRowSelected
+  | TranslationRowAbsentForNode
+
+fn translate_row_selection_reason_is_row_absent(r: NonEmptyDiagnostics) -> Bool {
+  r.head.reason == ^grammar_relation_production_not_found
+}
+
+fn translate_grammar_relation_row_select(
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<TranslationRowSelection> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
-    f: fn(rules) { grammar_relation_row_for_emitted(rules: rules, emitted: emitted) }
+    f: fn(rules) {
+      match grammar_relation_row_reverse_parse_selection(rules: rules, emitted: emitted) {
+        Accepted { value: _, diagnostics: d } =>
+          Accepted { value: TranslationRowSelected, diagnostics: d }
+        Rejected { diagnostics: r } =>
+          if translate_row_selection_reason_is_row_absent(r: r) {
+            outcome_accepted(TranslationRowAbsentForNode)
+          } else {
+            Rejected { diagnostics: r }
+          }
+      }
+    }
   )
 }
 fn translate_type_expression_tree(
@@ -3608,10 +3630,11 @@ fn translate_type_expression_tree(
       ),
       f: fn(n) {
 
-        match translate_grammar_relation_row_match(target: target, emitted: n) {
-          Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
-          Rejected { diagnostics: _ } =>
+        match translate_grammar_relation_row_select(target: target, emitted: n) {
+          Accepted { value: TranslationRowSelected, diagnostics: _ } => outcome_accepted(n)
+          Accepted { value: TranslationRowAbsentForNode, diagnostics: _ } =>
             translate_type_expression_project(node: n, target: target, projection: projection)
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
         }
       }
     )
@@ -3838,10 +3861,11 @@ fn translate_node_projection_absent(
       ),
       f: fn(raw) {
 
-        match translate_grammar_relation_row_match(target: target, emitted: raw) {
-          Accepted { value: _, diagnostics: _ } => outcome_accepted(raw)
-          Rejected { diagnostics: _ } =>
+        match translate_grammar_relation_row_select(target: target, emitted: raw) {
+          Accepted { value: TranslationRowSelected, diagnostics: _ } => outcome_accepted(raw)
+          Accepted { value: TranslationRowAbsentForNode, diagnostics: _ } =>
             translate_node_projection_absent_fold(node: node, tree: tree, target: target)
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
         }
       }
     )
