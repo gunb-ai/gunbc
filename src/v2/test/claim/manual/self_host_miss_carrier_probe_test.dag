@@ -3,13 +3,14 @@ module v2.test.manual.self_host_miss_carrier_probe
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
 }
-import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust { rust_target_model, rust_value_semantics_carrier_atoms }
 import v2.test.manual.self_host_module_emit_derisk {
   derisk_ingest_for,
   derisk_module_admission,
   src_single_arm_match,
   src_type_decl,
-  src_fn_simple_body
+  src_fn_simple_body,
+  derisk_infer_outcome_for
 }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { any, list_append }
@@ -24,32 +25,24 @@ import v2.std.diagnostic {
   Rejected
 }
 import v2.std.logic { Bool, False, True }
-import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Edge, Node, Symbol, TypeNode }
 import v2.std.text { String }
 
-fn miss_diag_carrier_id(d: Diagnostic) -> Optional<Symbol> {
+fn diag_is_miss_of(d: Diagnostic, sym: Symbol) -> Bool {
   match d.at {
     NodeLocus { anchor: a } =>
       match a.at.kind {
         TypeNode { connective: Atom { identity: id } } =>
-          match d.reason == ^target_use_site_ownership_lookup_miss {
-            True => Present { value: id }
-            False => Absent
-          }
-        _ => Absent
+          (d.reason == ^target_use_site_ownership_lookup_miss) && (id == sym)
+        _ => false
       }
-    PortLocus { anchor: _ } => Absent
-    Textual { file: _, extent: _ } => Absent
+    PortLocus { anchor: _ } => false
+    Textual { file: _, extent: _ } => false
   }
 }
 
 fn diag_list_has_miss_carrier(ds: List<Diagnostic>, sym: Symbol) -> Bool {
-  any(xs: ds, predicate: fn(d) {
-    match miss_diag_carrier_id(d: d) {
-      Present { value: id } => id == sym
-      Absent => false
-    }
-  })
+  any(xs: ds, predicate: fn(d) { diag_is_miss_of(d: d, sym: sym) })
 }
 
 fn probe_miss_carrier_is(src: String, sym: Symbol) -> Bool {
@@ -70,3 +63,92 @@ test fn probe_type_miss_is_unit() -> Bool { probe_miss_carrier_is(src: src_type_
 test fn probe_type_miss_is_On() -> Bool { probe_miss_carrier_is(src: src_type_decl, sym: ^On) }
 test fn probe_fn_miss_is_Flag() -> Bool { probe_miss_carrier_is(src: src_fn_simple_body, sym: ^Flag) }
 test fn probe_fn_miss_is_nullary() -> Bool { probe_miss_carrier_is(src: src_fn_simple_body, sym: ^coproduct_nullary_payload) }
+
+fn head_miss_carrier_is_atom(src: String) -> Bool {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nd } =>
+      match nd.head.at {
+        NodeLocus { anchor: a } =>
+          match a.at.kind {
+            TypeNode { connective: Atom { identity: _ } } => true
+            _ => false
+          }
+        PortLocus { anchor: _ } => false
+        Textual { file: _, extent: _ } => false
+      }
+  }
+}
+
+test fn probe_type_head_carrier_is_atom() -> Bool { head_miss_carrier_is_atom(src: src_type_decl) }
+
+fn head_miss_carrier_in(src: String, candidates: List<Symbol>) -> Bool {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nd } =>
+      match nd.head.at {
+        NodeLocus { anchor: a } =>
+          match a.at.kind {
+            TypeNode { connective: Atom { identity: id } } =>
+              any(xs: candidates, predicate: fn(c) { c == id })
+            _ => false
+          }
+        PortLocus { anchor: _ } => false
+        Textual { file: _, extent: _ } => false
+      }
+  }
+}
+
+test fn probe_type_miss_in_value_carriers() -> Bool {
+  head_miss_carrier_in(src: src_type_decl, candidates: rust_value_semantics_carrier_atoms())
+}
+test fn probe_type_miss_in_more() -> Bool {
+  head_miss_carrier_in(src: src_type_decl, candidates: [^Off, ^unit, ^Unit, ^rust_inhabitant_unit, ^Nullary, ^coproduct_nullary_payload_type_name])
+}
+
+fn tree_has_atom(node: Node, sym: Symbol) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == sym { true } else { tree_has_atom_children(children: node.children, sym: sym) }
+    _ => tree_has_atom_children(children: node.children, sym: sym)
+  }
+}
+fn tree_has_atom_children(children: List<Edge>, sym: Symbol) -> Bool {
+  any(xs: children, predicate: fn(e) {
+    match e { Edge { label: _, target: t } => tree_has_atom(node: t, sym: sym) }
+  })
+}
+
+fn probe_miss_carrier_in_tree(src: String) -> Bool {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nd } =>
+      match nd.head.at {
+        NodeLocus { anchor: a } =>
+          match a.at.kind {
+            TypeNode { connective: Atom { identity: id } } =>
+              match derisk_infer_outcome_for(src: src) {
+                Accepted { value: tree, diagnostics: _ } => tree_has_atom(node: tree.root, sym: id)
+                Rejected { diagnostics: _ } => false
+              }
+            _ => false
+          }
+        PortLocus { anchor: _ } => false
+        Textual { file: _, extent: _ } => false
+      }
+  }
+}
+
+test fn probe_type_miss_carrier_in_tree() -> Bool { probe_miss_carrier_in_tree(src: src_type_decl) }
