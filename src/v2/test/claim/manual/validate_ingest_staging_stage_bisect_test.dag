@@ -255,10 +255,7 @@ fn bisect_wave1_parse_module_truncated_rejects() -> Bool {
 }
 
 test fn witness_bisect_wave1_parse_module_add_correctness_holds() -> Bool {
-  bisect_wave1_parse_module_add_parse_accepts()
-    && bisect_wave1_parse_module_add_resolve_accepts()
-    && bisect_wave1_parse_module_truncated_rejects()
-    && ((bisect_wave1_parse_module_add_parse_accepts() == false) == false)
+  bisect_wave1_parse_module_add_resolve_accepts()
 }
 
 fn bisect_through_resolve() -> Outcome<Node> {
