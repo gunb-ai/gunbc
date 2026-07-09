@@ -2443,7 +2443,9 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
         right: dag_grammar_sequence(
-          left: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_match_arm)),
+          left: dag_grammar_optional(
+            element: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_match_arm))
+          ),
           right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
         )
       )
