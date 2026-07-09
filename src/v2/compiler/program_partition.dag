@@ -106,10 +106,10 @@ fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
   } else {
     match root.kind {
       TypeNode { connective: Conj } =>
-        fold_list(
-          xs: root.children,
-          empty: Absent,
-          cons: fn(acc, edge) {
+        fold(
+          root.children,
+          init: Absent,
+          f: fn(acc, edge) {
             match acc {
               Present { value: _ } => acc
               Absent => partition_semantic_type_search_subtree(root: edge.target)
