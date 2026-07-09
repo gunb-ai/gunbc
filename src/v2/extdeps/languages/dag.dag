@@ -108,6 +108,17 @@ import v2.std.compilers.target_model {
   canonical_operation_equal,
   canonical_operation_from_wire_node,
   canonical_operation_op_add,
+  canonical_operation_op_sub,
+  canonical_operation_op_mul,
+  canonical_operation_op_div,
+  canonical_operation_op_and,
+  canonical_operation_op_or,
+  canonical_operation_op_lt,
+  canonical_operation_op_le,
+  canonical_operation_op_gt,
+  canonical_operation_op_ge,
+  canonical_operation_op_eq,
+  canonical_operation_op_ne,
   target_model_canonical_operation_wire_node,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node,
@@ -331,8 +342,30 @@ fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: Symbol) 
 }
 
 fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcome<CanonicalOperation> {
-  if surface_token == ^dag_token_plus {
+  if surface_token == ^dag_token_or_or {
+    outcome_accepted(canonical_operation_op_or())
+  } else if surface_token == ^dag_token_and_and {
+    outcome_accepted(canonical_operation_op_and())
+  } else if surface_token == ^dag_token_eq_eq {
+    outcome_accepted(canonical_operation_op_eq())
+  } else if surface_token == ^dag_token_neq {
+    outcome_accepted(canonical_operation_op_ne())
+  } else if surface_token == ^dag_token_lt {
+    outcome_accepted(canonical_operation_op_lt())
+  } else if surface_token == ^dag_token_lte {
+    outcome_accepted(canonical_operation_op_le())
+  } else if surface_token == ^dag_token_gt {
+    outcome_accepted(canonical_operation_op_gt())
+  } else if surface_token == ^dag_token_gte {
+    outcome_accepted(canonical_operation_op_ge())
+  } else if surface_token == ^dag_token_plus {
     outcome_accepted(canonical_operation_op_add())
+  } else if surface_token == ^dag_token_minus {
+    outcome_accepted(canonical_operation_op_sub())
+  } else if surface_token == ^dag_token_star {
+    outcome_accepted(canonical_operation_op_mul())
+  } else if surface_token == ^dag_token_slash {
+    outcome_accepted(canonical_operation_op_div())
   } else {
     outcome_rejected(
       dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)
