@@ -543,6 +543,7 @@ fn verdict_is_refused_nature_conflict(v: LadderVerdict, identity: String) -> Boo
 
 fn verdict_is_authored_duplication(v: LadderVerdict, identity: String, site_count: Int) -> Bool {
   match v {
+    RefusedNatureConflict { identity: _ } => false
     AuthoredDuplication { identity: i, lca: _, site_count: n } => (i == identity) && (n == site_count)
     Discharged { identity: _, lca: _, provider_id: _ } => false
     RefusedNoProvider { identity: _, lca: _ } => false

@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String }
 import std.materialization_ladder {
   Frame, FrameKind,
   SharedStateFrame, IsolatedChildrenFrame, UnboundedSiblingsFrame,
-  FrameDemand, DemandNature, PureComputation, FreshEffect,
+  FrameDemand, DemandNature, IdempotentEffect, FreshEffect,
   CacheProvider, CoversIdentities,
   empty_frame_path,
   string_list_contains
@@ -82,7 +82,7 @@ fn job_run_demands(job: Job, fresh_scripts: List<String>) -> List<FrameDemand> {
       nature: if string_list_contains(xs: fresh_scripts, wanted: step_run_script(s: s)) {
         FreshEffect
       } else {
-        PureComputation
+        IdempotentEffect
       }
     })
 }
@@ -105,6 +105,16 @@ fn workflow_scripts_named(w: Workflow, names: List<String>) -> List<String> {
     init: ci_no_identity_strings,
     f: (acc, j) => concat(acc, job_scripts_named(job: j, names: names))
   )
+}
+
+data ci_uses_step_silence_note: String = "Denominator, not silence (the complexity-lens false-clean lesson, operator 2026-07-10): UsesStep actions are foreign computations this gate does NOT analyze — checkout, toolchain setup, cargo cache restore. Producing no demand row for them is a KNOWN blind spot, so it is COUNTED and pinned by the enrolled witness: a new foreign action entering the workflow must consciously bump the pinned count, never slide in unexamined. Dissolve-on: uses-grain demands (each action's cited cache behavior modeled, actions/cache as a provider row), at which point the count returns to zero and the pin becomes a wall. Nature default is the WEAKEST claim: an unrostered run-step is IdempotentEffect (never PureComputation — purity is not provable from an argv string; overclaiming it would let a misdeclared WorldRead be legally memoized). Verdict-identical under the ladder, honest under section 5."
+
+fn job_uses_steps_count(job: Job) -> Int {
+  job.steps |> filter(s => !step_is_run(s: s)) |> count()
+}
+
+fn workflow_uses_steps_count(w: Workflow) -> Int {
+  w.jobs |> fold(init: 0, f: (acc, j) => acc + job_uses_steps_count(job: j))
 }
 
 data ci_cost_floor_exempt_step_names_note: String = "Cost-floor roster BY STEP NAME, resolved to script identities against the live workflow at gate time (never a stale copied string): the two prelude snippets run in every job by construction — plural sites, workflow-isolation LCA — but each is a sub-second environment write whose store-tier discharge would cost more than the recompute it saves. The acceptance is TYPED (AcceptedBelowCostFloor), so the roster is countable and reviewable; an entry here is a claim that the script is below the cost floor, not an escape from the ladder."
