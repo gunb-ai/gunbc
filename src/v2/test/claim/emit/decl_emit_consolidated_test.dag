@@ -7,7 +7,7 @@ import v2.compiler.translate {
 }
 import v2.extdeps.languages.rust {
   rust_inhabitant_atom,
-  rust_decl_enum_derive_binding_for_variants,
+  rust_decl_enum_derive_binding_for_coproduct,
   rust_decl_struct_derive_binding,
   rust_enum_general_decl_productions_only_translation_rules,
   rust_enum_general_decl_structural_target_model,
@@ -36,7 +36,9 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node {
   Conj,
+  Disj,
   Edge,
+  Named,
   Node,
   Positional,
   Symbol,
@@ -109,21 +111,37 @@ fn dc_variant_block(variants: List<Node>) -> Node {
   dc_conj(children: [ dc_pos(target: dc_variant_list(variants: variants)) ])
 }
 
+fn dc_named_edge(name: String, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn dc_coproduct_variant_edge_nullary(name: String) -> Edge {
+  dc_named_edge(name: name, target: dc_conj(children: []))
+}
+
+fn dc_coproduct_enum(variant_edges: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: variant_edges,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
 fn dc_derive_attr(binding: Symbol) -> Node {
   dc_conj(children: [ dc_pos(target: rust_inhabitant_atom(id: binding)) ])
 }
 
-fn dc_enum_nongeneric(name: String, variants: List<Node>) -> Node {
+fn dc_enum_nongeneric(name: String, coproduct: Node, variants: List<Node>) -> Node {
   dc_conj(children: [
-    dc_pos(target: dc_derive_attr(binding: rust_decl_enum_derive_binding_for_variants(variants: variants))),
+    dc_pos(target: dc_derive_attr(binding: rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct))),
     dc_pos(target: dc_atom(s: name)),
     dc_pos(target: dc_variant_block(variants: variants))
   ])
 }
 
-fn dc_enum_generic(name: String, params: List<String>, variants: List<Node>) -> Node {
+fn dc_enum_generic(name: String, coproduct: Node, params: List<String>, variants: List<Node>) -> Node {
   dc_conj(children: [
-    dc_pos(target: dc_derive_attr(binding: rust_decl_enum_derive_binding_for_variants(variants: variants))),
+    dc_pos(target: dc_derive_attr(binding: rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct))),
     dc_pos(target: dc_atom(s: name)),
     dc_pos(target: dc_generic_params(params: params)),
     dc_pos(target: dc_variant_block(variants: variants))

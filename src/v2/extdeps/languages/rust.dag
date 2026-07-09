@@ -2097,26 +2097,22 @@ fn rust_decl_shared_derive_productions() -> List<FormalProduction> {
   ]
 }
 
-fn rust_decl_variant_has_payload(variant: Node) -> Bool {
-  match variant.kind {
+fn rust_coproduct_variant_edge_has_payload(edge: Edge) -> Bool {
+  match edge.target.kind {
     TypeNode { connective: Conj } =>
-      match variant.children {
+      match edge.target.children {
         Empty => false
-        Cons { head: _, tail: rest } =>
-          match rest {
-            Empty => false
-            Cons { head: _, tail: _ } => true
-          }
+        Cons { head: _, tail: _ } => true
       }
     _ => false
   }
 }
 
-fn rust_decl_variants_all_nullary(variants: List<Node>) -> Bool {
+fn rust_coproduct_all_variants_nullary(edges: List<Edge>) -> Bool {
   fold_list(
-    xs: variants,
+    xs: edges,
     empty: true,
-    cons: fn(acc, v) { acc && !rust_decl_variant_has_payload(variant: v) }
+    cons: fn(acc, edge) { acc && !rust_coproduct_variant_edge_has_payload(edge: edge) }
   )
 }
 
@@ -2124,11 +2120,15 @@ fn rust_decl_struct_derive_binding() -> Symbol {
   ^rust_decl_derive_struct_binding
 }
 
-fn rust_decl_enum_derive_binding_for_variants(variants: List<Node>) -> Symbol {
-  if rust_decl_variants_all_nullary(variants: variants) {
-    ^rust_decl_derive_enum_copy_binding
-  } else {
-    ^rust_decl_derive_enum_binding
+fn rust_decl_enum_derive_binding_for_coproduct(coproduct: Node) -> Symbol {
+  match coproduct.kind {
+    TypeNode { connective: Disj } =>
+      if rust_coproduct_all_variants_nullary(edges: coproduct.children) {
+        ^rust_decl_derive_enum_copy_binding
+      } else {
+        ^rust_decl_derive_enum_binding
+      }
+    _ => ^rust_decl_derive_enum_binding
   }
 }
 
@@ -2326,25 +2326,22 @@ fn rust_enum_general_decl_productions_only_translation_rules() -> Node {
 
 fn rust_decl_general_lex_rules() -> LexRuleSet {
   LexRuleSet {
-    rules: list_append(
-      left: [
-        rust_whitespace_trivia_rule(),
-        rust_decl_derive_lex_rule(token_class: ^rust_token_derive_struct, text: rust_struct_derives),
-        rust_decl_derive_lex_rule(token_class: ^rust_token_derive_struct_copy, text: rust_struct_derives_copy),
-        rust_decl_derive_lex_rule(token_class: ^rust_token_derive_enum, text: rust_enum_derives),
-        rust_decl_derive_lex_rule(token_class: ^rust_token_derive_enum_copy, text: rust_enum_derives_copy),
-        rust_lex_rule(token_class: ^rust_token_kw_struct, text: "struct "),
-        rust_lex_rule(token_class: ^rust_token_kw_enum, text: "enum "),
-        rust_lex_rule(token_class: ^rust_token_generic_lt, text: "<"),
-        rust_lex_rule(token_class: ^rust_token_generic_gt, text: ">"),
-        rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
-        rust_lex_rule(token_class: ^rust_token_colon, text: ": "),
-        rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
-        rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
-        rust_ident_lex_rule()
-      ],
-      right: Empty
-    )
+    rules: [
+      rust_whitespace_trivia_rule(),
+      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_struct, text: rust_struct_derives),
+      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_struct_copy, text: rust_struct_derives_copy),
+      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_enum, text: rust_enum_derives),
+      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_enum_copy, text: rust_enum_derives_copy),
+      rust_lex_rule(token_class: ^rust_token_kw_struct, text: "struct "),
+      rust_lex_rule(token_class: ^rust_token_kw_enum, text: "enum "),
+      rust_lex_rule(token_class: ^rust_token_generic_lt, text: "<"),
+      rust_lex_rule(token_class: ^rust_token_generic_gt, text: ">"),
+      rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
+      rust_lex_rule(token_class: ^rust_token_colon, text: ": "),
+      rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
+      rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
+      rust_ident_lex_rule()
+    ]
   }
 }
 
@@ -2608,19 +2605,21 @@ fn rust_coproduct_variant_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
 
 fn rust_enum_decl_surface_from_coproduct(name: Symbol, coproduct: Node) -> Outcome<Node> {
   match coproduct.kind {
-    TypeNode { connective: Disj } =>
+    TypeNode { connective: Disj } => {
+      let derive_binding = rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct)
       bind_outcome(
         o: rust_coproduct_variant_surfaces(edges: coproduct.children),
         f: fn(variants) {
           outcome_accepted(
             value: rust_decl_surface_enum_nongeneric(
               name: name,
-              derive_binding: rust_decl_enum_derive_binding_for_variants(variants: variants),
+              derive_binding: derive_binding,
               variants: variants
             )
           )
         }
       )
+    }
     _ =>
       outcome_rejected(
         d: rust_signature_diagnostic(reason: ^rust_enum_decl_surface_source_not_coproduct, node: coproduct)
@@ -2696,20 +2695,22 @@ fn rust_enum_decl_surface_from_coproduct_generic(
   coproduct: Node
 ) -> Outcome<Node> {
   match coproduct.kind {
-    TypeNode { connective: Disj } =>
+    TypeNode { connective: Disj } => {
+      let derive_binding = rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct)
       bind_outcome(
         o: rust_coproduct_variant_surfaces(edges: coproduct.children),
         f: fn(variants) {
           outcome_accepted(
             value: rust_decl_surface_enum_generic(
               name: name,
-              derive_binding: rust_decl_enum_derive_binding_for_variants(variants: variants),
+              derive_binding: derive_binding,
               params: params,
               variants: variants
             )
           )
         }
       )
+    }
     _ =>
       outcome_rejected(
         d: rust_signature_diagnostic(reason: ^rust_enum_decl_surface_source_not_coproduct, node: coproduct)
