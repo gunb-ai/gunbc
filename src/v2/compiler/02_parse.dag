@@ -66,6 +66,13 @@ import std.algebra { Cons, Empty }
 import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_snoc_item, list_tail, unique }
 import v2.std.text { Char, CharAbsent, CharFound, string_head }
 import v2.std.witness { Holds, Violates, Witness }
+import std.cache_identity { ArtifactKindId, CacheInterfaceId }
+import std.realization { Materialization }
+import v2.std.materialization_carriers {
+  parse_table_memo_artifact_kind,
+  parse_table_memo_provider_id,
+  parse_table_memo_materialization,
+}
 import v2.std.compilers.lexing {
   Lexeme,
   Token,
@@ -163,8 +170,6 @@ type GrammarExprCornerFold {
   nullable: Bool
 }
 
-data parse_table_artifact_kind: Symbol = ^parse_table
-data parse_table_memo_interface: Symbol = ^parse_table_memo
 
 type ParsePositionKey {
   position: Int
@@ -172,8 +177,9 @@ type ParsePositionKey {
 }
 
 type ParseTableRealization {
-  artifact_kind: Symbol
-  interface: Symbol
+  artifact_kind: ArtifactKindId
+  provider_id: CacheInterfaceId
+  materialization: Materialization
   grammar_digest: Hash
   token_stream_digest: Hash
   entries: Map<ParsePositionKey, ParseMemoEntry>
@@ -285,7 +291,8 @@ fn parse_table_memo_stats(table: ParseTable) -> ParseMemoStats {
 fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, ParseMemoEntry>, hits: Int, misses: Int, lookups: Int) -> ParseTable {
   ParseTableRealization {
     artifact_kind: table.artifact_kind,
-    interface: table.interface,
+    provider_id: table.provider_id,
+    materialization: table.materialization,
     grammar_digest: table.grammar_digest,
     token_stream_digest: table.token_stream_digest,
     entries: entries,
@@ -384,8 +391,9 @@ fn parse_table_for_production(
 ) -> ParseTable {
   let analysis = compute_grammar_first_analysis(root: validated.root)
   ParseTableRealization {
-    artifact_kind: parse_table_artifact_kind,
-    interface: parse_table_memo_interface,
+    artifact_kind: parse_table_memo_artifact_kind(),
+    provider_id: parse_table_memo_provider_id(),
+    materialization: parse_table_memo_materialization(),
     grammar_digest: parse_grammar_digest(validated: validated),
     token_stream_digest: parse_token_stream_digest(all_tokens: all_tokens),
     entries: empty_map(),
@@ -399,8 +407,9 @@ fn parse_table_for_production(
 
 fn parse_table_empty() -> ParseTable {
   ParseTableRealization {
-    artifact_kind: parse_table_artifact_kind,
-    interface: parse_table_memo_interface,
+    artifact_kind: parse_table_memo_artifact_kind(),
+    provider_id: parse_table_memo_provider_id(),
+    materialization: parse_table_memo_materialization(),
     grammar_digest: content_hash(n: grammar_empty_node()),
     token_stream_digest: atom_identity_hash(s: ^parse_table_empty_token_stream),
     entries: empty_map(),

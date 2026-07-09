@@ -1,0 +1,76 @@
+module extdeps.realization.compile_stage_memo
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  ContentAddressLookup,
+  OverwriteAllowed,
+  MissThenCreate,
+  StructuredArtifact,
+  InProcess,
+  Never,
+  PerFile,
+  None,
+  InProcessNs,
+  Strong,
+  OperatorObserved,
+  ManualPurge,
+  Repo,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
+  }
+}
+
+data compile_stage_memo_id: CacheInterfaceId = "compile_stage_memo_cache"
+
+data compile_stage_memo_facts: CacheInterfaceCatalogFacts = {
+  identity: compile_stage_memo_id
+  backing_surface: "gunbc-v2-compile-stage-in-process"
+  transport_encoding: CatalogCasContentEncoding
+  key_derivation: {
+
+    key_inputs: ContentAddressed
+    overwritable: true
+    prefix_fallback_allowed: false
+    content_verified_on_read: false
+    visibility_scope: Repo
+    invalidation_triggers: [ManualPurge]
+  }
+  io: {
+    lookup_semantics: ContentAddressLookup
+    write_semantics: OverwriteAllowed
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: InProcess
+    eviction: Never
+    atomicity: PerFile
+    auth: None
+    read_latency: InProcessNs
+    consistency: Strong
+  }
+  evidence: [
+    {
+      field: "locality"
+      evidence: OperatorObserved {
+        note: "scoped to compile_ingest_staging pipeline; drops with the ingest walk — within-run stage memo (v2.std.staging.cached_stage)"
+        observed_at: 0
+      }
+    },
+    {
+      field: "key_derivation"
+      evidence: OperatorObserved {
+        note: "stage input content-addressed at the cached_stage lookup site; miss runs the stage, hit skips recompute"
+        observed_at: 0
+      }
+    },
+  ]
+}

@@ -1,6 +1,12 @@
 module v2.std.staging
 
+import std.cache_identity { CacheInterfaceId }
 import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
+import std.realization { Materialization }
+import v2.std.materialization_carriers {
+  compile_stage_memo_provider_id,
+  compile_stage_memo_materialization,
+}
 
 fn then_outcome<A, B, C>(
   f: fn(A) -> Outcome<B>,
@@ -21,6 +27,18 @@ fn resolve_probe<A, B>(
   match probe {
     Hit { value: hit } => outcome_accepted(value: hit)
     Miss => stage(x)
+  }
+}
+
+type CachedStageRealization {
+  provider_id: CacheInterfaceId
+  materialization: Materialization
+}
+
+fn cached_stage_realization() -> CachedStageRealization {
+  CachedStageRealization {
+    provider_id: compile_stage_memo_provider_id(),
+    materialization: compile_stage_memo_materialization(),
   }
 }
 

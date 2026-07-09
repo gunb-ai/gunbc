@@ -1,0 +1,224 @@
+module v2.std.materialization_carriers
+
+import std.types { List, String }
+import std.cache_identity {
+  CacheInterfaceId,
+  ArtifactKindId,
+  parse_table_artifact_kind,
+}
+import std.realization {
+  Materialization, Memoize,
+  RealizedStep, Placement, LocalInProcess,
+}
+import std.realization_schedule { cost_account_predicted_zero }
+import std.effects { ReadEffect }
+import std.materialization_ladder {
+  Frame, FrameKind, SharedStateFrame, IsolatedChildrenFrame,
+  FrameDemand, DemandNature, PureComputation,
+  CacheProvider, CoversAllComputations,
+  LadderVerdict,
+  materialization_ladder, materialization_ladder_holds,
+  empty_frame_path, no_cost_floor_exemptions, no_cache_providers,
+  verdict_is_accepted_single_recompute,
+  verdict_is_refused_no_provider,
+}
+import extdeps.cache.materialization {
+  CatalogProviderProjection, provider_from_catalog,
+  projected_providers, projection_refusal_count,
+  ProjectedProvider, ProjectionRefused,
+}
+import extdeps.realization.parse_table_memo { parse_table_memo_facts, parse_table_memo_id }
+import extdeps.realization.compile_stage_memo { compile_stage_memo_facts, compile_stage_memo_id }
+
+data v2_compiler_materialization_note: String = "The .dag-substrate demonstration lane (duplicate-work-graph-lens-design.md section 10b): ParseTable and cached_stage are no longer hand-rolled memos beside the ladder — each cites a catalog row, projects a provider via provider_from_catalog (C0), and inhabits std.realization.RealizedStep with the ladder-prescribed Memoize verdict. The parse walk and compile_ingest_staging pipeline share one process frame; demands are single-site AcceptedSingleRecompute today (the memo is prepared-for before multiplicity appears). Dissolve-on: demands derive from the DependencyView and the transport folds into materialize (Half A)."
+
+fn v2_compile_process_frame() -> Frame {
+  Frame { name: "v2-compile-ingest", kind: SharedStateFrame }
+}
+
+fn v2_compile_process_site() -> List<Frame> {
+  [v2_compile_process_frame()]
+}
+
+data parse_table_memo_demand_identity: String = "parse-nonterminal-memo"
+data compile_stage_memo_demand_identity: String = "compile-pipeline-stage"
+
+fn parse_table_memo_demand() -> FrameDemand {
+  FrameDemand {
+    identity: parse_table_memo_demand_identity,
+    site: v2_compile_process_site(),
+    nature: PureComputation
+  }
+}
+
+fn compile_stage_memo_demand() -> FrameDemand {
+  FrameDemand {
+    identity: compile_stage_memo_demand_identity,
+    site: v2_compile_process_site(),
+    nature: PureComputation
+  }
+}
+
+fn v2_compiler_materialization_demands() -> List<FrameDemand> {
+  [parse_table_memo_demand(), compile_stage_memo_demand()]
+}
+
+fn parse_table_memo_projection() -> CatalogProviderProjection {
+  provider_from_catalog(
+    facts: parse_table_memo_facts,
+    scope: v2_compile_process_site(),
+    coverage: CoversAllComputations
+  )
+}
+
+fn compile_stage_memo_projection() -> CatalogProviderProjection {
+  provider_from_catalog(
+    facts: compile_stage_memo_facts,
+    scope: v2_compile_process_site(),
+    coverage: CoversAllComputations
+  )
+}
+
+fn v2_compiler_catalog_projections() -> List<CatalogProviderProjection> {
+  [parse_table_memo_projection(), compile_stage_memo_projection()]
+}
+
+fn v2_compiler_cache_providers() -> List<CacheProvider> {
+  projected_providers(ps: v2_compiler_catalog_projections())
+}
+
+fn v2_compiler_catalog_projection_refusals() -> Int {
+  projection_refusal_count(ps: v2_compiler_catalog_projections())
+}
+
+fn parse_table_memo_provider_id() -> CacheInterfaceId {
+  parse_table_memo_id
+}
+
+fn compile_stage_memo_provider_id() -> CacheInterfaceId {
+  compile_stage_memo_id
+}
+
+fn parse_table_memo_artifact_kind() -> ArtifactKindId {
+  parse_table_artifact_kind
+}
+
+fn v2_compiler_materialization_verdicts() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: v2_compiler_materialization_demands(),
+    providers: v2_compiler_cache_providers(),
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+}
+
+fn v2_compiler_materialization_ladder_holds() -> Bool {
+  materialization_ladder_holds(
+    demands: v2_compiler_materialization_demands(),
+    providers: v2_compiler_cache_providers(),
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+}
+
+fn parse_table_memo_materialization() -> Materialization {
+  Memoize
+}
+
+fn compile_stage_memo_materialization() -> Materialization {
+  Memoize
+}
+
+fn parse_table_realized_step() -> RealizedStep<()> {
+  RealizedStep {
+    shape: ReadEffect,
+    placement: LocalInProcess,
+    materialization: parse_table_memo_materialization(),
+    cost: cost_account_predicted_zero()
+  }
+}
+
+fn compile_stage_realized_step() -> RealizedStep<()> {
+  RealizedStep {
+    shape: ReadEffect,
+    placement: LocalInProcess,
+    materialization: compile_stage_memo_materialization(),
+    cost: cost_account_predicted_zero()
+  }
+}
+
+fn projection_is_projected(p: CatalogProviderProjection) -> Bool {
+  match p {
+    ProjectedProvider { provider: _ } => true
+    ProjectionRefused { interface: _, reason: _ } => false
+  }
+}
+
+fn parse_table_memo_projection_ok() -> Bool {
+  projection_is_projected(p: parse_table_memo_projection())
+}
+
+fn compile_stage_memo_projection_ok() -> Bool {
+  projection_is_projected(p: compile_stage_memo_projection())
+}
+
+fn parse_table_memo_verdict_is_single_recompute() -> Bool {
+  v2_compiler_materialization_verdicts()
+    |> fold(init: false, f: (acc, v) =>
+      acc || verdict_is_accepted_single_recompute(v: v, identity: parse_table_memo_demand_identity)
+    )
+}
+
+fn compile_stage_memo_verdict_is_single_recompute() -> Bool {
+  v2_compiler_materialization_verdicts()
+    |> fold(init: false, f: (acc, v) =>
+      acc || verdict_is_accepted_single_recompute(v: v, identity: compile_stage_memo_demand_identity)
+    )
+}
+
+fn parse_table_memo_plural_demands() -> List<FrameDemand> {
+  [
+    parse_table_memo_demand(),
+    FrameDemand {
+      identity: parse_table_memo_demand_identity,
+      site: [
+        Frame { name: "sibling-compile-run", kind: IsolatedChildrenFrame },
+        v2_compile_process_frame()
+      ],
+      nature: PureComputation
+    }
+  ]
+}
+
+fn parse_table_memo_plural_verdicts(providers: List<CacheProvider>) -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: parse_table_memo_plural_demands(),
+    providers: providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+}
+
+fn parse_table_memo_plural_holds_with_provider() -> Bool {
+  materialization_ladder_holds(
+    demands: parse_table_memo_plural_demands(),
+    providers: v2_compiler_cache_providers(),
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+}
+
+fn parse_table_memo_plural_holds_without_provider() -> Bool {
+  materialization_ladder_holds(
+    demands: parse_table_memo_plural_demands(),
+    providers: no_cache_providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+}
+
+fn parse_table_memo_plural_refused_without_provider_count() -> Int {
+  parse_table_memo_plural_verdicts(providers: no_cache_providers)
+    |> fold(init: 0, f: (acc, v) =>
+      if verdict_is_refused_no_provider(v: v, identity: parse_table_memo_demand_identity) {
+        acc + 1
+      } else {
+        acc
+      }
+    )
+}
