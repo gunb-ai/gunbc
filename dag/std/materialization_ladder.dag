@@ -281,7 +281,8 @@ fn group_nature(group: List<FrameDemand>) -> DemandNature {
 
 fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CacheProvider>) -> LadderVerdict {
   let content_covering = providers |> filter(p =>
-    provider_covers_identity(p: p, identity: identity)
+    provider_is_store_tier(p: p)
+      && provider_covers_identity(p: p, identity: identity)
       && frame_path_is_prefix(prefix: p.scope, path: lca)
       && provider_is_content_keyed(p: p)
   )
@@ -289,14 +290,17 @@ fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CachePr
     Present { value: chosen } => Discharged { identity: identity, lca: lca, provider_id: chosen.id }
     Absent => {
       let scope_covering = providers |> filter(p =>
-        provider_covers_identity(p: p, identity: identity)
+        provider_is_store_tier(p: p)
+          && provider_covers_identity(p: p, identity: identity)
           && frame_path_is_prefix(prefix: p.scope, path: lca)
       )
       match scope_covering.first() {
         Present { value: existence_one } =>
           RefusedExistenceKeyed { identity: identity, lca: lca, provider_id: existence_one.id }
         Absent => {
-          let narrow = providers |> filter(p => provider_covers_identity(p: p, identity: identity))
+          let narrow = providers |> filter(p =>
+            provider_is_store_tier(p: p) && provider_covers_identity(p: p, identity: identity)
+          )
           match narrow.first() {
             Present { value: narrow_one } =>
               RefusedScopeTooNarrow { identity: identity, lca: lca, provider_id: narrow_one.id }
@@ -591,6 +595,218 @@ fn verdict_is_dead_computation(v: LadderVerdict, identity: String) -> Bool {
     AcceptedSingleRecompute { identity: _ } => false
     DeadComputation { identity: i } => i == identity
     AcceptedEffectIsTheUse { identity: _ } => false
+  }
+}
+
+data value_tier_note: String = "The VALUE tier: v1.compiler.ownership refactored onto materialization (operator-directed first consolidation, 2026-07-09). A value binding inside one shared-state frame is the smallest materialization site, and the ownership decision IS provider selection: single take = move the value (no provider); plural readonly access = discharge by ReferenceTier (point at it — 'if a value is readonly and in context, provide a reference; do not destroy the memory to build a cache'); a take alongside borrows = the PRICED demotion to CopyTier (v1: excluded from build_movable_set, the emitter clones — the #6249 clone-fallback made explicit and priced; v1's FoldAccUnwrapProof is the escape that re-earns the move for fold accumulators); plural takes = affine refusal (v1 SharedError — a double-consume is a modeling bug, not a caching opportunity). Faithful to v1's THREE distinct plurality readings: take_count mirrors semantic_consumer_count (Consumed only — the affine axis); value_access_plurality mirrors binding_fan_out (CarryAccess/Threaded excluded — the reference-eligibility axis, the reduce-spine exclusion); borrow_count mirrors whole_value_borrow_count (Read + Carry, NOT Project — the movability axis). Witnesses assert cell-by-cell agreement with make_decision / build_movable_set / build_read_only_params semantics; corpus-level equivalence against live v1 ownership folds is the C4 receipt."
+
+type AccessMode
+  = ReadAccess
+  | ConsumeAccess
+  | CarryAccess
+  | ProjectAccess
+
+type ValueConsumerEdge {
+  access: AccessMode
+  site: String
+}
+
+type ValueUsage {
+  identity: String
+  consumers: List<ValueConsumerEdge>
+}
+
+type ValueMaterialization
+  = ValueDead { identity: String }
+  | ValueMoved { identity: String }
+  | ValueSharedByReference { identity: String, provider_id: String, reader_count: Int }
+  | ValueDemotedToCopy { identity: String, copies: Int, provider_id: String }
+  | ValueRefusedAffine { identity: String, take_count: Int }
+  | ValueRefusedNoCarrierProvider { identity: String, needed: ProviderTier }
+
+fn access_is_consume(a: AccessMode) -> Bool {
+  match a {
+    ReadAccess => false
+    ConsumeAccess => true
+    CarryAccess => false
+    ProjectAccess => false
+  }
+}
+
+fn access_is_carry(a: AccessMode) -> Bool {
+  match a {
+    ReadAccess => false
+    ConsumeAccess => false
+    CarryAccess => true
+    ProjectAccess => false
+  }
+}
+
+fn access_is_whole_value_borrow(a: AccessMode) -> Bool {
+  match a {
+    ReadAccess => true
+    ConsumeAccess => false
+    CarryAccess => true
+    ProjectAccess => false
+  }
+}
+
+fn value_take_count(usage: ValueUsage) -> Int {
+  usage.consumers |> filter(c => access_is_consume(a: c.access)) |> count
+}
+
+fn value_access_plurality(usage: ValueUsage) -> Int {
+  usage.consumers |> filter(c => !access_is_carry(a: c.access)) |> count
+}
+
+fn value_borrow_count(usage: ValueUsage) -> Int {
+  usage.consumers |> filter(c => access_is_whole_value_borrow(a: c.access)) |> count
+}
+
+fn first_provider_where(providers: List<CacheProvider>, wanted: fn(CacheProvider) -> Bool) -> CacheProvider? {
+  let hits = providers |> filter(p => wanted(p))
+  hits.first()
+}
+
+fn value_materialization(usage: ValueUsage, providers: List<CacheProvider>) -> ValueMaterialization {
+  let takes = value_take_count(usage: usage)
+  let plurality = value_access_plurality(usage: usage)
+  let carries = usage.consumers |> filter(c => access_is_carry(a: c.access)) |> count
+  if (plurality == 0) && (carries == 0) {
+    ValueDead { identity: usage.identity }
+  } else if takes > 1 {
+    ValueRefusedAffine { identity: usage.identity, take_count: takes }
+  } else if takes == 1 {
+    if value_borrow_count(usage: usage) == 0 {
+      ValueMoved { identity: usage.identity }
+    } else {
+      match first_provider_where(providers: providers, wanted: p => provider_is_copy_tier(p: p)) {
+        Present { value: copier } =>
+          ValueDemotedToCopy { identity: usage.identity, copies: 1, provider_id: copier.id }
+        Absent => ValueRefusedNoCarrierProvider { identity: usage.identity, needed: CopyTier }
+      }
+    }
+  } else {
+    match first_provider_where(providers: providers, wanted: p => provider_is_reference_tier(p: p)) {
+      Present { value: referencer } =>
+        ValueSharedByReference {
+          identity: usage.identity,
+          provider_id: referencer.id,
+          reader_count: plurality
+        }
+      Absent => ValueRefusedNoCarrierProvider { identity: usage.identity, needed: ReferenceTier }
+    }
+  }
+}
+
+fn value_materialization_is_green(v: ValueMaterialization) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => true
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => true
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => true
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn value_verdict_is_moved(v: ValueMaterialization, identity: String) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: i } => i == identity
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn value_verdict_is_shared_by_reference(v: ValueMaterialization, identity: String, provider_id: String, reader_count: Int) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: i, provider_id: p, reader_count: n } =>
+      (i == identity) && (p == provider_id) && (n == reader_count)
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn value_verdict_is_demoted_to_copy(v: ValueMaterialization, identity: String, copies: Int) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: i, copies: n, provider_id: _ } => (i == identity) && (n == copies)
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn value_verdict_is_refused_affine(v: ValueMaterialization, identity: String, take_count: Int) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: i, take_count: n } => (i == identity) && (n == take_count)
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn value_verdict_is_refused_needing_reference(v: ValueMaterialization, identity: String) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: i, needed: t } =>
+      (i == identity) && provider_tier_is_reference_kind(t: t)
+  }
+}
+
+fn value_verdict_is_refused_needing_copy(v: ValueMaterialization, identity: String) -> Bool {
+  match v {
+    ValueDead { identity: _ } => false
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: i, needed: t } =>
+      (i == identity) && provider_tier_is_copy_kind(t: t)
+  }
+}
+
+fn value_verdict_is_dead(v: ValueMaterialization, identity: String) -> Bool {
+  match v {
+    ValueDead { identity: i } => i == identity
+    ValueMoved { identity: _ } => false
+    ValueSharedByReference { identity: _, provider_id: _, reader_count: _ } => false
+    ValueDemotedToCopy { identity: _, copies: _, provider_id: _ } => false
+    ValueRefusedAffine { identity: _, take_count: _ } => false
+    ValueRefusedNoCarrierProvider { identity: _, needed: _ } => false
+  }
+}
+
+fn provider_tier_is_reference_kind(t: ProviderTier) -> Bool {
+  match t {
+    ReferenceTier => true
+    CopyTier => false
+    MemoTier { keying: _ } => false
+    ArtifactTier { keying: _ } => false
+    CasTier { keying: _ } => false
+  }
+}
+
+fn provider_tier_is_copy_kind(t: ProviderTier) -> Bool {
+  match t {
+    ReferenceTier => false
+    CopyTier => true
+    MemoTier { keying: _ } => false
+    ArtifactTier { keying: _ } => false
+    CasTier { keying: _ } => false
   }
 }
 
