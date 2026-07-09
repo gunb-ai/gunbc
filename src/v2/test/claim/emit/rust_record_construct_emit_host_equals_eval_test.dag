@@ -1,6 +1,5 @@
 module v2.test.emit.rust_record_construct_emit_host_equals_eval
 
-import v2.compiler.emit { emit }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -9,10 +8,8 @@ import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  eval,
   eval_context_with_semantics,
-  eval_test_claim_subject,
-  inputs_root_only
+  eval_test_claim_subject
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
@@ -23,7 +20,6 @@ import v2.extdeps.languages.dag {
 }
 import v2.extdeps.languages.rust {
   rust_emit_host_runtime_primitive_type_node,
-  rust_rec_nine_source_text,
   rust_rec_nine_target_model_staging,
   rust_rec_nine_wrong_field_target_model_staging
 }
@@ -361,28 +357,6 @@ fn rust_rec_nine_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> 
     Fail { actual: _, falsification: _ } => true
     Pass => false
     Deferred { actual: _, diagnostic: _ } => false
-  }
-}
-
-fn rust_rec_nine_emit_accepts() -> Bool {
-  match emit(
-    tree: rust_rec_nine_eval_inferred_tree(),
-    target: rust_rec_nine_target_model_staging()
-  ) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_rec_nine_source_text) && (d == None)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn rust_rec_nine_eval_expected_accepts() -> Bool {
-  match eval(
-    tree: rust_rec_nine_eval_inferred_tree(),
-    interpretation: rust_rec_nine_eval_interpretation(),
-    inputs: inputs_root_only(root: rust_rec_nine_eval_subgraph_node)
-  ) {
-    Accepted { value: _, diagnostics: None } => true
-    Rejected { diagnostics: _ } => false
   }
 }
 
