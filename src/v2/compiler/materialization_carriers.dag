@@ -31,7 +31,7 @@ import extdeps.cache.materialization {
 }
 import extdeps.realization.parse_table_memo { parse_table_memo_facts, parse_table_memo_id }
 import extdeps.realization.compile_stage_memo { compile_stage_memo_facts, compile_stage_memo_id }
-import v2.std.staging { cached_stage, CacheProbe }
+import v2.std.staging { CacheProbe, resolve_probe }
 import v2.std.diagnostic { Outcome }
 
 data v2_compiler_materialization_note: String = "The .dag-substrate demonstration lane (duplicate-work-graph-lens-design.md section 10b): ParseTable and cached_stage memoization flows through the governed carrier door — Memoize verdict consumed (non-Memoize refuses store), ContentKeyed law at parse_table_subject (grammar_digest × token_stream_digest × position × production). std.realization.reconcile-as-lookup-path is the following increment (no v2 runtime dispatch yet). In-process memo cannot span runs: RefusedScopeTooNarrow at IsolatedChildren LCA; persistent-tier discharge belongs to resolved_graph_cache-class rows. Collapsing plural sites into one process frame → AuthoredDuplication (rule 1). Dissolve-on: demands derive from the DependencyView and the transport folds into materialize (Half A)."
@@ -158,7 +158,7 @@ fn cached_stage_governed<A, B>(
 ) -> fn(A) -> Outcome<B> {
   fn(x) {
     match materialization_allows_memo_store(m: realization.materialization) {
-      true => cached_stage(lookup: lookup, stage: stage)(x)
+      true => resolve_probe(probe: lookup(x), stage: stage, x: x)
       false => stage(x)
     }
   }
