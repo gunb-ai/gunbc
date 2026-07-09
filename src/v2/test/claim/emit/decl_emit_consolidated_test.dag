@@ -35,6 +35,7 @@ import v2.std.diagnostic {
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node {
+  Atom,
   Conj,
   Disj,
   Edge,
@@ -118,6 +119,10 @@ fn dc_named_edge(name: String, target: Node) -> Edge {
 fn dc_coproduct_variant_edge_nullary(name: String) -> Edge {
   dc_named_edge(name: name, target: dc_conj(children: []))
 }
+
+data dc_empty_variant_edges: List<Edge> = []
+
+data dc_empty_variant_nodes: List<Node> = []
 
 fn dc_coproduct_enum(variant_edges: List<Edge>) -> Node {
   Node {
@@ -231,13 +236,37 @@ fn dc_struct_refused(emitted: Node) -> Bool {
   }
 }
 
+fn dc_atom_type(t: String) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: t } }, children: [], occurrence_id: SyntheticOccurrence }
+}
+
+fn dc_coproduct_field_edge(name: String, t: String) -> Edge {
+  dc_named_edge(name: name, target: dc_atom_type(t: t))
+}
+
+fn dc_coproduct_variant_edge_payload(name: String, fields: List<Edge>) -> Edge {
+  dc_named_edge(name: name, target: dc_conj(children: fields))
+}
+
 fn dc_bool_emitted() -> Node {
-  dc_enum_nongeneric(name: "Bool", variants: [ dc_variant_nullary(name: "True"), dc_variant_nullary(name: "False") ])
+  dc_enum_nongeneric(
+    name: "Bool",
+    coproduct: dc_coproduct_enum(variant_edges: [
+      dc_coproduct_variant_edge_nullary(name: "True"),
+      dc_coproduct_variant_edge_nullary(name: "False")
+    ]),
+    variants: [ dc_variant_nullary(name: "True"), dc_variant_nullary(name: "False") ]
+  )
 }
 
 fn dc_execmode_emitted() -> Node {
   dc_enum_nongeneric(
     name: "ExecutionMode",
+    coproduct: dc_coproduct_enum(variant_edges: [
+      dc_coproduct_variant_edge_nullary(name: "Hermetic"),
+      dc_coproduct_variant_edge_nullary(name: "Wet"),
+      dc_coproduct_variant_edge_nullary(name: "Record")
+    ]),
     variants: [ dc_variant_nullary(name: "Hermetic"), dc_variant_nullary(name: "Wet"), dc_variant_nullary(name: "Record") ]
   )
 }
@@ -245,6 +274,15 @@ fn dc_execmode_emitted() -> Node {
 fn dc_artifactkind_emitted() -> Node {
   dc_enum_nongeneric(
     name: "ArtifactKind",
+    coproduct: dc_coproduct_enum(variant_edges: [
+      dc_coproduct_variant_edge_nullary(name: "SourceFile"),
+      dc_coproduct_variant_edge_nullary(name: "GeneratedSource"),
+      dc_coproduct_variant_edge_nullary(name: "TestClaimArtifact"),
+      dc_coproduct_variant_edge_nullary(name: "ProjectionArtifact"),
+      dc_coproduct_variant_edge_nullary(name: "Stage0Candidate"),
+      dc_coproduct_variant_edge_nullary(name: "CorePackage"),
+      dc_coproduct_variant_edge_nullary(name: "WitnessBundle")
+    ]),
     variants: [
       dc_variant_nullary(name: "SourceFile"),
       dc_variant_nullary(name: "GeneratedSource"),
@@ -260,6 +298,10 @@ fn dc_artifactkind_emitted() -> Node {
 fn dc_witness_emitted() -> Node {
   dc_enum_generic(
     name: "Witness",
+    coproduct: dc_coproduct_enum(variant_edges: [
+      dc_coproduct_variant_edge_payload(name: "Holds", fields: [ dc_coproduct_field_edge(name: "value", t: "C") ]),
+      dc_coproduct_variant_edge_payload(name: "Violates", fields: [ dc_coproduct_field_edge(name: "diagnostic", t: "Diagnostic") ])
+    ]),
     params: ["C"],
     variants: [
       dc_variant_payload(name: "Holds", fields: [ dc_field(name: "value", t: "C") ]),
@@ -297,7 +339,11 @@ fn dc_empty_record_emitted() -> Node {
 }
 
 fn dc_empty_enum_emitted() -> Node {
-  dc_enum_nongeneric(name: "Never", variants: [])
+  dc_enum_nongeneric(
+    name: "Never",
+    coproduct: dc_coproduct_enum(variant_edges: dc_empty_variant_edges),
+    variants: dc_empty_variant_nodes
+  )
 }
 
 type DeclEmitConstructRow {

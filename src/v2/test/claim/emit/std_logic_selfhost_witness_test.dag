@@ -6,7 +6,7 @@ import v2.compiler.translate {
   serialize_concrete_syntax_tokens_to_source
 }
 import v2.extdeps.languages.rust {
-  rust_decl_enum_derive_binding_for_variants,
+  rust_decl_enum_derive_binding_for_coproduct,
   rust_enum_general_decl_productions_only_translation_rules,
   rust_enum_general_decl_structural_target_model,
   rust_inhabitant_atom
@@ -17,7 +17,7 @@ import v2.std.collection { List }
 import v2.std.compilers.target_model { concrete_syntax_token_list_from_node }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
 import v2.std.logic { Bool }
-import v2.std.node { Conj, Edge, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Conj, Disj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.text { String }
 
 data std_logic_bool_enum_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
@@ -50,13 +50,25 @@ fn sl_variant_block(variants: List<Node>) -> Node {
   sl_conj(children: [ sl_pos(target: sl_variant_list(variants: variants)) ])
 }
 
+fn sl_named_edge(name: String, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn sl_coproduct_enum(variant_edges: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: variant_edges,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
 fn sl_derive_attr(binding: Symbol) -> Node {
   sl_conj(children: [ sl_pos(target: rust_inhabitant_atom(id: binding)) ])
 }
 
-fn sl_enum_nongeneric(name: String, variants: List<Node>) -> Node {
+fn sl_enum_nongeneric(name: String, coproduct: Node, variants: List<Node>) -> Node {
   sl_conj(children: [
-    sl_pos(target: sl_derive_attr(binding: rust_decl_enum_derive_binding_for_variants(variants: variants))),
+    sl_pos(target: sl_derive_attr(binding: rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct))),
     sl_pos(target: sl_atom(s: name)),
     sl_pos(target: sl_variant_block(variants: variants))
   ])
@@ -65,6 +77,10 @@ fn sl_enum_nongeneric(name: String, variants: List<Node>) -> Node {
 fn std_logic_bool_decl() -> Node {
   sl_enum_nongeneric(
     name: "Bool",
+    coproduct: sl_coproduct_enum(variant_edges: [
+      sl_named_edge(name: "True", target: sl_conj(children: [])),
+      sl_named_edge(name: "False", target: sl_conj(children: []))
+    ]),
     variants: [ sl_variant_nullary(name: "True"), sl_variant_nullary(name: "False") ]
   )
 }
