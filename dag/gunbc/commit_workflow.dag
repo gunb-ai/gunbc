@@ -124,6 +124,20 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/parse/parse_table_memo_governed_witness_test.dag",
+      check_fns: [
+        "parse_table_memo_governed_store_refused_when_recompute",
+        "parse_table_memo_bypass_store_reds",
+        "parse_table_memo_governed_memoize_allows_store",
+        "parse_table_memo_warm_equals_cold_content_hash"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "dag/test/claim/ci_materialization_witness_test.dag",
       check_fns: [
         "ci_ladder_holds_on_live_workflow",

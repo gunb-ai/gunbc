@@ -2836,11 +2836,28 @@ fn witness_violates(diagnostic: Value, ctx: &InterpContext) -> Value {
     }
 }
 
+fn parse_table_materialization_allows_memo(ctx: &InterpContext, table: &Value) -> bool {
+    let table_fields = match table {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+        _ => return false,
+    };
+    let Some(mat) = ctx.field(table_fields, "materialization") else {
+        return false;
+    };
+    match mat {
+        Value::Variant { variant_name, .. } => resolve_sym(*variant_name) == "Memoize",
+        _ => false,
+    }
+}
+
 fn parse_table_memo_scope_and_key(
     ctx: &InterpContext,
     table: &Value,
     key: &Value,
 ) -> Option<(String, String, i64, Symbol)> {
+    if !parse_table_materialization_allows_memo(ctx, table) {
+        return None;
+    }
     let table_fields = match table {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
         _ => return None,

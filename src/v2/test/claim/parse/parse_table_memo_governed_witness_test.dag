@@ -1,0 +1,143 @@
+module v2.test.parse.parse_table_memo_governed_witness
+
+import v2.compiler.parse {
+  ParseTable,
+  ParseTableRealization,
+  ParsePositionKey,
+  ParseMemoEntry,
+  ParseMemoRejected,
+  parse_table_empty,
+  parse_table_insert,
+  parse_table_lookup,
+  parse_table_subject,
+}
+import v2.compiler.materialization_carriers { materialization_allows_memo_store }
+import v2.test.parse.parse_table_memo_amortization {
+  witness_parse_table_memo_hit_path_content_hash_stable,
+}
+import v2.std.collection { Absent, Present, map_get, map_insert, empty_map }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import std.realization { Materialization, Memoize, Recompute }
+import v2.std.witness { Holds, Violates }
+
+data parse_table_memo_governed_witness_note: String = "Governed memo door receipts: Memoize verdict consumed at parse_table_lookup/insert (non-Memoize refuses store); warm==cold content-hash purity on the bisect fixture; RED on bypass insert (Recompute carrier with hand-populated entries). reconcile-as-lookup-path is the next increment — no v2 runtime dispatch in this PR."
+
+fn governed_witness_probe_key() -> ParsePositionKey {
+  ParsePositionKey { position: 0, production: ^governed_witness_probe_prod }
+}
+
+fn governed_witness_dummy_entry() -> ParseMemoEntry {
+  ParseMemoRejected { diagnostics: [] }
+}
+
+fn parse_table_with_materialization(m: Materialization) -> ParseTable {
+  let base = parse_table_empty()
+  ParseTableRealization {
+    artifact_kind: base.artifact_kind,
+    provider_id: base.provider_id,
+    materialization: m,
+    grammar_digest: base.grammar_digest,
+    token_stream_digest: base.token_stream_digest,
+    entries: base.entries,
+    memo_hits: base.memo_hits,
+    memo_misses: base.memo_misses,
+    memo_lookup_calls: base.memo_lookup_calls,
+    nullable_set: base.nullable_set,
+    first_rows: base.first_rows
+  }
+}
+
+fn parse_table_entries_contain_key(table: ParseTable, key: ParsePositionKey) -> Bool {
+  match map_get(m: table.entries, key: key) {
+    Accepted { value: Present { value: _ } } => true
+    Accepted { value: Absent } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_governed_insert_refused_when_recompute() -> Bool {
+  let table = parse_table_with_materialization(m: Recompute)
+  let key = governed_witness_probe_key()
+  let after = parse_table_insert(
+    table: table,
+    key: key,
+    value: governed_witness_dummy_entry()
+  )
+  !parse_table_entries_contain_key(table: after, key: key)
+}
+
+fn witness_governed_lookup_refused_when_recompute() -> Bool {
+  let table = parse_table_with_materialization(m: Recompute)
+  match parse_table_lookup(table: table, key: governed_witness_probe_key()) {
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } => false
+  }
+}
+
+fn parse_table_memo_store_well_formed_at(table: ParseTable, key: ParsePositionKey) -> Bool {
+  match materialization_allows_memo_store(m: table.materialization) {
+    true => true
+    false => !parse_table_entries_contain_key(table: table, key: key)
+  }
+}
+
+fn witness_bypass_store_reds_non_memoize_carrier() -> Bool {
+  let key = governed_witness_probe_key()
+  let base = parse_table_with_materialization(m: Recompute)
+  let bypass = ParseTableRealization {
+    artifact_kind: base.artifact_kind,
+    provider_id: base.provider_id,
+    materialization: Recompute,
+    grammar_digest: base.grammar_digest,
+    token_stream_digest: base.token_stream_digest,
+    entries: map_insert(
+      m: empty_map(),
+      key: key,
+      value: governed_witness_dummy_entry()
+    ),
+    memo_hits: base.memo_hits,
+    memo_misses: base.memo_misses,
+    memo_lookup_calls: base.memo_lookup_calls,
+    nullable_set: base.nullable_set,
+    first_rows: base.first_rows
+  }
+  !parse_table_memo_store_well_formed_at(table: bypass, key: key)
+}
+
+fn witness_memoize_carrier_allows_store() -> Bool {
+  let table = parse_table_with_materialization(m: Memoize)
+  let key = governed_witness_probe_key()
+  let after = parse_table_insert(
+    table: table,
+    key: key,
+    value: governed_witness_dummy_entry()
+  )
+  parse_table_entries_contain_key(table: after, key: key)
+}
+
+fn witness_content_key_subject_stable() -> Bool {
+  let table = parse_table_with_materialization(m: Memoize)
+  let key = governed_witness_probe_key()
+  let a = parse_table_subject(table: table, key: key)
+  let b = parse_table_subject(table: table, key: key)
+  a == b
+}
+
+test fn parse_table_memo_governed_store_refused_when_recompute() -> Bool {
+  witness_governed_insert_refused_when_recompute()
+    && witness_governed_lookup_refused_when_recompute()
+}
+
+test fn parse_table_memo_bypass_store_reds() -> Bool {
+  witness_bypass_store_reds_non_memoize_carrier()
+}
+
+test fn parse_table_memo_governed_memoize_allows_store() -> Bool {
+  witness_memoize_carrier_allows_store()
+    && witness_content_key_subject_stable()
+}
+
+test fn parse_table_memo_warm_equals_cold_content_hash() -> Bool {
+  witness_parse_table_memo_hit_path_content_hash_stable()
+}

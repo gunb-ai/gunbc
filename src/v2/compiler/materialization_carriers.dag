@@ -7,7 +7,7 @@ import std.cache_identity {
   parse_table_artifact_kind,
 }
 import std.realization {
-  Materialization, Memoize,
+  Materialization, Memoize, Recompute, Share,
   RealizedStep, Placement, LocalInProcess,
 }
 import std.measure { Nano }
@@ -31,8 +31,18 @@ import extdeps.cache.materialization {
 }
 import extdeps.realization.parse_table_memo { parse_table_memo_facts, parse_table_memo_id }
 import extdeps.realization.compile_stage_memo { compile_stage_memo_facts, compile_stage_memo_id }
+import v2.std.staging { cached_stage, CacheProbe }
+import v2.std.diagnostic { Outcome }
 
-data v2_compiler_materialization_note: String = "The .dag-substrate demonstration lane (duplicate-work-graph-lens-design.md section 10b): ParseTable and cached_stage are MARKED on the ladder — catalog identity, Memoize verdict, RealizedStep inhabitation, provider rows via provider_from_catalog (C0). parse_table_lookup/insert still run on the hand Map; reconcile-as-the-lookup-path is the next increment. In-process memo cannot span runs: an InProcess MemoTier (ScopeExit at the process frame) cannot discharge a cross-run obligation at an IsolatedChildren LCA — RefusedScopeTooNarrow is the typed lesson; persistent-tier discharge belongs to resolved_graph_cache-class rows. Collapsing both plural sites into one process frame would flip to AuthoredDuplication (rule 1) — within-process legitimacy is Share at the value/eval tier, not a store-tier discharge. Dissolve-on: demands derive from the DependencyView and the transport folds into materialize (Half A)."
+data v2_compiler_materialization_note: String = "The .dag-substrate demonstration lane (duplicate-work-graph-lens-design.md section 10b): ParseTable and cached_stage memoization flows through the governed carrier door — Memoize verdict consumed (non-Memoize refuses store), ContentKeyed law at parse_table_subject (grammar_digest × token_stream_digest × position × production). std.realization.reconcile-as-lookup-path is the following increment (no v2 runtime dispatch yet). In-process memo cannot span runs: RefusedScopeTooNarrow at IsolatedChildren LCA; persistent-tier discharge belongs to resolved_graph_cache-class rows. Collapsing plural sites into one process frame → AuthoredDuplication (rule 1). Dissolve-on: demands derive from the DependencyView and the transport folds into materialize (Half A)."
+
+fn materialization_allows_memo_store(m: Materialization) -> Bool {
+  match m {
+    Memoize => true
+    Recompute => false
+    Share => false
+  }
+}
 
 fn v2_compile_process_frame() -> Frame {
   Frame { name: "v2-compile-ingest", kind: SharedStateFrame }
@@ -138,6 +148,19 @@ fn cached_stage_realization() -> CachedStageRealization {
   CachedStageRealization {
     provider_id: compile_stage_memo_provider_id(),
     materialization: compile_stage_memo_materialization(),
+  }
+}
+
+fn cached_stage_governed<A, B>(
+  realization: CachedStageRealization,
+  lookup: fn(A) -> CacheProbe<B>,
+  stage: fn(A) -> Outcome<B>
+) -> fn(A) -> Outcome<B> {
+  fn(x) {
+    match materialization_allows_memo_store(m: realization.materialization) {
+      true => cached_stage(lookup: lookup, stage: stage)(x)
+      false => stage(x)
+    }
   }
 }
 
