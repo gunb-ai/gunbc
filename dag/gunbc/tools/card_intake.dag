@@ -2,6 +2,8 @@ module gunbc.tools.card_intake
 
 import std.types { FilePath, NonEmptyStr }
 import std.credentials { CredentialSource, EnvVar }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.llm.anthropic {
   AnthropicChatMessage,
   UserMessage,
@@ -28,6 +30,15 @@ data tcgplayer_store_key_source: CredentialSource = EnvVar { name: "TCGPLAYER_ST
 data default_recognition_model: String = "claude-sonnet-4-6-20250929"
 
 data default_high_value_threshold_usd: Float = 50.0
+
+data tcgplayer_money_measure_grounding_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.tools.card_intake",
+    decl_name: "default_high_value_threshold_usd",
+    field: WholeDeclaration
+  }
+}
 
 data recognition_instruction: String = "Identify the single trading card in this photo. Reply with only the exact printed card name, nothing else. If no card is clearly identifiable, reply with only the word UNKNOWN."
 

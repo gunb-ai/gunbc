@@ -1,6 +1,8 @@
 module extdeps.tcgplayer.pricing
 
 import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
@@ -20,6 +22,15 @@ type ProductPriceRow {
   marketPrice: Float?
   directLowPrice: Float?
   subTypeName: String?
+}
+
+data tcgplayer_pricing_money_measure_grounding_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.tcgplayer.pricing",
+    decl_name: "ProductPriceRow",
+    field: WholeDeclaration
+  }
 }
 
 type ProductPricesResponse {
