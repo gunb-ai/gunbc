@@ -14,6 +14,7 @@ import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
+import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size, ByteSize, byte_size_count, measure_scale_fraction_floor }
 import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width, int_min }
 import gunbc.fleet_container {
@@ -245,9 +246,9 @@ fn corpus_source_roots() -> List<String> {
 
 data gunbc_ci_corpus_discovery_spawn_width_cap_note: String = "Discovery-flip corpus batch spawn cap (run 28999086030 receipt): the tree-wide discovery corpus with SelectionApplied OOM-killed exit 137 @ spawn_width=2 on the 24GiB live slot (24349MiB VmRSS) while gate workloads fit at width=2 against gunbc_ci_floor_per_shard_peak_max. The discovery batch pins spawn_width_cap to 1 so its heavier per-shard resolve footprint cannot stack; the executor's global spawn_width from gunbc_ci_plan_spawn_width is unchanged for gate batches. Dissolve-on: resolver graph-major shrinks discovery per-shard below the gate envelope and the cap can lift back to the tree-derived width."
 
-fn gunbc_ci_corpus_discovery_spawn_width_cap(spec: CiSpec) -> Int {
+fn gunbc_ci_corpus_discovery_spawn_width_cap(spec: CiSpec) -> Nat {
   if length(xs: spec.discovery_scan_dirs) > 0 {
-    1
+    hardware_thread_count_value(t: hardware_thread_count(count: 1))
   } else {
     hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree())
   }
