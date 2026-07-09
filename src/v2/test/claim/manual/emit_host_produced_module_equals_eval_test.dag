@@ -1,11 +1,11 @@
 module v2.test.manual.emit_host_produced_module_equals_eval
 
 
-import v2.compiler.body_producer { produce_mvp1_add_decl_node }
+import v2.compiler.body_producer { produce_add_decl_node }
 import v2.compiler.emit_host { run_test_claim_from_source_emit_vs_eval }
 import v2.compiler.emit_produced { emit_produced_module_rust }
 import v2.compiler.eval { TestClaimRun }
-import v2.extdeps.languages.rust { rust_mvp1_target_model_staging }
+import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.test.manual.emit_host_add_equals_eval {
   emit_eval_call_primitive_five,
   emit_eval_call_primitive_six,
@@ -24,11 +24,11 @@ import v2.std.text { String }
 data produced_module_two_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }\n\nfn add2(x: i32, y: i32) -> i32 { x + y }\n\n"
 
 fn produced_add_module_source() -> Outcome<Medium<String>> {
-  match produce_mvp1_add_decl_node(fn_name: ^rust_binding_fn_add) {
+  match produce_add_decl_node(fn_name: ^rust_binding_fn_add) {
     Accepted { value: d1, diagnostics: _ } =>
-      match produce_mvp1_add_decl_node(fn_name: ^rust_binding_fn_add2) {
+      match produce_add_decl_node(fn_name: ^rust_binding_fn_add2) {
         Accepted { value: d2, diagnostics: _ } =>
-          emit_produced_module_rust(decls: [d1, d2], target: rust_mvp1_target_model_staging())
+          emit_produced_module_rust(decls: [d1, d2], target: rust_target_model_staging())
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -41,7 +41,7 @@ fn produced_module_run(
   run_test_claim_from_source_emit_vs_eval(
     subject: emit_eval_subject(call_primitive: cp),
     source_outcome: produced_add_module_source(),
-    target: rust_mvp1_target_model_staging()
+    target: rust_target_model_staging()
   )
 }
 

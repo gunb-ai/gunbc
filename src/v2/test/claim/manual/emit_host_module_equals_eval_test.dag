@@ -6,8 +6,8 @@ import v2.compiler.emit_module { emit_module, emit_module_decl_separator }
 import v2.compiler.eval { TestClaimRun }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.rust {
-  rust_mvp1_source_text,
-  rust_mvp1_target_model_staging
+  rust_source_text,
+  rust_target_model_staging
 }
 import v2.test.manual.emit_host_add_equals_eval {
   emit_eval_call_primitive_five,
@@ -35,12 +35,12 @@ fn emit_module_run(
   run_test_claim_module_emit_vs_eval(
     subject: emit_eval_subject(call_primitive: cp),
     module_decls: emit_module_single_add_decls(),
-    target: rust_mvp1_target_model_staging()
+    target: rust_target_model_staging()
   )
 }
 
 fn emit_module_expected_single_source() -> String {
-  list_append(left: rust_mvp1_source_text, right: emit_module_decl_separator)
+  list_append(left: rust_source_text, right: emit_module_decl_separator)
 }
 
 fn emit_module_expected_two_source() -> String {
@@ -55,7 +55,7 @@ fn emit_module_two_add_decls() -> List<InferredTree> {
 }
 
 fn emit_module_two_text() -> Outcome<String> {
-  match emit_module(decls: emit_module_two_add_decls(), target: rust_mvp1_target_model_staging()) {
+  match emit_module(decls: emit_module_two_add_decls(), target: rust_target_model_staging()) {
     Accepted { value: medium, diagnostics: _ } =>
       Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
