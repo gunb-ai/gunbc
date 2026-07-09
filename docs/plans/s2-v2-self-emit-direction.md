@@ -199,3 +199,22 @@ Per-form token synthesis (each = Rust arm of one `TargetValueExpressionKind` + a
 ### 10.4 Revised size note
 
 Track B is **smaller and safer** than §7's original estimate: the engine, node model, projectors, body-lowering, and 4 reference implementations already exist, so B is ~1 gating rung (B0) + ~12 token-synthesis rungs that copy existing references + 2 net-new design rungs — not "build an emitter." The real-inferred-body path (`translate` preserves bodied arrows; serialize composes) is already supported, so this track also carries Rust toward the D-track **behavioral-equivalence milestone** ("v2 works"), not just fixtures.
+
+---
+
+## 11. Milestone B — first behaviorally-verified self-emitted module (`std/logic`) — 2026-07-09
+
+**Chosen next flag** (operator, 2026-07-09): v2 self-emits a real module, compiles it, and it is **behaviorally equivalent** to the v1 seed. Target = `dag/std/logic.dag` (24 lines: `type Classical = True | False`; `classical_not/and/or`, all `match` on the nullary enum, zero calls). v1 comparison realization exists: `src/v1/stage0/src/std_logic.rs`.
+
+**Scout finding — the real long pole is NOT `match`, it is generalized fn-signature emission.** Today every bodied fn's signature is a *hardcoded token list* (`rust_add_signature_with_open` = literal `fn add(x: i32, y: i32) -> i32 {`; B6/B7 each hardcoded their own). There is no node-driven signature emitter, so not even one real typed fn emits.
+
+**Node structure (grounded):** a fn decl = `TypeNode{Conj}` with one `Edge{ label: Named{name: fn_name}, target: arrow }`. The arrow = `TypeNode{Arrow}`, positional child 0 = domain `Conj` whose edges are `Named{param}→type-node`; the next positional = codomain (return type). So a signature emitter reads: fn name (decl's Named edge) + ordered (param-name, param-type) pairs (`conj_ordered_named_param_binding_ids` for names; the same edges' `target` for types) + return type, emitting each type via the existing **type-expression projection** (already emits `Classical`/`i32`/generics).
+
+**Critical path (dependency order):**
+1. **Generalized fn-signature emission [gating, lead].** `rust_signature_with_open_from_decl(decl)` replacing the hardcoded `rust_*_signature_with_open` fixtures. First receipt: golden — reproduce the hardcoded `fn add(...)` signature from the add decl node (independent of B9/harness). Then `classical_not`'s signature.
+2. **B9 match** — in flight (still-otter-837, PR #6384). Logic's body form.
+3. **Nullary-variant construction at value position** — match arms return `True`/`False`; verify/close this small gap (`b` is a binding-ref, done).
+4. **Binding-spellings from real identifiers** — emit needs spellings for the module's actual names, not B0's hardcoded map.
+5. **Whole-module assembly + behavioral harness [lead].** `enum Classical` + 3 fns → one `lib.rs`; driver runs not/and/or over `{True,False}`; compile; compare to `std_logic.rs`. Scales `emit_host.run_test_claim_emit_vs_eval` from fn to module.
+
+**Decoupling insight:** the harness skeleton can be proven on `fn classical_id(a: Classical) -> Classical { a }` (generalized signature + enum decl + driver + enum codec, **no `match`**), so the lead workstream (signatures + harness) does **not** block on B9. `match` drops in for the real logic bodies once B9 lands.
