@@ -1,0 +1,111 @@
+module v2.test.emit.rust_match_emit
+
+import v2.compiler.body_producer {
+  produce_mvp1_match_arrow_with_body,
+  produce_mvp1_match_arrow_with_body_swapped_arms
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust {
+  rust_mvp1_match_source_text,
+  rust_mvp1_match_target_model_staging
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+
+data rust_match_emit_swapped_source_text: String = "fn one_or_two() -> i32 { match true { true => 2, false => 1 } }"
+
+fn rust_match_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_match_emit_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_match_emit_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: rust_match_emit_facts_miss }
+  }
+}
+
+fn rust_match_emit_producer_inferred_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_match_arrow_with_body() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: rust_match_emit_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rust_match_emit_swapped_producer_inferred_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_match_arrow_with_body_swapped_arms() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: rust_match_emit_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rust_match_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: rust_match_emit_producer_inferred_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn rust_match_emit_from_swapped_tree(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: rust_match_emit_swapped_producer_inferred_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn rust_match_emit_one_or_two_accepts() -> Bool {
+  match rust_match_emit_from_tree(target: rust_mvp1_match_target_model_staging()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_mvp1_match_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_match_emit_swapped_arms_discriminates() -> Bool {
+  match rust_match_emit_from_swapped_tree(target: rust_mvp1_match_target_model_staging()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_match_emit_swapped_source_text) &&
+      (source.carried != rust_mvp1_match_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_match_emit_holds() -> Bool {
+  rust_match_emit_one_or_two_accepts()
+    && rust_match_emit_swapped_arms_discriminates()
+}
