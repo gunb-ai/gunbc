@@ -9,7 +9,7 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
   rust_lex_rule,
   rust_target_model_bundle_core,
-  rust_wave1_lex_rules
+  rust_fn_add_lex_rules
 }
 import v2.std.algebra { list_append }
 import v2.std.collection { Map, empty_map, map_insert }
@@ -37,7 +37,7 @@ data rust_bind_let_expected_source_text: String = "fn add(x: i32, y: i32) -> i32
 data rust_bind_let_wrong_value_source_text: String = "fn add(x: i32, y: i32) -> i32 { let x = 2; x }"
 
 fn rust_bind_let_lex_rules() -> LexRuleSet {
-  let base = rust_wave1_lex_rules()
+  let base = rust_fn_add_lex_rules()
   LexRuleSet {
     rules: list_append(
       left: base.rules,

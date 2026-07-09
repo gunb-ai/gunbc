@@ -26,7 +26,7 @@ import v2.extdeps.languages.typescript {
   ts_target_model_node,
   ts_operator_realizations_catalog_node,
   ts_value_expression_projection,
-  ts_wave1_lex
+  ts_fn_add_lex
 }
 
 fn effect_io_binding_spellings() -> Map<Symbol, String> {
@@ -40,7 +40,7 @@ fn effect_io_binding_spellings() -> Map<Symbol, String> {
 fn effect_io_target_model() -> TargetModel {
   TargetModel {
     bundle: ts_target_model_node(),
-    lex: ts_wave1_lex(),
+    lex: ts_fn_add_lex(),
     binding_spellings: effect_io_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",

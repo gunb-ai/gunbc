@@ -700,7 +700,7 @@ fn swift_binding_spellings() -> Map<Symbol, String> {
 fn swift_target_model() -> TargetModel {
   TargetModel {
     bundle: swift_target_model_node(),
-    lex: swift_wave1_lex(),
+    lex: swift_lex(),
     binding_spellings: swift_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: swift_source_text_authority(),
@@ -801,7 +801,7 @@ fn swift_infix_operator_lex_rule() -> LexRule {
   }
 }
 
-fn swift_wave1_lex_rules() -> LexRuleSet {
+fn swift_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       swift_whitespace_trivia_rule(),
@@ -842,8 +842,8 @@ fn swift_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn swift_wave1_lex() -> LexRules {
-  ModeledLexRules { root: swift_wave1_lex_rules() }
+fn swift_lex() -> LexRules {
+  ModeledLexRules { root: swift_lex_rules() }
 }
 
 fn swift_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
@@ -866,7 +866,7 @@ fn swift_formal_production_fn_add() -> FormalProduction {
   )
 }
 
-fn swift_wave1_formal_productions() -> List<FormalProduction> {
+fn swift_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(lhs: ^swift_production_type_expr, rhs: [grammar_formal_terminal(identity: ^swift_token_ident)]),
     grammar_formal_production(
@@ -1567,7 +1567,7 @@ fn swift_grammar_production_primary_expr() -> GrammarProduction {
   }
 }
 
-fn swift_wave1_grammar_root() -> GrammarRoot {
+fn swift_grammar_root() -> GrammarRoot {
   let start = swift_grammar_production_fn_add()
   let fn_decl = swift_grammar_production_fn_decl()
   let typed_param = swift_grammar_production_typed_param()
@@ -1606,13 +1606,13 @@ fn swift_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn swift_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: swift_wave1_grammar_root() }
+fn swift_grammar() -> ParseGrammar {
+  ModeledGrammar { root: swift_grammar_root() }
 }
 
-fn swift_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn swift_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
-    rules: swift_wave1_lex_rules(),
+    rules: swift_lex_rules(),
     token_class: sym
   )
 }
@@ -1767,7 +1767,7 @@ fn swift_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle
   )
 }
 
-fn swift_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn swift_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: swift_primitive_bundles_from_integer_catalog(),
@@ -1841,16 +1841,16 @@ fn swift_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       swift_catalog_surface_symbol(sym: sym) ||
-        swift_wave1_lex_token_symbol(sym: sym) ||
-        grammar_carries_symbol(grammar: swift_wave1_grammar(), sym: sym) ||
+        swift_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: swift_grammar(), sym: sym) ||
         sym == ^swift_source_literal
     }
   }
 }
 
-fn swift_model_core_wave1() -> ModelCore {
+fn swift_primitive_model_core() -> ModelCore {
   ModelCore {
-    primitives: swift_wave1_primitive_fact_bundles(),
+    primitives: swift_primitive_fact_bundles(),
     inhabitance: [],
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
@@ -1858,13 +1858,13 @@ fn swift_model_core_wave1() -> ModelCore {
   }
 }
 
-fn swift_language_model_wave1() -> LanguageModel {
+fn swift_primitive_language_model() -> LanguageModel {
   LanguageModel {
     lex: VoidLexRules,
     grammar: VoidGrammar,
     language_identity: ^swift_language_model_surface_id,
     canonical_symbols: swift_language_model_canonical_symbols(),
-    core: swift_model_core_wave1()
+    core: swift_primitive_model_core()
   }
 }
 fn swift_float_inhabitant_node(id: Symbol, facts: SwiftFloatPrimitiveFacts) -> Node {
@@ -2083,10 +2083,10 @@ fn swift_model_core_law_node(witness: Node, algebra: Node, key: SwiftModelCoreLa
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      swift_named_edge(name: ^model_core_wave1_law_field_subject, target: witness),
-      swift_named_edge(name: ^model_core_wave1_law_field_algebra, target: algebra),
+      swift_named_edge(name: ^model_core_law_field_subject, target: witness),
+      swift_named_edge(name: ^model_core_law_field_algebra, target: algebra),
       swift_named_edge(
-        name: ^model_core_wave1_law_field_kind,
+        name: ^model_core_law_field_kind,
         target: swift_atom(id: discriminant(v: key))
       )
     ],
@@ -2272,7 +2272,7 @@ fn swift_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
   }
 }
 
-fn swift_effect_semantics_wave2b() -> EffectSemanticsDecl {
+fn swift_effect_semantics() -> EffectSemanticsDecl {
   EffectSemanticsDecl {
     operations: [
       swift_pure_operation(operation: ^swift_op_int_add),
@@ -2313,7 +2313,7 @@ fn swift_fail_closed_partial_operation(
   }
 }
 
-fn swift_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
+fn swift_partiality_semantics() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
       swift_fail_closed_partial_operation(
@@ -2390,22 +2390,22 @@ fn swift_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
   }
 }
 
-fn swift_model_core_wave2b() -> ModelCore {
+fn swift_model_core() -> ModelCore {
   ModelCore {
-    primitives: swift_wave1_primitive_fact_bundles(),
+    primitives: swift_primitive_fact_bundles(),
     inhabitance: swift_model_core_inhabitance_decls(),
     laws: swift_model_core_law_obligations(),
-    effects: swift_effect_semantics_wave2b(),
-    partiality: swift_partiality_semantics_wave2b()
+    effects: swift_effect_semantics(),
+    partiality: swift_partiality_semantics()
   }
 }
 
-fn swift_language_model_wave2b() -> LanguageModel {
+fn swift_language_model() -> LanguageModel {
   LanguageModel {
     lex: VoidLexRules,
     grammar: VoidGrammar,
     language_identity: ^swift_language_model_surface_id,
     canonical_symbols: swift_language_model_canonical_symbols(),
-    core: swift_model_core_wave2b()
+    core: swift_model_core()
   }
 }

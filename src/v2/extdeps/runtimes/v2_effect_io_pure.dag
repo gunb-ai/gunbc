@@ -357,7 +357,7 @@ fn effect_io_pure_runtime(
   }
 }
 
-fn effect_io_pure_runtime_wave2(backend: EffectIoResourceBackend) -> V4EffectIoPureRuntime {
+fn effect_io_pure_runtime_from_backend(backend: EffectIoResourceBackend) -> V4EffectIoPureRuntime {
   effect_io_pure_runtime(
     backend: backend,
     store: effect_io_pure_empty_fixture_store(backend: backend)

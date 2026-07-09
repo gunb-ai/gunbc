@@ -727,7 +727,7 @@ fn java_binding_spellings() -> Map<Symbol, String> {
 fn java_target_model() -> TargetModel {
   TargetModel {
     bundle: java_target_model_node(),
-    lex: java_wave1_lex(),
+    lex: java_method_add_lex(),
     binding_spellings: java_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: java_source_text_authority(),
@@ -756,7 +756,7 @@ fn java_ident_lex_rule() -> LexRule {
   }
 }
 
-fn java_wave1_lex_rules() -> LexRuleSet {
+fn java_method_add_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       java_lex_rule(token_class: ^java_token_kw_static, text: "static "),
@@ -774,8 +774,8 @@ fn java_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn java_wave1_lex() -> LexRules {
-  ModeledLexRules { root: java_wave1_lex_rules() }
+fn java_method_add_lex() -> LexRules {
+  ModeledLexRules { root: java_method_add_lex_rules() }
 }
 
 fn java_grammar_atom(id: Symbol) -> Node {
@@ -810,16 +810,16 @@ fn java_grammar_production_method_add() -> GrammarProduction {
   }
 }
 
-fn java_wave1_grammar_root() -> GrammarRoot {
+fn java_method_add_grammar_root() -> GrammarRoot {
   let start = java_grammar_production_method_add()
   GrammarRoot { start: ^java_production_method_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
 }
 
-fn java_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: java_wave1_grammar_root() }
+fn java_method_add_grammar() -> ParseGrammar {
+  ModeledGrammar { root: java_method_add_grammar_root() }
 }
 
-fn java_wave2_additional_lex_rules() -> List<LexRule> {
+fn java_extended_lex_rules() -> List<LexRule> {
   [
     java_lex_rule(token_class: ^java_token_kw_byte, text: "byte "),
     java_lex_rule(token_class: ^java_token_kw_short, text: "short "),
@@ -837,20 +837,20 @@ fn java_wave2_additional_lex_rules() -> List<LexRule> {
   ]
 }
 
-fn java_wave2_lex_rules() -> LexRuleSet {
+fn java_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: java_wave1_lex_rules().rules,
-      right: java_wave2_additional_lex_rules()
+      left: java_method_add_lex_rules().rules,
+      right: java_extended_lex_rules()
     )
   }
 }
 
-fn java_wave2_lex() -> LexRules {
-  ModeledLexRules { root: java_wave2_lex_rules() }
+fn java_lex() -> LexRules {
+  ModeledLexRules { root: java_lex_rules() }
 }
 
-fn java_wave2_formal_productions() -> List<FormalProduction> {
+fn java_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(lhs: ^java_production_compilation_unit, rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_class_declaration)]),
     grammar_formal_production(
@@ -1321,7 +1321,7 @@ fn java_grammar_type_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: ^java_production_primitive_type)
 }
 
-fn java_wave2_grammar_root() -> GrammarRoot {
+fn java_grammar_root() -> GrammarRoot {
   let compilation_unit = java_grammar_production(
     name: ^java_production_compilation_unit,
     expression: java_grammar_compilation_unit_expr(),
@@ -1476,17 +1476,17 @@ fn java_wave2_grammar_root() -> GrammarRoot {
   }
 }
 
-fn java_wave2_grammar() -> ParseGrammar {
-  ModeledGrammar { root: java_wave2_grammar_root() }
+fn java_grammar() -> ParseGrammar {
+  ModeledGrammar { root: java_grammar_root() }
 }
 
-fn java_language_model_wave2_canonical_symbols() -> Set<Symbol> {
+fn java_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||
-        lex_rule_set_token_class_member(rules: java_wave2_lex_rules(), token_class: sym) ||
-        grammar_carries_symbol(grammar: java_wave2_grammar(), sym: sym) ||
+        lex_rule_set_token_class_member(rules: java_lex_rules(), token_class: sym) ||
+        grammar_carries_symbol(grammar: java_grammar(), sym: sym) ||
         sym == ^java_surface_method_item ||
         sym == ^java_production_method_add ||
         sym == ^java_source_literal
@@ -1494,13 +1494,13 @@ fn java_language_model_wave2_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn java_language_model_wave2() -> LanguageModel {
+fn java_language_model() -> LanguageModel {
   LanguageModel {
-    lex: java_wave2_lex(),
-    grammar: java_wave2_grammar(),
+    lex: java_lex(),
+    grammar: java_grammar(),
     language_identity: ^java_language_model_surface_id,
-    canonical_symbols: java_language_model_wave2_canonical_symbols(),
-    core: java_model_core_wave1()
+    canonical_symbols: java_canonical_symbols(),
+    core: java_model_core()
   }
 }
 
@@ -1564,7 +1564,7 @@ fn java_catalog_surface_symbol(sym: Symbol) -> Bool {
     java_noninteger_catalog_surface_symbol(sym: sym)
 }
 
-fn java_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn java_method_add_lex_token_symbol(sym: Symbol) -> Bool {
   sym == ^java_token_kw_static ||
     sym == ^java_token_ident ||
     sym == ^java_token_kw_int ||
@@ -1583,7 +1583,7 @@ fn java_language_model_canonical_symbols() -> Set<Symbol> {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||
-        java_wave1_lex_token_symbol(sym: sym) ||
+        java_method_add_lex_token_symbol(sym: sym) ||
         sym == ^java_surface_method_item ||
         sym == ^java_production_method_add ||
         sym == ^java_source_literal
@@ -1707,7 +1707,7 @@ fn java_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle>
   )
 }
 
-fn java_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn java_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: java_primitive_bundles_from_integer_catalog(),
@@ -1812,10 +1812,10 @@ fn java_model_core_law_node(witness: Node, algebra: Node, key: JavaModelCoreLawK
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      java_named_edge(name: ^model_core_wave1_law_field_subject, target: witness),
-      java_named_edge(name: ^model_core_wave1_law_field_algebra, target: algebra),
+      java_named_edge(name: ^model_core_law_field_subject, target: witness),
+      java_named_edge(name: ^model_core_law_field_algebra, target: algebra),
       java_named_edge(
-        name: ^model_core_wave1_law_field_kind,
+        name: ^model_core_law_field_kind,
         target: java_inhabitant_atom(id: discriminant(v: key))
       )
     ],
@@ -1936,7 +1936,7 @@ fn java_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
   }
 }
 
-fn java_effect_semantics_wave2b() -> EffectSemanticsDecl {
+fn java_effect_semantics() -> EffectSemanticsDecl {
   EffectSemanticsDecl {
     operations: [
       java_pure_operation(operation: ^java_op_integer_add),
@@ -1970,7 +1970,7 @@ fn java_fail_closed_partial_operation(
   }
 }
 
-fn java_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
+fn java_partiality_semantics() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
       java_fail_closed_partial_operation(
@@ -1987,22 +1987,22 @@ fn java_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
   }
 }
 
-fn java_model_core_wave1() -> ModelCore {
+fn java_model_core() -> ModelCore {
   ModelCore {
-    primitives: java_wave1_primitive_fact_bundles(),
+    primitives: java_primitive_fact_bundles(),
     inhabitance: java_model_core_inhabitance_decls(),
     laws: java_model_core_law_obligations(),
-    effects: java_effect_semantics_wave2b(),
-    partiality: java_partiality_semantics_wave2b()
+    effects: java_effect_semantics(),
+    partiality: java_partiality_semantics()
   }
 }
 
-fn java_language_model_wave1() -> LanguageModel {
+fn java_method_add_language_model() -> LanguageModel {
   LanguageModel {
-    lex: java_wave1_lex(),
-    grammar: java_wave1_grammar(),
+    lex: java_method_add_lex(),
+    grammar: java_method_add_grammar(),
     language_identity: ^java_language_model_surface_id,
     canonical_symbols: java_language_model_canonical_symbols(),
-    core: java_model_core_wave1()
+    core: java_model_core()
   }
 }

@@ -10,7 +10,7 @@ import v2.extdeps.languages.python {
   python_source_text,
   python_target_model,
   python_target_model_node,
-  python_wave1_lex
+  python_lex
 }
 import v2.test.manual.python_add_emit_translate {
   python_add_inferred_tree
@@ -49,7 +49,7 @@ fn python_add_emit_perturbed_binding_spellings() -> Map<Symbol, String> {
 fn python_add_emit_perturbed_target_model() -> TargetModel {
   TargetModel {
     bundle: python_target_model_node(),
-    lex: python_wave1_lex(),
+    lex: python_lex(),
     binding_spellings: python_add_emit_perturbed_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: python_source_text,

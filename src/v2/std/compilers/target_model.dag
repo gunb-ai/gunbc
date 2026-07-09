@@ -6649,7 +6649,7 @@ fn target_catalog_atom_identity_matches_inhabitant_wires(
   )
 }
 
-fn target_wave1_signature_slot_matches_declared_inhabitants(
+fn target_signature_slot_matches_declared_inhabitants(
   slot: Node,
   inhabitants_root: Node
 ) -> Bool {
@@ -6677,14 +6677,14 @@ fn target_wave1_signature_slot_matches_declared_inhabitants(
   }
 }
 
-fn target_wave1_add_signature_slot_at(
+fn target_add_signature_slot_at(
   arrow: Node,
   index: Int,
   inhabitants_root: Node
 ) -> Bool {
   match list_at_optional(xs: node_positional_child_targets(node: arrow), index: index) {
     Present { value: slot } =>
-      target_wave1_signature_slot_matches_declared_inhabitants(
+      target_signature_slot_matches_declared_inhabitants(
         slot: slot,
         inhabitants_root: inhabitants_root
       )
@@ -6692,23 +6692,23 @@ fn target_wave1_add_signature_slot_at(
   }
 }
 
-fn target_wave1_add_signature_matches(
+fn target_add_signature_matches(
   arrow: Node,
   inhabitants_root: Node
 ) -> Bool {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
-      target_wave1_add_signature_slot_at(
+      target_add_signature_slot_at(
         arrow: arrow,
         index: 0,
         inhabitants_root: inhabitants_root
       )
-      && target_wave1_add_signature_slot_at(
+      && target_add_signature_slot_at(
         arrow: arrow,
         index: 1,
         inhabitants_root: inhabitants_root
       )
-      && target_wave1_add_signature_slot_at(
+      && target_add_signature_slot_at(
         arrow: arrow,
         index: 2,
         inhabitants_root: inhabitants_root
@@ -10335,13 +10335,13 @@ fn target_value_expr_declared_inhabitants_from_target(target: TargetModel) -> Ou
   projection_bundle_child(bundle: target.bundle, name: ^target_model_edge_declared_inhabitants)
 }
 
-fn target_value_expr_wave1_add_signature_matches_for_target(
+fn target_value_expr_add_signature_matches_for_target(
   arrow: Node,
   target: TargetModel
 ) -> Bool {
   match target_value_expr_declared_inhabitants_from_target(target: target) {
     Accepted { value: inhabitants_root, diagnostics: _ } =>
-      target_wave1_add_signature_matches(
+      target_add_signature_matches(
         arrow: arrow,
         inhabitants_root: inhabitants_root
       )
@@ -10439,7 +10439,7 @@ fn target_value_expr_arrow_body_scope_binding(
     f: fn(bindings) {
       if target_value_expr_binding_in_declared_param_list(binding: binding, bindings: bindings)
         && (
-          target_value_expr_wave1_add_signature_matches_for_target(arrow: arrow, target: target)
+          target_value_expr_add_signature_matches_for_target(arrow: arrow, target: target)
           || target_value_expr_arrow_has_transform_body(arrow: arrow)
         ) {
         outcome_accepted(binding)

@@ -41,7 +41,7 @@ data verilog_anchor_cost: VerilogCost = VerilogCost {
   gate_cost: 1,
   area_cost: 1
 }
-data verilog_anchor_module_wave0: verilog_anchor_module = NoPortListModule {
+data verilog_anchor_module_fixture: verilog_anchor_module = NoPortListModule {
   attributes: NoAttributeInstances,
   module_keyword: ModuleKw,
   name: ^verilog_anchor_q,

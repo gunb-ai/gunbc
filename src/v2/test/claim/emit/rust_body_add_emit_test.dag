@@ -9,7 +9,7 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
   rust_source_text,
   rust_target_model_staging,
-  rust_wave1_lex
+  rust_fn_add_lex
 }
 import v2.extdeps.languages.rust_test { rust_target_model_with_operators_and_lex }
 import v2.std.collection { Map }
@@ -115,14 +115,14 @@ fn rust_body_add_empty_operator_catalog() -> Node {
 fn rust_body_add_minus_target_model() -> TargetModel {
   rust_target_model_with_operators_and_lex(
     operator_catalog: rust_body_add_minus_operator_catalog(),
-    lex: rust_wave1_lex()
+    lex: rust_fn_add_lex()
   )
 }
 
 fn rust_body_add_missing_catalog_target_model() -> TargetModel {
   rust_target_model_with_operators_and_lex(
     operator_catalog: rust_body_add_empty_operator_catalog(),
-    lex: rust_wave1_lex()
+    lex: rust_fn_add_lex()
   )
 }
 
