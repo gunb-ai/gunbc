@@ -1,5 +1,6 @@
 module v2.compiler.emit_produced
 
+import v2.compiler.emit_module { emit_module_decl_separator }
 import v2.compiler.translate { target_serialize_bodied_arrow_from_model }
 import v2.compiler.target_carriers { target_source_medium }
 import v2.extdeps.languages.rust {
@@ -89,8 +90,6 @@ fn emit_produced_decl_rust(decl: Node) -> Outcome<Medium<String>> {
   )
 }
 
-data emit_produced_module_separator: String = "\n\n"
-
 fn emit_produced_module_append(partial: String, decl: Node) -> Outcome<String> {
   bind_outcome(
     o: emit_produced_decl_rust(decl: decl),
@@ -98,7 +97,7 @@ fn emit_produced_module_append(partial: String, decl: Node) -> Outcome<String> {
       Accepted {
         value: list_append(
           left: list_append(left: partial, right: medium.carried),
-          right: emit_produced_module_separator
+          right: emit_module_decl_separator
         ),
         diagnostics: None
       }
