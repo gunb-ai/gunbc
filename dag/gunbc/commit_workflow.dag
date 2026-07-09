@@ -107,6 +107,21 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "dag/test/claim/ci_materialization_witness_test.dag",
+      check_fns: [
+        "ci_ladder_holds_on_live_workflow",
+        "ci_release_build_is_plural_and_discharged_by_sccache",
+        "ci_ladder_reds_without_sccache_provider",
+        "ci_prelude_scripts_are_typed_cost_floor_acceptances",
+        "ci_measurement_is_exempt_fresh_effect"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: doc_reachability_witness_entry,
       check_fns: ["doc_graph_has_no_orphan_docs", "doc_graph_has_no_dangling_links"],
       kind: CorpusWitnessKind,
