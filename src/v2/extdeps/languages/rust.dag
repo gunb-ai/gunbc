@@ -1868,50 +1868,49 @@ fn rust_match_lex() -> LexRules {
   ModeledLexRules { root: rust_match_lex_rules() }
 }
 
-<<<<<<< HEAD
-fn rust_mvp1_call_closure_additional_lex_rules() -> List<LexRule> {
+fn rust_call_closure_additional_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
     rust_lex_rule(token_class: ^rust_token_closure_nop, text: "")
   ]
 }
 
-fn rust_mvp1_call_lex_rules() -> LexRuleSet {
+fn rust_call_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
       left: rust_wave1_lex_rules().rules,
-      right: rust_mvp1_call_closure_additional_lex_rules()
+      right: rust_call_closure_additional_lex_rules()
     )
   }
 }
 
-fn rust_mvp1_call_lex() -> LexRules {
-  ModeledLexRules { root: rust_mvp1_call_lex_rules() }
+fn rust_call_lex() -> LexRules {
+  ModeledLexRules { root: rust_call_lex_rules() }
 }
 
-fn rust_mvp1_call_binding_spellings() -> Map<Symbol, String> {
-  let m0 = rust_mvp1_binding_spellings()
+fn rust_call_binding_spellings() -> Map<Symbol, String> {
+  let m0 = rust_binding_spellings()
   let m1 = map_insert(m0, ^rust_call_callee_fold, "fold_call")
   let m2 = map_insert(m1, ^rust_call_callee_helper, "helper")
   let m3 = map_insert(m2, ^rust_call_closure_acc, "acc")
   map_insert(m3, ^rust_call_closure_h, "h")
 }
 
-data rust_mvp1_call_host_source_text: String = "fn add(x: i32, y: i32) -> i32 { helper(x, y) }"
+data rust_call_host_source_text: String = "fn add(x: i32, y: i32) -> i32 { helper(x, y) }"
 
-data rust_mvp1_call_emit_host_helper_suffix: String = "\n\nfn helper(a: i32, b: i32) -> i32 { a + b }\n\nfn main() { let value = add(3, 4); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+data rust_call_emit_host_helper_suffix: String = "\n\nfn helper(a: i32, b: i32) -> i32 { a + b }\n\nfn main() { let value = add(3, 4); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
 
 fn rust_call_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
-    identity: ^rust_host_transport_mvp1_call_identity,
+    identity: ^rust_host_transport_call_identity,
     workspace: [
       WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_mvp1_emit_host_cargo_manifest }
+        content: FixedText { text: rust_emit_host_cargo_manifest }
       },
       WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_mvp1_call_emit_host_helper_suffix }
+        content: EmittedWithSuffix { suffix: rust_call_emit_host_helper_suffix }
       }
     ],
     build: [
@@ -1928,7 +1927,7 @@ fn rust_call_host_transport_descriptor() -> HostTransportDescriptor {
   }
 }
 
-fn rust_mvp1_call_runtime_row() -> TargetEmitHostRuntimeRow {
+fn rust_call_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_call_host_transport_descriptor(),
@@ -1937,21 +1936,18 @@ fn rust_mvp1_call_runtime_row() -> TargetEmitHostRuntimeRow {
   }
 }
 
-fn rust_mvp1_call_target_model_staging() -> TargetModel {
+fn rust_call_target_model_staging() -> TargetModel {
   TargetModel {
-    bundle: rust_mvp1_target_model_bundle_core(),
-    lex: rust_mvp1_call_lex(),
-    binding_spellings: rust_mvp1_call_binding_spellings(),
+    bundle: rust_target_model_bundle_core(),
+    lex: rust_call_lex(),
+    binding_spellings: rust_call_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: rust_mvp1_call_host_source_text,
-    runtime_row: rust_mvp1_call_runtime_row()
+    authority_source_text: rust_call_host_source_text,
+    runtime_row: rust_call_runtime_row()
   }
 }
 
-fn rust_mvp1_match_target_model_core_edges() -> List<Edge> {
-=======
 fn rust_match_target_model_core_edges() -> List<Edge> {
->>>>>>> origin/main
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,

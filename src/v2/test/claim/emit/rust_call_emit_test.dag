@@ -3,10 +3,10 @@ module v2.test.emit.rust_call_emit
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
-  rust_mvp1_call_binding_spellings,
-  rust_mvp1_call_host_source_text,
-  rust_mvp1_call_lex,
-  rust_mvp1_target_model_bundle_core
+  rust_call_binding_spellings,
+  rust_call_host_source_text,
+  rust_call_lex,
+  rust_target_model_bundle_core
 }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -209,9 +209,9 @@ data rust_call_helper_eval_subgraph: Node = Node {
 
 fn rust_call_target_model(authority_source_text: String) -> TargetModel {
   TargetModel {
-    bundle: rust_mvp1_target_model_bundle_core(),
-    lex: rust_mvp1_call_lex(),
-    binding_spellings: rust_mvp1_call_binding_spellings(),
+    bundle: rust_target_model_bundle_core(),
+    lex: rust_call_lex(),
+    binding_spellings: rust_call_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: authority_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
@@ -271,7 +271,7 @@ test fn rust_call_fold_closure_swap_discriminates() -> Bool {
 test fn rust_call_helper_emit_holds() -> Bool {
   rust_call_emit_matches(
     arrow: rust_call_helper_arrow(),
-    authority: rust_mvp1_call_host_source_text
+    authority: rust_call_host_source_text
   )
 }
 
