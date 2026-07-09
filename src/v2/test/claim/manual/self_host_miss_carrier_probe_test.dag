@@ -152,3 +152,39 @@ fn probe_miss_carrier_in_tree(src: String) -> Bool {
 }
 
 test fn probe_type_miss_carrier_in_tree() -> Bool { probe_miss_carrier_in_tree(src: src_type_decl) }
+
+fn reason_anywhere(src: String, reason: Symbol) -> Bool {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nd } =>
+      (nd.head.reason == reason)
+        || any(xs: nd.tail, predicate: fn(d) { d.reason == reason })
+  }
+}
+test fn r_cop_variant_payload_not_record() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^rust_coproduct_variant_payload_not_record) }
+test fn r_cop_field_type_not_atom() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^rust_coproduct_field_type_not_atom) }
+test fn r_cop_variant_not_named() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^rust_coproduct_variant_not_named) }
+test fn r_cop_field_not_named() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^rust_coproduct_field_not_named) }
+test fn r_enum_surface_not_coproduct() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^rust_enum_decl_surface_source_not_coproduct) }
+test fn r_binding_spelling() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_binding_spelling_not_found) }
+test fn r_grammar_inverse() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_grammar_inverse_not_realized) }
+test fn r_grammar_relation_row() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_grammar_relation_row_not_found) }
+
+fn reveal_reason2(src: String) -> Bool {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: nd } =>
+      match Atom { identity: nd.head.reason } {
+        Conj => true
+      }
+  }
+}
+test fn reveal2_singlearm() -> Bool { reveal_reason2(src: src_single_arm_match) }
