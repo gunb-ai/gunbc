@@ -1,0 +1,154 @@
+module gunbc.ci_materialization_gate
+
+import std.types { Bool, Int, List, String }
+import std.materialization_ladder {
+  FrameDemand, CacheProvider, LadderVerdict,
+  AuthoredDuplication, DeadComputation, AcceptedEffectIsTheUse,
+  Discharged, RefusedNoProvider, RefusedScopeTooNarrow, RefusedExistenceKeyed,
+  RefusedUnmodeledWorldRead, ExemptFreshEffect, AcceptedBelowCostFloor, AcceptedSingleRecompute,
+  materialization_ladder, materialization_ladder_holds,
+  verdict_is_discharged_by, verdict_is_refused_no_provider,
+  no_cache_providers
+}
+import gunbc.ci_materialization {
+  ci_cache_providers, ci_cost_floor_exempt_step_names,
+  workflow_run_demands, workflow_scripts_named, step_run_script
+}
+import gunbc.ci_workflow { ci_workflow, ci_rust_cgroup_measurement_step }
+import gunbc.ci_spec {
+  ci_release_build_script,
+  DeployStage, gunbc_ci_deploy_stages, gunbc_ci_deploy_run_script
+}
+
+data ci_materialization_gate_note: String = "The live binding: the ladder run over the ACTUAL emitted workflow (gunbc.ci_workflow data row), never a fixture copy of it. Demands, exemption identities, and fresh-effect scripts are all resolved against the same authority the ci.yml is emitted from, so a workflow edit that introduces cross-job duplication without a covering provider reds the enrolled witness in the same CI run that would have paid the duplication. Fresh effects: the cgroup measurement script (a measurement re-run is a new fact, never memoizable) and every deploy stage script (a deploy is the effect being the use); both resolved by projection, not copied strings."
+
+fn ci_fresh_effect_scripts() -> List<String> {
+  concat(
+    [step_run_script(s: ci_rust_cgroup_measurement_step())],
+    map(gunbc_ci_deploy_stages, s => gunbc_ci_deploy_run_script(stage: s))
+  )
+}
+
+fn ci_materialization_demands() -> List<FrameDemand> {
+  workflow_run_demands(w: ci_workflow, fresh_scripts: ci_fresh_effect_scripts())
+}
+
+fn ci_materialization_exempt_identities() -> List<String> {
+  workflow_scripts_named(w: ci_workflow, names: ci_cost_floor_exempt_step_names)
+}
+
+fn ci_materialization_verdicts() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: ci_materialization_demands(),
+    providers: ci_cache_providers(),
+    cost_floor_exempt: ci_materialization_exempt_identities()
+  )
+}
+
+fn ci_materialization_ladder_holds_live() -> Bool {
+  materialization_ladder_holds(
+    demands: ci_materialization_demands(),
+    providers: ci_cache_providers(),
+    cost_floor_exempt: ci_materialization_exempt_identities()
+  )
+}
+
+fn ci_materialization_verdicts_without_sccache() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: ci_materialization_demands(),
+    providers: no_cache_providers,
+    cost_floor_exempt: ci_materialization_exempt_identities()
+  )
+}
+
+fn ci_materialization_holds_without_sccache() -> Bool {
+  materialization_ladder_holds(
+    demands: ci_materialization_demands(),
+    providers: no_cache_providers,
+    cost_floor_exempt: ci_materialization_exempt_identities()
+  )
+}
+
+fn ci_verdict_is_discharged_arm(v: LadderVerdict) -> Bool {
+  match v {
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => true
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+  }
+}
+
+fn ci_verdict_is_below_cost_floor_arm(v: LadderVerdict) -> Bool {
+  match v {
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => false
+    AcceptedBelowCostFloor { identity: _ } => true
+    AcceptedSingleRecompute { identity: _ } => false
+  }
+}
+
+fn ci_verdict_is_exempt_fresh_arm(v: LadderVerdict) -> Bool {
+  match v {
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
+    DeadComputation { identity: _ } => false
+    AcceptedEffectIsTheUse { identity: _ } => false
+    Discharged { identity: _, lca: _, provider_id: _ } => false
+    RefusedNoProvider { identity: _, lca: _ } => false
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
+    ExemptFreshEffect { identity: _ } => true
+    AcceptedBelowCostFloor { identity: _ } => false
+    AcceptedSingleRecompute { identity: _ } => false
+  }
+}
+
+fn ci_release_build_demand_count() -> Int {
+  ci_materialization_demands()
+    |> filter(d => d.identity == ci_release_build_script())
+    |> count()
+}
+
+fn ci_discharged_verdict_count() -> Int {
+  ci_materialization_verdicts()
+    |> filter(v => ci_verdict_is_discharged_arm(v: v))
+    |> count()
+}
+
+fn ci_release_build_discharged_by_sccache_count() -> Int {
+  ci_materialization_verdicts()
+    |> filter(v => verdict_is_discharged_by(v: v, identity: ci_release_build_script(), provider_id: "sccache"))
+    |> count()
+}
+
+fn ci_below_cost_floor_verdict_count() -> Int {
+  ci_materialization_verdicts()
+    |> filter(v => ci_verdict_is_below_cost_floor_arm(v: v))
+    |> count()
+}
+
+fn ci_exempt_fresh_verdict_count() -> Int {
+  ci_materialization_verdicts()
+    |> filter(v => ci_verdict_is_exempt_fresh_arm(v: v))
+    |> count()
+}
+
+fn ci_release_build_refused_without_provider_count() -> Int {
+  ci_materialization_verdicts_without_sccache()
+    |> filter(v => verdict_is_refused_no_provider(v: v, identity: ci_release_build_script()))
+    |> count()
+}
