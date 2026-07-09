@@ -26,6 +26,7 @@ type WorkspaceContent
   = EmittedSource
   | FixedText { text: String }
   | EmittedWithSuffix { suffix: String }
+  | EmittedWithAffixes { prefix: String, suffix: String }
 
 type WorkspaceFile {
   path: RelPath

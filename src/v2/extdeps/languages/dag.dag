@@ -175,6 +175,7 @@ data dag_mvp1_bind_wrong_value_source_text: String = "fn one() -> Int { let x = 
 data dag_mvp1_match_source_text: String = "fn one_or_two() -> Int { match true { true => 1, false => 2 } }"
 
 data dag_mvp1_rec_source_text: String = "fn mk() -> Rec { Rec { v: 9 } }"
+data dag_mvp1_rec_wrong_value_source_text: String = "fn mk() -> Rec { Rec { v: 8 } }"
 
 data dag_mvp1_field_access_source_text: String = "fn get(r: Rec) -> Int { r.v }"
 
@@ -3810,7 +3811,7 @@ fn dag_grammar_sequence_from_token_classes_match() -> GrammarExpr {
 }
 
 fn dag_grammar_rec_field_literal_binding(binding: Symbol) -> Bool {
-  (binding == ^dag_binding_mvp1_rec_lit_nine)
+  (binding == ^dag_binding_mvp1_rec_lit_nine) || (binding == ^dag_binding_mvp1_rec_lit_eight)
 }
 
 fn dag_grammar_terminal_for_mvp1_rec_token(token: ConcreteSyntaxToken) -> GrammarExpr {
@@ -4020,7 +4021,8 @@ fn dag_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m11 = map_insert(m10, ^dag_binding_fn_get, "get")
   let m12 = map_insert(m11, ^dag_binding_param_r, "r")
   let m13 = map_insert(m12, ^dag_binding_mvp1_rec_v, "v")
-  map_insert(m13, ^dag_binding_mvp1_rec_lit_nine, "9")
+  let m14 = map_insert(m13, ^dag_binding_mvp1_rec_lit_nine, "9")
+  map_insert(m14, ^dag_binding_mvp1_rec_lit_eight, "8")
 }
 
 fn dag_mvp1_add_param_binding_ids() -> List<Symbol> {
