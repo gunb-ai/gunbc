@@ -320,6 +320,7 @@ test fn falsifier_plan_spawn_width_witnesses() -> Bool {
 
 test fn ci_corpus_discovery_flip_witnesses() -> Bool {
   witness_ci_corpus_discovery_is_live()
+    && witness_ci_corpus_discovery_serializes_at_width_one()
     && witness_regen_spec_carries_no_witness_corpus()
     && schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0
 }
