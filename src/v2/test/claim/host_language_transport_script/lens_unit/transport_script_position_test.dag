@@ -17,7 +17,7 @@ import v2.std.logic { Bool }
 data path_dag: String = "dag/tools/dag_compile_clean_transport.dag"
 data path_emit: String = "dag/tools/emit_host_transport.dag"
 data fn_clean: String = "run_clean_tree_compile"
-data fn_go: String = "run_go_mvp2_smoke"
+data fn_go: String = "run_go_smoke"
 data fn_bad: String = "run_bad_literal_smoke"
 
 data fact_computed: TransportScriptPositionFact = TransportScriptPositionFact {

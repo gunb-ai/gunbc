@@ -7,8 +7,8 @@ import v2.compiler.eval {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
-import v2.test.manual.eval_runtime_mvp {
-  subject_eval_mvp2_test_claim_route
+import v2.test.manual.eval_runtime {
+  subject_eval_test_claim_route
 }
 import v2.test.workflow.testclaim_corpus_runner {
   CorpusEvalEntry,
@@ -18,7 +18,7 @@ import v2.test.workflow.testclaim_corpus_runner {
 }
 
 data inprocess_equivalence_slice: List<TestClaimEvalSubject<Node>> = [
-  subject_eval_mvp2_test_claim_route
+  subject_eval_test_claim_route
 ]
 
 fn inprocess_equivalence_harness_entries() -> List<CorpusEvalEntry> {
@@ -30,7 +30,7 @@ fn inprocess_equivalence_harness_entries() -> List<CorpusEvalEntry> {
 fn inprocess_equivalence_inprocess_entries() -> List<CorpusEvalEntry> {
   [
     corpus_entry_from_node_runtime_value_run(
-      run: run_test_claim(subject: subject_eval_mvp2_test_claim_route)
+      run: run_test_claim(subject: subject_eval_test_claim_route)
     )
   ]
 }

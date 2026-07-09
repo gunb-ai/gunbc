@@ -219,7 +219,7 @@ data claim_typescript_pr3_typed_fn_emit_accepts: TestClaim = CompilesClaim {
 }
 
 data claim_typescript_pr3_typed_fn_compile_accepts: TestClaim = CompilesClaim {
-  label: "manual/mvp1 G3: compile_inferred emits canonical identity typed-fn through grammar inverse production ts_production_pr3_typed_fn_decl",
+  label: "manual/G3: compile_inferred emits canonical identity typed-fn through grammar inverse production ts_production_pr3_typed_fn_decl",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: typescript_pr3_emitted_root,
   expected_value: typescript_pr3_emitted_root,

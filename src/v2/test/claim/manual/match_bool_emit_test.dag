@@ -1,8 +1,8 @@
 module v2.test.manual.match_bool_emit
 
 import v2.compiler.body_producer {
-  produce_mvp1_match_arrow_with_body,
-  produce_mvp1_match_arrow_with_body_swapped_arms
+  produce_match_arrow_with_body,
+  produce_match_arrow_with_body_swapped_arms
 }
 import v2.test.execution.match_bool_round_trip {
   match_bool_inferred_facts_for,
@@ -12,12 +12,12 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.extdeps.languages.dag {
-  dag_mvp1_fixture_emitted_match_fn,
-  dag_mvp1_match_if_body_fixture,
-  dag_mvp1_match_source_text,
-  dag_mvp1_match_target_model,
-  dag_mvp1_node_is_kw_true_atom,
-  dag_mvp1_pick_arrow_domain_conj_node
+  dag_fixture_emitted_match_fn,
+  dag_match_if_body_fixture,
+  dag_match_source_text,
+  dag_match_target_model,
+  dag_node_is_kw_true_atom,
+  dag_pick_arrow_domain_conj_node
 }
 import v2.compiler.source_authority { source_authority_node_equal }
 import v2.compiler.translate {
@@ -62,7 +62,7 @@ fn match_bool_emit_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn match_bool_emit_producer_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_match_arrow_with_body() {
+  match produce_match_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: match_bool_emit_inferred_tree_for(root: root),
@@ -73,7 +73,7 @@ fn match_bool_emit_producer_tree() -> Outcome<InferredTree> {
 }
 
 fn match_bool_emit_swapped_producer_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_match_arrow_with_body_swapped_arms() {
+  match produce_match_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: match_bool_emit_inferred_tree_for(root: root),
@@ -103,11 +103,11 @@ fn match_bool_emit_swapped_from_producer(target: TargetModel) -> Outcome<Medium<
 
 fn match_bool_emit_holds() -> Bool {
   match target_serialize_source_from_model(
-    target: dag_mvp1_match_target_model(),
-    emitted: dag_mvp1_fixture_emitted_match_fn
+    target: dag_match_target_model(),
+    emitted: dag_fixture_emitted_match_fn
   ) {
     Accepted { value: authority, diagnostics: ad } =>
-      match match_bool_emit_from_producer(target: dag_mvp1_match_target_model()) {
+      match match_bool_emit_from_producer(target: dag_match_target_model()) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == None) && (ad == None)
         Rejected { diagnostics: _ } => false
@@ -117,9 +117,9 @@ fn match_bool_emit_holds() -> Bool {
 }
 
 fn match_bool_emit_swapped_arms_discriminates() -> Bool {
-  match match_bool_emit_from_producer(target: dag_mvp1_match_target_model()) {
+  match match_bool_emit_from_producer(target: dag_match_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
-      match match_bool_emit_swapped_from_producer(target: dag_mvp1_match_target_model()) {
+      match match_bool_emit_swapped_from_producer(target: dag_match_target_model()) {
         Accepted { value: swapped, diagnostics: ds } =>
           (swapped != canonical) && (dc == None) && (ds == None)
         Rejected { diagnostics: _ } => false
@@ -136,7 +136,7 @@ fn match_bool_emit_post_translate_root() -> Outcome<Node> {
   bind_outcome(
     o: match_bool_emit_producer_tree(),
     f: fn(tree) {
-      translate_emitted_node(tree: tree, target: dag_mvp1_match_target_model())
+      translate_emitted_node(tree: tree, target: dag_match_target_model())
     }
   )
 }
@@ -160,7 +160,7 @@ fn match_bool_emit_diag_scrut_bare_kw_true_on_post_translate() -> Bool {
         Accepted { value: body, diagnostics: bd } =>
           match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
             Present { value: scrut } =>
-              dag_mvp1_node_is_kw_true_atom(node: scrut) && (d == None) && (bd == None)
+              dag_node_is_kw_true_atom(node: scrut) && (d == None) && (bd == None)
             Absent => false
           }
         Rejected { diagnostics: _ } => false
@@ -170,9 +170,9 @@ fn match_bool_emit_diag_scrut_bare_kw_true_on_post_translate() -> Bool {
 }
 
 fn match_bool_emit_diag_emit_eq_authority_text() -> Bool {
-  match match_bool_emit_from_producer(target: dag_mvp1_match_target_model()) {
+  match match_bool_emit_from_producer(target: dag_match_target_model()) {
     Accepted { value: emitted, diagnostics: d } =>
-      (emitted.carried == dag_mvp1_match_source_text) && (d == None)
+      (emitted.carried == dag_match_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }

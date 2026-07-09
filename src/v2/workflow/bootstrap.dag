@@ -16,7 +16,7 @@ import v2.std.language_model {
 import v2.std.compilers.target_model {
   TargetModel,
 }
-import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.runtimes.v2_evaluator {
   V4EvaluatorRuntime,
   v2_evaluator_runtime_wave1
@@ -509,7 +509,7 @@ fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) ->
   (inputs.snapshot.root == bootstrap_source_snapshot_root())
     && (inputs.snapshot.language_model == seed_capability_language_model())
     && (inputs.snapshot.content_hash == bootstrap_canonical_snapshot_content_hash())
-    && (inputs.target_model == rust_mvp1_target_model())
+    && (inputs.target_model == rust_target_model())
     && (inputs.runtime_model == v2_evaluator_runtime_wave1())
 }
 
@@ -645,7 +645,7 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
     language_model: seed_capability_language_model(),
     content_hash: bootstrap_canonical_snapshot_content_hash()
   },
-  target_model: rust_mvp1_target_model(),
+  target_model: rust_target_model(),
   runtime_model: v2_evaluator_runtime_wave1()
 }
 
