@@ -1,0 +1,203 @@
+module v2.lens.complexity_r1_accumulator_copy.analyze
+
+import v2.lens.complexity_r1_accumulator_copy {
+  AnalysisOpaque,
+  Finding,
+  Poly2Suspect,
+  classify_call
+}
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  parse_subtree_find_production_captured
+}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { list_append, list_snoc_item }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { find_named_child }
+
+data analyze_note: String = "The TRAVERSAL half of the R1 accumulator-copy lens — the linear fold that replaces the deleted surface-navigation bridge. analyze(node, carriers) is one recursion over the whole Node tree threading a carrier environment DOWN: at a fold-family call it binds the step function's accumulator (its first param); at every combiner call it asks the cost model (classify_call) whether a bound carrier sits in that combiner's copied port. Because it VISITS every node rather than doing targeted lookup, a copy inside an if/match/let is found by construction — the whole class of control-flow shape gaps the old bridge had dissolves. Three reads here are still surface/syntactic guesses (the subject of the follow-on discussion): the carrier is the step-fn's positional first param; the combiner is matched by lexeme name; carrier-in-copied-port is symbol equality, not dataflow — so a carrier renamed through a let, or a combiner shadowed, is not yet followed. Ports are read as DIRECT args (collect_direct_captures does not descend into an arg's value) so a nested call in one argument does not shift the copied-port index (map_merge's copied port is index 1)."
+
+fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: cap, name: name) {
+    Accepted { value: c, diagnostics: _ } => Present { value: c }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn sequence_left_node(cap: Node) -> Optional<Node> {
+  named_child_optional(cap: cap, name: ^grammar_sequence_left_node_projection)
+}
+
+fn sequence_right_node(cap: Node) -> Optional<Node> {
+  named_child_optional(cap: cap, name: ^grammar_sequence_right_node_projection)
+}
+
+fn sequence_left_symbol(cap: Node) -> Optional<Symbol> {
+  match sequence_left_node(cap: cap) {
+    Absent => Absent
+    Present { value: left } => node_atom_identity_optional(node: left)
+  }
+}
+
+fn find_capture(root: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: root, emitted: emitted) {
+    ParseSubtreeFound { captured: c } => Present { value: c }
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn collect_direct_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<Node> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == emitted {
+        match parse_production_captured_child_optional(node: n) {
+          Present { value: c } => list_snoc_item(xs: acc, item: c)
+          Absent => acc
+        }
+      } else {
+        fold(n.children, init: acc, f: fn(a, e) {
+          collect_direct_captures(n: e.target, emitted: emitted, acc: a)
+        })
+      }
+    Absent =>
+      fold(n.children, init: acc, f: fn(a, e) {
+        collect_direct_captures(n: e.target, emitted: emitted, acc: a)
+      })
+  }
+}
+
+fn primary_expr_capture(node: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_primary_expr {
+        parse_production_captured_child_optional(node: node)
+      } else {
+        Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
+  match find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr) {
+    Absent => Absent
+    Present { value: value_expr } => sequence_left_symbol(cap: value_expr)
+  }
+}
+
+fn call_port_symbols(call_capture: Node) -> List<Optional<Symbol>> {
+  fold(
+    collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: Empty),
+    init: Empty,
+    f: fn(acc, arg) { list_snoc_item(xs: acc, item: arg_value_symbol(arg_capture: arg)) }
+  )
+}
+
+fn is_fold_family_head(sym: Symbol) -> Bool {
+  (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_node)
+}
+
+fn step_fn_first_param(fn_literal: Node) -> Optional<Symbol> {
+  match sequence_right_node(cap: fn_literal) {
+    Absent => Absent
+    Present { value: after_kw_fn } =>
+      match sequence_right_node(cap: after_kw_fn) {
+        Absent => Absent
+        Present { value: after_lparen } =>
+          match sequence_left_node(cap: after_lparen) {
+            Absent => Absent
+            Present { value: params } => sequence_left_symbol(cap: params)
+          }
+      }
+  }
+}
+
+fn fold_family_carrier(call_capture: Node) -> Optional<Symbol> {
+  match sequence_left_symbol(cap: call_capture) {
+    Absent => Absent
+    Present { value: head } =>
+      if is_fold_family_head(sym: head) {
+        match find_capture(root: call_capture, emitted: ^dag_surface_fn_literal) {
+          Absent => Absent
+          Present { value: fn_literal } => step_fn_first_param(fn_literal: fn_literal)
+        }
+      } else {
+        Absent
+      }
+  }
+}
+
+fn extend_carriers(call_capture: Node, carriers: List<Symbol>) -> List<Symbol> {
+  match fold_family_carrier(call_capture: call_capture) {
+    Present { value: carrier } => Cons { head: carrier, tail: carriers }
+    Absent => carriers
+  }
+}
+
+fn finding_at_call(node: Node, call_capture: Node, carriers: List<Symbol>) -> List<Finding> {
+  match sequence_left_symbol(cap: call_capture) {
+    Absent => Empty
+    Present { value: combiner } =>
+      match classify_call(
+        at: node,
+        combiner: combiner,
+        port_syms: call_port_symbols(call_capture: call_capture),
+        carriers: carriers
+      ) {
+        Present { value: f } => Cons { head: f, tail: Empty }
+        Absent => Empty
+      }
+  }
+}
+
+fn analyze(node: Node, carriers: List<Symbol>) -> List<Finding> {
+  match primary_expr_capture(node: node) {
+    Absent =>
+      fold(node.children, init: Empty, f: fn(acc, e) {
+        list_append(left: acc, right: analyze(node: e.target, carriers: carriers))
+      })
+    Present { value: cap } =>
+      let carriers2 = extend_carriers(call_capture: cap, carriers: carriers)
+      let here = finding_at_call(node: node, call_capture: cap, carriers: carriers2)
+      fold(node.children, init: here, f: fn(acc, e) {
+        list_append(left: acc, right: analyze(node: e.target, carriers: carriers2))
+      })
+  }
+}
+
+fn r1_findings(root: Node) -> List<Finding> {
+  analyze(node: root, carriers: Empty)
+}
+
+fn finding_is_suspect(f: Finding) -> Bool {
+  match f {
+    Poly2Suspect { at: _, cost: _ } => true
+    AnalysisOpaque { at: _, reason: _ } => false
+  }
+}
+
+fn finding_is_opaque(f: Finding) -> Bool {
+  match f {
+    Poly2Suspect { at: _, cost: _ } => false
+    AnalysisOpaque { at: _, reason: _ } => true
+  }
+}
+
+fn findings_any(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Bool {
+  fold(fs, init: false, f: fn(acc, x) { if acc { true } else { pred(x) } })
+}
+
+fn findings_have_suspect(fs: List<Finding>) -> Bool {
+  findings_any(fs: fs, pred: finding_is_suspect)
+}
+
+fn findings_have_opaque(fs: List<Finding>) -> Bool {
+  findings_any(fs: fs, pred: finding_is_opaque)
+}

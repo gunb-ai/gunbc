@@ -1,56 +1,128 @@
 module v2.test.lens_complexity_r1_accumulator_copy
 
 import v2.lens.complexity_r1_accumulator_copy {
-  R1Clean,
-  R1PolyTwoSuspect,
-  r1_fold_step_subject,
-  r1_judge_fold_step
+  AnalysisOpaque,
+  Finding,
+  Poly2Suspect,
+  classify_call
 }
+import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
 
-data r1_hygiene_acc: Symbol = ^r1_hygiene_acc
-data r1_hygiene_item: Symbol = ^r1_hygiene_item
-data r1_hygiene_chunk: Symbol = ^r1_hygiene_chunk
+data r1_cost_model_note: String = "Unit-tests the COST MODEL (classify_call) directly against the copied-port registry — no fold, no ingest, no intermediate subject. Each row asserts the verdict for a synthetic (combiner, ports, carriers): the accumulator in a copied port is a Poly(2) suspect (list_append/list_snoc copied index 0, map_merge copied index 1); the accumulator in a NON-copied port is Absent (clean); an unregistered combiner is Absent; a copied port that is not a bare name is AnalysisOpaque (fail-closed, counted — never silently clean)."
 
-test fn complexity_r1_red_list_append_left_holds() -> Bool {
-  match r1_judge_fold_step(
-    n: r1_fold_step_subject(
-      acc_binder: r1_hygiene_acc,
+fn r1_dummy() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^r1_dummy } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn present(s: Symbol) -> Optional<Symbol> {
+  Present { value: s }
+}
+
+fn classify(combiner: Symbol, port_syms: List<Optional<Symbol>>, carriers: List<Symbol>) -> Optional<Finding> {
+  classify_call(at: r1_dummy(), combiner: combiner, port_syms: port_syms, carriers: carriers)
+}
+
+fn is_suspect(o: Optional<Finding>) -> Bool {
+  match o {
+    Present { value: f } =>
+      match f {
+        Poly2Suspect { at: _, cost: _ } => true
+        AnalysisOpaque { at: _, reason: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn is_opaque(o: Optional<Finding>) -> Bool {
+  match o {
+    Present { value: f } =>
+      match f {
+        Poly2Suspect { at: _, cost: _ } => false
+        AnalysisOpaque { at: _, reason: _ } => true
+      }
+    Absent => false
+  }
+}
+
+fn is_absent(o: Optional<Finding>) -> Bool {
+  match o {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn red_list_append_left_is_suspect() -> Bool {
+  is_suspect(
+    o: classify(
       combiner: ^list_append,
-      port0_arg: r1_hygiene_acc,
-      port1_arg: r1_hygiene_item
+      port_syms: [present(s: ^acc), present(s: ^item)],
+      carriers: [^acc]
     )
-  ) {
-    R1PolyTwoSuspect { implied_cost: _, flow_opaque_count: _ } => true
-    _ => false
-  }
+  )
 }
 
-test fn complexity_r1_green_merge_envs_base_holds() -> Bool {
-  match r1_judge_fold_step(
-    n: r1_fold_step_subject(
-      acc_binder: r1_hygiene_acc,
-      combiner: ^map_merge,
-      port0_arg: r1_hygiene_acc,
-      port1_arg: r1_hygiene_chunk
+test fn red_list_snoc_left_is_suspect() -> Bool {
+  is_suspect(
+    o: classify(
+      combiner: ^list_snoc_item,
+      port_syms: [present(s: ^acc), present(s: ^item)],
+      carriers: [^acc]
     )
-  ) {
-    R1Clean { flow_opaque_count: 0 } => true
-    _ => false
-  }
+  )
 }
 
-test fn complexity_r1_red_map_merge_overlay_holds() -> Bool {
-  match r1_judge_fold_step(
-    n: r1_fold_step_subject(
-      acc_binder: r1_hygiene_acc,
+test fn red_map_merge_overlay_is_suspect() -> Bool {
+  is_suspect(
+    o: classify(
       combiner: ^map_merge,
-      port0_arg: r1_hygiene_chunk,
-      port1_arg: r1_hygiene_acc
+      port_syms: [present(s: ^base), present(s: ^acc)],
+      carriers: [^acc]
     )
-  ) {
-    R1PolyTwoSuspect { implied_cost: _, flow_opaque_count: _ } => true
-    _ => false
-  }
+  )
+}
+
+test fn green_map_merge_base_is_clean() -> Bool {
+  is_absent(
+    o: classify(
+      combiner: ^map_merge,
+      port_syms: [present(s: ^acc), present(s: ^other)],
+      carriers: [^acc]
+    )
+  )
+}
+
+test fn green_list_append_acc_in_noncopied_port_is_clean() -> Bool {
+  is_absent(
+    o: classify(
+      combiner: ^list_append,
+      port_syms: [present(s: ^item), present(s: ^acc)],
+      carriers: [^acc]
+    )
+  )
+}
+
+test fn green_unregistered_combiner_is_clean() -> Bool {
+  is_absent(
+    o: classify(
+      combiner: ^Cons,
+      port_syms: [present(s: ^item), present(s: ^acc)],
+      carriers: [^acc]
+    )
+  )
+}
+
+test fn opaque_copied_port_is_analysis_opaque() -> Bool {
+  is_opaque(
+    o: classify(
+      combiner: ^list_append,
+      port_syms: [Absent, present(s: ^item)],
+      carriers: [^acc]
+    )
+  )
 }

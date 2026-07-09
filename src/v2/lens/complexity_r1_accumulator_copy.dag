@@ -6,36 +6,16 @@ import v2.lens.cost {
   PolynomialCost,
   SizeVariable,
   SymbolicCost,
-  polynomial_degree_two,
-  zero_cost
+  polynomial_degree_two
 }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { CopiedPortFact, copied_port_fact_registry, fold_list, list_append }
-import v2.std.collection {
-  List,
-  Optional,
-  Present,
-  Absent,
-  list_at_optional
-}
-import v2.std.diagnostic { Diagnostic, Textual, WholeFile, Unavailable, ExternalContractUnknown }
+import v2.std.algebra { CopiedPortFact, copied_port_fact_registry, fold_list }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Edge,
-  Instantiation,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
+import v2.std.node { Node, Symbol }
 import v2.std.text { String }
-import v2.std.witness { Holds, Violates, Witness }
 
-data complexity_r1_corpus_census_recall_note: String = "RECALL: future whole-corpus census must rediscover survey suspects — src/v2/workflow/glob_discovery_law.dag:63,94,115 (list_append left:acc); ~10 src/v2/compiler/06_translate.dag list_append(partial,…) sites; v2.std.decl_index.decl_facts_fn_items (fractal: the decl_facts walk itself burned 3m41s in step-0). E2-prep is synthetic Node fixtures; E1a body access LANDED surface-level (v2.lens.complexity_r1_accumulator_copy.surface_subject.fold_call_to_r1_subject distills a real parsed fold body into the fold-step subject — proven end-to-end catching a real list_append(left:acc) quadratic in v2.test.claim.complexity.r1_surface_subject); whole-corpus enrollment (sweep every fold, not fixtures) still waits on affected-set/resolution affordability + the enforcement-intent gate, and a resolved-body read supersedes the surface distiller once body-production is affordable."
+data complexity_r1_corpus_census_recall_note: String = "RECALL: future whole-corpus census must rediscover survey suspects — src/v2/workflow/glob_discovery_law.dag:63,94,115 (list_append left:acc); ~10 src/v2/compiler/06_translate.dag list_append(partial,…) sites; v2.std.decl_index.decl_facts_fn_items (fractal: the decl_facts walk itself burned 3m41s in step-0). This is the COST MODEL half of the lens — navigation-free: it owns the copied-port registry lookup (r1_copied_port_index) and the per-call classification (classify_call). The traversal half is the linear fold in v2.lens.complexity_r1_accumulator_copy.analyze, which visits every Node, threads the carrier environment, and calls classify_call at each combiner site — so a copy inside an if/match/let is found by construction (the fold visits it), never by targeted lookup. Whole-corpus enrollment (run the fold over every file, not fixtures) still waits on affected-set/resolution affordability + the enforcement-intent gate; a resolved-body read (binding + dataflow edges) supersedes the surface reads the fold does today."
 
 data copied_port_fact_list_append_left_citation: String = "v2.std.algebra.list_append — left port is fold-over-left copy port (fold_list_right snoc over left)"
 
@@ -43,40 +23,20 @@ data copied_port_fact_list_snoc_left_citation: String = "v2.std.algebra.list_sno
 
 data copied_port_fact_map_merge_overlay_citation: String = "v1_rt.rs:360 rc_map_merge iterates overlay into Rc::make_mut(base); acc in base port is blessed — acc in overlay is R1 copied-port (historical blessed instance: merge_envs, deleted from src/v1/04_env.dag 2026-07-06; a live overlay-port suspect for future census: collect_unit_variant_phantom_matches fold, src/v1/04_resolve.dag)"
 
-data complexity_r1_flow_opaque_residue_note: String = "FlowOpaque: accumulator binder not a direct-reference at either combiner call port (opaque through lets/nested calls). Counted in R1JudgeResult.flow_opaque_count — never silently skipped; lens boundary Violates."
+data complexity_r1_opaque_residue_note: String = "AnalysisOpaque: the combiner is a known copied-port row but the copied port's argument is not a bare carrier name (opaque through lets/nested calls/computed expressions). Emitted as a located, counted Finding — never silently dropped, so 'I could not tell' stays distinct from 'clean' (DESIGN §5: ⊤-as-ignorance is not ⊤-as-answer)."
 
-type R1JudgeResult
-  = R1PolyTwoSuspect { implied_cost: SymbolicCost, flow_opaque_count: Int }
-  | R1Clean { flow_opaque_count: Int }
-  | R1MalformedSubject
-
-fn r1_symbol_atom(s: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: s } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn r1_positional_targets(n: Node) -> List<Node> {
-  fold(n.children, init: Empty, f: fn(acc, e) {
-    match e.label {
-      Positional =>
-        list_append(left: acc, right: Cons { head: e.target, tail: Empty })
-      Named { name: _ } => acc
-    }
-  })
-}
-
-fn r1_symbol_of(n: Node) -> Optional<Symbol> {
-  match n.kind {
-    TypeNode { connective: Atom { identity: s } } => Present { value: s }
-    _ => Absent
-  }
-}
+type Finding
+  = Poly2Suspect { at: Node, cost: SymbolicCost }
+  | AnalysisOpaque { at: Node, reason: Symbol }
 
 fn r1_symbols_equal(a: Symbol, b: Symbol) -> Bool {
   a == b
+}
+
+fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
+  fold(xs, init: false, f: fn(acc, s) {
+    if acc { true } else { r1_symbols_equal(a: s, b: needle) }
+  })
 }
 
 fn r1_row_matches_combiner(row: CopiedPortFact, combiner: Symbol) -> Bool {
@@ -112,142 +72,33 @@ fn r1_poly_two_cost(n: Node) -> SymbolicCost {
   }
 }
 
-fn r1_acc_direct_in_copied_port(
-  acc: Symbol,
+fn r1_some_finding(f: Finding) -> Optional<Finding> {
+  Present { value: f }
+}
+
+fn classify_call(
+  at: Node,
   combiner: Symbol,
-  port0: Symbol,
-  port1: Symbol
-) -> Bool {
+  port_syms: List<Optional<Symbol>>,
+  carriers: List<Symbol>
+) -> Optional<Finding> {
   match r1_copied_port_index(combiner: combiner) {
-    Present { value: copied_idx } =>
-      if copied_idx == 0 {
-        r1_symbols_equal(a: acc, b: port0)
-      } else {
-        r1_symbols_equal(a: acc, b: port1)
-      }
-    Absent => false
-  }
-}
-
-fn r1_acc_visible_in_call(acc: Symbol, port0: Symbol, port1: Symbol) -> Bool {
-  r1_symbols_equal(a: acc, b: port0) || r1_symbols_equal(a: acc, b: port1)
-}
-
-fn r1_fold_step_subject(
-  acc_binder: Symbol,
-  combiner: Symbol,
-  port0_arg: Symbol,
-  port1_arg: Symbol
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Instantiation },
-    children: [
-      Edge { label: Positional, target: r1_symbol_atom(s: acc_binder) },
-      Edge { label: Positional, target: r1_symbol_atom(s: combiner) },
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Instantiation },
-          children: [
-            Edge { label: Positional, target: r1_symbol_atom(s: port0_arg) },
-            Edge { label: Positional, target: r1_symbol_atom(s: port1_arg) }
-          ],
-          occurrence_id: SyntheticOccurrence
-        }
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn r1_judge_fold_step(n: Node) -> R1JudgeResult {
-  let positions = r1_positional_targets(n: n)
-  match list_at_optional(xs: positions, index: 0) {
-    Absent => R1MalformedSubject
-    Present { value: acc_node } =>
-      match r1_symbol_of(n: acc_node) {
-        Absent => R1MalformedSubject
-        Present { value: acc } =>
-          match list_at_optional(xs: positions, index: 1) {
-            Absent => R1MalformedSubject
-            Present { value: combiner_node } =>
-              match r1_symbol_of(n: combiner_node) {
-                Absent => R1MalformedSubject
-                Present { value: combiner } =>
-                  match list_at_optional(xs: positions, index: 2) {
-                    Absent => R1Clean { flow_opaque_count: 0 }
-                    Present { value: call_node } =>
-                      let call_ports = r1_positional_targets(n: call_node)
-                      match list_at_optional(xs: call_ports, index: 0) {
-                        Absent => R1Clean { flow_opaque_count: 0 }
-                        Present { value: p0_node } =>
-                          match r1_symbol_of(n: p0_node) {
-                            Absent => R1Clean { flow_opaque_count: 1 }
-                            Present { value: port0 } =>
-                              match list_at_optional(xs: call_ports, index: 1) {
-                                Absent => R1Clean { flow_opaque_count: 1 }
-                                Present { value: p1_node } =>
-                                  match r1_symbol_of(n: p1_node) {
-                                    Absent => R1Clean { flow_opaque_count: 1 }
-                                    Present { value: port1 } =>
-                                      if r1_acc_direct_in_copied_port(
-                                        acc: acc,
-                                        combiner: combiner,
-                                        port0: port0,
-                                        port1: port1
-                                      ) {
-                                        R1PolyTwoSuspect {
-                                          implied_cost: r1_poly_two_cost(n: n),
-                                          flow_opaque_count: 0
-                                        }
-                                      } else {
-                                        if r1_acc_visible_in_call(
-                                          acc: acc,
-                                          port0: port0,
-                                          port1: port1
-                                        ) {
-                                          R1Clean { flow_opaque_count: 0 }
-                                        } else {
-                                          R1Clean { flow_opaque_count: 1 }
-                                        }
-                                      }
-                                  }
-                              }
-                          }
-                      }
-                  }
+    Absent => Absent
+    Present { value: idx } =>
+      match list_at_optional(xs: port_syms, index: idx) {
+        Absent => Absent
+        Present { value: copied } =>
+          match copied {
+            Present { value: p } =>
+              if symbol_in(needle: p, xs: carriers) {
+                r1_some_finding(f: Poly2Suspect { at: at, cost: r1_poly_two_cost(n: at) })
+              } else {
+                Absent
               }
+            Absent =>
+              r1_some_finding(f: AnalysisOpaque { at: at, reason: ^r1_copied_port_opaque })
           }
       }
-  }
-}
-
-fn complexity_r1_flow_opaque_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: ^complexity_r1_flow_opaque_residue,
-    at: Textual { file: ^complexity_r1_lens_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn complexity_r1_malformed_subject_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: ^complexity_r1_malformed_fold_step_subject,
-    at: Textual { file: ^complexity_r1_lens_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn complexity_r1_accumulator_copy_lens(n: Node) -> Witness<SymbolicCost> {
-  match r1_judge_fold_step(n: n) {
-    R1PolyTwoSuspect { implied_cost: cost, flow_opaque_count: _ } =>
-      Holds { value: cost }
-    R1Clean { flow_opaque_count: 0 } =>
-      Holds { value: zero_cost() }
-    R1Clean { flow_opaque_count: _ } =>
-      Violates { diagnostic: complexity_r1_flow_opaque_diagnostic() }
-    R1MalformedSubject =>
-      Violates { diagnostic: complexity_r1_malformed_subject_diagnostic() }
   }
 }
 
