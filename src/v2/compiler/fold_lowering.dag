@@ -1,0 +1,62 @@
+module v2.compiler.fold_lowering
+
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.node_query { node_positional_child_targets }
+
+data fold_lowering_note: String = "The un-forked forward lowering for fold — the first slice of the general body producer that replaces both the removed cost-shape fork and the hand-rolled MVP1 shapes. A surface fold has NO dedicated grammar production; it parses as an ordinary call, so its lowering is a SEMANTIC desugaring keyed on the RESOLVED callee identity (DESIGN §4: fold/recursion is sugar over Loop), never a lexeme scan. A resolved fold call carries positional children [callee, collection, init, iteration_body]; the desugaring lifts the iteration_body into the canonical seam Loop that the kept 04_infer Loop arm types (body : carrier τ → τ) bounded by the fold-iteration measure ^dag_surface_fold_iteration_measure (registered Strict in v2.std.cardinality.measure_descent_fact_registry, so loop_multiplicity derives its termination). Fail-closed: a fold call whose positional arity does not carry an iteration body refuses with the located ^fold_lowering_shape_invalid, never fabricates a loop. This unit is deliberately resolve-agnostic — it consumes an already-resolved fold-call node — so it is the same desugaring the whole-tree body producer will run once corpus resolution is affordable; the caller supplies the resolved node."
+
+fn fold_iteration_measure_atom() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^dag_surface_fold_iteration_measure } },
+    children: []
+  )
+}
+
+fn fold_call_iteration_body(fold_call: Node) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: fold_call), index: 3)
+}
+
+fn fold_lowering_shape_invalid_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^fold_lowering_shape_invalid,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn fold_call_to_loop(fold_call: Node) -> Outcome<Node> {
+  match fold_call_iteration_body(fold_call: fold_call) {
+    Absent =>
+      outcome_rejected(d: fold_lowering_shape_invalid_diagnostic(n: fold_call))
+    Present { value: body } =>
+      outcome_accepted(
+        value: node_synthetic(
+          kind: ComputationNode { behavior: Loop },
+          children: [
+            Edge { label: Positional, target: body },
+            Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() }
+          ]
+        )
+      )
+  }
+}

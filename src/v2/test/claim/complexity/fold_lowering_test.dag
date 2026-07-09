@@ -1,0 +1,95 @@
+module v2.test.claim.complexity.fold_lowering
+
+import v2.compiler.fold_lowering { fold_call_to_loop }
+import v2.std.cardinality {
+  Bounded,
+  Multiplicity,
+  ProvenTermination,
+  RequiresTerminationProof,
+  loop_multiplicity
+}
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  Transform,
+  TypeNode
+}
+import v2.std.text { String }
+
+data fl_witness_note: String = "Grounds the un-forked fold->Loop desugaring (v2.compiler.fold_lowering) by execution: a resolved fold call (Transform with positional children [callee, collection, init, iteration_body]) lowers to the canonical seam Loop, and the kept loop_multiplicity derives PROVEN termination from the fold-iteration measure — the same real derivation the foundation's loop witnesses use, now reached from a fold-call shape rather than a hand-built loop. Red control: a short-arity fold call carrying no iteration body refuses (Rejected), never fabricating a loop. This is the desugaring unit the whole-tree body producer will run on real resolved fold calls once corpus resolution is affordable; the shape it emits is exactly what the accumulator-copy rule will key on."
+
+fn fl_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn fl_resolved_fold_call(body: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: fl_atom(s: ^fold) },
+      Edge { label: Positional, target: fl_atom(s: ^fl_collection) },
+      Edge { label: Positional, target: fl_atom(s: ^fl_init) },
+      Edge { label: Positional, target: body }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn fl_short_fold_call() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: fl_atom(s: ^fold) },
+      Edge { label: Positional, target: fl_atom(s: ^fl_collection) },
+      Edge { label: Positional, target: fl_atom(s: ^fl_init) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn fl_multiplicity_of(o: Outcome<Node>) -> Multiplicity {
+  match o {
+    Accepted { value: loop, diagnostics: _ } => loop_multiplicity(n: loop)
+    Rejected { diagnostics: _ } => RequiresTerminationProof
+  }
+}
+
+fn fl_is_proven(m: Multiplicity) -> Bool {
+  match m {
+    ProvenTermination { proof: _ } => true
+    RequiresTerminationProof => false
+    Bounded => false
+  }
+}
+
+fn fl_is_rejected(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn fold_call_lowers_to_terminating_loop() -> Bool {
+  fl_is_proven(
+    m: fl_multiplicity_of(
+      o: fold_call_to_loop(fold_call: fl_resolved_fold_call(body: fl_atom(s: ^fl_body_lit)))
+    )
+  )
+}
+
+test fn short_fold_call_refuses_no_loop_fabricated() -> Bool {
+  fl_is_rejected(o: fold_call_to_loop(fold_call: fl_short_fold_call()))
+}
