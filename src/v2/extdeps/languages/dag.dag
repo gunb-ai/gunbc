@@ -4579,6 +4579,166 @@ data dag_variant_construct_arrow_with_body_fixture: Node = dag_variant_construct
 data dag_variant_construct_arrow_with_body_wrong_value_fixture: Node = dag_variant_construct_arrow_with_body_wrong_value_node()
 data dag_fixture_emitted_variant_construct_fn: Node = dag_variant_construct_arrow_with_body_fixture
 
+fn dag_complement_match_body(
+  scrutinee: Node,
+  true_body_lit: Symbol,
+  false_body_lit: Symbol
+) -> Node {
+  dag_match_body_from_arms(
+    scrutinee: scrutinee,
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_complement_lit_true,
+      body_lit: true_body_lit
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_complement_lit_false,
+      body_lit: false_body_lit
+    )
+  )
+}
+
+fn dag_complement_param_scrutinee_node() -> Node {
+  dag_type_atom_node(identity: ^dag_binding_param_a)
+}
+
+fn dag_complement_arrow_domain_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^dag_binding_param_a },
+        target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_complement_body_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_complement_lit_false,
+    false_body_lit: ^dag_complement_lit_true
+  )
+}
+
+fn dag_complement_body_swapped_arms_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_complement_lit_true,
+    false_body_lit: ^dag_complement_lit_false
+  )
+}
+
+fn dag_complement_arrow_with_body_node() -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_complement_arrow_domain_node(),
+    return_type_binding: ^dag_binding_type_bool,
+    body: dag_complement_body_node()
+  )
+}
+
+fn dag_complement_arrow_with_body_swapped_arms_node() -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_complement_arrow_domain_node(),
+    return_type_binding: ^dag_binding_type_bool,
+    body: dag_complement_body_swapped_arms_node()
+  )
+}
+
+fn dag_complement_eval_subgraph_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
+    true_body_lit: ^dag_complement_lit_false,
+    false_body_lit: ^dag_complement_lit_true
+  )
+}
+
+data dag_complement_body_fixture: Node = dag_complement_body_node()
+data dag_complement_arrow_with_body_fixture: Node = dag_complement_arrow_with_body_node()
+data dag_complement_arrow_with_body_swapped_arms_fixture: Node = dag_complement_arrow_with_body_swapped_arms_node()
+data dag_complement_eval_subgraph_fixture: Node = dag_complement_eval_subgraph_node()
+
+fn dag_bool_binop_arrow_domain_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^dag_binding_param_a },
+        target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+      },
+      Edge {
+        label: Named { name: ^dag_binding_param_b },
+        target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_bool_binop_arrow_with_body_node(body: Node) -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_bool_binop_arrow_domain_node(),
+    return_type_binding: ^dag_binding_type_bool,
+    body: body
+  )
+}
+
+fn dag_meet_body_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_binding_param_b,
+    false_body_lit: ^dag_complement_lit_false
+  )
+}
+
+fn dag_meet_body_swapped_arms_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_complement_lit_false,
+    false_body_lit: ^dag_binding_param_b
+  )
+}
+
+fn dag_join_body_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_complement_lit_true,
+    false_body_lit: ^dag_binding_param_b
+  )
+}
+
+fn dag_join_body_swapped_arms_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_binding_param_b,
+    false_body_lit: ^dag_complement_lit_true
+  )
+}
+
+fn dag_meet_eval_subgraph_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
+    true_body_lit: ^dag_complement_lit_true,
+    false_body_lit: ^dag_complement_lit_false
+  )
+}
+
+fn dag_join_eval_subgraph_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
+    true_body_lit: ^dag_complement_lit_true,
+    false_body_lit: ^dag_complement_lit_false
+  )
+}
+
+data dag_meet_arrow_with_body_fixture: Node = dag_bool_binop_arrow_with_body_node(body: dag_meet_body_node())
+data dag_meet_arrow_with_body_swapped_arms_fixture: Node = dag_bool_binop_arrow_with_body_node(body: dag_meet_body_swapped_arms_node())
+data dag_meet_eval_subgraph_fixture: Node = dag_meet_eval_subgraph_node()
+data dag_join_arrow_with_body_fixture: Node = dag_bool_binop_arrow_with_body_node(body: dag_join_body_node())
+data dag_join_arrow_with_body_swapped_arms_fixture: Node = dag_bool_binop_arrow_with_body_node(body: dag_join_body_swapped_arms_node())
+data dag_join_eval_subgraph_fixture: Node = dag_join_eval_subgraph_node()
+
 fn dag_field_access_body_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
