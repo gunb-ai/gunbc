@@ -1,21 +1,27 @@
 module test.claim.materialization_ladder_witness
 
 import std.materialization_ladder {
-  Frame, FramePath, FrameKind,
+  Frame, FrameKind,
   SharedStateFrame, IsolatedChildrenFrame, ReplayedFrame, UnboundedSiblingsFrame,
   FrameDemand, DemandNature,
   PureComputation, IdempotentEffect, WorldRead, FreshEffect,
-  CacheProvider, CacheKeying, ContentKeyed, ExistenceKeyed,
-  EvictionPolicy, ScopeExit, SpacePacked,
-  CacheCoverage, CoversAllComputations, CoversIdentities,
+  CacheProvider, ContentKeyed, ExistenceKeyed,
+  ScopeExit, SpacePacked,
+  CoversAllComputations,
   LadderVerdict,
-  AuthoredDuplication, Discharged,
-  RefusedNoProvider, RefusedScopeTooNarrow, RefusedExistenceKeyed,
-  RefusedUnmodeledWorldRead,
-  ExemptFreshEffect, AcceptedBelowCostFloor, AcceptedSingleRecompute,
-  materialization_ladder, materialization_ladder_holds
+  materialization_ladder, materialization_ladder_holds,
+  empty_frame_path, no_cache_providers, no_cost_floor_exemptions,
+  verdict_is_authored_duplication,
+  verdict_is_discharged_by,
+  verdict_is_refused_no_provider,
+  verdict_is_refused_scope_too_narrow,
+  verdict_is_refused_existence_keyed,
+  verdict_is_refused_unmodeled_world_read,
+  verdict_is_exempt_fresh,
+  verdict_is_accepted_below_cost_floor,
+  verdict_is_accepted_single_recompute
 }
-import std.types { Bool, List, String }
+import std.types { Bool, Int, List, String }
 
 data ladder_witness_note: String = "Each test is one cell of the operator's state x decision table (2026-07-09): the decision is a function of WHEN the redundancy is knowable and WHETHER what was knowable was prepared for. Errors fire only on knowable-but-unprepared; genuine emergence and declared triviality are typed acceptances, never silence. Fixtures mirror the live worked example: a workflow (isolated children) over jobs (shared-state steps), a retry frame (declared replay), a fleet frame (unbounded sibling runs over time)."
 
@@ -25,24 +31,22 @@ fn step(name: String) -> Frame { Frame { name: name, kind: SharedStateFrame } }
 fn retry(name: String) -> Frame { Frame { name: name, kind: ReplayedFrame { attempts: 3 } } }
 fn fleet() -> Frame { Frame { name: "fleet", kind: UnboundedSiblingsFrame } }
 
-fn demand(identity: String, site: FramePath, nature: DemandNature) -> FrameDemand {
+fn demand(identity: String, site: List<Frame>, nature: DemandNature) -> FrameDemand {
   FrameDemand { identity: identity, site: site, nature: nature }
 }
 
 fn root_content_provider(id: String) -> CacheProvider {
   CacheProvider {
     id: id,
-    scope: [],
+    scope: empty_frame_path,
     coverage: CoversAllComputations,
     keying: ContentKeyed,
     eviction: SpacePacked { budget: "10G local cache dir" }
   }
 }
 
-fn no_exemptions() -> List<String> { [] }
-
-fn first_verdict(vs: List<LadderVerdict>) -> LadderVerdict {
-  vs.first()
+fn count_matching(vs: List<LadderVerdict>, matched: fn(LadderVerdict) -> Bool) -> Int {
+  vs |> fold(init: 0, f: (acc, v) => if matched(v) { acc + 1 } else { acc })
 }
 
 fn two_steps_same_job() -> List<FrameDemand> {
@@ -61,51 +65,45 @@ fn three_jobs_same_build() -> List<FrameDemand> {
 }
 
 test fn authored_duplication_in_shared_frame_is_error() -> Bool {
-  let vs = materialization_ladder(demands: two_steps_same_job(), providers: [root_content_provider(id: "sccache")], cost_floor_exempt: no_exemptions())
-  let flagged = match first_verdict(vs: vs) {
-    AuthoredDuplication { identity: i, lca: _, site_count: n } => (i == "cargo-release-build") && (n == 2)
-    Discharged { identity: _, lca: _, provider_id: _ } => false
-    RefusedNoProvider { identity: _, lca: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
-  flagged && !materialization_ladder_holds(demands: two_steps_same_job(), providers: [root_content_provider(id: "sccache")], cost_floor_exempt: no_exemptions())
+  let vs = materialization_ladder(
+    demands: two_steps_same_job(),
+    providers: [root_content_provider(id: "sccache")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  let flagged = count_matching(vs: vs, matched: v => verdict_is_authored_duplication(v: v, identity: "cargo-release-build", site_count: 2)) == 1
+  flagged && !materialization_ladder_holds(
+    demands: two_steps_same_job(),
+    providers: [root_content_provider(id: "sccache")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
 }
 
 test fn cross_frame_duplicate_discharged_by_covering_provider() -> Bool {
-  let vs = materialization_ladder(demands: three_jobs_same_build(), providers: [root_content_provider(id: "sccache")], cost_floor_exempt: no_exemptions())
-  let discharged = match first_verdict(vs: vs) {
-    Discharged { identity: i, lca: _, provider_id: p } => (i == "cargo-release-build") && (p == "sccache")
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    RefusedNoProvider { identity: _, lca: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
-  discharged && materialization_ladder_holds(demands: three_jobs_same_build(), providers: [root_content_provider(id: "sccache")], cost_floor_exempt: no_exemptions())
+  let vs = materialization_ladder(
+    demands: three_jobs_same_build(),
+    providers: [root_content_provider(id: "sccache")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  let discharged = count_matching(vs: vs, matched: v => verdict_is_discharged_by(v: v, identity: "cargo-release-build", provider_id: "sccache")) == 1
+  discharged && materialization_ladder_holds(
+    demands: three_jobs_same_build(),
+    providers: [root_content_provider(id: "sccache")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
 }
 
 test fn obligation_without_provider_is_typed_refusal() -> Bool {
-  let vs = materialization_ladder(demands: three_jobs_same_build(), providers: [], cost_floor_exempt: no_exemptions())
-  let refused = match first_verdict(vs: vs) {
-    RefusedNoProvider { identity: i, lca: _ } => i == "cargo-release-build"
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    Discharged { identity: _, lca: _, provider_id: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
-  refused && !materialization_ladder_holds(demands: three_jobs_same_build(), providers: [], cost_floor_exempt: no_exemptions())
+  let vs = materialization_ladder(
+    demands: three_jobs_same_build(),
+    providers: no_cache_providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  let refused = count_matching(vs: vs, matched: v => verdict_is_refused_no_provider(v: v, identity: "cargo-release-build")) == 1
+  refused && !materialization_ladder_holds(
+    demands: three_jobs_same_build(),
+    providers: no_cache_providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
 }
 
 test fn provider_scope_too_narrow_is_refused() -> Bool {
@@ -116,40 +114,28 @@ test fn provider_scope_too_narrow_is_refused() -> Bool {
     keying: ContentKeyed,
     eviction: ScopeExit
   }
-  let vs = materialization_ladder(demands: three_jobs_same_build(), providers: [narrow], cost_floor_exempt: no_exemptions())
-  match first_verdict(vs: vs) {
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: p } => p == "job-local-cache"
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    Discharged { identity: _, lca: _, provider_id: _ } => false
-    RefusedNoProvider { identity: _, lca: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
+  let vs = materialization_ladder(
+    demands: three_jobs_same_build(),
+    providers: [narrow],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  count_matching(vs: vs, matched: v => verdict_is_refused_scope_too_narrow(v: v, provider_id: "job-local-cache")) == 1
 }
 
 test fn existence_keyed_provider_is_refused() -> Bool {
   let build_if_absent = CacheProvider {
     id: "build-if-absent",
-    scope: [],
+    scope: empty_frame_path,
     coverage: CoversAllComputations,
     keying: ExistenceKeyed,
     eviction: ScopeExit
   }
-  let vs = materialization_ladder(demands: three_jobs_same_build(), providers: [build_if_absent], cost_floor_exempt: no_exemptions())
-  match first_verdict(vs: vs) {
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: p } => p == "build-if-absent"
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    Discharged { identity: _, lca: _, provider_id: _ } => false
-    RefusedNoProvider { identity: _, lca: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
+  let vs = materialization_ladder(
+    demands: three_jobs_same_build(),
+    providers: [build_if_absent],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  count_matching(vs: vs, matched: v => verdict_is_refused_existence_keyed(v: v, provider_id: "build-if-absent")) == 1
 }
 
 fn single_demand_under_retry() -> List<FrameDemand> {
@@ -157,30 +143,18 @@ fn single_demand_under_retry() -> List<FrameDemand> {
 }
 
 test fn declared_replay_frame_obligates_up_front() -> Bool {
-  let unprepared = materialization_ladder(demands: single_demand_under_retry(), providers: [], cost_floor_exempt: no_exemptions())
-  let refused = match first_verdict(vs: unprepared) {
-    RefusedNoProvider { identity: i, lca: _ } => i == "expensive-stage"
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    Discharged { identity: _, lca: _, provider_id: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
-  let prepared = materialization_ladder(demands: single_demand_under_retry(), providers: [root_content_provider(id: "checkpoint-store")], cost_floor_exempt: no_exemptions())
-  let discharged = match first_verdict(vs: prepared) {
-    Discharged { identity: _, lca: _, provider_id: p } => p == "checkpoint-store"
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    RefusedNoProvider { identity: _, lca: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
+  let unprepared = materialization_ladder(
+    demands: single_demand_under_retry(),
+    providers: no_cache_providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  let refused = count_matching(vs: unprepared, matched: v => verdict_is_refused_no_provider(v: v, identity: "expensive-stage")) == 1
+  let prepared = materialization_ladder(
+    demands: single_demand_under_retry(),
+    providers: [root_content_provider(id: "checkpoint-store")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  let discharged = count_matching(vs: prepared, matched: v => verdict_is_discharged_by(v: v, identity: "expensive-stage", provider_id: "checkpoint-store")) == 1
   refused && discharged
 }
 
@@ -189,20 +163,17 @@ fn single_demand_under_fleet() -> List<FrameDemand> {
 }
 
 test fn unbounded_siblings_frame_obligates_up_front() -> Bool {
-  let unprepared = materialization_ladder(demands: single_demand_under_fleet(), providers: [], cost_floor_exempt: no_exemptions())
-  let refused = match first_verdict(vs: unprepared) {
-    RefusedNoProvider { identity: _, lca: _ } => true
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    Discharged { identity: _, lca: _, provider_id: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
-  let prepared = materialization_ladder(demands: single_demand_under_fleet(), providers: [root_content_provider(id: "sccache")], cost_floor_exempt: no_exemptions())
-  refused && materialization_ladder_holds(demands: single_demand_under_fleet(), providers: [root_content_provider(id: "sccache")], cost_floor_exempt: no_exemptions()) && (prepared.count() == 1)
+  let unprepared = materialization_ladder(
+    demands: single_demand_under_fleet(),
+    providers: no_cache_providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  let refused = count_matching(vs: unprepared, matched: v => verdict_is_refused_no_provider(v: v, identity: "cargo-release-build")) == 1
+  refused && materialization_ladder_holds(
+    demands: single_demand_under_fleet(),
+    providers: [root_content_provider(id: "sccache")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
 }
 
 fn duplicated_measurement() -> List<FrameDemand> {
@@ -213,19 +184,17 @@ fn duplicated_measurement() -> List<FrameDemand> {
 }
 
 test fn fresh_effect_duplication_is_exempt_not_cached() -> Bool {
-  let vs = materialization_ladder(demands: duplicated_measurement(), providers: [], cost_floor_exempt: no_exemptions())
-  let exempt = match first_verdict(vs: vs) {
-    ExemptFreshEffect { identity: i } => i == "cgroup-peak-measurement"
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    Discharged { identity: _, lca: _, provider_id: _ } => false
-    RefusedNoProvider { identity: _, lca: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
-  exempt && materialization_ladder_holds(demands: duplicated_measurement(), providers: [], cost_floor_exempt: no_exemptions())
+  let vs = materialization_ladder(
+    demands: duplicated_measurement(),
+    providers: no_cache_providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  let exempt = count_matching(vs: vs, matched: v => verdict_is_exempt_fresh(v: v, identity: "cgroup-peak-measurement")) == 1
+  exempt && materialization_ladder_holds(
+    demands: duplicated_measurement(),
+    providers: no_cache_providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
 }
 
 fn duplicated_world_read(declared: Bool) -> List<FrameDemand> {
@@ -236,39 +205,27 @@ fn duplicated_world_read(declared: Bool) -> List<FrameDemand> {
 }
 
 test fn world_read_without_envelope_is_refused() -> Bool {
-  let vs = materialization_ladder(demands: duplicated_world_read(declared: false), providers: [root_content_provider(id: "dns-cache")], cost_floor_exempt: no_exemptions())
-  match first_verdict(vs: vs) {
-    RefusedUnmodeledWorldRead { identity: i, lca: _ } => i == "dns-lookup"
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    Discharged { identity: _, lca: _, provider_id: _ } => false
-    RefusedNoProvider { identity: _, lca: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
+  let vs = materialization_ladder(
+    demands: duplicated_world_read(declared: false),
+    providers: [root_content_provider(id: "dns-cache")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  count_matching(vs: vs, matched: v => verdict_is_refused_unmodeled_world_read(v: v, identity: "dns-lookup")) == 1
 }
 
 test fn world_read_with_declared_envelope_is_discharged() -> Bool {
-  materialization_ladder_holds(demands: duplicated_world_read(declared: true), providers: [root_content_provider(id: "dns-cache")], cost_floor_exempt: no_exemptions())
+  materialization_ladder_holds(
+    demands: duplicated_world_read(declared: true),
+    providers: [root_content_provider(id: "dns-cache")],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
 }
 
 test fn single_pure_demand_is_accepted_recompute() -> Bool {
   let one = [demand(identity: "one-off-transform", site: [wf(), job(name: "ci"), step(name: "emit")], nature: PureComputation)]
-  let vs = materialization_ladder(demands: one, providers: [], cost_floor_exempt: no_exemptions())
-  let accepted = match first_verdict(vs: vs) {
-    AcceptedSingleRecompute { identity: i } => i == "one-off-transform"
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    Discharged { identity: _, lca: _, provider_id: _ } => false
-    RefusedNoProvider { identity: _, lca: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedBelowCostFloor { identity: _ } => false
-  }
-  accepted && materialization_ladder_holds(demands: one, providers: [], cost_floor_exempt: no_exemptions())
+  let vs = materialization_ladder(demands: one, providers: no_cache_providers, cost_floor_exempt: no_cost_floor_exemptions)
+  let accepted = count_matching(vs: vs, matched: v => verdict_is_accepted_single_recompute(v: v, identity: "one-off-transform")) == 1
+  accepted && materialization_ladder_holds(demands: one, providers: no_cache_providers, cost_floor_exempt: no_cost_floor_exemptions)
 }
 
 fn duplicated_trivial_step() -> List<FrameDemand> {
@@ -280,19 +237,16 @@ fn duplicated_trivial_step() -> List<FrameDemand> {
 }
 
 test fn below_cost_floor_duplication_is_typed_acceptance() -> Bool {
-  let vs = materialization_ladder(demands: duplicated_trivial_step(), providers: [], cost_floor_exempt: ["rustup-pin"])
-  let accepted = match first_verdict(vs: vs) {
-    AcceptedBelowCostFloor { identity: i } => i == "rustup-pin"
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
-    Discharged { identity: _, lca: _, provider_id: _ } => false
-    RefusedNoProvider { identity: _, lca: _ } => false
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => false
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => false
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => false
-    ExemptFreshEffect { identity: _ } => false
-    AcceptedSingleRecompute { identity: _ } => false
-  }
-  let unexempted = materialization_ladder(demands: duplicated_trivial_step(), providers: [], cost_floor_exempt: no_exemptions())
-  let red_without_roster = !materialization_ladder_holds(demands: duplicated_trivial_step(), providers: [], cost_floor_exempt: no_exemptions())
-  accepted && red_without_roster && (unexempted.count() == 1)
+  let vs = materialization_ladder(
+    demands: duplicated_trivial_step(),
+    providers: no_cache_providers,
+    cost_floor_exempt: ["rustup-pin"]
+  )
+  let accepted = count_matching(vs: vs, matched: v => verdict_is_accepted_below_cost_floor(v: v, identity: "rustup-pin")) == 1
+  let red_without_roster = !materialization_ladder_holds(
+    demands: duplicated_trivial_step(),
+    providers: no_cache_providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  accepted && red_without_roster
 }
