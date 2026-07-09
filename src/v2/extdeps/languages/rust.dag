@@ -2331,8 +2331,7 @@ fn rust_mvp1_target_model_with_operators_and_lex(operator_catalog: Node, lex: Le
 
 fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
-  let ma2 = map_insert(m0, ^rust_binding_fn_add2, "add2")
-  let m1 = map_insert(ma2, ^rust_binding_param_x, "x")
+  let m1 = map_insert(m0, ^rust_binding_param_x, "x")
   let m2 = map_insert(m1, ^rust_binding_param_y, "y")
   let mx = map_insert(m2, ^dag_binding_param_x, "x")
   let my = map_insert(mx, ^dag_binding_param_y, "y")
