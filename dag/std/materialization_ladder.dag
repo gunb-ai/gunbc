@@ -1,7 +1,10 @@
 module std.materialization_ladder
 
 import std.types { Bool, Int, List, String }
-import std.realization { Materialization, Recompute, Memoize, Share }
+import std.realization {
+  Materialization, Recompute, Memoize, Share,
+  Placement, LocalInProcess, LocalFilesystem, RemoteNetwork
+}
 
 data materialization_ladder_ownership_convergence_note: String = "Section-3 convergence thread (like the fnv1a64 dual-surface row in DESIGN): v1.compiler.ownership (src/v1/ownership.dag, generated twin v1_compiler_ownership.rs) is the EVAL-FRAME INSTANCE of this ladder, built very early as the emitter's materialization decision. The mapping is exact: BindingUsage.consumers = FrameDemand sites at binding grain; binding_fan_out (Threaded excluded) = demand plurality — Threaded IS the iteration-carry/reduce-spine edge, excluded from plurality exactly as the spine's critical path is excluded from independence width; OwnershipDecision.SoleOwner = single-demand move (AcceptedSingleRecompute at value grain); fan_out>1 inside one function body (a shared-state frame) = the Share/clone decision; SharedError with consumer_count+sites = plurality refused in an affine-uniqueness context (a context-requirement refinement this std ladder does not yet model — the residue that keeps the v1 instance load-bearing); the v3-era zero arm (fan_out==0 and pure = dead code; ==0 with effect = valid, the effect IS the use) is DeadComputation / AcceptedEffectIsTheUse here. Two surfaces, one concept, tracked so the fork does not widen. Dissolution: when the emit stage migrates onto the v2/std spine, ownership decisions ground on this ladder (demand plurality per frame) and v1.compiler.ownership retires with the seed."
 
@@ -55,7 +58,60 @@ type CacheProvider {
   eviction: EvictionPolicy
 }
 
-data provider_tier_note: String = "Share is ONE verdict; the provider TIER is its layer-aware handler (operator, 2026-07-09): ReferenceTier = same-carrier readonly pointer (the cheapest cache — point at it, no copy, no destroyed memory; keyless BY SHAPE, so an existence-keyed reference is unwritable); CopyTier = clone-per-consumer, the PRICED demotion when reference requirements fail (silent demotion is the #6249 clone-fallback pathology); MemoTier/ArtifactTier/CasTier = store tiers carrying their keying. Frame obligations at isolation LCAs are dischargeable only by store tiers — a reference cannot cross an isolation boundary; Reference/Copy live at shared-state (eval) frames. That tier x frame compatibility is rule 4's no-provider-available-at-this-layer arm made structural."
+data provider_tier_note: String = "Share is ONE verdict; the provider TIER is its layer-aware handler (operator, 2026-07-09): ReferenceTier = same-carrier readonly pointer (the cheapest cache — point at it, no copy, no destroyed memory; keyless BY SHAPE, so an existence-keyed reference is unwritable); CopyTier = clone-per-consumer, the PRICED demotion when reference requirements fail (silent demotion is the #6249 clone-fallback pathology); MemoTier/ArtifactTier/CasTier = store tiers carrying their keying. Frame obligations at isolation LCAs are dischargeable only by store tiers — a reference cannot cross an isolation boundary; Reference/Copy live at shared-state (eval) frames. That tier x frame compatibility is rule 4's no-provider-available-at-this-layer arm made structural — and it is DERIVED, not listed: see tier_axes."
+
+data provider_tier_decomposition_note: String = "The tiers are NOT fundamental arms and NOT heuristics (operator question, 2026-07-09): they are five NAMED POINTS in a product of three grounded axes — the Int8..Int128 = Compose<Int, MachineWidth> pattern (DESIGN section 2). Axis 1 placement (where the bytes live) REUSES std.realization.Placement — this projection repairs the section-3 nickname the first draft minted beside it. Axis 2 addressing (how a demand finds the materialization): EdgeAddressed — the dependency edge itself is the address (a pointer / direct hand-off; no key exists because the graph edge is the linkage) vs KeyAddressed — symbolic lookup, which is where CacheKeying lives (an edge needs no key; that is WHY ReferenceTier was keyless by shape). Axis 3 aliasing: AliasOne (all demands alias the single materialization — requires readonly, the borrow gate) vs ReplicatePerConsumer. Two orders EMERGE rather than being modeled: the cost order (reference < copy < memo < artifact < cas) is a discharge PREFERENCE, not semantics; the reach relation is the derived law — EdgeAddressed cannot span an isolation boundary (the edge does not exist across it), KeyAddressed spans exactly the boundaries its placement persists across. provider_is_store_tier derives from addressing_spans_isolation, so the store-tiers-only-at-isolation-LCAs rule is a consequence, never a listed rule."
+
+type ProviderAddressing
+  = EdgeAddressed
+  | KeyAddressed { keying: CacheKeying }
+
+type ProviderAliasing
+  = AliasOne
+  | ReplicatePerConsumer
+
+type ProviderAxes {
+  placement: Placement
+  addressing: ProviderAddressing
+  aliasing: ProviderAliasing
+}
+
+fn tier_axes(t: ProviderTier) -> ProviderAxes {
+  match t {
+    ReferenceTier => ProviderAxes {
+      placement: LocalInProcess,
+      addressing: EdgeAddressed,
+      aliasing: AliasOne
+    }
+    CopyTier => ProviderAxes {
+      placement: LocalInProcess,
+      addressing: EdgeAddressed,
+      aliasing: ReplicatePerConsumer
+    }
+    MemoTier { keying: k } => ProviderAxes {
+      placement: LocalInProcess,
+      addressing: KeyAddressed { keying: k },
+      aliasing: ReplicatePerConsumer
+    }
+    ArtifactTier { keying: k } => ProviderAxes {
+      placement: LocalFilesystem,
+      addressing: KeyAddressed { keying: k },
+      aliasing: ReplicatePerConsumer
+    }
+    CasTier { keying: k } => ProviderAxes {
+      placement: RemoteNetwork,
+      addressing: KeyAddressed { keying: k },
+      aliasing: ReplicatePerConsumer
+    }
+  }
+}
+
+fn addressing_spans_isolation(a: ProviderAddressing) -> Bool {
+  match a {
+    EdgeAddressed => false
+    KeyAddressed { keying: _ } => true
+  }
+}
 
 type LadderVerdict
   = AuthoredDuplication { identity: String, lca: List<Frame>, site_count: Int }
@@ -194,13 +250,8 @@ fn provider_covers_identity(p: CacheProvider, identity: String) -> Bool {
 }
 
 fn provider_is_store_tier(p: CacheProvider) -> Bool {
-  match p.tier {
-    ReferenceTier => false
-    CopyTier => false
-    MemoTier { keying: _ } => true
-    ArtifactTier { keying: _ } => true
-    CasTier { keying: _ } => true
-  }
+  let axes = tier_axes(t: p.tier)
+  addressing_spans_isolation(a: axes.addressing)
 }
 
 fn provider_is_content_keyed(p: CacheProvider) -> Bool {
