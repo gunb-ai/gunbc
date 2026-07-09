@@ -95,7 +95,7 @@ data gunbc_ci_floor_execution_corpus_per_witness_rss: ByteSize = byte_size(21474
 
 fn gunbc_ci_execution_corpus_available_width(each: ByteSize) -> Int {
   let available = byte_size_saturating_sub(
-    total: gunbc_ci_runner_cgroup_memory_cap,
+    total: gunbc_ci_runner_slot_memory_max_live,
     reserved: gunbc_ci_floor_executor_base_overhead_bytes()
   )
   let quotient = byte_size_count(b: available) / byte_size_count(b: each)
@@ -127,7 +127,7 @@ fn witness_runner_cgroup_cap_lt_dashboard_session_cap() -> Bool {
 }
 
 fn witness_derived_width_committed_fits_with_margin() -> Bool {
-  let cap = gunbc_ci_runner_cgroup_memory_cap
+  let cap = gunbc_ci_runner_slot_memory_max_live
   let width = gunbc_ci_floor_memory_derived_width(cap: cap, cpu_bound: 128)
   let committed = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes()) + width * byte_size_count(b: gunbc_ci_floor_per_shard_peak_max())
   committed <= byte_size_count(b: measure_scale_fraction_floor(m: cap, num: gunbc_ci_floor_width_usable_fraction_num, den: gunbc_ci_floor_width_usable_fraction_den))
