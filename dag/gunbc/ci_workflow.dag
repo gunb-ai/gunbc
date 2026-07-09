@@ -160,6 +160,7 @@ fn ci_floor_spec_from_roster() -> CiSpec {
   {
     gates: project_ci_floor_gates(roster: commit_gate_roster),
     witness_entries: project_ci_floor_witness_entries(roster: commit_gate_roster),
+    discovery_scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
     diff_policy: gunbc_ci_spec.diff_policy,
     notice_title: gunbc_ci_spec.notice_title,
     deploy_stages: [],

@@ -1,6 +1,6 @@
 module v2.workflow.ci_floor_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
@@ -37,6 +37,7 @@ import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import std.realization_schedule {
   SelectionApplied,
   SelectionPredictOnly,
+  SelectionOff,
   RealizationPlan,
   RealizationObjective,
   Runnable,
@@ -122,7 +123,7 @@ fn witness_entries_kind_path_all_agree(entries: List<ScheduleWitnessEntry>) -> B
 
 fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
   concat(
-    if length(xs: corpus_witness_entries(spec: spec)) > 0 { [floor_corpus_node] } else { [] },
+    if length(xs: corpus_witness_entries(spec: spec)) > 0 || length(xs: spec.discovery_scan_dirs) > 0 { [floor_corpus_node] } else { [] },
     if length(xs: execution_witness_entries(spec: spec)) > 0 { [execution_corpus_node] } else { [] }
   )
 }
@@ -240,7 +241,7 @@ fn corpus_source_roots() -> List<String> {
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
-    scan_dirs: [],
+    scan_dirs: spec.discovery_scan_dirs,
     explicit_entries: corpus_witness_entries(spec: spec),
     node_frontier_selection: SelectionApplied,
     exclude_substrings: witness_exclusion_substrings,
@@ -490,7 +491,7 @@ data gunbc_falsifier_note: String = "Differential falsifier cadence batch (signe
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
   [[RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
-    scan_dirs: witness_discovery_scan_dirs,
+    scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
     explicit_entries: [],
     node_frontier_selection: SelectionPredictOnly,
     exclude_substrings: witness_exclusion_substrings,
@@ -506,6 +507,30 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
 
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan().schedule
+}
+
+fn runnable_scan_dir_count(r: Runnable) -> Int {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => length(xs: dirs)
+    _ => 0 - 1
+  }
+}
+
+fn runnable_selection_applied(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
+      match sel { SelectionApplied => true  SelectionOff => false  SelectionPredictOnly => false }
+    _ => false
+  }
+}
+
+fn witness_ci_corpus_discovery_is_live() -> Bool {
+  runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) > 0
+    && runnable_selection_applied(r: corpus_runnable_for(spec: gunbc_ci_spec))
+}
+
+fn witness_regen_spec_carries_no_witness_corpus() -> Bool {
+  length(xs: corpus_plan_nodes(spec: gunbc_ci_regen_spec)) == 0
 }
 
 fn gunbc_ci_regen_floor_batches() -> List<List<Runnable>> {
