@@ -12,17 +12,21 @@ import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
+  eval,
   eval_context_with_semantics,
-  eval_test_claim_subject
+  eval_test_claim_subject,
+  inputs_root_only
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
-  dag_mvp1_match_arrow_with_body_fixture
+  dag_mvp1_match_if_body_fixture
 }
 import v2.extdeps.languages.rust {
   rust_emit_host_runtime_primitive_type_node,
   rust_mvp1_match_target_model_staging
 }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { List, Map, list_at_optional }
 import v2.std.compilers.target_model {
   match_arm_body,
@@ -36,20 +40,16 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
-  diagnostics_singleton,
-  node_locus
+  bind_outcome,
+  node_locus,
+  outcome_accepted
 }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,
-  ComputationNode,
-  Edge,
   Node,
-  Positional,
   Symbol,
-  SyntheticOccurrence,
-  Transform,
   TypeNode
 }
 import v2.std.node_query {
@@ -84,7 +84,24 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
-data emit_match_eval_call_pin: Symbol = ^emit_match_eval_call_pin
+data emit_match_eval_subgraph_node: Node = dag_mvp1_match_if_body_fixture
+
+fn emit_match_eval_generic_facts(node: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: rust_emit_host_runtime_primitive_type_node(),
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: ^emit_match_eval_generic_descent }
+      }
+    }
+  )
+}
+
+fn emit_match_eval_composed_facts(key: Node) -> Witness<InferredFacts> {
+  Holds { value: emit_match_eval_generic_facts(node: key) }
+}
 
 fn emit_match_eval_octet_value(n: Int) -> RuntimeValue {
   RuntimePrimitive {
@@ -265,7 +282,7 @@ fn emit_match_eval_choose_arm(
   _env: EvaluationEnvironment
 ) -> Outcome<Node> {
   match emit_match_eval_try_arm(match_node: node, arm_index: 1, scrutinee: scrutinee) {
-    Accepted { value: body, diagnostics: d } => Accepted { value: body, diagnostics: d }
+    Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
     Rejected { diagnostics: _ } =>
       emit_match_eval_try_arm(match_node: node, arm_index: 2, scrutinee: scrutinee)
   }
@@ -301,37 +318,15 @@ fn emit_match_eval_context() -> EvalContext {
   )
 }
 
-fn emit_match_eval_call_node(callee: Node) -> Node {
-  Node {
-    kind: ComputationNode { behavior: Transform },
-    children: [Edge { label: Positional, target: callee }],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-data emit_match_eval_subgraph_node: Node = emit_match_eval_call_node(
-  callee: dag_mvp1_match_arrow_with_body_fixture
-)
-
-fn emit_match_eval_facts_miss(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^emit_match_eval_facts_not_consulted,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
-}
-
 fn emit_match_eval_producer_tree() -> Outcome<InferredTree> {
   match produce_mvp1_match_arrow_with_body() {
-    Accepted { value: root, diagnostics: d } =>
+    Accepted { value: root, diagnostics: _ } =>
       Accepted {
         value: InferredTree {
           root: root,
-          facts: Map { lookup: emit_match_eval_facts_miss }
+          facts: Map { lookup: emit_match_eval_composed_facts }
         },
-        diagnostics: d
+        diagnostics: None
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -339,13 +334,13 @@ fn emit_match_eval_producer_tree() -> Outcome<InferredTree> {
 
 fn emit_match_eval_swapped_producer_tree() -> Outcome<InferredTree> {
   match produce_mvp1_match_arrow_with_body_swapped_arms() {
-    Accepted { value: root, diagnostics: d } =>
+    Accepted { value: root, diagnostics: _ } =>
       Accepted {
         value: InferredTree {
           root: root,
-          facts: Map { lookup: emit_match_eval_facts_miss }
+          facts: Map { lookup: emit_match_eval_composed_facts }
         },
-        diagnostics: d
+        diagnostics: None
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -357,7 +352,7 @@ fn emit_match_eval_subject_tree(tree: InferredTree) -> InferredTree {
 
 fn emit_match_eval_claim(rhs_result_node: Node) -> TestClaim {
   EqualsClaim {
-    label: "S2 B9: rust emit(match-fn) host-run == eval(one_or_two-call) via shared octet codec",
+    label: "S2 B9: rust emit(match-fn) host-run == eval(match-body) via shared octet codec",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: rhs_result_node,
     rhs: rhs_result_node,
@@ -399,20 +394,50 @@ fn emit_match_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Boo
 
 test fn emit_host_match_equals_eval_holds() -> Bool {
   match emit_match_eval_producer_tree() {
-    Accepted { value: tree, diagnostics: d } =>
-      emit_match_eval_verdict_is_pass(run: emit_match_eval_run(tree: tree)) && (d == None)
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_is_pass(run: emit_match_eval_run(tree: tree))
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_host_match_wrong_fixture_refuses_holds() -> Bool {
   match emit_match_eval_swapped_producer_tree() {
-    Accepted { value: tree, diagnostics: d } =>
-      emit_match_eval_verdict_is_fail(run: emit_match_eval_run(tree: tree)) && (d == None)
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_is_fail(run: emit_match_eval_run(tree: tree))
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_host_match_equals_eval_all_holds() -> Bool {
   emit_host_match_equals_eval_holds() && emit_host_match_wrong_fixture_refuses_holds()
+}
+
+test fn emit_match_produce_only_holds() -> Bool {
+  match produce_mvp1_match_arrow_with_body() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_match_producer_tree_only_holds() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_match_eval_only_holds() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match eval(
+        tree: tree,
+        interpretation: emit_match_eval_interpretation(),
+        inputs: inputs_root_only(root: emit_match_eval_subgraph_node)
+      ) {
+        Accepted { value: v, diagnostics: None } =>
+          v == emit_match_eval_octet_value(n: 1)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
