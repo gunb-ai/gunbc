@@ -1,0 +1,29 @@
+module v2.test.manual.grammar_coverage_reason_probe
+
+import v2.lens.enforcement.grammar_coverage {
+  grammar_coverage_file_receipt,
+  grammar_coverage_parse_reject_reasons,
+  grammar_coverage_reason_is_one_of
+}
+
+test fn probe_core_parse_reason_known() -> Bool {
+  match grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag").verdict {
+    ParsedClean => false
+    ParseRejected { stage: s, reason: r } =>
+      (s == "parse") && grammar_coverage_reason_is_one_of(
+        reason: r,
+        candidates: grammar_coverage_parse_reject_reasons()
+      )
+  }
+}
+
+test fn probe_tokenize_parse_reason_known() -> Bool {
+  match grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag").verdict {
+    ParsedClean => false
+    ParseRejected { stage: s, reason: r } =>
+      (s == "parse") && grammar_coverage_reason_is_one_of(
+        reason: r,
+        candidates: grammar_coverage_parse_reject_reasons()
+      )
+  }
+}
