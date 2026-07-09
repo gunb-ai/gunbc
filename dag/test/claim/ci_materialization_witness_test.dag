@@ -1,6 +1,7 @@
 module test.claim.ci_materialization_witness
 
 import std.types { Bool, Int, List, String }
+import gunbc.ci_materialization { ci_catalog_projection_refusals }
 import gunbc.ci_materialization_gate {
   ci_materialization_ladder_holds_live,
   ci_materialization_holds_without_sccache,
@@ -37,4 +38,8 @@ test fn ci_prelude_scripts_are_typed_cost_floor_acceptances() -> Bool {
 
 test fn ci_measurement_is_exempt_fresh_effect() -> Bool {
   ci_exempt_fresh_verdict_count() >= 1
+}
+
+test fn ci_catalog_projection_has_no_refusals() -> Bool {
+  ci_catalog_projection_refusals() == 0
 }
