@@ -9702,10 +9702,10 @@ fn target_model_bundle_replace_edge_target(
     TypeNode { connective: Conj } =>
       Node {
         kind: TypeNode { connective: Conj },
-        children: fold_list(
-          xs: bundle.children,
-          empty: Empty,
-          cons: fn(acc, edge) {
+        children: fold(
+          bundle.children,
+          init: Empty,
+          f: fn(acc, edge) {
             match edge.label {
               Named { name: n } =>
                 if n == edge_name {
