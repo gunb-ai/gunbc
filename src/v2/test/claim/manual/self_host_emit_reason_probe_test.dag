@@ -4,6 +4,9 @@ import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
 }
 import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.compilers.target_model { target_model_augment_value_semantics_carriers }
+import v2.compiler.translate { translate_value_semantics_carriers_from_model }
+import v2.std.algebra { any }
 import v2.compiler.program_partition { partition_user_semantic_types_from_root }
 import v2.test.manual.self_host_module_emit_derisk {
   derisk_ingest_for,
@@ -56,3 +59,17 @@ test fn probe_type_decl_partition_facts() -> Bool { probe_emit_rejects_with(src:
 test fn probe_fn_ownership() -> Bool { probe_emit_rejects_with(src: src_fn_simple_body, reason: ^target_use_site_ownership_lookup_miss) }
 test fn probe_fn_sig_codomain() -> Bool { probe_emit_rejects_with(src: src_fn_simple_body, reason: ^rust_signature_codomain_missing) }
 test fn probe_fn_type_shape() -> Bool { probe_emit_rejects_with(src: src_fn_simple_body, reason: ^translate_type_expression_shape_missing) }
+
+fn probe_augment_readback_has(sym: Symbol) -> Bool {
+  match target_model_augment_value_semantics_carriers(target: rust_target_model(), extra_atoms: [sym]) {
+    Accepted { value: t, diagnostics: _ } =>
+      match translate_value_semantics_carriers_from_model(target: t) {
+        Accepted { value: carriers, diagnostics: _ } =>
+          any(xs: carriers, predicate: fn(c) { c == sym })
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn probe_augment_readback_flag() -> Bool { probe_augment_readback_has(sym: ^Flag) }

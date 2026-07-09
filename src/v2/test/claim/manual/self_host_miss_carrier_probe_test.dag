@@ -1,0 +1,72 @@
+module v2.test.manual.self_host_miss_carrier_probe
+
+import v2.compiler.self_host.compiler_closure_emit {
+  emit_compiler_import_closure_from_ingest
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.test.manual.self_host_module_emit_derisk {
+  derisk_ingest_for,
+  derisk_module_admission,
+  src_single_arm_match,
+  src_type_decl,
+  src_fn_simple_body
+}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { any, list_append }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Locus,
+  LocusAnchor,
+  NodeLocus,
+  PortLocus,
+  Rejected
+}
+import v2.std.logic { Bool, False, True }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.text { String }
+
+fn miss_diag_carrier_id(d: Diagnostic) -> Optional<Symbol> {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match a.at.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          match d.reason == ^target_use_site_ownership_lookup_miss {
+            True => Present { value: id }
+            False => Absent
+          }
+        _ => Absent
+      }
+    PortLocus { anchor: _ } => Absent
+    Textual { file: _, extent: _ } => Absent
+  }
+}
+
+fn diag_list_has_miss_carrier(ds: List<Diagnostic>, sym: Symbol) -> Bool {
+  any(xs: ds, predicate: fn(d) {
+    match miss_diag_carrier_id(d: d) {
+      Present { value: id } => id == sym
+      Absent => false
+    }
+  })
+}
+
+fn probe_miss_carrier_is(src: String, sym: Symbol) -> Bool {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nd } =>
+      diag_list_has_miss_carrier(ds: Cons { head: nd.head, tail: nd.tail }, sym: sym)
+  }
+}
+
+test fn probe_type_miss_is_Flag() -> Bool { probe_miss_carrier_is(src: src_type_decl, sym: ^Flag) }
+test fn probe_type_miss_is_nullary() -> Bool { probe_miss_carrier_is(src: src_type_decl, sym: ^coproduct_nullary_payload) }
+test fn probe_type_miss_is_unit() -> Bool { probe_miss_carrier_is(src: src_type_decl, sym: ^rust_surface_spelling_unit) }
+test fn probe_type_miss_is_On() -> Bool { probe_miss_carrier_is(src: src_type_decl, sym: ^On) }
+test fn probe_fn_miss_is_Flag() -> Bool { probe_miss_carrier_is(src: src_fn_simple_body, sym: ^Flag) }
+test fn probe_fn_miss_is_nullary() -> Bool { probe_miss_carrier_is(src: src_fn_simple_body, sym: ^coproduct_nullary_payload) }

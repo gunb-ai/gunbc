@@ -7,8 +7,10 @@ import v2.test.manual.self_host_module_emit_derisk {
 }
 import v2.compiler.program_partition {
   PartitionUserSemanticType,
-  partition_user_semantic_types_from_root
+  partition_user_semantic_types_from_root,
+  partition_user_type_carrier_identities_from_decls
 }
+import v2.std.algebra { any }
 import v2.compiler.infer { InferredTree }
 import std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -95,3 +97,18 @@ fn probe_semantic_contains(src: String, sym: Symbol) -> Bool {
 
 test fn probe_semantic_has_Flag() -> Bool { probe_semantic_contains(src: src_fn_simple_body, sym: ^Flag) }
 test fn probe_semantic_has_On() -> Bool { probe_semantic_contains(src: src_fn_simple_body, sym: ^On) }
+
+fn probe_carrier_ids_contain(src: String, sym: Symbol) -> Bool {
+  match derisk_infer_outcome_for(src: src) {
+    Accepted { value: tree, diagnostics: _ } =>
+      any(
+        xs: partition_user_type_carrier_identities_from_decls(
+          decls: partition_user_semantic_types_from_root(root: tree.root)
+        ),
+        predicate: fn(s) { s == sym }
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn probe_fn_carrier_ids_have_Flag() -> Bool { probe_carrier_ids_contain(src: src_fn_simple_body, sym: ^Flag) }
