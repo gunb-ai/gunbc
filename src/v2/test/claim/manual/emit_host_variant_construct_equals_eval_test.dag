@@ -376,6 +376,51 @@ fn emit_variant_construct_eval_debug_falsification_present(run: TestClaimRun<Nod
   }
 }
 
+fn emit_variant_construct_eval_debug_is_deferred(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    Deferred { actual: _, diagnostic: _ } => true
+    Fail { actual: _, falsification: _ } => false
+    Pass => false
+  }
+}
+
+test fn emit_host_variant_construct_debug_is_deferred() -> Bool {
+  emit_variant_construct_eval_debug_is_deferred(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree))
+}
+
+fn emit_variant_construct_eval_debug_diagnostic_reason_is(run: TestClaimRun<Node, RuntimeValue>, reason: Symbol) -> Bool {
+  match run.verdict {
+    Deferred { actual: _, diagnostic: d } => d.reason == reason
+    Fail { actual: Rejected { diagnostics: d }, falsification: _ } => d.head.reason == reason
+    Fail { actual: Accepted { value: _, diagnostics: _ }, falsification: _ } => false
+    Pass => false
+  }
+}
+
+test fn emit_host_variant_construct_debug_reason_tag_miss() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_variant_tag_miss)
+}
+
+test fn emit_host_variant_construct_debug_reason_arm_miss() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_arm_miss)
+}
+
+test fn emit_host_variant_construct_debug_reason_literal_miss() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_literal_miss)
+}
+
+test fn emit_host_variant_construct_debug_reason_branch_miss() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_branch_miss)
+}
+
+test fn emit_host_variant_construct_debug_reason_call_primitive_miss() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_call_primitive_miss)
+}
+
+test fn emit_host_variant_construct_debug_reason_loop_miss() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_loop_miss)
+}
+
 test fn emit_host_variant_construct_debug_falsification_present() -> Bool {
   emit_variant_construct_eval_debug_falsification_present(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree))
 }
