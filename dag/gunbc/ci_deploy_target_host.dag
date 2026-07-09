@@ -2,6 +2,8 @@ module gunbc.ci_deploy_target_host
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.access { AccessDecision, Permit, Deny }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
@@ -199,6 +201,15 @@ fn host_pinned_runner_spec(offer: ComputeOffer, host: HostIdentity) -> RunnerSpe
 
 fn gunbc_ci_deploy_srv1_runner_spec() -> RunnerSpec {
   host_pinned_runner_spec(offer: srv1_offer, host: operator_host_srv1)
+}
+
+data deploy_target_host_preflight_shell_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration
+  }
 }
 
 fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {

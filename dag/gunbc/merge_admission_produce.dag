@@ -1,6 +1,8 @@
 module gunbc.merge_admission_produce
 
 import std.types { ContentHash, CommitSha, String, Int, List, Bool }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.github.checks {
   CheckConclusion,
   check_conclusion_wire_label,
@@ -119,6 +121,15 @@ fn merge_admission_gate_invoke() -> String {
     ),
     "\n"
   )
+}
+
+data merge_admission_shell_emit_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration
+  }
 }
 
 fn ci_merge_admission_stamp_script() -> String {
