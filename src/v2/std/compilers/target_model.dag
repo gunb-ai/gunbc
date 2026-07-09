@@ -9513,7 +9513,7 @@ fn target_use_site_ownership_catalog_lookup_step_for_row(
           TargetUseSiteOwnershipCatalogMissing
         TargetUseSiteOwnershipUnique { row: row } =>
           TargetUseSiteOwnershipCatalogUnique { row: row }
-        TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipAmbiguous
+        TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipCatalogAmbiguous
       }
     Rejected { diagnostics: _ } => TargetUseSiteOwnershipCatalogInvalid
   }
