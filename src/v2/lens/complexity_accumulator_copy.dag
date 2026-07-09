@@ -1,0 +1,133 @@
+module v2.lens.complexity_accumulator_copy
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
+import v2.lens.cost {
+  PolynomialCost,
+  SizeVariable,
+  SymbolicCost,
+  polynomial_degree_two
+}
+import v2.std.algebra { CopiedPortFact, copied_port_fact_registry, fold_list }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+data complexity_accumulator_copy_corpus_census_recall_note: String = "RECALL: future whole-corpus census must rediscover survey suspects — src/v2/workflow/glob_discovery_law.dag:63,94,115 (list_append left:acc); ~10 src/v2/compiler/06_translate.dag list_append(partial,…) sites; v2.std.decl_index.decl_facts_fn_items (fractal: the decl_facts walk itself burned 3m41s in step-0). This is the COST MODEL half of the accumulator-copy lens — navigation-free: it owns the copied-port registry lookup (copied_port_index_of) and the per-call classification (classify_call). The traversal half is the linear fold in v2.lens.complexity_accumulator_copy.analyze, which visits every Node, threads the carrier environment, and calls classify_call at each combiner site inside iteration context — so a copy inside an if/match/let is found by construction (the fold visits it), never by targeted lookup. Whole-corpus enrollment (run the fold over every file, not fixtures) still waits on affected-set/resolution affordability + the enforcement-intent gate; a resolved-body read (binding + dataflow edges) supersedes the surface reads the fold does today."
+
+data copied_port_fact_list_append_left_citation: String = "v2.std.algebra.list_append — left port is fold-over-left copy port (fold_list_right snoc over left)"
+
+data copied_port_fact_list_snoc_left_citation: String = "v2.std.algebra.list_snoc_item — xs port copies via list_append(left: xs, …)"
+
+data copied_port_fact_map_merge_overlay_citation: String = "v1_rt.rs:360 rc_map_merge iterates overlay into Rc::make_mut(base); acc in base port is blessed — acc in overlay is the copied-port suspect (historical blessed instance: merge_envs, deleted from src/v1/04_env.dag 2026-07-06; a live overlay-port suspect for future census: collect_unit_variant_phantom_matches fold, src/v1/04_resolve.dag)"
+
+data classify_call_fail_closed_note: String = "Verdict polarity is PROVE-SAFE-OR-REFUSE (operator ruling 2026-07-09: a false clean is forbidden; refusal is the only sound answer syntax cannot prove). A parse tree carries names, not values, so 'this argument is NOT the accumulator' is unprovable syntactically — a let can alias any name to the carrier. classify_call therefore never answers clean from a name comparison. The full lattice per registered-combiner site in iteration context: PortBareName equal to a live carrier -> Poly2Suspect (the proven alarm); PortPureLiteral (an argument subtree containing ZERO value identifiers — nothing that could denote the carrier) -> Absent, the only provable clean; PortBareName not equal to a carrier -> Unclassifiable ^copied_port_name_may_alias; PortComputedExpression -> Unclassifiable ^copied_port_computed_argument; PortMissing or a ports list shorter than the copied index -> Unclassifiable ^copied_port_argument_missing. An UNREGISTERED combiner receiving a live carrier as a direct bare-name argument refuses with ^combiner_unregistered_carrier_reaches (the registry is a closed list; an op outside it is unknown, not safe) — except fold-family heads, which are the iteration construct itself, not a combiner. Known residue, named: a carrier name shadowed by an inner binding can produce a false ALARM (safe direction, review cost only); iteration constructs outside the fold family (hand-rolled recursion, map-style helpers) are outside this rule's declared domain — that domain boundary is reported by the traversal's folds_seen/carriers_bound counters, never implied clean. Both residues dissolve when the traversal moves onto the resolved dataflow graph."
+
+type PortReading
+  = PortBareName { name: Symbol }
+  | PortPureLiteral
+  | PortComputedExpression
+  | PortMissing
+
+type Finding
+  = Poly2Suspect { at: Node, cost: SymbolicCost }
+  | Unclassifiable { at: Node, cause: Symbol }
+
+fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
+  fold(xs, init: false, f: fn(acc, s) {
+    if acc { true } else { s == needle }
+  })
+}
+
+fn row_matches_combiner(row: CopiedPortFact, combiner: Symbol) -> Bool {
+  row.combiner == combiner
+}
+
+fn copied_port_index_of(combiner: Symbol) -> Optional<Int> {
+  fold_list(
+    xs: copied_port_fact_registry,
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if row_matches_combiner(row: row, combiner: combiner) {
+            Present { value: row.copied_port_index }
+          } else {
+            Absent
+          }
+      }
+    }
+  )
+}
+
+fn poly_two_cost(n: Node) -> SymbolicCost {
+  PolynomialCost {
+    variable: SizeVariable { source: n },
+    degree: polynomial_degree_two()
+  }
+}
+
+fn some_finding(f: Finding) -> Optional<Finding> {
+  Present { value: f }
+}
+
+fn port_carries_carrier(p: PortReading, carriers: List<Symbol>) -> Bool {
+  match p {
+    PortBareName { name: n } => symbol_in(needle: n, xs: carriers)
+    PortPureLiteral => false
+    PortComputedExpression => false
+    PortMissing => false
+  }
+}
+
+fn any_port_carries_carrier(ports: List<PortReading>, carriers: List<Symbol>) -> Bool {
+  fold(ports, init: false, f: fn(acc, p) {
+    if acc { true } else { port_carries_carrier(p: p, carriers: carriers) }
+  })
+}
+
+fn classify_copied_port(at: Node, reading: PortReading, carriers: List<Symbol>) -> Optional<Finding> {
+  match reading {
+    PortBareName { name: n } =>
+      if symbol_in(needle: n, xs: carriers) {
+        some_finding(f: Poly2Suspect { at: at, cost: poly_two_cost(n: at) })
+      } else {
+        some_finding(f: Unclassifiable { at: at, cause: ^copied_port_name_may_alias })
+      }
+    PortPureLiteral => Absent
+    PortComputedExpression =>
+      some_finding(f: Unclassifiable { at: at, cause: ^copied_port_computed_argument })
+    PortMissing =>
+      some_finding(f: Unclassifiable { at: at, cause: ^copied_port_argument_missing })
+  }
+}
+
+fn classify_call(
+  at: Node,
+  combiner: Symbol,
+  ports: List<PortReading>,
+  carriers: List<Symbol>
+) -> Optional<Finding> {
+  match copied_port_index_of(combiner: combiner) {
+    Absent =>
+      if any_port_carries_carrier(ports: ports, carriers: carriers) {
+        some_finding(f: Unclassifiable { at: at, cause: ^combiner_unregistered_carrier_reaches })
+      } else {
+        Absent
+      }
+    Present { value: idx } =>
+      match list_at_optional(xs: ports, index: idx) {
+        Absent =>
+          some_finding(f: Unclassifiable { at: at, cause: ^copied_port_argument_missing })
+        Present { value: reading } =>
+          classify_copied_port(at: at, reading: reading, carriers: carriers)
+      }
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
