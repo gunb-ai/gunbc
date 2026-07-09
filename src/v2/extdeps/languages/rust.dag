@@ -1980,7 +1980,7 @@ fn rust_match_target_model_staging() -> TargetModel {
   }
 }
 
-data rust_variant_construct_source_text: String = "fn one_or_two() -> i32 { match Holds { value: 9 } { Holds { value: v } => v, True => 2 } }"
+data rust_variant_construct_source_text: String = "fn one_or_two() -> i32 { match (Holds { value: 9 }) { Holds { value: v } => v, True => 2 } }"
 
 fn rust_variant_construct_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -1992,12 +1992,14 @@ fn rust_variant_construct_concrete_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^rust_token_ty_i32 },
     FixedToken { token_class: ^rust_token_lbrace },
     FixedToken { token_class: ^rust_token_unwired_match },
+    FixedToken { token_class: ^rust_token_lparen },
     BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_variant_holds },
     FixedToken { token_class: ^rust_token_lbrace },
     BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_field_variant_value },
     FixedToken { token_class: ^rust_token_colon },
     BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_rec_lit_nine },
     FixedToken { token_class: ^rust_token_rbrace },
+    FixedToken { token_class: ^rust_token_rparen },
     FixedToken { token_class: ^rust_token_lbrace },
     BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_variant_holds },
     FixedToken { token_class: ^rust_token_lbrace },
@@ -2242,7 +2244,7 @@ fn rust_variant_construct_target_model_bundle_core() -> Node {
   }
 }
 
-data rust_variant_construct_emit_host_main_suffix: String = "\n\nenum Coproduct { True, Holds { value: i32 } }\n\nfn main() { let value = one_or_two(); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+data rust_variant_construct_emit_host_main_suffix: String = "\n\nuse Coproduct::*;\n\nenum Coproduct { True, Holds { value: i32 } }\n\nfn main() { let value = one_or_two(); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
 
 fn rust_variant_construct_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
