@@ -81,6 +81,18 @@ fn interpreted_parse_bisect_wave1_add_correctness_holds() {
 }
 
 #[test]
+fn interpreted_parse_bisect_unbound_reference_rejected() {
+    assert_witness_terminates(
+        "witness_bisect_wave1_unbound_reference_rejected",
+        Duration::from_secs(90),
+    );
+    assert_witness_terminates(
+        "witness_bisect_wave1_unbound_reference_no_binding_rejected",
+        Duration::from_secs(90),
+    );
+}
+
+#[test]
 fn interpreted_parse_bisect_normalize_terminates() {
     assert_witness_terminates("bisect_normalize_terminates", Duration::from_secs(60));
 }

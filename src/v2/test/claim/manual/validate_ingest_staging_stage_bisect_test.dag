@@ -326,3 +326,39 @@ fn bisect_lens_subtree_terminates() -> Bool {
     Rejected { diagnostics: _ } => true
   }
 }
+
+data bisect_unbound_reference_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + zzz }", fidelity: Lossless }
+data bisect_unbound_reference_no_binding_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add() -> Int { zzz }", fidelity: Lossless }
+data bisect_unbound_reference_note: String = "Discriminating red controls for resolution vacuity (DESIGN section 5). Before the StampLexeme binding migration, every class-stamped identifier collapsed to ^dag_token_ident, which is grammar-carried and therefore canonical, so resolve accepted ANY body reference - including unbound ones (proven on main: both sources below resolved Accepted). These witnesses pin the non-vacuous behavior: a body reference with no binding (zzz, with and without params in scope) must resolve-reject. They go false if the vacuity ever returns - a canonical-symbol arm widening, a stamp regression, or an over-broad scope harvest."
+
+fn bisect_wave1_resolve_accepts_text(text: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: text,
+    file: ^compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match parse(tokens: token_stream, grammar: lm.grammar) {
+        Accepted { value: parsed, diagnostics: _ } =>
+          match normalize(parse_tree: parsed) {
+            Accepted { value: normalized, diagnostics: _ } =>
+              match resolve(tree: normalized, lm: lm) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_bisect_wave1_unbound_reference_rejected() -> Bool {
+  bisect_wave1_resolve_accepts_text(text: bisect_unbound_reference_source.carried) == false
+}
+
+test fn witness_bisect_wave1_unbound_reference_no_binding_rejected() -> Bool {
+  bisect_wave1_resolve_accepts_text(text: bisect_unbound_reference_no_binding_source.carried) == false
+}
