@@ -205,6 +205,7 @@ import v2.std.node {
   Cardinality,
   ComputationNode,
   Conj,
+  Disj,
   Edge,
   Named,
   Node,
@@ -219,7 +220,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
 import std.algebra { Empty, Cons }
-import v2.std.algebra { BooleanAlgebra, algebra_binary_fn_node, approximate_field_node, approximate_field_type_node, boolean_algebra_node, boolean_algebra_type_node, fold_list, fold_list_node, list_append, list_snoc_item, ordered_ring_node, ordered_ring_type_node }
+import v2.std.algebra { BooleanAlgebra, algebra_binary_fn_node, approximate_field_node, approximate_field_type_node, boolean_algebra_node, boolean_algebra_type_node, fold_list, fold_list_node, fold_list_right, list_append, list_snoc_item, ordered_ring_node, ordered_ring_type_node }
 import v2.std.cardinality { Never }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
@@ -4646,6 +4647,192 @@ fn rust_struct_general_decl_structural_target_model() -> TargetModel {
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn rust_decl_surface_atom(id: Symbol) -> Node { rust_inhabitant_atom(id: id) }
+
+fn rust_decl_surface_pos(target: Node) -> Edge { Edge { label: Positional, target: target } }
+
+fn rust_decl_surface_conj(children: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
+}
+
+fn rust_decl_surface_nil() -> Node { rust_decl_surface_conj(children: []) }
+
+fn rust_decl_surface_cell(item: Node, rest: Node) -> Node {
+  rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: item), rust_decl_surface_pos(target: rest) ])
+}
+
+fn rust_decl_surface_cons_list(items: List<Node>) -> Node {
+  fold_list_right(
+    xs: items,
+    empty: rust_decl_surface_nil(),
+    snoc: fn(acc, item) { rust_decl_surface_cell(item: item, rest: acc) }
+  )
+}
+
+fn rust_decl_surface_variant_nullary(name: Symbol) -> Node {
+  rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)) ])
+}
+
+fn rust_decl_surface_variant_block(variants: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_cons_list(items: variants)) ])
+}
+
+fn rust_decl_surface_type_expr(t: Symbol) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(
+      target: rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_atom(id: t)) ])
+    )
+  ])
+}
+
+fn rust_decl_surface_field(name: Symbol, t: Symbol) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_type_expr(t: t))
+  ])
+}
+
+fn rust_decl_surface_field_block(fields: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_cons_list(items: fields)) ])
+}
+
+fn rust_decl_surface_variant_payload(name: Symbol, fields: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_field_block(fields: fields))
+  ])
+}
+
+fn rust_decl_surface_enum_nongeneric(name: Symbol, variants: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_variant_block(variants: variants))
+  ])
+}
+
+fn rust_decl_surface_struct_nongeneric(name: Symbol, fields: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_field_block(fields: fields))
+  ])
+}
+
+fn rust_coproduct_field_surface_from_edge(edge: Edge) -> Outcome<Node> {
+  match edge.label {
+    Named { name: fname } =>
+      match edge.target.kind {
+        TypeNode { connective: Atom { identity: tid } } =>
+          outcome_accepted(value: rust_decl_surface_field(name: fname, t: tid))
+        _ =>
+          outcome_rejected(
+            d: rust_signature_diagnostic(reason: ^rust_coproduct_field_type_not_atom, node: edge.target)
+          )
+      }
+    Positional =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_coproduct_field_not_named, node: edge.target)
+      )
+  }
+}
+
+fn rust_coproduct_field_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
+  fold_list(
+    xs: edges,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc_o, edge) {
+      bind_outcome(
+        o: acc_o,
+        f: fn(acc) {
+          bind_outcome(
+            o: rust_coproduct_field_surface_from_edge(edge: edge),
+            f: fn(fnode) { outcome_accepted(value: list_snoc_item(xs: acc, item: fnode)) }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn rust_coproduct_variant_surface_named(vname: Symbol, payload: Node) -> Outcome<Node> {
+  match payload.kind {
+    TypeNode { connective: Conj } =>
+      match payload.children {
+        Empty => outcome_accepted(value: rust_decl_surface_variant_nullary(name: vname))
+        Cons { head: _, tail: _ } =>
+          bind_outcome(
+            o: rust_coproduct_field_surfaces(edges: payload.children),
+            f: fn(fields) {
+              outcome_accepted(value: rust_decl_surface_variant_payload(name: vname, fields: fields))
+            }
+          )
+      }
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_coproduct_variant_payload_not_record, node: payload)
+      )
+  }
+}
+
+fn rust_coproduct_variant_surface_from_edge(edge: Edge) -> Outcome<Node> {
+  match edge.label {
+    Named { name: vname } => rust_coproduct_variant_surface_named(vname: vname, payload: edge.target)
+    Positional =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_coproduct_variant_not_named, node: edge.target)
+      )
+  }
+}
+
+fn rust_coproduct_variant_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
+  fold_list(
+    xs: edges,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc_o, edge) {
+      bind_outcome(
+        o: acc_o,
+        f: fn(acc) {
+          bind_outcome(
+            o: rust_coproduct_variant_surface_from_edge(edge: edge),
+            f: fn(vnode) { outcome_accepted(value: list_snoc_item(xs: acc, item: vnode)) }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn rust_enum_decl_surface_from_coproduct(name: Symbol, coproduct: Node) -> Outcome<Node> {
+  match coproduct.kind {
+    TypeNode { connective: Disj } =>
+      bind_outcome(
+        o: rust_coproduct_variant_surfaces(edges: coproduct.children),
+        f: fn(variants) {
+          outcome_accepted(value: rust_decl_surface_enum_nongeneric(name: name, variants: variants))
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_enum_decl_surface_source_not_coproduct, node: coproduct)
+      )
+  }
+}
+
+fn rust_struct_decl_surface_from_record(name: Symbol, record: Node) -> Outcome<Node> {
+  match record.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: rust_coproduct_field_surfaces(edges: record.children),
+        f: fn(fields) {
+          outcome_accepted(value: rust_decl_surface_struct_nongeneric(name: name, fields: fields))
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_struct_decl_surface_source_not_record, node: record)
+      )
   }
 }
 

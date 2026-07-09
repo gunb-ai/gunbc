@@ -1,0 +1,111 @@
+module v2.test.emit.semantic_decl_routing
+
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_rust }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
+import extdeps.communication.medium { Medium }
+import v2.std.text { String }
+
+data semantic_bool_golden: String = "enum Bool { True, False }"
+
+data semantic_bool_wrong_golden: String = "enum Bool { False, True }"
+
+data semantic_record_golden: String = "struct OccurrenceIdAllocator { next_id: Int }"
+
+data semantic_record_wrong_golden: String = "struct OccurrenceIdAllocator { next_id: Bool }"
+
+fn sdr_empty_conj() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+}
+
+fn sdr_variant_edge(name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: sdr_empty_conj() }
+}
+
+fn semantic_bool_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [ sdr_variant_edge(name: ^True), sdr_variant_edge(name: ^False) ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn semantic_bool_emit_text() -> Outcome<String> {
+  match emit_semantic_type_decl_rust(name: ^Bool, node: semantic_bool_coproduct()) {
+    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn semantic_bool_matches(golden: String) -> Bool {
+  match semantic_bool_emit_text() {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sdr_atom_type(name: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+}
+
+fn sdr_field_edge(name: Symbol, type_name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: sdr_atom_type(name: type_name) }
+}
+
+fn semantic_record_type() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ sdr_field_edge(name: ^next_id, type_name: ^Int) ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn semantic_record_emit_text() -> Outcome<String> {
+  match emit_semantic_type_decl_rust(name: ^OccurrenceIdAllocator, node: semantic_record_type()) {
+    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn semantic_record_matches(golden: String) -> Bool {
+  match semantic_record_emit_text() {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn semantic_bool_coproduct_routes_to_enum_emit() -> Bool {
+  semantic_bool_matches(golden: semantic_bool_golden)
+    && !semantic_bool_matches(golden: semantic_bool_wrong_golden)
+}
+
+test fn semantic_record_routes_to_struct_emit() -> Bool {
+  semantic_record_matches(golden: semantic_record_golden)
+    && !semantic_record_matches(golden: semantic_record_wrong_golden)
+}
+
+fn semantic_arrow_type() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [ Edge { label: Positional, target: sdr_atom_type(name: ^Int) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn semantic_arrow_refuses() -> Bool {
+  match emit_semantic_type_decl_rust(name: ^Bogus, node: semantic_arrow_type()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn semantic_unsupported_shape_refuses() -> Bool {
+  semantic_arrow_refuses()
+}
+
+test fn semantic_decl_routing_all_holds() -> Bool {
+  semantic_bool_coproduct_routes_to_enum_emit()
+    && semantic_record_routes_to_struct_emit()
+    && semantic_unsupported_shape_refuses()
+}
