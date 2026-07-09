@@ -559,6 +559,19 @@ fn gunbc_ci_regen_floor_plan_spawn_width(memory_budget_bytes: Int) -> HardwareTh
   gunbc_ci_plan_spawn_width(memory_budget_bytes: memory_budget_bytes)
 }
 
+data gunbc_falsifier_plan_spawn_width_note: String = "Second occurrence of the wiring-gap class documented above for the regen job: the claim_executor seed derives gunbc_falsifier_plan_spawn_width from the plan-function name gunbc_falsifier_batches at runtime, with no grep-visible reference, so all three scheduled affected-set-falsifier runs (2026-07-06..08) crashed at plan setup (spawn width eval failed: no main function found) before recording a single divergence datum — the falsifier's dissolution counter never started. This function supplies the derived name, reusing the ci job's memory-budget-derived width since the falsifier runs on the same self-hosted arm64 runners under the same budget (its discovery batch already carries the tree-derived spawn_width_cap). witness_falsifier_plan_spawn_width_matches_ci_width executes the derived name in the corpus, so this plan function existing without its width counterpart is honest-red locally, not crash-red on the next cadence run."
+
+fn gunbc_falsifier_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
+  gunbc_ci_plan_spawn_width(memory_budget_bytes: memory_budget_bytes)
+}
+
+fn witness_falsifier_plan_spawn_width_matches_ci_width() -> Bool {
+  let tight = 10000000000
+  hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: tight))
+    == hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: tight))
+    && hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: 0)) > 0
+}
+
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
   parallel_run_demand_envelope(
     width: gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes)),
