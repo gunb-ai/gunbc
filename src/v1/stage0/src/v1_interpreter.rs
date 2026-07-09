@@ -818,6 +818,22 @@ pub fn eval_recompute_trace_enabled() -> bool {
     *ON.get_or_init(|| std::env::var("GUNBC_RECOMPUTE_TRACE").is_ok_and(|v| v != "0"))
 }
 
+thread_local! {
+    // Process-global recompute-trace ledger (was per-InterpContext). Making it
+    // thread-scoped rather than ctx-scoped lets one `gunbc run` cover EVERY
+    // interpreted-evaluation phase — resolve/compile-time constant folding,
+    // whole-tree mock-precompute, and the final target run — in a single ledger
+    // printed once at the end. The compile/resolve phase evaluates under
+    // short-lived InterpContexts that are dropped before print, so a ctx-local
+    // ledger was structurally blind to the compiler's own re-computation; the
+    // thread-global sink captures it (a `gunbc run` of the interpreted compiler
+    // now scouts its own duplication). Diagnostic READ mode only — reports,
+    // never gates (DESIGN §5 stopped-line audit). Single-threaded per the
+    // `gunbc run` scout path; parallel witness threads each keep their own.
+    static EVAL_RECOMPUTE_TRACE_GLOBAL: std::cell::RefCell<EvalRecomputeTrace> =
+        std::cell::RefCell::new(EvalRecomputeTrace::default());
+}
+
 #[derive(Default, Clone)]
 pub struct MutationCounters {
     pub map_insert_calls: u64,
@@ -3268,63 +3284,64 @@ fn eval_recompute_key(
 }
 
 fn eval_recompute_record(
-    ctx: &InterpContext,
+    _ctx: &InterpContext,
     call_node: &Rc<Node>,
     fn_node: &Rc<Node>,
     func_name: &str,
     key: EvalRecomputeKey,
     elapsed_ns: u128,
 ) {
-    let mut t = ctx.eval_recompute_trace.borrow_mut();
-    let tr = &mut *t;
-    tr.keyed_calls += 1;
-    if !tr.map.contains_key(&key) {
-        if tr.map.len() >= EVAL_RECOMPUTE_KEY_CAP {
-            tr.overflow_calls += 1;
-            return;
+    EVAL_RECOMPUTE_TRACE_GLOBAL.with_borrow_mut(|tr| {
+        tr.keyed_calls += 1;
+        if !tr.map.contains_key(&key) {
+            if tr.map.len() >= EVAL_RECOMPUTE_KEY_CAP {
+                tr.overflow_calls += 1;
+                return;
+            }
+            tr.keepalive_fns.push(fn_node.clone());
         }
-        tr.keepalive_fns.push(fn_node.clone());
-    }
-    let fn_ptr = Rc::as_ptr(fn_node) as usize;
-    let interned_name = tr
-        .fn_names
-        .entry(fn_ptr)
-        .or_insert_with(|| Rc::from(func_name))
-        .clone();
-    let entry = tr.map.entry(key).or_insert_with(|| EvalRecomputeEntry {
-        fn_name: interned_name,
-        count: 0,
-        total_ns: 0,
-        sites: Vec::new(),
+        let fn_ptr = Rc::as_ptr(fn_node) as usize;
+        let interned_name = tr
+            .fn_names
+            .entry(fn_ptr)
+            .or_insert_with(|| Rc::from(func_name))
+            .clone();
+        let entry = tr.map.entry(key).or_insert_with(|| EvalRecomputeEntry {
+            fn_name: interned_name,
+            count: 0,
+            total_ns: 0,
+            sites: Vec::new(),
+        });
+        entry.count += 1;
+        entry.total_ns += elapsed_ns;
+        let site_ptr = Rc::as_ptr(call_node) as usize;
+        if entry.sites.len() < EVAL_RECOMPUTE_SITE_CAP
+            && !entry.sites.iter().any(|(p, _)| *p == site_ptr)
+        {
+            entry.sites.push((
+                site_ptr,
+                format!("{}:{}", call_node.span.file, call_node.span.start),
+            ));
+        }
     });
-    entry.count += 1;
-    entry.total_ns += elapsed_ns;
-    let site_ptr = Rc::as_ptr(call_node) as usize;
-    if entry.sites.len() < EVAL_RECOMPUTE_SITE_CAP
-        && !entry.sites.iter().any(|(p, _)| *p == site_ptr)
-    {
-        entry.sites.push((
-            site_ptr,
-            format!("{}:{}", call_node.span.file, call_node.span.start),
-        ));
-    }
 }
 
-fn eval_recompute_record_unkeyed(ctx: &InterpContext, func_name: &str) {
-    let mut t = ctx.eval_recompute_trace.borrow_mut();
-    t.unkeyed_calls += 1;
-    *t.unkeyed_by_fn.entry(func_name.to_string()).or_insert(0) += 1;
+fn eval_recompute_record_unkeyed(_ctx: &InterpContext, func_name: &str) {
+    EVAL_RECOMPUTE_TRACE_GLOBAL.with_borrow_mut(|t| {
+        t.unkeyed_calls += 1;
+        *t.unkeyed_by_fn.entry(func_name.to_string()).or_insert(0) += 1;
+    });
 }
 
 /// Print the recompute-trace ledger to stderr. A no-op unless
 /// GUNBC_RECOMPUTE_TRACE=1. Report-only: prints ranked re-evaluated pure calls
 /// (count >= 2), the unkeyed-coverage disclosure, and totals; it never alters
 /// the run's outcome.
-pub fn print_eval_recompute_trace(ctx: &InterpContext) {
+pub fn print_eval_recompute_trace(_ctx: &InterpContext) {
     if !eval_recompute_trace_enabled() {
         return;
     }
-    let t = ctx.eval_recompute_trace.borrow();
+    EVAL_RECOMPUTE_TRACE_GLOBAL.with_borrow(|t| {
     let mut duplicated: Vec<(&EvalRecomputeEntry, u128)> = t
         .map
         .values()
@@ -3383,6 +3400,7 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
             name, count
         );
     }
+    });
 }
 fn value_rc_identity(v: &Value) -> Option<usize> {
     match v {
