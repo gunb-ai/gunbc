@@ -4020,7 +4020,9 @@ fn dag_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m11 = map_insert(m10, ^dag_binding_fn_get, "get")
   let m12 = map_insert(m11, ^dag_binding_param_r, "r")
   let m13 = map_insert(m12, ^dag_binding_mvp1_rec_v, "v")
-  map_insert(m13, ^dag_binding_mvp1_rec_lit_nine, "9")
+  let m14 = map_insert(m13, ^dag_binding_mvp1_rec_lit_nine, "9")
+  let m15 = map_insert(m14, ^dag_binding_type_variant_holds, "Holds")
+  map_insert(m15, ^dag_binding_field_variant_value, "value")
 }
 
 fn dag_mvp1_add_param_binding_ids() -> List<Symbol> {
@@ -4494,6 +4496,85 @@ fn dag_mvp1_rec_arrow_with_body_node() -> Node {
 data dag_mvp1_rec_construct_body_fixture: Node = dag_mvp1_rec_construct_body_node()
 data dag_mvp1_rec_arrow_with_body_fixture: Node = dag_mvp1_rec_arrow_with_body_node()
 data dag_mvp1_fixture_emitted_rec_fn: Node = dag_mvp1_rec_arrow_with_body_fixture
+
+fn dag_mvp1_variant_holds_construct_node(value_lit: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_binding_type_variant_holds,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_variant_holds)
+      ),
+      dag_named_edge(
+        name: ^dag_binding_field_variant_value,
+        target: dag_mvp1_type_atom_node(identity: value_lit)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_variant_holds_pattern_node() -> Node {
+  dag_mvp1_variant_holds_construct_node(value_lit: ^dag_binding_mvp1_rec_v)
+}
+
+fn dag_mvp1_variant_match_arm_node(pattern_target: Node, body_lit: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(name: ^match_arm_pattern, target: pattern_target),
+      dag_named_edge(
+        name: ^match_arm_body,
+        target: dag_mvp1_type_atom_node(identity: body_lit)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_variant_construct_body_from_value(value_lit: Symbol) -> Node {
+  dag_mvp1_match_body_from_arms(
+    scrutinee: dag_mvp1_variant_holds_construct_node(value_lit: value_lit),
+    true_arm: dag_mvp1_variant_match_arm_node(
+      pattern_target: dag_mvp1_variant_holds_pattern_node(),
+      body_lit: ^dag_binding_mvp1_rec_v
+    ),
+    false_arm: dag_mvp1_match_arm_node(
+      pattern_lit: ^dag_binding_type_variant_true,
+      body_lit: ^dag_mvp1_pick_lit_two
+    )
+  )
+}
+
+fn dag_mvp1_variant_construct_body_node() -> Node {
+  dag_mvp1_variant_construct_body_from_value(value_lit: ^dag_mvp1_rec_lit_nine)
+}
+
+fn dag_mvp1_variant_construct_body_wrong_value_node() -> Node {
+  dag_mvp1_variant_construct_body_from_value(value_lit: ^dag_mvp1_pick_lit_one)
+}
+
+fn dag_mvp1_variant_construct_arrow_with_body_node() -> Node {
+  dag_mvp1_arrow_with_body_node(
+    domain: dag_mvp1_pick_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_mvp1_variant_construct_body_node()
+  )
+}
+
+fn dag_mvp1_variant_construct_arrow_with_body_wrong_value_node() -> Node {
+  dag_mvp1_arrow_with_body_node(
+    domain: dag_mvp1_pick_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_mvp1_variant_construct_body_wrong_value_node()
+  )
+}
+
+data dag_mvp1_variant_construct_body_fixture: Node = dag_mvp1_variant_construct_body_node()
+data dag_mvp1_variant_construct_body_wrong_value_fixture: Node = dag_mvp1_variant_construct_body_wrong_value_node()
+data dag_mvp1_variant_construct_arrow_with_body_fixture: Node = dag_mvp1_variant_construct_arrow_with_body_node()
+data dag_mvp1_variant_construct_arrow_with_body_wrong_value_fixture: Node = dag_mvp1_variant_construct_arrow_with_body_wrong_value_node()
+data dag_mvp1_fixture_emitted_variant_construct_fn: Node = dag_mvp1_variant_construct_arrow_with_body_fixture
 
 fn dag_mvp1_field_access_body_node() -> Node {
   Node {
