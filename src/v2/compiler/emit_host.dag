@@ -415,9 +415,9 @@ fn run_test_claim_emit_vs_eval_for_claim(
   )
 }
 
-fn run_test_claim_module_emit_vs_eval_for_claim(
+fn run_test_claim_from_source_emit_vs_eval_for_claim(
   subject: TestClaimEvalSubject<Node>,
-  module_decls: List<InferredTree>,
+  source_outcome: Outcome<Medium<String>>,
   target: TargetModel,
   claim_input_root: Node,
   expected_eval_root: Node
@@ -432,7 +432,7 @@ fn run_test_claim_module_emit_vs_eval_for_claim(
   run_test_claim_emit_vs_eval_verdict_from_source(
     subject: subject,
     target: target,
-    source_outcome: emit_module(decls: module_decls, target: target),
+    source_outcome: source_outcome,
     claim_input_root: claim_input_root,
     expected_eval_root: expected_eval_root,
     expected: expected,
@@ -482,9 +482,9 @@ fn run_test_claim_emit_vs_eval(
   }
 }
 
-fn run_test_claim_module_emit_vs_eval(
+fn run_test_claim_from_source_emit_vs_eval(
   subject: TestClaimEvalSubject<Node>,
-  module_decls: List<InferredTree>,
+  source_outcome: Outcome<Medium<String>>,
   target: TargetModel
 ) -> TestClaimRun<Node, RuntimeValue> {
   match subject.claim {
@@ -492,9 +492,9 @@ fn run_test_claim_module_emit_vs_eval(
       run_test_claim_emit_vs_eval_run(
         subject: subject,
         target: target,
-        verdict: run_test_claim_module_emit_vs_eval_for_claim(
+        verdict: run_test_claim_from_source_emit_vs_eval_for_claim(
           subject: subject,
-          module_decls: module_decls,
+          source_outcome: source_outcome,
           target: target,
           claim_input_root: lhs,
           expected_eval_root: rhs
@@ -504,9 +504,9 @@ fn run_test_claim_module_emit_vs_eval(
       run_test_claim_emit_vs_eval_run(
         subject: subject,
         target: target,
-        verdict: run_test_claim_module_emit_vs_eval_for_claim(
+        verdict: run_test_claim_from_source_emit_vs_eval_for_claim(
           subject: subject,
-          module_decls: module_decls,
+          source_outcome: source_outcome,
           target: target,
           claim_input_root: input,
           expected_eval_root: expected_value
@@ -514,4 +514,16 @@ fn run_test_claim_module_emit_vs_eval(
       )
     _ => run_test_claim(subject: subject)
   }
+}
+
+fn run_test_claim_module_emit_vs_eval(
+  subject: TestClaimEvalSubject<Node>,
+  module_decls: List<InferredTree>,
+  target: TargetModel
+) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_from_source_emit_vs_eval(
+    subject: subject,
+    source_outcome: emit_module(decls: module_decls, target: target),
+    target: target
+  )
 }
