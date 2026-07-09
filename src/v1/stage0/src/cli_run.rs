@@ -3948,6 +3948,11 @@ pub struct DiscoverySummary {
     pub total_resolve_nanos: u128,
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
     pub total_measured_nanos: u128,
+    /// Distinct modules typechecked in this shard's union closure (== `typecheck_compute_count()`,
+    /// the once-per-node receipt): the per-shard input-size axis that per-shard resident memory is a
+    /// function of. Max-merged across shards — the heaviest shard's closure governs the peak. This is
+    /// the calibration pair's missing half: per-shard RSS is already emitted, the node count was not.
+    pub roster_closure_nodes: usize,
 }
 
 #[derive(Debug, Clone)]
