@@ -1,0 +1,164 @@
+module v2.lens.complexity_r1_accumulator_copy.surface_subject
+
+import v2.compiler.fold_lowering { fold_call_step_fn }
+import v2.lens.complexity_r1_accumulator_copy { r1_fold_step_subject }
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  parse_subtree_find_production_captured
+}
+import std.algebra { Empty }
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.integer { Int }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { find_named_child }
+
+data surface_subject_note: String = "Distills a real surface fold call into the R1 accumulator-copy lens's fold-step subject (Instantiation[acc_binder, combiner, call[port0, port1]]) — the peer projection of v2.compiler.fold_lowering.fold_call_to_loop (§2 Realization: one surface fold call, N consumers — the loop projection is for termination, this one is for cost/copy-detection). It reads the SAME located fold call through the SAME fn-literal locator (fold_call_step_fn), then reads four symbols at the surface/lexeme level (post the StampLexeme grammar fixes, so both param decls and call heads carry their names): acc_binder = the step function's FIRST param (the fold accumulator); combiner = the head of the call in the step-fn body; port0/port1 = that call's first two argument values, in declared order. R1 then judges whether acc_binder lands in the combiner's copied port (copied_port_fact_registry). Fail-closed: any missing piece (no step fn, no first param, body is not a two-argument call, an argument value is not a bare name) REFUSES with a located diagnostic — never fabricates a subject, so a fold R1 cannot read never silently reads as clean. This is surface-level (pre-resolve) because corpus resolution/body-production is not yet affordable; when it is, the resolved-body read supersedes this and the seam (fold_call_step_fn) is unchanged. Verified end-to-end on real source (v2.test.claim.complexity.r1_surface_subject): list_append(left: acc, …) projects Poly(2); list_append(right: acc) with acc out of the copied port is clean — same combiner, accumulator position flipped, isolating the copied-port check."
+
+fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: cap, name: name) {
+    Accepted { value: c, diagnostics: _ } => Present { value: c }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn sequence_left_node(cap: Node) -> Optional<Node> {
+  named_child_optional(cap: cap, name: ^grammar_sequence_left_node_projection)
+}
+
+fn sequence_right_node(cap: Node) -> Optional<Node> {
+  named_child_optional(cap: cap, name: ^grammar_sequence_right_node_projection)
+}
+
+fn sequence_left_symbol(cap: Node) -> Optional<Symbol> {
+  match sequence_left_node(cap: cap) {
+    Absent => Absent
+    Present { value: left } => node_atom_identity_optional(node: left)
+  }
+}
+
+fn find_capture(root: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: root, emitted: emitted) {
+    ParseSubtreeFound { captured: c } => Present { value: c }
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn collect_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<Node> {
+  let acc1 = match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == emitted {
+        match parse_production_captured_child_optional(node: n) {
+          Present { value: c } => list_snoc_item(xs: acc, item: c)
+          Absent => acc
+        }
+      } else {
+        acc
+      }
+    Absent => acc
+  }
+  fold(n.children, init: acc1, f: fn(a, e) {
+    collect_captures(n: e.target, emitted: emitted, acc: a)
+  })
+}
+
+fn step_fn_first_param_symbol(fn_literal: Node) -> Optional<Symbol> {
+  match sequence_right_node(cap: fn_literal) {
+    Absent => Absent
+    Present { value: after_kw_fn } =>
+      match sequence_right_node(cap: after_kw_fn) {
+        Absent => Absent
+        Present { value: after_lparen } =>
+          match sequence_left_node(cap: after_lparen) {
+            Absent => Absent
+            Present { value: params } => sequence_left_symbol(cap: params)
+          }
+      }
+  }
+}
+
+fn step_fn_body_call(fn_literal: Node) -> Optional<Node> {
+  match find_capture(root: fn_literal, emitted: ^dag_surface_fn_body) {
+    Absent => Absent
+    Present { value: body } => find_capture(root: body, emitted: ^dag_surface_primary_expr)
+  }
+}
+
+fn body_call_combiner_symbol(body_call: Node) -> Optional<Symbol> {
+  sequence_left_symbol(cap: body_call)
+}
+
+fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
+  match find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr) {
+    Absent => Absent
+    Present { value: value_expr } => sequence_left_symbol(cap: value_expr)
+  }
+}
+
+fn body_call_port_symbol(body_call: Node, index: Int) -> Optional<Symbol> {
+  match list_at_optional(
+    xs: collect_captures(n: body_call, emitted: ^dag_surface_arg, acc: Empty),
+    index: index
+  ) {
+    Absent => Absent
+    Present { value: arg } => arg_value_symbol(arg_capture: arg)
+  }
+}
+
+fn surface_subject_shape_invalid_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^r1_surface_subject_shape_invalid,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn fold_call_to_r1_subject(fold_call: Node) -> Outcome<Node> {
+  match fold_call_step_fn(fold_call: fold_call) {
+    Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: fold_call))
+    Present { value: fn_literal } =>
+      match step_fn_first_param_symbol(fn_literal: fn_literal) {
+        Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: fn_literal))
+        Present { value: acc_binder } =>
+          match step_fn_body_call(fn_literal: fn_literal) {
+            Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: fn_literal))
+            Present { value: body_call } =>
+              match body_call_combiner_symbol(body_call: body_call) {
+                Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: body_call))
+                Present { value: combiner } =>
+                  match body_call_port_symbol(body_call: body_call, index: 0) {
+                    Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: body_call))
+                    Present { value: port0 } =>
+                      match body_call_port_symbol(body_call: body_call, index: 1) {
+                        Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: body_call))
+                        Present { value: port1 } =>
+                          outcome_accepted(
+                            value: r1_fold_step_subject(
+                              acc_binder: acc_binder,
+                              combiner: combiner,
+                              port0_arg: port0,
+                              port1_arg: port1
+                            )
+                          )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}

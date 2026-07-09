@@ -2302,7 +2302,7 @@ fn dag_grammar_expr_list_helper() -> GrammarExpr {
 }
 
 fn dag_grammar_untyped_params_helper() -> GrammarExpr {
-  dag_grammar_comma_list_expr(item: dag_grammar_terminal(token_class: ^dag_token_ident))
+  dag_grammar_comma_list_expr(item: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident))
 }
 
 fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {

@@ -168,6 +168,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/complexity/r1_surface_subject_test.dag",
+      check_fns: [
+        "quadratic_fold_projects_poly_two",
+        "linear_fold_is_clean",
+        "identity_body_fold_refuses"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/loop_infer_iteration_test.dag",
       check_fns: [
         "loop_infer_invariant_body_accepts_with_carrier_type",

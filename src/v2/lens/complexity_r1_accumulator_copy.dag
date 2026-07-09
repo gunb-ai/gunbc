@@ -35,7 +35,7 @@ import v2.std.node {
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
 
-data complexity_r1_corpus_census_recall_note: String = "RECALL: future whole-corpus census must rediscover survey suspects — src/v2/workflow/glob_discovery_law.dag:63,94,115 (list_append left:acc); ~10 src/v2/compiler/06_translate.dag list_append(partial,…) sites; v2.std.decl_index.decl_facts_fn_items (fractal: the decl_facts walk itself burned 3m41s in step-0). E2-prep is synthetic Node fixtures only; enrollment waits on E1a body access + enforcement-intent gate."
+data complexity_r1_corpus_census_recall_note: String = "RECALL: future whole-corpus census must rediscover survey suspects — src/v2/workflow/glob_discovery_law.dag:63,94,115 (list_append left:acc); ~10 src/v2/compiler/06_translate.dag list_append(partial,…) sites; v2.std.decl_index.decl_facts_fn_items (fractal: the decl_facts walk itself burned 3m41s in step-0). E2-prep is synthetic Node fixtures; E1a body access LANDED surface-level (v2.lens.complexity_r1_accumulator_copy.surface_subject.fold_call_to_r1_subject distills a real parsed fold body into the fold-step subject — proven end-to-end catching a real list_append(left:acc) quadratic in v2.test.claim.complexity.r1_surface_subject); whole-corpus enrollment (sweep every fold, not fixtures) still waits on affected-set/resolution affordability + the enforcement-intent gate, and a resolved-body read supersedes the surface distiller once body-production is affordable."
 
 data copied_port_fact_list_append_left_citation: String = "v2.std.algebra.list_append — left port is fold-over-left copy port (fold_list_right snoc over left)"
 

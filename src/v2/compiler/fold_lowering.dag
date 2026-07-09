@@ -48,10 +48,17 @@ fn fold_call_head_symbol(fold_call: Node) -> Optional<Symbol> {
   }
 }
 
-fn fold_call_iteration_body(fold_call: Node) -> Optional<Node> {
+fn fold_call_step_fn(fold_call: Node) -> Optional<Node> {
   match parse_subtree_find_production_captured(root: fold_call, emitted: ^dag_surface_fn_literal) {
+    ParseSubtreeFound { captured: fn_literal } => Present { value: fn_literal }
     ParseSubtreeAbsent => Absent
-    ParseSubtreeFound { captured: fn_literal } =>
+  }
+}
+
+fn fold_call_iteration_body(fold_call: Node) -> Optional<Node> {
+  match fold_call_step_fn(fold_call: fold_call) {
+    Absent => Absent
+    Present { value: fn_literal } =>
       match parse_subtree_find_production_captured(
         root: fn_literal,
         emitted: ^dag_surface_fn_body
