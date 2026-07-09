@@ -10,7 +10,7 @@ fn compile_clean_source_roots() -> List<String> {
 
 data witness_discovery_scan_dirs: List<String> = ["dag/test/claim", "src/v2/test/claim/manual"]
 
-data discovery_flip_quarantine_note: String = "QUARANTINE (2026-07-09, discovery-flip pre-flight): the row below was found red by the first full-corpus selection run at the enrollment flip (gunbc.ci_spec ci_spec_discovery_flip_note) and verified PRE-EXISTING red on main by execution at the pre-flip commit - rot accumulated while the corpus was unenrolled, not new breakage. It is a live-tree row (never predict-skip), so unquarantined it would turn every PR and every falsifier window red on inherited debt, drowning new signal. This is the loud interim arm, not a silent cap: the row is named here, counted, and carries the same dissolution - its fix lands, its row is deleted. Failing fn at quarantine time: realization_vocab_clean_tree_holds. NOTE file-level granularity: sibling green fns in this file are quarantined with it (the discovery exclusion is path-substring). dag_import_closure_equals_declared_conformance_closure unquarantined 2026-07-09 (swift-pike-439). enforcement/grammar_coverage_witness_test.dag unquarantined 2026-07-09 (sharp-swift-243): v1 reject locus pins corrected by execution to parse-stage parse_grammar_choice_overlap_residue on both src/v1/00_core.dag and 01_tokenize.dag; Symbol reason equality grounded via symbol_identity_digest in grammar_coverage_symbol_reason_eq. medium_structure_clean_tree_holds + medium_structure_canonical_read_back_holds unquarantined 2026-07-09 (quick-boar-630): three pre-existing leak paths rostered in medium_structure_exception_roster (baseline 54→57)."
+data discovery_flip_quarantine_note: String = "DISSOLVED (2026-07-09, discovery-flip pre-flight quarantine): interim scaffolding at the enrollment flip (gunbc.ci_spec ci_spec_discovery_flip_note) excluded five pre-existing-red live-tree witnesses from discovery enrollment until fixes landed. All five now unquarantined: dag_import_closure_equals_declared_conformance_closure (swift-pike-439). enforcement/grammar_coverage_witness_test.dag (sharp-swift-243): v1 reject locus pins corrected to parse-stage parse_grammar_choice_overlap_residue; Symbol reason equality grounded via symbol_identity_digest. medium_structure_clean_tree_holds + medium_structure_canonical_read_back_holds (quick-boar-630): three pre-existing leak paths rostered in medium_structure_exception_roster (baseline 54→57). realization_vocab_clean_tree_holds (swift-bear-563, #6398): three pre-existing leak paths rostered in realization_vocab_exception_roster. witness_exclusion_substrings no longer carries discovery-flip quarantine rows."
 
 data witness_exclusion_substrings: List<String> = [
   "impossible_bug",
@@ -23,8 +23,7 @@ data witness_exclusion_substrings: List<String> = [
   "self_host/compiler_closure_emit_from_ingest_test.dag",
   "unified_test_claim_substrate_equivalence.dag",
   "ci_exclusion_proof_test.dag",
-  "test/claim/execution/",
-  "realization_vocabulary_containment/clean_tree_test.dag"
+  "test/claim/execution/"
 ]
 
 data whole_tree_strict_resolve_exclusion_note: String = "Whole-tree strict-resolve policy beyond floor witness_exclusion_substrings: test trees, eval scaffolds, and modules that cannot strict-resolve under dag+src/v2 but are not floor-discovery roster members. Consumed by whole_tree_resolved_ctx hosts (measure_dependency_view_build, measure_whole_tree_resolve, fn_arrow_decl_substrate_is_whole_tree census, wiring_liveness_whole_tree). NOT folded into witness_exclusion_substrings — floor RunnableDiscoveryBatch scan-dir enrollment must keep src/v2/test/claim/manual visible while whole-tree resolve excludes the broader /test/ tree."
