@@ -11,7 +11,8 @@ import gunbc.ci_materialization_gate {
   ci_release_build_discharged_by_sccache_count,
   ci_below_cost_floor_verdict_count,
   ci_exempt_fresh_verdict_count,
-  ci_release_build_refused_without_provider_count
+  ci_release_build_refused_without_provider_count,
+  ci_uses_steps_skipped_count
 }
 
 data ci_materialization_witness_note: String = "The ladder run against the LIVE emitted workflow, enrolled on the CI surface — the see-it-working-up-front requirement (operator, 2026-07-08): shell -> binary with appropriate caching installed or a typed refusal, in the same pipeline the redundancy would otherwise be paid in. The RED control removes the sccache provider row and demands the refusal, so the gate discriminates: it is green because the obligation is DISCHARGED, not because nothing looked."
@@ -42,4 +43,8 @@ test fn ci_measurement_is_exempt_fresh_effect() -> Bool {
 
 test fn ci_catalog_projection_has_no_refusals() -> Bool {
   ci_catalog_projection_refusals() == 0
+}
+
+test fn ci_uses_steps_are_counted_not_silent() -> Bool {
+  ci_uses_steps_skipped_count() == 9
 }

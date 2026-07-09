@@ -6,6 +6,7 @@ import std.materialization_ladder {
   AuthoredDuplication, DeadComputation, AcceptedEffectIsTheUse,
   Discharged, RefusedNoProvider, RefusedScopeTooNarrow, RefusedExistenceKeyed,
   RefusedUnmodeledWorldRead, ExemptFreshEffect, AcceptedBelowCostFloor, AcceptedSingleRecompute,
+  RefusedNatureConflict,
   materialization_ladder, materialization_ladder_holds,
   verdict_is_discharged_by, verdict_is_refused_no_provider,
   no_cache_providers
@@ -13,7 +14,8 @@ import std.materialization_ladder {
 import gunbc.ci_materialization {
   ci_cache_providers, ci_cost_floor_exempt_step_names,
   ci_sccache_provider_id,
-  workflow_run_demands, workflow_scripts_named, step_run_script
+  workflow_run_demands, workflow_scripts_named, step_run_script,
+  workflow_uses_steps_count
 }
 import gunbc.ci_workflow { ci_workflow, ci_rust_cgroup_measurement_step }
 import gunbc.ci_spec {
@@ -72,6 +74,7 @@ fn ci_materialization_holds_without_sccache() -> Bool {
 
 fn ci_verdict_is_discharged_arm(v: LadderVerdict) -> Bool {
   match v {
+    RefusedNatureConflict { identity: _ } => false
     AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
     DeadComputation { identity: _ } => false
     AcceptedEffectIsTheUse { identity: _ } => false
@@ -88,6 +91,7 @@ fn ci_verdict_is_discharged_arm(v: LadderVerdict) -> Bool {
 
 fn ci_verdict_is_below_cost_floor_arm(v: LadderVerdict) -> Bool {
   match v {
+    RefusedNatureConflict { identity: _ } => false
     AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
     DeadComputation { identity: _ } => false
     AcceptedEffectIsTheUse { identity: _ } => false
@@ -104,6 +108,7 @@ fn ci_verdict_is_below_cost_floor_arm(v: LadderVerdict) -> Bool {
 
 fn ci_verdict_is_exempt_fresh_arm(v: LadderVerdict) -> Bool {
   match v {
+    RefusedNatureConflict { identity: _ } => false
     AuthoredDuplication { identity: _, lca: _, site_count: _ } => false
     DeadComputation { identity: _ } => false
     AcceptedEffectIsTheUse { identity: _ } => false
@@ -146,6 +151,10 @@ fn ci_exempt_fresh_verdict_count() -> Int {
   ci_materialization_verdicts()
     |> filter(v => ci_verdict_is_exempt_fresh_arm(v: v))
     |> count()
+}
+
+fn ci_uses_steps_skipped_count() -> Int {
+  workflow_uses_steps_count(w: ci_workflow)
 }
 
 fn ci_release_build_refused_without_provider_count() -> Int {

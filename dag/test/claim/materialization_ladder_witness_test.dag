@@ -31,7 +31,8 @@ import std.materialization_ladder {
   verdict_is_accepted_below_cost_floor,
   verdict_is_accepted_single_recompute,
   verdict_is_dead_computation,
-  verdict_is_accepted_effect_is_the_use
+  verdict_is_accepted_effect_is_the_use,
+  verdict_is_refused_nature_conflict
 }
 import std.types { Bool, Int, List, String }
 
@@ -394,4 +395,23 @@ test fn below_cost_floor_duplication_is_typed_acceptance() -> Bool {
     cost_floor_exempt: no_cost_floor_exemptions
   )
   accepted && red_without_roster
+}
+
+test fn conflicting_natures_on_one_identity_are_refused() -> Bool {
+  let conflicted = [
+    demand(identity: "probe-metric", site: [wf(), job(name: "run-a"), step(name: "measure")], nature: PureComputation),
+    demand(identity: "probe-metric", site: [wf(), job(name: "run-b"), step(name: "measure")], nature: FreshEffect)
+  ]
+  let vs = materialization_ladder(
+    demands: conflicted,
+    providers: no_cache_providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  let refused = count_matching(vs: vs, matched: v => verdict_is_refused_nature_conflict(v: v, identity: "probe-metric")) == 1
+  let red = !materialization_ladder_holds(
+    demands: conflicted,
+    providers: no_cache_providers,
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  refused && red
 }
