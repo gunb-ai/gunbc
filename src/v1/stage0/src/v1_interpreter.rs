@@ -1124,7 +1124,6 @@ pub struct InterpContext {
     call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
-    eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
@@ -1269,7 +1268,6 @@ impl InterpContext {
             call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
-            eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
@@ -3341,7 +3339,10 @@ pub fn print_eval_recompute_trace(_ctx: &InterpContext) {
     if !eval_recompute_trace_enabled() {
         return;
     }
-    EVAL_RECOMPUTE_TRACE_GLOBAL.with_borrow(|t| {
+    EVAL_RECOMPUTE_TRACE_GLOBAL.with_borrow(print_recompute_trace_body);
+}
+
+fn print_recompute_trace_body(t: &EvalRecomputeTrace) {
     let mut duplicated: Vec<(&EvalRecomputeEntry, u128)> = t
         .map
         .values()
@@ -3400,7 +3401,6 @@ pub fn print_eval_recompute_trace(_ctx: &InterpContext) {
             name, count
         );
     }
-    });
 }
 fn value_rc_identity(v: &Value) -> Option<usize> {
     match v {
