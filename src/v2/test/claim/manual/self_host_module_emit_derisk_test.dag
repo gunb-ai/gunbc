@@ -18,7 +18,6 @@ import v2.compiler.source_authority {
 }
 import v2.extdeps.languages.rust { rust_target_model }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { any }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
@@ -26,9 +25,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
-data self_host_module_emit_frontier_note: String = "Drives v2's OWN pipeline (assemble->infer->emit_for_target via rust_target_model()) on real .dag SOURCE TEXT, ledgering the current self-emit-from-source frontier by execution. Two staged blockers are upstream of emit fidelity; each _refuses witness matches its TYPED refusal symbol on the pipeline Outcome (no stringification), names its dissolution trigger, and flips to assert ACCEPT once the trigger lands."
-
-data self_host_frontier_trigger_multi_arm_match: String = "TRIGGER: the v2 dag grammar production dag_production_match_expr (dag/extdeps/languages/dag.dag) consumes a SINGLE match arm only; on multi-arm (comma-separated) input the second arm is left unconsumed and parse rejects with ^parse_g0_tokens_remain (leftover tokens). NOTE: the rejection HEAD is ^parse_grammar_choice_overlap_residue, an unrelated Accepted-residue validation diagnostic that rejected_with_pending prepends to EVERY parse rejection of this grammar (02_parse.dag grammar_overlap_residue_disposition: 'never a rejection') — so the witness matches the real reason across the whole diagnostics list, not d.head. A single-arm control accepts. Add a repeated match-arm production so all arms are consumed, then flip self_host_frontier_parse_multi_arm_match_refuses to assert ACCEPT."
+data self_host_module_emit_frontier_note: String = "Drives v2's OWN pipeline (assemble->infer->emit_for_target via rust_target_model()) on real .dag SOURCE TEXT, ledgering the current self-emit-from-source frontier by execution. Parse+infer now handle module headers, type decls, fn decls, and both single- and multi-arm match (F2-1). The remaining staged blocker (emit whole-program use-site ownership realization for user types) is upstream of emit fidelity and is asserted as a TYPED refusal on the pipeline Outcome (no stringification) that names its dissolution trigger and flips to assert ACCEPT once the trigger lands."
 
 data self_host_frontier_trigger_ownership_miss: String = "TRIGGER: whole-program emit via rust_target_model() rejects user-defined coproduct/record types with ^target_use_site_ownership_lookup_miss (per-fn staging targets carry the rows; the real whole-program target does not). Land whole-program use-site ownership realization for user types, then flip self_host_frontier_emit_ownership_miss_refuses to assert ACCEPT."
 
@@ -71,14 +68,6 @@ fn derisk_assemble_accepts(src: String) -> Bool {
   match derisk_assemble_for(src: src) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
-  }
-}
-
-fn derisk_assemble_rejects_containing(src: String, reason: Symbol) -> Bool {
-  match derisk_assemble_for(src: src) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      (d.head.reason == reason) || any(xs: d.tail, predicate: fn(x) { x.reason == reason })
   }
 }
 
@@ -130,9 +119,9 @@ test fn self_host_frontier_infer_single_arm_module_holds() -> Bool {
   derisk_infer_accepts(src: src_single_arm_match)
 }
 
-test fn self_host_frontier_parse_multi_arm_match_refuses() -> Bool {
-  derisk_assemble_rejects_containing(src: src_multi_arm_match, reason: ^parse_g0_tokens_remain)
-    && derisk_assemble_accepts(src: src_single_arm_match)
+test fn self_host_frontier_parse_multi_arm_match_holds() -> Bool {
+  derisk_assemble_accepts(src: src_multi_arm_match)
+    && derisk_infer_accepts(src: src_multi_arm_match)
 }
 
 test fn self_host_frontier_emit_ownership_miss_refuses() -> Bool {
@@ -146,6 +135,6 @@ test fn self_host_module_emit_frontier_all_holds() -> Bool {
     && self_host_frontier_parse_fn_simple_body_holds()
     && self_host_frontier_parse_single_arm_match_holds()
     && self_host_frontier_infer_single_arm_module_holds()
-    && self_host_frontier_parse_multi_arm_match_refuses()
+    && self_host_frontier_parse_multi_arm_match_holds()
     && self_host_frontier_emit_ownership_miss_refuses()
 }
