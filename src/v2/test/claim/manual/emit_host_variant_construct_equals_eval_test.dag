@@ -51,7 +51,7 @@ import v2.std.node {
 }
 import v2.std.node_query {
   find_named_child,
-  node_positional_child_targets
+  node_child_targets
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -129,7 +129,7 @@ fn emit_variant_construct_eval_diagnostic(reason: Symbol, node: Node) -> Diagnos
 }
 
 fn emit_variant_construct_eval_variant_tag_id(node: Node) -> Outcome<Symbol> {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+  match list_at_optional(xs: node_child_targets(node: node), index: 0) {
     Present { value: tag_node } =>
       match tag_node.kind {
         TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
@@ -365,4 +365,59 @@ test fn emit_host_variant_construct_wrong_fixture_refuses_holds() -> Bool {
 
 test fn emit_host_variant_construct_equals_eval_all_holds() -> Bool {
   emit_host_variant_construct_equals_eval_holds() && emit_host_variant_construct_wrong_fixture_refuses_holds()
+}
+
+fn emit_variant_construct_eval_debug_falsification_present(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    Fail { actual: _, falsification: Present { value: _ } } => true
+    Fail { actual: _, falsification: Absent } => false
+    Deferred { actual: _, diagnostic: _ } => false
+    Pass => false
+  }
+}
+
+test fn emit_host_variant_construct_debug_falsification_present() -> Bool {
+  emit_variant_construct_eval_debug_falsification_present(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree))
+}
+
+fn emit_variant_construct_eval_debug_expected_is(run: TestClaimRun<Node, RuntimeValue>, n: Int) -> Bool {
+  match run.verdict {
+    Fail { actual: _, falsification: Present { value: f } } => f.expected == emit_variant_construct_eval_octet_value(n: n)
+    Fail { actual: _, falsification: Absent } => false
+    Deferred { actual: _, diagnostic: _ } => false
+    Pass => false
+  }
+}
+
+fn emit_variant_construct_eval_debug_actual_is(run: TestClaimRun<Node, RuntimeValue>, n: Int) -> Bool {
+  match run.verdict {
+    Fail { actual: _, falsification: Present { value: f } } => f.actual == emit_variant_construct_eval_octet_value(n: n)
+    Fail { actual: _, falsification: Absent } => false
+    Deferred { actual: _, diagnostic: _ } => false
+    Pass => false
+  }
+}
+
+test fn emit_host_variant_construct_debug_expected_0() -> Bool {
+  emit_variant_construct_eval_debug_expected_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), n: 0)
+}
+
+test fn emit_host_variant_construct_debug_expected_1() -> Bool {
+  emit_variant_construct_eval_debug_expected_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), n: 1)
+}
+
+test fn emit_host_variant_construct_debug_expected_9() -> Bool {
+  emit_variant_construct_eval_debug_expected_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), n: 9)
+}
+
+test fn emit_host_variant_construct_debug_actual_0() -> Bool {
+  emit_variant_construct_eval_debug_actual_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), n: 0)
+}
+
+test fn emit_host_variant_construct_debug_actual_1() -> Bool {
+  emit_variant_construct_eval_debug_actual_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), n: 1)
+}
+
+test fn emit_host_variant_construct_debug_actual_9() -> Bool {
+  emit_variant_construct_eval_debug_actual_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), n: 9)
 }
