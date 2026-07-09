@@ -42,8 +42,6 @@ type CostCoverageFnVerdict
   | FnBodyParseTreeOpaque
   | FnBodyNotLocated
 
-data cost_coverage_parse_tree_opaque_note: String = "fn_body located under v2-ingest parse tree but judge_subject_node finds no ComputationNode yet — counted separately from FnBodyNotLocated and from cost Unknowns; dissolves when body-lowering lands (body-lowering design, FLAG B/C)."
-
 type CostCoverageFnReceipt {
   rel_path: String
   fn_index: Int
@@ -85,8 +83,6 @@ type CostCoverageCensusAcc {
   fn_body_not_located: Int
   file_rows: List<CostCoverageFileReceipt>
 }
-
-data cost_coverage_scope_note: String = "Per-file census runs tokenize -> parse -> normalize (program_assembly_read_to_normalized_root terminal), then cost_lens per fn body. Cross-module resolve via SourceRootIngest is a follow-on slice on this receipt carrier."
 
 data cost_coverage_unknown_asymptotic_class: Symbol = ^cost_coverage_unknown_asymptotic_class
 

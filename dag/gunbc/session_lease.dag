@@ -15,8 +15,6 @@ import std.upsert_decision {
   Refuse,
 }
 
-data session_lease_doc: String = "Process port lease observation→verdict→plan. Classifier compares observed port and process fingerprint against ProcessPortScope — observation carries facts, not pre-classified ownership. expected_owner_label is human/diagnostic only; expected_process_fingerprint is the semantic authority."
-
 type ProcessPortScope {
   listen_port: Int
   expected_owner_label: NonEmptyStr

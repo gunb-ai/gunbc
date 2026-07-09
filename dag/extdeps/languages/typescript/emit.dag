@@ -85,8 +85,6 @@ data ts_source_extension: String = ".ts"
 
 data ts_lambda_template: String = "({0}) => {1}"
 
-data ts_error_expr_template: String = "(() => \{ throw new Error({0}); \})()"
-
 data ts_list_literal_empty: String = "[]"
 data ts_list_literal_template: String = "[{0}]"
 

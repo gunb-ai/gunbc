@@ -8,8 +8,6 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-data parse_token_first_empty_semantics_note: String = "adhoc-c328b166-bca fix-2 verification receipt: parse_token_first was rewritten from list_at_optional(xs, index: 0) (fold_list-based) to list_head (direct Empty/Cons match). Both must agree on the boundary case that motivated the rewrite -- an exhausted token stream -- and on the ordinary present case; this pins that agreement directly rather than trusting the rewrite by inspection."
-
 fn ptfes_token(class: Symbol, lexeme: String) -> Token {
   Token { class: class, lexeme: lexeme, file: ^ptfes_file, start: 0, end: 1 }
 }

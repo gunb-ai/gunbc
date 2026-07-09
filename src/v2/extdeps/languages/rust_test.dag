@@ -304,8 +304,6 @@ fn rust_pick_binding_spellings() -> Map<Symbol, String> {
   map_insert(m1, ^dag_binding_pick_lit_two, "2")
 }
 
-data rust_conditional_else_mid_lex_dissolution_trigger: String = "🟡 dissolve-on: rust_token_unwired_else lex packs the then-arm close, else keyword, and else-arm open into one spelling ( } else { ); pick-fn concrete tokens and the double-rbrace bodied scaffold suffix paper over the missing per-arm close in TargetConditionalShape's three-slot if/then/else projection. DISSOLVES WHEN Rust conditional emit uses separate ^rust_token_rbrace, ^rust_token_kw_else, and ^rust_token_lbrace token classes per arm delimiter (and pick golden tokens include inner braces around each arm literal) so transport is one lex class per surface token, not a packed substring."
-
 fn rust_pick_additional_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
@@ -2587,8 +2585,6 @@ fn rust_rec_nine_wrong_field_target_model_staging() -> TargetModel {
 }
 
 data rust_fold_call_source_text: String = "fn fold_demo(xs: i32, z: i32) -> i32 { fold_call_callee(xs, z, |acc, h| { acc + h }) }"
-
-data rust_fold_call_wrong_source_text: String = "fn fold_demo(xs: i32, z: i32) -> i32 { fold_call_callee(xs, z, |acc, h| { acc - h }) }"
 
 data rust_fold_call_swapped_source_text: String = "fn fold_demo(xs: i32, z: i32) -> i32 { fold_call_callee(xs, z, |acc, h| { h + acc }) }"
 

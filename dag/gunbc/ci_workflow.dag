@@ -314,29 +314,15 @@ data gunbc_ci_job_timeout_policy_minutes: Int = 90
 
 data gunbc_ci_floor_step_timeout_minutes: Duration = 30
 
-data gunbc_ci_floor_step_timeout_minutes_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: gunbc_ci_floor_step_timeout_minutes names GitHub Actions step timeout-minutes on the wire (extdeps/github/actions.dag RunStep.timeout_minutes projects Int). Carrier is std.types.Duration (minute magnitude, interim until CI budgets ground on std.measure time with explicit unit at the model layer and Int projection moves to GHA emit-only realization). DISSOLVES WHEN all gunbc CI step timeout authorities use a grounded measure carrier and timeout_minutes Int is derived at the workflow emit seam only."
-
 data gunbc_ci_rust_gate_step_timeout_minutes: Int = 45
 
-data gunbc_ci_rust_gate_step_budget_note: String = "Budgeted rust-gate-only step (gunbc run rust_gates_ci then fmt/nextest after sccache warm): 45m backstop. CLIPPY REMOVED from the gate (operator ruling 2026-07-08): `cargo clippy --all-targets -- -D warnings` alone ran 2656s (~44m) every .rs-touching run (cold dev-profile whole-workspace compile, ~zero sccache hit) AND delivered ~zero signal — the v1-compiler crate carries a crate-wide `#![allow(clippy::all, unused_imports, unused_variables, dead_code, ...)]`, so clippy found nothing there; it was an expensive `cargo check --all-targets` wearing clippy's clothes over 120k LOC of generated code we don't hand-edit. Operator: no value, Rust is a shrinking seed. The gate now runs fmt (~5s) + nextest (build+run v1-compiler-tests); 45m is a comfortable backstop for the nextest build+run leg now that it has the whole budget (was previously starved behind clippy's ~44m). Prior receipts: reconcile-before-main ~22m is FIXED (~9s now); nextest killed at the 45m cap only because clippy consumed it first (job 85319650284). Cold-cache storms stay in gunbc_ci_rust_sccache_warm_step_timeout_minutes, not here (operator ruling, cool-hawk-899 / valiant-bee-192). DISSOLVE-ON: re-derive DOWNWARD once a nextest-only receipt confirms the real leg duration; migrating every step budget to a single derived base x margin is the follow-up (the job backstop gunbc_ci_rust_job_backstop_timeout_minutes() is already derived this way). Clippy stays available as a LOCAL dev check (dag/tools/build.dag, extdeps.rust.cargo_build operation Clippy) — only the CI gate leg is removed."
-
-data ci_rust_build_gate_step_split_note: String = "Build and rust gate are separate workflow steps (same discipline as ci_build_floor_step_split_note): bundling cargo build + rust_gates_ci under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: rust_tests job 85237415376, run 28746200534 on dfbff0f). Warm step ci_rust_sccache_warm_step carries gunbc_ci_rust_sccache_warm_step_timeout_minutes; rust gate step carries gunbc_ci_rust_gate_step_timeout_minutes."
-
 data gunbc_ci_rust_sccache_warm_step_timeout_minutes: Int = 46
-
-data gunbc_ci_rust_sccache_warm_step_budget_note: String = "Observable sccache-warm step (release bins + cache prime) before the budgeted rust gate: cold-cache fallback storms are counted here, not in gunbc_ci_rust_gate_step_timeout_minutes (operator ruling, cool-hawk-899 / valiant-bee-192). Receipt: PRs 6286/6274/6290 timed out at 15m with clippy never finishing under sccache cold-cache fallback while bundled with build."
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
 data gunbc_ci_prelude_allowance_minutes: Int = 5
 
-data ci_build_floor_step_split_note: String = "Build and floor are separate workflow steps so gate budgets apply to claim_executor only, not cargo build: bundling both under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: PR #6259 ci job 85192573905, 2026-07-05). Build step carries gunbc_ci_release_build_step_timeout_minutes; floor step carries gunbc_ci_floor_step_timeout_minutes."
-
 data gunbc_ci_release_build_step_timeout_minutes: Int = 45
-
-data gunbc_ci_release_build_step_budget_note: String = "Interim release-build step budget until cold v1-compiler fits 15m: 45 = prior 30m + margin after main merge (CARGO_BUILD_JOBS=6, text_lookup_work_counter). Receipt: job 85235032962 timed out at 30m still Compiling v1-compiler (~25m dep prelude + compile in progress; run 28745277854 on 1ba1895). Prior: job 85194701830 at 15m. Re-derive DOWNWARD when fleet cache/build path stabilizes."
-
-data gunbc_ci_floor_gate_step_budget_note: String = "Floor-step budget raised to 30m (#6361 Lever A dissolve-on, receipt run 28902523405 @ e1a27e4286): the 10m cap was sized when batch-1 compile-clean never finished (~600s cap-kill) and downstream gates never ran. Lever A un-masked batches 1-3 green in ~5m; EmitDeterminismGate (batch 4, x2 gunbc compile oracle) then hit the 10m step kill mid-oracle (~5m into batch 4, zero gate verdict). Measured need: ~5m batches 1-3 + ~18m EmitDeterminism (2× ~537s compile legs per floor-shared-compute-memoization.md). 30m = envelope + margin. Job backstop gunbc_ci_job_backstop_timeout_minutes() = 45+30+5+5 = 85m."
 
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
 
@@ -390,8 +376,6 @@ fn ci_job() -> Job {
   }
 }
 
-data ci_regen_job_non_required_note: String = "The ci_regen job is NON-required (operator two-job split, 2026-07-07, #6350): it runs the self-host fixed-point class (RegenVerifyGate + SelfHostStalenessGate) HARD and shows honest RED until the seed<->.dag reconcile lands, but it must be EXCLUDED from branch-protection required status checks so main goes green on the grounded invariants (the required ci + rust_tests jobs). continue_on_error stays none: the job reflects the true regen verdict; non-required-ness is the branch-protection reading, not a soft-pass. The former §5 anti-growth guard (the REQUIRED regen_divergence ratchet) was REMOVED 2026-07-07 as imminent-to-obsolete interim scaffolding — see ci_regen_ratchet_removed_note; until the accept-fresh fixpoint drives divergence to 0 (and RegenVerifyGate returns to the required surface), debt growth behind this non-required door is unguarded, recorded honestly as an interim trade."
-
 fn ci_regen_floor_step() -> Step {
   RunStep {
     name: Present { value: "gunbc ci regen (self-host fixed-point — non-required)" },
@@ -422,8 +406,6 @@ fn ci_regen_job() -> Job {
     concurrency: none
   }
 }
-
-data ci_regen_ratchet_removed_note: String = "The regen_divergence ratchet (formerly a REQUIRED ci_regen_ratchet job + tools/regen_divergence_ratchet.dag) was REMOVED (operator ruling 2026-07-07): it was interim scaffolding whose retirement condition — divergence count reaching 0, at which the byte-identical hard gate auto-promotes — is imminent via the accept-fresh self-host fixpoint (lively-raven-355), so the monotone-shrink guard is being retired slightly ahead of that auto-promote rather than maintained. It had also gone false-red on main after #6348 (emit → realization) moved the actual divergence off the pre-#6348 baseline (31), and refuse_if_baseline_raised makes a baseline re-calibration unwritable — so the guard was blocking merge on benign emit drift, not real new debt. Trade recorded honestly: until the fixpoint lands, self-host debt could grow behind the non-required ci_regen door unguarded; the non-required ci_regen job still shows the honest byte-identical verdict, and when divergence hits 0 the RegenVerifyGate returns to the required surface (the post-zero gate-placement decision, operator + owner)."
 
 fn rust_tests_job() -> Job {
   Job {

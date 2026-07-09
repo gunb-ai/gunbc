@@ -29,8 +29,6 @@ fn lossless_source(text: String) -> Medium<String> {
   source_medium(text: text, fidelity: Lossless)
 }
 
-data target_carriers_fidelity_disposition_decode_dissolution_trigger: String = "🟡 undeclared-sum: atom-id + named-child probe standing in for typed DecodeFidelityDisposition coproduct dispatch — consumes existing Node grammar from extdeps.languages.dag dag_fidelity_disposition_node; dissolves when TargetModel carries DecodeFidelityDisposition = Modeled | DeclaredNormalized | FailClosed so the validator family dispatches on the coproduct instead of predicate probing"
-
 fn fidelity_disposition_node_has_named_kind(root: Node, name: Symbol) -> Bool {
   match find_named_child(root: root, name: name) {
     Accepted { value: _, diagnostics: _ } => true

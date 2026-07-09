@@ -20,8 +20,6 @@ import std.effects {
   is_idempotent_effect, create_effect_is_dedupable, create_double_init_collapsible,
 }
 
-data effects_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/effects.rs (5-test-migration lane): pure std.effects derivation/idempotency/modifier/compose behavior. Live extdep REST-transport collection is in effects_rest_transport_parse_witness_test.dag (host physics until modeled)."
-
 type ReadonlyGetCase {
   name: String
   path: String

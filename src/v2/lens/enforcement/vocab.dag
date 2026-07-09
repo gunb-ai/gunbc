@@ -16,8 +16,6 @@ type ScopeRoster {
   roots: List<String>
 }
 
-data subject_scope_roster_split_note: String = "SubjectRoster (declaration names, QualifiedName, structural ==) and ScopeRoster (filesystem tree roots, String) were one List<String> carrier until 2026-07-05 - a state-space conflation: two facts with different comparison semantics (segment-structural vs path-literal) shared one representation, so the type could not stop a root being compared as a name. The split is the fired subject_roster_string_dissolution_trigger (enforcement-intent-design SS12; unblocked by gunb-ai/gunbc#6169 grounding qualified_name_from_dotted_string)."
-
 type EnforcementMode = Advisory | AuditOnly | Blocking
 
 type ConsumerKind
@@ -118,8 +116,6 @@ fn self_application_ok(s: SelfApplicationStatus) -> Bool {
     SelfApplicationAbsent => false
   }
 }
-
-data narrowing_reason_same_variant_dissolution_trigger: String = "🟡 dissolve-on: narrowing_reason_same_variant hand-rolls a 4×4 nested-match tag-equality over NarrowingReason (DESIGN §4 predicate/walker: one closed decision procedure, not per-shape recursion). No canonical variant-tag surface exists in std yet. DISSOLVES WHEN gunb-ai/gunbc#6172 lands a canonical variant_tag_eq / discriminator surface: replace the 16 arms with variant_tag_eq(a, b) and delete this fn."
 
 fn narrowing_reason_same_variant(a: NarrowingReason, b: NarrowingReason) -> Bool {
   match a {

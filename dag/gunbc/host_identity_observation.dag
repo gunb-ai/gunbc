@@ -31,8 +31,6 @@ data host_identity_short_hostname_script_scaffold: Disposition = Scaffold {
   }
 }
 
-data host_identity_short_hostname_script_dissolution_trigger: String = "🟡 dissolve-on: host_identity_short_hostname_script — hostname-read authored as String literal handed to ShellCommand { script } (medium-as-string; parallel shell-syntax authority for -s/2>/dev/null/||); DISSOLVES WHEN host_effect Phase B / orchestration emit (#6106 / shell-emission-model) models hostname-read as HostEffect orchestration intent rows (bash grammar rows), retiring this string leaf and medium_structure_exception_roster entry for dag/gunbc/host_identity_observation.dag"
-
 type HostIdentityObservationRow {
   short_hostname_raw: String
   probed_at: NonEmptyStr

@@ -55,15 +55,11 @@ type ElementwiseFoldClass
   | EffectfulSubgraph
   | DataDependentGather
 
-data elementwise_fold_class_modeling_lane_scaffold_note: String = "modeling-lane scaffold: ElementwiseFoldClass tag dispatch tests outcome-mapping into RealizationPlan shape only; execution lane uses gunbc.accelerator_demo_program + recognize_accelerator_program for structural recognition"
-
 type AcceleratorRefusalReason
   = NotElementwisePure
   | CarriesEffects
   | FmaContractionViolatesContract
   | AcceleratorUnsupportedNumericalDomain
-
-data accelerator_refusal_reason_mirror_dissolution_trigger: String = "dissolve-on: execution lane lands; fold AcceleratorRefusalReason lowering-aligned variants (FmaContractionViolatesContract, AcceleratorUnsupportedNumericalDomain) into extdeps.communication.numerical_fidelity.LoweringRefusalReason as single authority and retire accelerator_refusal_from_lowering (DESIGN §3 parallel-representation bridge — modeling lane only)."
 
 type AcceleratorRecognitionOutcome
   = Recognized {
@@ -83,8 +79,6 @@ data demo_accelerator_device: AcceleratorFacts = AcceleratorFacts {
   vendor: nvidia
   model: "A100"
 }
-
-data accelerator_demo_modeling_lane_dissolution_trigger: String = "dissolve-on: execution lane lands recognizer pass + CPU-SIMD fused-kernel handler consuming this plan value; GPU epilogue swaps extdeps.languages.simd row for extdeps.languages.cuda row"
 
 fn demo_accelerator_placement() -> Placement {
   LocalAccelerator
