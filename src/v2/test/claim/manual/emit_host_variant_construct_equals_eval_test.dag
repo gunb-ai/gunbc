@@ -23,7 +23,7 @@ import v2.extdeps.languages.rust {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { List, Map, list_at_optional }
+import v2.std.collection { Absent, List, Map, Present, list_at_optional }
 import v2.std.compilers.target_model {
   match_arm_body
 }
@@ -35,6 +35,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
+  bind_outcome,
   node_locus,
   outcome_accepted,
   outcome_rejected
@@ -126,6 +127,43 @@ fn emit_variant_construct_eval_diagnostic(reason: Symbol, node: Node) -> Diagnos
   }
 }
 
+fn emit_variant_construct_eval_variant_tag_id(node: Node) -> Outcome<Symbol> {
+  match list_at_optional(xs: node.children, index: 0) {
+    Present { value: child } =>
+      match child {
+        Edge { label: _, target: tag_node } =>
+          match tag_node.kind {
+            TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
+            _ =>
+              outcome_rejected(
+                d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
+              )
+          }
+      }
+    Absent =>
+      outcome_rejected(
+        d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
+      )
+  }
+}
+
+fn emit_variant_construct_eval_variant_discriminant(node: Node) -> Outcome<RuntimeValue> {
+  bind_outcome(
+    o: emit_variant_construct_eval_variant_tag_id(node: node),
+    f: fn(id) {
+      if id == ^dag_binding_type_variant_holds {
+        outcome_accepted(value: emit_variant_construct_eval_octet_value(n: 1))
+      } else if id == ^dag_binding_type_variant_true {
+        outcome_accepted(value: emit_variant_construct_eval_octet_value(n: 0))
+      } else {
+        outcome_rejected(
+          d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
+        )
+      }
+    }
+  )
+}
+
 fn emit_variant_construct_eval_allocate_literal(
   node: Node,
   _env: EvaluationEnvironment
@@ -148,7 +186,7 @@ fn emit_variant_construct_eval_allocate_literal(
         )
       }
     TypeNode { connective: Conj } =>
-      outcome_accepted(value: emit_variant_construct_eval_octet_value(n: 0))
+      emit_variant_construct_eval_variant_discriminant(node: node)
     _ =>
       outcome_rejected(
         d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_literal_miss, node: node)
@@ -213,15 +251,35 @@ fn emit_variant_construct_eval_arm_body_node(arm_wire: Node) -> Outcome<Node> {
   }
 }
 
+fn emit_variant_construct_eval_scrutinee_is_holds(value: RuntimeValue) -> Bool {
+  value == emit_variant_construct_eval_octet_value(n: 1)
+}
+
+fn emit_variant_construct_eval_scrutinee_is_true(value: RuntimeValue) -> Bool {
+  value == emit_variant_construct_eval_octet_value(n: 0)
+}
+
 fn emit_variant_construct_eval_choose_arm(
   node: Node,
-  _scrutinee: RuntimeValue,
+  scrutinee: RuntimeValue,
   _env: EvaluationEnvironment
 ) -> Outcome<Node> {
-  match emit_variant_construct_eval_nth_arm_wire(node: node, wanted: 1) {
-    Accepted { value: arm, diagnostics: _ } =>
-      emit_variant_construct_eval_arm_body_node(arm_wire: arm)
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  if emit_variant_construct_eval_scrutinee_is_holds(value: scrutinee) {
+    match emit_variant_construct_eval_nth_arm_wire(node: node, wanted: 1) {
+      Accepted { value: arm, diagnostics: _ } =>
+        emit_variant_construct_eval_arm_body_node(arm_wire: arm)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  } else if emit_variant_construct_eval_scrutinee_is_true(value: scrutinee) {
+    match emit_variant_construct_eval_nth_arm_wire(node: node, wanted: 2) {
+      Accepted { value: arm, diagnostics: _ } =>
+        emit_variant_construct_eval_arm_body_node(arm_wire: arm)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  } else {
+    outcome_rejected(
+      d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_arm_miss, node: node)
+    )
   }
 }
 
