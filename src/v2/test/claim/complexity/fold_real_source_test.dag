@@ -1,0 +1,53 @@
+module v2.test.claim.complexity.fold_real_source
+
+import std.algebra { Cons, Empty }
+import v2.lens.enforcement.cost_coverage { cost_coverage_ingest_source_text }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+data fold_real_source_note: String = "Grounds the grammar StampLexeme fix on REAL source: after tokenize -> parse_module -> normalize (the census ingest), the callee of a general fold call carries its NAME as an atom identity — ^fold, interned from the lexeme — so operation recognition works the homogeneous way the R1 lens reads atom.identity. Before the fix the callee was ^dag_token_ident (name dropped), so fold_callee_name_survives_parse is the RED control that regression breaks. The collection name (^xs) is checked too, confirming the whole general-ident path carries lexemes, not just the head. Next slice: navigate the surface call production (parse_subtree_find_production_captured, as cost_coverage already locates fn bodies) to extract the fn-literal iteration body and desugar via v2.compiler.fold_lowering."
+
+data fold_snippet: String = "module fold_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
+
+fn collect_atom_identities(n: Node, acc: List<Symbol>) -> List<Symbol> {
+  let acc1 = match node_atom_identity_optional(node: n) {
+    Present { value: s } => Cons { head: s, tail: acc }
+    Absent => acc
+  }
+  fold(n.children, init: acc1, f: fn(a, e) {
+    collect_atom_identities(n: e.target, acc: a)
+  })
+}
+
+fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
+  fold(xs, init: false, f: fn(acc, s) {
+    if acc { true } else { s == needle }
+  })
+}
+
+fn ingest_identities() -> List<Symbol> {
+  match cost_coverage_ingest_source_text(source_text: fold_snippet, file: ^fold_probe_file) {
+    Accepted { value: tree, diagnostics: _ } =>
+      collect_atom_identities(n: tree, acc: Empty)
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+test fn fold_probe_ingest_is_accepted() -> Bool {
+  match cost_coverage_ingest_source_text(source_text: fold_snippet, file: ^fold_probe_file) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn fold_callee_name_survives_parse() -> Bool {
+  symbol_in(needle: ^fold, xs: ingest_identities())
+}
+
+test fn fold_collection_name_survives_parse() -> Bool {
+  symbol_in(needle: ^xs, xs: ingest_identities())
+}

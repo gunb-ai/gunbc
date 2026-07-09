@@ -164,6 +164,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/complexity/fold_real_source_test.dag",
+      check_fns: [
+        "fold_probe_ingest_is_accepted",
+        "fold_callee_name_survives_parse",
+        "fold_collection_name_survives_parse"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/loop_infer_iteration_test.dag",
       check_fns: [
         "loop_infer_invariant_body_accepts_with_carrier_type",
