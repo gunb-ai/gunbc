@@ -8090,8 +8090,9 @@ mod node_frontier_plumbing_controls {
              -module v2.test.manual.integer_census_stage_receipt_old_name\n\
              +module v2.test.manual.integer_census_stage_receipt\n"
         );
-        floor_diff_edits_from_diff_text(&index, &diff)
-            .unwrap_or_else(|e| panic!("rename destination line-1 change must not fail-closed: {e}"));
+        floor_diff_edits_from_diff_text(&index, &diff).unwrap_or_else(|e| {
+            panic!("rename destination line-1 change must not fail-closed: {e}")
+        });
         // Control: the SAME line-1 change as an in-place modify (no `rename to`) stays fail-closed.
         let in_place = format!(
             "diff --git a/{new_rel} b/{new_rel}\n\
