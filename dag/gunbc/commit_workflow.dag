@@ -134,6 +134,39 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/loop_multiplicity_measure_test.dag",
+      check_fns: [
+        "loop_strict_measure_infers_proven_termination",
+        "loop_perturbed_measure_is_refused",
+        "loop_lone_non_increasing_measure_is_refused",
+        "loop_lexicographic_measure_proves_with_strict_dimension",
+        "loop_unknown_dimension_poisons_lexicographic_measure",
+        "loop_missing_measure_is_refused",
+        "live_registry_proves_loop_measure",
+        "nested_unproven_loop_still_poisons_the_fold"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/loop_infer_iteration_test.dag",
+      check_fns: [
+        "loop_infer_invariant_body_accepts_with_carrier_type",
+        "loop_infer_divergent_body_is_refused",
+        "loop_infer_refinement_shaped_body_is_refused",
+        "loop_infer_unregistered_measure_is_refused",
+        "loop_infer_missing_measure_is_refused"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "dag/test/claim/parse_test.dag",
       check_fns: ["parse_witness_floor_holds", "parse_witness_perf_holds"],
       kind: CorpusWitnessKind,
