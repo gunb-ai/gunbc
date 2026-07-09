@@ -1,0 +1,160 @@
+module v2.test.emit.rust_bind_let_emit
+
+import v2.compiler.body_producer {
+  produce_mvp1_bind_arrow_with_body,
+  produce_mvp1_bind_arrow_with_body_wrong_value
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust {
+  rust_lex_rule,
+  rust_mvp1_target_model_bundle_core,
+  rust_wave1_lex_rules
+}
+import v2.std.algebra { list_append }
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import extdeps.communication.medium { Medium }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.witness { Violates, Witness }
+
+data rust_bind_let_expected_source_text: String = "fn add(x: i32, y: i32) -> i32 { let x = 1; x }"
+
+data rust_bind_let_wrong_value_source_text: String = "fn add(x: i32, y: i32) -> i32 { let x = 2; x }"
+
+fn rust_bind_let_lex_rules() -> LexRuleSet {
+  let base = rust_wave1_lex_rules()
+  LexRuleSet {
+    rules: list_append(
+      left: base.rules,
+      right: [
+        rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
+        rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
+        rust_lex_rule(token_class: ^rust_token_semicolon, text: "; ")
+      ]
+    )
+  }
+}
+
+fn rust_bind_let_lex() -> LexRules {
+  ModeledLexRules { root: rust_bind_let_lex_rules() }
+}
+
+fn rust_bind_let_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
+  let m1 = map_insert(m0, ^rust_binding_param_x, "x")
+  let m2 = map_insert(m1, ^rust_binding_param_y, "y")
+  let m3 = map_insert(m2, ^dag_binding_mvp1_bind_x, "x")
+  let m4 = map_insert(m3, ^dag_mvp1_pick_lit_one, "1")
+  let m5 = map_insert(m4, ^dag_mvp1_pick_lit_two, "2")
+  let m6 = map_insert(m5, ^dag_binding_mvp1_pick_lit_one, "1")
+  map_insert(m6, ^dag_binding_mvp1_pick_lit_two, "2")
+}
+
+fn rust_bind_let_target_model() -> TargetModel {
+  TargetModel {
+    bundle: rust_mvp1_target_model_bundle_core(),
+    lex: rust_bind_let_lex(),
+    binding_spellings: rust_bind_let_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_bind_let_expected_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn rust_bind_let_facts_miss(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^rust_bind_let_facts_not_consulted,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn rust_bind_let_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: rust_bind_let_facts_miss }
+  }
+}
+
+fn rust_bind_let_producer_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_bind_arrow_with_body() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: rust_bind_let_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rust_bind_let_wrong_value_producer_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_bind_arrow_with_body_wrong_value() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: rust_bind_let_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rust_bind_let_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: rust_bind_let_producer_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn rust_bind_let_emit_wrong_value_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: rust_bind_let_wrong_value_producer_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn rust_bind_let_emit_holds() -> Bool {
+  match rust_bind_let_emit_from_producer(target: rust_bind_let_target_model()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_bind_let_expected_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_bind_let_emit_wrong_value_discriminates() -> Bool {
+  match rust_bind_let_emit_from_producer(target: rust_bind_let_target_model()) {
+    Accepted { value: canonical, diagnostics: dc } =>
+      match rust_bind_let_emit_wrong_value_from_producer(target: rust_bind_let_target_model()) {
+        Accepted { value: wrong, diagnostics: dw } =>
+          (wrong.carried == rust_bind_let_wrong_value_source_text) &&
+          (wrong.carried != canonical.carried) &&
+          (dc == None) && (dw == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_bind_let_emit_keystone_holds() -> Bool {
+  rust_bind_let_emit_holds() && rust_bind_let_emit_wrong_value_discriminates()
+}
