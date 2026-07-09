@@ -5,61 +5,78 @@ import v2.lens.enforcement.grammar_coverage {
   grammar_coverage_file_reject_locus_matches
 }
 
-test fn probe_core_stage_tokenize() -> Bool {
-  match grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag").verdict {
-    ParsedClean => false
-    ParseRejected { stage: s, reason: _ } => s == "tokenize"
-  }
-}
-
-test fn probe_core_stage_parse() -> Bool {
-  match grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag").verdict {
-    ParsedClean => false
-    ParseRejected { stage: s, reason: _ } => s == "parse"
-  }
-}
-
-test fn probe_core_stage_normalize() -> Bool {
-  match grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag").verdict {
-    ParsedClean => false
-    ParseRejected { stage: s, reason: _ } => s == "normalize"
-  }
-}
-
-test fn probe_tokenize_stage_parse() -> Bool {
-  match grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag").verdict {
-    ParsedClean => false
-    ParseRejected { stage: s, reason: _ } => s == "parse"
-  }
-}
-
-test fn probe_tokenize_stage_tokenize() -> Bool {
-  match grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag").verdict {
-    ParsedClean => false
-    ParseRejected { stage: s, reason: _ } => s == "tokenize"
-  }
+fn probe_file_reason(
+  rel_path: String,
+  stage: String,
+  reason: Symbol
+) -> Bool {
+  grammar_coverage_file_reject_locus_matches(
+    receipt: grammar_coverage_file_receipt(rel_path: rel_path),
+    stage: stage,
+    reason: reason
+  )
 }
 
 test fn probe_core_parse_g0() -> Bool {
-  grammar_coverage_file_reject_locus_matches(
-    receipt: grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag"),
+  probe_file_reason(
+    rel_path: "src/v1/00_core.dag",
     stage: "parse",
     reason: ^parse_g0_tokens_remain
   )
 }
 
-test fn probe_core_tokenize_lex_e1() -> Bool {
-  grammar_coverage_file_reject_locus_matches(
-    receipt: grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag"),
-    stage: "tokenize",
-    reason: ^tokenize_lex_e1_unrecognized_char
+test fn probe_core_parse_e1_syntax() -> Bool {
+  probe_file_reason(
+    rel_path: "src/v1/00_core.dag",
+    stage: "parse",
+    reason: ^parse_e1_syntax_error
+  )
+}
+
+test fn probe_core_parse_grammar_not_well_formed() -> Bool {
+  probe_file_reason(
+    rel_path: "src/v1/00_core.dag",
+    stage: "parse",
+    reason: ^parse_grammar_not_well_formed
   )
 }
 
 test fn probe_tokenize_parse_g0() -> Bool {
-  grammar_coverage_file_reject_locus_matches(
-    receipt: grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag"),
+  probe_file_reason(
+    rel_path: "src/v1/01_tokenize.dag",
     stage: "parse",
     reason: ^parse_g0_tokens_remain
   )
+}
+
+test fn probe_tokenize_parse_e1_syntax() -> Bool {
+  probe_file_reason(
+    rel_path: "src/v1/01_tokenize.dag",
+    stage: "parse",
+    reason: ^parse_e1_syntax_error
+  )
+}
+
+test fn probe_tokenize_parse_grammar_not_well_formed() -> Bool {
+  probe_file_reason(
+    rel_path: "src/v1/01_tokenize.dag",
+    stage: "parse",
+    reason: ^parse_grammar_not_well_formed
+  )
+}
+
+test fn probe_core_direct_reason_eq() -> Bool {
+  match grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag").verdict {
+    ParsedClean => false
+    ParseRejected { stage: s, reason: r } =>
+      (s == "parse") && (r == ^parse_g0_tokens_remain)
+  }
+}
+
+test fn probe_tokenize_direct_reason_eq() -> Bool {
+  match grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag").verdict {
+    ParsedClean => false
+    ParseRejected { stage: s, reason: r } =>
+      (s == "parse") && (r == ^parse_g0_tokens_remain)
+  }
 }
