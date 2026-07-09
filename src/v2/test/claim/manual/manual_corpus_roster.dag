@@ -13,13 +13,13 @@ import v2.test.manual.dissolution_subsumption_reverification {
   subject_rust_language_model_emit_mechanical_reverification_claim,
   subject_rust_language_model_emit_subsumption_reverifies
 }
-import v2.test.manual.eval_runtime_mvp { subject_eval_mvp2_test_claim_route }
+import v2.test.manual.eval_runtime { subject_eval_test_claim_route }
 import v2.test.lens_effect.effect_depends_on {
   subject_lens_effect_depends_on_runtime_verdict
 }
 
 data manual_corpus_node_subject_rows: List<TestClaimEvalSubject<Node>> = [
-  subject_eval_mvp2_test_claim_route,
+  subject_eval_test_claim_route,
   subject_idempotency_write_effect_receipt,
   subject_parallelism_data_dependency_receipt,
   subject_lens_effect_depends_on_runtime_verdict,

@@ -2,11 +2,11 @@ module test.claim.emit_host_gate_witness
 
 import std.measure { byte_size_count }
 import tools.emit_host_fixtures {
-  rust_mvp2_stdout_fixture_source,
-  python_mvp2_stdout_fixture_source,
-  go_mvp2_stdout_fixture_source,
-  ts_mvp1_host_fixture_source,
-  mvp2_stdout_byte_count,
+  rust_stdout_fixture_source,
+  python_stdout_fixture_source,
+  go_stdout_fixture_source,
+  ts_host_fixture_source,
+  stdout_byte_count,
   ts_signed_i32_le_byte_count
 }
 
@@ -15,23 +15,23 @@ fn nonempty(s: String) -> Bool {
 }
 
 fn w_rust_fixture_nonempty() -> Bool {
-  nonempty(s: rust_mvp2_stdout_fixture_source)
+  nonempty(s: rust_stdout_fixture_source)
 }
 
 fn w_python_fixture_nonempty() -> Bool {
-  nonempty(s: python_mvp2_stdout_fixture_source)
+  nonempty(s: python_stdout_fixture_source)
 }
 
 fn w_go_fixture_nonempty() -> Bool {
-  nonempty(s: go_mvp2_stdout_fixture_source)
+  nonempty(s: go_stdout_fixture_source)
 }
 
 fn w_ts_fixture_nonempty() -> Bool {
-  nonempty(s: ts_mvp1_host_fixture_source)
+  nonempty(s: ts_host_fixture_source)
 }
 
-fn w_mvp2_byte_count_is_five() -> Bool {
-  byte_size_count(mvp2_stdout_byte_count) == 5
+fn w_byte_count_is_five() -> Bool {
+  byte_size_count(stdout_byte_count) == 5
 }
 
 fn w_ts_byte_count_is_four() -> Bool {
@@ -43,6 +43,6 @@ test fn emit_host_gate_witnesses() -> Bool {
   w_python_fixture_nonempty() &&
   w_go_fixture_nonempty() &&
   w_ts_fixture_nonempty() &&
-  w_mvp2_byte_count_is_five() &&
+  w_byte_count_is_five() &&
   w_ts_byte_count_is_four()
 }

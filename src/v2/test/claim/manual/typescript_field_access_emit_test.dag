@@ -16,7 +16,7 @@ import v2.std.compilers.target_model {
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v2.extdeps.languages.typescript {
-  ts_mvp1_target_model_node,
+  ts_target_model_node,
   ts_operator_realizations_catalog_node,
   ts_value_expression_projection,
   ts_wave1_lex
@@ -33,7 +33,7 @@ fn field_access_binding_spellings() -> Map<Symbol, String> {
 
 fn field_access_target_model() -> TargetModel {
   TargetModel {
-    bundle: ts_mvp1_target_model_node(),
+    bundle: ts_target_model_node(),
     lex: ts_wave1_lex(),
     binding_spellings: field_access_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,

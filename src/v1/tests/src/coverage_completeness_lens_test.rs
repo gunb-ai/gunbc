@@ -213,7 +213,7 @@ fn detector_accepts_a_multiline_reason() {
     // still a written reason — the opening line carries non-empty content even
     // though the closing quote lands on a later line. (Regression guard: an
     // earlier detector required the closing `"` on the same line and false-flagged
-    // exactly this shape — the `fixtures/v2-mvp1` ignore in pipeline.rs.)
+    // exactly this shape — the `fixtures/v2` ignore in pipeline.rs.)
     let src = "#[ignore = \"failing: a genuinely long reason that explains the \\\n  drift and names the owner, wrapped across lines for readability\"]\nfn x() {}";
     assert!(reasonless_ignore_lines(src).is_empty());
     // ...but a multi-line opener with NO content before the break is still empty → flagged.

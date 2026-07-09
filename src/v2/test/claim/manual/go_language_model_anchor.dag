@@ -6,14 +6,14 @@ import v2.extdeps.languages.go {
   go_facts_float64,
   go_facts_int,
   go_facts_string,
-  go_formal_production_mvp1_fn_add,
+  go_formal_production_fn_add,
   go_float_algebra_inhabitance,
   go_integer_algebra_inhabitance,
   go_int_inhabitant_node,
   go_language_model_wave1,
   go_model_core_inhabitance_decls,
   go_model_core_wave1,
-  go_mvp1_target_model_node,
+  go_target_model_node,
   go_string_algebra_inhabitance
 }
 import v2.std.grammar { FormalProduction }
@@ -25,9 +25,9 @@ type go_anchor_language_model = LanguageModel
 
 data go_anchor_wave1: go_anchor_language_model = go_language_model_wave1()
 data go_anchor_int: Node = go_int_inhabitant_node()
-data go_anchor_add_fn_target_model: Node = go_mvp1_target_model_node()
+data go_anchor_add_fn_target_model: Node = go_target_model_node()
 data go_anchor_core: ModelCore = go_model_core_wave1()
-data go_anchor_formal_add_fn_production: FormalProduction = go_formal_production_mvp1_fn_add()
+data go_anchor_formal_add_fn_production: FormalProduction = go_formal_production_fn_add()
 data go_anchor_model_core_inhabitance: List<AlgebraInhabitanceDecl> = go_model_core_inhabitance_decls()
 data go_anchor_int_algebra_inhabitance: AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int)
 data go_anchor_float_algebra_inhabitance: AlgebraInhabitanceDecl = go_float_algebra_inhabitance(facts: go_facts_float64)

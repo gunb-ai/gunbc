@@ -94,11 +94,11 @@ fn anchor_emit_rejects() -> Outcome<Medium<String>> {
   )
 }
 
-fn anchor_emit_mvp1_accepts() -> Outcome<Medium<String>> {
+fn anchor_emit_accepts() -> Outcome<Medium<String>> {
   anchor_rust_add_emit_accepts()
 }
 
-fn anchor_compile_inferred_mvp1_accepts() -> Outcome<CompileOutput> {
+fn anchor_compile_inferred_accepts() -> Outcome<CompileOutput> {
   compile_inferred(
     inferred: rust_add_inferred_tree,
     mode: TranslateTo { target: rust_add_target_model }

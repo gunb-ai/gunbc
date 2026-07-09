@@ -6,7 +6,7 @@ import v2.compiler.parse {
 }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.go {
-  go_mvp1_source_text,
+  go_source_text,
   go_wave1_grammar_root,
   go_wave1_lex
 }
@@ -53,7 +53,7 @@ fn go_wave1_grammar_parse_accepted() -> Bool {
 fn go_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(
-    text: go_mvp1_source_text,
+    text: go_source_text,
     file: ^go_wave1_parse_fixture_file,
     rules: go_wave1_lex()
   ) {
@@ -65,7 +65,7 @@ fn go_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
           parse_production_tree(
             tokens: token_stream_remaining(stream: stream),
             validated: validated,
-            production_name: ^go_production_mvp1_fn_add
+            production_name: ^go_production_fn_add
           )
       }
   }
@@ -80,7 +80,7 @@ data claim_go_wave1_grammar_validates: TestClaim = EqualsClaim {
 }
 
 data claim_go_wave1_grammar_parses_tokens: TestClaim = EqualsClaim {
-  label: "go MVP-1 production parse_production accepts lexer output for func-add source",
+  label: "go production parse_production accepts lexer output for func-add source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_claim_bool_atom(b: go_wave1_grammar_parse_accepted()),
   rhs: go_claim_bool_atom(b: true),
