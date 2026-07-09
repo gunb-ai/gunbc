@@ -73,3 +73,24 @@ fn probe_augment_readback_has(sym: Symbol) -> Bool {
 }
 
 test fn probe_augment_readback_flag() -> Bool { probe_augment_readback_has(sym: ^Flag) }
+
+test fn probe_fn_sig_domain() -> Bool { probe_emit_rejects_with(src: src_fn_simple_body, reason: ^rust_signature_domain_missing) }
+test fn probe_fn_sig_shape_unsup() -> Bool { probe_emit_rejects_with(src: src_fn_simple_body, reason: ^rust_signature_type_shape_unsupported) }
+test fn probe_fn_atom_realization() -> Bool { probe_emit_rejects_with(src: src_fn_simple_body, reason: ^target_atom_realization_lookup_miss) }
+test fn probe_fn_conj_child() -> Bool { probe_emit_rejects_with(src: src_fn_simple_body, reason: ^translate_conj_named_child_missing) }
+test fn probe_fn_tok_class() -> Bool { probe_emit_rejects_with(src: src_fn_simple_body, reason: ^translate_concrete_token_class_missing) }
+test fn probe_fn_partition_facts() -> Bool { probe_emit_rejects_with(src: src_fn_simple_body, reason: ^partition_facts_miss) }
+
+fn probe_emit_accepts(src: String) -> Bool {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+test fn probe_fn_emit_accepts() -> Bool { probe_emit_accepts(src: src_fn_simple_body) }
+test fn probe_type_emit_accepts() -> Bool { probe_emit_accepts(src: src_type_decl) }
+test fn probe_singlearm_emit_accepts() -> Bool { probe_emit_accepts(src: src_single_arm_match) }

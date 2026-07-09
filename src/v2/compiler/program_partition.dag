@@ -316,7 +316,7 @@ fn partition_derive_target_for_emit(
   let ownership_rows = partition_user_type_ownership_realizations_from_decls(decls: decls)
   let atom_names = list_append(
     left: partition_user_type_atom_names_from_decls(decls: decls),
-    right: partition_user_type_carrier_identities_from_decls(decls: decls)
+    right: partition_carrier_identities_in_semantic(semantic: partition.ambient.root)
   )
   bind_outcome(
     o: target_model_augment_use_site_ownership_catalog(
