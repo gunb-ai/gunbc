@@ -2331,6 +2331,7 @@ fn eval_runtime_node_is_control_transfer(node: Node) -> Bool {
     ComputationNode { behavior: Branch } => true
     ComputationNode { behavior: Loop } => true
     ComputationNode { behavior: Bind } => true
+    ComputationNode { behavior: Match } => true
     _ => false
   }
 }
@@ -2378,6 +2379,16 @@ fn eval_runtime_control_node(
             )
           ComputationNode { behavior: Bind } =>
             eval_bind_node_eval(
+              node: node,
+              tree: tree,
+              interpretation: interpretation,
+              interpreter: dispatch,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            )
+          ComputationNode { behavior: Match } =>
+            eval_match_node_eval(
               node: node,
               tree: tree,
               interpretation: interpretation,
