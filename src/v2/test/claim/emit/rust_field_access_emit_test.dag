@@ -3,15 +3,15 @@ module v2.test.emit.rust_field_access_emit
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
-  dag_mvp1_arrow_with_body_node,
-  dag_mvp1_field_access_arrow_domain_conj_node,
-  dag_mvp1_field_access_arrow_with_body_fixture,
-  dag_mvp1_type_atom_node
+  dag_arrow_with_body_node,
+  dag_field_access_arrow_domain_conj_node,
+  dag_field_access_arrow_with_body_fixture,
+  dag_type_atom_node
 }
 import v2.extdeps.languages.rust {
-  rust_mvp1_field_access_source_text,
-  rust_mvp1_field_access_wrong_field_source_text,
-  rust_mvp1_field_access_target_model_staging
+  rust_field_access_source_text,
+  rust_field_access_wrong_field_source_text,
+  rust_field_access_target_model_staging
 }
 import extdeps.communication.medium { Medium }
 import v2.std.collection { Map }
@@ -38,7 +38,7 @@ import v2.std.node {
 }
 import v2.std.witness { Violates, Witness }
 
-data rust_field_access_emit_root: Node = dag_mvp1_field_access_arrow_with_body_fixture
+data rust_field_access_emit_root: Node = dag_field_access_arrow_with_body_fixture
 
 fn rust_field_access_emit_wrong_field_body() -> Node {
   Node {
@@ -46,15 +46,15 @@ fn rust_field_access_emit_wrong_field_body() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_token_dot)
+        target: dag_type_atom_node(identity: ^dag_token_dot)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_param_r)
+        target: dag_type_atom_node(identity: ^dag_binding_param_r)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_pick_lit_one)
+        target: dag_type_atom_node(identity: ^dag_binding_pick_lit_one)
       }
     ],
     occurrence_id: SyntheticOccurrence
@@ -62,8 +62,8 @@ fn rust_field_access_emit_wrong_field_body() -> Node {
 }
 
 fn rust_field_access_emit_wrong_field_root() -> Node {
-  dag_mvp1_arrow_with_body_node(
-    domain: dag_mvp1_field_access_arrow_domain_conj_node(),
+  dag_arrow_with_body_node(
+    domain: dag_field_access_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
     body: rust_field_access_emit_wrong_field_body()
   )
@@ -93,10 +93,10 @@ fn rust_field_access_emit_from_root(root: Node, target: TargetModel) -> Outcome<
 fn rust_field_access_emit_get_accepts() -> Bool {
   match rust_field_access_emit_from_root(
     root: rust_field_access_emit_root,
-    target: rust_mvp1_field_access_target_model_staging()
+    target: rust_field_access_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_mvp1_field_access_source_text) && (d == None)
+      (source.carried == rust_field_access_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -104,11 +104,11 @@ fn rust_field_access_emit_get_accepts() -> Bool {
 fn rust_field_access_emit_wrong_field_discriminates() -> Bool {
   match rust_field_access_emit_from_root(
     root: rust_field_access_emit_wrong_field_root(),
-    target: rust_mvp1_field_access_target_model_staging()
+    target: rust_field_access_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_mvp1_field_access_wrong_field_source_text) &&
-      (source.carried != rust_mvp1_field_access_source_text) &&
+      (source.carried == rust_field_access_wrong_field_source_text) &&
+      (source.carried != rust_field_access_source_text) &&
       (d == None)
     Rejected { diagnostics: _ } => false
   }

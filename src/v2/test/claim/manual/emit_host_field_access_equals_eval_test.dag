@@ -13,15 +13,15 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
-  dag_mvp1_arrow_with_body_node,
-  dag_mvp1_field_access_arrow_domain_conj_node,
-  dag_mvp1_field_access_arrow_with_body_fixture,
-  dag_mvp1_field_access_body_fixture,
-  dag_mvp1_type_atom_node
+  dag_arrow_with_body_node,
+  dag_field_access_arrow_domain_conj_node,
+  dag_field_access_arrow_with_body_fixture,
+  dag_field_access_body_fixture,
+  dag_type_atom_node
 }
 import v2.extdeps.languages.rust {
   rust_emit_host_runtime_primitive_type_node,
-  rust_mvp1_field_access_target_model_staging
+  rust_field_access_target_model_staging
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
@@ -80,7 +80,7 @@ import v2.std.verification {
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.witness { Holds, Witness }
 
-data emit_field_eval_subgraph_node: Node = dag_mvp1_field_access_body_fixture
+data emit_field_eval_subgraph_node: Node = dag_field_access_body_fixture
 
 fn emit_field_eval_generic_facts(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
@@ -105,15 +105,15 @@ fn rust_field_access_emit_host_wrong_field_body() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_token_dot)
+        target: dag_type_atom_node(identity: ^dag_token_dot)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_param_r)
+        target: dag_type_atom_node(identity: ^dag_binding_param_r)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_pick_lit_one)
+        target: dag_type_atom_node(identity: ^dag_binding_pick_lit_one)
       }
     ],
     occurrence_id: SyntheticOccurrence
@@ -121,8 +121,8 @@ fn rust_field_access_emit_host_wrong_field_body() -> Node {
 }
 
 fn rust_field_access_emit_host_wrong_field_root() -> Node {
-  dag_mvp1_arrow_with_body_node(
-    domain: dag_mvp1_field_access_arrow_domain_conj_node(),
+  dag_arrow_with_body_node(
+    domain: dag_field_access_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
     body: rust_field_access_emit_host_wrong_field_body()
   )
@@ -131,7 +131,7 @@ fn rust_field_access_emit_host_wrong_field_root() -> Node {
 fn emit_field_eval_producer_tree() -> Outcome<InferredTree> {
   outcome_accepted(
     value: InferredTree {
-      root: dag_mvp1_field_access_arrow_with_body_fixture,
+      root: dag_field_access_arrow_with_body_fixture,
       facts: Map { lookup: emit_field_eval_composed_facts }
     }
   )
@@ -168,9 +168,9 @@ fn emit_field_eval_field_index_from_transform(node: Node) -> Outcome<Int> {
     Present { value: field_node } =>
       match field_node.kind {
         TypeNode { connective: Atom { identity: id } } =>
-          if id == ^dag_binding_mvp1_rec_v {
+          if id == ^dag_binding_rec_v {
             outcome_accepted(0)
-          } else if id == ^dag_binding_mvp1_pick_lit_one {
+          } else if id == ^dag_binding_pick_lit_one {
             outcome_accepted(1)
           } else {
             outcome_rejected(
@@ -223,9 +223,9 @@ fn emit_field_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> 
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^dag_binding_param_r {
         outcome_accepted(value: emit_field_eval_octet_value(n: 9))
-      } else if id == ^dag_binding_mvp1_rec_v {
+      } else if id == ^dag_binding_rec_v {
         outcome_accepted(value: emit_field_eval_octet_value(n: 0))
-      } else if id == ^dag_binding_mvp1_pick_lit_one {
+      } else if id == ^dag_binding_pick_lit_one {
         outcome_accepted(value: emit_field_eval_octet_value(n: 1))
       } else {
         outcome_rejected(
@@ -328,7 +328,7 @@ fn emit_field_eval_subject(tree: InferredTree) -> TestClaimEvalSubject<Node> {
 fn emit_field_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_field_eval_subject(tree: tree),
-    target: rust_mvp1_field_access_target_model_staging()
+    target: rust_field_access_target_model_staging()
   )
 }
 
