@@ -19,7 +19,6 @@ import v2.std.collection { List, optional_present }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   EmittedSource,
-  EmittedWithAffixes,
   EmittedWithSuffix,
   FixedText,
   InvocationArg,
@@ -210,7 +209,6 @@ fn workspace_content_text(content: WorkspaceContent, emitted: String) -> String 
     EmittedSource => emitted
     FixedText { text: t } => t
     EmittedWithSuffix { suffix: s } => concat(emitted, s)
-    EmittedWithAffixes { prefix: p, suffix: s } => concat(p, concat(emitted, s))
   }
 }
 
