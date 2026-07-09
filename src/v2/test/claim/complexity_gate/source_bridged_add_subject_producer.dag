@@ -10,7 +10,7 @@ import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_grammar_production_fn_add,
-  dag_language_model_wave1,
+  dag_language_model,
   dag_source_text
 }
 import v2.std.collection { List, Set }
@@ -45,7 +45,7 @@ fn source_bridged_add_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
 }
 
 fn source_bridged_resolved_add_arrow() -> Outcome<Node> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: tokenize(
       text: dag_source_text,

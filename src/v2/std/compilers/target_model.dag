@@ -6649,7 +6649,7 @@ fn target_catalog_atom_identity_matches_inhabitant_wires(
   )
 }
 
-fn target_wave1_signature_slot_matches_declared_inhabitants(
+fn target_signature_slot_matches_declared_inhabitants(
   slot: Node,
   inhabitants_root: Node
 ) -> Bool {
@@ -6677,14 +6677,14 @@ fn target_wave1_signature_slot_matches_declared_inhabitants(
   }
 }
 
-fn target_wave1_add_signature_slot_at(
+fn target_add_signature_slot_at(
   arrow: Node,
   index: Int,
   inhabitants_root: Node
 ) -> Bool {
   match list_at_optional(xs: node_positional_child_targets(node: arrow), index: index) {
     Present { value: slot } =>
-      target_wave1_signature_slot_matches_declared_inhabitants(
+      target_signature_slot_matches_declared_inhabitants(
         slot: slot,
         inhabitants_root: inhabitants_root
       )
@@ -6692,23 +6692,23 @@ fn target_wave1_add_signature_slot_at(
   }
 }
 
-fn target_wave1_add_signature_matches(
+fn target_add_signature_matches(
   arrow: Node,
   inhabitants_root: Node
 ) -> Bool {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
-      target_wave1_add_signature_slot_at(
+      target_add_signature_slot_at(
         arrow: arrow,
         index: 0,
         inhabitants_root: inhabitants_root
       )
-      && target_wave1_add_signature_slot_at(
+      && target_add_signature_slot_at(
         arrow: arrow,
         index: 1,
         inhabitants_root: inhabitants_root
       )
-      && target_wave1_add_signature_slot_at(
+      && target_add_signature_slot_at(
         arrow: arrow,
         index: 2,
         inhabitants_root: inhabitants_root
@@ -9465,11 +9465,37 @@ fn target_use_site_ownership_catalog_lookup_step(
     _ =>
       match edge.label {
     Named { name: display_name } =>
-      match target_use_site_ownership_row_from_node(
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
         row_node: edge.target,
         display_name: display_name,
-        source_carrier: source_carrier
-      ) {
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+    Positional =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: ^target_use_site_ownership_derived_row,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+      }
+  }
+}
+
+fn target_use_site_ownership_catalog_lookup_step_for_row(
+  acc: TargetUseSiteOwnershipCatalogLookup,
+  row_node: Node,
+  display_name: Symbol,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> TargetUseSiteOwnershipCatalogLookup {
+  match target_use_site_ownership_row_from_node(
+    row_node: row_node,
+    display_name: display_name,
+    source_carrier: source_carrier
+  ) {
     Accepted { value: row, diagnostics: _ } =>
       match target_use_site_ownership_lookup_step(
         acc: match acc {
@@ -9490,9 +9516,6 @@ fn target_use_site_ownership_catalog_lookup_step(
         TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipCatalogAmbiguous
       }
     Rejected { diagnostics: _ } => TargetUseSiteOwnershipCatalogInvalid
-    }
-    Positional => TargetUseSiteOwnershipCatalogInvalid
-      }
   }
 }
 
@@ -9635,6 +9658,203 @@ fn target_use_site_ownership_catalog_node(
     ),
     occurrence_id: SyntheticOccurrence
 }
+}
+
+fn target_use_site_ownership_catalog_positional_edge(
+  row: TargetUseSiteOwnershipRealization
+) -> Edge {
+  Edge {
+    label: Positional,
+    target: target_use_site_ownership_realization_to_node(row: row)
+  }
+}
+
+fn target_use_site_ownership_catalog_append_derived_rows(
+  catalog: Node,
+  derived_rows: List<TargetUseSiteOwnershipRealization>
+) -> Node {
+  match catalog.kind {
+    TypeNode { connective: Conj } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: fold_list(
+          xs: derived_rows,
+          empty: catalog.children,
+          cons: fn(acc, row) {
+            list_snoc_item(
+              xs: acc,
+              item: target_use_site_ownership_catalog_positional_edge(row: row)
+            )
+          }
+        ),
+        occurrence_id: SyntheticOccurrence
+      }
+    _ => catalog
+  }
+}
+
+fn target_model_bundle_replace_edge_target(
+  bundle: Node,
+  edge_name: Symbol,
+  new_target: Node
+) -> Node {
+  match bundle.kind {
+    TypeNode { connective: Conj } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: fold(
+          bundle.children,
+          init: Empty,
+          f: fn(acc, edge) {
+            match edge.label {
+              Named { name: n } =>
+                if n == edge_name {
+                  list_snoc_item(
+                    xs: acc,
+                    item: target_model_named_edge(name: n, target: new_target)
+                  )
+                } else {
+                  list_snoc_item(xs: acc, item: edge)
+                }
+              Positional => list_snoc_item(xs: acc, item: edge)
+            }
+          }
+        ),
+        occurrence_id: SyntheticOccurrence
+      }
+    _ => bundle
+  }
+}
+
+fn target_value_semantics_carrier_atom_seen(
+  atoms: List<Symbol>,
+  atom: Symbol
+) -> Bool {
+  any(xs: atoms, predicate: fn(id) { id == atom })
+}
+
+fn target_value_semantics_carriers_snoc_unique(
+  atoms: List<Symbol>,
+  atom: Symbol
+) -> List<Symbol> {
+  if target_value_semantics_carrier_atom_seen(atoms: atoms, atom: atom) {
+    atoms
+  } else {
+    list_snoc_item(xs: atoms, item: atom)
+  }
+}
+
+fn target_value_semantics_carriers_merge_atoms(
+  base: List<Symbol>,
+  extra: List<Symbol>
+) -> List<Symbol> {
+  fold_list(
+    xs: extra,
+    empty: base,
+    cons: fn(acc, atom) {
+      target_value_semantics_carriers_snoc_unique(atoms: acc, atom: atom)
+    }
+  )
+}
+
+fn target_model_augment_use_site_ownership_catalog(
+  target: TargetModel,
+  derived_rows: List<TargetUseSiteOwnershipRealization>
+) -> Outcome<TargetModel> {
+  if is_empty(xs: derived_rows) {
+    outcome_accepted(target)
+  } else {
+    match target.bundle.kind {
+      TypeNode { connective: Conj } =>
+        match fold(
+          target.bundle.children,
+          init: optional_absent(),
+          f: fn(acc, edge) {
+            match edge.label {
+              Named { name: n } =>
+                if n == ^target_model_edge_use_site_ownership_realizations {
+                  optional_present(value: edge.target)
+                } else {
+                  acc
+                }
+              Positional => acc
+            }
+          }
+        ) {
+          Absent => outcome_accepted(target)
+          Present { value: catalog } =>
+            outcome_accepted(
+              TargetModel {
+                bundle: target_model_bundle_replace_edge_target(
+                  bundle: target.bundle,
+                  edge_name: ^target_model_edge_use_site_ownership_realizations,
+                  new_target: target_use_site_ownership_catalog_append_derived_rows(
+                    catalog: catalog,
+                    derived_rows: derived_rows
+                  )
+                ),
+                lex: target.lex,
+                binding_spellings: target.binding_spellings,
+                token_class_emit_transforms: target.token_class_emit_transforms,
+                authority_source_text: target.authority_source_text,
+                runtime_row: target.runtime_row
+              }
+            )
+        }
+      _ => outcome_accepted(target)
+    }
+  }
+}
+
+fn target_model_augment_value_semantics_carriers(
+  target: TargetModel,
+  extra_atoms: List<Symbol>
+) -> Outcome<TargetModel> {
+  if is_empty(xs: extra_atoms) {
+    outcome_accepted(target)
+  } else {
+    match target.bundle.kind {
+      TypeNode { connective: Conj } =>
+        match fold(
+          target.bundle.children,
+          init: optional_absent(),
+          f: fn(acc, edge) {
+            match edge.label {
+              Named { name: n } =>
+                if n == ^target_model_edge_value_semantics_carriers {
+                  optional_present(value: edge.target)
+                } else {
+                  acc
+                }
+              Positional => acc
+            }
+          }
+        ) {
+          Absent => outcome_accepted(target)
+          Present { value: carriers_node } =>
+            outcome_accepted(
+              TargetModel {
+                bundle: target_model_bundle_replace_edge_target(
+                  bundle: target.bundle,
+                  edge_name: ^target_model_edge_value_semantics_carriers,
+                  new_target: target_value_semantics_carriers_node(
+                    atoms: target_value_semantics_carriers_merge_atoms(
+                      base: target_value_semantics_carriers_from_node(node: carriers_node),
+                      extra: extra_atoms
+                    )
+                  )
+                ),
+                lex: target.lex,
+                binding_spellings: target.binding_spellings,
+                token_class_emit_transforms: target.token_class_emit_transforms,
+                authority_source_text: target.authority_source_text,
+                runtime_row: target.runtime_row
+              }
+            )
+        }
+      _ => outcome_accepted(target)
+    }
+  }
 }
 
 fn target_value_semantics_carrier_atom_node(id: Symbol) -> Node {
@@ -10335,13 +10555,13 @@ fn target_value_expr_declared_inhabitants_from_target(target: TargetModel) -> Ou
   projection_bundle_child(bundle: target.bundle, name: ^target_model_edge_declared_inhabitants)
 }
 
-fn target_value_expr_wave1_add_signature_matches_for_target(
+fn target_value_expr_add_signature_matches_for_target(
   arrow: Node,
   target: TargetModel
 ) -> Bool {
   match target_value_expr_declared_inhabitants_from_target(target: target) {
     Accepted { value: inhabitants_root, diagnostics: _ } =>
-      target_wave1_add_signature_matches(
+      target_add_signature_matches(
         arrow: arrow,
         inhabitants_root: inhabitants_root
       )
@@ -10439,7 +10659,7 @@ fn target_value_expr_arrow_body_scope_binding(
     f: fn(bindings) {
       if target_value_expr_binding_in_declared_param_list(binding: binding, bindings: bindings)
         && (
-          target_value_expr_wave1_add_signature_matches_for_target(arrow: arrow, target: target)
+          target_value_expr_add_signature_matches_for_target(arrow: arrow, target: target)
           || target_value_expr_arrow_has_transform_body(arrow: arrow)
         ) {
         outcome_accepted(binding)

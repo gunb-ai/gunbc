@@ -3,7 +3,7 @@ module v2.test.manual.dag_import_block_lexeme_stamp
 import v2.compiler.parse { parse }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_language_model_wave1,
+  dag_language_model,
   parse_import_block_idents,
   parse_production_emitted_identity_optional
 }
@@ -26,7 +26,7 @@ import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 data dag_lex_stamp_source: String = "module v2.test.lexeme_probe\nimport v2.std.algebra { Cons, Empty }\n"
 
 fn dag_lex_stamp_parse_tree() -> Outcome<Node> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: tokenize(
       text: dag_lex_stamp_source,

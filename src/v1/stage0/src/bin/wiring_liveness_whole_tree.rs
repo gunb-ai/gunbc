@@ -2,7 +2,7 @@
 
 //! Whole-tree wiring-liveness scan (gunbc#5364 widening).
 //!
-//! `v2.lens.wiring_liveness.wiring_liveness_corpus_is_clean` folds the wave-1
+//! `v2.lens.wiring_liveness.wiring_liveness_corpus_is_clean` folds the
 //! reachability over `fn_arrow_decl_facts_live()`, which enumerates one
 //! `FnArrowDecl` per declared fn across `ctx.modules`. Run as a per-entry witness
 //! (`--claim-run --entry <file>`), `ctx.modules` is only that entry's import

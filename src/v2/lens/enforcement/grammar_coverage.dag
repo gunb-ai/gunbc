@@ -4,7 +4,7 @@ import extdeps.filesystem.filesystem_io
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.coverage { dedupe_snoc }
 import v2.lens.enforcement.standing_intent { whole_corpus_scope }
 import std.algebra { Empty }
@@ -142,7 +142,7 @@ fn grammar_coverage_ingest_source_text(
   source_text: String,
   file: Symbol
 ) -> GrammarCoverageParseVerdict {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: d } =>
       ParseRejected { stage: "tokenize", reason: d.head.reason }

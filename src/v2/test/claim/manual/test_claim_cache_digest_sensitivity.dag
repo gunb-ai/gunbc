@@ -3,7 +3,7 @@ module v2.test.manual.test_claim_cache_digest_sensitivity
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
-  eval_context_v4_evaluator_wave1,
+  eval_context_v4_evaluator,
   eval_context_with_semantics,
   eval_default_interpretation,
   test_claim_cache_interpretation_hash_node,
@@ -12,12 +12,12 @@ import v2.compiler.eval {
   test_claim_typed_input_node
 }
 import v2.extdeps.runtimes.v2_evaluator {
-  v2_eval_wave1_allocate_literal,
-  v2_eval_wave1_bind_value,
-  v2_eval_wave1_call_primitive,
-  v2_eval_wave1_choose_branch,
-  v2_eval_wave1_step_loop,
-  v2_eval_wave1_unit_type_node,
+  v2_eval_allocate_literal,
+  v2_eval_bind_value,
+  v2_eval_call_primitive,
+  v2_eval_choose_branch,
+  v2_eval_step_loop,
+  v2_eval_unit_type_node,
   v2_evaluator_interpretation_structure_witness
 }
 import v2.compiler.infer { InferredTree }
@@ -121,7 +121,7 @@ fn tcc_cache_tree_facts_violates(reason: Symbol) -> InferredTree {
 }
 
 fn tcc_cache_eval_context() -> EvalContext {
-  eval_context_v4_evaluator_wave1()
+  eval_context_v4_evaluator()
 }
 
 fn tcc_cache_stub_claim() -> TestClaim {
@@ -378,7 +378,7 @@ fn tcc_cache_byte_offset_exhausted_residual_37_double_digest_differs() -> Bool {
 
 fn tcc_cache_runtime_unit() -> RuntimeValue {
   RuntimeUnit {
-    value: RuntimeUnitValue { unit_type: v2_eval_wave1_unit_type_node() }
+    value: RuntimeUnitValue { unit_type: v2_eval_unit_type_node() }
   }
 }
 
@@ -400,16 +400,16 @@ fn tcc_interp_stub_allocate_body() -> InterpretationAlgebra {
       allocate_literal: tcc_stub_alloc_a
     },
     transform: TransformInterpreter {
-      call_primitive: v2_eval_wave1_call_primitive
+      call_primitive: v2_eval_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: v2_eval_wave1_choose_branch
+      choose_branch: v2_eval_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: v2_eval_wave1_step_loop
+      step_loop: v2_eval_step_loop
     },
     bind: BindInterpreter {
-      bind_value: v2_eval_wave1_bind_value
+      bind_value: v2_eval_bind_value
     }
   }
 }
@@ -417,19 +417,19 @@ fn tcc_interp_stub_allocate_body() -> InterpretationAlgebra {
 fn tcc_interp_stub_call_body() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: v2_eval_wave1_allocate_literal
+      allocate_literal: v2_eval_allocate_literal
     },
     transform: TransformInterpreter {
       call_primitive: tcc_stub_call_b
     },
     branch: BranchInterpreter {
-      choose_branch: v2_eval_wave1_choose_branch
+      choose_branch: v2_eval_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: v2_eval_wave1_step_loop
+      step_loop: v2_eval_step_loop
     },
     bind: BindInterpreter {
-      bind_value: v2_eval_wave1_bind_value
+      bind_value: v2_eval_bind_value
     }
   }
 }
@@ -437,21 +437,21 @@ fn tcc_interp_stub_call_body() -> InterpretationAlgebra {
 fn tcc_witness_stub_allocate_body() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
     allocate_literal: ^tcc_stub_alloc_a_sym,
-    call_primitive: ^v2_eval_wave1_call_primitive_sym,
-    choose_branch: ^v2_eval_wave1_choose_branch_sym,
-    step_loop: ^v2_eval_wave1_step_loop_sym,
-    bind_value: ^v2_eval_wave1_bind_value_sym,
+    call_primitive: ^v2_eval_call_primitive_sym,
+    choose_branch: ^v2_eval_choose_branch_sym,
+    step_loop: ^v2_eval_step_loop_sym,
+    bind_value: ^v2_eval_bind_value_sym,
     choose_arm: ^runtime_reject_match_arm
   }
 }
 
 fn tcc_witness_stub_call_body() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^v2_eval_wave1_allocate_literal_sym,
+    allocate_literal: ^v2_eval_allocate_literal_sym,
     call_primitive: ^tcc_stub_call_b_sym,
-    choose_branch: ^v2_eval_wave1_choose_branch_sym,
-    step_loop: ^v2_eval_wave1_step_loop_sym,
-    bind_value: ^v2_eval_wave1_bind_value_sym,
+    choose_branch: ^v2_eval_choose_branch_sym,
+    step_loop: ^v2_eval_step_loop_sym,
+    bind_value: ^v2_eval_bind_value_sym,
     choose_arm: ^runtime_reject_match_arm
   }
 }

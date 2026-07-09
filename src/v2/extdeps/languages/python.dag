@@ -804,7 +804,7 @@ fn python_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn python_model_core_wave1() -> Outcome<ModelCore> {
+fn python_model_core() -> Outcome<ModelCore> {
   match python_g1_2_primitive_fact_bundles() {
     Accepted { value: primitives, diagnostics: d } =>
       Accepted {
@@ -1077,7 +1077,7 @@ fn python_formal_production_fn_add() -> FormalProduction {
   )
 }
 
-fn python_wave1_formal_productions() -> List<FormalProduction> {
+fn python_formal_productions() -> List<FormalProduction> {
   [python_formal_production_fn_add()]
 }
 
@@ -1193,7 +1193,7 @@ fn python_binding_spellings() -> Map<Symbol, String> {
 fn python_target_model() -> TargetModel {
   TargetModel {
     bundle: python_target_model_node(),
-    lex: python_wave1_lex(),
+    lex: python_lex(),
     binding_spellings: python_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: python_source_text,
@@ -1264,7 +1264,7 @@ fn python_int_literal_lex_rule() -> LexRule {
   }
 }
 
-fn python_wave1_lex_rules() -> LexRuleSet {
+fn python_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       python_lex_rule(token_class: ^python_token_rparen_suite_indent, text: "):\n    "),
@@ -1288,15 +1288,15 @@ fn python_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn python_wave1_lex() -> LexRules {
-  ModeledLexRules { root: python_wave1_lex_rules() }
+fn python_lex() -> LexRules {
+  ModeledLexRules { root: python_lex_rules() }
 }
 
 fn python_grammar_atom(id: Symbol) -> Node {
   python_inhabitant_atom(id: id)
 }
 
-fn python_wave1_grammar_root() -> GrammarRoot {
+fn python_grammar_root() -> GrammarRoot {
   GrammarRoot {
     start: ^python_production_fn_def,
     productions: [
@@ -1467,13 +1467,13 @@ fn python_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn python_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: python_wave1_grammar_root() }
+fn python_grammar() -> ParseGrammar {
+  ModeledGrammar { root: python_grammar_root() }
 }
 
-fn python_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn python_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
-    rules: python_wave1_lex_rules(),
+    rules: python_lex_rules(),
     token_class: sym
   )
 }
@@ -1530,8 +1530,8 @@ fn python_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       python_catalog_surface_symbol(sym: sym) ||
-        python_wave1_lex_token_symbol(sym: sym) ||
-        grammar_carries_symbol(grammar: python_wave1_grammar(), sym: sym) ||
+        python_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: python_grammar(), sym: sym) ||
         sym == ^python_surface_fn_item ||
         sym == ^python_production_fn_add ||
         sym == ^python_source_literal
@@ -1539,13 +1539,13 @@ fn python_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn python_language_model_wave1() -> Outcome<LanguageModel> {
-  match python_model_core_wave1() {
+fn python_language_model() -> Outcome<LanguageModel> {
+  match python_model_core() {
     Accepted { value: core, diagnostics: d } =>
       Accepted {
         value: LanguageModel {
-          lex: python_wave1_lex(),
-          grammar: python_wave1_grammar(),
+          lex: python_lex(),
+          grammar: python_grammar(),
           language_identity: ^python_language_model_surface_id,
           canonical_symbols: python_language_model_canonical_symbols(),
           core: core

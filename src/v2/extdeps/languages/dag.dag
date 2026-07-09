@@ -1,5 +1,5 @@
 module v2.extdeps.languages.dag
-import v2.std.model_core { wave1_void }
+import v2.std.model_core { bool_model_core }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -467,7 +467,7 @@ fn dag_whitespace_trivia_rule() -> LexRule {
   }
 }
 
-fn dag_wave1_lex_rules() -> LexRuleSet {
+fn dag_lex_rules() -> LexRuleSet {
 
   LexRuleSet {
     rules: [
@@ -524,8 +524,8 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-fn dag_wave1_lex() -> LexRules {
-  ModeledLexRules { root: dag_wave1_lex_rules() }
+fn dag_lex() -> LexRules {
+  ModeledLexRules { root: dag_lex_rules() }
 }
 
 fn dag_grammar_atom(id: Symbol) -> Node {
@@ -590,7 +590,7 @@ fn emit_grammar_relation_row(
 }
 }
 
-fn dag_wave1_formal_productions() -> List<FormalProduction> {
+fn dag_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^dag_production_module_header,
@@ -2443,7 +2443,9 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
         right: dag_grammar_sequence(
-          left: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_match_arm)),
+          left: dag_grammar_optional(
+            element: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_match_arm))
+          ),
           right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
         )
       )
@@ -2869,7 +2871,7 @@ fn emit_row_data_decl(
   )
 }
 
-fn dag_wave1_grammar_root() -> GrammarRoot {
+fn dag_grammar_root() -> GrammarRoot {
   let module_prod = dag_grammar_module_production()
   let module_header = dag_grammar_production(
     name: ^dag_production_module_header,
@@ -3080,16 +3082,16 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
       if_expr,
       fn_literal
     ],
-    sync_tokens: dag_wave1_sync_tokens()
+    sync_tokens: dag_sync_tokens()
   }
 }
 
-fn dag_wave1_g0_void_grammar() -> ParseGrammar {
+fn dag_g0_void_grammar() -> ParseGrammar {
   VoidGrammar
 }
 
-fn dag_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: dag_wave1_grammar_root() }
+fn dag_grammar() -> ParseGrammar {
+  ModeledGrammar { root: dag_grammar_root() }
 }
 
 fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
@@ -3099,7 +3101,7 @@ fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
         sym == ^dag_c3_surface_sugar_fn ||
         sym == ^dag_c3_surface_sugar_type ||
         sym == ^dag_c3_surface_sugar_operation ||
-        dag_wave1_lex_token_symbol(sym: sym)
+        dag_lex_token_symbol(sym: sym)
     }
   }
 }
@@ -3124,43 +3126,43 @@ fn dag_language_model_binding_canonical(sym: Symbol) -> Bool {
     || sym == ^dag_binding_pick_lit_two
 }
 
-fn dag_language_model_wave1_canonical_symbols() -> Set<Symbol> {
+fn dag_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       dag_language_model_surface_prelude_atoms().member(sym) ||
-        grammar_carries_symbol(grammar: dag_wave1_grammar(), sym: sym) ||
+        grammar_carries_symbol(grammar: dag_grammar(), sym: sym) ||
         dag_language_model_binding_canonical(sym: sym)
     }
   }
 }
 
-fn dag_language_model_wave1_void() -> LanguageModel {
+fn dag_language_model_void() -> LanguageModel {
   LanguageModel {
-    lex: dag_wave1_lex(),
-    grammar: dag_wave1_g0_void_grammar(),
+    lex: dag_lex(),
+    grammar: dag_g0_void_grammar(),
     language_identity: ^dag_language_model_surface_id,
     canonical_symbols: dag_language_model_surface_prelude_atoms(),
-    core: wave1_void()
+    core: bool_model_core()
   }
 }
 
-fn dag_language_model_wave1() -> LanguageModel {
+fn dag_language_model() -> LanguageModel {
   LanguageModel {
-    lex: dag_wave1_lex(),
-    grammar: dag_wave1_grammar(),
+    lex: dag_lex(),
+    grammar: dag_grammar(),
     language_identity: ^dag_language_model_surface_id,
-    canonical_symbols: dag_language_model_wave1_canonical_symbols(),
-    core: wave1_void()
+    canonical_symbols: dag_canonical_symbols(),
+    core: bool_model_core()
   }
 }
 
 fn dag_language_model_surface_empty_prelude() -> LanguageModel {
   LanguageModel {
-    lex: dag_wave1_lex(),
-    grammar: dag_wave1_g0_void_grammar(),
+    lex: dag_lex(),
+    grammar: dag_g0_void_grammar(),
     language_identity: ^dag_language_model_surface_id,
     canonical_symbols: dag_language_model_empty_canonical_symbol_set(),
-    core: wave1_void()
+    core: bool_model_core()
   }
 }
 
@@ -3168,14 +3170,14 @@ fn dag_language_model_canonical_symbols(lm: LanguageModel) -> Set<Symbol> {
   lm.canonical_symbols
 }
 
-fn dag_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn dag_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
-    rules: dag_wave1_lex_rules(),
+    rules: dag_lex_rules(),
     token_class: sym
   )
 }
 
-fn dag_wave1_sync_tokens() -> Set<Symbol> {
+fn dag_sync_tokens() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       sym == ^dag_token_kw_module ||
@@ -3187,9 +3189,6 @@ fn dag_wave1_sync_tokens() -> Set<Symbol> {
   }
 }
 
-fn dag_language_model_wave1_modeled() -> LanguageModel {
-  dag_language_model_wave1()
-}
 
 type DagTriviaNormalization
   = DagWhitespaceDeclaredNormalized
@@ -3332,7 +3331,7 @@ fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
 fn dag_target_model_with_fidelity_quotient(quotient: Node) -> TargetModel {
   TargetModel {
     bundle: dag_target_model_bundle_with_fidelity_quotient(quotient: quotient),
-    lex: dag_wave1_lex(),
+    lex: dag_lex(),
     binding_spellings: dag_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: dag_source_text,
@@ -5126,7 +5125,7 @@ fn dag_bodied_fn_target_model(
     Present { value: row } =>
       TargetModel {
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
-        lex: dag_wave1_lex(),
+        lex: dag_lex(),
         binding_spellings: dag_binding_spellings(),
         token_class_emit_transforms: target_model_emit_transforms_empty,
         authority_source_text: spec.authority_source_text,
@@ -5135,7 +5134,7 @@ fn dag_bodied_fn_target_model(
     Absent =>
       TargetModel {
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
-        lex: dag_wave1_lex(),
+        lex: dag_lex(),
         binding_spellings: dag_binding_spellings(),
         token_class_emit_transforms: target_model_emit_transforms_empty,
         authority_source_text: spec.authority_source_text
@@ -5488,7 +5487,7 @@ fn dag_field_access_target_model() -> TargetModel {
 fn dag_target_model() -> TargetModel {
   TargetModel {
     bundle: dag_target_model_node(),
-    lex: dag_wave1_lex(),
+    lex: dag_lex(),
     binding_spellings: dag_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: dag_source_text,
@@ -5515,19 +5514,19 @@ fn dag_round_trip_bool_node(pass: Bool) -> Node {
 }
 
 fn dag_round_trip_lex_ready() -> Bool {
-  dag_wave1_lex_token_symbol(sym: ^dag_token_kw_module) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_kw_import) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_kw_data) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_kw_fn) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_ident) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_dot) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_lbrace) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_rbrace) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_colon) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_eq) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_lparen) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_rparen) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_arrow)
+  dag_lex_token_symbol(sym: ^dag_token_kw_module) &&
+  dag_lex_token_symbol(sym: ^dag_token_kw_import) &&
+  dag_lex_token_symbol(sym: ^dag_token_kw_data) &&
+  dag_lex_token_symbol(sym: ^dag_token_kw_fn) &&
+  dag_lex_token_symbol(sym: ^dag_token_ident) &&
+  dag_lex_token_symbol(sym: ^dag_token_dot) &&
+  dag_lex_token_symbol(sym: ^dag_token_lbrace) &&
+  dag_lex_token_symbol(sym: ^dag_token_rbrace) &&
+  dag_lex_token_symbol(sym: ^dag_token_colon) &&
+  dag_lex_token_symbol(sym: ^dag_token_eq) &&
+  dag_lex_token_symbol(sym: ^dag_token_lparen) &&
+  dag_lex_token_symbol(sym: ^dag_token_rparen) &&
+  dag_lex_token_symbol(sym: ^dag_token_arrow)
 }
 
 fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
@@ -5544,8 +5543,8 @@ fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
   dag_block_comment_fidelity() == FailClosed { feature: DagBlockCommentFailClosed }
 }
 
-fn dag_round_trip_wave1_authorities_ready() -> Bool {
-  let lm = dag_language_model_wave1_modeled()
+fn dag_round_trip_authorities_ready() -> Bool {
+  let lm = dag_language_model()
   dag_round_trip_lex_ready() &&
   dag_round_trip_grammar_ready(lm: lm) &&
   dag_round_trip_trivia_fidelity_resolved()

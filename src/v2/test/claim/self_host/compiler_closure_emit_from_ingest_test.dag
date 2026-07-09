@@ -9,7 +9,7 @@ import v2.compiler.self_host.closure_witness_layer_roots {
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { Absent, Optional }
 import v2.std.diagnostic {
@@ -109,7 +109,7 @@ fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
     xs: host_source_root_ingest,
     empty: Gap4IngestProbePending,
     cons: fn(state, read) {
-      gap4_ingest_probe_step(state: state, read: read, lm: dag_language_model_wave1())
+      gap4_ingest_probe_step(state: state, read: read, lm: dag_language_model())
     }
   )
 }
@@ -147,7 +147,7 @@ test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
 test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
   match module_roots_from_source_root_ingest(
     ingest: host_source_root_ingest,
-    lm: dag_language_model_wave1()
+    lm: dag_language_model()
   ) {
     Accepted { value: roots, diagnostics: _ } =>
       length(xs: roots) == host_source_root_ingest_coverage_receipt.ingest_read_count

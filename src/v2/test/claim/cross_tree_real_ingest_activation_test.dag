@@ -11,7 +11,7 @@ import v2.compiler.source_authority {
   SourceRootIngest,
   source_root_set_from_ingest
 }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
@@ -95,7 +95,7 @@ fn ct_real_target_qn() -> QualifiedName {
 }
 
 fn ct_real_edge_decision(ingest: SourceRootIngest) -> CrossTreeEdgeDecision {
-  match program_assembly_fold_ingest(ingest: ingest, lm: dag_language_model_wave1()) {
+  match program_assembly_fold_ingest(ingest: ingest, lm: dag_language_model()) {
     ProgramAssemblyFoldFailed { diagnostics: _ } => EdgeCrossAmbiguous
     ProgramAssemblyFoldOk { roots: _, index: idx } =>
       cross_tree_edge_decision(

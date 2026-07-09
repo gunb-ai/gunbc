@@ -73,9 +73,9 @@ fn interpreted_parse_bisect_parse_terminates() {
 }
 
 #[test]
-fn interpreted_parse_bisect_wave1_add_correctness_holds() {
+fn interpreted_parse_bisect_add_correctness_holds() {
     assert_witness_terminates(
-        "witness_bisect_wave1_parse_module_add_correctness_holds",
+        "witness_bisect_parse_module_add_correctness_holds",
         Duration::from_secs(90),
     );
 }

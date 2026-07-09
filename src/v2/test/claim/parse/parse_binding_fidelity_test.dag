@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_grammar_production_fn_add,
   dag_language_model_surface_empty_prelude,
-  dag_language_model_wave1,
+  dag_language_model,
   dag_source_text,
   dag_named_edge
 }
@@ -58,7 +58,7 @@ fn pbf_parse_root() -> GrammarRoot {
 }
 
 fn pbf_tokenize() -> Outcome<List<Token>> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: dag_source_text, file: ^pbf_source_file, rules: lm.lex),
     f: fn(stream) {
@@ -144,7 +144,7 @@ fn pbf_parse_does_not_collapse_to_token_ident() -> Bool {
 }
 
 fn pbf_resolved_add_accepts() -> Bool {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match pbf_tokenize() {
     Accepted { value: tokens, diagnostics: _ } =>
       match pbf_parse_tokens(tokens: tokens) {
@@ -164,7 +164,7 @@ fn pbf_resolved_add_accepts() -> Bool {
 }
 
 fn pbf_resolved_tree_has_distinct_param_bindings() -> Bool {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match pbf_tokenize() {
     Accepted { value: tokens, diagnostics: _ } =>
       match pbf_parse_tokens(tokens: tokens) {

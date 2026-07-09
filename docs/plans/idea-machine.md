@@ -1,6 +1,6 @@
 # Plan — idea → idea compiler (the idea-machine)
 
-**Status:** planning tracker · **DESIGN.md + carriers are authority** (§6). A task's real state is its branch/PR, not this file. Linked from `ROADMAP.md` §6 *idea → idea compiler*. No prior plan doc existed — the wave commits + carriers are the only authority; this collects them.
+**Status:** planning tracker · **DESIGN.md + carriers are authority** (§6). A task's real state is its branch/PR, not this file. Linked from `ROADMAP.md` §6 *idea → idea compiler*. No prior plan doc existed — the landed commits + carriers are the only authority; this collects them.
 
 **Carrier facts verified against the live tree 2026-06-21.** Re-check receipts before acting.
 
@@ -15,16 +15,16 @@ Two axes, at very different maturity: the **medium axis** (what representation c
 The "recorded technical medium" framework: how an idea moves between representations with fidelity.
 
 - `Medium<R>` + `DecodeFidelity` (`Lossless | Lossy`) carrier — `dag/extdeps/communication/medium.dag`. R-parameterized so text / verdicts / nodes / binaries share one model with no text-bias.
-- `LanguageModel` **unified** — Wave 3a-C (#5222) dissolved 13 per-language `*LanguageModel` forks into one carrier (`src/v2/std/language_model.dag`); each language is an inhabitant.
-- `Source` / `TargetSource` / `DagSource` nickname fork collapsed → `Medium<String>` — Wave 3b-D (#5246).
-- Compile codomain uniform — `compile(Eval) → EvalResult{value: Medium<Node>}` (Wave Cut 4 #5191 + 3b-E #5298): **evaluation results are first-class ideas (`Node`), not stringified**, `Lossless` (exact-or-fail-closed). Discriminating RED: a unit literal is correctly rejected as unrepresentable.
-- Cross-tree `Medium<Node>` instantiation proven — Wave 3a-A (#5217).
+- `LanguageModel` **unified** — #5222 dissolved 13 per-language `*LanguageModel` forks into one carrier (`src/v2/std/language_model.dag`); each language is an inhabitant.
+- `Source` / `TargetSource` / `DagSource` nickname fork collapsed → `Medium<String>` — #5246.
+- Compile codomain uniform — `compile(Eval) → EvalResult{value: Medium<Node>}` (#5191 + #5298): **evaluation results are first-class ideas (`Node`), not stringified**, `Lossless` (exact-or-fail-closed). Discriminating RED: a unit literal is correctly rejected as unrepresentable.
+- Cross-tree `Medium<Node>` instantiation proven — #5217.
 
 Staged: `FidelityDisposition<Feature>` (`src/v2/extdeps/languages/fidelity.dag`) composes up to medium-level `DecodeFidelity` at the decode boundary (today feature-level stays in extdeps/languages).
 
 ## 2. Language axis — footholds, breadth partial
 
-- 15+ targets at wave-1 (`src/v2/extdeps/languages/`: rust, python, go, dag, typescript, cpp, lean, wasm, java, kotlin, swift, llvm_ir, machine_code, english, …).
+- 15+ targets at the seed grammar subset (`src/v2/extdeps/languages/`: rust, python, go, dag, typescript, cpp, lean, wasm, java, kotlin, swift, llvm_ir, machine_code, english, …).
 - **English is a proven emit target** — `english.dag` (article-led SVO + copula), and `src/v2/test/claim/manual/english_emit_add_test.dag` round-trips emit(add)→tokenize→parse→identity.
 - Partial / fail-open: English **ingest** uses a catch-all `english_token_word` → fail-open on out-of-subset prose (also a **§0 lock-down item**); only emit is proven.
 
@@ -35,7 +35,7 @@ Staged: `FidelityDisposition<Feature>` (`src/v2/extdeps/languages/fidelity.dag`)
 3. **Cross-media targets beyond syntax** — JSON / protobuf / react / diagram as **first-class media** (structured, not stringified). React/JSX couples syntax + runtime value. **HTML is now a first-class `Medium<MarkupNode>`** (`dag/extdeps/languages/html.dag`): `HtmlSpellings`-parameterized serializer + recursive-descent ingester prove the round-trip law (ingest∘serialize = identity, `DecodeFidelity`-bounded); `validate_href` enforces fail-closed on ingest for unsafe URL schemes; 5-witness receipt in `dag/test/claim/html_roundtrip_test.dag`.
 4. **`Medium<A> ↔ Medium<B>` homomorphisms** — generalize translate's `coercion_fold` beyond strings (Realization pattern applied to media).
 5. **FidelityDisposition compose-up** — per-feature dispositions reduce to medium-level `DecodeFidelity`.
-6. **Eval runtime generalization** — move wave-1 literal semantics from synthetic pins into `wave1_model_core` primitives (T-22); per-Node-ID identity, not fixture-global singletons.
+6. **Eval runtime generalization** — move the seed literal semantics from synthetic pins into `bool_model_core` primitives (T-22); per-Node-ID identity, not fixture-global singletons.
 
 ## 4. Relationships
 

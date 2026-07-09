@@ -1,19 +1,20 @@
 module v2.test.emit.semantic_decl_routing
 
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_rust }
+import extdeps.languages.rust.emit { rust_enum_derives_copy, rust_struct_derives }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 
-data semantic_bool_golden: String = "enum Bool { True, False }"
+data semantic_bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
 
-data semantic_bool_wrong_golden: String = "enum Bool { False, True }"
+data semantic_bool_wrong_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { False, True }")
 
-data semantic_record_golden: String = "struct OccurrenceIdAllocator { next_id: Int }"
+data semantic_record_golden: String = concat(rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Int }")
 
-data semantic_record_wrong_golden: String = "struct OccurrenceIdAllocator { next_id: Bool }"
+data semantic_record_wrong_golden: String = concat(rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Bool }")
 
 fn sdr_empty_conj() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }

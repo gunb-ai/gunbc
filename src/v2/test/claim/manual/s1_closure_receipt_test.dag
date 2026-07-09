@@ -5,7 +5,7 @@ import std.algebra { Cons, Empty }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
 import v2.compiler.normalize { normalize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, is_empty }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { LexRules, token_stream_remaining }
@@ -80,7 +80,7 @@ fn s1_file_parses(lex: LexRules, validated: ValidatedGrammarRoot, path: String) 
 }
 
 fn s1_closure_failures() -> List<String> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   let at = port_locus(port: ^s1_closure_locus_port)
   match lm.grammar {
     VoidGrammar => s1_closure_paths

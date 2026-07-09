@@ -3,7 +3,7 @@ module v2.test.manual.tokenize_linear_receipt
 import extdeps.filesystem.filesystem_io
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
@@ -21,7 +21,7 @@ data tlr_timing_note: String = "Wall-clock bisect receipt only (manual/; not enr
 
 fn tlr_tokenize_path_accepts(path: String) -> Bool {
   let source = filesystem_read(path: path).content
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -46,7 +46,7 @@ fn tlr_trunc_full_accepts() -> Bool {
 
 fn tlr_full_tokenize_accepts() -> Bool {
   let source = filesystem_read(path: tlr_path).content
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -55,7 +55,7 @@ fn tlr_full_tokenize_accepts() -> Bool {
 
 fn tlr_ingest_stage_tokenize_or_parse_rejects() -> Bool {
   let source = filesystem_read(path: tlr_path).content
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } => true
     Accepted { value: ts, diagnostics: _ } =>

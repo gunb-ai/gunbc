@@ -32,8 +32,8 @@ import v2.extdeps.languages.typescript {
   ts_number_bitwise_semantics_node,
   ts_number_facts_node,
   ts_value_expression_projection,
-  ts_wave1_lex,
-  ts_wave1_lex_rules
+  ts_fn_add_lex,
+  ts_fn_add_lex_rules
 }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { list_append }
@@ -146,7 +146,7 @@ fn add_body_ts_target_model_bundle(operator_catalog: Node) -> Node {
 }
 
 fn add_body_ts_lex_with_minus() -> LexRules {
-  let base = ts_wave1_lex_rules()
+  let base = ts_fn_add_lex_rules()
   ModeledLexRules {
     root: LexRuleSet {
       rules: list_append(
@@ -174,7 +174,7 @@ fn add_body_ts_target_model_minus_catalog() -> TargetModel {
 fn add_body_ts_target_model_missing_operator_catalog() -> TargetModel {
   TargetModel {
     bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_empty()),
-    lex: ts_wave1_lex(),
+    lex: ts_fn_add_lex(),
     binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: ts_source_text_authority(),

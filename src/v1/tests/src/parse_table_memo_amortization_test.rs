@@ -145,7 +145,7 @@ fn parse_table_memo_divergent_token_streams_remain_sound() {
     run_witness_on_sources(
         sources_for_entry(BISECT_ENTRY),
         BISECT_ENTRY,
-        "witness_bisect_wave1_parse_module_add_correctness_holds",
+        "witness_bisect_parse_module_add_correctness_holds",
         Duration::from_secs(90),
     );
 }
