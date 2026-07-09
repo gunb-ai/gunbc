@@ -3,13 +3,13 @@ module v2.test.emit.rust_record_construct_emit
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
-  dag_mvp1_fixture_emitted_rec_fn
+  dag_fixture_emitted_rec_fn
 }
 import v2.extdeps.languages.rust {
-  rust_mvp1_rec_source_text,
-  rust_mvp1_rec_target_model_staging,
-  rust_mvp1_rec_wrong_field_target_model_staging,
-  rust_mvp1_rec_wrong_value_source_text
+  rust_rec_source_text,
+  rust_rec_target_model_staging,
+  rust_rec_wrong_field_target_model_staging,
+  rust_rec_wrong_value_source_text
 }
 import extdeps.communication.medium { Medium }
 import v2.std.collection { Map }
@@ -22,7 +22,6 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
-  bind_outcome,
   node_locus
 }
 import v2.std.logic { Bool }
@@ -30,7 +29,7 @@ import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
 
 data rust_record_construct_emit_inferred_tree: InferredTree = InferredTree {
-  root: dag_mvp1_fixture_emitted_rec_fn,
+  root: dag_fixture_emitted_rec_fn,
   facts: Map { lookup: rust_record_construct_emit_facts_miss }
 }
 
@@ -49,18 +48,18 @@ fn rust_record_construct_emit_from_tree(target: TargetModel) -> Outcome<Medium<S
 }
 
 fn rust_record_construct_emit_mk_accepts() -> Bool {
-  match rust_record_construct_emit_from_tree(target: rust_mvp1_rec_target_model_staging()) {
+  match rust_record_construct_emit_from_tree(target: rust_rec_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_mvp1_rec_source_text) && (d == None)
+      (source.carried == rust_rec_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn rust_record_construct_emit_wrong_field_discriminates() -> Bool {
-  match rust_record_construct_emit_from_tree(target: rust_mvp1_rec_wrong_field_target_model_staging()) {
+  match rust_record_construct_emit_from_tree(target: rust_rec_wrong_field_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_mvp1_rec_wrong_value_source_text) &&
-      (source.carried != rust_mvp1_rec_source_text) &&
+      (source.carried == rust_rec_wrong_value_source_text) &&
+      (source.carried != rust_rec_source_text) &&
       (d == None)
     Rejected { diagnostics: _ } => false
   }
