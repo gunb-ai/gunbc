@@ -1,6 +1,7 @@
 module std.realization_reconcile
 
 import std.types { String, Bool }
+import std.disposition { Disposition, Terminal }
 
 type ShowEffectiveRead<R>
   = ReadObserved { value: R }
@@ -13,6 +14,10 @@ type Grounding<E>
 type Reconciliation<A, E>
   = Converged { evidence: E, applied: A }
   | NotConverged { reason: String, applied: A }
+
+data reconcile_grounded_instance_contract: Disposition = Terminal {
+  reason: "carrier cannot re-run the grounding predicate over the observed read (v1-seed substrate limit): every instance must couple grounding to that read inline and land a discriminating perturb-RED witness"
+}
 
 fn reconcile_grounded<A, R, E>(
   apply_effect: A,

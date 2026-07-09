@@ -85,3 +85,12 @@ service tcgplayer.Store {
     }
   }
 }
+
+data tcgplayer_store_money_measure_grounding_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.tcgplayer.store",
+    decl_name: "UpdateSkuPrice",
+    field: NamedField { field_name: "price" }
+  }
+}
