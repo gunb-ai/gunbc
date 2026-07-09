@@ -9,9 +9,9 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
   rust_source_text,
   rust_target_model_staging,
-  rust_target_model_with_operators_and_lex,
   rust_wave1_lex
 }
+import v2.extdeps.languages.rust_test { rust_target_model_with_operators_and_lex }
 import v2.std.collection { Map }
 import v2.std.compilers.target_model {
   InfixToken,

@@ -6,7 +6,7 @@ import v2.compiler.body_producer {
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust_test {
   rust_literal_emit_string_refusal_note,
   rust_bind_bool_literal_arrow_node,
   rust_bind_bool_literal_source_text,

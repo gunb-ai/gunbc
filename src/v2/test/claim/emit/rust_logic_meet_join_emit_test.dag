@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag {
   dag_join_arrow_with_body_fixture,
   dag_join_arrow_with_body_swapped_arms_fixture
 }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust_test {
   rust_logic_meet_source_text,
   rust_logic_meet_swapped_arms_source_text,
   rust_logic_meet_target_model_staging,
