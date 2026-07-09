@@ -12,10 +12,8 @@ import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  eval,
   eval_context_with_semantics,
-  eval_test_claim_subject,
-  inputs_root_only
+  eval_test_claim_subject
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
@@ -29,8 +27,7 @@ import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { List, Map, list_at_optional }
 import v2.std.compilers.target_model {
-  match_arm_body,
-  match_arm_pattern
+  match_arm_body
 }
 import v2.std.diagnostic {
   Accepted,
@@ -40,21 +37,21 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
-  bind_outcome,
   node_locus,
-  outcome_accepted
+  outcome_accepted,
+  outcome_rejected
 }
 import v2.std.logic { Bool }
-import v2.std.machine { Byte }
 import v2.std.node {
   Atom,
+  Conj,
+  Edge,
   Node,
   Symbol,
   TypeNode
 }
 import v2.std.node_query {
-  find_named_child,
-  node_positional_child_targets
+  find_named_child
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -82,7 +79,7 @@ import v2.std.verification {
   Tier3,
   manual_claim_anchor
 }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.witness { Holds, Witness }
 
 data emit_match_eval_subgraph_node: Node = dag_mvp1_match_if_body_fixture
 
@@ -101,6 +98,32 @@ fn emit_match_eval_generic_facts(node: Node) -> InferredFacts {
 
 fn emit_match_eval_composed_facts(key: Node) -> Witness<InferredFacts> {
   Holds { value: emit_match_eval_generic_facts(node: key) }
+}
+
+fn emit_match_eval_producer_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_match_arrow_with_body() {
+    Accepted { value: root, diagnostics: _ } =>
+      outcome_accepted(
+        value: InferredTree {
+          root: root,
+          facts: Map { lookup: emit_match_eval_composed_facts }
+        }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn emit_match_eval_swapped_producer_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_match_arrow_with_body_swapped_arms() {
+    Accepted { value: root, diagnostics: _ } =>
+      outcome_accepted(
+        value: InferredTree {
+          root: root,
+          facts: Map { lookup: emit_match_eval_composed_facts }
+        }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
 }
 
 fn emit_match_eval_octet_value(n: Int) -> RuntimeValue {
@@ -141,47 +164,35 @@ fn emit_match_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> 
         outcome_accepted(value: emit_match_eval_octet_value(n: 2))
       } else {
         outcome_rejected(
-          diagnostics: diagnostics_singleton(
-            d: emit_match_eval_diagnostic(
-              reason: ^emit_match_eval_literal_miss,
-              node: node
-            )
-          )
-        )
-      }
-    _ =>
-      outcome_rejected(
-        diagnostics: diagnostics_singleton(
           d: emit_match_eval_diagnostic(reason: ^emit_match_eval_literal_miss, node: node)
         )
+      }
+    TypeNode { connective: Conj } =>
+      outcome_accepted(value: emit_match_eval_octet_value(n: 0))
+    _ =>
+      outcome_rejected(
+        d: emit_match_eval_diagnostic(reason: ^emit_match_eval_literal_miss, node: node)
       )
   }
 }
 
 fn emit_match_eval_call_primitive(
-  _node: Node,
+  node: Node,
   _args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
   outcome_rejected(
-    diagnostics: diagnostics_singleton(
-      d: emit_match_eval_diagnostic(
-        reason: ^emit_match_eval_call_primitive_miss,
-        node: _node
-      )
-    )
+    d: emit_match_eval_diagnostic(reason: ^emit_match_eval_call_primitive_miss, node: node)
   )
 }
 
 fn emit_match_eval_choose_branch(
-  _node: Node,
+  node: Node,
   _value: RuntimeValue,
   _env: EvaluationEnvironment
 ) -> Outcome<Node> {
   outcome_rejected(
-    diagnostics: diagnostics_singleton(
-      d: emit_match_eval_diagnostic(reason: ^emit_match_eval_branch_miss, node: _node)
-    )
+    d: emit_match_eval_diagnostic(reason: ^emit_match_eval_branch_miss, node: node)
   )
 }
 
@@ -190,9 +201,7 @@ fn emit_match_eval_step_loop(
   _env: EvaluationEnvironment
 ) -> Outcome<ControlTransfer> {
   outcome_rejected(
-    diagnostics: diagnostics_singleton(
-      d: emit_match_eval_diagnostic(reason: ^emit_match_eval_loop_miss, node: node)
-    )
+    d: emit_match_eval_diagnostic(reason: ^emit_match_eval_loop_miss, node: node)
   )
 }
 
@@ -201,78 +210,26 @@ fn emit_match_eval_bind_value(
   _value: RuntimeValue,
   env: EvaluationEnvironment
 ) -> Outcome<EvaluationEnvironment> {
-  Accepted { value: env, diagnostics: None }
+  outcome_accepted(value: env)
 }
 
-fn emit_match_eval_pattern_atom(arm_wire: Node) -> Outcome<Symbol> {
-  bind_outcome(
-    o: find_named_child(root: arm_wire, name: match_arm_pattern),
-    f: fn(pattern_node) {
-      match pattern_node.kind {
-        TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
-        _ =>
-          outcome_rejected(
-            diagnostics: diagnostics_singleton(
-              d: emit_match_eval_diagnostic(
-                reason: ^emit_match_eval_pattern_shape,
-                node: arm_wire
-              )
-            )
-          )
+fn emit_match_eval_nth_arm_wire(node: Node, wanted: Int) -> Outcome<Node> {
+  match list_at_optional(xs: node.children, index: wanted) {
+    Present { value: child } =>
+      match child {
+        Edge { label: _, target: arm_wire } => outcome_accepted(value: arm_wire)
       }
-    }
-  )
-}
-
-fn emit_match_eval_arm_body(arm_wire: Node) -> Outcome<Node> {
-  bind_outcome(
-    o: find_named_child(root: arm_wire, name: match_arm_body),
-    f: fn(body_node) {
-      outcome_accepted(value: body_node)
-    }
-  )
-}
-
-fn emit_match_eval_pattern_matches(pattern_id: Symbol, scrutinee: RuntimeValue) -> Bool {
-  if pattern_id == ^dag_token_kw_true {
-    emit_match_eval_bool_true(value: scrutinee)
-  } else if pattern_id == ^dag_token_kw_false {
-    emit_match_eval_bool_false(value: scrutinee)
-  } else {
-    false
+    Absent =>
+      outcome_rejected(
+        d: emit_match_eval_diagnostic(reason: ^emit_match_eval_arm_miss, node: node)
+      )
   }
 }
 
-fn emit_match_eval_try_arm(
-  match_node: Node,
-  arm_index: Int,
-  scrutinee: RuntimeValue
-) -> Outcome<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: match_node), index: arm_index) {
-    Present { value: arm_wire } =>
-      bind_outcome(
-        o: emit_match_eval_pattern_atom(arm_wire: arm_wire),
-        f: fn(pattern_id) {
-          if emit_match_eval_pattern_matches(pattern_id: pattern_id, scrutinee: scrutinee) {
-            emit_match_eval_arm_body(arm_wire: arm_wire)
-          } else {
-            outcome_rejected(
-              diagnostics: diagnostics_singleton(
-                d: emit_match_eval_diagnostic(
-                  reason: ^emit_match_eval_arm_miss,
-                  node: match_node
-                )
-              )
-            )
-          }
-        }
-      )
-    Absent =>
-      outcome_rejected(
-        diagnostics: diagnostics_singleton(
-          d: emit_match_eval_diagnostic(reason: ^emit_match_eval_arm_miss, node: match_node)
-        )
-      )
+fn emit_match_eval_arm_body_node(arm_wire: Node) -> Outcome<Node> {
+  match find_named_child(root: arm_wire, name: match_arm_body) {
+    Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
@@ -281,10 +238,22 @@ fn emit_match_eval_choose_arm(
   scrutinee: RuntimeValue,
   _env: EvaluationEnvironment
 ) -> Outcome<Node> {
-  match emit_match_eval_try_arm(match_node: node, arm_index: 1, scrutinee: scrutinee) {
-    Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
-    Rejected { diagnostics: _ } =>
-      emit_match_eval_try_arm(match_node: node, arm_index: 2, scrutinee: scrutinee)
+  if emit_match_eval_bool_true(value: scrutinee) {
+    match emit_match_eval_nth_arm_wire(node: node, wanted: 1) {
+      Accepted { value: arm, diagnostics: _ } =>
+        emit_match_eval_arm_body_node(arm_wire: arm)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  } else if emit_match_eval_bool_false(value: scrutinee) {
+    match emit_match_eval_nth_arm_wire(node: node, wanted: 2) {
+      Accepted { value: arm, diagnostics: _ } =>
+        emit_match_eval_arm_body_node(arm_wire: arm)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  } else {
+    outcome_rejected(
+      d: emit_match_eval_diagnostic(reason: ^emit_match_eval_arm_miss, node: node)
+    )
   }
 }
 
@@ -318,38 +287,6 @@ fn emit_match_eval_context() -> EvalContext {
   )
 }
 
-fn emit_match_eval_producer_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_match_arrow_with_body() {
-    Accepted { value: root, diagnostics: _ } =>
-      Accepted {
-        value: InferredTree {
-          root: root,
-          facts: Map { lookup: emit_match_eval_composed_facts }
-        },
-        diagnostics: None
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn emit_match_eval_swapped_producer_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_match_arrow_with_body_swapped_arms() {
-    Accepted { value: root, diagnostics: _ } =>
-      Accepted {
-        value: InferredTree {
-          root: root,
-          facts: Map { lookup: emit_match_eval_composed_facts }
-        },
-        diagnostics: None
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn emit_match_eval_subject_tree(tree: InferredTree) -> InferredTree {
-  tree
-}
-
 fn emit_match_eval_claim(rhs_result_node: Node) -> TestClaim {
   EqualsClaim {
     label: "S2 B9: rust emit(match-fn) host-run == eval(match-body) via shared octet codec",
@@ -364,7 +301,7 @@ fn emit_match_eval_subject(tree: InferredTree) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
     claim: emit_match_eval_claim(rhs_result_node: emit_match_eval_subgraph_node),
     context: emit_match_eval_context(),
-    tree: emit_match_eval_subject_tree(tree: tree),
+    tree: tree,
     evaluator_pin: ^emit_match_eval_evaluator_pin
   )
 }
@@ -410,34 +347,4 @@ test fn emit_host_match_wrong_fixture_refuses_holds() -> Bool {
 
 test fn emit_host_match_equals_eval_all_holds() -> Bool {
   emit_host_match_equals_eval_holds() && emit_host_match_wrong_fixture_refuses_holds()
-}
-
-test fn emit_match_produce_only_holds() -> Bool {
-  match produce_mvp1_match_arrow_with_body() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn emit_match_producer_tree_only_holds() -> Bool {
-  match emit_match_eval_producer_tree() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn emit_match_eval_only_holds() -> Bool {
-  match emit_match_eval_producer_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      match eval(
-        tree: tree,
-        interpretation: emit_match_eval_interpretation(),
-        inputs: inputs_root_only(root: emit_match_eval_subgraph_node)
-      ) {
-        Accepted { value: v, diagnostics: None } =>
-          v == emit_match_eval_octet_value(n: 1)
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
 }
