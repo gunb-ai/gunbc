@@ -27,7 +27,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Witness }
-import v2.test.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
+import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 data rejecting_lens_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },

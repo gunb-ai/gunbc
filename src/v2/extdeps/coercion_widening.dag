@@ -59,7 +59,7 @@ fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) 
   }
 }
 
-fn mvp_rust_i32_python_int_refinement_widening_predicate() -> PreservationPredicate {
+fn rust_i32_python_int_refinement_widening_predicate() -> PreservationPredicate {
   let source = rust_inhabitant_i32_node()
   let candidate = python_int_inhabitant_node()
   PreservationPredicate {
@@ -73,7 +73,7 @@ fn mvp_rust_i32_python_int_refinement_widening_predicate() -> PreservationPredic
   }
 }
 
-fn mvp_python_int_rust_i32_refinement_narrowing_predicate() -> PreservationPredicate {
+fn python_int_rust_i32_refinement_narrowing_predicate() -> PreservationPredicate {
   let source = python_int_inhabitant_node()
   let candidate = rust_inhabitant_i32_node()
   PreservationPredicate {
@@ -87,7 +87,7 @@ fn mvp_python_int_rust_i32_refinement_narrowing_predicate() -> PreservationPredi
   }
 }
 
-fn coercion_fold_mvp_rust_i32_to_python_int_widening(
+fn coercion_fold_rust_i32_to_python_int_widening(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
   priority: Node,
@@ -96,11 +96,11 @@ fn coercion_fold_mvp_rust_i32_to_python_int_widening(
     source: source,
     candidates: candidates,
     policy: TargetDeclaredPriority { priority: priority },
-    predicate: mvp_rust_i32_python_int_refinement_widening_predicate()
+    predicate: rust_i32_python_int_refinement_widening_predicate()
   )
 }
 
-fn coercion_fold_mvp_python_int_to_rust_i32_narrowing(
+fn coercion_fold_python_int_to_rust_i32_narrowing(
   source: CanonicalGrounding,
   candidates: CoercionCandidateSet,
   priority: Node,
@@ -109,6 +109,6 @@ fn coercion_fold_mvp_python_int_to_rust_i32_narrowing(
     source: source,
     candidates: candidates,
     policy: TargetDeclaredPriority { priority: priority },
-    predicate: mvp_python_int_rust_i32_refinement_narrowing_predicate()
+    predicate: python_int_rust_i32_refinement_narrowing_predicate()
   )
 }

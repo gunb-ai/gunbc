@@ -27,14 +27,14 @@ import v2.extdeps.languages.rust {
   rust_int_kind_node,
   rust_int_width_node,
   rust_overflow_node,
-  rust_mvp1_fixture_emitted_add_fn,
-  rust_mvp1_fixture_i32_inhabitant,
-  rust_mvp1_i32_overflow_disposition_node,
-  rust_mvp1_i32_scalar_node,
-  rust_mvp1_binding_spellings,
-  rust_mvp1_source_text,
-  rust_mvp1_target_model,
-  rust_mvp1_target_model_node,
+  rust_fixture_emitted_add_fn,
+  rust_fixture_i32_inhabitant,
+  rust_i32_overflow_disposition_node,
+  rust_i32_scalar_node,
+  rust_binding_spellings,
+  rust_source_text,
+  rust_target_model,
+  rust_target_model_node,
   rust_wave1_lex,
   rust_facts_i32,
   Signed,
@@ -46,7 +46,7 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
-import v2.test.manual.infer_ground_add_mvp {
+import v2.test.manual.infer_ground_add {
   infer_receipt_context
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
@@ -99,32 +99,32 @@ import v2.std.verification {
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 data rust_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
-fn mvp_int_node() -> Node {
+fn add_int_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^mvp_add_int_atom } },
+    kind: TypeNode { connective: Atom { identity: ^add_int_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-data mvp_add_arrow_node: Node = Node {
+data add_arrow_node: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge { label: Positional, target: mvp_int_node() },
-    Edge { label: Positional, target: mvp_int_node() },
-    Edge { label: Positional, target: mvp_int_node() }
+    Edge { label: Positional, target: add_int_node() },
+    Edge { label: Positional, target: add_int_node() },
+    Edge { label: Positional, target: add_int_node() }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data rust_add_emitted_root: Node = rust_mvp1_fixture_emitted_add_fn
+data rust_add_emitted_root: Node = rust_fixture_emitted_add_fn
 
-data rust_add_target_model: TargetModel = rust_mvp1_target_model()
+data rust_add_target_model: TargetModel = rust_target_model()
 
 data rust_add_poisoned_authority_target_model: TargetModel = TargetModel {
-  bundle: rust_mvp1_target_model_node(),
+  bundle: rust_target_model_node(),
   lex: rust_wave1_lex(),
-  binding_spellings: rust_mvp1_binding_spellings(),
+  binding_spellings: rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: rust_add_forbidden_authority_source_text,
   runtime_row: target_emit_host_runtime_row_unconfigured
@@ -194,14 +194,14 @@ fn rust_add_canonical_grounding(
 }
 
 fn rust_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == rust_mvp1_fixture_emitted_add_fn {
+  if node == rust_fixture_emitted_add_fn {
     Holds {
       value: rust_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
-  } else if node == rust_mvp1_fixture_i32_inhabitant {
+  } else if node == rust_fixture_i32_inhabitant {
     Holds {
       value: rust_add_canonical_grounding(
         node: node,
@@ -212,7 +212,7 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
     Holds {
       value: rust_add_canonical_grounding(
         node: node,
-        algebra: rust_mvp1_fixture_i32_inhabitant
+        algebra: rust_fixture_i32_inhabitant
       )
     }
   } else if node == rust_add_i32_facts_node() {
@@ -250,53 +250,53 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: rust_add_i32_facts_node()
       )
     }
-  } else if node == rust_mvp1_i32_overflow_disposition_node() {
+  } else if node == rust_i32_overflow_disposition_node() {
     Holds {
       value: rust_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
-  } else if node == rust_mvp1_i32_scalar_node() {
+  } else if node == rust_i32_scalar_node() {
     Holds {
       value: rust_add_canonical_grounding(
         node: node,
-        algebra: rust_mvp1_i32_overflow_disposition_node()
+        algebra: rust_i32_overflow_disposition_node()
       )
     }
   } else if node == rust_inhabitant_atom(id: ^rust_tag_scalar_int) {
     Holds {
       value: rust_add_canonical_grounding(
         node: node,
-        algebra: rust_mvp1_i32_scalar_node()
+        algebra: rust_i32_scalar_node()
       )
     }
   } else if node == rust_inhabitant_atom(id: ^rust_tag_signed) {
     Holds {
       value: rust_add_canonical_grounding(
         node: node,
-        algebra: rust_mvp1_i32_scalar_node()
+        algebra: rust_i32_scalar_node()
       )
     }
   } else if node == rust_inhabitant_atom(id: ^rust_tag_bits32) {
     Holds {
       value: rust_add_canonical_grounding(
         node: node,
-        algebra: rust_mvp1_i32_scalar_node()
+        algebra: rust_i32_scalar_node()
       )
     }
   } else if node == rust_overflow_node(overflow: PanicOnOverflow) {
     Holds {
       value: rust_add_canonical_grounding(
         node: node,
-        algebra: rust_mvp1_i32_overflow_disposition_node()
+        algebra: rust_i32_overflow_disposition_node()
       )
     }
   } else if node == rust_overflow_node(overflow: TwoComplementWrap) {
     Holds {
       value: rust_add_canonical_grounding(
         node: node,
-        algebra: rust_mvp1_i32_overflow_disposition_node()
+        algebra: rust_i32_overflow_disposition_node()
       )
     }
   } else if node == rust_inhabitant_atom(id: ^rust_tag_panic_on_overflow) {
@@ -372,7 +372,7 @@ data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accep
 test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_mvp1_source_text) && (d == None)
+      (source.carried == rust_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -382,7 +382,7 @@ data rust_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_rust_add
 fn rust_add_emit_claim_outcome() -> Outcome<Node> {
   match rust_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      if (source.carried == rust_mvp1_source_text) && (d == None) {
+      if (source.carried == rust_source_text) && (d == None) {
         Accepted { value: rust_add_emitted_root, diagnostics: None }
       } else {
         Rejected {
@@ -404,7 +404,7 @@ fn rust_add_compile_inferred_claim_outcome() -> Outcome<Node> {
     Accepted { value: compile_result, diagnostics: d } =>
       match compile_result {
         TranslateResult { source } =>
-          if (source.carried == rust_mvp1_source_text) && (d == None) {
+          if (source.carried == rust_source_text) && (d == None) {
             Accepted { value: rust_add_emitted_root, diagnostics: None }
           } else {
             Rejected {
@@ -447,7 +447,7 @@ fn rust_add_coerce_grounded_node_exact_structural_claim_outcome() -> Outcome<Nod
     target: rust_add_target_model
   ) {
     Accepted { value: r, diagnostics: d } =>
-      if (r.target == rust_mvp1_fixture_emitted_add_fn)
+      if (r.target == rust_fixture_emitted_add_fn)
         && rust_add_coercion_quality_is_exact(q: r.quality) {
         Accepted { value: r.target, diagnostics: d }
       } else {
@@ -466,7 +466,7 @@ fn rust_add_coerce_grounded_node_exact_structural_claim_outcome() -> Outcome<Nod
 }
 
 data claim_rust_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: anchor_rust_add_emit_accepts Accepted with canonical rust_mvp1 add-fn source",
+  label: "manual/rust_add_emit: anchor_rust_add_emit_accepts Accepted with canonical rust_add add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: rust_add_emitted_root,
   expected_value: rust_add_emitted_root,
@@ -474,7 +474,7 @@ data claim_rust_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 data claim_rust_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: compile_inferred emits canonical rust_mvp1 add-fn source through grammar inverse",
+  label: "manual/rust_add_emit: compile_inferred emits canonical rust_add add-fn source through grammar inverse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: rust_add_emitted_root,
   expected_value: rust_add_emitted_root,
@@ -482,7 +482,7 @@ data claim_rust_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 data claim_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaim = CompilesClaim {
-  label: "manual/rust_add_emit: coerce_grounded_node accepts rust_mvp1 add-fn through exact-structural find_witness",
+  label: "manual/rust_add_emit: coerce_grounded_node accepts rust_add add-fn through exact-structural find_witness",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: rust_add_emitted_root,
   expected_value: rust_add_emitted_root,
@@ -495,7 +495,7 @@ data subject_rust_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClai
   tree: rust_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -514,7 +514,7 @@ data subject_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaimEv
   tree: rust_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -533,7 +533,7 @@ data subject_rust_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node
   tree: rust_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 
@@ -549,16 +549,16 @@ data run_rust_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = Te
 data claim_rust_add_translate_module_compiles: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: translate stage module + coercion_fold call-site compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: mvp_add_arrow_node,
-  expected_value: mvp_add_arrow_node,
+  input: add_arrow_node,
+  expected_value: add_arrow_node,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 data claim_rust_add_emit_module_compiles: TestClaim = CompilesClaim {
   label: "manual/rust_add_emit: emit stage module (serialize_target o translate) compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: mvp_add_arrow_node,
-  expected_value: mvp_add_arrow_node,
+  input: add_arrow_node,
+  expected_value: add_arrow_node,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
@@ -582,7 +582,7 @@ data subject_rust_add_serialize_rejects_missing_translation_rules: TestClaimEval
   tree: rust_add_inferred_tree,
   input: test_claim_typed_input_node(
     evaluator_input: rust_add_emitted_root,
-    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+    evaluator_pin: ^infer_receipt_input_infer_add
   )
 }
 

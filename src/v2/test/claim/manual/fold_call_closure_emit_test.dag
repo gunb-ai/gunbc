@@ -3,8 +3,8 @@ module v2.test.manual.fold_call_closure_emit
 import v2.compiler.translate { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.extdeps.languages.typescript {
-  ts_mvp1_binding_spellings,
-  ts_mvp1_source_text_authority,
+  ts_binding_spellings,
+  ts_source_text_authority,
   ts_wave1_lex_rules
 }
 import v2.std.collection { List }
@@ -180,9 +180,9 @@ fn fold_call_target_model() -> TargetModel {
       ]
     ),
     lex: ts_wave1_lex_rules(),
-    binding_spellings: ts_mvp1_binding_spellings(),
+    binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: ts_mvp1_source_text_authority()
+    authority_source_text: ts_source_text_authority()
   }
 }
 

@@ -5599,10 +5599,21 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // Wholly-added files (`--- /dev/null` → `+++ b/path`) necessarily touch line 1
     // (the module header). Attribute at declaration grain; do not conflate with
     // modify-side module renames (fail-closed below).
+    //
+    // A rename *destination* (`rename to NEW`, git's own rename signal) is likewise
+    // new-at-path: its declaration set is established fresh at NEW, so a module-header
+    // (line 1) change there is the wholly-added case, not an in-place module rename.
+    // This mirrors `parse_unified_diff_departed_paths`, which already treats the rename
+    // FROM-side (`old != new`) as a departure; without the symmetric TO-side a
+    // rename+modify would fail-closed on its unavoidable line-1 change. An in-place
+    // modify (`diff --git a/PATH b/PATH`, no `rename to`) still touches line 1 with no
+    // added-side entry, so it stays fail-closed as before.
     let mut added = HashSet::new();
     let mut minus_is_null = false;
     for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("--- ") {
+        if let Some(rest) = line.strip_prefix("rename to ") {
+            added.insert(normalize_repo_path(rest.trim()));
+        } else if let Some(rest) = line.strip_prefix("--- ") {
             minus_is_null = rest.trim() == "/dev/null";
         } else if let Some(rest) = line.strip_prefix("+++ b/") {
             if minus_is_null {
@@ -8054,6 +8065,51 @@ mod node_frontier_plumbing_controls {
             .unwrap_or_else(|e| panic!("wholly new receipt file must not fail-closed: {e}"));
     }
 
+    // Rename destination (git `rename to NEW`) is new-at-path: a module-header (line 1)
+    // change on the TO-side is the wholly-added case, not an in-place module rename, so it
+    // must NOT fail-closed. Mirrors `wholly_new_dag_file_does_not_fail_closed_on_module_line`
+    // for the rename+modify shape that a file rename produces.
+    #[test]
+    fn rename_destination_module_line_change_does_not_fail_closed() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let new_rel = "src/v2/test/claim/manual/integer_census_stage_receipt.dag";
+        let old_rel = "src/v2/test/claim/manual/integer_census_stage_receipt_old_name.dag";
+        // rename+modify whose only hunk edits line 1 (the module header) — the shape a
+        // module rename produces. Without the `rename to` added-side signal this fails-closed.
+        let diff = format!(
+            "diff --git a/{old_rel} b/{new_rel}\n\
+             similarity index 99%\n\
+             rename from {old_rel}\n\
+             rename to {new_rel}\n\
+             --- a/{old_rel}\n\
+             +++ b/{new_rel}\n\
+             @@ -1,1 +1,1 @@\n\
+             -module v2.test.manual.integer_census_stage_receipt_old_name\n\
+             +module v2.test.manual.integer_census_stage_receipt\n"
+        );
+        floor_diff_edits_from_diff_text(&index, &diff).unwrap_or_else(|e| {
+            panic!("rename destination line-1 change must not fail-closed: {e}")
+        });
+        // Control: the SAME line-1 change as an in-place modify (no `rename to`) stays fail-closed.
+        let in_place = format!(
+            "diff --git a/{new_rel} b/{new_rel}\n\
+             --- a/{new_rel}\n\
+             +++ b/{new_rel}\n\
+             @@ -1,1 +1,1 @@\n\
+             -module v2.test.manual.integer_census_stage_receipt\n\
+             +module v2.test.manual.integer_census_stage_receipt_renamed\n"
+        );
+        let err = floor_diff_edits_from_diff_text(&index, &in_place)
+            .expect_err("in-place module-line modify must stay fail-closed");
+        assert!(
+            err.contains("before first declaration"),
+            "expected pre-decl fail-closed for in-place modify, got: {err}"
+        );
+    }
+
     #[test]
     fn import_preamble_plus_fn_body_populates_touched_entry_not_fail_closed() {
         let ws = workspace_root();
@@ -9520,7 +9576,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
     "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
-    "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
+    "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
     "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",

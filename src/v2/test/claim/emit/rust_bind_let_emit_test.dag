@@ -1,14 +1,14 @@
 module v2.test.emit.rust_bind_let_emit
 
 import v2.compiler.body_producer {
-  produce_mvp1_bind_arrow_with_body,
-  produce_mvp1_bind_arrow_with_body_wrong_value
+  produce_bind_arrow_with_body,
+  produce_bind_arrow_with_body_wrong_value
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
   rust_lex_rule,
-  rust_mvp1_target_model_bundle_core,
+  rust_target_model_bundle_core,
   rust_wave1_lex_rules
 }
 import v2.std.algebra { list_append }
@@ -58,16 +58,16 @@ fn rust_bind_let_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
   let m1 = map_insert(m0, ^rust_binding_param_x, "x")
   let m2 = map_insert(m1, ^rust_binding_param_y, "y")
-  let m3 = map_insert(m2, ^dag_binding_mvp1_bind_x, "x")
-  let m4 = map_insert(m3, ^dag_mvp1_pick_lit_one, "1")
-  let m5 = map_insert(m4, ^dag_mvp1_pick_lit_two, "2")
-  let m6 = map_insert(m5, ^dag_binding_mvp1_pick_lit_one, "1")
-  map_insert(m6, ^dag_binding_mvp1_pick_lit_two, "2")
+  let m3 = map_insert(m2, ^dag_binding_bind_x, "x")
+  let m4 = map_insert(m3, ^dag_pick_lit_one, "1")
+  let m5 = map_insert(m4, ^dag_pick_lit_two, "2")
+  let m6 = map_insert(m5, ^dag_binding_pick_lit_one, "1")
+  map_insert(m6, ^dag_binding_pick_lit_two, "2")
 }
 
 fn rust_bind_let_target_model() -> TargetModel {
   TargetModel {
-    bundle: rust_mvp1_target_model_bundle_core(),
+    bundle: rust_target_model_bundle_core(),
     lex: rust_bind_let_lex(),
     binding_spellings: rust_bind_let_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
@@ -94,7 +94,7 @@ fn rust_bind_let_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn rust_bind_let_producer_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_bind_arrow_with_body() {
+  match produce_bind_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_bind_let_inferred_tree_for(root: root),
@@ -105,7 +105,7 @@ fn rust_bind_let_producer_tree() -> Outcome<InferredTree> {
 }
 
 fn rust_bind_let_wrong_value_producer_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_bind_arrow_with_body_wrong_value() {
+  match produce_bind_arrow_with_body_wrong_value() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_bind_let_inferred_tree_for(root: root),
