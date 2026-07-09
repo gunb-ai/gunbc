@@ -174,17 +174,23 @@ test fn r_binding_spelling() -> Bool { reason_anywhere(src: src_single_arm_match
 test fn r_grammar_inverse() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_grammar_inverse_not_realized) }
 test fn r_grammar_relation_row() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_grammar_relation_row_not_found) }
 
-fn reveal_reason2(src: String) -> Bool {
-  match emit_compiler_import_closure_from_ingest(
-    ingest: derisk_ingest_for(src: src),
-    admission: derisk_module_admission(),
-    target: rust_target_model()
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: nd } =>
-      match Atom { identity: nd.head.reason } {
-        Conj => true
-      }
-  }
-}
-test fn reveal2_singlearm() -> Bool { reveal_reason2(src: src_single_arm_match) }
+test fn r_closure_cyclic() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^compiler_import_closure_cyclic) }
+test fn r_boundary_free_ref() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^partition_boundary_free_ref) }
+test fn r_empty_segment() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^partition_empty_segment) }
+test fn r_root_not_in_ambient() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^partition_root_not_in_ambient) }
+test fn r_type_cyclic() -> Bool { reason_anywhere(src: src_type_decl, reason: ^compiler_import_closure_cyclic) }
+
+
+test fn r_sg_rc_partial() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_sg_rc_bundle_partial) }
+test fn r_sig_decl_empty() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^rust_signature_decl_empty) }
+test fn r_sig_decl_not_conj() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^rust_signature_decl_not_conj) }
+test fn r_sig_decl_unnamed() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^rust_signature_decl_unnamed) }
+test fn r_sig_param_unnamed() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^rust_signature_param_unnamed) }
+test fn r_conj_invalid_edge() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_conj_invalid_edge) }
+test fn r_type_expr_kind_auth() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_type_expr_kind_authority_invalid) }
+test fn r_lex_rule_literal() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_lex_rule_literal_not_found) }
+test fn r_token_kind_invalid() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_concrete_token_kind_invalid) }
+test fn r_bundle_dup_edge() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_target_bundle_duplicate_edge) }
+test fn r_bundle_malformed() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_target_bundle_malformed) }
+test fn r_section_adapter() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^partition_section_adapter_unavailable) }
+test fn r_recursion_limit() -> Bool { reason_anywhere(src: src_single_arm_match, reason: ^translate_serialize_recursion_limit_exhausted) }
