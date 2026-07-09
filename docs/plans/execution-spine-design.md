@@ -37,7 +37,7 @@ run(g)  ≜  realize( materialize( dependency_view(g) ) )
 ```
 
 - **`dependency_view`** — what depends on what (the fundamental relation; §1).
-- **`materialize`** — the `Recompute | Memoize | Share` dimension: because the primitives form a *DAG* (a node is referenced by many parents), `Share` computes each node **once** and reuses it. A tree fold has no sharing; a DAG fold without `Share` recomputes shared subgraphs once-per-parent. (The O(M²) ancestry copy is exactly a *missing Share*.)
+- **`materialize`** — the `Recompute | Memoize | Share` dimension: because the primitives form a *DAG* (a node is referenced by many parents), `Share` computes each node **once** and reuses it. A tree fold has no sharing; a DAG fold without `Share` recomputes shared subgraphs once-per-parent. (The O(M²) ancestry copy is exactly a *missing Share*.) **`materialize` is also where duplicate-work elimination lives** ([duplicate-work design](duplicate-work-graph-lens-design.md)): today `Materialization`/`reconcile` (`dag/std/realization.dag`) is defined but consumed only by a test, and only over effect `RealizedStep`s. Two coupled halves converge here: **Half A** — extend `materialize` to describe the result of *all* .dag computation, not just `RealizedStep` effects (the spine's job); **Half B** — generalize `reconcile`/`has_collapsible_peer` from its effect-pairwise key to a content-hash `ComputationIdentity` lattice (the qualifier `materialize` keys on to decide `Share` vs `Recompute`). Duplicate-work detection is not a lens beside the spine — it *is* `materialize`'s qualification step.
 - **`realize`** — run the materialized DependencyView: schedule unblocked nodes concurrently, respect the dependency edges.
 
 Realization is **downstream of** dependency (operator ruling, this is the intended direction). Today it is a *peer* (the floor hand-builds a `RealizationPlan`); the spine makes it a *reader*.
@@ -119,10 +119,11 @@ None of these individually reads as "the compiler on DependencyView." **Composed
 2. `realize`/`materialize` as its only downstream readers; introduce `run` (§2).
 3. Parallel fold: node-level independence drives the thread pool; remove accumulator-threading (SymbolIndex); `Share` for DAG reuse (§3).
 4. Single-process-multi-thread runner nailed and **measured** (§9).
-5. Route the CI floor's compile through `run`; **then** subsume/delete the shard subsystem (§5), carrying totality forward.
+5. Route the CI floor's compile through `run`; **then** subsume the shard subsystem (§5), carrying totality forward.
+5a. **Tracked cleanup task (FLAG C refinement, operator 2026-07-09):** once the floor runs through `run` and DependencyView-covers-all-nodes carries the totality proof, **delete** `dag_compile_clean_shard_{roster,partition,totality,seam,transport}` + the 3 shard witnesses and confirm no consumer references them. This is a first-class `dashboard://work-item` with a dissolution trigger, not a deferred intention — the spine is not "done" while the manual partition coexists with `realize`'s automatic one (§2/§3 no-dual-representation). Deletion is sequenced *after* step 5 (subsume) so it never runs in a vacuum.
 6. Retire the serial v1 seed as the parallel fold proves out (this is also §1 get-off-v1).
 
-Delete-before-replace is forbidden (it re-darkens the floor). Each step lands with its receipt (§9).
+Delete-before-replace is forbidden (it re-darkens the floor). Each step lands with its receipt (§9). The §2/§3 counter-discipline is equally binding: **subsume-without-delete is itself a violation** — every "subsume" step (5) carries a paired deletion step (5a) so no dual representation survives.
 
 ## 9. Acceptance — the north-star, and it is measurable
 
