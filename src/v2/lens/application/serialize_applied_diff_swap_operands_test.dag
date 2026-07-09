@@ -9,12 +9,12 @@ import v2.lens.application_serializer {
 }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.dag {
-  dag_mvp1_fixture_emitted_add_fn,
-  dag_mvp1_fixture_emitted_loop_fn,
-  dag_mvp1_loop_arrow_with_body_wrong_value_fixture,
-  dag_mvp1_loop_body_wrong_value_node,
-  dag_mvp1_loop_target_model,
-  dag_mvp1_target_model
+  dag_fixture_emitted_add_fn,
+  dag_fixture_emitted_loop_fn,
+  dag_loop_arrow_with_body_wrong_value_fixture,
+  dag_loop_body_wrong_value_node,
+  dag_loop_target_model,
+  dag_target_model
 }
 import v2.lens.application { apply_diff }
 import v2.std.compilers.target_model { TargetModel }
@@ -34,24 +34,24 @@ import v2.std.verification {
 
 data serialize_loop_body_edit: Edit = Edit {
   at: Path { steps: [^arrow_body_edge] },
-  replacement: dag_mvp1_loop_body_wrong_value_node()
+  replacement: dag_loop_body_wrong_value_node()
 }
 
 data serialize_loop_body_diff: Diff = Diff {
   edits: [serialize_loop_body_edit]
 }
 
-data serialize_loop_target: TargetModel = dag_mvp1_loop_target_model()
+data serialize_loop_target: TargetModel = dag_loop_target_model()
 
 fn serialize_loop_before_after_differ() -> Bool {
   match target_serialize_source_from_model(
     target: serialize_loop_target,
-    emitted: dag_mvp1_fixture_emitted_loop_fn
+    emitted: dag_fixture_emitted_loop_fn
   ) {
     Accepted { value: before, diagnostics: _ } =>
       match target_serialize_source_from_model(
         target: serialize_loop_target,
-        emitted: dag_mvp1_loop_arrow_with_body_wrong_value_fixture
+        emitted: dag_loop_arrow_with_body_wrong_value_fixture
       ) {
         Accepted { value: after, diagnostics: _ } => before != after
         Rejected { diagnostics: _ } => false
@@ -60,17 +60,17 @@ fn serialize_loop_before_after_differ() -> Bool {
   }
 }
 
-data serialize_add_target: TargetModel = dag_mvp1_target_model()
+data serialize_add_target: TargetModel = dag_target_model()
 
 fn serialize_add_serializer_determinism_holds() -> Bool {
   match target_serialize_source_from_model(
     target: serialize_add_target,
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: first, diagnostics: _ } =>
       match target_serialize_source_from_model(
         target: serialize_add_target,
-        emitted: dag_mvp1_fixture_emitted_add_fn
+        emitted: dag_fixture_emitted_add_fn
       ) {
         Accepted { value: second, diagnostics: _ } =>
           match deterministic_dag_source_serializer_witness(first: first, second: second) {
@@ -85,7 +85,7 @@ fn serialize_add_serializer_determinism_holds() -> Bool {
 
 fn serialize_loop_applied_diff_matches_authority_after() -> Bool {
   match apply_diff(
-    root: dag_mvp1_fixture_emitted_loop_fn,
+    root: dag_fixture_emitted_loop_fn,
     d: serialize_loop_body_diff
   ) {
     Accepted { value: patched, diagnostics: _ } =>
@@ -96,7 +96,7 @@ fn serialize_loop_applied_diff_matches_authority_after() -> Bool {
         Accepted { value: patched_source, diagnostics: _ } =>
           match target_serialize_source_from_model(
             target: serialize_loop_target,
-            emitted: dag_mvp1_loop_arrow_with_body_wrong_value_fixture
+            emitted: dag_loop_arrow_with_body_wrong_value_fixture
           ) {
             Accepted { value: authority_after, diagnostics: _ } =>
               patched_source == authority_after
@@ -110,11 +110,11 @@ fn serialize_loop_applied_diff_matches_authority_after() -> Bool {
 
 fn serialize_loop_apply_diff_structurally_matches() -> Bool {
   match apply_diff(
-    root: dag_mvp1_fixture_emitted_loop_fn,
+    root: dag_fixture_emitted_loop_fn,
     d: serialize_loop_body_diff
   ) {
     Accepted { value: patched, diagnostics: _ } =>
-      patched == dag_mvp1_loop_arrow_with_body_wrong_value_fixture
+      patched == dag_loop_arrow_with_body_wrong_value_fixture
     Rejected { diagnostics: _ } => false
   }
 }
@@ -122,20 +122,20 @@ fn serialize_loop_apply_diff_structurally_matches() -> Bool {
 fn serialize_loop_authority_before_source() -> Outcome<Medium<String>> {
   target_serialize_source_from_model(
     target: serialize_loop_target,
-    emitted: dag_mvp1_fixture_emitted_loop_fn
+    emitted: dag_fixture_emitted_loop_fn
   )
 }
 
 fn serialize_loop_authority_after_source() -> Outcome<Medium<String>> {
   target_serialize_source_from_model(
     target: serialize_loop_target,
-    emitted: dag_mvp1_loop_arrow_with_body_wrong_value_fixture
+    emitted: dag_loop_arrow_with_body_wrong_value_fixture
   )
 }
 
 fn serialize_loop_patch_carrier_holds() -> Bool {
   match serialize_diff_as_source_patch(
-    root: dag_mvp1_fixture_emitted_loop_fn,
+    root: dag_fixture_emitted_loop_fn,
     diff: serialize_loop_body_diff,
     canonical_source_target: serialize_loop_target
   ) {

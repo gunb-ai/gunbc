@@ -4,7 +4,7 @@ import v2.std.language_model { LanguageModel }
 import v2.extdeps.languages.kotlin {
   kotlin_inhabitant_int_node,
   kotlin_language_model_wave1,
-  kotlin_mvp1_target_model_node
+  kotlin_target_model_node
 }
 import v2.std.node { Node }
 
@@ -12,4 +12,4 @@ type kotlin_anchor_language_model = LanguageModel
 
 data kotlin_anchor_wave1: kotlin_anchor_language_model = kotlin_language_model_wave1()
 data kotlin_anchor_int: Node = kotlin_inhabitant_int_node()
-data kotlin_anchor_add_fn_target_model: Node = kotlin_mvp1_target_model_node()
+data kotlin_anchor_add_fn_target_model: Node = kotlin_target_model_node()

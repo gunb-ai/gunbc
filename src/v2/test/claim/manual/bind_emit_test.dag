@@ -1,8 +1,8 @@
 module v2.test.manual.bind_emit
 
 import v2.compiler.body_producer {
-  produce_mvp1_bind_arrow_with_body,
-  produce_mvp1_bind_arrow_with_body_wrong_value
+  produce_bind_arrow_with_body,
+  produce_bind_arrow_with_body_wrong_value
 }
 import v2.test.execution.bind_round_trip {
   bind_round_trip_inferred_facts_for,
@@ -12,9 +12,9 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.extdeps.languages.dag {
-  dag_mvp1_bind_source_text,
-  dag_mvp1_bind_target_model,
-  dag_mvp1_fixture_emitted_bind_fn
+  dag_bind_source_text,
+  dag_bind_target_model,
+  dag_fixture_emitted_bind_fn
 }
 import v2.compiler.translate {
   target_serialize_source_from_model,
@@ -57,7 +57,7 @@ fn bind_emit_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn bind_emit_producer_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_bind_arrow_with_body() {
+  match produce_bind_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: bind_emit_inferred_tree_for(root: root),
@@ -68,7 +68,7 @@ fn bind_emit_producer_tree() -> Outcome<InferredTree> {
 }
 
 fn bind_emit_wrong_value_producer_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_bind_arrow_with_body_wrong_value() {
+  match produce_bind_arrow_with_body_wrong_value() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: bind_emit_inferred_tree_for(root: root),
@@ -98,11 +98,11 @@ fn bind_emit_wrong_value_from_producer(target: TargetModel) -> Outcome<Medium<St
 
 fn bind_emit_holds() -> Bool {
   match target_serialize_source_from_model(
-    target: dag_mvp1_bind_target_model(),
-    emitted: dag_mvp1_fixture_emitted_bind_fn
+    target: dag_bind_target_model(),
+    emitted: dag_fixture_emitted_bind_fn
   ) {
     Accepted { value: authority, diagnostics: ad } =>
-      match bind_emit_from_producer(target: dag_mvp1_bind_target_model()) {
+      match bind_emit_from_producer(target: dag_bind_target_model()) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == None) && (ad == None)
         Rejected { diagnostics: _ } => false
@@ -112,9 +112,9 @@ fn bind_emit_holds() -> Bool {
 }
 
 fn bind_emit_wrong_value_discriminates() -> Bool {
-  match bind_emit_from_producer(target: dag_mvp1_bind_target_model()) {
+  match bind_emit_from_producer(target: dag_bind_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
-      match bind_emit_wrong_value_from_producer(target: dag_mvp1_bind_target_model()) {
+      match bind_emit_wrong_value_from_producer(target: dag_bind_target_model()) {
         Accepted { value: wrong, diagnostics: dw } =>
           (wrong != canonical) && (dc == None) && (dw == None)
         Rejected { diagnostics: _ } => false
@@ -131,7 +131,7 @@ fn bind_emit_post_translate_root() -> Outcome<Node> {
   bind_outcome(
     o: bind_emit_producer_tree(),
     f: fn(tree) {
-      translate_emitted_node(tree: tree, target: dag_mvp1_bind_target_model())
+      translate_emitted_node(tree: tree, target: dag_bind_target_model())
     }
   )
 }
@@ -149,9 +149,9 @@ fn bind_emit_diag_bind_gate_on_post_translate_body() -> Bool {
 }
 
 fn bind_emit_diag_emit_eq_authority_text() -> Bool {
-  match bind_emit_from_producer(target: dag_mvp1_bind_target_model()) {
+  match bind_emit_from_producer(target: dag_bind_target_model()) {
     Accepted { value: emitted, diagnostics: d } =>
-      (emitted.carried == dag_mvp1_bind_source_text) && (d == None)
+      (emitted.carried == dag_bind_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }

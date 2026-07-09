@@ -70,24 +70,24 @@ fn branch_infer_if_body_from_arms(
 fn branch_infer_bool_if_else_body_node() -> Node {
   branch_infer_if_body_from_arms(
     condition: branch_infer_atom(s: ^dag_token_kw_true),
-    then_arm: branch_infer_atom(s: ^dag_mvp1_pick_lit_one),
-    else_arm: branch_infer_atom(s: ^dag_mvp1_pick_lit_two)
+    then_arm: branch_infer_atom(s: ^dag_pick_lit_one),
+    else_arm: branch_infer_atom(s: ^dag_pick_lit_two)
   )
 }
 
 fn branch_infer_arm_mismatch_body_node() -> Node {
   branch_infer_if_body_from_arms(
     condition: branch_infer_atom(s: ^dag_token_kw_true),
-    then_arm: branch_infer_atom(s: ^dag_mvp1_pick_lit_one),
+    then_arm: branch_infer_atom(s: ^dag_pick_lit_one),
     else_arm: branch_infer_string_type_node()
   )
 }
 
 fn branch_infer_cond_not_bool_body_node() -> Node {
   branch_infer_if_body_from_arms(
-    condition: branch_infer_atom(s: ^dag_mvp1_pick_lit_one),
-    then_arm: branch_infer_atom(s: ^dag_mvp1_pick_lit_one),
-    else_arm: branch_infer_atom(s: ^dag_mvp1_pick_lit_two)
+    condition: branch_infer_atom(s: ^dag_pick_lit_one),
+    then_arm: branch_infer_atom(s: ^dag_pick_lit_one),
+    else_arm: branch_infer_atom(s: ^dag_pick_lit_two)
   )
 }
 

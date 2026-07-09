@@ -16,10 +16,10 @@ import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
-  dag_grammar_production_mvp1_fn_add,
+  dag_grammar_production_fn_add,
   dag_language_model_surface_empty_prelude,
   dag_language_model_wave1,
-  dag_mvp1_source_text,
+  dag_source_text,
   dag_named_edge
 }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -51,8 +51,8 @@ import v2.std.qualified_name { QualifiedName }
 
 fn pbf_parse_root() -> GrammarRoot {
   GrammarRoot {
-    start: ^dag_production_mvp1_fn_add,
-    productions: [dag_grammar_production_mvp1_fn_add()],
+    start: ^dag_production_fn_add,
+    productions: [dag_grammar_production_fn_add()],
     sync_tokens: Set { member: fn(_) { false } }
   }
 }
@@ -60,7 +60,7 @@ fn pbf_parse_root() -> GrammarRoot {
 fn pbf_tokenize() -> Outcome<List<Token>> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: ^pbf_source_file, rules: lm.lex),
+    o: tokenize(text: dag_source_text, file: ^pbf_source_file, rules: lm.lex),
     f: fn(stream) {
       outcome_accepted(value: token_stream_all(stream: stream))
     }
@@ -76,7 +76,7 @@ fn pbf_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
       parse_production_tree(
         tokens: tokens,
         validated: validated,
-        production_name: ^dag_production_mvp1_fn_add
+        production_name: ^dag_production_fn_add
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }

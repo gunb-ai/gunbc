@@ -3,8 +3,8 @@ module v2.test.rung_5_6_common
 import v2.compiler.emit_host {
   run_test_claim_emit_vs_eval
 }
-import v2.extdeps.languages.go { go_mvp1_runtime_row, go_mvp1_source_text }
-import v2.extdeps.languages.python { python_mvp1_runtime_row, python_mvp1_source_text }
+import v2.extdeps.languages.go { go_runtime_row, go_source_text }
+import v2.extdeps.languages.python { python_runtime_row, python_source_text }
 import v2.compiler.eval {
   TestClaimRun
 }
@@ -25,8 +25,8 @@ data rung56_emit_host_python_target_model: TargetModel = TargetModel {
   lex: VoidLexRules,
   binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-  authority_source_text: python_mvp1_source_text,
-  runtime_row: python_mvp1_runtime_row()
+  authority_source_text: python_source_text,
+  runtime_row: python_runtime_row()
 }
 
 data rung56_emit_host_go_target_model: TargetModel = TargetModel {
@@ -34,8 +34,8 @@ data rung56_emit_host_go_target_model: TargetModel = TargetModel {
   lex: VoidLexRules,
   binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-  authority_source_text: go_mvp1_source_text,
-  runtime_row: go_mvp1_runtime_row()
+  authority_source_text: go_source_text,
+  runtime_row: go_runtime_row()
 }
 
 fn rung56_emit_vs_eval_run(

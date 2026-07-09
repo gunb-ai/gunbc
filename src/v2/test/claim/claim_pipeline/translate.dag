@@ -1,7 +1,7 @@
 module v2.test.claim_pipeline.translate
 
 import v2.compiler.translate { translate }
-import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -22,7 +22,7 @@ data spine_translate_module_subject: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 fn spine_translate_accepts_rust_add_inferred_tree() -> Bool {
-  match translate(tree: rust_add_inferred_tree, target: rust_mvp1_target_model()) {
+  match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -54,7 +54,7 @@ data claim_pipeline_translate_module_compiles: TestClaim = CompilesClaim {
 }
 
 data claim_pipeline_translate_accepts_rust_add_inferred_tree: TestClaim = EqualsClaim {
-  label: "claim_pipeline/translate: translate accepts rust add-fn InferredTree on rust_mvp1_target_model",
+  label: "claim_pipeline/translate: translate accepts rust add-fn InferredTree on rust_target_model",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: spine_translate_bool_atom(b: spine_translate_accepts_rust_add_inferred_tree()),
   rhs: spine_translate_bool_atom(b: true),

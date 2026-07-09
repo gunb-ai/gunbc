@@ -17,7 +17,7 @@ import v2.std.verification {
   Integration,
   manual_claim_anchor
 }
-data python_wave2a_non_mvp_source: String = "def choose(x):\n    y = x + 1\n    if y > 0:\n        return y\n    return 0"
+data python_wave2a_non_source: String = "def choose(x):\n    y = x + 1\n    if y > 0:\n        return y\n    return 0"
 
 fn python_wave2a_bool_atom(b: Bool) -> Node {
   match b {
@@ -39,7 +39,7 @@ fn python_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
 
 fn python_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
   match tokenize(
-    text: python_wave2a_non_mvp_source,
+    text: python_wave2a_non_source,
     file: ^python_wave2a_file,
     rules: python_wave1_lex()
   ) {
@@ -49,7 +49,7 @@ fn python_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
   }
 }
 
-data claim_python_wave2a_non_mvp_function_parses: TestClaim = EqualsClaim {
+data claim_python_wave2a_non_function_parses: TestClaim = EqualsClaim {
   label: "Python Wave 2a lex/grammar accepts a non-MVP function with assignment, if, and indented returns",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_wave2a_bool_atom(

@@ -1,6 +1,6 @@
 module v2.test.execution.add_arrow_eval_by_execution
 
-import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body }
+import v2.compiler.body_producer { produce_add_arrow_with_body }
 import v2.test.complexity_gate.source_bridged_add_subject_producer {
   source_bridged_add_arrow_with_body,
   source_bridged_add_parse_tokens
@@ -22,7 +22,7 @@ import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_language_model_wave1,
-  dag_mvp1_source_text
+  dag_source_text
 }
 import v2.std.collection { Absent, List, Map, Present, list_at_optional, map_insert }
 import v2.std.compilers.lexing { Token, token_stream_all, token_stream_remaining }
@@ -310,7 +310,7 @@ fn add_arrow_eval_context() -> EvalContext {
 fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
+    o: tokenize(text: dag_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
       bind_outcome(
         o: source_bridged_add_parse_tokens(tokens: token_stream_remaining(stream: tokens)),
@@ -335,7 +335,7 @@ fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
 fn add_arrow_eval_tokenize_source() -> Outcome<List<Token>> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
+    o: tokenize(text: dag_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
       outcome_accepted(value: token_stream_all(stream: tokens))
     }
@@ -588,7 +588,7 @@ fn add_arrow_eval_source_pipeline_admits_add_holds() -> Bool {
 }
 
 fn add_arrow_eval_canonical_tree_infers_holds() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match produce_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_eval_inferred_run_tree(callee: arrow, expected: add_arrow_eval_literal_five_node()) {
         Accepted { value: _, diagnostics: _ } => true
@@ -638,7 +638,7 @@ fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
 }
 
 fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match produce_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
@@ -682,7 +682,7 @@ fn add_arrow_excess_body_red_holds() -> Bool {
 }
 
 fn add_arrow_excess_actual_executes_to_five() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match produce_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let input = add_arrow_excess_actual_call(callee: arrow)
       match add_arrow_eval_inferred_run_tree(callee: arrow, expected: add_arrow_eval_literal_five_node()) {

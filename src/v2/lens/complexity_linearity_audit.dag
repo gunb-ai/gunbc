@@ -24,7 +24,7 @@ data complexity_linearity_migration_debt_roster: List<String> = [
   "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
   "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
   "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
-  "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
+  "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
   "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
   "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
   "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",

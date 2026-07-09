@@ -1,4 +1,4 @@
-module v2.test.manual.fold_node_topdown_mvp
+module v2.test.manual.fold_node_topdown
 
 import v2.std.node {
   Atom,
@@ -97,8 +97,8 @@ fn topdown_expected() -> Node {
   topdown_leaf()
 }
 
-data claim_fold_node_topdown_mvp_compiles: TestClaim = CompilesClaim {
-  label: "manual/fold_node_topdown_mvp: module compiles",
+data claim_fold_node_topdown_compiles: TestClaim = CompilesClaim {
+  label: "manual/fold_node_topdown: module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_leaf(),
   expected_value: topdown_leaf(),
@@ -106,7 +106,7 @@ data claim_fold_node_topdown_mvp_compiles: TestClaim = CompilesClaim {
 }
 
 data claim_fold_node_topdown_leaf_returns_init: TestClaim = CompilesClaim {
-  label: "manual/fold_node_topdown_mvp: leaf returns init(leaf, ctx)",
+  label: "manual/fold_node_topdown: leaf returns init(leaf, ctx)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_leaf_returns_init),
   expected_value: topdown_expected(),
@@ -114,7 +114,7 @@ data claim_fold_node_topdown_leaf_returns_init: TestClaim = CompilesClaim {
 }
 
 data claim_fold_node_topdown_one_child_depth: TestClaim = CompilesClaim {
-  label: "manual/fold_node_topdown_mvp: one-child tree max depth is 1",
+  label: "manual/fold_node_topdown: one-child tree max depth is 1",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_one_child_max_depth_is_one),
   expected_value: topdown_expected(),
@@ -122,7 +122,7 @@ data claim_fold_node_topdown_one_child_depth: TestClaim = CompilesClaim {
 }
 
 data claim_fold_node_topdown_chain_depth: TestClaim = CompilesClaim {
-  label: "manual/fold_node_topdown_mvp: two-level chain max depth is 2",
+  label: "manual/fold_node_topdown: two-level chain max depth is 2",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_two_level_chain_max_depth_is_two),
   expected_value: topdown_expected(),
@@ -130,7 +130,7 @@ data claim_fold_node_topdown_chain_depth: TestClaim = CompilesClaim {
 }
 
 data claim_fold_node_topdown_edge_dispatch: TestClaim = CompilesClaim {
-  label: "manual/fold_node_topdown_mvp: child_context dispatches on edge not ordinal",
+  label: "manual/fold_node_topdown: child_context dispatches on edge not ordinal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_child_context_dispatches_on_edge),
   expected_value: topdown_expected(),

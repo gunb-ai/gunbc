@@ -11,11 +11,11 @@ import v2.lens.edit_locus {
   affected_set_reading_from_git_diff_provenance,
   resolve_edit_locus
 }
-import v2.extdeps.languages.dag { dag_mvp1_source_text }
+import v2.extdeps.languages.dag { dag_source_text }
 import v2.compiler.source_authority {
     DagSourceReadWitness,
   source_ir_artifact_provenance,
-  source_ir_node_artifact_provenance_mvp1
+  source_ir_node_artifact_provenance_add
 }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
@@ -49,7 +49,7 @@ data edit_locus_path_source_producer_fixture: RepoPath = "src/v2/lens/affected_s
 data edit_locus_path_unknown: RepoPath = "src/v2/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
 data edit_locus_source_producer_fixture_source: Medium<String> = Medium { carried: "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
-data edit_locus_source_producer_mvp1_fixture_source: Medium<String> = Medium { carried: dag_mvp1_source_text, fidelity: Lossless }
+data edit_locus_source_producer_add_fixture_source: Medium<String> = Medium { carried: dag_source_text, fidelity: Lossless }
 data edit_locus_source_producer_malformed_source: Medium<String> = Medium { carried: "fn add(x:Int, y:Int) -> Int { x + ", fidelity: Lossless }
 data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -64,8 +64,8 @@ data edit_locus_source_producer_fixture_source_read: DagSourceReadWitness = DagS
   source_root: V2Tree
 }
 
-data edit_locus_source_producer_mvp1_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
-  source: edit_locus_source_producer_mvp1_fixture_source,
+data edit_locus_source_producer_add_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: edit_locus_source_producer_add_fixture_source,
   artifact: edit_locus_source_producer_fixture_artifact,
   compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit,
   source_root: V2Tree
@@ -195,8 +195,8 @@ fn edit_locus_source_provenance_node_eq(left: Node, right: Node) -> Bool {
 }
 
 test fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
-  match source_ir_node_artifact_provenance_mvp1(
-    source_read: edit_locus_source_producer_mvp1_fixture_source_read
+  match source_ir_node_artifact_provenance_add(
+    source_read: edit_locus_source_producer_add_fixture_source_read
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
       let producer_graph = claim_inferred_tree(
@@ -262,7 +262,7 @@ fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
 }
 
 test fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
-  match source_ir_node_artifact_provenance_mvp1(
+  match source_ir_node_artifact_provenance_add(
     source_read: edit_locus_source_producer_malformed_source_read
   ) {
     Accepted { value: _, diagnostics: _ } => false

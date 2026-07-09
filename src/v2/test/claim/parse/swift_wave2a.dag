@@ -18,7 +18,7 @@ import v2.std.verification {
   Integration,
   manual_claim_anchor
 }
-data swift_wave2a_non_mvp_source: String = "func choose(x: Int) -> Int { let y = x + 1\nif y > 0 { return y }\nreturn 0 }"
+data swift_wave2a_non_source: String = "func choose(x: Int) -> Int { let y = x + 1\nif y > 0 { return y }\nreturn 0 }"
 
 fn swift_wave2a_bool_atom(b: Bool) -> Node {
   match b {
@@ -40,7 +40,7 @@ fn swift_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
 
 fn swift_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
   match tokenize(
-    text: swift_wave2a_non_mvp_source,
+    text: swift_wave2a_non_source,
     file: ^swift_wave2a_file,
     rules: swift_wave1_lex()
   ) {
@@ -50,7 +50,7 @@ fn swift_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
   }
 }
 
-data claim_swift_wave2a_non_mvp_function_parses: TestClaim = EqualsClaim {
+data claim_swift_wave2a_non_function_parses: TestClaim = EqualsClaim {
   label: "Swift Wave 2a lex/grammar accepts a non-MVP function with let, if, return, and binary expressions",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: swift_wave2a_bool_atom(

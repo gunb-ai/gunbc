@@ -2,10 +2,10 @@ module v2.test.manual.match_infer_fail_open_audit
 
 import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag {
-  dag_mvp1_match_arm_node,
-  dag_mvp1_match_body_from_arms,
-  dag_mvp1_match_if_body_fixture,
-  dag_mvp1_type_atom_node
+  dag_match_arm_node,
+  dag_match_body_from_arms,
+  dag_match_if_body_fixture,
+  dag_type_atom_node
 }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -24,13 +24,13 @@ import v2.std.verification {
 }
 
 fn match_infer_fail_open_audit_body() -> Node {
-  dag_mvp1_match_body_from_arms(
-    scrutinee: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
-    true_arm: dag_mvp1_match_arm_node(
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_arm: dag_match_arm_node(
       pattern_lit: ^dag_token_kw_true,
-      body_lit: ^dag_mvp1_pick_lit_one
+      body_lit: ^dag_pick_lit_one
     ),
-    false_arm: dag_mvp1_match_arm_node(
+    false_arm: dag_match_arm_node(
       pattern_lit: ^dag_token_kw_false,
       body_lit: ^dag_token_ident
     )
@@ -50,13 +50,13 @@ fn match_infer_fail_open_audit_non_exhaustive_body() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true)
+        target: dag_type_atom_node(identity: ^dag_token_kw_true)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_match_arm_node(
+        target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
-          body_lit: ^dag_mvp1_pick_lit_one
+          body_lit: ^dag_pick_lit_one
         )
       }
     ],
@@ -77,27 +77,27 @@ fn match_infer_fail_open_audit_extra_arm_body() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true)
+        target: dag_type_atom_node(identity: ^dag_token_kw_true)
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_match_arm_node(
+        target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
-          body_lit: ^dag_mvp1_pick_lit_one
+          body_lit: ^dag_pick_lit_one
         )
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_match_arm_node(
+        target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_false,
-          body_lit: ^dag_mvp1_pick_lit_one
+          body_lit: ^dag_pick_lit_one
         )
       },
       Edge {
         label: Positional,
-        target: dag_mvp1_match_arm_node(
+        target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
-          body_lit: ^dag_mvp1_pick_lit_two
+          body_lit: ^dag_pick_lit_two
         )
       }
     ],
@@ -113,7 +113,7 @@ test fn match_infer_fail_open_audit_extra_arm_rejects_holds() -> Bool {
 }
 
 fn match_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
-  match infer(tree: dag_mvp1_match_if_body_fixture) {
+  match infer(tree: dag_match_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }

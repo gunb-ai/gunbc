@@ -17,7 +17,7 @@ fn rust_wave2_grammar_structure_satisfied(lm: LanguageModel) -> Bool {
     lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: ^rust_token_kw_else) &&
     rust_formal_production_list_has_lhs(
       productions: rust_wave2_formal_productions(),
-      lhs: ^rust_production_mvp1_fn_add
+      lhs: ^rust_production_fn_add
     ) &&
     rust_formal_production_list_has_lhs(
       productions: rust_wave2_formal_productions(),

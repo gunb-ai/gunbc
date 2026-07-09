@@ -18,7 +18,7 @@ import v2.extdeps.languages.typescript {
 }
 import v2.extdeps.languages.rust {
   rust_integer_algebra_inhabitance_rust_facts_i32,
-  rust_mvp1_target_model_staging,
+  rust_target_model_staging,
   rust_target_atom_realization_symbol,
   rust_target_atom_type_form
 }
@@ -547,7 +547,7 @@ fn rust_r3_external_fixture() -> LeafModelFixturePair {
 
 data rust_r3_internal_mutated_row: TargetAtomRealization = TargetAtomRealization {
   source_carrier: symbol_kernel_type_node(),
-  target_model: rust_mvp1_target_model_staging(),
+  target_model: rust_target_model_staging(),
   type_form: rust_target_atom_type_form(spelling: ^rust_r3_internal_mutated_type_spelling),
   value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
   constructor_form: optional_absent(),

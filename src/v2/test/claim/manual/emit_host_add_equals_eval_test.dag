@@ -15,11 +15,11 @@ import v2.compiler.eval {
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
   rust_emit_host_runtime_primitive_type_node,
-  rust_mvp1_fixture_emitted_add_fn,
-  rust_mvp1_target_model_staging
+  rust_fixture_emitted_add_fn,
+  rust_target_model_staging
 }
 import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
-import v2.test.manual.eval_runtime_mvp { eval_mvp2_add_subgraph_node }
+import v2.test.manual.eval_runtime { eval_add_subgraph_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { List, Map, list_nth }
@@ -104,9 +104,9 @@ fn emit_eval_arg_is_two(value: RuntimeValue) -> Bool {
 
 fn emit_eval_args_are_two_twos(args: List<RuntimeValue>) -> Bool {
   if count(args) == 2 {
-    match list_nth(xs: args, wanted: 0, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: eval_mvp2_add_subgraph_node)) {
+    match list_nth(xs: args, wanted: 0, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: eval_add_subgraph_node)) {
       Holds { value: left } =>
-        match list_nth(xs: args, wanted: 1, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: eval_mvp2_add_subgraph_node)) {
+        match list_nth(xs: args, wanted: 1, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: eval_add_subgraph_node)) {
           Holds { value: right } =>
             emit_eval_arg_is_two(value: left) && emit_eval_arg_is_two(value: right)
           Violates { diagnostic: _ } => false
@@ -135,7 +135,7 @@ fn emit_eval_call_primitive_six(node: Node, args: List<RuntimeValue>, env: Evalu
 }
 
 fn emit_eval_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  Accepted { value: eval_mvp2_add_subgraph_node, diagnostics: None }
+  Accepted { value: eval_add_subgraph_node, diagnostics: None }
 }
 
 fn emit_eval_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
@@ -198,7 +198,7 @@ fn emit_eval_composed_facts(node: Node) -> Witness<InferredFacts> {
 
 fn emit_eval_subject_tree() -> InferredTree {
   InferredTree {
-    root: rust_mvp1_fixture_emitted_add_fn,
+    root: rust_fixture_emitted_add_fn,
     facts: Map { lookup: emit_eval_composed_facts }
   }
 }
@@ -215,7 +215,7 @@ fn emit_eval_claim(rhs_result_node: Node) -> TestClaim {
 
 fn emit_eval_subject(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
-    claim: emit_eval_claim(rhs_result_node: eval_mvp2_add_subgraph_node),
+    claim: emit_eval_claim(rhs_result_node: eval_add_subgraph_node),
     context: emit_eval_context(call_primitive: call_primitive),
     tree: emit_eval_subject_tree(),
     evaluator_pin: ^emit_eval_evaluator_pin
@@ -225,7 +225,7 @@ fn emit_eval_subject(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvi
 fn emit_eval_run(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_eval_subject(call_primitive: call_primitive),
-    target: rust_mvp1_target_model_staging()
+    target: rust_target_model_staging()
   )
 }
 

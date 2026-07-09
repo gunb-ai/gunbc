@@ -155,7 +155,7 @@ purpose: compile the bootstrap source snapshot
   is void. This must be a documented constraint on the PR that writes it, checkable by "did this
   PR's diff touch or import `src/v1`/`src/v2`" (mechanical, not just an honor rule).
 - **Scope, explicitly bounded:** parse+emit+run exactly the frozen `SeedCapability` subset against
-  `rust_mvp1_target_model`'s bootstrap-relevant slice — not the general `.dag` language, not the
+  `rust_target_model`'s bootstrap-relevant slice — not the general `.dag` language, not the
   full target-model bundle. LOC budget: low thousands, not tens of thousands — small enough that a
   human reviewer can read the whole thing in one sitting (that *is* the trust property DDC needs;
   a reference compiler too large to audit defeats its own purpose).
@@ -178,7 +178,7 @@ subset.
 This is a real constraint on `ddc_reference_compiler`'s scope (§3.3): it is not free to make
 independent codegen choices for the frozen subset — it must emit source that is byte-identical to
 `v1_pipeline`'s output for that closure, which is achievable only because the frozen subset is
-small and its target representation is fixed (`rust_mvp1_target_model`'s bootstrap-relevant slice),
+small and its target representation is fixed (`rust_target_model`'s bootstrap-relevant slice),
 not because codegen freedom is being waived. If a future stage wants to allow independently-chosen
 codegen (e.g. a reference compiler targeting a different backend entirely), that requires first
 widening `bootstrap.dag`'s witness shape to a semantic/behavioral equality — a load-bearing change

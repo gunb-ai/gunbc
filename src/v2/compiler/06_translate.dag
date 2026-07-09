@@ -3507,7 +3507,7 @@ fn translate_fold_init(
     ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
   }
 }
-fn translate_mvp1_coerce_from_grounding_or_evidence(
+fn translate_projection_absent_coerce_from_grounding_or_evidence(
   node: Node,
   tree: InferredTree,
   target: TargetModel
@@ -3540,7 +3540,7 @@ fn translate_mvp1_coerce_from_grounding_or_evidence(
       }
   }
 }
-fn translate_mvp1_fold_init(
+fn translate_projection_absent_fold_init(
   node: Node,
   tree: InferredTree,
   target: TargetModel
@@ -3563,7 +3563,7 @@ fn translate_mvp1_fold_init(
         }
       }
     TypeNode { connective: Atom { identity: _ } } =>
-      translate_mvp1_coerce_from_grounding_or_evidence(
+      translate_projection_absent_coerce_from_grounding_or_evidence(
         node: node,
         tree: tree,
         target: target
@@ -3709,7 +3709,7 @@ fn translate_node_computation(
     }
   )
 }
-fn translate_node_mvp1_fold(
+fn translate_node_projection_absent_fold(
   node: Node,
   tree: InferredTree,
   target: TargetModel
@@ -3717,7 +3717,7 @@ fn translate_node_mvp1_fold(
   fold_node(
     n: node,
     algebra: NodeFold {
-      init: fn(n0) { translate_mvp1_fold_init(node: n0, tree: tree, target: target) },
+      init: fn(n0) { translate_projection_absent_fold_init(node: n0, tree: tree, target: target) },
       step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
     }
   )
@@ -3818,7 +3818,7 @@ fn is_dag_import_carrier(emitted: Node) -> Bool {
   }
 }
 
-fn translate_node_mvp1(
+fn translate_node_projection_absent(
   node: Node,
   tree: InferredTree,
   target: TargetModel
@@ -3841,7 +3841,7 @@ fn translate_node_mvp1(
         match translate_grammar_relation_row_match(target: target, emitted: raw) {
           Accepted { value: _, diagnostics: _ } => outcome_accepted(raw)
           Rejected { diagnostics: _ } =>
-            translate_node_mvp1_fold(node: node, tree: tree, target: target)
+            translate_node_projection_absent_fold(node: node, tree: tree, target: target)
         }
       }
     )
@@ -3856,7 +3856,7 @@ fn translate_node(
     Accepted { value: ProjectionPresent, diagnostics: _ } =>
       translate_node_with_projection(node: node, tree: tree, target: target)
     Accepted { value: ProjectionAbsent, diagnostics: _ } =>
-      translate_node_mvp1(node: node, tree: tree, target: target)
+      translate_node_projection_absent(node: node, tree: tree, target: target)
     Rejected { diagnostics: r } =>
       Rejected { diagnostics: r }
   }

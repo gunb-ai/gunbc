@@ -153,9 +153,9 @@ type PythonSingletonPrimitiveFacts {
 data python_integer_algebra_inhabitance_python_facts_int: AlgebraInhabitanceDecl = python_integer_algebra_inhabitance(facts: python_facts_int)
 data python_atom_realization_symbol_node: Node = python_inhabitant_atom(id: ^python_atom_realization_symbol)
 
-data python_mvp1_source_text: String = "def add(x, y): return x + y"
+data python_source_text: String = "def add(x, y): return x + y"
 
-fn python_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn python_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^python_token_kw_def },
     BoundToken { token_class: ^python_token_ident, binding: ^python_binding_fn_add },
@@ -397,7 +397,7 @@ fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
 fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: ModelCorePrimitiveFactAxis) -> PerLanguageFactBundleKey {
   PerLanguageFactBundleKey {
     subject_carrier: subject_carrier,
-    target: python_mvp1_target_model(),
+    target: python_target_model(),
     fact_axis: fact_axis
   }
 }
@@ -569,7 +569,7 @@ fn python_g1_2_snoc_primitive_bundle(
     Accepted { value: bundles, diagnostics: _ } => match primitive_fact_bundle_for_subject(
       registry: registry,
       subject_carrier: subject_carrier,
-      target: python_mvp1_target_model()
+      target: python_target_model()
     ) {
       Accepted { value: bundle, diagnostics: d } =>
         Accepted {
@@ -858,11 +858,11 @@ fn python_declared_inhabitants_root() -> Node {
 }
 }
 
-fn python_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
+fn python_int_zip_fold_closure_edges() -> List<Edge> {
   [
     python_named_edge(
-      name: ^python_inhabitant_field_mvp1_add_fn,
-      target: python_mvp1_emitted_add_fn_node()
+      name: ^python_inhabitant_field_add_fn,
+      target: python_emitted_add_fn_node()
     ),
     python_named_edge(
       name: ^python_coercion_field_int_inhabitant_atom,
@@ -887,26 +887,26 @@ fn python_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
   ]
 }
 
-fn python_mvp1_coercion_candidate_edges() -> List<Edge> {
+fn python_coercion_candidate_edges() -> List<Edge> {
   list_append(
     left: python_declared_inhabitants_root().children,
-    right: python_mvp1_int_zip_fold_closure_edges()
+    right: python_int_zip_fold_closure_edges()
   )
 }
 
-fn python_mvp1_declared_inhabitants_root() -> Node {
+fn python_add_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: python_mvp1_coercion_candidate_edges(),
+    children: python_coercion_candidate_edges(),
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn python_mvp1_selection_policy_node() -> Node {
+fn python_selection_policy_node() -> Node {
   python_int_inhabitant_node()
 }
 
-fn python_mvp1_emitted_add_fn_node() -> Node {
+fn python_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
@@ -923,17 +923,17 @@ fn python_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn python_mvp1_serialize_source_children() -> List<Edge> {
+fn python_serialize_source_children() -> List<Edge> {
   list_append(
     left: [
-      python_named_edge(name: ^serialize_source_field_source_text, target: python_inhabitant_atom(id: ^python_mvp1_source_literal)),
-      python_named_edge(name: ^serialize_source_field_source_grammar, target: python_inhabitant_atom(id: ^python_production_mvp1_fn_add))
+      python_named_edge(name: ^serialize_source_field_source_text, target: python_inhabitant_atom(id: ^python_source_literal)),
+      python_named_edge(name: ^serialize_source_field_source_grammar, target: python_inhabitant_atom(id: ^python_production_fn_add))
     ],
     right: [
       python_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: python_mvp1_concrete_tokens(),
+          tokens: python_concrete_tokens(),
           token_to_node: python_concrete_token_node
         )
       )
@@ -941,17 +941,17 @@ fn python_mvp1_serialize_source_children() -> List<Edge> {
   )
 }
 
-fn python_mvp1_serialize_source_node() -> Node {
+fn python_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: python_mvp1_serialize_source_children(),
+    children: python_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
 }
 
 fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   fold_list(
-    xs: python_mvp1_concrete_tokens(),
+    xs: python_concrete_tokens(),
     empty: Empty,
     cons: fn(acc, token) {
       list_snoc_item(
@@ -1070,32 +1070,32 @@ fn python_formal_productions_to_grammar_production(
   }
 }
 
-fn python_formal_production_mvp1_fn_add() -> FormalProduction {
+fn python_formal_production_fn_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: ^python_production_mvp1_fn_add,
+    lhs: ^python_production_fn_add,
     rhs: python_formal_rhs_from_token_classes()
   )
 }
 
 fn python_wave1_formal_productions() -> List<FormalProduction> {
-  [python_formal_production_mvp1_fn_add()]
+  [python_formal_production_fn_add()]
 }
 
-fn python_grammar_production_mvp1_fn_add() -> GrammarProduction {
+fn python_grammar_production_fn_add() -> GrammarProduction {
   GrammarProduction {
-    name: ^python_production_mvp1_fn_add,
+    name: ^python_production_fn_add,
     expression: python_formal_productions_to_grammar_expr(
-      prods: [python_formal_production_mvp1_fn_add()]
+      prods: [python_formal_production_fn_add()]
     ),
-    emitted: python_mvp1_emitted_add_fn_node()
+    emitted: python_emitted_add_fn_node()
   }
 }
 
-fn python_mvp1_grammar_relation_row() -> PythonGrammarRelationRow {
+fn python_grammar_relation_row() -> PythonGrammarRelationRow {
   PythonGrammarRelationRow {
-    production: python_formal_production_mvp1_fn_add(),
-    emitted: python_mvp1_emitted_add_fn_node(),
-    tokens: python_mvp1_concrete_tokens()
+    production: python_formal_production_fn_add(),
+    emitted: python_emitted_add_fn_node(),
+    tokens: python_concrete_tokens()
   }
 }
 
@@ -1117,13 +1117,13 @@ fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
 }
 }
 
-fn python_mvp1_translation_rules_node() -> Node {
+fn python_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       python_named_edge(
-        name: ^python_relation_rule_mvp1_fn_add,
-        target: python_grammar_relation_row_node(row: python_mvp1_grammar_relation_row())
+        name: ^python_relation_rule_fn_add,
+        target: python_grammar_relation_row_node(row: python_grammar_relation_row())
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -1138,9 +1138,9 @@ fn python_emit_host_runtime_primitive_type_node() -> Node {
   }
 }
 
-fn python_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
+fn python_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
-    identity: ^python_host_transport_mvp1_identity,
+    identity: ^python_host_transport_identity,
     workspace: [
       WorkspaceFile {
         path: "fixture.py",
@@ -1156,29 +1156,29 @@ fn python_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
   }
 }
 
-fn python_mvp1_runtime_row() -> TargetEmitHostRuntimeRow {
+fn python_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
-      transport: python_host_transport_mvp1_descriptor(),
+      transport: python_host_transport_descriptor(),
       runtime_primitive_type: python_emit_host_runtime_primitive_type_node()
     }
   }
 }
 
-fn python_mvp1_target_model_node() -> Node {
+fn python_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      python_named_edge(name: ^target_model_edge_selection_policy, target: python_mvp1_selection_policy_node()),
-      python_named_edge(name: ^target_model_edge_declared_inhabitants, target: python_mvp1_declared_inhabitants_root()),
-      python_named_edge(name: ^target_model_edge_translation_rules, target: python_mvp1_translation_rules_node()),
-      python_named_edge(name: ^target_model_edge_serialize_source, target: python_mvp1_serialize_source_node())
+      python_named_edge(name: ^target_model_edge_selection_policy, target: python_selection_policy_node()),
+      python_named_edge(name: ^target_model_edge_declared_inhabitants, target: python_add_declared_inhabitants_root()),
+      python_named_edge(name: ^target_model_edge_translation_rules, target: python_translation_rules_node()),
+      python_named_edge(name: ^target_model_edge_serialize_source, target: python_serialize_source_node())
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn python_mvp1_binding_spellings() -> Map<Symbol, String> {
+fn python_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^python_binding_fn_add, "add"),
@@ -1190,14 +1190,14 @@ fn python_mvp1_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn python_mvp1_target_model() -> TargetModel {
+fn python_target_model() -> TargetModel {
   TargetModel {
-    bundle: python_mvp1_target_model_node(),
+    bundle: python_target_model_node(),
     lex: python_wave1_lex(),
-    binding_spellings: python_mvp1_binding_spellings(),
+    binding_spellings: python_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: python_mvp1_source_text,
-    runtime_row: python_mvp1_runtime_row()
+    authority_source_text: python_source_text,
+    runtime_row: python_runtime_row()
   }
 }
 
@@ -1300,7 +1300,7 @@ fn python_wave1_grammar_root() -> GrammarRoot {
   GrammarRoot {
     start: ^python_production_fn_def,
     productions: [
-      python_grammar_production_mvp1_fn_add(),
+      python_grammar_production_fn_add(),
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
           lhs: ^python_production_fn_def,
@@ -1533,8 +1533,8 @@ fn python_language_model_canonical_symbols() -> Set<Symbol> {
         python_wave1_lex_token_symbol(sym: sym) ||
         grammar_carries_symbol(grammar: python_wave1_grammar(), sym: sym) ||
         sym == ^python_surface_fn_item ||
-        sym == ^python_production_mvp1_fn_add ||
-        sym == ^python_mvp1_source_literal
+        sym == ^python_production_fn_add ||
+        sym == ^python_source_literal
     }
   }
 }

@@ -1,4 +1,4 @@
-module v2.test.manual.solve_constraints_add_mvp
+module v2.test.manual.solve_constraints_add
 
 import v2.std.constraints {
   CanonicalGrounding,
@@ -13,7 +13,7 @@ import v2.std.diagnostic {
   Rejected
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.test.manual.infer_ground_add_mvp {
+import v2.test.manual.infer_ground_add {
   fixture_add_resolved_node,
   fixture_add_resolved_tree
 }
@@ -30,7 +30,7 @@ fn fixture_add_constraint_graph() -> ConstraintGraph {
   ConstraintGraph { root: fixture_add_resolved_tree() }
 }
 
-fn anchor_solve_constraints_add_mvp() -> Outcome<CanonicalGrounding> {
+fn anchor_solve_constraints_add() -> Outcome<CanonicalGrounding> {
   solve_constraints(
     policy: ConstraintSolvePolicy {
       graph: fixture_add_constraint_graph()
@@ -38,7 +38,7 @@ fn anchor_solve_constraints_add_mvp() -> Outcome<CanonicalGrounding> {
   )
 }
 
-data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraints_add_mvp() {
+data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraints_add() {
   Accepted { value: g, diagnostics: d } =>
     (g.node == fixture_add_resolved_tree())
       && (g.witness.structural.property == ^preservation_rule_constraint_satisfaction)
@@ -62,8 +62,8 @@ fn solve_constraints_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_solve_constraints_add_mvp_compiles: TestClaim = CompilesClaim {
-  label: "manual/solve_constraints_add_mvp: constraint path module compiles",
+data claim_solve_constraints_add_compiles: TestClaim = CompilesClaim {
+  label: "manual/solve_constraints_add: constraint path module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fixture_add_resolved_node(),
   expected_value: fixture_add_resolved_node(),
@@ -71,7 +71,7 @@ data claim_solve_constraints_add_mvp_compiles: TestClaim = CompilesClaim {
 }
 
 data claim_solve_constraints_add_accepts: TestClaim = CompilesClaim {
-  label: "manual/solve_constraints_add_mvp: solve_constraints Accepted on add graph root",
+  label: "manual/solve_constraints_add: solve_constraints Accepted on add graph root",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: solve_constraints_claim_input(ok: witness_solve_constraints_add_accepts),
   expected_value: fixture_add_resolved_node(),

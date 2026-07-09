@@ -9,8 +9,8 @@ v2's **own** emitter — `emit = serialize_target ∘ translate`, the one-gramma
 
 ## 2. What already exists (don't rebuild)
 
-- **The kernel works end-to-end at MVP scale.** S0's receipt (landed, #6359): `emit(add-fn)` → real Rust workspace → `cargo build && run` → output **== eval** of the same tree, with a wrong-oracle RED. The pieces: `src/v2/compiler/emit_host.dag` (host transport, wet-mode), `rust_host_transport_mvp1_descriptor()` in `src/v2/extdeps/languages/rust.dag` (Cargo.toml + harness + 5-byte codec), `emit_host_run_transport` builtin in the v1 interpreter.
-- **Translate rows live in** `src/v2/std/compilers/target_model.dag` (11.4k lines of rows) + `src/v2/extdeps/languages/rust.dag` (`rust_mvp1_target_model_staging()`). New coverage = **rows, never edits to the fold** (DESIGN §4: N rows, not N×M adapters; §7: a wall is a row).
+- **The kernel works end-to-end at MVP scale.** S0's receipt (landed, #6359): `emit(add-fn)` → real Rust workspace → `cargo build && run` → output **== eval** of the same tree, with a wrong-oracle RED. The pieces: `src/v2/compiler/emit_host.dag` (host transport, wet-mode), `rust_host_transport_descriptor()` in `src/v2/extdeps/languages/rust.dag` (Cargo.toml + harness + 5-byte codec), `emit_host_run_transport` builtin in the v1 interpreter.
+- **Translate rows live in** `src/v2/std/compilers/target_model.dag` (11.4k lines of rows) + `src/v2/extdeps/languages/rust.dag` (`rust_target_model_staging()`). New coverage = **rows, never edits to the fold** (DESIGN §4: N rows, not N×M adapters; §7: a wall is a row).
 - **The subject corpus is enumerated**: the parse pipeline's 40-file closure is data in `src/v2/test/claim/manual/s1_closure_receipt_test.dag` — the same list is this lane's module ladder.
 
 ## 3. The receipt ladder (work bottom-up, one module at a time)

@@ -6,7 +6,7 @@ import v2.compiler.parse {
 }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.typescript {
-  ts_mvp1_source_text,
+  ts_source_text,
   ts_wave1_grammar_root,
   ts_wave1_lex
 }
@@ -54,7 +54,7 @@ fn typescript_wave1_grammar_parse_accepted() -> Bool {
 fn typescript_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(
-    text: ts_mvp1_source_text,
+    text: ts_source_text,
     file: ^typescript_wave1_parse_fixture_file,
     rules: ts_wave1_lex()
   ) {
@@ -66,7 +66,7 @@ fn typescript_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
           parse_production_tree(
             tokens: token_stream_remaining(stream: stream),
             validated: validated,
-            production_name: ^ts_production_mvp1_fn_add
+            production_name: ^ts_production_fn_add
           )
       }
   }

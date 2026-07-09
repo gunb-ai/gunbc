@@ -2,10 +2,10 @@ module v2.test.manual.add_body_producer_claim
 
 import v2.compiler.body_producer {
   arrow_has_body_edge,
-  produce_mvp1_add_arrow_with_body,
-  produce_mvp1_add_arrow_with_body_from_resolved
+  produce_add_arrow_with_body,
+  produce_add_arrow_with_body_from_resolved
 }
-import v2.extdeps.languages.dag { dag_mvp1_add_binary_body_fixture }
+import v2.extdeps.languages.dag { dag_add_binary_body_fixture }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse {
   grammar_validate_for_parse,
@@ -14,9 +14,9 @@ import v2.compiler.parse {
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_grammar_production_mvp1_fn_add,
+  dag_grammar_production_fn_add,
   dag_language_model_wave1,
-  dag_mvp1_source_text
+  dag_source_text
 }
 import v2.std.diagnostic {
   Accepted,
@@ -68,7 +68,7 @@ fn add_body_bool_node(pass: Bool) -> Node {
 }
 
 fn add_body_produce_add_arrow_accepts() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match produce_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       well_formed(n: arrow) && arrow_has_body_edge(arrow: arrow)
     Rejected { diagnostics: _ } => false
@@ -105,7 +105,7 @@ fn add_arrow_swapped_operand_body() -> Node {
 }
 
 fn add_body_operand_order_differs() -> Bool {
-  let canonical = dag_mvp1_add_binary_body_fixture
+  let canonical = dag_add_binary_body_fixture
   let swapped = add_arrow_swapped_operand_body()
   canonical != swapped
 }
@@ -149,8 +149,8 @@ fn add_body_arrow_with_atom_body_rejects() -> Bool {
 
 fn add_body_add_fn_parse_root() -> GrammarRoot {
   GrammarRoot {
-    start: ^dag_production_mvp1_fn_add,
-    productions: [dag_grammar_production_mvp1_fn_add()],
+    start: ^dag_production_fn_add,
+    productions: [dag_grammar_production_fn_add()],
     sync_tokens: Set {
       member: fn(_) {
         false
@@ -166,7 +166,7 @@ fn add_body_parse_add_fn_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
       parse_production_tree(
         tokens: tokens,
         validated: validated,
-        production_name: ^dag_production_mvp1_fn_add
+        production_name: ^dag_production_fn_add
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -175,7 +175,7 @@ fn add_body_parse_add_fn_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
 fn source_bridged_resolved_add_arrow() -> Outcome<Node> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: ^add_body_producer_source_file, rules: lm.lex),
+    o: tokenize(text: dag_source_text, file: ^add_body_producer_source_file, rules: lm.lex),
     f: fn(tokens) {
       bind_outcome(
         o: add_body_parse_add_fn_tokens(tokens: token_stream_remaining(stream: tokens)),
@@ -195,7 +195,7 @@ fn source_bridged_resolved_add_arrow() -> Outcome<Node> {
 fn add_body_resolved_bridge_produces_well_formed_arrow() -> Bool {
   match source_bridged_resolved_add_arrow() {
     Accepted { value: resolved, diagnostics: _ } =>
-      match produce_mvp1_add_arrow_with_body_from_resolved(resolved_root: resolved) {
+      match produce_add_arrow_with_body_from_resolved(resolved_root: resolved) {
         Accepted { value: arrow, diagnostics: _ } =>
           well_formed(n: arrow) && arrow_has_body_edge(arrow: arrow)
         Rejected { diagnostics: _ } => false
@@ -205,7 +205,7 @@ fn add_body_resolved_bridge_produces_well_formed_arrow() -> Bool {
 }
 
 fn add_body_edge_targets_binary_transform() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match produce_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
@@ -220,7 +220,7 @@ fn add_body_edge_targets_binary_transform() -> Bool {
 }
 
 data claim_add_body_producer_well_formed: TestClaim = EqualsClaim {
-  label: "manual/add_arrow: produce_mvp1_add_arrow_with_body is well-formed with Arrow.body Behavior subtree",
+  label: "manual/add_arrow: produce_add_arrow_with_body is well-formed with Arrow.body Behavior subtree",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: add_body_bool_node(pass: add_body_produce_add_arrow_accepts()),
   rhs: add_body_bool_node(pass: true),

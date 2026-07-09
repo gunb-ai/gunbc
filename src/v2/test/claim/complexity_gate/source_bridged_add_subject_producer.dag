@@ -1,6 +1,6 @@
 module v2.test.complexity_gate.source_bridged_add_subject_producer
 
-import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
+import v2.compiler.body_producer { produce_add_arrow_with_body_from_resolved }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse {
   grammar_validate_for_parse,
@@ -9,9 +9,9 @@ import v2.compiler.parse {
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_grammar_production_mvp1_fn_add,
+  dag_grammar_production_fn_add,
   dag_language_model_wave1,
-  dag_mvp1_source_text
+  dag_source_text
 }
 import v2.std.collection { List, Set }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, port_locus }
@@ -21,8 +21,8 @@ import v2.std.node { Node, Symbol }
 
 fn source_bridged_add_parse_root() -> GrammarRoot {
   GrammarRoot {
-    start: ^dag_production_mvp1_fn_add,
-    productions: [dag_grammar_production_mvp1_fn_add()],
+    start: ^dag_production_fn_add,
+    productions: [dag_grammar_production_fn_add()],
     sync_tokens: Set {
       member: fn(_) {
         false
@@ -38,7 +38,7 @@ fn source_bridged_add_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
       parse_production_tree(
         tokens: tokens,
         validated: validated,
-        production_name: ^dag_production_mvp1_fn_add
+        production_name: ^dag_production_fn_add
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -48,7 +48,7 @@ fn source_bridged_resolved_add_arrow() -> Outcome<Node> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
-      text: dag_mvp1_source_text,
+      text: dag_source_text,
       file: ^source_bridged_add_subject_source_file,
       rules: lm.lex
     ),
@@ -72,7 +72,7 @@ fn source_bridged_add_arrow_with_body() -> Outcome<Node> {
   bind_outcome(
     o: source_bridged_resolved_add_arrow(),
     f: fn(resolved) {
-      produce_mvp1_add_arrow_with_body_from_resolved(resolved_root: resolved)
+      produce_add_arrow_with_body_from_resolved(resolved_root: resolved)
     }
   )
 }

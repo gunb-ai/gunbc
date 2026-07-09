@@ -8,16 +8,16 @@ import v2.compiler.ingest {
 }
 import v2.compiler.translate { grammar_relation_row_for_emitted }
 import v2.extdeps.languages.dag {
-  dag_mvp1_fixture_emitted_add_fn,
-  dag_mvp1_target_model
+  dag_fixture_emitted_add_fn,
+  dag_target_model
 }
 import v2.extdeps.languages.python {
   python_grammar_relation_row_node,
-  python_mvp1_emitted_add_fn_node,
-  python_mvp1_grammar_relation_row,
-  python_mvp1_source_text,
-  python_mvp1_target_model,
-  python_mvp1_translation_rules_node
+  python_emitted_add_fn_node,
+  python_grammar_relation_row,
+  python_source_text,
+  python_target_model,
+  python_translation_rules_node
 }
 import v2.test.manual.python_wave1_grammar_claim {
   python_wave1_grammar_parse_fixture
@@ -68,15 +68,15 @@ fn emit_ingest_python_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>
 }
 
 fn emit_ingest_python_shared_rules() -> Node {
-  python_mvp1_translation_rules_node()
+  python_translation_rules_node()
 }
 
 fn emit_ingest_python_canonical_row() -> Node {
-  python_grammar_relation_row_node(row: python_mvp1_grammar_relation_row())
+  python_grammar_relation_row_node(row: python_grammar_relation_row())
 }
 
 fn emit_ingest_python_canonical_emitted() -> Node {
-  python_mvp1_emitted_add_fn_node()
+  python_emitted_add_fn_node()
 }
 
 fn emit_python_backward_selects_canonical_row_holds() -> Bool {
@@ -180,7 +180,7 @@ fn ingest_python_forward_fails_closed_off_frontier_holds() -> Bool {
 fn emit_python_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_python_shared_rules(),
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -202,7 +202,7 @@ fn python_same_language_parse_bridge_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_target_model_bridge(
         parse_tree: tree,
-        source_model: python_mvp1_target_model()
+        source_model: python_target_model()
       ) {
         Accepted { value: recovered, diagnostics: _ } =>
           recovered == emit_ingest_python_canonical_emitted()
@@ -217,11 +217,11 @@ test fn python_same_language_source_emit_round_trip_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
         parse_tree: tree,
-        source_model: python_mvp1_target_model(),
-        target_model: python_mvp1_target_model()
+        source_model: python_target_model(),
+        target_model: python_target_model()
       ) {
         Accepted { value: source, diagnostics: _ } =>
-          (source.carried == python_mvp1_source_text)
+          (source.carried == python_source_text)
             && python_same_language_discriminates_on_real_tree()
         Rejected { diagnostics: _ } => false
       }
@@ -234,7 +234,7 @@ fn python_same_language_discriminates_on_real_tree() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: dag_mvp1_target_model()
+        source_model: dag_target_model()
       ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true

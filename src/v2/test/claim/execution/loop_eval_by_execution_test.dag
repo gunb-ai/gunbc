@@ -1,8 +1,8 @@
 module v2.test.execution.loop_eval_by_execution
 
 import v2.compiler.body_producer {
-  produce_mvp1_loop_arrow_with_body,
-  produce_mvp1_loop_arrow_with_body_wrong_value
+  produce_loop_arrow_with_body,
+  produce_loop_arrow_with_body_wrong_value
 }
 import v2.test.complexity_gate.source_bridged_loop_subject_producer {
   source_bridged_loop_arrow_with_body,
@@ -130,11 +130,11 @@ fn loop_two_value() -> RuntimeValue {
 }
 
 fn loop_literal_one_node() -> Node {
-  loop_atom(s: ^dag_mvp1_pick_lit_one)
+  loop_atom(s: ^dag_pick_lit_one)
 }
 
 fn loop_literal_two_node() -> Node {
-  loop_atom(s: ^dag_mvp1_pick_lit_two)
+  loop_atom(s: ^dag_pick_lit_two)
 }
 
 fn loop_runtime_diagnostic(n: Node) -> Diagnostic {
@@ -279,7 +279,7 @@ fn loop_node_is_loop(node: Node) -> Bool {
 fn loop_loop_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^dag_mvp1_loop_measure_sym }
+    strict: RankingDimension { measured: ^dag_loop_measure_sym }
   }
 }
 
@@ -449,7 +449,7 @@ fn loop_value_perturbation_red_holds() -> Bool {
 }
 
 fn loop_fixture_producer_holds() -> Bool {
-  match produce_mvp1_loop_arrow_with_body() {
+  match produce_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
@@ -462,7 +462,7 @@ fn loop_fixture_producer_holds() -> Bool {
 }
 
 fn loop_fixture_wrong_value_red_holds() -> Bool {
-  match produce_mvp1_loop_arrow_with_body_wrong_value() {
+  match produce_loop_arrow_with_body_wrong_value() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(

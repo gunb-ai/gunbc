@@ -433,7 +433,7 @@ fn infer_branch_is_bool_literal_atom(node: Node) -> Bool {
 fn infer_branch_is_int_literal_atom(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      (id == ^dag_mvp1_pick_lit_one) || (id == ^dag_mvp1_pick_lit_two)
+      (id == ^dag_pick_lit_one) || (id == ^dag_pick_lit_two)
     _ => false
   }
 }

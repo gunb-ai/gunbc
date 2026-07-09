@@ -1,4 +1,4 @@
-module v2.test.manual.fold_source_mvp
+module v2.test.manual.fold_source
 
 import std.algebra { Cons, Empty }
 import v2.std.logic { Bool }
@@ -71,8 +71,8 @@ fn fold_source_expected() -> Node {
   }
 }
 
-data claim_fold_source_mvp_compiles: TestClaim = CompilesClaim {
-  label: "manual/fold_source_mvp: module compiles",
+data claim_fold_source_compiles: TestClaim = CompilesClaim {
+  label: "manual/fold_source: module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fold_source_ok_node(ok: true),
   expected_value: fold_source_expected(),
@@ -80,7 +80,7 @@ data claim_fold_source_mvp_compiles: TestClaim = CompilesClaim {
 }
 
 data claim_fold_source_is_done_short_circuits: TestClaim = CompilesClaim {
-  label: "manual/fold_source_mvp: is_done short-circuits before |src| bound",
+  label: "manual/fold_source: is_done short-circuits before |src| bound",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fold_source_ok_node(ok: witness_fold_source_stops_at_is_done()),
   expected_value: fold_source_expected(),

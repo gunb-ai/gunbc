@@ -264,7 +264,7 @@ data lean_facts_bool: LeanPrimitiveFacts = LeanPrimitiveFacts {
   representation: ^lean_repr_bool_inductive
 }
 
-data lean_mvp1_source_text: String = "def dec (n : Int32) : Int32 := n - 1\n  termination_by n"
+data lean_source_text: String = "def dec (n : Int32) : Int32 := n - 1\n  termination_by n"
 data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_int8,
   lean_facts_int16,
@@ -446,7 +446,7 @@ fn lean_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn lean_mvp1_token_class_tail() -> List<Symbol> {
+fn lean_token_class_tail() -> List<Symbol> {
   [
     ^lean_token_name_dec,
     ^lean_token_lparen,
@@ -465,10 +465,10 @@ fn lean_mvp1_token_class_tail() -> List<Symbol> {
   ]
 }
 
-fn lean_mvp1_formal_token_classes() -> List<Symbol> {
+fn lean_formal_token_classes() -> List<Symbol> {
   Cons {
     head: ^lean_token_kw_def,
-    tail: lean_mvp1_token_class_tail()
+    tail: lean_token_class_tail()
   }
 }
 
@@ -485,14 +485,14 @@ fn lean_formal_rhs_from_token_classes(classes: List<Symbol>) -> List<FormalGramm
   )
 }
 
-fn lean_mvp1_def_dec_formal_production() -> FormalProduction {
+fn lean_def_dec_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^lean_production_mvp1_def_dec),
-    rhs: lean_formal_rhs_from_token_classes(classes: lean_mvp1_formal_token_classes())
+    lhs: grammar_formal_nonterminal(identity: ^lean_production_def_dec),
+    rhs: lean_formal_rhs_from_token_classes(classes: lean_formal_token_classes())
   }
 }
 
-data lean_mvp1_def_dec_formal_production_authority: FormalProduction = lean_mvp1_def_dec_formal_production()
+data lean_def_dec_formal_production_authority: FormalProduction = lean_def_dec_formal_production()
 
 fn lean_grammar_sequence_from_nonempty(
   head: Symbol,
@@ -510,10 +510,10 @@ fn lean_grammar_sequence_from_nonempty(
   )
 }
 
-fn lean_mvp1_def_dec_parse_expr() -> GrammarExpr {
+fn lean_def_dec_parse_expr() -> GrammarExpr {
   lean_grammar_sequence_from_nonempty(
     head: ^lean_token_kw_def,
-    tail: lean_mvp1_token_class_tail()
+    tail: lean_token_class_tail()
   )
 }
 
@@ -562,12 +562,12 @@ fn lean_wave1_lex_token_symbol(sym: Symbol) -> Bool {
 
 fn lean_wave1_grammar_root() -> GrammarRoot {
   let start = GrammarProduction {
-    name: ^lean_production_mvp1_def_dec,
-    expression: lean_mvp1_def_dec_parse_expr(),
+    name: ^lean_production_def_dec,
+    expression: lean_def_dec_parse_expr(),
     emitted: grammar_atom(identity: ^lean_surface_def_item)
   }
   GrammarRoot {
-    start: ^lean_production_mvp1_def_dec,
+    start: ^lean_production_def_dec,
     productions: [start],
     sync_tokens: grammar_empty_sync_tokens()
   }
@@ -588,8 +588,8 @@ fn lean_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
     schema: lean_ingest_grammar_schema(),
     probe: GrammarSchemaProbe {
-      fixture: lean_mvp1_source_text,
-      production: lean_mvp1_def_dec_formal_production(),
+      fixture: lean_source_text,
+      production: lean_def_dec_formal_production(),
       expected_parse_surface: grammar_atom(identity: ^lean_surface_def_item)
     }
   }
@@ -603,7 +603,7 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
       lean_catalog_surface_symbol(sym: sym) ||
         lean_wave1_lex_token_symbol(sym: sym) ||
         grammar_carries_symbol(grammar: lean_wave1_grammar(), sym: sym) ||
-        sym == ^lean_mvp1_source_literal
+        sym == ^lean_source_literal
     }
   }
 }

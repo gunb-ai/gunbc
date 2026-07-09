@@ -172,7 +172,7 @@ type SwiftGrammarRelationRow {
   emitted: Node
   tokens: List<ConcreteSyntaxToken>
 }
-fn swift_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn swift_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^swift_token_kw_func },
     BoundToken { token_class: ^swift_token_ident, binding: ^swift_binding_fn_add },
@@ -195,7 +195,7 @@ fn swift_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^swift_token_rbrace }
   ]
 }
-data swift_mvp1_source_text: String = "func add(x: Int32, y: Int32) -> Int32 { return x + y }"
+data swift_source_text: String = "func add(x: Int32, y: Int32) -> Int32 { return x + y }"
 
 data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = SwiftIntegerOverflowSemantics {
   tag: ^swift_tag_trap_on_overflow
@@ -519,11 +519,11 @@ fn swift_declared_inhabitants_root() -> Node {
 }
 }
 
-fn swift_mvp1_selection_policy_node() -> Node {
+fn swift_selection_policy_node() -> Node {
   swift_inhabitant_int32_node()
 }
 
-fn swift_mvp1_emitted_add_fn_node() -> Node {
+fn swift_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
@@ -535,8 +535,8 @@ fn swift_mvp1_emitted_add_fn_node() -> Node {
 }
 }
 
-fn swift_mvp1_source_text_authority() -> String {
-  swift_mvp1_source_text
+fn swift_source_text_authority() -> String {
+  swift_source_text
 }
 
 fn swift_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
@@ -544,30 +544,30 @@ fn swift_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn swift_mvp1_serialize_source_prefix_edges() -> List<Edge> {
+fn swift_serialize_source_prefix_edges() -> List<Edge> {
   Cons {
     head: swift_named_edge(
       name: ^serialize_source_field_source_text,
-      target: swift_atom(id: ^swift_mvp1_source_literal)
+      target: swift_atom(id: ^swift_source_literal)
     ),
     tail: Cons {
       head: swift_named_edge(
         name: ^serialize_source_field_source_grammar,
-        target: swift_atom(id: ^swift_production_mvp1_fn_add)
+        target: swift_atom(id: ^swift_production_fn_add)
       ),
       tail: Empty
     }
   }
 }
 
-fn swift_mvp1_serialize_source_children() -> List<Edge> {
+fn swift_serialize_source_children() -> List<Edge> {
   list_append(
-    left: swift_mvp1_serialize_source_prefix_edges(),
+    left: swift_serialize_source_prefix_edges(),
     right: [
       swift_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: swift_mvp1_concrete_tokens(),
+          tokens: swift_concrete_tokens(),
           token_to_node: swift_concrete_token_node
         )
       )
@@ -575,11 +575,11 @@ fn swift_mvp1_serialize_source_children() -> List<Edge> {
   )
 }
 
-fn swift_mvp1_serialize_source_node() -> Node {
-  let _authority = swift_mvp1_source_text_authority()
+fn swift_serialize_source_node() -> Node {
+  let _authority = swift_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
-    children: swift_mvp1_serialize_source_children(),
+    children: swift_serialize_source_children(),
     occurrence_id: SyntheticOccurrence
 }
 }
@@ -602,7 +602,7 @@ fn swift_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken
 
 fn swift_grammar_sequence_from_token_classes() -> GrammarExpr {
   fold_list(
-    xs: swift_mvp1_concrete_tokens(),
+    xs: swift_concrete_tokens(),
     empty: swift_grammar_terminal(token_class: ^swift_token_kw_func),
     cons: fn(acc, token) {
       swift_grammar_sequence_fold_step(acc: acc, token: token)
@@ -610,11 +610,11 @@ fn swift_grammar_sequence_from_token_classes() -> GrammarExpr {
   )
 }
 
-fn swift_mvp1_grammar_relation_row() -> SwiftGrammarRelationRow {
+fn swift_grammar_relation_row() -> SwiftGrammarRelationRow {
   SwiftGrammarRelationRow {
-    production: swift_grammar_production_mvp1_fn_add(),
-    emitted: swift_mvp1_emitted_add_fn_node(),
-    tokens: swift_mvp1_concrete_tokens()
+    production: swift_grammar_production_fn_add(),
+    emitted: swift_emitted_add_fn_node(),
+    tokens: swift_concrete_tokens()
   }
 }
 
@@ -639,26 +639,26 @@ fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
 }
 }
 
-fn swift_mvp1_translation_rules_node() -> Node {
+fn swift_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
-        name: ^swift_relation_rule_mvp1_fn_add,
-        target: swift_grammar_relation_row_node(row: swift_mvp1_grammar_relation_row())
+        name: ^swift_relation_rule_fn_add,
+        target: swift_grammar_relation_row_node(row: swift_grammar_relation_row())
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn swift_mvp1_target_model_node() -> Node {
+fn swift_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       swift_named_edge(
         name: ^target_model_edge_selection_policy,
-        target: swift_mvp1_selection_policy_node()
+        target: swift_selection_policy_node()
       ),
       swift_named_edge(
         name: ^target_model_edge_declared_inhabitants,
@@ -666,18 +666,18 @@ fn swift_mvp1_target_model_node() -> Node {
       ),
       swift_named_edge(
         name: ^target_model_edge_translation_rules,
-        target: swift_mvp1_translation_rules_node()
+        target: swift_translation_rules_node()
       ),
       swift_named_edge(
         name: ^target_model_edge_serialize_source,
-        target: swift_mvp1_serialize_source_node()
+        target: swift_serialize_source_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn swift_mvp1_binding_spellings() -> Map<Symbol, String> {
+fn swift_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
@@ -697,13 +697,13 @@ fn swift_mvp1_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn swift_mvp1_target_model() -> TargetModel {
+fn swift_target_model() -> TargetModel {
   TargetModel {
-    bundle: swift_mvp1_target_model_node(),
+    bundle: swift_target_model_node(),
     lex: swift_wave1_lex(),
-    binding_spellings: swift_mvp1_binding_spellings(),
+    binding_spellings: swift_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: swift_mvp1_source_text_authority(),
+    authority_source_text: swift_source_text_authority(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -859,10 +859,10 @@ fn swift_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<Forma
   )
 }
 
-fn swift_formal_production_mvp1_fn_add() -> FormalProduction {
+fn swift_formal_production_fn_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: ^swift_production_mvp1_fn_add,
-    rhs: swift_formal_rhs_from_tokens(tokens: swift_mvp1_concrete_tokens())
+    lhs: ^swift_production_fn_add,
+    rhs: swift_formal_rhs_from_tokens(tokens: swift_concrete_tokens())
   )
 }
 
@@ -1187,7 +1187,7 @@ fn swift_wave1_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: ^swift_production_block)
       ]
     ),
-    swift_formal_production_mvp1_fn_add()
+    swift_formal_production_fn_add()
   ]
 }
 
@@ -1447,9 +1447,9 @@ fn swift_grammar_fn_decl_expr() -> GrammarExpr {
   )
 }
 
-fn swift_grammar_production_mvp1_fn_add() -> GrammarProduction {
+fn swift_grammar_production_fn_add() -> GrammarProduction {
   GrammarProduction {
-    name: ^swift_production_mvp1_fn_add,
+    name: ^swift_production_fn_add,
     expression: swift_grammar_sequence_from_token_classes(),
     emitted: swift_grammar_atom(id: ^swift_surface_fn_item)
   }
@@ -1568,7 +1568,7 @@ fn swift_grammar_production_primary_expr() -> GrammarProduction {
 }
 
 fn swift_wave1_grammar_root() -> GrammarRoot {
-  let start = swift_grammar_production_mvp1_fn_add()
+  let start = swift_grammar_production_fn_add()
   let fn_decl = swift_grammar_production_fn_decl()
   let typed_param = swift_grammar_production_typed_param()
   let param_list = swift_grammar_production_param_list()
@@ -1843,7 +1843,7 @@ fn swift_language_model_canonical_symbols() -> Set<Symbol> {
       swift_catalog_surface_symbol(sym: sym) ||
         swift_wave1_lex_token_symbol(sym: sym) ||
         grammar_carries_symbol(grammar: swift_wave1_grammar(), sym: sym) ||
-        sym == ^swift_mvp1_source_literal
+        sym == ^swift_source_literal
     }
   }
 }

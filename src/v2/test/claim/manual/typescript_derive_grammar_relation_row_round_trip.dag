@@ -3,13 +3,13 @@ module v2.test.manual.typescript_derive_grammar_relation_row_round_trip
 import v2.extdeps.languages.typescript {
   ts_eager_grammar_relation_row_witness,
   ts_exemplar_emitted_for_lhs,
-  ts_formal_production_mvp1_fn_add,
+  ts_formal_production_fn_add,
   ts_grammar_relation_row_node,
   ts_inhabitant_atom,
-  ts_mvp1_emitted_add_fn_node,
-  ts_mvp1_fn_add_scaffold_relation_row_node,
-  ts_mvp1_grammar_relation_row,
-  ts_mvp1_canonical_add_fn_tokens,
+  ts_emitted_add_fn_node,
+  ts_fn_add_scaffold_relation_row_node,
+  ts_grammar_relation_row,
+  ts_canonical_add_fn_tokens,
   ts_concrete_token_node,
   ts_pr3_identity_relation_row_witness,
   ts_pr3_identity_typed_fn_emitted,
@@ -55,27 +55,27 @@ fn ts_grammar_relation_round_trip_fail_node() -> Node {
 }
 }
 
-fn ts_mvp1_grammar_relation_tokens_root() -> Node {
+fn ts_grammar_relation_tokens_root() -> Node {
   grammar_relation_tokens_node(
-    tokens: ts_mvp1_canonical_add_fn_tokens(),
+    tokens: ts_canonical_add_fn_tokens(),
     token_to_node: ts_concrete_token_node
   )
 }
 
-fn ts_mvp1_grammar_relation_row_std_node() -> Node {
+fn ts_grammar_relation_row_std_node() -> Node {
   grammar_relation_row_to_node(
     row: derive_grammar_relation_row(
-      production: ts_formal_production_mvp1_fn_add(),
-      emitted: ts_mvp1_emitted_add_fn_node()
+      production: ts_formal_production_fn_add(),
+      emitted: ts_emitted_add_fn_node()
     ),
-    tokens: ts_mvp1_grammar_relation_tokens_root()
+    tokens: ts_grammar_relation_tokens_root()
   )
 }
 
-data ts_mvp1_derive_row_node_receipt: Witness<Node> = derive_grammar_relation_row_node(
-  production: ts_formal_production_mvp1_fn_add(),
-  productions: [ts_formal_production_mvp1_fn_add()],
-  emitted: ts_mvp1_emitted_add_fn_node()
+data ts_derive_row_node_receipt: Witness<Node> = derive_grammar_relation_row_node(
+  production: ts_formal_production_fn_add(),
+  productions: [ts_formal_production_fn_add()],
+  emitted: ts_emitted_add_fn_node()
 )
 
 fn ts_wave2a_task_type_alias_emitted_surplus_conj_slot() -> Node {
@@ -94,7 +94,7 @@ fn ts_wave2a_lhs_exact_arrow_emitted_rejects() -> Bool {
   match formal_production_for_lhs_exact(
     productions: ts_wave2a_task_formal_productions(),
     lhs: ^ts_production_wave2a_type_alias_decl,
-    child: ts_mvp1_emitted_add_fn_node()
+    child: ts_emitted_add_fn_node()
   ) {
     Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
     Holds { value: _ } => false
@@ -145,8 +145,8 @@ fn ts_wave2a_task_derive_row_round_trip_holds() -> Bool {
 }
 
 fn ts_derive_grammar_relation_row_round_trip_holds() -> Bool {
-  content_hash(n: ts_mvp1_grammar_relation_row_std_node()) ==
-    content_hash(n: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row()))
+  content_hash(n: ts_grammar_relation_row_std_node()) ==
+    content_hash(n: ts_grammar_relation_row_node(row: ts_grammar_relation_row()))
 }
 
 fn ts_grammar_relation_round_trip_claim_input(ok: Bool) -> Node {

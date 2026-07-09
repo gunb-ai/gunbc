@@ -17,7 +17,7 @@ import v2.compiler.eval {
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.typescript {
   ts_inhabitant_atom,
-  ts_mvp1_binding_spellings,
+  ts_binding_spellings,
   ts_task_type_alias_source_text,
   ts_wave2a_task_target_model_witness,
   ts_wave2a_task_type_alias_emitted

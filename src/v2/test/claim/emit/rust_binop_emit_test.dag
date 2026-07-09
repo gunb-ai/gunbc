@@ -4,15 +4,15 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.dag {
-  dag_mvp1_arrow_domain_conj_node,
-  dag_mvp1_arrow_with_body_node,
-  dag_mvp1_binary_body_node,
-  dag_mvp1_type_atom_node
+  dag_arrow_domain_conj_node,
+  dag_arrow_with_body_node,
+  dag_binary_body_node,
+  dag_type_atom_node
 }
 import v2.extdeps.languages.rust {
-  rust_mvp1_source_text,
-  rust_mvp1_target_model_staging,
-  rust_mvp1_target_model_with_operators_and_lex,
+  rust_source_text,
+  rust_target_model_staging,
+  rust_target_model_with_operators_and_lex,
   rust_operator_realizations_catalog_node,
   rust_value_expression_projection,
   rust_wave1_lex
@@ -81,14 +81,14 @@ fn rust_binop_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn rust_binop_operator_atom(token: Symbol) -> Node {
-  dag_mvp1_type_atom_node(identity: token)
+  dag_type_atom_node(identity: token)
 }
 
 fn rust_binop_arrow_with_operator(operator_token: Symbol) -> Node {
-  dag_mvp1_arrow_with_body_node(
-    domain: dag_mvp1_arrow_domain_conj_node(),
+  dag_arrow_with_body_node(
+    domain: dag_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
-    body: dag_mvp1_binary_body_node(
+    body: dag_binary_body_node(
       operator: rust_binop_operator_atom(token: operator_token),
       left_binding: ^dag_binding_param_x,
       right_binding: ^dag_binding_param_y
@@ -132,7 +132,7 @@ fn rust_binop_sub_mistoken_catalog() -> Node {
 }
 
 fn rust_binop_target_model(catalog: Node) -> TargetModel {
-  rust_mvp1_target_model_with_operators_and_lex(
+  rust_target_model_with_operators_and_lex(
     operator_catalog: catalog,
     lex: rust_wave1_lex()
   )
@@ -178,7 +178,7 @@ fn rust_binop_vep_emit_differs_from_add(operation: CanonicalOperation) -> Bool {
 fn rust_binop_producer_emit_accepts(operator_token: Symbol, expected: String) -> Bool {
   match rust_binop_producer_emit(
     operator_token: operator_token,
-    target: rust_mvp1_target_model_staging()
+    target: rust_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (d == None)
@@ -241,7 +241,7 @@ test fn rust_binop_producer_emit_sub_discriminates_from_add() -> Bool {
     operator_token: ^dag_token_minus,
     expected: rust_binop_sub_fn_source_text
   ) &&
-    (rust_binop_sub_fn_source_text != rust_mvp1_source_text)
+    (rust_binop_sub_fn_source_text != rust_source_text)
 }
 
 test fn rust_binop_producer_emit_mul_holds() -> Bool {

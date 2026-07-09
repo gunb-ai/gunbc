@@ -1,4 +1,4 @@
-module v2.test.manual.find_witness_identity_mvp
+module v2.test.manual.find_witness_identity
 
 import v2.std.coercion {
   CoercionCandidateSet,
@@ -47,21 +47,21 @@ import v2.std.verification {
 import v2.std.witness { StructuralPropertyWitness }
 fn identity_source_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^identity_mvp_source_atom } },
+    kind: TypeNode { connective: Atom { identity: ^identity_source_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn identity_other_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^identity_mvp_other_atom } },
+    kind: TypeNode { connective: Atom { identity: ^identity_other_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn identity_closedness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: ^identity_mvp_closed_candidates,
+    property: ^identity_closed_candidates,
     evidence: identity_source_node()
   }
 }
@@ -80,7 +80,7 @@ fn constraint_predicate() -> PreservationPredicate {
 fn unknown_rule_predicate() -> PreservationPredicate {
   PreservationPredicate {
     algebra: identity_source_node(),
-    preservation_rule: ^identity_mvp_wrong_property
+    preservation_rule: ^identity_wrong_property
   }
 }
 fn candidate_set_identity_single() -> CandidateSet {
@@ -109,7 +109,7 @@ fn valid_identity_witness() -> StructuralPropertyWitness {
 }
 fn mismatched_property_witness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {
-    property: ^identity_mvp_wrong_property,
+    property: ^identity_wrong_property,
     evidence: identity_source_node()
   }
 }
@@ -264,8 +264,8 @@ fn identity_witness_claim_input(ok: Bool) -> Node {
 fn identity_witness_expected() -> Node {
   identity_source_node()
 }
-data claim_find_witness_identity_mvp_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: identity-MVP behavior anchors compile",
+data claim_find_witness_identity_module_compiles: TestClaim = CompilesClaim {
+  label: "manual/find_witness_identity: identity-MVP behavior anchors compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_source_node(),
   expected_value: identity_witness_expected(),
@@ -273,7 +273,7 @@ data claim_find_witness_identity_mvp_module_compiles: TestClaim = CompilesClaim 
 }
 
 data claim_find_witness_identity_accepts: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: identity candidate accepts",
+  label: "manual/find_witness_identity: identity candidate accepts",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_identity_accepts),
   expected_value: identity_witness_expected(),
@@ -281,14 +281,14 @@ data claim_find_witness_identity_accepts: TestClaim = CompilesClaim {
 }
 
 data claim_find_witness_non_identity_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: non-identity candidate rejects",
+  label: "manual/find_witness_identity: non-identity candidate rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_non_identity_rejects),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 data claim_find_witness_constraint_rule_accepts: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: constraint_satisfaction accepts identity candidate",
+  label: "manual/find_witness_identity: constraint_satisfaction accepts identity candidate",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_constraint_rule_accepts),
   expected_value: identity_witness_expected(),
@@ -296,7 +296,7 @@ data claim_find_witness_constraint_rule_accepts: TestClaim = CompilesClaim {
 }
 
 data claim_find_witness_other_rule_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: unrealized preservation rule rejects before enumeration",
+  label: "manual/find_witness_identity: unrealized preservation rule rejects before enumeration",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_other_rule_rejects),
   expected_value: identity_witness_expected(),
@@ -304,7 +304,7 @@ data claim_find_witness_other_rule_rejects: TestClaim = CompilesClaim {
 }
 
 data claim_find_witness_unique_only_ambiguous_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: UniqueOnly ambiguity rejects",
+  label: "manual/find_witness_identity: UniqueOnly ambiguity rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_unique_only_ambiguous_rejects),
   expected_value: identity_witness_expected(),
@@ -312,7 +312,7 @@ data claim_find_witness_unique_only_ambiguous_rejects: TestClaim = CompilesClaim
 }
 
 data claim_find_witness_selected_invalid_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: invalid declared priority rejects",
+  label: "manual/find_witness_identity: invalid declared priority rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_selected_invalid_rejects),
   expected_value: identity_witness_expected(),
@@ -320,7 +320,7 @@ data claim_find_witness_selected_invalid_rejects: TestClaim = CompilesClaim {
 }
 
 data claim_find_witness_user_selected_invalid_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: invalid user selection rejects",
+  label: "manual/find_witness_identity: invalid user selection rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_user_selected_invalid_rejects),
   expected_value: identity_witness_expected(),
@@ -328,7 +328,7 @@ data claim_find_witness_user_selected_invalid_rejects: TestClaim = CompilesClaim
 }
 
 data claim_verify_witness_accepts: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: verify_witness accepts matching witness",
+  label: "manual/find_witness_identity: verify_witness accepts matching witness",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_verify_witness_accepts),
   expected_value: identity_witness_expected(),
@@ -336,7 +336,7 @@ data claim_verify_witness_accepts: TestClaim = CompilesClaim {
 }
 
 data claim_verify_witness_property_mismatch_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: verify_witness rejects property mismatch",
+  label: "manual/find_witness_identity: verify_witness rejects property mismatch",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_verify_witness_property_mismatch_rejects),
   expected_value: identity_witness_expected(),
@@ -344,7 +344,7 @@ data claim_verify_witness_property_mismatch_rejects: TestClaim = CompilesClaim {
 }
 
 data claim_verify_witness_evidence_mismatch_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: verify_witness rejects evidence mismatch",
+  label: "manual/find_witness_identity: verify_witness rejects evidence mismatch",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_verify_witness_evidence_mismatch_rejects),
   expected_value: identity_witness_expected(),
@@ -352,7 +352,7 @@ data claim_verify_witness_evidence_mismatch_rejects: TestClaim = CompilesClaim {
 }
 
 data claim_coercion_fold_identity_accepts: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: coercion_fold identity accepts",
+  label: "manual/find_witness_identity: coercion_fold identity accepts",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_coercion_fold_identity_accepts),
   expected_value: identity_witness_expected(),

@@ -9,11 +9,11 @@ import extdeps.languages.bash.program {
   lit, var_ref, command, assign, serialize_bash
 }
 import tools.emit_host_fixtures {
-  rust_mvp2_stdout_fixture_source,
-  python_mvp2_stdout_fixture_source,
-  go_mvp2_stdout_fixture_source,
-  ts_mvp1_host_fixture_source,
-  mvp2_stdout_byte_count,
+  rust_stdout_fixture_source,
+  python_stdout_fixture_source,
+  go_stdout_fixture_source,
+  ts_host_fixture_source,
+  stdout_byte_count,
   ts_signed_i32_le_byte_count
 }
 import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
@@ -35,7 +35,7 @@ fn assert_bytes_eq(expected: Int) -> ShellStmt {
   command(words: [lit(text: "test"), var_ref(name: "BYTES"), lit(text: "-eq"), lit(text: to_string(expected))])
 }
 
-fn rust_mvp2_program() -> ShellProgram {
+fn rust_program() -> ShellProgram {
   let workdir = var_ref(name: "WORKDIR")
   ShellProgram {
     set_e: true,
@@ -43,7 +43,7 @@ fn rust_mvp2_program() -> ShellProgram {
       assign(name: "WORKDIR", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
       command(words: [lit(text: "mkdir"), lit(text: "-p"), Concat { parts: [workdir, lit(text: "/src")] }]),
       Heredoc { path: Concat { parts: [workdir, lit(text: "/Cargo.toml")] }, delimiter: "EOF", body: fixture_cargo_toml },
-      Heredoc { path: Concat { parts: [workdir, lit(text: "/src/main.rs")] }, delimiter: "EOF", body: rust_mvp2_stdout_fixture_source },
+      Heredoc { path: Concat { parts: [workdir, lit(text: "/src/main.rs")] }, delimiter: "EOF", body: rust_stdout_fixture_source },
       EnvPrefixed {
         name: "CARGO_TARGET_DIR",
         value: Concat { parts: [workdir, lit(text: "/target")] },
@@ -54,44 +54,44 @@ fn rust_mvp2_program() -> ShellProgram {
       },
       byte_count_assign(producer: command(words: [Concat { parts: [workdir, lit(text: "/target/debug/fixture")] }])),
       command(words: [lit(text: "rm"), lit(text: "-rf"), workdir]),
-      assert_bytes_eq(expected: byte_size_count(mvp2_stdout_byte_count))
+      assert_bytes_eq(expected: byte_size_count(stdout_byte_count))
     ]
   }
 }
 
-fn run_rust_mvp2_smoke() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: rust_mvp2_program()))
+fn run_rust_smoke() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: rust_program()))
   result.success
 }
 
-fn python_mvp2_program() -> ShellProgram {
+fn python_program() -> ShellProgram {
   let workdir = var_ref(name: "WORKDIR")
   ShellProgram {
     set_e: true,
     statements: [
       assign(name: "WORKDIR", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      Heredoc { path: Concat { parts: [workdir, lit(text: "/fixture.py")] }, delimiter: "EOF", body: python_mvp2_stdout_fixture_source },
+      Heredoc { path: Concat { parts: [workdir, lit(text: "/fixture.py")] }, delimiter: "EOF", body: python_stdout_fixture_source },
       byte_count_assign(producer: command(words: [lit(text: "python3"), Concat { parts: [workdir, lit(text: "/fixture.py")] }])),
       command(words: [lit(text: "rm"), lit(text: "-rf"), workdir]),
-      assert_bytes_eq(expected: byte_size_count(mvp2_stdout_byte_count))
+      assert_bytes_eq(expected: byte_size_count(stdout_byte_count))
     ]
   }
 }
 
-fn run_python_mvp2_smoke() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: python_mvp2_program()))
+fn run_python_smoke() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: python_program()))
   result.success
 }
 
-fn run_go_mvp2_smoke() -> Bool {
-  let expected = byte_size_count(mvp2_stdout_byte_count)
-  let script = "set -e\nWORKDIR=$(mktemp -d)\nif ! command -v go >/dev/null 2>&1; then\n  GOBOOT=\"$WORKDIR/gotool\"\n  mkdir -p \"$GOBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) GOARCH=arm64 ;; x86_64|amd64) GOARCH=amd64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://go.dev/dl/go1.22.5.linux-$GOARCH.tar.gz\" | tar -xz -C \"$GOBOOT\"\n  PATH=\"$GOBOOT/go/bin:$PATH\"\n  export PATH\nfi\ncat > \"$WORKDIR/main.go\" <<'EOF'\n{go_mvp2_stdout_fixture_source}\nEOF\nBYTES=$(go run \"$WORKDIR/main.go\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
+fn run_go_smoke() -> Bool {
+  let expected = byte_size_count(stdout_byte_count)
+  let script = "set -e\nWORKDIR=$(mktemp -d)\nif ! command -v go >/dev/null 2>&1; then\n  GOBOOT=\"$WORKDIR/gotool\"\n  mkdir -p \"$GOBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) GOARCH=arm64 ;; x86_64|amd64) GOARCH=amd64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://go.dev/dl/go1.22.5.linux-$GOARCH.tar.gz\" | tar -xz -C \"$GOBOOT\"\n  PATH=\"$GOBOOT/go/bin:$PATH\"\n  export PATH\nfi\ncat > \"$WORKDIR/main.go\" <<'EOF'\n{go_stdout_fixture_source}\nEOF\nBYTES=$(go run \"$WORKDIR/main.go\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
   toolchain_provision_shell_exec(script: script)
 }
 
-fn run_ts_mvp1_smoke() -> Bool {
+fn run_ts_smoke() -> Bool {
   let expected = byte_size_count(ts_signed_i32_le_byte_count)
-  let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v npx >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_mvp1_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y -p typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
+  let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v npx >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y -p typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
   toolchain_provision_shell_exec(script: script)
 }
 

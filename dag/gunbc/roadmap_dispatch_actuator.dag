@@ -49,7 +49,7 @@ data roadmap_dispatch_actuator_doc: String = "M2 dispatch actuator model: brief 
 
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: String = "🟡 dissolve-on: tmux-ls name-only lease observation — SessionNameObserved yields UnknownRefused (fail-closed) until dispatch_tmux_process_fingerprint observation transport binds pgrep/cmdline facts into SessionObserved.process_fingerprint; DISSOLVES WHEN M3/M4 wires HostExecArgv receipt rows (tmux capture-pane or ps) feeding classify_dispatch_lease_upsert so Conflict/Drifted/Converged are reachable from observed facts"
 
-data dispatch_mvp_repo: String = "gunbc"
+data dispatch_repo: String = "gunbc"
 data dispatch_worktree_root: String = "/opt/gunbc/dispatch-worktrees"
 data dispatch_git_remote_ref: String = "origin/main"
 data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
@@ -440,7 +440,7 @@ fn node_in_ready(node_id: ProcessNodeId, ready: List<RoadmapNode>) -> Bool {
 
 fn node_repo_supported(node: RoadmapNode) -> Bool {
   match node.sizing {
-    Sized { repo, intricacy: _, volume: _, acceptance: _ } => repo == dispatch_mvp_repo
+    Sized { repo, intricacy: _, volume: _, acceptance: _ } => repo == dispatch_repo
     Unsized => false
   }
 }

@@ -156,9 +156,9 @@ type CppGrammarRelationRow {
   emitted: Node
   tokens: List<ConcreteSyntaxToken>
 }
-data cpp_mvp1_source_text: String = "int add(int x, int y) { return x + y; }"
+data cpp_source_text: String = "int add(int x, int y) { return x + y; }"
 
-fn cpp_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn cpp_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^cpp_token_ty_int },
     BoundToken { token_class: ^cpp_token_ident, binding: ^cpp_binding_fn_add },
@@ -937,7 +937,7 @@ fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
 }
 }
 
-fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
+fn cpp_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
   let facts = cpp_signed_integer_facts(
     spelling: Int,
     surface_spelling: ^cpp_surface_spelling_int,
@@ -949,8 +949,8 @@ fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
       target: cpp_int_inhabitant_node(target_profile: target_profile)
     ),
     cpp_named_edge(
-      name: ^cpp_inhabitant_field_mvp1_add_fn,
-      target: cpp_mvp1_emitted_add_fn_node(target_profile: target_profile)
+      name: ^cpp_inhabitant_field_add_fn,
+      target: cpp_emitted_add_fn_node(target_profile: target_profile)
     ),
     cpp_named_edge(
       name: ^cpp_coercion_field_int_inhabitant_atom,
@@ -999,23 +999,23 @@ fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
   ]
 }
 
-fn cpp_mvp1_coercion_candidate_edges(target_profile: Node) -> List<Edge> {
-  cpp_mvp1_int_zip_fold_closure_edges(target_profile: target_profile)
+fn cpp_coercion_candidate_edges(target_profile: Node) -> List<Edge> {
+  cpp_int_zip_fold_closure_edges(target_profile: target_profile)
 }
 
-fn cpp_mvp1_declared_inhabitants_root(target_profile: Node) -> Node {
+fn cpp_add_declared_inhabitants_root(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: cpp_mvp1_coercion_candidate_edges(target_profile: target_profile),
+    children: cpp_coercion_candidate_edges(target_profile: target_profile),
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn cpp_mvp1_selection_policy_node(target_profile: Node) -> Node {
+fn cpp_selection_policy_node(target_profile: Node) -> Node {
   cpp_int_inhabitant_node(target_profile: target_profile)
 }
 
-fn cpp_mvp1_emitted_add_fn_node(target_profile: Node) -> Node {
+fn cpp_emitted_add_fn_node(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
@@ -1032,17 +1032,17 @@ fn cpp_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn cpp_mvp1_serialize_source_children() -> List<Edge> {
+fn cpp_serialize_source_children() -> List<Edge> {
   list_append(
     left: [
-      cpp_named_edge(name: ^serialize_source_field_source_text, target: cpp_atom(id: ^cpp_mvp1_source_literal)),
-      cpp_named_edge(name: ^serialize_source_field_source_grammar, target: cpp_atom(id: ^cpp_production_mvp1_fn_add))
+      cpp_named_edge(name: ^serialize_source_field_source_text, target: cpp_atom(id: ^cpp_source_literal)),
+      cpp_named_edge(name: ^serialize_source_field_source_grammar, target: cpp_atom(id: ^cpp_production_fn_add))
     ],
     right: [
       cpp_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: cpp_mvp1_concrete_tokens(),
+          tokens: cpp_concrete_tokens(),
           token_to_node: cpp_concrete_token_node
         )
       )
@@ -1050,8 +1050,8 @@ fn cpp_mvp1_serialize_source_children() -> List<Edge> {
   )
 }
 
-fn cpp_mvp1_serialize_source_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: cpp_mvp1_serialize_source_children(),
+fn cpp_serialize_source_node() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: cpp_serialize_source_children(),
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -1069,15 +1069,15 @@ fn cpp_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalG
   )
 }
 
-fn cpp_formal_production_mvp1_fn_add() -> FormalProduction {
+fn cpp_formal_production_fn_add() -> FormalProduction {
   grammar_formal_production(
-    lhs: ^cpp_production_mvp1_fn_add,
-    rhs: cpp_formal_rhs_from_tokens(tokens: cpp_mvp1_concrete_tokens())
+    lhs: ^cpp_production_fn_add,
+    rhs: cpp_formal_rhs_from_tokens(tokens: cpp_concrete_tokens())
   )
 }
 
 fn cpp_wave1_formal_productions() -> List<FormalProduction> {
-  [cpp_formal_production_mvp1_fn_add()]
+  [cpp_formal_production_fn_add()]
 }
 
 fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -1090,7 +1090,7 @@ type CppGramBuild1State
 
 fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
   match fold_list(
-    xs: cpp_mvp1_concrete_tokens(),
+    xs: cpp_concrete_tokens(),
     empty: CppGramBuild1StateInit,
     cons: fn(state, token) {
       match state {
@@ -1114,19 +1114,19 @@ fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
   }
 }
 
-fn cpp_grammar_production_mvp1_fn_add(target_profile: Node) -> GrammarProduction {
+fn cpp_grammar_production_fn_add(target_profile: Node) -> GrammarProduction {
   GrammarProduction {
-    name: ^cpp_production_mvp1_fn_add,
+    name: ^cpp_production_fn_add,
     expression: cpp_grammar_sequence_from_token_classes(),
-    emitted: cpp_mvp1_emitted_add_fn_node(target_profile: target_profile)
+    emitted: cpp_emitted_add_fn_node(target_profile: target_profile)
   }
 }
 
-fn cpp_mvp1_grammar_relation_row(target_profile: Node) -> CppGrammarRelationRow {
+fn cpp_grammar_relation_row(target_profile: Node) -> CppGrammarRelationRow {
   CppGrammarRelationRow {
-    production: cpp_grammar_production_mvp1_fn_add(target_profile: target_profile),
-    emitted: cpp_mvp1_emitted_add_fn_node(target_profile: target_profile),
-    tokens: cpp_mvp1_concrete_tokens()
+    production: cpp_grammar_production_fn_add(target_profile: target_profile),
+    emitted: cpp_emitted_add_fn_node(target_profile: target_profile),
+    tokens: cpp_concrete_tokens()
   }
 }
 
@@ -1148,30 +1148,30 @@ fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
 }
 }
 
-fn cpp_mvp1_translation_rules_node(target_profile: Node) -> Node {
+fn cpp_translation_rules_node(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: ^cpp_relation_rule_mvp1_fn_add, target: cpp_grammar_relation_row_node(row: cpp_mvp1_grammar_relation_row(target_profile: target_profile)))
+      cpp_named_edge(name: ^cpp_relation_rule_fn_add, target: cpp_grammar_relation_row_node(row: cpp_grammar_relation_row(target_profile: target_profile)))
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn cpp_mvp1_target_model_node(target_profile: Node) -> Node {
+fn cpp_target_model_node(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: ^target_model_edge_selection_policy, target: cpp_mvp1_selection_policy_node(target_profile: target_profile)),
-      cpp_named_edge(name: ^target_model_edge_declared_inhabitants, target: cpp_mvp1_declared_inhabitants_root(target_profile: target_profile)),
-      cpp_named_edge(name: ^target_model_edge_translation_rules, target: cpp_mvp1_translation_rules_node(target_profile: target_profile)),
-      cpp_named_edge(name: ^target_model_edge_serialize_source, target: cpp_mvp1_serialize_source_node())
+      cpp_named_edge(name: ^target_model_edge_selection_policy, target: cpp_selection_policy_node(target_profile: target_profile)),
+      cpp_named_edge(name: ^target_model_edge_declared_inhabitants, target: cpp_add_declared_inhabitants_root(target_profile: target_profile)),
+      cpp_named_edge(name: ^target_model_edge_translation_rules, target: cpp_translation_rules_node(target_profile: target_profile)),
+      cpp_named_edge(name: ^target_model_edge_serialize_source, target: cpp_serialize_source_node())
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn cpp_mvp1_binding_spellings() -> Map<Symbol, String> {
+fn cpp_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^cpp_binding_fn_add, "add"),
@@ -1182,23 +1182,23 @@ fn cpp_mvp1_binding_spellings() -> Map<Symbol, String> {
     "y"
   )
 }
-data cpp_mvp1_target_profile: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^cpp_mvp1_target_profile_atom } },
+data cpp_target_profile: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^cpp_target_profile_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-fn cpp_mvp1_target_model() -> TargetModel {
-  cpp_mvp1_target_model_for_profile(target_profile: cpp_mvp1_target_profile)
+fn cpp_target_model() -> TargetModel {
+  cpp_target_model_for_profile(target_profile: cpp_target_profile)
 }
 
-fn cpp_mvp1_target_model_for_profile(target_profile: Node) -> TargetModel {
+fn cpp_target_model_for_profile(target_profile: Node) -> TargetModel {
   TargetModel {
-    bundle: cpp_mvp1_target_model_node(target_profile: target_profile),
+    bundle: cpp_target_model_node(target_profile: target_profile),
     lex: cpp_wave1_lex(),
-    binding_spellings: cpp_mvp1_binding_spellings(),
+    binding_spellings: cpp_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: cpp_mvp1_source_text,
+    authority_source_text: cpp_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }

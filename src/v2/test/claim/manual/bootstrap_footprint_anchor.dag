@@ -1,6 +1,6 @@
 module v2.test.manual.bootstrap_footprint_anchor
 
-import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.runtimes.v2_evaluator {
   V4EvaluatorRuntime,
   v2_eval_wave1_boundary_allowance,
@@ -59,7 +59,7 @@ fn bootstrap_footprint_anchor_bad_projection_inputs() -> BootstrapProjectionInpu
         pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
-    target_model: rust_mvp1_target_model(),
+    target_model: rust_target_model(),
     runtime_model: v2_evaluator_runtime_wave1()
   }
 }
@@ -103,7 +103,7 @@ fn bootstrap_footprint_anchor_bad_content_hash_projection_inputs() -> BootstrapP
         pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
-    target_model: rust_mvp1_target_model(),
+    target_model: rust_target_model(),
     runtime_model: v2_evaluator_runtime_wave1()
   }
 }
@@ -146,7 +146,7 @@ fn bootstrap_footprint_anchor_bad_runtime_projection_inputs() -> BootstrapProjec
         pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
-    target_model: rust_mvp1_target_model(),
+    target_model: rust_target_model(),
     runtime_model: bootstrap_footprint_anchor_bad_runtime_model()
   }
 }

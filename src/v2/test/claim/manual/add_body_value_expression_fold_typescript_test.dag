@@ -2,19 +2,19 @@ module v2.test.manual.add_body_value_expression_fold_typescript
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.body_producer {
-  produce_mvp1_add_arrow_with_body,
-  produce_mvp1_add_arrow_with_body_swapped_operands
+  produce_add_arrow_with_body,
+  produce_add_arrow_with_body_swapped_operands
 }
 import v2.compiler.translate { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.typescript {
-  ts_mvp1_add_return_body_tokens,
-  ts_mvp1_binding_spellings,
-  ts_mvp1_declared_inhabitants_root,
-  ts_mvp1_selection_policy_node,
-  ts_mvp1_serialize_source_node,
-  ts_mvp1_source_text_authority,
-  ts_mvp1_target_model,
-  ts_mvp1_translation_rules_node,
+  ts_add_return_body_tokens,
+  ts_binding_spellings,
+  ts_add_declared_inhabitants_root,
+  ts_selection_policy_node,
+  ts_serialize_source_node,
+  ts_source_text_authority,
+  ts_target_model,
+  ts_translation_rules_node,
   ts_value_expression_projection,
   ts_wave1_lex_rules
 }
@@ -87,19 +87,19 @@ fn add_body_fold_target_model_bundle(operator_catalog: Node) -> Node {
     children: [
       add_body_fold_named_edge(
         name: ^target_model_edge_selection_policy,
-        target: ts_mvp1_selection_policy_node()
+        target: ts_selection_policy_node()
       ),
       add_body_fold_named_edge(
         name: ^target_model_edge_declared_inhabitants,
-        target: ts_mvp1_declared_inhabitants_root()
+        target: ts_add_declared_inhabitants_root()
       ),
       add_body_fold_named_edge(
         name: ^target_model_edge_translation_rules,
-        target: ts_mvp1_translation_rules_node()
+        target: ts_translation_rules_node()
       ),
       add_body_fold_named_edge(
         name: ^target_model_edge_serialize_source,
-        target: ts_mvp1_serialize_source_node()
+        target: ts_serialize_source_node()
       ),
       add_body_fold_named_edge(
         name: ^target_model_edge_value_expression_projection,
@@ -121,9 +121,9 @@ fn add_body_fold_target_model_minus_catalog() -> TargetModel {
       operator_catalog: add_body_fold_operator_catalog_minus()
     ),
     lex: ts_wave1_lex_rules(),
-    binding_spellings: ts_mvp1_binding_spellings(),
+    binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: ts_mvp1_source_text_authority(),
+    authority_source_text: ts_source_text_authority(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -134,9 +134,9 @@ fn add_body_fold_target_model_missing_operator_catalog() -> TargetModel {
       operator_catalog: add_body_fold_operator_catalog_empty()
     ),
     lex: ts_wave1_lex_rules(),
-    binding_spellings: ts_mvp1_binding_spellings(),
+    binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: ts_mvp1_source_text_authority(),
+    authority_source_text: ts_source_text_authority(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -204,30 +204,30 @@ fn add_body_fold_tokens_accept_arrow(
 }
 
 test fn add_body_ts_fold_add_body_tokens_holds() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match produce_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_body_fold_tokens_accept_arrow(
         arrow: arrow,
-        target: ts_mvp1_target_model(),
-        expected: ts_mvp1_add_return_body_tokens()
+        target: ts_target_model(),
+        expected: ts_add_return_body_tokens()
       )
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn add_body_ts_fold_operand_swap_discriminates() -> Bool {
-  match produce_mvp1_add_arrow_with_body_swapped_operands() {
+  match produce_add_arrow_with_body_swapped_operands() {
     Accepted { value: swapped_arrow, diagnostics: _ } =>
       add_body_fold_tokens_accept_arrow(
         arrow: swapped_arrow,
-        target: ts_mvp1_target_model(),
+        target: ts_target_model(),
         expected: add_body_fold_operand_swap_body_tokens()
       )
-      && match produce_mvp1_add_arrow_with_body() {
+      && match produce_add_arrow_with_body() {
         Accepted { value: canonical_arrow, diagnostics: _ } =>
           !add_body_fold_tokens_accept_arrow(
             arrow: canonical_arrow,
-            target: ts_mvp1_target_model(),
+            target: ts_target_model(),
             expected: add_body_fold_operand_swap_body_tokens()
           )
         Rejected { diagnostics: _ } => false
@@ -237,7 +237,7 @@ test fn add_body_ts_fold_operand_swap_discriminates() -> Bool {
 }
 
 test fn add_body_ts_fold_catalog_minus_discriminates() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match produce_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_body_fold_tokens_accept_arrow(
         arrow: arrow,
@@ -249,7 +249,7 @@ test fn add_body_ts_fold_catalog_minus_discriminates() -> Bool {
 }
 
 test fn add_body_ts_fold_missing_catalog_rejects() -> Bool {
-  match produce_mvp1_add_arrow_with_body() {
+  match produce_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_body_fold_body_tokens_for_arrow(
         arrow: arrow,

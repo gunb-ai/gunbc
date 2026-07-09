@@ -1,4 +1,4 @@
-module v2.test.manual.mvp_int_cross_target_coercion
+module v2.test.manual.int_cross_target_coercion
 
 import v2.compiler.eval { run_test_claim_assert }
 import v2.extdeps.languages.python {
@@ -10,8 +10,8 @@ import v2.extdeps.languages.rust {
   rust_inhabitant_i32_node
 }
 import v2.extdeps.coercion_widening {
-  coercion_fold_mvp_python_int_to_rust_i32_narrowing,
-  coercion_fold_mvp_rust_i32_to_python_int_widening
+  coercion_fold_python_int_to_rust_i32_narrowing,
+  coercion_fold_rust_i32_to_python_int_widening
 }
 import v2.std.coercion {
   CoercionQuality,
@@ -116,7 +116,7 @@ data cross_target_coercion_expected_rejection: NonEmptyDiagnostics = NonEmptyDia
 }
 
 data claim_cross_target_python_to_rust_i32_rejects: TestClaim = DiagnosticClaim {
-  label: "manual/mvp_int_cross_target: python unbounded int -> rust declared inhabitants rejects (no exact witness)",
+  label: "manual/int_cross_target: python unbounded int -> rust declared inhabitants rejects (no exact witness)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_int_inhabitant_node(),
   expected_rejection: cross_target_coercion_expected_rejection,
@@ -143,8 +143,8 @@ fn cross_target_witness_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_mvp_int_cross_target_coercion_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/mvp_int_cross_target: cross-target coercion safety anchors compile",
+data claim_int_cross_target_coercion_module_compiles: TestClaim = CompilesClaim {
+  label: "manual/int_cross_target: cross-target coercion safety anchors compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_int_inhabitant_node(),
   expected_value: python_int_inhabitant_node(),
@@ -152,7 +152,7 @@ data claim_mvp_int_cross_target_coercion_module_compiles: TestClaim = CompilesCl
 }
 
 data claim_cross_target_python_to_rust_i32_rejects_compiles: TestClaim = CompilesClaim {
-  label: "manual/mvp_int_cross_target: python int -> rust i32 coercion_fold rejects coercion_mismatch_no_target",
+  label: "manual/int_cross_target: python int -> rust i32 coercion_fold rejects coercion_mismatch_no_target",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: cross_target_witness_claim_input(ok: witness_cross_target_python_to_rust_i32_rejects),
   expected_value: python_int_inhabitant_node(),
@@ -183,7 +183,7 @@ fn cross_target_rust_i32_to_python_int_coercion_fold() -> Outcome<CoercionResult
       closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
-      coercion_fold_mvp_rust_i32_to_python_int_widening(
+      coercion_fold_rust_i32_to_python_int_widening(
         source: rust_i32_grounding(),
         candidates: candidates,
         priority: python_int_inhabitant_node()
@@ -218,7 +218,7 @@ fn cross_target_widening_witness_claim_input(ok: Bool) -> Node {
 }
 
 data claim_cross_target_rust_i32_to_python_int_accepts: TestClaim = CompilesClaim {
-  label: "manual/mvp_int_cross_target: rust i32 -> python int coercion_fold_refinement_widening accepts Widened",
+  label: "manual/int_cross_target: rust i32 -> python int coercion_fold_refinement_widening accepts Widened",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: cross_target_widening_witness_claim_input(ok: witness_cross_target_rust_i32_to_python_int_accepts()),
   expected_value: python_int_inhabitant_node(),
@@ -232,7 +232,7 @@ fn cross_target_python_to_rust_i32_narrowing_fold() -> Outcome<CoercionResult> {
       closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
-      coercion_fold_mvp_python_int_to_rust_i32_narrowing(
+      coercion_fold_python_int_to_rust_i32_narrowing(
         source: python_unbounded_int_grounding(),
         candidates: candidates,
         priority: rust_inhabitant_i32_node()
@@ -250,7 +250,7 @@ data cross_target_narrowing_expected_rejection: NonEmptyDiagnostics = NonEmptyDi
 }
 
 data claim_cross_target_python_to_rust_i32_would_lose_information: TestClaim = DiagnosticClaim {
-  label: "manual/mvp_int_cross_target: python int -> rust i32 refinement reverse rejects WouldLoseInformation",
+  label: "manual/int_cross_target: python int -> rust i32 refinement reverse rejects WouldLoseInformation",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_int_inhabitant_node(),
   expected_rejection: cross_target_narrowing_expected_rejection,

@@ -1,4 +1,4 @@
-module v2.test.manual.infer_ground_add_mvp
+module v2.test.manual.infer_ground_add
 
 import v2.compiler.eval {
   EvalContext,
@@ -267,10 +267,10 @@ fn infer_outcome_node_projection(actual: Outcome<InferredTree>) -> Outcome<Node>
   }
 }
 
-fn infer_add_mvp_receipt_run(
+fn infer_add_receipt_run(
   subject: TestClaimEvalSubject<Node>,
 ) -> TestClaimRun<Node, InferredTree> {
-  let actual = anchor_infer_add_mvp()
+  let actual = anchor_infer_add()
   TestClaimRun {
     cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
@@ -351,7 +351,7 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
 }
 }
 
-fn anchor_infer_add_mvp() -> Outcome<InferredTree> {
+fn anchor_infer_add() -> Outcome<InferredTree> {
   infer(tree: fixture_add_resolved_tree())
 }
 
@@ -363,16 +363,16 @@ fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
   }
 }
 
-data case_infer_add_mvp_compiles: InferReceiptCase = InferCompilesReceiptCase {
+data case_infer_add_compiles: InferReceiptCase = InferCompilesReceiptCase {
   label: "manual/infer: infer(fixture_add_resolved_tree) derives descent and accepts",
-  input_symbol: ^infer_receipt_input_infer_add_mvp,
+  input_symbol: ^infer_receipt_input_infer_add,
   input: fixture_add_resolved_tree(),
   expected_value: fixture_add_resolved_tree()
 }
 
-data subject_infer_add_mvp_compiles: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_mvp_compiles)
+data subject_infer_add_compiles: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_compiles)
 
-data run_infer_add_mvp_compiles: TestClaimRun<Node, InferredTree> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_compiles)
+data run_infer_add_compiles: TestClaimRun<Node, InferredTree> = infer_add_receipt_run(subject: subject_infer_add_compiles)
 
 data case_infer_descent_witness_holds_atom: InferReceiptCase = InferCompilesReceiptCase {
   label: "manual/infer: infer_descent_witness_contract_node Holds on bounded Atom TypeNode",
@@ -385,6 +385,6 @@ data subject_infer_descent_witness_holds_atom: TestClaimEvalSubject<Node> = infe
 
 data run_infer_descent_witness_holds_atom: TestClaimRun<Node, Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_holds_atom)
 
-data claim_infer_add_mvp_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_mvp_compiles)
+data claim_infer_add_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_compiles)
 
 data claim_infer_descent_witness_holds_atom: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_holds_atom)

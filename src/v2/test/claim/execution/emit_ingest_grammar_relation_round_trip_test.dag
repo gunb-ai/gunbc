@@ -11,13 +11,13 @@ import v2.compiler.parse {
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.translate { grammar_relation_row_for_emitted }
 import v2.extdeps.languages.dag {
-  dag_grammar_production_mvp1_fn_add,
+  dag_grammar_production_fn_add,
   dag_language_model_wave1,
-  dag_mvp1_fixture_emitted_add_fn,
-  dag_mvp1_grammar_relation_row_node,
-  dag_mvp1_source_text,
-  dag_mvp1_target_model,
-  dag_mvp1_translation_rules_node
+  dag_fixture_emitted_add_fn,
+  dag_add_grammar_relation_row_node,
+  dag_source_text,
+  dag_target_model,
+  dag_translation_rules_node
 }
 import std.algebra { Empty }
 import v2.std.algebra { list_append }
@@ -67,15 +67,15 @@ fn grammar_relation_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> 
 }
 
 fn emit_ingest_shared_rules() -> Node {
-  dag_mvp1_translation_rules_node()
+  dag_translation_rules_node()
 }
 
 fn emit_ingest_canonical_row() -> Node {
-  dag_mvp1_grammar_relation_row_node()
+  dag_add_grammar_relation_row_node()
 }
 
 fn emit_ingest_canonical_emitted() -> Node {
-  dag_mvp1_fixture_emitted_add_fn
+  dag_fixture_emitted_add_fn
 }
 
 fn emit_backward_selects_canonical_row_holds() -> Bool {
@@ -150,8 +150,8 @@ fn ingest_then_emit_selector_identity_holds() -> Bool {
 
 fn emit_ingest_parse_root() -> GrammarRoot {
   GrammarRoot {
-    start: ^dag_production_mvp1_fn_add,
-    productions: [dag_grammar_production_mvp1_fn_add()],
+    start: ^dag_production_fn_add,
+    productions: [dag_grammar_production_fn_add()],
     sync_tokens: Set {
       member: fn(_) {
         false
@@ -167,7 +167,7 @@ fn emit_ingest_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
       parse_production_tree(
         tokens: tokens,
         validated: validated,
-        production_name: ^dag_production_mvp1_fn_add
+        production_name: ^dag_production_fn_add
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -177,7 +177,7 @@ fn emit_ingest_parsed_add_tree() -> Outcome<ParseTree> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
-      text: dag_mvp1_source_text,
+      text: dag_source_text,
       file: ^emit_ingest_round_trip_source_file,
       rules: lm.lex
     ),
@@ -192,7 +192,7 @@ fn same_grammar_parse_ingest_bridge_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: dag_mvp1_target_model()
+        source_model: dag_target_model()
       ) {
         Accepted { value: recovered, diagnostics: _ } =>
           recovered == emit_ingest_canonical_emitted()

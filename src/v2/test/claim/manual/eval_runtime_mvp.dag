@@ -1,4 +1,4 @@
-module v2.test.manual.eval_runtime_mvp
+module v2.test.manual.eval_runtime
 
 import v2.compiler.eval {
   EvalContext,
@@ -92,94 +92,94 @@ import v2.std.witness {
   Violates,
   Witness
 }
-fn eval_mvp2_byte() -> Byte {
+fn eval_byte() -> Byte {
   Byte { bits: [true] }
 }
 
-fn eval_mvp2_i64_node() -> Node {
+fn eval_i64_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^eval_mvp2_i64_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^eval_i64_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn eval_mvp2_algebra_node() -> Node {
+fn eval_algebra_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^eval_mvp2_algebra_symbol } },
+    kind: TypeNode { connective: Atom { identity: ^eval_algebra_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-data eval_mvp2_two_literal: Node = Node {
+data eval_two_literal: Node = Node {
   kind: ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data eval_mvp2_add_subgraph_node: Node = Node {
+data eval_add_subgraph_node: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: eval_mvp2_two_literal },
-    Edge { label: Positional, target: eval_mvp2_two_literal }
+    Edge { label: Positional, target: eval_two_literal },
+    Edge { label: Positional, target: eval_two_literal }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-fn eval_mvp2_add_subgraph() -> Node {
-  eval_mvp2_add_subgraph_node
+fn eval_add_subgraph() -> Node {
+  eval_add_subgraph_node
 }
 
-fn eval_mvp2_runtime_value(bytes: List<Byte>) -> RuntimeValue {
+fn eval_runtime_value(bytes: List<Byte>) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: eval_mvp2_i64_node(),
+      primitive_type: eval_i64_node(),
       bytes: bytes
     }
   }
 }
 
-fn eval_mvp2_two_value() -> RuntimeValue {
-  eval_mvp2_runtime_value(bytes: [eval_mvp2_byte(), eval_mvp2_byte()])
+fn eval_two_value() -> RuntimeValue {
+  eval_runtime_value(bytes: [eval_byte(), eval_byte()])
 }
 
-fn eval_mvp2_five_value() -> RuntimeValue {
-  eval_mvp2_runtime_value(
+fn eval_five_value() -> RuntimeValue {
+  eval_runtime_value(
     bytes: [
-      eval_mvp2_byte(),
-      eval_mvp2_byte(),
-      eval_mvp2_byte(),
-      eval_mvp2_byte(),
-      eval_mvp2_byte()
+      eval_byte(),
+      eval_byte(),
+      eval_byte(),
+      eval_byte(),
+      eval_byte()
     ]
   )
 }
 
-fn eval_mvp2_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  Accepted { value: eval_mvp2_two_value(), diagnostics: None }
+fn eval_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Accepted { value: eval_two_value(), diagnostics: None }
 }
 
-fn eval_mvp2_arg_is_two_literal(value: RuntimeValue) -> Bool {
+fn eval_arg_is_two_literal(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == eval_mvp2_i64_node()) && (count(p.bytes) == 2)
+      (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 2)
     _ => false
   }
 }
 
-fn eval_mvp2_args_absent_diagnostic() -> Diagnostic {
-  eval_diagnostic(reason: ^eval_mvp2_args_not_two_literals, node: eval_mvp2_add_subgraph_node)
+fn eval_args_absent_diagnostic() -> Diagnostic {
+  eval_diagnostic(reason: ^eval_args_not_two_literals, node: eval_add_subgraph_node)
 }
 
-fn eval_mvp2_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
+fn eval_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
   if count(args) == 2 {
-    match list_nth(xs: args, wanted: 0, absent: eval_mvp2_args_absent_diagnostic()) {
+    match list_nth(xs: args, wanted: 0, absent: eval_args_absent_diagnostic()) {
       Holds { value: left } =>
-        match list_nth(xs: args, wanted: 1, absent: eval_mvp2_args_absent_diagnostic()) {
+        match list_nth(xs: args, wanted: 1, absent: eval_args_absent_diagnostic()) {
           Holds { value: right } =>
-            eval_mvp2_arg_is_two_literal(value: left)
-              && eval_mvp2_arg_is_two_literal(value: right)
+            eval_arg_is_two_literal(value: left)
+              && eval_arg_is_two_literal(value: right)
           Violates { diagnostic: _ } => false
         }
       Violates { diagnostic: _ } => false
@@ -189,31 +189,31 @@ fn eval_mvp2_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
   }
 }
 
-fn eval_mvp2_call_primitive(
+fn eval_call_primitive(
   _node: Node,
   args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  if eval_mvp2_args_are_two_literals(args: args) {
-    Accepted { value: eval_mvp2_five_value(), diagnostics: None }
+  if eval_args_are_two_literals(args: args) {
+    Accepted { value: eval_five_value(), diagnostics: None }
   } else {
     Rejected {
       diagnostics: diagnostics_singleton(
-        d: eval_diagnostic(reason: ^eval_mvp2_args_not_two_literals, node: _node)
+        d: eval_diagnostic(reason: ^eval_args_not_two_literals, node: _node)
       )
     }
   }
 }
 
-fn eval_mvp2_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  Accepted { value: eval_mvp2_add_subgraph(), diagnostics: None }
+fn eval_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  Accepted { value: eval_add_subgraph(), diagnostics: None }
 }
 
-fn eval_mvp2_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  Accepted { value: Continue { value: eval_mvp2_five_value() }, diagnostics: None }
+fn eval_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Accepted { value: Continue { value: eval_five_value() }, diagnostics: None }
 }
 
-fn eval_mvp2_bind_value(
+fn eval_bind_value(
   _key: EnvironmentBindingKey,
   _value: RuntimeValue,
   env: EvaluationEnvironment
@@ -221,149 +221,149 @@ fn eval_mvp2_bind_value(
   Accepted { value: env, diagnostics: None }
 }
 
-fn eval_mvp2_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
+fn eval_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-fn eval_mvp2_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
+fn eval_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-fn eval_mvp2_call(_call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
-  Accepted { value: Return { value: eval_mvp2_five_value() }, diagnostics: None }
+fn eval_example_call(_call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+  Accepted { value: Return { value: eval_five_value() }, diagnostics: None }
 }
 
-fn eval_mvp2_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+fn eval_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
   Accepted { value: Return { value: value }, diagnostics: None }
 }
 
-fn eval_mvp2_transfer(_control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
+fn eval_transfer(_control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   Accepted { value: frame, diagnostics: None }
 }
 
-fn eval_mvp2_interpretation_algebra() -> InterpretationAlgebra {
+fn eval_interpretation_algebra() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: eval_mvp2_allocate_literal
+      allocate_literal: eval_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: eval_mvp2_call_primitive
+      call_primitive: eval_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: eval_mvp2_choose_branch
+      choose_branch: eval_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: eval_mvp2_step_loop
+      step_loop: eval_step_loop
     },
     bind: BindInterpreter {
-      bind_value: eval_mvp2_bind_value
+      bind_value: eval_bind_value
     }
   }
 }
 
-fn eval_mvp2_diagnostic(n: Node) -> Diagnostic {
-  eval_diagnostic(reason: ^eval_mvp2_descent_not_derived, node: n)
+fn eval_example_diagnostic(n: Node) -> Diagnostic {
+  eval_diagnostic(reason: ^eval_descent_not_derived, node: n)
 }
 
-fn eval_mvp2_termination_proof() -> TerminationProof {
+fn eval_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^eval_mvp2_descent_dimension }
+    strict: RankingDimension { measured: ^eval_descent_dimension }
   }
 }
 
-fn eval_mvp2_facts_for_node(node: Node) -> InferredFacts {
+fn eval_facts_for_node(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
-    algebra: eval_mvp2_i64_node(),
-    descent: Holds { value: eval_mvp2_termination_proof() }
+    algebra: eval_i64_node(),
+    descent: Holds { value: eval_termination_proof() }
   )
 }
 
-fn eval_mvp2_fact_lookup(node: Node) -> Witness<InferredFacts> {
-  if node == eval_mvp2_two_literal {
-    Holds { value: eval_mvp2_facts_for_node(node: eval_mvp2_two_literal) }
-  } else if node == eval_mvp2_add_subgraph_node {
-    Holds { value: eval_mvp2_facts_for_node(node: eval_mvp2_add_subgraph_node) }
+fn eval_fact_lookup(node: Node) -> Witness<InferredFacts> {
+  if node == eval_two_literal {
+    Holds { value: eval_facts_for_node(node: eval_two_literal) }
+  } else if node == eval_add_subgraph_node {
+    Holds { value: eval_facts_for_node(node: eval_add_subgraph_node) }
   } else {
     Violates {
-      diagnostic: eval_diagnostic(reason: ^eval_mvp2_descent_not_derived, node: node)
+      diagnostic: eval_diagnostic(reason: ^eval_descent_not_derived, node: node)
     }
   }
 }
 
-fn eval_mvp2_inferred_tree() -> InferredTree {
+fn eval_inferred_tree() -> InferredTree {
   InferredTree {
-    root: eval_mvp2_add_subgraph(),
+    root: eval_add_subgraph(),
     facts: Map {
-      lookup: eval_mvp2_fact_lookup
+      lookup: eval_fact_lookup
     }
   }
 }
 
-fn eval_mvp2_actual() -> Outcome<RuntimeValue> {
+fn eval_actual() -> Outcome<RuntimeValue> {
   eval(
-    tree: eval_mvp2_inferred_tree(),
-    interpretation: eval_mvp2_interpretation_algebra(),
-    inputs: inputs_root_only(root: eval_mvp2_add_subgraph())
+    tree: eval_inferred_tree(),
+    interpretation: eval_interpretation_algebra(),
+    inputs: inputs_root_only(root: eval_add_subgraph())
   )
 }
 
-fn eval_mvp2_empty_environment() -> EvaluationEnvironment {
+fn eval_empty_environment() -> EvaluationEnvironment {
   EvaluationEnvironment {
     bindings: empty_map()
   }
 }
 
-data witness_eval_mvp2_add_accepts_five: Bool = match eval_mvp2_actual() {
+data witness_eval_add_accepts_five: Bool = match eval_actual() {
   Accepted { value: RuntimePrimitive { value: p }, diagnostics: None } =>
-    (p.primitive_type == eval_mvp2_i64_node()) && (count(p.bytes) == 5)
+    (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 5)
   _ => false
 }
 
-data witness_eval_mvp2_call_primitive_rejects_bad_args: Bool = match eval_mvp2_call_primitive(
-  _node: eval_mvp2_add_subgraph_node,
+data witness_eval_call_primitive_rejects_bad_args: Bool = match eval_call_primitive(
+  _node: eval_add_subgraph_node,
   args: [],
-  _env: eval_mvp2_empty_environment()
+  _env: eval_empty_environment()
 ) {
   Rejected { diagnostics: _ } => true
   _ => false
 }
 
-fn eval_mvp2_interpretation_structure_witness() -> InterpretationStructureWitness {
+fn eval_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^eval_mvp2_allocate_literal_sym,
-    call_primitive: ^eval_mvp2_call_primitive_sym,
-    choose_branch: ^eval_mvp2_choose_branch_sym,
-    step_loop: ^eval_mvp2_step_loop_sym,
-    bind_value: ^eval_mvp2_bind_value_sym,
+    allocate_literal: ^eval_allocate_literal_sym,
+    call_primitive: ^eval_call_primitive_sym,
+    choose_branch: ^eval_choose_branch_sym,
+    step_loop: ^eval_step_loop_sym,
+    bind_value: ^eval_bind_value_sym,
     choose_arm: ^runtime_reject_match_arm
   }
 }
 
-fn eval_mvp2_context() -> EvalContext {
+fn eval_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: ^eval_mvp2_interpretation_pin,
-    interpretation: eval_mvp2_interpretation_algebra(),
-    structure_witness: eval_mvp2_interpretation_structure_witness()
+    runtime_identity: ^eval_interpretation_pin,
+    interpretation: eval_interpretation_algebra(),
+    structure_witness: eval_interpretation_structure_witness()
   )
 }
 
-data claim_eval_mvp2_test_claim_route: TestClaim = EqualsClaim {
+data claim_eval_test_claim_route: TestClaim = EqualsClaim {
   label: "eval routes TestClaim through runtime interpretation",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: eval_mvp2_add_subgraph(),
-  rhs: eval_mvp2_add_subgraph(),
+  lhs: eval_add_subgraph(),
+  rhs: eval_add_subgraph(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data subject_eval_mvp2_test_claim_route: TestClaimEvalSubject<Node> = eval_test_claim_subject(
-  claim: claim_eval_mvp2_test_claim_route,
-  context: eval_mvp2_context(),
-  tree: eval_mvp2_inferred_tree(),
-  evaluator_pin: ^eval_mvp2_evaluator_pin
+data subject_eval_test_claim_route: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+  claim: claim_eval_test_claim_route,
+  context: eval_context(),
+  tree: eval_inferred_tree(),
+  evaluator_pin: ^eval_evaluator_pin
 )
 
-data run_eval_mvp2_test_claim_route: TestClaimRun<Node, RuntimeValue> = run_test_claim(
-  subject: subject_eval_mvp2_test_claim_route
+data run_eval_test_claim_route: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: subject_eval_test_claim_route
 )

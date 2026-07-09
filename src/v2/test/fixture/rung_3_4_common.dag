@@ -3,7 +3,7 @@ module v2.test.rung_3_4_common
 import v2.compiler.emit_host {
   run_test_claim_emit_vs_eval
 }
-import v2.extdeps.languages.rust { rust_mvp1_target_model_staging }
+import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
@@ -30,10 +30,10 @@ import v2.test.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts_from_nodes
 }
-import v2.test.manual.eval_runtime_mvp {
-  eval_mvp2_context
+import v2.test.manual.eval_runtime {
+  eval_context
 }
-data rung34_emit_host_rust_target_model: TargetModel = rust_mvp1_target_model_staging()
+data rung34_emit_host_rust_target_model: TargetModel = rust_target_model_staging()
 
 fn rung34_algebra_evidence_node() -> Node {
   Node {
@@ -90,9 +90,9 @@ fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
 fn rung34_test_claim_subject(claim: TestClaim, evaluator_input: Node) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
     claim: claim,
-    context: eval_mvp2_context(),
+    context: eval_context(),
     tree: rung34_inferred_tree(root: evaluator_input),
-    evaluator_pin: ^eval_mvp2_evaluator_pin
+    evaluator_pin: ^eval_evaluator_pin
   )
 }
 

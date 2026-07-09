@@ -1,6 +1,6 @@
 module v2.test.complexity_gate.source_bridged_branch_subject_producer
 
-import v2.compiler.body_producer { produce_mvp1_pick_if_arrow_with_body_from_resolved }
+import v2.compiler.body_producer { produce_pick_if_arrow_with_body_from_resolved }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse {
   grammar_validate_for_parse,
@@ -9,11 +9,11 @@ import v2.compiler.parse {
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_formal_production_mvp1_fn_pick,
-  dag_grammar_production_mvp1_fn_pick,
+  dag_formal_production_fn_pick,
+  dag_grammar_production_fn_pick,
   dag_language_model_wave1,
-  dag_mvp1_pick_false_source_text,
-  dag_mvp1_pick_source_text
+  dag_pick_false_source_text,
+  dag_pick_source_text
 }
 import v2.std.collection { List, Set }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, port_locus }
@@ -23,8 +23,8 @@ import v2.std.node { Node, Symbol }
 
 fn source_bridged_branch_parse_root() -> GrammarRoot {
   GrammarRoot {
-    start: ^dag_production_mvp1_fn_pick,
-    productions: [dag_grammar_production_mvp1_fn_pick()],
+    start: ^dag_production_fn_pick,
+    productions: [dag_grammar_production_fn_pick()],
     sync_tokens: Set {
       member: fn(_) {
         false
@@ -40,7 +40,7 @@ fn source_bridged_branch_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree>
       parse_production_tree(
         tokens: tokens,
         validated: validated,
-        production_name: ^dag_production_mvp1_fn_pick
+        production_name: ^dag_production_fn_pick
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -71,17 +71,17 @@ fn source_bridged_resolved_pick_arrow_from_text(source_text: String) -> Outcome<
 }
 
 fn source_bridged_resolved_pick_arrow() -> Outcome<Node> {
-  source_bridged_resolved_pick_arrow_from_text(source_text: dag_mvp1_pick_source_text)
+  source_bridged_resolved_pick_arrow_from_text(source_text: dag_pick_source_text)
 }
 
 fn source_bridged_resolved_pick_false_arrow() -> Outcome<Node> {
-  source_bridged_resolved_pick_arrow_from_text(source_text: dag_mvp1_pick_false_source_text)
+  source_bridged_resolved_pick_arrow_from_text(source_text: dag_pick_false_source_text)
 }
 
 fn source_bridged_pick_if_arrow_with_body_from_resolved(
   resolved: Node
 ) -> Outcome<Node> {
-  produce_mvp1_pick_if_arrow_with_body_from_resolved(resolved_root: resolved)
+  produce_pick_if_arrow_with_body_from_resolved(resolved_root: resolved)
 }
 
 fn source_bridged_pick_if_arrow_with_body() -> Outcome<Node> {

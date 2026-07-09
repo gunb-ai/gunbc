@@ -6,7 +6,7 @@ import v2.compiler.parse {
 }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.python {
-  python_mvp1_source_text,
+  python_source_text,
   python_wave1_grammar_root,
   python_wave1_lex
 }
@@ -53,7 +53,7 @@ fn python_wave1_grammar_parse_accepts() -> Bool {
 fn python_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(
-    text: python_mvp1_source_text,
+    text: python_source_text,
     file: ^python_wave1_parse_fixture_file,
     rules: python_wave1_lex()
   ) {
@@ -65,7 +65,7 @@ fn python_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
           parse_production_tree(
             tokens: token_stream_remaining(stream: stream),
             validated: validated,
-            production_name: ^python_production_mvp1_fn_add
+            production_name: ^python_production_fn_add
           )
       }
   }
