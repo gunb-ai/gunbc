@@ -1,6 +1,6 @@
 module v2.workflow.ci_floor_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
@@ -42,6 +42,7 @@ import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import std.realization_schedule {
   SelectionApplied,
   SelectionPredictOnly,
+  SelectionOff,
   RealizationPlan,
   RealizationObjective,
   Runnable,
@@ -127,7 +128,7 @@ fn witness_entries_kind_path_all_agree(entries: List<ScheduleWitnessEntry>) -> B
 
 fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
   concat(
-    if length(xs: corpus_witness_entries(spec: spec)) > 0 { [floor_corpus_node] } else { [] },
+    if length(xs: corpus_witness_entries(spec: spec)) > 0 || length(xs: spec.discovery_scan_dirs) > 0 { [floor_corpus_node] } else { [] },
     if length(xs: execution_witness_entries(spec: spec)) > 0 { [execution_corpus_node] } else { [] }
   )
 }
@@ -245,7 +246,7 @@ fn corpus_source_roots() -> List<String> {
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
-    scan_dirs: [],
+    scan_dirs: spec.discovery_scan_dirs,
     explicit_entries: corpus_witness_entries(spec: spec),
     node_frontier_selection: SelectionApplied,
     exclude_substrings: witness_exclusion_substrings,
@@ -512,7 +513,7 @@ fn gunbc_falsifier_spawn_width_from_live_cap() -> HardwareThreadCount {
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
   [[RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
-    scan_dirs: witness_discovery_scan_dirs,
+    scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
     explicit_entries: [],
     node_frontier_selection: SelectionPredictOnly,
     exclude_substrings: witness_exclusion_substrings,
@@ -528,6 +529,30 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
 
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan().schedule
+}
+
+fn runnable_scan_dir_count(r: Runnable) -> Int {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => length(xs: dirs)
+    _ => 0 - 1
+  }
+}
+
+fn runnable_selection_applied(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
+      match sel { SelectionApplied => true  SelectionOff => false  SelectionPredictOnly => false }
+    _ => false
+  }
+}
+
+fn witness_ci_corpus_discovery_is_live() -> Bool {
+  runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) > 0
+    && runnable_selection_applied(r: corpus_runnable_for(spec: gunbc_ci_spec))
+}
+
+fn witness_regen_spec_carries_no_witness_corpus() -> Bool {
+  length(xs: corpus_plan_nodes(spec: gunbc_ci_regen_spec)) == 0
 }
 
 fn gunbc_ci_regen_floor_batches() -> List<List<Runnable>> {
@@ -581,7 +606,7 @@ fn gunbc_ci_regen_floor_plan_spawn_width(memory_budget_bytes: Int) -> HardwareTh
   gunbc_ci_plan_spawn_width(memory_budget_bytes: memory_budget_bytes)
 }
 
-data gunbc_falsifier_plan_spawn_width_note: String = "claim_executor derives gunbc_falsifier_plan_spawn_width from gunbc_falsifier_batches at runtime (same wiring-gap class as ci_regen, #6393). Unlike ci/regen, the falsifier cold full-corpus discovery batch carries a heavier per-shard envelope (gunbc_falsifier_per_shard_peak_rss_bytes) than floor gate witnesses — run 28993330753 exit-137 @ spawn_width=4 under gunbc_ci_runner_slot_memory_max_live proved the floor per_shard underestimate. This function and gunbc_falsifier_spawn_width_from_live_cap share gunbc_falsifier_memory_derived_width so plan-time spawn_width_cap and runtime eval agree on width=3 at the live 24GiB cap (vs ci width=4). witness_falsifier_plan_spawn_width_backs_off_at_live_cap executes the derived name in the corpus."
+data gunbc_falsifier_plan_spawn_width_note: String = "claim_executor derives gunbc_falsifier_plan_spawn_width from gunbc_falsifier_batches at runtime (same wiring-gap class as ci_regen, #6393). Unlike ci/regen, the falsifier cold full-corpus discovery batch carries a heavier per-shard envelope (gunbc_falsifier_per_shard_peak_rss_bytes) than floor gate witnesses — run 28993330753 exit-137 @ spawn_width=4 under gunbc_ci_runner_slot_memory_max_live proved the floor per_shard underestimate. This function and gunbc_falsifier_spawn_width_from_live_cap share gunbc_falsifier_memory_derived_width so plan-time spawn_width_cap and runtime eval agree; with the flip-re-measured executor base overhead (8910036989, merged alongside from #6395) the memory formula derives 2 at the live 24GiB cap (same as ci) and the shipped falsifier width is 1 (cpu_bound pins shard_count: 1 - the run-all cold corpus serializes so its whole-tree shard footprint cannot stack). witness_falsifier_plan_spawn_width_backs_off_at_live_cap executes the derived name in the corpus."
 
 fn gunbc_falsifier_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
   gunbc_falsifier_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
@@ -718,7 +743,7 @@ fn witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: CiSpec) -> Bool
 }
 
 fn witness_corpus_effective_widths_fit_runner_cap() -> Bool {
-  let cap = byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+  let cap = byte_size_count(b: gunbc_ci_runner_slot_memory_max_live)
   let base = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes())
   let floor_cap_w = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree())
   let floor_committed = base + floor_cap_w * byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
