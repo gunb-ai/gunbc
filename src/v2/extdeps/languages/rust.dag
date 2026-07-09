@@ -2142,7 +2142,8 @@ fn rust_mvp1_field_access_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_get, "get")
   let m1 = map_insert(m0, ^dag_binding_param_r, "r")
   let m2 = map_insert(m1, ^dag_binding_type_rec, "(i32,)")
-  map_insert(m2, ^dag_binding_mvp1_rec_v, "0")
+  let m3 = map_insert(m2, ^dag_binding_mvp1_rec_v, "0")
+  map_insert(m3, ^dag_binding_mvp1_pick_lit_one, "1")
 }
 
 fn rust_mvp1_field_access_target_model_core_edges() -> List<Edge> {

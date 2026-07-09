@@ -1,11 +1,13 @@
 module v2.test.emit.rust_field_access_emit
 
-import v2.compiler.body_producer {
-  produce_mvp1_field_access_arrow_with_body,
-  produce_mvp1_field_access_arrow_with_body_wrong_field
-}
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_mvp1_arrow_with_body_node,
+  dag_mvp1_field_access_arrow_domain_conj_node,
+  dag_mvp1_field_access_arrow_with_body_fixture,
+  dag_mvp1_type_atom_node
+}
 import v2.extdeps.languages.rust {
   rust_mvp1_field_access_source_text,
   rust_mvp1_field_access_wrong_field_source_text,
@@ -26,8 +28,46 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node {
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  SyntheticOccurrence,
+  Transform
+}
 import v2.std.witness { Violates, Witness }
+
+data rust_field_access_emit_root: Node = dag_mvp1_field_access_arrow_with_body_fixture
+
+fn rust_field_access_emit_wrong_field_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_token_dot)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_param_r)
+      },
+      Edge {
+        label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_pick_lit_one)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_field_access_emit_wrong_field_root() -> Node {
+  dag_mvp1_arrow_with_body_node(
+    domain: dag_mvp1_field_access_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: rust_field_access_emit_wrong_field_body()
+  )
+}
 
 fn rust_field_access_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
   Violates {
@@ -46,48 +86,15 @@ fn rust_field_access_emit_inferred_tree_for(root: Node) -> InferredTree {
   }
 }
 
-fn rust_field_access_emit_producer_inferred_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_field_access_arrow_with_body() {
-    Accepted { value: root, diagnostics: d } =>
-      Accepted {
-        value: rust_field_access_emit_inferred_tree_for(root: root),
-        diagnostics: d
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn rust_field_access_emit_wrong_field_producer_inferred_tree() -> Outcome<InferredTree> {
-  match produce_mvp1_field_access_arrow_with_body_wrong_field() {
-    Accepted { value: root, diagnostics: d } =>
-      Accepted {
-        value: rust_field_access_emit_inferred_tree_for(root: root),
-        diagnostics: d
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn rust_field_access_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
-  bind_outcome(
-    o: rust_field_access_emit_producer_inferred_tree(),
-    f: fn(tree) {
-      emit(tree: tree, target: target)
-    }
-  )
-}
-
-fn rust_field_access_emit_from_wrong_field_tree(target: TargetModel) -> Outcome<Medium<String>> {
-  bind_outcome(
-    o: rust_field_access_emit_wrong_field_producer_inferred_tree(),
-    f: fn(tree) {
-      emit(tree: tree, target: target)
-    }
-  )
+fn rust_field_access_emit_from_root(root: Node, target: TargetModel) -> Outcome<Medium<String>> {
+  emit(tree: rust_field_access_emit_inferred_tree_for(root: root), target: target)
 }
 
 fn rust_field_access_emit_get_accepts() -> Bool {
-  match rust_field_access_emit_from_tree(target: rust_mvp1_field_access_target_model_staging()) {
+  match rust_field_access_emit_from_root(
+    root: rust_field_access_emit_root,
+    target: rust_mvp1_field_access_target_model_staging()
+  ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_mvp1_field_access_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
@@ -95,7 +102,8 @@ fn rust_field_access_emit_get_accepts() -> Bool {
 }
 
 fn rust_field_access_emit_wrong_field_discriminates() -> Bool {
-  match rust_field_access_emit_from_wrong_field_tree(
+  match rust_field_access_emit_from_root(
+    root: rust_field_access_emit_wrong_field_root(),
     target: rust_mvp1_field_access_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>

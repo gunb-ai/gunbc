@@ -55,10 +55,7 @@ import v2.extdeps.languages.dag {
   dag_mvp1_pick_captured_flat_atom_binding_for_ident,
   dag_mvp1_bind_arrow_with_body_fixture,
   dag_mvp1_bind_arrow_with_body_wrong_value_fixture,
-  dag_mvp1_bind_captured_flat_atom_binding_for_ident,
-  dag_mvp1_arrow_with_body_node,
-  dag_mvp1_field_access_arrow_domain_conj_node,
-  dag_mvp1_field_access_arrow_with_body_fixture
+  dag_mvp1_bind_captured_flat_atom_binding_for_ident
 }
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
@@ -758,31 +755,6 @@ fn produce_mvp1_match_arrow_with_body() -> Outcome<Node> {
 
 fn produce_mvp1_match_arrow_with_body_swapped_arms() -> Outcome<Node> {
   outcome_accepted(value: dag_mvp1_match_arrow_with_body_swapped_arms_fixture)
-}
-
-fn body_producer_field_access_wrong_field_body() -> Node {
-  node_synthetic(
-    kind: ComputationNode { behavior: Transform },
-    children: [
-      Edge { label: Positional, target: type_atom_node(identity: ^dag_token_dot) },
-      Edge { label: Positional, target: type_atom_node(identity: ^dag_binding_param_r) },
-      Edge { label: Positional, target: type_atom_node(identity: ^dag_binding_mvp1_pick_lit_one) }
-    ]
-  )
-}
-
-fn produce_mvp1_field_access_arrow_with_body() -> Outcome<Node> {
-  outcome_accepted(value: dag_mvp1_field_access_arrow_with_body_fixture)
-}
-
-fn produce_mvp1_field_access_arrow_with_body_wrong_field() -> Outcome<Node> {
-  outcome_accepted(
-    value: dag_mvp1_arrow_with_body_node(
-      domain: dag_mvp1_field_access_arrow_domain_conj_node(),
-      return_type_binding: ^dag_binding_type_int,
-      body: body_producer_field_access_wrong_field_body()
-    )
-  )
 }
 
 fn body_producer_bind_let_body(
