@@ -18,7 +18,7 @@ import v2.test.lens_affected_set.edit_locus_resolver {
   unified_claim_edit_locus_narrow
 }
 import v2.std.text { String }
-import v2.test.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
+import v2.test.manual.eval_runtime { claim_eval_test_claim_route }
 import v2.test.workflow.host_discovered_owned_data_manifest {
   host_owned_data_discovery_receipt
 }
@@ -31,7 +31,7 @@ fn substrate_equivalence_sample_bool_unified_claim() -> UnifiedTestClaim {
 
 fn substrate_equivalence_sample_node_corpus_claim() -> UnifiedTestClaim {
   NodeCorpus {
-    claim: claim_eval_mvp2_test_claim_route,
+    claim: claim_eval_test_claim_route,
     transport: EvalOnly
   }
 }

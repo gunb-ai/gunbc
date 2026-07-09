@@ -1,6 +1,6 @@
 module v2.program
 
-import v2.compiler.body_producer { produce_mvp1_pick_if_arrow_with_body }
+import v2.compiler.body_producer { produce_pick_if_arrow_with_body }
 import v2.compiler.eval {
   EvalContext,
   effect_io_roundtrip_transform,
@@ -11,8 +11,8 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
-  dag_mvp1_pick_if_body_from_arms,
-  dag_mvp1_type_atom_node
+  dag_pick_if_body_from_arms,
+  dag_type_atom_node
 }
 import v2.extdeps.runtimes.v2_effect_io_pure {
   FileResourceBackend,
@@ -137,19 +137,19 @@ fn program_unit_value() -> RuntimeValue {
 }
 
 fn program_literal_one() -> Node {
-  dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one)
+  dag_type_atom_node(identity: ^dag_pick_lit_one)
 }
 
 fn program_literal_two() -> Node {
-  dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two)
+  dag_type_atom_node(identity: ^dag_pick_lit_two)
 }
 
 fn program_kw_true() -> Node {
-  dag_mvp1_type_atom_node(identity: ^dag_token_kw_true)
+  dag_type_atom_node(identity: ^dag_token_kw_true)
 }
 
 fn program_kw_false() -> Node {
-  dag_mvp1_type_atom_node(identity: ^dag_token_kw_false)
+  dag_type_atom_node(identity: ^dag_token_kw_false)
 }
 
 data program_locator_literal: Node = Node {
@@ -169,7 +169,7 @@ data program_effect_io_roundtrip: Node = effect_io_roundtrip_transform(
   payload: program_payload_literal
 )
 
-data program_pick_if_branch_with_effect_io: Node = dag_mvp1_pick_if_body_from_arms(
+data program_pick_if_branch_with_effect_io: Node = dag_pick_if_body_from_arms(
   condition: program_kw_true(),
   then_arm: program_effect_io_roundtrip,
   else_arm: program_literal_two()
@@ -404,7 +404,7 @@ fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {
 }
 
 fn program_pick_if_arrow_holds() -> Bool {
-  match produce_mvp1_pick_if_arrow_with_body() {
+  match produce_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let call = program_pick_if_call(callee: arrow)
       match eval_with_context(

@@ -10571,25 +10571,25 @@ fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
 }
 
 fn target_value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValueExpression> {
-  if id == ^dag_mvp1_pick_lit_one {
+  if id == ^dag_pick_lit_one {
     outcome_accepted(
-      target_value_expression_binding_ref(binding: ^dag_binding_mvp1_pick_lit_one)
+      target_value_expression_binding_ref(binding: ^dag_binding_pick_lit_one)
     )
-  } else if id == ^dag_mvp1_pick_lit_two {
+  } else if id == ^dag_pick_lit_two {
     outcome_accepted(
-      target_value_expression_binding_ref(binding: ^dag_binding_mvp1_pick_lit_two)
+      target_value_expression_binding_ref(binding: ^dag_binding_pick_lit_two)
     )
-  } else if id == ^dag_mvp1_rec_lit_nine {
+  } else if id == ^dag_rec_lit_nine {
     outcome_accepted(
-      target_value_expression_binding_ref(binding: ^dag_binding_mvp1_rec_lit_nine)
+      target_value_expression_binding_ref(binding: ^dag_binding_rec_lit_nine)
     )
   } else if id == ^dag_binding_param_r {
     outcome_accepted(
       target_value_expression_binding_ref(binding: ^dag_binding_param_r)
     )
-  } else if id == ^dag_binding_mvp1_rec_v {
+  } else if id == ^dag_binding_rec_v {
     outcome_accepted(
-      target_value_expression_binding_ref(binding: ^dag_binding_mvp1_rec_v)
+      target_value_expression_binding_ref(binding: ^dag_binding_rec_v)
     )
   } else {
     outcome_accepted(

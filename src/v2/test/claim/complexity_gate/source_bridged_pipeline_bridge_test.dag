@@ -2,8 +2,8 @@ module v2.test.complexity_gate.source_bridged_pipeline_bridge_test
 
 import v2.test.complexity_gate.source_bridged_pipeline_bridge { source_bridged_resolved_root }
 import v2.extdeps.languages.dag {
-  dag_grammar_production_mvp1_fn_loop,
-  dag_mvp1_loop_source_text
+  dag_grammar_production_fn_loop,
+  dag_loop_source_text
 }
 import v2.std.collection { Set }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -12,17 +12,17 @@ import v2.std.logic { Bool }
 
 fn source_bridged_bridge_test_loop_grammar_root() -> GrammarRoot {
   GrammarRoot {
-    start: ^dag_production_mvp1_fn_loop,
-    productions: [dag_grammar_production_mvp1_fn_loop()],
+    start: ^dag_production_fn_loop,
+    productions: [dag_grammar_production_fn_loop()],
     sync_tokens: Set { member: fn(_) { false } }
   }
 }
 
 test fn source_bridged_pipeline_bridge_resolves_loop_source() -> Bool {
   match source_bridged_resolved_root(
-    source_text: dag_mvp1_loop_source_text,
+    source_text: dag_loop_source_text,
     parse_root: source_bridged_bridge_test_loop_grammar_root(),
-    production_name: ^dag_production_mvp1_fn_loop,
+    production_name: ^dag_production_fn_loop,
     file: ^source_bridged_pipeline_bridge_test_file
   ) {
     Accepted { value: _, diagnostics: _ } => true
