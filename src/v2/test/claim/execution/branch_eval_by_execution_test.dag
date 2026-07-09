@@ -1,8 +1,8 @@
 module v2.test.execution.branch_eval_by_execution
 
 import v2.compiler.body_producer {
-  produce_mvp1_pick_if_arrow_with_body,
-  produce_mvp1_pick_if_arrow_with_body_swapped_arms
+  produce_pick_if_arrow_with_body,
+  produce_pick_if_arrow_with_body_swapped_arms
 }
 import v2.test.complexity_gate.source_bridged_branch_subject_producer {
   source_bridged_pick_false_if_arrow_with_body,
@@ -148,11 +148,11 @@ fn branch_two_value() -> RuntimeValue {
 }
 
 fn branch_literal_one_node() -> Node {
-  branch_atom(s: ^dag_mvp1_pick_lit_one)
+  branch_atom(s: ^dag_pick_lit_one)
 }
 
 fn branch_literal_two_node() -> Node {
-  branch_atom(s: ^dag_mvp1_pick_lit_two)
+  branch_atom(s: ^dag_pick_lit_two)
 }
 
 fn branch_runtime_diagnostic(n: Node) -> Diagnostic {
@@ -483,7 +483,7 @@ fn branch_direct_runtime_true_holds() -> Bool {
 }
 
 fn branch_swapped_arms_red_holds() -> Bool {
-  match produce_mvp1_pick_if_arrow_with_body_swapped_arms() {
+  match produce_pick_if_arrow_with_body_swapped_arms() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(
@@ -496,7 +496,7 @@ fn branch_swapped_arms_red_holds() -> Bool {
 }
 
 fn branch_fixture_producer_holds() -> Bool {
-  match produce_mvp1_pick_if_arrow_with_body() {
+  match produce_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       branch_run_passes(
         run: branch_run(

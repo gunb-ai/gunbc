@@ -2,22 +2,22 @@ module tools.emit_host_fixtures
 
 import std.measure { ByteSize, byte_size }
 
-data rust_mvp2_stdout_fixture_source: String = "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }"
+data rust_stdout_fixture_source: String = "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }"
 
-data python_mvp2_stdout_fixture_source: String = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n"
+data python_stdout_fixture_source: String = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n"
 
-data go_mvp2_stdout_fixture_source: String = "package main\nimport \"os\"\nfunc main() { _, _ = os.Stdout.Write(make([]byte, 5)) }\n"
+data go_stdout_fixture_source: String = "package main\nimport \"os\"\nfunc main() { _, _ = os.Stdout.Write(make([]byte, 5)) }\n"
 
-data ts_mvp1_host_fixture_prefix: String = "// @ts-nocheck\nfunction add(x: number, y: number): number { return x + y; }\n"
+data ts_host_fixture_prefix: String = "// @ts-nocheck\nfunction add(x: number, y: number): number { return x + y; }\n"
 
-data ts_mvp1_host_fixture_harness_suffix: String = "
+data ts_host_fixture_harness_suffix: String = "
 const __gunbc_r = add(2, 3);
 const __gunbc_b = Buffer.alloc(4);
 __gunbc_b.writeInt32LE(__gunbc_r, 0);
 process.stdout.write(__gunbc_b);
 "
 
-data ts_mvp1_host_fixture_source: String = "{ts_mvp1_host_fixture_prefix}{ts_mvp1_host_fixture_harness_suffix}"
+data ts_host_fixture_source: String = "{ts_host_fixture_prefix}{ts_host_fixture_harness_suffix}"
 
-data mvp2_stdout_byte_count: ByteSize = byte_size(5)
+data stdout_byte_count: ByteSize = byte_size(5)
 data ts_signed_i32_le_byte_count: ByteSize = byte_size(4)

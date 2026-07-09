@@ -12,7 +12,7 @@ import v2.compiler.parse {
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_grammar_production_mvp1_fn_add,
+  dag_grammar_production_fn_add,
   dag_language_model_wave1_modeled
 }
 import v2.std.compilers.lexing { TokenStream, token_stream_remaining }
@@ -200,10 +200,10 @@ fn semantic_ir_from_source(source: Medium<String>) -> Outcome<DagSemanticIr> {
   )
 }
 
-fn source_authority_mvp1_fn_parse_root() -> GrammarRoot {
+fn source_authority_fn_parse_root() -> GrammarRoot {
   GrammarRoot {
-    start: ^dag_production_mvp1_fn_add,
-    productions: [dag_grammar_production_mvp1_fn_add()],
+    start: ^dag_production_fn_add,
+    productions: [dag_grammar_production_fn_add()],
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
@@ -211,13 +211,13 @@ fn source_authority_mvp1_fn_parse_root() -> GrammarRoot {
 fn source_authority_parse_source_file_tokens(
   tokens: TokenStream
 ) -> Outcome<ParseArtifact> {
-  let root = source_authority_mvp1_fn_parse_root()
+  let root = source_authority_fn_parse_root()
   match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production_tree(
         tokens: token_stream_remaining(stream: tokens),
         validated: validated,
-        production_name: ^dag_production_mvp1_fn_add
+        production_name: ^dag_production_fn_add
       ) {
         Accepted { value: tree, diagnostics: d } =>
           outcome_accepted(
@@ -300,7 +300,7 @@ fn source_ir_node_artifact_provenance(
   )
 }
 
-fn source_ir_node_artifact_provenance_mvp1_from_model(
+fn source_ir_node_artifact_provenance_add_from_model(
   source_read: DagSourceReadWitness,
   lm: LanguageModel
 ) -> Outcome<NodeArtifactProvenance> {
@@ -331,10 +331,10 @@ fn source_ir_node_artifact_provenance_mvp1_from_model(
   }
 }
 
-fn source_ir_node_artifact_provenance_mvp1(
+fn source_ir_node_artifact_provenance_add(
   source_read: DagSourceReadWitness
 ) -> Outcome<NodeArtifactProvenance> {
-  source_ir_node_artifact_provenance_mvp1_from_model(
+  source_ir_node_artifact_provenance_add_from_model(
     source_read: source_read,
     lm: dag_language_model_wave1_modeled()
   )
@@ -356,7 +356,7 @@ fn node_artifact_provenance_fold_step(
     NodeArtifactProvenanceFoldFailed { diagnostics: d } =>
       NodeArtifactProvenanceFoldFailed { diagnostics: d }
     NodeArtifactProvenanceFoldOk { provenance: acc } =>
-      match source_ir_node_artifact_provenance_mvp1(source_read: read) {
+      match source_ir_node_artifact_provenance_add(source_read: read) {
         Accepted { value: row, diagnostics: _ } =>
           NodeArtifactProvenanceFoldOk {
             provenance: list_snoc_item(xs: acc, item: row)
