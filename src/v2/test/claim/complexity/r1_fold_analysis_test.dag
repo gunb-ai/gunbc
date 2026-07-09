@@ -9,7 +9,7 @@ import v2.lens.complexity_r1_accumulator_copy.analyze {
   findings_have_suspect,
   r1_findings
 }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -27,7 +27,7 @@ data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n 
 data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: acc, right: Cons { head: r, tail: Empty })\n    } else {\n      acc\n    }\n  })\n}\n"
 
 fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: ts, diagnostics: _ } =>

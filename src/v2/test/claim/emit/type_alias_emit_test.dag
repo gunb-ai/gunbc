@@ -5,8 +5,8 @@ import v2.compiler.translate {
   grammar_relation_row_tokens_root,
   serialize_concrete_syntax_tokens_to_source
 }
-import v2.extdeps.languages.rust {
-  rust_inhabitant_atom,
+import v2.extdeps.languages.rust { rust_inhabitant_atom }
+import v2.extdeps.languages.rust_test {
   rust_type_alias_decl_productions_only_translation_rules,
   rust_type_alias_decl_structural_target_model
 }

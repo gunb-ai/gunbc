@@ -2,7 +2,7 @@ module v2.test.manual.token_stream_content_hash_witness
 
 import extdeps.filesystem.filesystem_io
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { Absent, Optional, Present }
 import v2.std.compilers.lexing { Token, TokenStream, symbol_intern_lexeme, token_stream_all }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -26,7 +26,7 @@ fn token_stream_content_hash(stream: TokenStream) -> Hash {
 }
 
 fn token_stream_content_hash_for_path(path: String) -> Optional<Hash> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   let source_text = filesystem_read(path: path).content
   match tokenize(text: source_text, file: ^token_stream_content_hash_file_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent

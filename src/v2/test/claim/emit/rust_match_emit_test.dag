@@ -6,7 +6,7 @@ import v2.compiler.body_producer {
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust_test {
   rust_match_source_text,
   rust_match_target_model_staging
 }
@@ -28,7 +28,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
 
-data rust_match_emit_swapped_source_text: String = "fn one_or_two() -> i32 { match true { true => 2, false => 1 } }"
+data rust_match_emit_swapped_source_text: String = "fn one_or_two() -> i32 { match (true) { true => 2, false => 1 } }"
 
 fn rust_match_emit_facts_miss(key: Node) -> Witness<InferredFacts> {
   Violates {

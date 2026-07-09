@@ -24,6 +24,8 @@ import v2.workflow.ci_floor_plan {
   witness_floor_width_governed_by_budget_tree,
   witness_floor_width_derived_from_tree_is_positive,
   witness_floor_spawn_width_tight_budget_backs_off,
+  witness_falsifier_plan_spawn_width_backs_off_at_live_cap,
+  witness_falsifier_envelope_fits_live_cap,
   witness_corpus_effective_widths_fit_runner_cap,
   witness_floor_derived_width_leaves_headroom_at_cap,
 }
@@ -300,6 +302,11 @@ test fn ci_floor_spawn_width_from_budget_tree_witnesses() -> Bool {
 
 test fn ci_floor_spawn_width_live_budget_witnesses() -> Bool {
   witness_floor_spawn_width_tight_budget_backs_off()
+}
+
+test fn falsifier_plan_spawn_width_witnesses() -> Bool {
+  witness_falsifier_plan_spawn_width_backs_off_at_live_cap()
+    && witness_falsifier_envelope_fits_live_cap()
 }
 
 test fn ci_floor_honest_width_fold_witnesses() -> Bool {

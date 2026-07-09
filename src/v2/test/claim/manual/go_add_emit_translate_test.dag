@@ -35,7 +35,7 @@ import v2.extdeps.languages.go {
   go_named_edge,
   go_overflow_node,
   go_signed_int_width_node,
-  go_wave1_lex
+  go_lex
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
@@ -105,7 +105,7 @@ data go_add_target_model: TargetModel = go_target_model()
 
 data go_add_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: go_target_model_node(),
-  lex: go_wave1_lex(),
+  lex: go_lex(),
   binding_spellings: go_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: go_add_forbidden_authority_source_text,
@@ -120,7 +120,7 @@ data go_add_empty_translation_rules_bundle: Node = Node {
 
 data go_add_missing_translation_rules_target: TargetModel = TargetModel {
   bundle: go_add_empty_translation_rules_bundle,
-  lex: go_wave1_lex(),
+  lex: go_lex(),
   binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: "",

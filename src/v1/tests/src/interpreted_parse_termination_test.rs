@@ -73,9 +73,9 @@ fn interpreted_parse_bisect_parse_terminates() {
 }
 
 #[test]
-fn interpreted_parse_bisect_wave1_add_correctness_holds() {
+fn interpreted_parse_bisect_add_correctness_holds() {
     assert_witness_terminates(
-        "witness_bisect_wave1_parse_module_add_correctness_holds",
+        "witness_bisect_parse_module_add_correctness_holds",
         Duration::from_secs(90),
     );
 }
@@ -83,11 +83,11 @@ fn interpreted_parse_bisect_wave1_add_correctness_holds() {
 #[test]
 fn interpreted_parse_bisect_unbound_reference_rejected() {
     assert_witness_terminates(
-        "witness_bisect_wave1_unbound_reference_rejected",
+        "witness_bisect_unbound_reference_rejected",
         Duration::from_secs(90),
     );
     assert_witness_terminates(
-        "witness_bisect_wave1_unbound_reference_no_binding_rejected",
+        "witness_bisect_unbound_reference_no_binding_rejected",
         Duration::from_secs(90),
     );
 }

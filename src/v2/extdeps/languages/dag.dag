@@ -1,5 +1,5 @@
 module v2.extdeps.languages.dag
-import v2.std.model_core { wave1_void }
+import v2.std.model_core { bool_model_core }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -281,7 +281,9 @@ fn dag_match_concrete_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_type_int },
     FixedToken { token_class: ^dag_token_lbrace },
     FixedToken { token_class: ^dag_token_kw_match },
+    FixedToken { token_class: ^dag_token_match_scrutinee_nop },
     FixedToken { token_class: ^dag_token_kw_true },
+    FixedToken { token_class: ^dag_token_match_scrutinee_nop },
     FixedToken { token_class: ^dag_token_lbrace },
     FixedToken { token_class: ^dag_token_kw_true },
     FixedToken { token_class: ^dag_token_fat_arrow },
@@ -465,7 +467,7 @@ fn dag_whitespace_trivia_rule() -> LexRule {
   }
 }
 
-fn dag_wave1_lex_rules() -> LexRuleSet {
+fn dag_lex_rules() -> LexRuleSet {
 
   LexRuleSet {
     rules: [
@@ -516,13 +518,14 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_rbracket, text: "]"),
       dag_literal_lex_rule(token_class: ^dag_token_lt, text: "<"),
       dag_literal_lex_rule(token_class: ^dag_token_gt, text: ">"),
-      dag_literal_lex_rule(token_class: ^dag_token_question, text: "?")
+      dag_literal_lex_rule(token_class: ^dag_token_question, text: "?"),
+      dag_literal_lex_rule(token_class: ^dag_token_match_scrutinee_nop, text: "")
     ]
   }
 }
 
-fn dag_wave1_lex() -> LexRules {
-  ModeledLexRules { root: dag_wave1_lex_rules() }
+fn dag_lex() -> LexRules {
+  ModeledLexRules { root: dag_lex_rules() }
 }
 
 fn dag_grammar_atom(id: Symbol) -> Node {
@@ -587,7 +590,7 @@ fn emit_grammar_relation_row(
 }
 }
 
-fn dag_wave1_formal_productions() -> List<FormalProduction> {
+fn dag_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^dag_production_module_header,
@@ -2440,7 +2443,9 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
         right: dag_grammar_sequence(
-          left: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_match_arm)),
+          left: dag_grammar_optional(
+            element: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_match_arm))
+          ),
           right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
         )
       )
@@ -2866,7 +2871,7 @@ fn emit_row_data_decl(
   )
 }
 
-fn dag_wave1_grammar_root() -> GrammarRoot {
+fn dag_grammar_root() -> GrammarRoot {
   let module_prod = dag_grammar_module_production()
   let module_header = dag_grammar_production(
     name: ^dag_production_module_header,
@@ -3077,16 +3082,16 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
       if_expr,
       fn_literal
     ],
-    sync_tokens: dag_wave1_sync_tokens()
+    sync_tokens: dag_sync_tokens()
   }
 }
 
-fn dag_wave1_g0_void_grammar() -> ParseGrammar {
+fn dag_g0_void_grammar() -> ParseGrammar {
   VoidGrammar
 }
 
-fn dag_wave1_grammar() -> ParseGrammar {
-  ModeledGrammar { root: dag_wave1_grammar_root() }
+fn dag_grammar() -> ParseGrammar {
+  ModeledGrammar { root: dag_grammar_root() }
 }
 
 fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
@@ -3096,7 +3101,7 @@ fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
         sym == ^dag_c3_surface_sugar_fn ||
         sym == ^dag_c3_surface_sugar_type ||
         sym == ^dag_c3_surface_sugar_operation ||
-        dag_wave1_lex_token_symbol(sym: sym)
+        dag_lex_token_symbol(sym: sym)
     }
   }
 }
@@ -3121,43 +3126,43 @@ fn dag_language_model_binding_canonical(sym: Symbol) -> Bool {
     || sym == ^dag_binding_pick_lit_two
 }
 
-fn dag_language_model_wave1_canonical_symbols() -> Set<Symbol> {
+fn dag_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       dag_language_model_surface_prelude_atoms().member(sym) ||
-        grammar_carries_symbol(grammar: dag_wave1_grammar(), sym: sym) ||
+        grammar_carries_symbol(grammar: dag_grammar(), sym: sym) ||
         dag_language_model_binding_canonical(sym: sym)
     }
   }
 }
 
-fn dag_language_model_wave1_void() -> LanguageModel {
+fn dag_language_model_void() -> LanguageModel {
   LanguageModel {
-    lex: dag_wave1_lex(),
-    grammar: dag_wave1_g0_void_grammar(),
+    lex: dag_lex(),
+    grammar: dag_g0_void_grammar(),
     language_identity: ^dag_language_model_surface_id,
     canonical_symbols: dag_language_model_surface_prelude_atoms(),
-    core: wave1_void()
+    core: bool_model_core()
   }
 }
 
-fn dag_language_model_wave1() -> LanguageModel {
+fn dag_language_model() -> LanguageModel {
   LanguageModel {
-    lex: dag_wave1_lex(),
-    grammar: dag_wave1_grammar(),
+    lex: dag_lex(),
+    grammar: dag_grammar(),
     language_identity: ^dag_language_model_surface_id,
-    canonical_symbols: dag_language_model_wave1_canonical_symbols(),
-    core: wave1_void()
+    canonical_symbols: dag_canonical_symbols(),
+    core: bool_model_core()
   }
 }
 
 fn dag_language_model_surface_empty_prelude() -> LanguageModel {
   LanguageModel {
-    lex: dag_wave1_lex(),
-    grammar: dag_wave1_g0_void_grammar(),
+    lex: dag_lex(),
+    grammar: dag_g0_void_grammar(),
     language_identity: ^dag_language_model_surface_id,
     canonical_symbols: dag_language_model_empty_canonical_symbol_set(),
-    core: wave1_void()
+    core: bool_model_core()
   }
 }
 
@@ -3165,14 +3170,14 @@ fn dag_language_model_canonical_symbols(lm: LanguageModel) -> Set<Symbol> {
   lm.canonical_symbols
 }
 
-fn dag_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+fn dag_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
-    rules: dag_wave1_lex_rules(),
+    rules: dag_lex_rules(),
     token_class: sym
   )
 }
 
-fn dag_wave1_sync_tokens() -> Set<Symbol> {
+fn dag_sync_tokens() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       sym == ^dag_token_kw_module ||
@@ -3184,9 +3189,6 @@ fn dag_wave1_sync_tokens() -> Set<Symbol> {
   }
 }
 
-fn dag_language_model_wave1_modeled() -> LanguageModel {
-  dag_language_model_wave1()
-}
 
 type DagTriviaNormalization
   = DagWhitespaceDeclaredNormalized
@@ -3329,7 +3331,7 @@ fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
 fn dag_target_model_with_fidelity_quotient(quotient: Node) -> TargetModel {
   TargetModel {
     bundle: dag_target_model_bundle_with_fidelity_quotient(quotient: quotient),
-    lex: dag_wave1_lex(),
+    lex: dag_lex(),
     binding_spellings: dag_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: dag_source_text,
@@ -4020,7 +4022,9 @@ fn dag_binding_spellings() -> Map<Symbol, String> {
   let m11 = map_insert(m10, ^dag_binding_fn_get, "get")
   let m12 = map_insert(m11, ^dag_binding_param_r, "r")
   let m13 = map_insert(m12, ^dag_binding_rec_v, "v")
-  map_insert(m13, ^dag_binding_rec_lit_nine, "9")
+  let m14 = map_insert(m13, ^dag_binding_rec_lit_nine, "9")
+  let m15 = map_insert(m14, ^dag_binding_type_variant_holds, "Holds")
+  map_insert(m15, ^dag_binding_field_variant_value, "value")
 }
 
 fn dag_add_param_binding_ids() -> List<Symbol> {
@@ -4495,6 +4499,245 @@ data dag_rec_construct_body_fixture: Node = dag_rec_construct_body_node()
 data dag_rec_arrow_with_body_fixture: Node = dag_rec_arrow_with_body_node()
 data dag_fixture_emitted_rec_fn: Node = dag_rec_arrow_with_body_fixture
 
+fn dag_variant_holds_construct_node(value_lit: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_binding_type_variant_holds,
+        target: dag_type_atom_node(identity: ^dag_binding_type_variant_holds)
+      ),
+      dag_named_edge(
+        name: ^dag_binding_field_variant_value,
+        target: dag_type_atom_node(identity: value_lit)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_variant_holds_pattern_node() -> Node {
+  dag_variant_holds_construct_node(value_lit: ^dag_binding_rec_v)
+}
+
+fn dag_variant_match_arm_node(pattern_target: Node, body_lit: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(name: ^match_arm_pattern, target: pattern_target),
+      dag_named_edge(
+        name: ^match_arm_body,
+        target: dag_type_atom_node(identity: body_lit)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_variant_construct_body_from_value(value_lit: Symbol) -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_variant_holds_construct_node(value_lit: value_lit),
+    true_arm: dag_variant_match_arm_node(
+      pattern_target: dag_variant_holds_pattern_node(),
+      body_lit: ^dag_binding_rec_v
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_binding_type_variant_true,
+      body_lit: ^dag_pick_lit_two
+    )
+  )
+}
+
+fn dag_variant_construct_body_node() -> Node {
+  dag_variant_construct_body_from_value(value_lit: ^dag_rec_lit_nine)
+}
+
+fn dag_variant_construct_body_wrong_value_node() -> Node {
+  dag_variant_construct_body_from_value(value_lit: ^dag_pick_lit_one)
+}
+
+fn dag_variant_construct_arrow_with_body_node() -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_pick_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_variant_construct_body_node()
+  )
+}
+
+fn dag_variant_construct_arrow_with_body_wrong_value_node() -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_pick_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_variant_construct_body_wrong_value_node()
+  )
+}
+
+data dag_variant_construct_body_fixture: Node = dag_variant_construct_body_node()
+data dag_variant_construct_body_wrong_value_fixture: Node = dag_variant_construct_body_wrong_value_node()
+data dag_variant_construct_arrow_with_body_fixture: Node = dag_variant_construct_arrow_with_body_node()
+data dag_variant_construct_arrow_with_body_wrong_value_fixture: Node = dag_variant_construct_arrow_with_body_wrong_value_node()
+data dag_fixture_emitted_variant_construct_fn: Node = dag_variant_construct_arrow_with_body_fixture
+
+fn dag_complement_match_body(
+  scrutinee: Node,
+  true_body_lit: Symbol,
+  false_body_lit: Symbol
+) -> Node {
+  dag_match_body_from_arms(
+    scrutinee: scrutinee,
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_complement_lit_true,
+      body_lit: true_body_lit
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_complement_lit_false,
+      body_lit: false_body_lit
+    )
+  )
+}
+
+fn dag_complement_param_scrutinee_node() -> Node {
+  dag_type_atom_node(identity: ^dag_binding_param_a)
+}
+
+fn dag_complement_arrow_domain_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^dag_binding_param_a },
+        target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_complement_body_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_complement_lit_false,
+    false_body_lit: ^dag_complement_lit_true
+  )
+}
+
+fn dag_complement_body_swapped_arms_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_complement_lit_true,
+    false_body_lit: ^dag_complement_lit_false
+  )
+}
+
+fn dag_complement_arrow_with_body_node() -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_complement_arrow_domain_node(),
+    return_type_binding: ^dag_binding_type_bool,
+    body: dag_complement_body_node()
+  )
+}
+
+fn dag_complement_arrow_with_body_swapped_arms_node() -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_complement_arrow_domain_node(),
+    return_type_binding: ^dag_binding_type_bool,
+    body: dag_complement_body_swapped_arms_node()
+  )
+}
+
+fn dag_complement_eval_subgraph_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
+    true_body_lit: ^dag_complement_lit_false,
+    false_body_lit: ^dag_complement_lit_true
+  )
+}
+
+data dag_complement_body_fixture: Node = dag_complement_body_node()
+data dag_complement_arrow_with_body_fixture: Node = dag_complement_arrow_with_body_node()
+data dag_complement_arrow_with_body_swapped_arms_fixture: Node = dag_complement_arrow_with_body_swapped_arms_node()
+data dag_complement_eval_subgraph_fixture: Node = dag_complement_eval_subgraph_node()
+
+fn dag_bool_binop_arrow_domain_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^dag_binding_param_a },
+        target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+      },
+      Edge {
+        label: Named { name: ^dag_binding_param_b },
+        target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_bool_binop_arrow_with_body_node(body: Node) -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_bool_binop_arrow_domain_node(),
+    return_type_binding: ^dag_binding_type_bool,
+    body: body
+  )
+}
+
+fn dag_meet_body_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_binding_param_b,
+    false_body_lit: ^dag_complement_lit_false
+  )
+}
+
+fn dag_meet_body_swapped_arms_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_complement_lit_false,
+    false_body_lit: ^dag_binding_param_b
+  )
+}
+
+fn dag_join_body_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_complement_lit_true,
+    false_body_lit: ^dag_binding_param_b
+  )
+}
+
+fn dag_join_body_swapped_arms_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_complement_param_scrutinee_node(),
+    true_body_lit: ^dag_binding_param_b,
+    false_body_lit: ^dag_complement_lit_true
+  )
+}
+
+fn dag_meet_eval_subgraph_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
+    true_body_lit: ^dag_complement_lit_true,
+    false_body_lit: ^dag_complement_lit_false
+  )
+}
+
+fn dag_join_eval_subgraph_node() -> Node {
+  dag_complement_match_body(
+    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
+    true_body_lit: ^dag_complement_lit_true,
+    false_body_lit: ^dag_complement_lit_false
+  )
+}
+
+data dag_meet_arrow_with_body_fixture: Node = dag_bool_binop_arrow_with_body_node(body: dag_meet_body_node())
+data dag_meet_arrow_with_body_swapped_arms_fixture: Node = dag_bool_binop_arrow_with_body_node(body: dag_meet_body_swapped_arms_node())
+data dag_meet_eval_subgraph_fixture: Node = dag_meet_eval_subgraph_node()
+data dag_join_arrow_with_body_fixture: Node = dag_bool_binop_arrow_with_body_node(body: dag_join_body_node())
+data dag_join_arrow_with_body_swapped_arms_fixture: Node = dag_bool_binop_arrow_with_body_node(body: dag_join_body_swapped_arms_node())
+data dag_join_eval_subgraph_fixture: Node = dag_join_eval_subgraph_node()
+
 fn dag_field_access_body_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -4720,6 +4963,8 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
     },
     match_form: TargetMatchShape {
       match_token: ^dag_token_kw_match,
+      scrutinee_open: ^dag_token_match_scrutinee_nop,
+      scrutinee_close: ^dag_token_match_scrutinee_nop,
       open: ^dag_token_lbrace,
       close: ^dag_token_rbrace,
       fat_arrow: ^dag_token_fat_arrow,
@@ -4880,7 +5125,7 @@ fn dag_bodied_fn_target_model(
     Present { value: row } =>
       TargetModel {
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
-        lex: dag_wave1_lex(),
+        lex: dag_lex(),
         binding_spellings: dag_binding_spellings(),
         token_class_emit_transforms: target_model_emit_transforms_empty,
         authority_source_text: spec.authority_source_text,
@@ -4889,7 +5134,7 @@ fn dag_bodied_fn_target_model(
     Absent =>
       TargetModel {
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
-        lex: dag_wave1_lex(),
+        lex: dag_lex(),
         binding_spellings: dag_binding_spellings(),
         token_class_emit_transforms: target_model_emit_transforms_empty,
         authority_source_text: spec.authority_source_text
@@ -5242,7 +5487,7 @@ fn dag_field_access_target_model() -> TargetModel {
 fn dag_target_model() -> TargetModel {
   TargetModel {
     bundle: dag_target_model_node(),
-    lex: dag_wave1_lex(),
+    lex: dag_lex(),
     binding_spellings: dag_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: dag_source_text,
@@ -5269,19 +5514,19 @@ fn dag_round_trip_bool_node(pass: Bool) -> Node {
 }
 
 fn dag_round_trip_lex_ready() -> Bool {
-  dag_wave1_lex_token_symbol(sym: ^dag_token_kw_module) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_kw_import) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_kw_data) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_kw_fn) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_ident) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_dot) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_lbrace) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_rbrace) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_colon) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_eq) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_lparen) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_rparen) &&
-  dag_wave1_lex_token_symbol(sym: ^dag_token_arrow)
+  dag_lex_token_symbol(sym: ^dag_token_kw_module) &&
+  dag_lex_token_symbol(sym: ^dag_token_kw_import) &&
+  dag_lex_token_symbol(sym: ^dag_token_kw_data) &&
+  dag_lex_token_symbol(sym: ^dag_token_kw_fn) &&
+  dag_lex_token_symbol(sym: ^dag_token_ident) &&
+  dag_lex_token_symbol(sym: ^dag_token_dot) &&
+  dag_lex_token_symbol(sym: ^dag_token_lbrace) &&
+  dag_lex_token_symbol(sym: ^dag_token_rbrace) &&
+  dag_lex_token_symbol(sym: ^dag_token_colon) &&
+  dag_lex_token_symbol(sym: ^dag_token_eq) &&
+  dag_lex_token_symbol(sym: ^dag_token_lparen) &&
+  dag_lex_token_symbol(sym: ^dag_token_rparen) &&
+  dag_lex_token_symbol(sym: ^dag_token_arrow)
 }
 
 fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
@@ -5298,8 +5543,8 @@ fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
   dag_block_comment_fidelity() == FailClosed { feature: DagBlockCommentFailClosed }
 }
 
-fn dag_round_trip_wave1_authorities_ready() -> Bool {
-  let lm = dag_language_model_wave1_modeled()
+fn dag_round_trip_authorities_ready() -> Bool {
+  let lm = dag_language_model()
   dag_round_trip_lex_ready() &&
   dag_round_trip_grammar_ready(lm: lm) &&
   dag_round_trip_trivia_fidelity_resolved()
@@ -5364,7 +5609,7 @@ fn parse_subtree_find_production_captured(root: Node, emitted: Symbol) -> ParseS
   }
 }
 
-data dag_fn_decl_param_scope_note: String = "Interim param-scoping readers for the wave1 surface tree. The normalized wave1 tree preserves production Conj wrappers - no Arrow node exists before 03_body_producer - so resolve cannot scope fn params via add_arrow_domain_named_params (dead on this path). dag_fn_decl_param_binding_atoms locates the ^dag_surface_param_list capture under a fn_decl production wrapper and harvests exactly the binding-name atoms (lexeme-stamped by dag_grammar_binding_name_terminal), skipping preserved qualified_name/module_header subtrees (type annotations like Int are not param names) and lex token-class atoms (punctuation/keywords). Sole consumer: v2.compiler.resolve scope_with_fn_decl_params. Dissolution trigger: when body-lowering lands fn_decl -> Arrow lowering in normalize (the deferred general body producer, DESIGN body-lowering thread), add_arrow_domain_named_params becomes the single param-scoping authority and these readers plus the resolve-side frame dissolve with it."
+data dag_fn_decl_param_scope_note: String = "Interim param-scoping readers for the dag surface tree. The normalized dag surface tree preserves production Conj wrappers - no Arrow node exists before 03_body_producer - so resolve cannot scope fn params via add_arrow_domain_named_params (dead on this path). dag_fn_decl_param_binding_atoms locates the ^dag_surface_param_list capture under a fn_decl production wrapper and harvests exactly the binding-name atoms (lexeme-stamped by dag_grammar_binding_name_terminal), skipping preserved qualified_name/module_header subtrees (type annotations like Int are not param names) and lex token-class atoms (punctuation/keywords). Sole consumer: v2.compiler.resolve scope_with_fn_decl_params. Dissolution trigger: when body-lowering lands fn_decl -> Arrow lowering in normalize (the deferred general body producer, DESIGN body-lowering thread), add_arrow_domain_named_params becomes the single param-scoping authority and these readers plus the resolve-side frame dissolve with it."
 
 fn dag_param_binding_atom_harvest(root: Node, acc: List<Symbol>) -> List<Symbol> {
   match dag_resolve_preserve_module_metadata_subtree(node: root) {
@@ -5372,7 +5617,7 @@ fn dag_param_binding_atom_harvest(root: Node, acc: List<Symbol>) -> List<Symbol>
     false =>
       let acc1 = match node_atom_identity_optional(node: root) {
         Present { value: id } =>
-          match dag_wave1_lex_token_symbol(sym: id) {
+          match dag_lex_token_symbol(sym: id) {
             true => acc
             false => Cons { head: id, tail: acc }
           }

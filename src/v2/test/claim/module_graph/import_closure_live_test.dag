@@ -12,6 +12,9 @@ data expected_conformance_closure_note: String = "Golden test expectation for im
 
 data expected_conformance_closure: FreeMonoid<String> = [
   "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+  "dag/std/algebra.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/primitives.dag",
   "src/v2/std/algebra.dag",
   "src/v2/std/collection.dag",
   "src/v2/std/diagnostic.dag",

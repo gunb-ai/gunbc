@@ -12,7 +12,7 @@ import v2.std.compilers.lexing { LexRules, VoidLexRules, lex_rules_to_node }
 import v2.std.model_core {
   ModelCore,
   model_core_first_primitive_substrate,
-  wave1_void
+  bool_model_core
 }
 import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
@@ -45,7 +45,7 @@ fn void_language_model(identity: Symbol) -> LanguageModel {
     grammar: VoidGrammar,
     language_identity: identity,
     canonical_symbols: language_model_empty_canonical_symbols(),
-    core: wave1_void()
+    core: bool_model_core()
   }
 }
 

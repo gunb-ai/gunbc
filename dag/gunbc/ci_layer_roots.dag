@@ -10,6 +10,8 @@ fn compile_clean_source_roots() -> List<String> {
 
 data witness_discovery_scan_dirs: List<String> = ["dag/test/claim", "src/v2/test/claim/manual"]
 
+data discovery_flip_quarantine_note: String = "DISSOLVED (2026-07-09, discovery-flip pre-flight quarantine): interim scaffolding at the enrollment flip (gunbc.ci_spec ci_spec_discovery_flip_note) excluded five pre-existing-red live-tree witnesses from discovery enrollment until fixes landed. All five now unquarantined: dag_import_closure_equals_declared_conformance_closure (swift-pike-439). enforcement/grammar_coverage_witness_test.dag (sharp-swift-243): v1 reject locus pins corrected to parse-stage parse_grammar_choice_overlap_residue; Symbol reason equality grounded via symbol_identity_digest. medium_structure_clean_tree_holds + medium_structure_canonical_read_back_holds (quick-boar-630): three pre-existing leak paths rostered in medium_structure_exception_roster (baseline 54→57). realization_vocab_clean_tree_holds (swift-bear-563, #6398): three pre-existing leak paths rostered in realization_vocab_exception_roster. witness_exclusion_substrings no longer carries discovery-flip quarantine rows."
+
 data witness_exclusion_substrings: List<String> = [
   "impossible_bug",
   "test/manual/",

@@ -4,7 +4,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
 import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.node { Disj, Node, NodeFold, TypeNode, fold_node }
@@ -20,7 +20,7 @@ data cwc_src_type_malformed_coproduct: String = "module probe\ntype T = { x: Int
 data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
 fn cwc_norm_of(src: String) -> Outcome<Node> {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: src, file: ^cwc_probe_file, rules: lm.lex),
     f: fn(toks) {
@@ -116,7 +116,7 @@ test fn cwc_norm_review_event_accepts() -> Bool {
 }
 
 fn cwc_resolve_accepts(src: String) -> Bool {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match cwc_norm_of(src: src) {
     Accepted { value: tree, diagnostics: _ } =>
       match resolve(tree: tree, lm: lm) {

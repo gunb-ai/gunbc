@@ -3,7 +3,7 @@ module v2.test.manual.forensics_6280_tokenize_reject_locus
 import extdeps.filesystem.filesystem_io
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_module }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 
 data forensics_6280_task_note: String = "Task: 'Forensics: 6280 memo commit flips census tokenize-reject to parse-reject on 01_tokenize.dag - name the mechanism.' Ground truth (this file's own witnesses, re-run independently 5x across processes, plus a v2.lens.enforcement.grammar_coverage direct-call replication on PR #6252's own branch): src/v1/01_tokenize.dag TOKENIZES CLEAN and REJECTS AT PARSE. It never rejected at tokenize on either side of #6280 -- #6280 only threads a packrat memo table through 02_parse.dag and never touches tokenize/lex code, so it cannot be the cause of a tokenize-reject verdict that ground truth says never existed."
@@ -24,7 +24,7 @@ type Verdict
   | ParsedClean
 
 fn forensics_6280_probe_verdict() -> Verdict {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   let source_text = filesystem_read(path: "src/v1/01_tokenize.dag").content
   match tokenize(text: source_text, file: ^forensics_6280_probe_file_anchor, rules: lm.lex) {
     Rejected { diagnostics: d } => TokenizeReject { reason: d.head.reason }

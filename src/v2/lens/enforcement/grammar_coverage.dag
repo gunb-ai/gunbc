@@ -4,7 +4,7 @@ import extdeps.filesystem.filesystem_io
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.coverage { dedupe_snoc }
 import v2.lens.enforcement.standing_intent { whole_corpus_scope }
 import std.algebra { Empty }
@@ -13,6 +13,7 @@ import v2.std.collection { List }
 import v2.std.decl_index { DeclFact, decl_facts }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
+import v2.std.node { symbol_identity_digest }
 import v2.std.text { String }
 
 type GrammarCoverageParseVerdict
@@ -141,7 +142,7 @@ fn grammar_coverage_ingest_source_text(
   source_text: String,
   file: Symbol
 ) -> GrammarCoverageParseVerdict {
-  let lm = dag_language_model_wave1()
+  let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: d } =>
       ParseRejected { stage: "tokenize", reason: d.head.reason }
@@ -175,6 +176,10 @@ fn grammar_coverage_file_receipt(rel_path: String) -> GrammarCoverageFileReceipt
   }
 }
 
+fn grammar_coverage_symbol_reason_eq(a: Symbol, b: Symbol) -> Bool {
+  symbol_identity_digest(sym: a) == symbol_identity_digest(sym: b)
+}
+
 fn grammar_coverage_file_reject_locus_matches(
   receipt: GrammarCoverageFileReceipt,
   stage: String,
@@ -183,7 +188,7 @@ fn grammar_coverage_file_reject_locus_matches(
   match receipt.verdict {
     ParsedClean => false
     ParseRejected { stage: s, reason: r } =>
-      (s == stage) && (r == reason)
+      (s == stage) && grammar_coverage_symbol_reason_eq(a: r, b: reason)
   }
 }
 
@@ -300,7 +305,7 @@ fn grammar_coverage_rejected_row_present(
     xs: rows,
     empty: false,
     cons: fn(acc, row) {
-      acc || ((row.stage == stage) && (row.reason == reason))
+      acc || ((row.stage == stage) && grammar_coverage_symbol_reason_eq(a: row.reason, b: reason))
     }
   )
 }
