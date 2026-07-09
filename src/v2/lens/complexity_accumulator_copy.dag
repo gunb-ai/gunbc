@@ -45,6 +45,10 @@ fn row_matches_combiner(row: CopiedPortFact, combiner: Symbol) -> Bool {
   row.combiner == combiner
 }
 
+fn some_copied_port_index(idx: Int) -> Optional<Int> {
+  Present { value: idx }
+}
+
 fn copied_port_index_of(combiner: Symbol) -> Optional<Int> {
   fold_list(
     xs: copied_port_fact_registry,
@@ -54,7 +58,7 @@ fn copied_port_index_of(combiner: Symbol) -> Optional<Int> {
         Present { value: _ } => acc
         Absent =>
           if row_matches_combiner(row: row, combiner: combiner) {
-            Present { value: row.copied_port_index }
+            some_copied_port_index(idx: row.copied_port_index)
           } else {
             Absent
           }

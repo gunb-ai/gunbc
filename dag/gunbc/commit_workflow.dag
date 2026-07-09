@@ -168,12 +168,18 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/complexity/r1_fold_analysis_test.dag",
+      entry: "src/v2/test/claim/complexity/accumulator_copy_fold_analysis_test.dag",
       check_fns: [
         "quadratic_fold_has_suspect",
-        "linear_fold_has_no_suspect",
+        "real_branch_body_quadratic_is_caught",
+        "noncarrier_name_in_copied_port_refuses_not_clean",
+        "let_alias_refuses_not_clean",
+        "nested_call_head_cannot_masquerade_as_bare_name",
+        "unregistered_combiner_reached_by_carrier_refuses",
+        "named_step_fold_refuses_accumulator_unread",
         "identity_fold_has_no_finding",
-        "real_branch_body_quadratic_is_caught"
+        "out_of_iteration_append_is_out_of_domain",
+        "report_counters_state_the_domain"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -182,15 +188,18 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/lens/complexity_r1_accumulator_copy_test.dag",
+      entry: "src/v2/lens/complexity_accumulator_copy_test.dag",
       check_fns: [
         "red_list_append_left_is_suspect",
         "red_list_snoc_left_is_suspect",
         "red_map_merge_overlay_is_suspect",
-        "green_map_merge_base_is_clean",
-        "green_list_append_acc_in_noncopied_port_is_clean",
-        "green_unregistered_combiner_is_clean",
-        "opaque_copied_port_is_analysis_opaque"
+        "noncarrier_name_in_copied_port_refuses_may_alias",
+        "map_merge_noncarrier_overlay_refuses_may_alias",
+        "pure_literal_in_copied_port_is_provably_fresh",
+        "computed_copied_port_refuses",
+        "missing_copied_port_refuses",
+        "unregistered_combiner_reached_by_carrier_refuses",
+        "unregistered_combiner_without_carrier_is_out_of_scope"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared

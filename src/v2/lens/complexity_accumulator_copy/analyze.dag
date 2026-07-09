@@ -1,0 +1,340 @@
+module v2.lens.complexity_accumulator_copy.analyze
+
+import v2.lens.complexity_accumulator_copy {
+  Finding,
+  PortBareName,
+  PortComputedExpression,
+  PortMissing,
+  PortPureLiteral,
+  PortReading,
+  Poly2Suspect,
+  Unclassifiable,
+  any_port_carries_carrier,
+  classify_call
+}
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  dag_lex_token_symbol,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  parse_subtree_find_production_captured
+}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { list_append, list_snoc_item }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Edge, Named, Node, Positional, Symbol }
+import v2.std.node_query { find_named_child }
+
+data analyze_note: String = "The TRAVERSAL half of the accumulator-copy lens - one linear fold over the whole Node tree threading iteration context DOWN: at a fold-family call it binds the step function's accumulator (its first param) and marks the subtree as iterating; at every call site inside iteration context it asks the cost model (classify_call) for a verdict. The traversal SEES every node; what can fail is READING the three facts a verdict needs (carrier binding, combiner identity, copied-port flow) - and per the fail-closed polarity (classify_call_fail_closed_note) every unreadable or unprovable read REFUSES with a named cause instead of defaulting to clean: a fold whose accumulator param cannot be read refuses at the fold site (^fold_accumulator_unread) and its body still counts as iterating; a call whose head cannot be read while a carrier reaches its arguments refuses (^call_head_unreadable); a port argument is read by counting value identifiers in its subtree (zero -> pure literal, exactly one -> bare name, more -> computed expression), so a call expression heading an argument can never masquerade as a bare name. Out-of-iteration call sites are outside this rule's domain (a single append is linear, not quadratic) and are deliberately silent; the domain boundary itself is reported by accumulator_copy_report's folds_seen/carriers_bound counters, never implied clean. The traversal's own accumulation appends each child's findings on the COPIED port side with the small fresh list, keeping the walk linear - the shape this lens itself polices."
+
+fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: cap, name: name) {
+    Accepted { value: c, diagnostics: _ } => Present { value: c }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn sequence_left_node(cap: Node) -> Optional<Node> {
+  named_child_optional(cap: cap, name: ^grammar_sequence_left_node_projection)
+}
+
+fn sequence_right_node(cap: Node) -> Optional<Node> {
+  named_child_optional(cap: cap, name: ^grammar_sequence_right_node_projection)
+}
+
+fn sequence_left_symbol(cap: Node) -> Optional<Symbol> {
+  match sequence_left_node(cap: cap) {
+    Absent => Absent
+    Present { value: left } => node_atom_identity_optional(node: left)
+  }
+}
+
+fn find_capture(root: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: root, emitted: emitted) {
+    ParseSubtreeFound { captured: c } => Present { value: c }
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn collect_direct_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<Node> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == emitted {
+        match parse_production_captured_child_optional(node: n) {
+          Present { value: c } => list_snoc_item(xs: acc, item: c)
+          Absent => acc
+        }
+      } else {
+        fold(n.children, init: acc, f: fn(a, e) {
+          collect_direct_captures(n: e.target, emitted: emitted, acc: a)
+        })
+      }
+    Absent =>
+      fold(n.children, init: acc, f: fn(a, e) {
+        collect_direct_captures(n: e.target, emitted: emitted, acc: a)
+      })
+  }
+}
+
+fn primary_expr_capture(node: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_primary_expr {
+        parse_production_captured_child_optional(node: node)
+      } else {
+        Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn edge_skips_identifier_count(e: Edge) -> Bool {
+  match e.label {
+    Named { name: nm } => nm == ^grammar_production_identity_node_projection
+    Positional => false
+  }
+}
+
+fn count_value_identifiers(n: Node) -> Int {
+  let here = match node_atom_identity_optional(node: n) {
+    Present { value: id } =>
+      if dag_lex_token_symbol(sym: id) { 0 } else { 1 }
+    Absent => 0
+  }
+  fold(n.children, init: here, f: fn(acc, e) {
+    if edge_skips_identifier_count(e: e) {
+      acc
+    } else {
+      acc + count_value_identifiers(n: e.target)
+    }
+  })
+}
+
+fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
+  match find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr) {
+    Absent => Absent
+    Present { value: value_expr } => sequence_left_symbol(cap: value_expr)
+  }
+}
+
+fn port_reading(arg_capture: Node) -> PortReading {
+  let idents = count_value_identifiers(n: arg_capture)
+  if idents == 0 {
+    PortPureLiteral
+  } else {
+    if idents == 1 {
+      match arg_value_symbol(arg_capture: arg_capture) {
+        Present { value: sym } => PortBareName { name: sym }
+        Absent => PortComputedExpression
+      }
+    } else {
+      PortComputedExpression
+    }
+  }
+}
+
+fn call_port_readings(call_capture: Node) -> List<PortReading> {
+  fold(
+    collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: Empty),
+    init: Empty,
+    f: fn(acc, arg) { list_snoc_item(xs: acc, item: port_reading(arg_capture: arg)) }
+  )
+}
+
+fn is_fold_family_head(sym: Symbol) -> Bool {
+  (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_node)
+}
+
+fn step_fn_first_param(fn_literal: Node) -> Optional<Symbol> {
+  match sequence_right_node(cap: fn_literal) {
+    Absent => Absent
+    Present { value: after_kw_fn } =>
+      match sequence_right_node(cap: after_kw_fn) {
+        Absent => Absent
+        Present { value: after_lparen } =>
+          match sequence_left_node(cap: after_lparen) {
+            Absent => Absent
+            Present { value: params } => sequence_left_symbol(cap: params)
+          }
+      }
+  }
+}
+
+fn fold_family_carrier(call_capture: Node) -> Optional<Symbol> {
+  match find_capture(root: call_capture, emitted: ^dag_surface_fn_literal) {
+    Absent => Absent
+    Present { value: fn_literal } => step_fn_first_param(fn_literal: fn_literal)
+  }
+}
+
+fn append_findings(fresh: List<Finding>, acc: List<Finding>) -> List<Finding> {
+  list_append(left: fresh, right: acc)
+}
+
+fn analyze_children(
+  n: Node,
+  carriers: List<Symbol>,
+  iterating: Bool,
+  here: List<Finding>
+) -> List<Finding> {
+  fold(n.children, init: here, f: fn(acc, e) {
+    append_findings(
+      fresh: analyze(node: e.target, carriers: carriers, iterating: iterating),
+      acc: acc
+    )
+  })
+}
+
+fn analyze(node: Node, carriers: List<Symbol>, iterating: Bool) -> List<Finding> {
+  match primary_expr_capture(node: node) {
+    Absent => analyze_children(n: node, carriers: carriers, iterating: iterating, here: Empty)
+    Present { value: cap } =>
+      match sequence_left_symbol(cap: cap) {
+        Present { value: head } =>
+          if is_fold_family_head(sym: head) {
+            match fold_family_carrier(call_capture: cap) {
+              Present { value: carrier } =>
+                analyze_children(
+                  n: node,
+                  carriers: Cons { head: carrier, tail: carriers },
+                  iterating: true,
+                  here: Empty
+                )
+              Absent =>
+                analyze_children(
+                  n: node,
+                  carriers: carriers,
+                  iterating: true,
+                  here: Cons {
+                    head: Unclassifiable { at: node, cause: ^fold_accumulator_unread },
+                    tail: Empty
+                  }
+                )
+            }
+          } else {
+            let here = if iterating {
+              match classify_call(
+                at: node,
+                combiner: head,
+                ports: call_port_readings(call_capture: cap),
+                carriers: carriers
+              ) {
+                Present { value: f } => Cons { head: f, tail: Empty }
+                Absent => Empty
+              }
+            } else {
+              Empty
+            }
+            analyze_children(n: node, carriers: carriers, iterating: iterating, here: here)
+          }
+        Absent =>
+          let here = if iterating {
+            if any_port_carries_carrier(
+              ports: call_port_readings(call_capture: cap),
+              carriers: carriers
+            ) {
+              Cons {
+                head: Unclassifiable { at: node, cause: ^call_head_unreadable },
+                tail: Empty
+              }
+            } else {
+              Empty
+            }
+          } else {
+            Empty
+          }
+          analyze_children(n: node, carriers: carriers, iterating: iterating, here: here)
+      }
+  }
+}
+
+type AccumulatorCopyReport {
+  folds_seen: Int,
+  carriers_bound: Int,
+  findings: List<Finding>
+}
+
+fn count_fold_sites(n: Node, bound_only: Bool) -> Int {
+  let here = match primary_expr_capture(node: n) {
+    Absent => 0
+    Present { value: cap } =>
+      match sequence_left_symbol(cap: cap) {
+        Absent => 0
+        Present { value: head } =>
+          if is_fold_family_head(sym: head) {
+            if bound_only {
+              match fold_family_carrier(call_capture: cap) {
+                Present { value: _ } => 1
+                Absent => 0
+              }
+            } else {
+              1
+            }
+          } else {
+            0
+          }
+      }
+  }
+  fold(n.children, init: here, f: fn(acc, e) {
+    acc + count_fold_sites(n: e.target, bound_only: bound_only)
+  })
+}
+
+fn accumulator_copy_findings(root: Node) -> List<Finding> {
+  analyze(node: root, carriers: Empty, iterating: false)
+}
+
+fn accumulator_copy_report(root: Node) -> AccumulatorCopyReport {
+  AccumulatorCopyReport {
+    folds_seen: count_fold_sites(n: root, bound_only: false),
+    carriers_bound: count_fold_sites(n: root, bound_only: true),
+    findings: accumulator_copy_findings(root: root)
+  }
+}
+
+fn finding_is_suspect(f: Finding) -> Bool {
+  match f {
+    Poly2Suspect { at: _, cost: _ } => true
+    Unclassifiable { at: _, cause: _ } => false
+  }
+}
+
+fn finding_is_refusal(f: Finding) -> Bool {
+  match f {
+    Poly2Suspect { at: _, cost: _ } => false
+    Unclassifiable { at: _, cause: _ } => true
+  }
+}
+
+fn finding_refusal_cause(f: Finding) -> Optional<Symbol> {
+  match f {
+    Poly2Suspect { at: _, cost: _ } => Absent
+    Unclassifiable { at: _, cause: c } => Present { value: c }
+  }
+}
+
+fn findings_any(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Bool {
+  fold(fs, init: false, f: fn(acc, x) { if acc { true } else { pred(x) } })
+}
+
+fn findings_have_suspect(fs: List<Finding>) -> Bool {
+  findings_any(fs: fs, pred: finding_is_suspect)
+}
+
+fn findings_have_refusal(fs: List<Finding>) -> Bool {
+  findings_any(fs: fs, pred: finding_is_refusal)
+}
+
+fn findings_have_refusal_cause(fs: List<Finding>, cause: Symbol) -> Bool {
+  findings_any(fs: fs, pred: fn(f) {
+    match finding_refusal_cause(f: f) {
+      Present { value: c } => c == cause
+      Absent => false
+    }
+  })
+}
