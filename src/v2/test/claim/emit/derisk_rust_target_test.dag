@@ -1,0 +1,14 @@
+module v2.test.emit.derisk_rust_target
+
+import v2.compiler.self_host.candidate_generation { generate_translate_self_emit_candidate }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.test.execution.dag_add_emit_round_trip { dag_add_emitted_root }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+test fn derisk_resolved_add_emits_to_rust() -> Bool {
+  match generate_translate_self_emit_candidate(resolved_module: dag_add_emitted_root, dag_target: rust_target_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
