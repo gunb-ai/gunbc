@@ -156,12 +156,6 @@ fn node_positional_child_targets(node: Node) -> List<Node> {
   })
 }
 
-fn node_child_targets(node: Node) -> List<Node> {
-  fold(node.children, init: Empty, f: fn(acc, e) {
-    list_snoc_item(xs: acc, item: e.target)
-  })
-}
-
 fn node_labeled_child_edges(node: Node) -> List<Edge> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
