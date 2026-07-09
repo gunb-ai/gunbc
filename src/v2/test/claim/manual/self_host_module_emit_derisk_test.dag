@@ -27,7 +27,7 @@ import v2.std.text { String }
 
 data self_host_module_emit_frontier_note: String = "Drives v2's OWN pipeline (assemble->infer->emit_for_target via rust_target_model()) on real .dag SOURCE TEXT, ledgering the current self-emit-from-source frontier by execution. Parse+infer now handle module headers, type decls, fn decls, and both single- and multi-arm match (F2-1). The remaining staged blocker (emit whole-program use-site ownership realization for user types) is upstream of emit fidelity and is asserted as a TYPED refusal on the pipeline Outcome (no stringification) that names its dissolution trigger and flips to assert ACCEPT once the trigger lands."
 
-data self_host_frontier_trigger_ownership_miss: String = "TRIGGER: whole-program emit via rust_target_model() rejects user-defined coproduct/record types with ^target_use_site_ownership_lookup_miss (per-fn staging targets carry the rows; the real whole-program target does not). Land whole-program use-site ownership realization for user types, then flip self_host_frontier_emit_ownership_miss_refuses to assert ACCEPT."
+data self_host_frontier_trigger_ownership_miss: String = "DISSOLVED: whole-program emit via rust_target_model() derives per-user-type TargetUseSiteOwnershipRealization rows at emit_for_target/program_partition (CarrierOwnershipByValue for atom refs + ReferenceLayerOwned catalog rows for semantic carriers). Witness self_host_frontier_emit_ownership_miss_accepts asserts ACCEPT."
 
 data derisk_module_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -82,21 +82,32 @@ fn derisk_infer_accepts(src: String) -> Bool {
   }
 }
 
-fn derisk_emit_rejects_with(src: String, reason: Symbol) -> Bool {
+fn derisk_emit_accepts(src: String) -> Bool {
   match emit_compiler_import_closure_from_ingest(
     ingest: derisk_ingest_for(src: src),
     admission: derisk_module_admission(),
     target: rust_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == reason
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
+}
+
+test fn self_host_frontier_emit_ownership_miss_accepts() -> Bool {
+  derisk_emit_accepts(src: src_single_arm_match)
+    && derisk_infer_accepts(src: src_single_arm_match)
+}
+
+test fn self_host_frontier_emit_two_user_types_accepts() -> Bool {
+  derisk_emit_accepts(src: src_two_user_types)
+    && derisk_infer_accepts(src: src_two_user_types)
 }
 
 data src_module_header: String = "module derisk_pilot\n"
 data src_type_decl: String = "module derisk_pilot\n\ntype Flag = On | Off\n"
 data src_fn_simple_body: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn keep(f: Flag) -> Flag { f }\n"
 data src_single_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off } }\n"
+data src_two_user_types: String = "module derisk_pilot\n\ntype Flag = On | Off\n\ntype Mode = A | B\n\nfn pick(f: Flag, m: Mode) -> Flag { f }\n"
 data src_multi_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off, Off => On } }\n"
 
 test fn self_host_frontier_parse_module_header_holds() -> Bool {
@@ -124,11 +135,6 @@ test fn self_host_frontier_parse_multi_arm_match_holds() -> Bool {
     && derisk_infer_accepts(src: src_multi_arm_match)
 }
 
-test fn self_host_frontier_emit_ownership_miss_refuses() -> Bool {
-  derisk_emit_rejects_with(src: src_single_arm_match, reason: ^target_use_site_ownership_lookup_miss)
-    && derisk_infer_accepts(src: src_single_arm_match)
-}
-
 test fn self_host_module_emit_frontier_all_holds() -> Bool {
   self_host_frontier_parse_module_header_holds()
     && self_host_frontier_parse_type_decl_holds()
@@ -136,5 +142,6 @@ test fn self_host_module_emit_frontier_all_holds() -> Bool {
     && self_host_frontier_parse_single_arm_match_holds()
     && self_host_frontier_infer_single_arm_module_holds()
     && self_host_frontier_parse_multi_arm_match_holds()
-    && self_host_frontier_emit_ownership_miss_refuses()
+    && self_host_frontier_emit_ownership_miss_accepts()
+    && self_host_frontier_emit_two_user_types_accepts()
 }
