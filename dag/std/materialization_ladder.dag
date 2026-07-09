@@ -40,13 +40,22 @@ type CacheCoverage
   = CoversAllComputations
   | CoversIdentities { identities: List<String> }
 
+type ProviderTier
+  = ReferenceTier
+  | CopyTier
+  | MemoTier { keying: CacheKeying }
+  | ArtifactTier { keying: CacheKeying }
+  | CasTier { keying: CacheKeying }
+
 type CacheProvider {
   id: String
   scope: List<Frame>
   coverage: CacheCoverage
-  keying: CacheKeying
+  tier: ProviderTier
   eviction: EvictionPolicy
 }
+
+data provider_tier_note: String = "Share is ONE verdict; the provider TIER is its layer-aware handler (operator, 2026-07-09): ReferenceTier = same-carrier readonly pointer (the cheapest cache — point at it, no copy, no destroyed memory; keyless BY SHAPE, so an existence-keyed reference is unwritable); CopyTier = clone-per-consumer, the PRICED demotion when reference requirements fail (silent demotion is the #6249 clone-fallback pathology); MemoTier/ArtifactTier/CasTier = store tiers carrying their keying. Frame obligations at isolation LCAs are dischargeable only by store tiers — a reference cannot cross an isolation boundary; Reference/Copy live at shared-state (eval) frames. That tier x frame compatibility is rule 4's no-provider-available-at-this-layer arm made structural."
 
 type LadderVerdict
   = AuthoredDuplication { identity: String, lca: List<Frame>, site_count: Int }
@@ -184,10 +193,43 @@ fn provider_covers_identity(p: CacheProvider, identity: String) -> Bool {
   }
 }
 
+fn provider_is_store_tier(p: CacheProvider) -> Bool {
+  match p.tier {
+    ReferenceTier => false
+    CopyTier => false
+    MemoTier { keying: _ } => true
+    ArtifactTier { keying: _ } => true
+    CasTier { keying: _ } => true
+  }
+}
+
 fn provider_is_content_keyed(p: CacheProvider) -> Bool {
-  match p.keying {
-    ContentKeyed => true
-    ExistenceKeyed => false
+  match p.tier {
+    ReferenceTier => true
+    CopyTier => true
+    MemoTier { keying: k } => match k { ContentKeyed => true ExistenceKeyed => false }
+    ArtifactTier { keying: k } => match k { ContentKeyed => true ExistenceKeyed => false }
+    CasTier { keying: k } => match k { ContentKeyed => true ExistenceKeyed => false }
+  }
+}
+
+fn provider_is_reference_tier(p: CacheProvider) -> Bool {
+  match p.tier {
+    ReferenceTier => true
+    CopyTier => false
+    MemoTier { keying: _ } => false
+    ArtifactTier { keying: _ } => false
+    CasTier { keying: _ } => false
+  }
+}
+
+fn provider_is_copy_tier(p: CacheProvider) -> Bool {
+  match p.tier {
+    ReferenceTier => false
+    CopyTier => true
+    MemoTier { keying: _ } => false
+    ArtifactTier { keying: _ } => false
+    CasTier { keying: _ } => false
   }
 }
 
