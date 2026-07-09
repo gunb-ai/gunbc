@@ -1262,6 +1262,42 @@ struct BatchRecord {
     results: Vec<ClaimResult>,
 }
 
+/// Materialization-ladder receipt: how many entry resolves this floor run actually
+/// paid (walk_memo hits charge resolve_nanos == 0 and are excluded — this counts the
+/// duplicated work across DISTINCT entries, the cross-entry share the memo cannot do).
+/// Discovery corpus resolve time is reported on its own key, never folded into the
+/// entry count (different grain; conflating them would mask either regression).
+/// Consumed by the ci.yml resolve-receipt gate emitted from dag/gunbc/ci_materialization.dag.
+fn write_resolve_receipt(batch_records: &[BatchRecord]) {
+    let mut resolves_total: u64 = 0;
+    let mut resolve_ms_total: u128 = 0;
+    let mut discovery_corpus_resolve_ms: u128 = 0;
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.resolve_nanos > 0 {
+                resolves_total += 1;
+                resolve_ms_total += result.resolve_nanos / 1_000_000;
+            }
+            discovery_corpus_resolve_ms += result.corpus_resolve_nanos / 1_000_000;
+        }
+    }
+    let body = format!(
+        "resolves_total={resolves_total}\nresolve_ms_total={resolve_ms_total}\ndiscovery_corpus_resolve_ms={discovery_corpus_resolve_ms}\n"
+    );
+    let path = std::path::Path::new("target/floor-resolve-receipt.txt");
+    if let Err(e) = std::fs::create_dir_all("target").and_then(|_| std::fs::write(path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write resolve receipt {}: {e} (gate downstream will fail closed on the missing file)",
+            path.display()
+        );
+        return;
+    }
+    eprintln!(
+        "[receipt] floor resolves: {resolves_total} entry resolve(s), {resolve_ms_total}ms (receipt: {})",
+        path.display()
+    );
+}
+
 /// Emit a fractal Gantt tree to stderr when GUNBC_FLOOR_GANTT=1.
 fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
     let gantt_enabled = std::env::var("GUNBC_FLOOR_GANTT")
@@ -1477,6 +1513,7 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
     }
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
+    write_resolve_receipt(&batch_records);
     WalkOutcome {
         any_failed,
         batches_run,
