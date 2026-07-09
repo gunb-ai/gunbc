@@ -721,6 +721,8 @@ type TargetFieldAccessShape {
 
 type TargetMatchShape {
   match_token: Symbol
+  scrutinee_open: Symbol
+  scrutinee_close: Symbol
   open: Symbol
   close: Symbol
   fat_arrow: Symbol
@@ -5985,13 +5987,29 @@ fn target_value_expression_match_to_concrete_tokens_inner(
                           left: list_append(
                             left: list_append(
                               left: list_append(
-                                left: Cons {
+                                left: list_append(
+                                  left: list_append(
+                                    left: Cons {
+                                      head: FixedToken {
+                                        token_class: projection.match_form.match_token
+                                      },
+                                      tail: Empty
+                                    },
+                                    right: Cons {
+                                      head: FixedToken {
+                                        token_class: projection.match_form.scrutinee_open
+                                      },
+                                      tail: Empty
+                                    }
+                                  ),
+                                  right: scrutinee_tokens
+                                ),
+                                right: Cons {
                                   head: FixedToken {
-                                    token_class: projection.match_form.match_token
+                                    token_class: projection.match_form.scrutinee_close
                                   },
                                   tail: Empty
-                                },
-                                right: scrutinee_tokens
+                                }
                               ),
                               right: Cons {
                                 head: FixedToken {
@@ -6966,6 +6984,18 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               name: ^target_value_expr_field_match_token,
               target: target_model_type_atom_node(
                 identity: projection.match_form.match_token
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_match_scrutinee_open,
+              target: target_model_type_atom_node(
+                identity: projection.match_form.scrutinee_open
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_match_scrutinee_close,
+              target: target_model_type_atom_node(
+                identity: projection.match_form.scrutinee_close
               )
             ),
             target_model_named_edge(
