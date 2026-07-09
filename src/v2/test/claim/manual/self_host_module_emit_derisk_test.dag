@@ -22,14 +22,14 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
-data self_host_module_emit_frontier_note: String = "Drives v2's OWN pipeline (assemble->infer->emit_for_target via rust_target_model()) on real .dag SOURCE TEXT, ledgering the current self-emit-from-source frontier by execution. Two staged blockers are upstream of emit fidelity; each _refuses witness names its dissolution trigger and flips to assert ACCEPT once the trigger lands."
+data self_host_module_emit_frontier_note: String = "Drives v2's OWN pipeline (assemble->infer->emit_for_target via rust_target_model()) on real .dag SOURCE TEXT, ledgering the current self-emit-from-source frontier by execution. Two staged blockers are upstream of emit fidelity; each _refuses witness matches its TYPED refusal symbol on the pipeline Outcome (no stringification), names its dissolution trigger, and flips to assert ACCEPT once the trigger lands."
 
-data self_host_frontier_trigger_multi_arm_match: String = "TRIGGER: wave1 grammar dag_production_match_expr (dag/extdeps/languages/dag.dag) parses SINGLE-arm match only; multi-arm (comma-separated) arms reject at parse. Add a repeated match-arm production, then flip self_host_frontier_parse_multi_arm_match_refuses to assert ACCEPT."
+data self_host_frontier_trigger_multi_arm_match: String = "TRIGGER: wave1 grammar dag_production_match_expr (dag/extdeps/languages/dag.dag) parses SINGLE-arm match only; multi-arm (comma-separated) arms reject at parse (^parse_e1_syntax_error) while a single-arm control accepts. Add a repeated match-arm production, then flip self_host_frontier_parse_multi_arm_match_refuses to assert ACCEPT."
 
-data self_host_frontier_trigger_ownership_miss: String = "TRIGGER: whole-program emit via rust_target_model() rejects user-defined coproduct/record types with target_use_site_ownership_lookup_miss (per-fn staging targets carry the rows; the real whole-program target does not). Land whole-program use-site ownership realization for user types, then flip self_host_frontier_emit_ownership_miss_refuses to assert ACCEPT."
+data self_host_frontier_trigger_ownership_miss: String = "TRIGGER: whole-program emit via rust_target_model() rejects user-defined coproduct/record types with ^target_use_site_ownership_lookup_miss (per-fn staging targets carry the rows; the real whole-program target does not). Land whole-program use-site ownership realization for user types, then flip self_host_frontier_emit_ownership_miss_refuses to assert ACCEPT."
 
 data derisk_module_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -66,17 +66,17 @@ fn derisk_assemble_for(src: String) -> Outcome<Node> {
   )
 }
 
-fn derisk_assemble_reason_for(src: String) -> String {
-  match derisk_assemble_for(src: src) {
-    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-    Rejected { diagnostics: d } => to_string(d.head.reason)
-  }
-}
-
 fn derisk_assemble_accepts(src: String) -> Bool {
   match derisk_assemble_for(src: src) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
+  }
+}
+
+fn derisk_assemble_rejects_with(src: String, reason: Symbol) -> Bool {
+  match derisk_assemble_for(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == reason
   }
 }
 
@@ -91,14 +91,14 @@ fn derisk_infer_accepts(src: String) -> Bool {
   }
 }
 
-fn derisk_emit_reason_for(src: String) -> String {
+fn derisk_emit_rejects_with(src: String, reason: Symbol) -> Bool {
   match emit_compiler_import_closure_from_ingest(
     ingest: derisk_ingest_for(src: src),
     admission: derisk_module_admission(),
     target: rust_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-    Rejected { diagnostics: d } => to_string(d.head.reason)
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == reason
   }
 }
 
@@ -129,15 +129,13 @@ test fn self_host_frontier_infer_single_arm_module_holds() -> Bool {
 }
 
 test fn self_host_frontier_parse_multi_arm_match_refuses() -> Bool {
-  string_contains(derisk_assemble_reason_for(src: src_multi_arm_match), "parse")
-    && !derisk_assemble_accepts(src: src_multi_arm_match)
+  derisk_assemble_rejects_with(src: src_multi_arm_match, reason: ^parse_e1_syntax_error)
+    && derisk_assemble_accepts(src: src_single_arm_match)
 }
 
 test fn self_host_frontier_emit_ownership_miss_refuses() -> Bool {
-  string_contains(
-    derisk_emit_reason_for(src: src_single_arm_match),
-    "target_use_site_ownership_lookup_miss"
-  )
+  derisk_emit_rejects_with(src: src_single_arm_match, reason: ^target_use_site_ownership_lookup_miss)
+    && derisk_infer_accepts(src: src_single_arm_match)
 }
 
 test fn self_host_module_emit_frontier_all_holds() -> Bool {
