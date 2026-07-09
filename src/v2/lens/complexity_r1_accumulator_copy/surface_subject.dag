@@ -120,45 +120,90 @@ fn body_call_port_symbol(body_call: Node, index: Int) -> Optional<Symbol> {
   }
 }
 
-fn surface_subject_shape_invalid_diagnostic(n: Node) -> Diagnostic {
+type FoldSurfaceRead
+  = FoldSurfaceSubject { subject: Node }
+  | FoldSurfaceNoStepFn
+  | FoldSurfaceNoAccumulatorParam
+  | FoldSurfaceBodyNotLocated
+  | FoldSurfaceBodyHeadOpaque
+  | FoldSurfacePort0Opaque
+  | FoldSurfacePort1Opaque
+
+fn read_fold_surface(fold_call: Node) -> FoldSurfaceRead {
+  match fold_call_step_fn(fold_call: fold_call) {
+    Absent => FoldSurfaceNoStepFn
+    Present { value: fn_literal } =>
+      match step_fn_first_param_symbol(fn_literal: fn_literal) {
+        Absent => FoldSurfaceNoAccumulatorParam
+        Present { value: acc_binder } =>
+          match step_fn_body_call(fn_literal: fn_literal) {
+            Absent => FoldSurfaceBodyNotLocated
+            Present { value: body_call } =>
+              match body_call_combiner_symbol(body_call: body_call) {
+                Absent => FoldSurfaceBodyHeadOpaque
+                Present { value: combiner } =>
+                  match body_call_port_symbol(body_call: body_call, index: 0) {
+                    Absent => FoldSurfacePort0Opaque
+                    Present { value: port0 } =>
+                      match body_call_port_symbol(body_call: body_call, index: 1) {
+                        Absent => FoldSurfacePort1Opaque
+                        Present { value: port1 } =>
+                          FoldSurfaceSubject {
+                            subject: r1_fold_step_subject(
+                              acc_binder: acc_binder,
+                              combiner: combiner,
+                              port0_arg: port0,
+                              port1_arg: port1
+                            )
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn fold_surface_refusal_reason(read: FoldSurfaceRead) -> Symbol {
+  match read {
+    FoldSurfaceSubject { subject: _ } => ^r1_surface_subject_present
+    FoldSurfaceNoStepFn => ^r1_surface_no_step_fn
+    FoldSurfaceNoAccumulatorParam => ^r1_surface_no_accumulator_param
+    FoldSurfaceBodyNotLocated => ^r1_surface_body_not_located
+    FoldSurfaceBodyHeadOpaque => ^r1_surface_body_head_opaque
+    FoldSurfacePort0Opaque => ^r1_surface_port0_opaque
+    FoldSurfacePort1Opaque => ^r1_surface_port1_opaque
+  }
+}
+
+fn surface_subject_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
-    reason: ^r1_surface_subject_shape_invalid,
+    reason: reason,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn fold_call_to_r1_subject(fold_call: Node) -> Outcome<Node> {
-  match fold_call_step_fn(fold_call: fold_call) {
-    Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: fold_call))
-    Present { value: fn_literal } =>
-      match step_fn_first_param_symbol(fn_literal: fn_literal) {
-        Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: fn_literal))
-        Present { value: acc_binder } =>
-          match step_fn_body_call(fn_literal: fn_literal) {
-            Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: fn_literal))
-            Present { value: body_call } =>
-              match body_call_combiner_symbol(body_call: body_call) {
-                Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: body_call))
-                Present { value: combiner } =>
-                  match body_call_port_symbol(body_call: body_call, index: 0) {
-                    Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: body_call))
-                    Present { value: port0 } =>
-                      match body_call_port_symbol(body_call: body_call, index: 1) {
-                        Absent => outcome_rejected(d: surface_subject_shape_invalid_diagnostic(n: body_call))
-                        Present { value: port1 } =>
-                          outcome_accepted(
-                            value: r1_fold_step_subject(
-                              acc_binder: acc_binder,
-                              combiner: combiner,
-                              port0_arg: port0,
-                              port1_arg: port1
-                            )
-                          )
-                      }
-                  }
-              }
-          }
-      }
+  match read_fold_surface(fold_call: fold_call) {
+    FoldSurfaceSubject { subject: subject } => outcome_accepted(value: subject)
+    FoldSurfaceNoStepFn =>
+      outcome_rejected(d: surface_subject_diagnostic(reason: ^r1_surface_no_step_fn, n: fold_call))
+    FoldSurfaceNoAccumulatorParam =>
+      outcome_rejected(
+        d: surface_subject_diagnostic(reason: ^r1_surface_no_accumulator_param, n: fold_call)
+      )
+    FoldSurfaceBodyNotLocated =>
+      outcome_rejected(
+        d: surface_subject_diagnostic(reason: ^r1_surface_body_not_located, n: fold_call)
+      )
+    FoldSurfaceBodyHeadOpaque =>
+      outcome_rejected(
+        d: surface_subject_diagnostic(reason: ^r1_surface_body_head_opaque, n: fold_call)
+      )
+    FoldSurfacePort0Opaque =>
+      outcome_rejected(d: surface_subject_diagnostic(reason: ^r1_surface_port0_opaque, n: fold_call))
+    FoldSurfacePort1Opaque =>
+      outcome_rejected(d: surface_subject_diagnostic(reason: ^r1_surface_port1_opaque, n: fold_call))
   }
 }

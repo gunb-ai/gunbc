@@ -172,7 +172,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       check_fns: [
         "quadratic_fold_projects_poly_two",
         "linear_fold_is_clean",
-        "identity_body_fold_refuses"
+        "identity_body_fold_refuses",
+        "real_branch_body_quadratic_is_currently_missed"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared

@@ -22,13 +22,15 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
-data r1_surface_subject_note: String = "Catches a real quadratic end-to-end: real source -> census ingest (tokenize/parse/normalize) -> locate the fold call -> fold_call_to_r1_subject distills the surface fold body into R1's fold-step subject -> r1_judge_fold_step. The RED (list_append(left: acc, right: x)) has the accumulator in list_append's copied (left) port, so R1 projects Poly(2). The GREEN uses the SAME combiner with the accumulator flipped to the non-copied (right) port (list_append(left: x, right: acc)) — clean — isolating the copied-port check as the sole difference. The REFUSE control is an identity-body fold (fn(acc, x) { acc }) with no two-argument combiner call: the distiller refuses (fail-closed), never fabricating a subject that R1 would read as clean."
+data r1_surface_subject_note: String = "Catches a real quadratic end-to-end: real source -> census ingest (tokenize/parse/normalize) -> locate the fold call -> fold_call_to_r1_subject distills the surface fold body into R1's fold-step subject -> r1_judge_fold_step. The RED (list_append(left: acc, right: x)) has the accumulator in list_append's copied (left) port, so R1 projects Poly(2). The GREEN uses the SAME combiner with the accumulator flipped to the non-copied (right) port (list_append(left: x, right: acc)) — clean — isolating the copied-port check as the sole difference. The REFUSE control is an identity-body fold (fn(acc, x) { acc }) with no two-argument combiner call: the distiller refuses (fail-closed), never fabricating a subject that R1 would read as clean. COVERAGE BOUNDARY (real_branch_body_quadratic_is_currently_missed): challenged against the ACTUAL corpus suspect shape (src/v2/workflow/glob_discovery_law.dag: fold_list with the copying list_append(left: acc, right: Cons{..}) buried inside an if-branch and a struct-literal grow-by-one arg), the distiller MISSES it — verified by execution it refuses with cause port1_opaque because it reads the if-CONDITION (a one-argument call) as the combiner rather than looking inside the branch. That test is a RED that flips to FAIL the moment the distiller learns to traverse branches; the flip is the dissolution trigger to widen this marker into a positive catch. This is the honest signal that the mechanism, though green on the textbook shape, is not yet done on real code."
 
 data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
 
 data linear_snippet: String = "module lin\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
 
 data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
+
+data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: acc, right: Cons { head: r, tail: Empty })\n    } else {\n      acc\n    }\n  })\n}\n"
 
 fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
   let lm = dag_language_model_wave1()
@@ -103,6 +105,22 @@ test fn identity_body_fold_refuses() -> Bool {
       match outcome {
         Rejected { diagnostics: _ } => true
         Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+test fn real_branch_body_quadratic_is_currently_missed() -> Bool {
+  match located_subject(source_text: real_branch_body_snippet, file: ^rs_file) {
+    Absent => false
+    Present { value: outcome } =>
+      match outcome {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: subject, diagnostics: _ } =>
+          match r1_judge_fold_step(n: subject) {
+            R1PolyTwoSuspect { implied_cost: _, flow_opaque_count: _ } => false
+            R1Clean { flow_opaque_count: _ } => true
+            R1MalformedSubject => true
+          }
       }
   }
 }
