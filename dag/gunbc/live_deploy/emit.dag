@@ -1,6 +1,8 @@
 module gunbc.live_deploy.emit
 
 import std.types { String, List, Bool, NonEmptyStr, Int }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.layout {
   Doc, DocConcat,
   LayoutProtocol,
@@ -58,6 +60,15 @@ fn deployment_ensured_steps_from_spec(spec: DeploymentSpec) -> List<DeploymentEn
         Owned { step: _ } => acc
       }
   )
+}
+
+data emit_sudo_wrapped_script_body_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "emit_sudo_wrapped_script_body",
+    field: WholeDeclaration
+  }
 }
 
 fn emit_sudo_wrapped_script_body(inner: Doc, marker: String) -> Doc {

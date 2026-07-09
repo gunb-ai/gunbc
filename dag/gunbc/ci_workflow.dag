@@ -314,6 +314,15 @@ data gunbc_ci_job_timeout_policy_minutes: Int = 90
 
 data gunbc_ci_floor_step_timeout_minutes: Duration = 30
 
+data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_workflow",
+    decl_name: "gunbc_ci_floor_step_timeout_minutes",
+    field: WholeDeclaration
+  }
+}
+
 data gunbc_ci_rust_gate_step_timeout_minutes: Int = 45
 
 data gunbc_ci_rust_sccache_warm_step_timeout_minutes: Int = 46
