@@ -43,6 +43,7 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
+  ComputationNode,
   Conj,
   Edge,
   Node,
@@ -136,19 +137,27 @@ fn emit_variant_construct_eval_variant_tag_id(node: Node) -> Outcome<Symbol> {
         Present { value: tag_node } =>
           match tag_node.kind {
             TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
+            TypeNode { connective: Conj } =>
+              outcome_rejected(
+                d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_debug_tag_is_conj, node: node)
+              )
+            ComputationNode { behavior: _ } =>
+              outcome_rejected(
+                d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_debug_tag_is_computation, node: node)
+              )
             _ =>
               outcome_rejected(
-                d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
+                d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_debug_tag_not_atom, node: node)
               )
           }
         Absent =>
           outcome_rejected(
-            d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
+            d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_debug_child_absent, node: node)
           )
       }
     _ =>
       outcome_rejected(
-        d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
+        d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_debug_other_kind, node: node)
       )
   }
 }
@@ -407,6 +416,26 @@ fn emit_variant_construct_eval_debug_diagnostic_reason_is(run: TestClaimRun<Node
 
 test fn emit_host_variant_construct_debug_reason_tag_miss() -> Bool {
   emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_variant_tag_miss)
+}
+
+test fn emit_host_variant_construct_debug_reason_tag_not_atom() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_debug_tag_not_atom)
+}
+
+test fn emit_host_variant_construct_debug_reason_child_absent() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_debug_child_absent)
+}
+
+test fn emit_host_variant_construct_debug_reason_other_kind() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_debug_other_kind)
+}
+
+test fn emit_host_variant_construct_debug_reason_tag_is_conj() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_debug_tag_is_conj)
+}
+
+test fn emit_host_variant_construct_debug_reason_tag_is_computation() -> Bool {
+  emit_variant_construct_eval_debug_diagnostic_reason_is(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), reason: ^emit_variant_construct_eval_debug_tag_is_computation)
 }
 
 test fn emit_host_variant_construct_debug_reason_arm_miss() -> Bool {
