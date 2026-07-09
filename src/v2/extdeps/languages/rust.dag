@@ -2132,6 +2132,29 @@ fn rust_decl_enum_derive_binding_for_variants(variants: List<Node>) -> Symbol {
   }
 }
 
+fn rust_decl_derive_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(
+    empty_map(),
+    ^rust_decl_derive_struct_binding,
+    rust_decl_derive_lex_spelling(text: rust_struct_derives)
+  )
+  let m1 = map_insert(
+    m0,
+    ^rust_decl_derive_struct_copy_binding,
+    rust_decl_derive_lex_spelling(text: rust_struct_derives_copy)
+  )
+  let m2 = map_insert(
+    m1,
+    ^rust_decl_derive_enum_binding,
+    rust_decl_derive_lex_spelling(text: rust_enum_derives)
+  )
+  map_insert(
+    m2,
+    ^rust_decl_derive_enum_copy_binding,
+    rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
+  )
+}
+
 fn rust_decl_shared_field_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
@@ -2342,7 +2365,7 @@ fn rust_enum_general_decl_structural_target_model() -> TargetModel {
       occurrence_id: SyntheticOccurrence
     },
     lex: rust_decl_general_lex(),
-    binding_spellings: empty_map(),
+    binding_spellings: rust_decl_derive_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
@@ -2414,7 +2437,7 @@ fn rust_struct_general_decl_structural_target_model() -> TargetModel {
       occurrence_id: SyntheticOccurrence
     },
     lex: rust_decl_general_lex(),
-    binding_spellings: empty_map(),
+    binding_spellings: rust_decl_derive_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
