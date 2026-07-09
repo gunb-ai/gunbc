@@ -307,50 +307,6 @@ test fn emit_host_variant_construct_wrong_fixture_refuses_holds() -> Bool {
   )
 }
 
-fn emit_variant_construct_eval_verdict_kind(run: TestClaimRun<Node, RuntimeValue>) -> Int {
-  match run.verdict {
-    Pass => 1
-    Fail { actual: _, falsification: _ } => 2
-    Deferred { actual: _, diagnostic: _ } => 3
-  }
-}
-
-test fn emit_host_variant_construct_probe_verdict_kind() -> Int {
-  emit_variant_construct_eval_verdict_kind(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree))
-}
-
-fn emit_variant_construct_eval_actual_matches(run: TestClaimRun<Node, RuntimeValue>, n: Int) -> Bool {
-  match run.verdict {
-    Fail { actual: a, falsification: _ } =>
-      match a {
-        Accepted { value: v, diagnostics: _ } => v == emit_variant_construct_eval_octet_value(n: n)
-        Rejected { diagnostics: _ } => false
-      }
-    Pass => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
-}
-
-test fn emit_host_variant_construct_probe_actual_is_9() -> Bool {
-  emit_variant_construct_eval_actual_matches(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), n: 9)
-}
-
-test fn emit_host_variant_construct_probe_actual_is_0() -> Bool {
-  emit_variant_construct_eval_actual_matches(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree), n: 0)
-}
-
-test fn emit_host_variant_construct_probe_actual_rejected() -> Bool {
-  match emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree).verdict {
-    Fail { actual: a, falsification: _ } =>
-      match a {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
-      }
-    Pass => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
-}
-
 test fn emit_host_variant_construct_equals_eval_all_holds() -> Bool {
   emit_host_variant_construct_equals_eval_holds() && emit_host_variant_construct_wrong_fixture_refuses_holds()
 }
