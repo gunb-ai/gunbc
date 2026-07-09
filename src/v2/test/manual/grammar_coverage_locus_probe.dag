@@ -1,0 +1,53 @@
+module v2.test.manual.grammar_coverage_locus_probe
+
+import v2.lens.enforcement.grammar_coverage {
+  GrammarCoverageFileReceipt,
+  grammar_coverage_file_receipt,
+  grammar_coverage_file_reject_locus_matches
+}
+
+test fn probe_core_tokenize_lex_e1() -> Bool {
+  grammar_coverage_file_reject_locus_matches(
+    receipt: grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag"),
+    stage: "tokenize",
+    reason: ^tokenize_lex_e1_unrecognized_char
+  )
+}
+
+test fn probe_core_parse_g0() -> Bool {
+  grammar_coverage_file_reject_locus_matches(
+    receipt: grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag"),
+    stage: "parse",
+    reason: ^parse_g0_tokens_remain
+  )
+}
+
+test fn probe_core_parse_clean() -> Bool {
+  match grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag").verdict {
+    ParsedClean => true
+    ParseRejected { stage: _, reason: _ } => false
+  }
+}
+
+test fn probe_tokenize_parse_g0() -> Bool {
+  grammar_coverage_file_reject_locus_matches(
+    receipt: grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag"),
+    stage: "parse",
+    reason: ^parse_g0_tokens_remain
+  )
+}
+
+test fn probe_tokenize_tokenize_lex_e1() -> Bool {
+  grammar_coverage_file_reject_locus_matches(
+    receipt: grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag"),
+    stage: "tokenize",
+    reason: ^tokenize_lex_e1_unrecognized_char
+  )
+}
+
+test fn probe_tokenize_parse_clean() -> Bool {
+  match grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag").verdict {
+    ParsedClean => true
+    ParseRejected { stage: _, reason: _ } => false
+  }
+}
