@@ -12,6 +12,7 @@ import std.materialization_ladder {
 }
 import gunbc.ci_materialization {
   ci_cache_providers, ci_cost_floor_exempt_step_names,
+  ci_sccache_provider_id,
   workflow_run_demands, workflow_scripts_named, step_run_script
 }
 import gunbc.ci_workflow { ci_workflow, ci_rust_cgroup_measurement_step }
@@ -131,7 +132,7 @@ fn ci_discharged_verdict_count() -> Int {
 
 fn ci_release_build_discharged_by_sccache_count() -> Int {
   ci_materialization_verdicts()
-    |> filter(v => verdict_is_discharged_by(v: v, identity: ci_release_build_script(), provider_id: "sccache"))
+    |> filter(v => verdict_is_discharged_by(v: v, identity: ci_release_build_script(), provider_id: ci_sccache_provider_id()))
     |> count()
 }
 

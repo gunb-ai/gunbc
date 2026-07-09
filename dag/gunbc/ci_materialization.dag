@@ -6,11 +6,14 @@ import std.materialization_ladder {
   SharedStateFrame, IsolatedChildrenFrame, UnboundedSiblingsFrame,
   FrameDemand, DemandNature, PureComputation, FreshEffect,
   CacheProvider, CoversIdentities,
-  ProviderTier, CasTier, ContentKeyed,
-  SpacePacked,
   empty_frame_path,
   string_list_contains
 }
+import extdeps.cache.materialization {
+  CatalogProviderProjection, provider_from_catalog,
+  projected_providers, projection_refusal_count
+}
+import extdeps.cache.sccache { sccache_local_facts, sccache_local_id }
 import gunbc.ci_spec { ci_release_build_script }
 import extdeps.github.actions { Workflow, Job, Step, RunStep, UsesStep }
 
@@ -111,20 +114,30 @@ data ci_cost_floor_exempt_step_names: List<String> = [
   "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)"
 ]
 
-data ci_sccache_provider_note: String = "The provider row IS the authority; the shell fragment in the emitted ci.yml is its realization. Tier axes (tier_axes): placement RemoteNetwork is the sccache server view — on the persistent runner the hot path is its local disk cache, one placement of the same content-keyed store; addressing KeyAddressed{ContentKeyed} — compiler inputs hashed, never mtime or existence (the #6352 stale-binary wall); aliasing ReplicatePerConsumer. Eviction SpacePacked: dropping a pure fact is always sound, only ever costs one recompute. Scope empty_frame_path: covers every LCA including the fleet frame, which is why the release build is already cross-run warm while the floor is not."
+data ci_sccache_provider_note: String = "C0 (operator ruling, 2026-07-09): this provider row is DERIVED from the cited catalog, never hand-typed. extdeps.cache.sccache owns what sccache IS (NativeInternal content hashing over RustcInvocation+ToolchainSpec, PerHostFilesystem locality, Lru eviction — cited to the vendor); this module owns only the ROLE: scope (whole tree, covers every LCA including the fleet frame — why the release build is already cross-run warm while the floor is not) and coverage (the release build script). provider_from_catalog maps cited mechanism to required class (NativeInternal => ContentKeyed, never mtime or existence — the #6352 wall; PerHostFilesystem => artifact tier; Lru => SpacePacked, sound to drop, costs one recompile). The F-commit hand-typed tier facts are deleted; a catalog correction now flows into this gate with zero edits here, and if the catalog row ever stops projecting (Never/Manual eviction, prefix fallback) the refusal is COUNTED by the enrolled witness, never a silent shrink of the provider list."
 
-fn ci_sccache_provider() -> CacheProvider {
-  CacheProvider {
-    id: "sccache",
+fn ci_sccache_projection() -> CatalogProviderProjection {
+  provider_from_catalog(
+    facts: sccache_local_facts,
     scope: empty_frame_path,
-    coverage: CoversIdentities { identities: [ci_release_build_script()] },
-    tier: CasTier { keying: ContentKeyed },
-    eviction: SpacePacked { budget: "sccache disk cache on the persistent runner, LRU-packed; sound to drop, costs one recompile" }
-  }
+    coverage: CoversIdentities { identities: [ci_release_build_script()] }
+  )
+}
+
+fn ci_catalog_provider_projections() -> List<CatalogProviderProjection> {
+  [ci_sccache_projection()]
 }
 
 fn ci_cache_providers() -> List<CacheProvider> {
-  [ci_sccache_provider()]
+  projected_providers(ps: ci_catalog_provider_projections())
+}
+
+fn ci_catalog_projection_refusals() -> Int {
+  projection_refusal_count(ps: ci_catalog_provider_projections())
+}
+
+fn ci_sccache_provider_id() -> String {
+  sccache_local_id
 }
 
 fn ci_sccache_provider_shell_injection() -> String {
