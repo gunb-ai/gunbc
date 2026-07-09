@@ -6,12 +6,20 @@ import std.materialization_ladder {
   FrameDemand, DemandNature,
   PureComputation, IdempotentEffect, WorldRead, FreshEffect,
   CacheProvider, ContentKeyed, ExistenceKeyed,
+  ProviderTier, ReferenceTier, CopyTier, MemoTier, ArtifactTier, CasTier,
   ScopeExit, SpacePacked,
   CoversAllComputations,
   LadderVerdict,
   DeclaredComputation,
   materialization_ladder, materialization_ladder_holds,
   ladder_zero_demand_verdicts,
+  AccessMode, ReadAccess, ConsumeAccess, CarryAccess, ProjectAccess,
+  ValueConsumerEdge, ValueUsage, ValueMaterialization,
+  value_materialization, value_materialization_is_green,
+  value_verdict_is_moved, value_verdict_is_shared_by_reference,
+  value_verdict_is_demoted_to_copy, value_verdict_is_refused_affine,
+  value_verdict_is_refused_needing_reference, value_verdict_is_refused_needing_copy,
+  value_verdict_is_dead,
   empty_frame_path, no_cache_providers, no_cost_floor_exemptions,
   verdict_is_authored_duplication,
   verdict_is_discharged_by,
@@ -44,9 +52,37 @@ fn root_content_provider(id: String) -> CacheProvider {
     id: id,
     scope: empty_frame_path,
     coverage: CoversAllComputations,
-    keying: ContentKeyed,
+    tier: CasTier { keying: ContentKeyed },
     eviction: SpacePacked { budget: "10G local cache dir" }
   }
+}
+
+fn rust_reference_provider() -> CacheProvider {
+  CacheProvider {
+    id: "rust-reference",
+    scope: empty_frame_path,
+    coverage: CoversAllComputations,
+    tier: ReferenceTier,
+    eviction: ScopeExit
+  }
+}
+
+fn rust_clone_provider() -> CacheProvider {
+  CacheProvider {
+    id: "rust-clone",
+    scope: empty_frame_path,
+    coverage: CoversAllComputations,
+    tier: CopyTier,
+    eviction: ScopeExit
+  }
+}
+
+fn edge(access: AccessMode, site: String) -> ValueConsumerEdge {
+  ValueConsumerEdge { access: access, site: site }
+}
+
+fn usage(identity: String, consumers: List<ValueConsumerEdge>) -> ValueUsage {
+  ValueUsage { identity: identity, consumers: consumers }
 }
 
 fn count_matching(vs: List<LadderVerdict>, matched: fn(LadderVerdict) -> Bool) -> Int {
@@ -115,7 +151,7 @@ test fn provider_scope_too_narrow_is_refused() -> Bool {
     id: "job-local-cache",
     scope: [wf(), job(name: "ci")],
     coverage: CoversAllComputations,
-    keying: ContentKeyed,
+    tier: MemoTier { keying: ContentKeyed },
     eviction: ScopeExit
   }
   let vs = materialization_ladder(
@@ -131,7 +167,7 @@ test fn existence_keyed_provider_is_refused() -> Bool {
     id: "build-if-absent",
     scope: empty_frame_path,
     coverage: CoversAllComputations,
-    keying: ExistenceKeyed,
+    tier: MemoTier { keying: ExistenceKeyed },
     eviction: ScopeExit
   }
   let vs = materialization_ladder(
@@ -260,6 +296,89 @@ test fn zero_demand_effect_is_the_use_not_dead() -> Bool {
   let deploy_ok = count_matching(vs: vs, matched: v => verdict_is_accepted_effect_is_the_use(v: v, identity: "deploy-dashboard")) == 1
   let measure_ok = count_matching(vs: vs, matched: v => verdict_is_accepted_effect_is_the_use(v: v, identity: "cgroup-peak-measurement")) == 1
   deploy_ok && measure_ok
+}
+
+data value_tier_witness_note: String = "Value-tier mirror witnesses: each asserts the refactored ladder verdict agrees cell-by-cell with v1.compiler.ownership semantics — make_decision (take_count = semantic_consumer_count: Consumed only), build_read_only_params (plurality = binding_fan_out: CarryAccess excluded; all access readonly), build_movable_set (borrows = whole_value_borrow_count: Read + Carry, NOT Project). The fold-accumulator case (carries + one take → demoted, v1 re-earns the move via FoldAccUnwrapProof) is asserted at the conservative pre-unwrap semantics."
+
+fn rust_value_providers() -> List<CacheProvider> {
+  [rust_reference_provider(), rust_clone_provider()]
+}
+
+test fn value_single_take_no_borrows_is_moved() -> Bool {
+  let u = usage(identity: "graph", consumers: [edge(access: ConsumeAccess, site: "call:emit")])
+  let v = value_materialization(usage: u, providers: rust_value_providers())
+  value_verdict_is_moved(v: v, identity: "graph") && value_materialization_is_green(v: v)
+}
+
+test fn value_plural_readonly_is_shared_by_reference() -> Bool {
+  let u = usage(identity: "config", consumers: [
+    edge(access: ReadAccess, site: "call:render"),
+    edge(access: ReadAccess, site: "call:validate"),
+    edge(access: ProjectAccess, site: "field:port")
+  ])
+  let v = value_materialization(usage: u, providers: rust_value_providers())
+  value_verdict_is_shared_by_reference(v: v, identity: "config", provider_id: "rust-reference", reader_count: 3)
+}
+
+test fn value_take_with_borrows_is_priced_demotion_to_copy() -> Bool {
+  let u = usage(identity: "acc", consumers: [
+    edge(access: ReadAccess, site: "call:report"),
+    edge(access: ConsumeAccess, site: "call:finish")
+  ])
+  let v = value_materialization(usage: u, providers: rust_value_providers())
+  value_verdict_is_demoted_to_copy(v: v, identity: "acc", copies: 1)
+}
+
+test fn value_fold_carry_excluded_from_plurality_but_blocks_move() -> Bool {
+  let u = usage(identity: "fold-acc", consumers: [
+    edge(access: CarryAccess, site: "fold:step-1"),
+    edge(access: CarryAccess, site: "fold:step-2"),
+    edge(access: ConsumeAccess, site: "fold:final")
+  ])
+  let v = value_materialization(usage: u, providers: rust_value_providers())
+  value_verdict_is_demoted_to_copy(v: v, identity: "fold-acc", copies: 1)
+}
+
+test fn value_double_take_is_affine_refusal_not_a_caching_opportunity() -> Bool {
+  let u = usage(identity: "payload", consumers: [
+    edge(access: ConsumeAccess, site: "call:send"),
+    edge(access: ConsumeAccess, site: "call:archive")
+  ])
+  let v = value_materialization(usage: u, providers: rust_value_providers())
+  value_verdict_is_refused_affine(v: v, identity: "payload", take_count: 2) && !value_materialization_is_green(v: v)
+}
+
+test fn value_reference_share_requires_the_carrier_capability() -> Bool {
+  let u = usage(identity: "config", consumers: [
+    edge(access: ReadAccess, site: "call:render"),
+    edge(access: ReadAccess, site: "call:validate")
+  ])
+  let v = value_materialization(usage: u, providers: no_cache_providers)
+  value_verdict_is_refused_needing_reference(v: v, identity: "config") && !value_materialization_is_green(v: v)
+}
+
+test fn value_demotion_requires_declared_copy_provider() -> Bool {
+  let u = usage(identity: "acc", consumers: [
+    edge(access: ReadAccess, site: "call:report"),
+    edge(access: ConsumeAccess, site: "call:finish")
+  ])
+  let v = value_materialization(usage: u, providers: [rust_reference_provider()])
+  value_verdict_is_refused_needing_copy(v: v, identity: "acc") && !value_materialization_is_green(v: v)
+}
+
+test fn value_zero_use_is_dead() -> Bool {
+  let u = usage(identity: "unused", consumers: [])
+  let v = value_materialization(usage: u, providers: rust_value_providers())
+  value_verdict_is_dead(v: v, identity: "unused") && !value_materialization_is_green(v: v)
+}
+
+test fn reference_provider_cannot_discharge_isolation_obligation() -> Bool {
+  let vs = materialization_ladder(
+    demands: three_jobs_same_build(),
+    providers: [rust_reference_provider()],
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+  count_matching(vs: vs, matched: v => verdict_is_refused_no_provider(v: v, identity: "cargo-release-build")) == 1
 }
 
 test fn below_cost_floor_duplication_is_typed_acceptance() -> Bool {
