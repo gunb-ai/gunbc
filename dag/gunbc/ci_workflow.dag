@@ -17,7 +17,10 @@ import gunbc.merge_admission_produce {
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
-import gunbc.ci_materialization { ci_sccache_provider_shell_injection }
+import gunbc.ci_materialization {
+  ci_sccache_provider_shell_injection,
+  ci_floor_resolve_receipt_gate_script
+}
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
@@ -183,6 +186,20 @@ fn ci_floor_step() -> Step {
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_floor_step_timeout_minutes }
+  }
+}
+
+fn ci_floor_resolve_receipt_gate_step() -> Step {
+  RunStep {
+    name: Present { value: "Floor resolve receipt gate (materialization M1)" },
+    id: none,
+    run: ci_floor_resolve_receipt_gate_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
   }
 }
 
@@ -370,7 +387,7 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_step(), ci_merge_admission_gate_step()]),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_step(), ci_floor_resolve_receipt_gate_step(), ci_merge_admission_gate_step()]),
     needs: [],
     env: none,
     outputs: none,

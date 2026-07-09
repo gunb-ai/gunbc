@@ -140,6 +140,40 @@ fn ci_sccache_provider_id() -> String {
   sccache_local_id
 }
 
+data ci_floor_resolve_receipt_note: String = "M1 of the lens-infra case study (operator go, 2026-07-09; the N-lenses-recompute-one-resolve pathology loyal-wren-398 root-caused from the affected-set OOM): make the floor's cross-entry resolve duplication a COUNTED, gated number before anyone fixes it. The executor already dedups per entry (walk_memo; memo_deduplicates_resolve_count is its oracle) — the residual duplication is ACROSS distinct entries, whose closures re-resolve shared subgraphs. claim_executor writes target/floor-resolve-receipt.txt (resolves_total = entry resolves actually paid, walk-memo hits excluded; discovery corpus time on its own key, never conflated); the derived ci.yml step below compares it to the declared row. Debt semantics: the count is DECLARED, not aspirational — growth reds the same run that added the duplication, and shrinking it (M2: one resolve per source-roots set handed to every lens as a readonly reference — rule 1 rewire, never a cache) requires consciously lowering the row toward the wall at 1. The gate lives on the ci job only; the regen job runs a different plan and enrolls when its count is pinned."
+
+data ci_floor_resolve_receipt_path: String = "target/floor-resolve-receipt.txt"
+
+data ci_floor_declared_resolve_count: Int = 0
+
+fn ci_floor_resolve_receipt_gate_script() -> String {
+  concat(
+    concat(
+      concat(
+        concat("if ! test -f ", ci_floor_resolve_receipt_path),
+        concat("; then echo \"floor resolve receipt missing - fail closed\"; exit 1; fi\n", "n=$(sed -n 's/^resolves_total=//p' ")
+      ),
+      concat(
+        concat(ci_floor_resolve_receipt_path, ")\n"),
+        "if test -z \"$n\"; then echo \"floor resolve receipt malformed - fail closed\"; exit 1; fi\n"
+      )
+    ),
+    concat(
+      concat(
+        concat("if test \"$n\" -ne ", to_string(ci_floor_declared_resolve_count)),
+        concat("; then echo \"floor resolve count $n differs from declared ", to_string(ci_floor_declared_resolve_count))
+      ),
+      concat(
+        ": duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)\"; exit 1; fi\n",
+        concat(
+          concat("echo \"floor resolve count $n matches declared ", to_string(ci_floor_declared_resolve_count)),
+          " (materialization ladder M1 receipt)\""
+        )
+      )
+    )
+  )
+}
+
 fn ci_sccache_provider_shell_injection() -> String {
   concat(
     "if sccache --show-stats >/dev/null 2>&1; then\n",
