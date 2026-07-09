@@ -52,8 +52,9 @@ import v2.std.compilers.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, optional_absent, optional_present }
-import v2.std.diagnostic { Accepted, EmitDirective, Outcome, Rejected, outcome_accepted }
+import v2.std.collection { Absent, List, Map, Present, Set, empty_map, list_at_optional, map_insert, optional_absent, optional_present }
+import v2.std.diagnostic { Accepted, Diagnostic, EmitDirective, ExternalContractUnknown, Outcome, Rejected, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
+import v2.std.node_query { node_positional_child_targets }
 import v2.std.grounding {
   PerLanguageFactBundleEntry,
   PerLanguageFactBundleKey,
@@ -1233,6 +1234,177 @@ fn rust_add_block_close() -> List<ConcreteSyntaxToken> {
   ]
 }
 
+fn rust_signature_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn rust_signature_type_ref_tokens(type_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      outcome_accepted(
+        value: [BoundToken { token_class: ^rust_token_ident, binding: id }]
+      )
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_signature_type_shape_unsupported, node: type_node)
+      )
+  }
+}
+
+fn rust_signature_one_param_tokens(edge: Edge) -> Outcome<List<ConcreteSyntaxToken>> {
+  match edge.label {
+    Named { name: pname } =>
+      bind_outcome(
+        o: rust_signature_type_ref_tokens(type_node: edge.target),
+        f: fn(type_toks) {
+          outcome_accepted(
+            value: list_append(
+              left: [
+                BoundToken { token_class: ^rust_token_ident, binding: pname },
+                FixedToken { token_class: ^rust_token_colon }
+              ],
+              right: type_toks
+            )
+          )
+        }
+      )
+    Positional =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_signature_param_unnamed, node: edge.target)
+      )
+  }
+}
+
+fn rust_signature_params_tail_tokens(params: List<Edge>) -> Outcome<List<ConcreteSyntaxToken>> {
+  match params {
+    Empty => outcome_accepted(value: Empty)
+    Cons { head: e, tail: rest } =>
+      bind_outcome(
+        o: rust_signature_one_param_tokens(edge: e),
+        f: fn(toks) {
+          bind_outcome(
+            o: rust_signature_params_tail_tokens(params: rest),
+            f: fn(rest_toks) {
+              outcome_accepted(
+                value: list_append(
+                  left: list_append(
+                    left: [FixedToken { token_class: ^rust_token_comma }],
+                    right: toks
+                  ),
+                  right: rest_toks
+                )
+              )
+            }
+          )
+        }
+      )
+  }
+}
+
+fn rust_signature_params_tokens(params: List<Edge>) -> Outcome<List<ConcreteSyntaxToken>> {
+  match params {
+    Empty => outcome_accepted(value: Empty)
+    Cons { head: e, tail: rest } =>
+      bind_outcome(
+        o: rust_signature_one_param_tokens(edge: e),
+        f: fn(first_toks) {
+          bind_outcome(
+            o: rust_signature_params_tail_tokens(params: rest),
+            f: fn(rest_toks) {
+              outcome_accepted(value: list_append(left: first_toks, right: rest_toks))
+            }
+          )
+        }
+      )
+  }
+}
+
+fn rust_signature_head_tokens(fn_name: Symbol) -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_kw_fn },
+    BoundToken { token_class: ^rust_token_ident, binding: fn_name },
+    FixedToken { token_class: ^rust_token_lparen }
+  ]
+}
+
+fn rust_signature_return_arrow_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_arrow }
+  ]
+}
+
+fn rust_signature_from_name_and_arrow(fn_name: Symbol, arrow: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+        Present { value: codomain } =>
+          bind_outcome(
+            o: rust_signature_params_tokens(params: domain.children),
+            f: fn(param_toks) {
+              bind_outcome(
+                o: rust_signature_type_ref_tokens(type_node: codomain),
+                f: fn(ret_toks) {
+                  outcome_accepted(
+                    value: list_append(
+                      left: rust_signature_head_tokens(fn_name: fn_name),
+                      right: list_append(
+                        left: param_toks,
+                        right: list_append(
+                          left: rust_signature_return_arrow_tokens(),
+                          right: list_append(
+                            left: ret_toks,
+                            right: [FixedToken { token_class: ^rust_token_lbrace }]
+                          )
+                        )
+                      )
+                    )
+                  )
+                }
+              )
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            d: rust_signature_diagnostic(reason: ^rust_signature_codomain_missing, node: arrow)
+          )
+      }
+    Absent =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_signature_domain_missing, node: arrow)
+      )
+  }
+}
+
+fn rust_signature_with_open_from_decl(decl: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  match decl.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: decl.children, index: 0) {
+        Present { value: decl_edge } =>
+          match decl_edge.label {
+            Named { name: fn_name } =>
+              rust_signature_from_name_and_arrow(fn_name: fn_name, arrow: decl_edge.target)
+            Positional =>
+              outcome_rejected(
+                d: rust_signature_diagnostic(reason: ^rust_signature_decl_unnamed, node: decl)
+              )
+          }
+        Absent =>
+          outcome_rejected(
+            d: rust_signature_diagnostic(reason: ^rust_signature_decl_empty, node: decl)
+          )
+      }
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_signature_decl_not_conj, node: decl)
+      )
+  }
+}
+
 fn rust_mvp1_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
   derive_bodied_arrow_scaffold(
     signature_with_open: rust_add_signature_with_open(),
@@ -1865,7 +2037,8 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m2 = map_insert(m1, ^rust_binding_param_y, "y")
   let mx = map_insert(m2, ^dag_binding_param_x, "x")
   let my = map_insert(mx, ^dag_binding_param_y, "y")
-  let m3 = map_insert(my, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let mi = map_insert(my, ^dag_binding_type_int, "i32")
+  let m3 = map_insert(mi, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
   let m4 = map_insert(m3, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m5 = map_insert(m4, ^rust_collection_surface_vec, "Vec")
   map_insert(m5, ^target_collection_set_carrier, "Set")
