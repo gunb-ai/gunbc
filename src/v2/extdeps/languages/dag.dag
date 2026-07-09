@@ -3187,9 +3187,6 @@ fn dag_wave1_sync_tokens() -> Set<Symbol> {
   }
 }
 
-fn dag_language_model_wave1_modeled() -> LanguageModel {
-  dag_language_model_wave1()
-}
 
 type DagTriviaNormalization
   = DagWhitespaceDeclaredNormalized

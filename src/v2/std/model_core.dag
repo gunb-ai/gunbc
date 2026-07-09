@@ -226,9 +226,6 @@ fn wave1_model_core() -> ModelCore {
   }
 }
 
-fn wave1_void() -> ModelCore {
-  wave1_model_core()
-}
 
 type PrimitiveBundleSubstrateHead
   = PrimitiveBundleSubstrateHeadMissing

@@ -2000,10 +2000,6 @@ fn wasm_model_core_wave2b() -> ModelCore {
   }
 }
 
-fn wasm_model_core_wave1() -> ModelCore {
-  wasm_model_core_wave2b()
-}
-
 fn wasm_language_model_wave2b() -> LanguageModel {
   LanguageModel {
     lex: wasm_wave1_lex(),
@@ -2014,6 +2010,3 @@ fn wasm_language_model_wave2b() -> LanguageModel {
   }
 }
 
-fn wasm_language_model_wave1() -> LanguageModel {
-  wasm_language_model_wave2b()
-}
