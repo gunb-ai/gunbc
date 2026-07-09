@@ -567,9 +567,10 @@ fn gunbc_falsifier_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadC
 
 fn witness_falsifier_plan_spawn_width_matches_ci_width() -> Bool {
   let tight = 10000000000
-  hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: tight))
-    == hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: tight))
-    && hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: 0)) > 0
+  let falsifier_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: tight))
+  let ci_width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: tight))
+  let fallback_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: 0))
+  falsifier_width == ci_width && fallback_width > 0
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
