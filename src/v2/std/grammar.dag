@@ -2225,6 +2225,14 @@ fn grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: No
   }
 }
 
+fn grammar_relation_rules_node_malformed_diagnostic(rules: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^grammar_relation_rules_node_not_conjunction,
+    at: node_locus(node: rules),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> Outcome<Node> {
   bind_outcome(
     o: grammar_relation_rules_formal_productions(rules: rules),
