@@ -638,6 +638,8 @@ fn ts_value_expression_projection_full(
     },
     match_form: TargetMatchShape {
       match_token: ^ts_token_unwired_match,
+      scrutinee_open: ^ts_token_lparen,
+      scrutinee_close: ^ts_token_rparen,
       open: ^ts_token_lbrace,
       close: ^ts_token_rbrace,
       fat_arrow: ^ts_token_fat_arrow,
