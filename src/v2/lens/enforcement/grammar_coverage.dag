@@ -13,7 +13,7 @@ import v2.std.collection { List }
 import v2.std.decl_index { DeclFact, decl_facts }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { symbol_identity_digest }
+import v2.std.node { Symbol, symbol_identity_digest }
 import v2.std.text { String }
 
 type GrammarCoverageParseVerdict
