@@ -6,10 +6,10 @@ import v2.compiler.infer { InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.python {
-  python_mvp1_emitted_add_fn_node,
-  python_mvp1_source_text,
-  python_mvp1_target_model,
-  python_mvp1_target_model_node,
+  python_emitted_add_fn_node,
+  python_source_text,
+  python_target_model,
+  python_target_model_node,
   python_wave1_lex
 }
 import v2.test.manual.python_add_emit_translate {
@@ -48,11 +48,11 @@ fn python_add_emit_perturbed_binding_spellings() -> Map<Symbol, String> {
 
 fn python_add_emit_perturbed_target_model() -> TargetModel {
   TargetModel {
-    bundle: python_mvp1_target_model_node(),
+    bundle: python_target_model_node(),
     lex: python_wave1_lex(),
     binding_spellings: python_add_emit_perturbed_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: python_mvp1_source_text,
+    authority_source_text: python_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
@@ -63,11 +63,11 @@ fn python_add_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
 
 fn python_add_emit_holds() -> Bool {
   match target_serialize_source_from_model(
-    target: python_mvp1_target_model(),
-    emitted: python_mvp1_emitted_add_fn_node()
+    target: python_target_model(),
+    emitted: python_emitted_add_fn_node()
   ) {
     Accepted { value: authority, diagnostics: ad } =>
-      match python_add_emit_from_tree(target: python_mvp1_target_model()) {
+      match python_add_emit_from_tree(target: python_target_model()) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == None) && (ad == None)
         Rejected { diagnostics: _ } => false
@@ -77,7 +77,7 @@ fn python_add_emit_holds() -> Bool {
 }
 
 fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
-  match python_add_emit_from_tree(target: python_mvp1_target_model()) {
+  match python_add_emit_from_tree(target: python_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match python_add_emit_from_tree(
         target: python_add_emit_perturbed_target_model()

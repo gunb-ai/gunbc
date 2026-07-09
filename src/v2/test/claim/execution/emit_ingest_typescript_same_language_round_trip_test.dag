@@ -8,15 +8,15 @@ import v2.compiler.ingest {
 }
 import v2.compiler.translate { grammar_relation_row_for_emitted }
 import v2.extdeps.languages.dag {
-  dag_mvp1_fixture_emitted_add_fn,
-  dag_mvp1_target_model
+  dag_fixture_emitted_add_fn,
+  dag_target_model
 }
 import v2.extdeps.languages.typescript {
-  ts_mvp1_emitted_add_fn_node,
-  ts_mvp1_fn_add_bodied_relation_row_node,
-  ts_mvp1_source_text,
-  ts_mvp1_target_model,
-  ts_mvp1_translation_rules_node
+  ts_emitted_add_fn_node,
+  ts_fn_add_bodied_relation_row_node,
+  ts_source_text,
+  ts_target_model,
+  ts_translation_rules_node
 }
 import v2.test.manual.typescript_wave1_grammar_claim {
   typescript_wave1_grammar_parse_fixture
@@ -67,15 +67,15 @@ fn emit_ingest_typescript_row_token_spine_classes(row: Node) -> Outcome<List<Sym
 }
 
 fn emit_ingest_typescript_shared_rules() -> Node {
-  ts_mvp1_translation_rules_node()
+  ts_translation_rules_node()
 }
 
 fn emit_ingest_typescript_canonical_row() -> Node {
-  ts_mvp1_fn_add_bodied_relation_row_node()
+  ts_fn_add_bodied_relation_row_node()
 }
 
 fn emit_ingest_typescript_canonical_emitted() -> Node {
-  ts_mvp1_emitted_add_fn_node()
+  ts_emitted_add_fn_node()
 }
 
 fn emit_typescript_backward_selects_canonical_row_holds() -> Bool {
@@ -179,7 +179,7 @@ fn ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool {
 fn emit_typescript_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_typescript_shared_rules(),
-    emitted: dag_mvp1_fixture_emitted_add_fn
+    emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -202,7 +202,7 @@ fn typescript_same_language_parse_bridge_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_target_model_bridge(
         parse_tree: tree,
-        source_model: ts_mvp1_target_model()
+        source_model: ts_target_model()
       ) {
         Accepted { value: recovered, diagnostics: _ } =>
           recovered == emit_ingest_typescript_canonical_emitted()
@@ -217,11 +217,11 @@ test fn typescript_same_language_source_emit_round_trip_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
         parse_tree: tree,
-        source_model: ts_mvp1_target_model(),
-        target_model: ts_mvp1_target_model()
+        source_model: ts_target_model(),
+        target_model: ts_target_model()
       ) {
         Accepted { value: source, diagnostics: _ } =>
-          (source.carried == ts_mvp1_source_text)
+          (source.carried == ts_source_text)
             && typescript_same_language_discriminates_on_real_tree()
         Rejected { diagnostics: _ } => false
       }
@@ -234,7 +234,7 @@ fn typescript_same_language_discriminates_on_real_tree() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,
-        source_model: dag_mvp1_target_model()
+        source_model: dag_target_model()
       ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true

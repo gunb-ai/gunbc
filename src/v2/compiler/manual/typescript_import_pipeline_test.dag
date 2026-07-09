@@ -12,7 +12,7 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
 import v2.extdeps.languages.typescript {
-  ts_mvp1_target_model_node,
+  ts_target_model_node,
   ts_wave2a_lex
 }
 import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, optional_absent, optional_present }
@@ -61,7 +61,7 @@ fn ts_import_pipeline_spellings(third_seg: Symbol, third_spell: String) -> Map<S
 
 fn ts_import_pipeline_target(third_seg: Symbol, third_spell: String) -> TargetModel {
   TargetModel {
-    bundle: ts_mvp1_target_model_node(),
+    bundle: ts_target_model_node(),
     lex: ts_wave2a_lex(),
     binding_spellings: ts_import_pipeline_spellings(
       third_seg: third_seg,

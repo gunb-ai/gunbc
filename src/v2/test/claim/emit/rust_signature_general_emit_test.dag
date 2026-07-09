@@ -1,9 +1,9 @@
 module v2.test.emit.rust_signature_general_emit
 
-import v2.compiler.body_producer { produce_mvp1_add_decl_node }
+import v2.compiler.body_producer { produce_add_decl_node }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v2.extdeps.languages.rust {
-  rust_mvp1_target_model_staging,
+  rust_target_model_staging,
   rust_signature_with_open_from_decl
 }
 import v2.std.compilers.target_model { TargetModel }
@@ -17,7 +17,7 @@ data rust_signature_add_golden: String = "fn add(x: i32, y: i32) -> i32 { "
 data rust_signature_add_wrong_golden: String = "fn add(y: i32, x: i32) -> i32 { "
 
 fn rust_signature_add_decl() -> Outcome<Node> {
-  produce_mvp1_add_decl_node(fn_name: ^rust_binding_fn_add)
+  produce_add_decl_node(fn_name: ^rust_binding_fn_add)
 }
 
 fn rust_signature_add_text() -> Outcome<String> {
@@ -29,7 +29,7 @@ fn rust_signature_add_text() -> Outcome<String> {
         f: fn(toks) {
           bind_outcome(
             o: serialize_concrete_syntax_tokens_to_source(
-              target: rust_mvp1_target_model_staging(),
+              target: rust_target_model_staging(),
               tokens: toks
             ),
             f: fn(medium) {

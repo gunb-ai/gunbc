@@ -15,7 +15,7 @@ import v2.compiler.compile {
 import v2.compiler.infer { InferredTree }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.lexing { VoidLexRules }
-import v2.test.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
+import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 import v2.std.diagnostic {
   Accepted,
   None,

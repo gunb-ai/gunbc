@@ -40,10 +40,10 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
-import v2.test.manual.eval_runtime_mvp {
-  eval_mvp2_add_subgraph,
-  eval_mvp2_context,
-  eval_mvp2_inferred_tree
+import v2.test.manual.eval_runtime {
+  eval_add_subgraph,
+  eval_context,
+  eval_inferred_tree
 }
 data idempotency_child: Node = claim_atom_node(s: ^idempotency_child_symbol)
 
@@ -152,7 +152,7 @@ data verdict_idempotency_write_effect_node_assert: Verdict<TestClaimEvalSubject<
 
 fn idempotency_executable_claim_input(ok: Bool) -> Node {
   if ok {
-    eval_mvp2_add_subgraph()
+    eval_add_subgraph()
   } else {
     idempotency_claim_fail_node()
   }
@@ -162,15 +162,15 @@ data claim_idempotency_write_effect_run_test_claim_receipt: TestClaim = EqualsCl
   label: "lens_idempotency write effect witness gates run_test_claim executable receipt",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: idempotency_executable_claim_input(ok: idempotency_write_effect_claim_passes),
-  rhs: eval_mvp2_add_subgraph(),
+  rhs: eval_add_subgraph(),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
 data subject_idempotency_write_effect_receipt: TestClaimEvalSubject<Node> = eval_test_claim_subject(
   claim: claim_idempotency_write_effect_run_test_claim_receipt,
-  context: eval_mvp2_context(),
-  tree: eval_mvp2_inferred_tree(),
-  evaluator_pin: ^eval_mvp2_evaluator_pin
+  context: eval_context(),
+  tree: eval_inferred_tree(),
+  evaluator_pin: ^eval_evaluator_pin
 )
 
 data run_idempotency_write_effect_receipt: TestClaimRun<Node, RuntimeValue> = run_test_claim(

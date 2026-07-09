@@ -15,8 +15,8 @@ import v2.compiler.translate {
 }
 import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.extdeps.languages.dag {
-  dag_mvp1_emitted_add_fn_node,
-  dag_mvp1_target_model
+  dag_emitted_add_fn_node,
+  dag_target_model
 }
 import v2.test.execution.dag_add_emit_round_trip {
   dag_add_emitted_root,
@@ -121,7 +121,7 @@ fn candidate_generation_dag_add_slice_accepts() -> Bool {
     dag_target: dag_add_target_model
   ) {
     Accepted { value: candidate, diagnostics: d } =>
-      (candidate.emitted == dag_mvp1_emitted_add_fn_node()) && (d == None)
+      (candidate.emitted == dag_emitted_add_fn_node()) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
