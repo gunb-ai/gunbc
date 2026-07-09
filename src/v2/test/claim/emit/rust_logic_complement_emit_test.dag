@@ -6,7 +6,7 @@ import v2.extdeps.languages.dag {
   dag_complement_arrow_with_body_fixture,
   dag_complement_arrow_with_body_swapped_arms_fixture
 }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust_test {
   rust_logic_complement_source_text,
   rust_logic_complement_swapped_arms_source_text,
   rust_logic_complement_target_model_staging

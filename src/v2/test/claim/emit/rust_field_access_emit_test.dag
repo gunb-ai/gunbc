@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag {
   dag_field_access_arrow_with_body_fixture,
   dag_type_atom_node
 }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust_test {
   rust_field_access_source_text,
   rust_field_access_wrong_field_source_text,
   rust_field_access_target_model_staging

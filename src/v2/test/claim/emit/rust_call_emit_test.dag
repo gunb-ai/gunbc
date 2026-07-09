@@ -2,11 +2,11 @@ module v2.test.emit.rust_call_emit
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust { rust_target_model_bundle_core }
+import v2.extdeps.languages.rust_test {
   rust_call_binding_spellings,
   rust_call_host_source_text,
-  rust_call_lex,
-  rust_target_model_bundle_core
+  rust_call_lex
 }
 import v2.std.compilers.target_model {
   TargetModel,

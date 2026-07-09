@@ -20,8 +20,8 @@ import v2.extdeps.languages.dag {
   dag_join_arrow_with_body_swapped_arms_fixture,
   dag_join_eval_subgraph_fixture
 }
-import v2.extdeps.languages.rust {
-  rust_emit_host_runtime_primitive_type_node,
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
+import v2.extdeps.languages.rust_test {
   rust_logic_meet_target_model_staging,
   rust_logic_join_target_model_staging
 }

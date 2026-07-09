@@ -5,7 +5,7 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
   dag_fixture_emitted_rec_fn
 }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust_test {
   rust_rec_source_text,
   rust_rec_target_model_staging,
   rust_rec_wrong_field_target_model_staging,
