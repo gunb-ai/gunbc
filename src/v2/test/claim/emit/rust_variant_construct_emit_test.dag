@@ -3,12 +3,12 @@ module v2.test.emit.rust_variant_construct_emit
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
-  dag_mvp1_variant_construct_arrow_with_body_fixture,
-  dag_mvp1_variant_construct_arrow_with_body_wrong_value_fixture
+  dag_variant_construct_arrow_with_body_fixture,
+  dag_variant_construct_arrow_with_body_wrong_value_fixture
 }
 import v2.extdeps.languages.rust {
-  rust_mvp1_variant_construct_source_text,
-  rust_mvp1_variant_construct_target_model_staging
+  rust_variant_construct_source_text,
+  rust_variant_construct_target_model_staging
 }
 import extdeps.communication.medium { Medium }
 import v2.std.collection { Map }
@@ -46,17 +46,17 @@ fn rust_variant_construct_emit_inferred_tree_for(root: Node) -> InferredTree {
   }
 }
 
-data rust_variant_construct_emit_inferred_tree: InferredTree = rust_variant_construct_emit_inferred_tree_for(root: dag_mvp1_variant_construct_arrow_with_body_fixture)
+data rust_variant_construct_emit_inferred_tree: InferredTree = rust_variant_construct_emit_inferred_tree_for(root: dag_variant_construct_arrow_with_body_fixture)
 
-data rust_variant_construct_emit_wrong_value_inferred_tree: InferredTree = rust_variant_construct_emit_inferred_tree_for(root: dag_mvp1_variant_construct_arrow_with_body_wrong_value_fixture)
+data rust_variant_construct_emit_wrong_value_inferred_tree: InferredTree = rust_variant_construct_emit_inferred_tree_for(root: dag_variant_construct_arrow_with_body_wrong_value_fixture)
 
 fn rust_variant_construct_emit_holds_accepts() -> Bool {
   match emit(
     tree: rust_variant_construct_emit_inferred_tree,
-    target: rust_mvp1_variant_construct_target_model_staging()
+    target: rust_variant_construct_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_mvp1_variant_construct_source_text) && (d == None)
+      (source.carried == rust_variant_construct_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -64,11 +64,11 @@ fn rust_variant_construct_emit_holds_accepts() -> Bool {
 fn rust_variant_construct_emit_wrong_value_discriminates() -> Bool {
   match emit(
     tree: rust_variant_construct_emit_wrong_value_inferred_tree,
-    target: rust_mvp1_variant_construct_target_model_staging()
+    target: rust_variant_construct_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_variant_construct_emit_wrong_value_source_text) &&
-      (source.carried != rust_mvp1_variant_construct_source_text) &&
+      (source.carried != rust_variant_construct_source_text) &&
       (d == None)
     Rejected { diagnostics: _ } => false
   }

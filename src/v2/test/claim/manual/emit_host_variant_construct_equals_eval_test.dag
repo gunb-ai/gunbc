@@ -13,13 +13,13 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
-  dag_mvp1_variant_construct_arrow_with_body_fixture,
-  dag_mvp1_variant_construct_arrow_with_body_wrong_value_fixture,
-  dag_mvp1_variant_construct_body_fixture
+  dag_variant_construct_arrow_with_body_fixture,
+  dag_variant_construct_arrow_with_body_wrong_value_fixture,
+  dag_variant_construct_body_fixture
 }
 import v2.extdeps.languages.rust {
   rust_emit_host_runtime_primitive_type_node,
-  rust_mvp1_variant_construct_target_model_staging
+  rust_variant_construct_target_model_staging
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
@@ -79,7 +79,7 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, Witness }
 
-data emit_variant_construct_eval_subgraph_node: Node = dag_mvp1_variant_construct_body_fixture
+data emit_variant_construct_eval_subgraph_node: Node = dag_variant_construct_body_fixture
 
 fn emit_variant_construct_eval_generic_facts(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
@@ -105,9 +105,9 @@ fn emit_variant_construct_eval_tree_for(root: Node) -> InferredTree {
   }
 }
 
-data emit_variant_construct_eval_tree: InferredTree = emit_variant_construct_eval_tree_for(root: dag_mvp1_variant_construct_arrow_with_body_fixture)
+data emit_variant_construct_eval_tree: InferredTree = emit_variant_construct_eval_tree_for(root: dag_variant_construct_arrow_with_body_fixture)
 
-data emit_variant_construct_eval_wrong_value_tree: InferredTree = emit_variant_construct_eval_tree_for(root: dag_mvp1_variant_construct_arrow_with_body_wrong_value_fixture)
+data emit_variant_construct_eval_wrong_value_tree: InferredTree = emit_variant_construct_eval_tree_for(root: dag_variant_construct_arrow_with_body_wrong_value_fixture)
 
 fn emit_variant_construct_eval_octet_value(n: Int) -> RuntimeValue {
   RuntimePrimitive {
@@ -132,13 +132,13 @@ fn emit_variant_construct_eval_allocate_literal(
 ) -> Outcome<RuntimeValue> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == ^dag_mvp1_rec_lit_nine {
+      if id == ^dag_rec_lit_nine {
         outcome_accepted(value: emit_variant_construct_eval_octet_value(n: 9))
-      } else if id == ^dag_mvp1_pick_lit_one {
+      } else if id == ^dag_pick_lit_one {
         outcome_accepted(value: emit_variant_construct_eval_octet_value(n: 1))
-      } else if id == ^dag_mvp1_pick_lit_two {
+      } else if id == ^dag_pick_lit_two {
         outcome_accepted(value: emit_variant_construct_eval_octet_value(n: 2))
-      } else if id == ^dag_binding_mvp1_rec_v {
+      } else if id == ^dag_binding_rec_v {
         outcome_accepted(value: emit_variant_construct_eval_octet_value(n: 9))
       } else if id == ^dag_binding_type_variant_true {
         outcome_accepted(value: emit_variant_construct_eval_octet_value(n: 2))
@@ -277,7 +277,7 @@ fn emit_variant_construct_eval_subject(tree: InferredTree) -> TestClaimEvalSubje
 fn emit_variant_construct_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_variant_construct_eval_subject(tree: tree),
-    target: rust_mvp1_variant_construct_target_model_staging()
+    target: rust_variant_construct_target_model_staging()
   )
 }
 

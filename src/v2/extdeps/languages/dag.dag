@@ -4547,7 +4547,7 @@ fn dag_variant_construct_body_from_value(value_lit: Symbol) -> Node {
 }
 
 fn dag_variant_construct_body_node() -> Node {
-  dag_variant_construct_body_from_value(value_lit: ^dag_binding_rec_lit_nine)
+  dag_variant_construct_body_from_value(value_lit: ^dag_rec_lit_nine)
 }
 
 fn dag_variant_construct_body_wrong_value_node() -> Node {
