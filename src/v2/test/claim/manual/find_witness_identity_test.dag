@@ -265,7 +265,7 @@ fn identity_witness_expected() -> Node {
   identity_source_node()
 }
 data claim_find_witness_identity_module_compiles: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity: identity-MVP behavior anchors compile",
+  label: "manual/find_witness_identity: identity behavior anchors compile",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_source_node(),
   expected_value: identity_witness_expected(),

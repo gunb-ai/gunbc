@@ -50,7 +50,7 @@ fn python_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
 }
 
 data claim_python_wave2a_non_function_parses: TestClaim = EqualsClaim {
-  label: "Python Wave 2a lex/grammar accepts a non-MVP function with assignment, if, and indented returns",
+  label: "Python Wave 2a lex/grammar accepts an extended function with assignment, if, and indented returns",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_wave2a_bool_atom(
     b: python_wave2a_parse_accepted(out: python_wave2a_tokenize_and_parse())

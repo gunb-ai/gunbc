@@ -2440,7 +2440,7 @@ fn rust_emit_host_runtime_primitive_type_node() -> Node {
   }
 }
 
-data rust_emit_host_cargo_manifest: String = "[package]\nname = \"gunbc_emit_host\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"mvp1\"\npath = \"src/main.rs\"\n"
+data rust_emit_host_cargo_manifest: String = "[package]\nname = \"gunbc_emit_host\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"emit_host\"\npath = \"src/main.rs\"\n"
 
 data rust_emit_host_main_suffix: String = "\n\nfn main() { let value = add(2, 3); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
 

@@ -57,7 +57,7 @@ fn rust_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
 }
 
 data claim_rust_wave2a_non_function_parses: TestClaim = EqualsClaim {
-  label: "Rust Wave 2a lex/grammar accepts a non-MVP function with let, if, return, and binary expressions",
+  label: "Rust Wave 2a lex/grammar accepts an extended function with let, if, return, and binary expressions",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: rust_wave2a_bool_atom(
     b: rust_wave2a_parse_accepted(out: rust_wave2a_tokenize_and_parse())

@@ -80,7 +80,7 @@ data claim_kotlin_wave1_grammar_validates: TestClaim = EqualsClaim {
 }
 
 data claim_kotlin_wave1_grammar_parses_tokens: TestClaim = EqualsClaim {
-  label: "kotlin MVP-1 production parse_production accepts lexer output for fun-add source",
+  label: "kotlin production parse_production accepts lexer output for fun-add source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: kotlin_claim_bool_atom(b: kotlin_wave1_grammar_parse_accepted()),
   rhs: kotlin_claim_bool_atom(b: true),
