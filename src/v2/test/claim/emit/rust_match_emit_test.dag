@@ -6,7 +6,7 @@ import v2.compiler.body_producer {
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust_test {
   rust_match_source_text,
   rust_match_target_model_staging
 }

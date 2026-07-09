@@ -17,10 +17,8 @@ import v2.extdeps.languages.dag {
   dag_variant_construct_arrow_with_body_wrong_value_fixture,
   dag_variant_construct_body_fixture
 }
-import v2.extdeps.languages.rust {
-  rust_emit_host_runtime_primitive_type_node,
-  rust_variant_construct_target_model_staging
-}
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
+import v2.extdeps.languages.rust_test { rust_variant_construct_target_model_staging }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { Absent, List, Map, Present, list_at_optional }

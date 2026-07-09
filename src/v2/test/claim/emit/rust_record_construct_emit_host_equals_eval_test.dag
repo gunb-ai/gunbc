@@ -18,8 +18,8 @@ import v2.extdeps.languages.dag {
   dag_rec_construct_body_fixture,
   dag_type_atom_node
 }
-import v2.extdeps.languages.rust {
-  rust_emit_host_runtime_primitive_type_node,
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
+import v2.extdeps.languages.rust_test {
   rust_rec_nine_target_model_staging,
   rust_rec_nine_wrong_field_target_model_staging
 }
