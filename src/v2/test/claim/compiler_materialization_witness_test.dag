@@ -18,13 +18,14 @@ import v2.compiler.materialization_carriers {
   parse_table_memo_plural_holds_with_provider,
   parse_table_memo_plural_holds_without_provider,
   parse_table_memo_plural_refused_without_provider_count,
+  parse_table_memo_plural_scope_too_narrow_count,
   parse_table_carrier_grounded_on_catalog,
 }
 import std.realization { Memoize, LocalInProcess }
 import extdeps.realization.parse_table_memo { parse_table_memo_id }
 import extdeps.realization.compile_stage_memo { compile_stage_memo_id }
 
-data compiler_materialization_witness_note: String = "Green-by-execution receipt that v2 ParseTable and cached_stage are grounded on the materialization ladder: catalog rows project to live provider rows (C0), std.realization.RealizedStep is inhabited with Memoize, and the ladder accepts the declared single-site demands. RED control: deleting either provider row makes projection_refusal_count > 0."
+data compiler_materialization_witness_note: String = "Green-by-execution receipt that v2 ParseTable and cached_stage are marked on the materialization ladder: catalog rows project to live provider rows (C0), std.realization.RealizedStep is inhabited with Memoize, and single-site demands are AcceptedSingleRecompute. RED controls on the plural fixture: with the in-process parse_table_memo provider the ladder refuses RefusedScopeTooNarrow (scope cannot span the IsolatedChildren LCA); with no providers it refuses RefusedNoProvider. Catalog projection refusals count rows that fail to project — shrinking the provider list is tested via ladder refusal counts, not projection_refusal_count."
 
 test fn compiler_materialization_ladder_holds() -> Bool {
   v2_compiler_materialization_ladder_holds()
@@ -69,7 +70,8 @@ test fn single_site_demands_are_accepted_single_recompute() -> Bool {
 }
 
 test fn parse_table_memo_plural_reds_without_provider() -> Bool {
-  parse_table_memo_plural_holds_with_provider()
+  !parse_table_memo_plural_holds_with_provider()
+    && (parse_table_memo_plural_scope_too_narrow_count() == 1)
     && !parse_table_memo_plural_holds_without_provider()
     && (parse_table_memo_plural_refused_without_provider_count() == 1)
 }

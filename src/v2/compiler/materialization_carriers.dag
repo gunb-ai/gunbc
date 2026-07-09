@@ -22,6 +22,7 @@ import std.materialization_ladder {
   empty_frame_path, no_cost_floor_exemptions, no_cache_providers,
   verdict_is_accepted_single_recompute,
   verdict_is_refused_no_provider,
+  verdict_is_refused_scope_too_narrow,
 }
 import extdeps.cache.materialization {
   CatalogProviderProjection, provider_from_catalog,
@@ -31,7 +32,7 @@ import extdeps.cache.materialization {
 import extdeps.realization.parse_table_memo { parse_table_memo_facts, parse_table_memo_id }
 import extdeps.realization.compile_stage_memo { compile_stage_memo_facts, compile_stage_memo_id }
 
-data v2_compiler_materialization_note: String = "The .dag-substrate demonstration lane (duplicate-work-graph-lens-design.md section 10b): ParseTable and cached_stage are no longer hand-rolled memos beside the ladder — each cites a catalog row, projects a provider via provider_from_catalog (C0), and inhabits std.realization.RealizedStep with the ladder-prescribed Memoize verdict. The parse walk and compile_ingest_staging pipeline share one process frame; demands are single-site AcceptedSingleRecompute today (the memo is prepared-for before multiplicity appears). Dissolve-on: demands derive from the DependencyView and the transport folds into materialize (Half A)."
+data v2_compiler_materialization_note: String = "The .dag-substrate demonstration lane (duplicate-work-graph-lens-design.md section 10b): ParseTable and cached_stage are MARKED on the ladder — catalog identity, Memoize verdict, RealizedStep inhabitation, provider rows via provider_from_catalog (C0). parse_table_lookup/insert still run on the hand Map; reconcile-as-the-lookup-path is the next increment. In-process memo cannot span runs: an InProcess MemoTier (ScopeExit at the process frame) cannot discharge a cross-run obligation at an IsolatedChildren LCA — RefusedScopeTooNarrow is the typed lesson; persistent-tier discharge belongs to resolved_graph_cache-class rows. Collapsing both plural sites into one process frame would flip to AuthoredDuplication (rule 1) — within-process legitimacy is Share at the value/eval tier, not a store-tier discharge. Dissolve-on: demands derive from the DependencyView and the transport folds into materialize (Half A)."
 
 fn v2_compile_process_frame() -> Frame {
   Frame { name: "v2-compile-ingest", kind: SharedStateFrame }
@@ -252,6 +253,17 @@ fn parse_table_memo_plural_refused_without_provider_count() -> Int {
   parse_table_memo_plural_verdicts(providers: no_cache_providers)
     |> fold(init: 0, f: (acc, v) =>
       if verdict_is_refused_no_provider(v: v, identity: parse_table_memo_demand_identity) {
+        acc + 1
+      } else {
+        acc
+      }
+    )
+}
+
+fn parse_table_memo_plural_scope_too_narrow_count() -> Int {
+  parse_table_memo_plural_verdicts(providers: v2_compiler_cache_providers())
+    |> fold(init: 0, f: (acc, v) =>
+      if verdict_is_refused_scope_too_narrow(v: v, provider_id: parse_table_memo_id) {
         acc + 1
       } else {
         acc
