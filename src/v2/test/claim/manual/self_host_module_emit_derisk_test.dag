@@ -1,0 +1,151 @@
+module v2.test.manual.self_host_module_emit_derisk
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject
+}
+import v2.compiler.self_host.compiler_closure_emit {
+  CompilerClosureEmitReceipt,
+  emit_compiler_import_closure_from_ingest
+}
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.infer { InferredTree, infer }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+
+data self_host_module_emit_frontier_note: String = "Drives v2's OWN pipeline (assemble->infer->emit_for_target via rust_target_model()) on real .dag SOURCE TEXT, ledgering the current self-emit-from-source frontier by execution. Two staged blockers are upstream of emit fidelity; each _refuses witness names its dissolution trigger and flips to assert ACCEPT once the trigger lands."
+
+data self_host_frontier_trigger_multi_arm_match: String = "TRIGGER: wave1 grammar dag_production_match_expr (dag/extdeps/languages/dag.dag) parses SINGLE-arm match only; multi-arm (comma-separated) arms reject at parse. Add a repeated match-arm production, then flip self_host_frontier_parse_multi_arm_match_refuses to assert ACCEPT."
+
+data self_host_frontier_trigger_ownership_miss: String = "TRIGGER: whole-program emit via rust_target_model() rejects user-defined coproduct/record types with target_use_site_ownership_lookup_miss (per-fn staging targets carry the rows; the real whole-program target does not). Land whole-program use-site ownership realization for user types, then flip self_host_frontier_emit_ownership_miss_refuses to assert ACCEPT."
+
+data derisk_module_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^derisk_module_artifact,
+  file_path: "src/v2/pilot/derisk_pilot.dag"
+}
+
+fn derisk_ingest_for(src: String) -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: derisk_module_artifact,
+      compilation_unit: ^derisk_pilot_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn derisk_module_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^derisk_pilot, tail: Empty }
+    },
+    imports: Empty
+  }
+}
+
+fn derisk_assemble_for(src: String) -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    lm: dag_language_model_wave1()
+  )
+}
+
+fn derisk_assemble_reason_for(src: String) -> String {
+  match derisk_assemble_for(src: src) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => to_string(d.head.reason)
+  }
+}
+
+fn derisk_assemble_accepts(src: String) -> Bool {
+  match derisk_assemble_for(src: src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn derisk_infer_outcome_for(src: String) -> Outcome<InferredTree> {
+  bind_outcome(o: derisk_assemble_for(src: src), f: fn(resolved) { infer(tree: resolved) })
+}
+
+fn derisk_infer_accepts(src: String) -> Bool {
+  match derisk_infer_outcome_for(src: src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn derisk_emit_reason_for(src: String) -> String {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => to_string(d.head.reason)
+  }
+}
+
+data src_module_header: String = "module derisk_pilot\n"
+data src_type_decl: String = "module derisk_pilot\n\ntype Flag = On | Off\n"
+data src_fn_simple_body: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn keep(f: Flag) -> Flag { f }\n"
+data src_single_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off } }\n"
+data src_multi_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off, Off => On } }\n"
+
+test fn self_host_frontier_parse_module_header_holds() -> Bool {
+  derisk_assemble_accepts(src: src_module_header)
+}
+
+test fn self_host_frontier_parse_type_decl_holds() -> Bool {
+  derisk_assemble_accepts(src: src_type_decl)
+}
+
+test fn self_host_frontier_parse_fn_simple_body_holds() -> Bool {
+  derisk_assemble_accepts(src: src_fn_simple_body)
+}
+
+test fn self_host_frontier_parse_single_arm_match_holds() -> Bool {
+  derisk_assemble_accepts(src: src_single_arm_match)
+}
+
+test fn self_host_frontier_infer_single_arm_module_holds() -> Bool {
+  derisk_infer_accepts(src: src_single_arm_match)
+}
+
+test fn self_host_frontier_parse_multi_arm_match_refuses() -> Bool {
+  string_contains(derisk_assemble_reason_for(src: src_multi_arm_match), "parse")
+    && !derisk_assemble_accepts(src: src_multi_arm_match)
+}
+
+test fn self_host_frontier_emit_ownership_miss_refuses() -> Bool {
+  string_contains(
+    derisk_emit_reason_for(src: src_single_arm_match),
+    "target_use_site_ownership_lookup_miss"
+  )
+}
+
+test fn self_host_module_emit_frontier_all_holds() -> Bool {
+  self_host_frontier_parse_module_header_holds()
+    && self_host_frontier_parse_type_decl_holds()
+    && self_host_frontier_parse_fn_simple_body_holds()
+    && self_host_frontier_parse_single_arm_match_holds()
+    && self_host_frontier_infer_single_arm_module_holds()
+    && self_host_frontier_parse_multi_arm_match_refuses()
+    && self_host_frontier_emit_ownership_miss_refuses()
+}
