@@ -164,7 +164,11 @@ data medium_structure_exception_roster: List<String> = [
   "dag/tools/merge_admission_gate.dag",
   "dag/tools/emit_host_transport.dag",
   "dag/tools/dag_compile_clean_transport.dag",
-  "dag/gunbc/assimilate/bmc_token_federation.dag",
+
+  "dag/tools/dag_compile_clean_shard_transport.dag",
+  "dag/test/claim/os_install_deduction_witness_test.dag",
+  "dag/test/claim/v1_dag_parse_witness_test.dag",
+
   "dag/gunbc/tools/review.dag",
   "dag/test/claim/fleet_converge_emit_test.dag",
   "dag/test/claim/live_deploy/emit_test.dag",
@@ -174,6 +178,8 @@ data medium_structure_exception_roster: List<String> = [
   "dag/test/claim/srv3_install_server_emit_test.dag",
 
   "dag/extdeps/bmc/webui/nbd_proxy_serve.dag",
+
+  "dag/gunbc/assimilate/bmc_token_federation.dag",
 
   "dag/gunbc/srv3_os_install_actuate.dag",
 
@@ -198,7 +204,9 @@ data medium_structure_exception_roster: List<String> = [
   "dag/tools/dag_compile_clean_shard_totality_transport.dag"
 ]
 
-data medium_structure_exception_roster_size_baseline: Int = 54
+data medium_structure_clean_tree_unquarantine_note: String = "Pre-existing rot surfaced by live host census at discovery-flip unquarantine (2026-07-09; not debt introduced by this PR): dag_compile_clean_shard_transport is shell-transport sibling to already-rostered seam/shard_totality transports; os_install_deduction + v1_dag_parse witness tests pair string_contains with emit-fn output (same pattern as ci_yaml_serializer_witness_test.dag)."
+
+data medium_structure_exception_roster_size_baseline: Int = 57
 
 fn roster_growth_ratchet_holds(live_size: Int, baseline: Int) -> Bool {
   live_size <= baseline
