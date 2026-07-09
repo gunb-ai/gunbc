@@ -272,16 +272,20 @@ fn partition_symbol_snoc_unique(acc: List<Symbol>, sym: Symbol) -> List<Symbol> 
   }
 }
 
+fn partition_carrier_identity_snoc(acc: List<Symbol>, node: Node) -> List<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      partition_symbol_snoc_unique(acc: acc, sym: id)
+    _ => acc
+  }
+}
+
 fn partition_carrier_identities_in_semantic(semantic: Node) -> List<Symbol> {
   fold_list(
     xs: node_subtree_nodes(root: semantic),
     empty: Empty,
     cons: fn(acc, node) {
-      match node.kind {
-        TypeNode { connective: Atom { identity: id } } =>
-          partition_symbol_snoc_unique(acc: acc, sym: id)
-        _ => acc
-      }
+      partition_carrier_identity_snoc(acc: acc, node: node)
     }
   )
 }
