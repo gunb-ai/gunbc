@@ -113,6 +113,24 @@ fn addressing_spans_isolation(a: ProviderAddressing) -> Bool {
   }
 }
 
+fn scope_exit_eviction() -> EvictionPolicy {
+  ScopeExit
+}
+
+fn space_packed_eviction(budget: String) -> EvictionPolicy {
+  SpacePacked { budget: budget }
+}
+
+fn provider_row(
+  id: String,
+  scope: List<Frame>,
+  coverage: CacheCoverage,
+  tier: ProviderTier,
+  eviction: EvictionPolicy
+) -> CacheProvider {
+  CacheProvider { id: id, scope: scope, coverage: coverage, tier: tier, eviction: eviction }
+}
+
 type LadderVerdict
   = AuthoredDuplication { identity: String, lca: List<Frame>, site_count: Int }
   | DeadComputation { identity: String }
