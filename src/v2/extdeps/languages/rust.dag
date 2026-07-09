@@ -84,8 +84,20 @@ import v2.std.model_core {
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node, target_model_emit_transforms_empty, target_model_make_with_emit_transforms}
 import v2.std.compilers.target_model {
+  CanonicalOperation,
   InfixToken,
   canonical_operation_op_add,
+  canonical_operation_op_sub,
+  canonical_operation_op_mul,
+  canonical_operation_op_div,
+  canonical_operation_op_and,
+  canonical_operation_op_or,
+  canonical_operation_op_lt,
+  canonical_operation_op_le,
+  canonical_operation_op_gt,
+  canonical_operation_op_ge,
+  canonical_operation_op_eq,
+  canonical_operation_op_ne,
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
@@ -188,7 +200,9 @@ import v2.std.compilers.target_model {
 import v2.std.node {
   Arrow,
   Atom,
+  Bind,
   Cardinality,
+  ComputationNode,
   Conj,
   Edge,
   Named,
@@ -198,6 +212,9 @@ import v2.std.node {
   TypeNode,
   Instantiation,
   SyntheticOccurrence
+}
+import v2.extdeps.languages.dag {
+  dag_mvp1_bind_arrow_with_body_fixture
 }
 import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
 import std.algebra { Empty, Cons }
@@ -1016,9 +1033,9 @@ type RustGramBuild1State
   = RustGramBuild1StateInit
   | RustGramBuild1StateReady { expr: GrammarExpr }
 
-fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
+fn rust_grammar_sequence_from_concrete_tokens(tokens: List<ConcreteSyntaxToken>) -> GrammarExpr {
   match fold_list(
-    xs: rust_mvp1_concrete_tokens(),
+    xs: tokens,
     empty: RustGramBuild1StateInit,
     cons: fn(state, token) {
       match state {
@@ -1039,6 +1056,20 @@ fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
     RustGramBuild1StateInit =>
       rust_grammar_terminal(token_class: ^rust_token_kw_fn)
     RustGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
+  rust_grammar_sequence_from_concrete_tokens(tokens: rust_mvp1_concrete_tokens())
+}
+
+fn rust_grammar_production_mvp1_fn_bind_literal() -> GrammarProduction {
+  GrammarProduction {
+    name: ^rust_production_mvp1_fn_bind_literal,
+    expression: rust_grammar_sequence_from_concrete_tokens(
+      tokens: rust_mvp1_bind_literal_golden_tokens()
+    ),
+    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
   }
 }
 
@@ -1101,14 +1132,14 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       separator: ^rust_token_comma
     },
     conditional_form: TargetConditionalShape {
-      if_token: ^rust_token_unwired_if,
-      then_token: ^rust_token_unwired_then,
+      if_token: ^rust_token_kw_if,
+      then_token: ^rust_token_lbrace,
       else_token: ^rust_token_unwired_else
     },
     let_form: TargetBindLetShape {
-      let_token: ^rust_token_unwired_let,
-      assign_token: ^rust_token_unwired_assign,
-      in_token: ^rust_token_unwired_bind_in
+      let_token: ^rust_token_kw_let,
+      assign_token: ^rust_token_equal,
+      in_token: ^rust_token_semicolon
     },
     loop_form: TargetLoopShape { loop_token: ^rust_token_unwired_loop },
     record_construct_form: TargetRecordConstructShape {
@@ -1130,15 +1161,51 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
   }
 }
 
-fn rust_add_operator_realization_row() -> Node {
+fn rust_operator_realization_row(operation: CanonicalOperation, token: Symbol) -> Node {
   target_operator_realization_node(
-    operation: canonical_operation_op_add(),
-    shape: InfixToken { token: ^rust_token_plus }
+    operation: operation,
+    shape: InfixToken { token: token }
   )
 }
 
+fn rust_add_operator_realization_row() -> Node {
+  rust_operator_realization_row(
+    operation: canonical_operation_op_add(),
+    token: ^rust_token_plus
+  )
+}
+
+fn rust_binop_operator_lex_rules() -> List<LexRule> {
+  [
+    rust_lex_rule(token_class: ^rust_token_oror, text: " || "),
+    rust_lex_rule(token_class: ^rust_token_andand, text: " && "),
+    rust_lex_rule(token_class: ^rust_token_eqeq, text: " == "),
+    rust_lex_rule(token_class: ^rust_token_neq, text: " != "),
+    rust_lex_rule(token_class: ^rust_token_le, text: " <= "),
+    rust_lex_rule(token_class: ^rust_token_ge, text: " >= "),
+    rust_lex_rule(token_class: ^rust_token_lt, text: " < "),
+    rust_lex_rule(token_class: ^rust_token_gt, text: " > "),
+    rust_lex_rule(token_class: ^rust_token_minus, text: " - "),
+    rust_lex_rule(token_class: ^rust_token_star, text: " * "),
+    rust_lex_rule(token_class: ^rust_token_slash, text: " / ")
+  ]
+}
+
 fn rust_operator_realizations_catalog_node() -> Node {
-  target_operator_realizations_catalog_node(rows: [rust_add_operator_realization_row()])
+  target_operator_realizations_catalog_node(rows: [
+    rust_operator_realization_row(operation: canonical_operation_op_or(), token: ^rust_token_oror),
+    rust_operator_realization_row(operation: canonical_operation_op_and(), token: ^rust_token_andand),
+    rust_operator_realization_row(operation: canonical_operation_op_eq(), token: ^rust_token_eqeq),
+    rust_operator_realization_row(operation: canonical_operation_op_ne(), token: ^rust_token_neq),
+    rust_operator_realization_row(operation: canonical_operation_op_lt(), token: ^rust_token_lt),
+    rust_operator_realization_row(operation: canonical_operation_op_le(), token: ^rust_token_le),
+    rust_operator_realization_row(operation: canonical_operation_op_gt(), token: ^rust_token_gt),
+    rust_operator_realization_row(operation: canonical_operation_op_ge(), token: ^rust_token_ge),
+    rust_add_operator_realization_row(),
+    rust_operator_realization_row(operation: canonical_operation_op_sub(), token: ^rust_token_minus),
+    rust_operator_realization_row(operation: canonical_operation_op_mul(), token: ^rust_token_star),
+    rust_operator_realization_row(operation: canonical_operation_op_div(), token: ^rust_token_slash)
+  ])
 }
 
 fn rust_add_signature_with_open() -> List<ConcreteSyntaxToken> {
@@ -1183,6 +1250,264 @@ fn rust_mvp1_fn_add_bodied_relation_row_node() -> Node {
     row: rust_mvp1_fn_add_scaffold_relation_row_node(),
     scaffold: rust_mvp1_bodied_arrow_statement_scaffold()
   )
+}
+
+data rust_mvp1_pick_source_text: String = "fn one_or_two() -> i32 { if true { 1 } else { 2 } }"
+
+fn rust_mvp1_pick_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_kw_fn },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
+    FixedToken { token_class: ^rust_token_lparen },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_arrow },
+    FixedToken { token_class: ^rust_token_ty_i32 },
+    FixedToken { token_class: ^rust_token_lbrace },
+    FixedToken { token_class: ^rust_token_kw_if },
+    FixedToken { token_class: ^dag_token_kw_true },
+    FixedToken { token_class: ^rust_token_lbrace },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_pick_lit_one },
+    FixedToken { token_class: ^rust_token_unwired_else },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_pick_lit_two },
+    FixedToken { token_class: ^rust_token_rbrace },
+    FixedToken { token_class: ^rust_token_rbrace }
+  ]
+}
+
+fn rust_mvp1_pick_signature_with_open() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_kw_fn },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one_or_two },
+    FixedToken { token_class: ^rust_token_lparen },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_arrow },
+    FixedToken { token_class: ^rust_token_ty_i32 },
+    FixedToken { token_class: ^rust_token_lbrace }
+  ]
+}
+
+fn rust_mvp1_pick_block_close() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_rbrace },
+    FixedToken { token_class: ^rust_token_rbrace }
+  ]
+}
+
+fn rust_mvp1_pick_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+  derive_bodied_arrow_scaffold(
+    signature_with_open: rust_mvp1_pick_signature_with_open(),
+    block_close: rust_mvp1_pick_block_close(),
+    mode: ValueProducing
+  )
+}
+
+fn rust_mvp1_pick_grammar_sequence() -> GrammarExpr {
+  match fold_list(
+    xs: rust_mvp1_pick_concrete_tokens(),
+    empty: RustGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        RustGramBuild1StateInit =>
+          RustGramBuild1StateReady {
+            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+          }
+        RustGramBuild1StateReady { expr: acc } =>
+          RustGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            }
+          }
+      }
+    }
+  ) {
+    RustGramBuild1StateInit =>
+      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+    RustGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn rust_formal_production_mvp1_fn_pick() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^rust_production_mvp1_fn_pick,
+    rhs: rust_formal_rhs_from_tokens(tokens: rust_mvp1_pick_concrete_tokens())
+  )
+}
+
+fn rust_grammar_production_mvp1_fn_pick() -> GrammarProduction {
+  GrammarProduction {
+    name: ^rust_production_mvp1_fn_pick,
+    expression: rust_mvp1_pick_grammar_sequence(),
+    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+  }
+}
+
+fn rust_mvp1_pick_grammar_relation_row() -> RustGrammarRelationRow {
+  RustGrammarRelationRow {
+    production: rust_grammar_production_mvp1_fn_pick(),
+    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    tokens: rust_mvp1_pick_concrete_tokens()
+  }
+}
+
+fn rust_mvp1_pick_scaffold_relation_row_node() -> Node {
+  rust_grammar_relation_row_node(row: rust_mvp1_pick_grammar_relation_row())
+}
+
+fn rust_mvp1_pick_bodied_relation_row_node() -> Node {
+  grammar_relation_row_attach_bodied_scaffold(
+    row: rust_mvp1_pick_scaffold_relation_row_node(),
+    scaffold: rust_mvp1_pick_bodied_arrow_statement_scaffold()
+  )
+}
+
+fn rust_mvp1_pick_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^rust_relation_rule_mvp1_fn_pick,
+        target: rust_mvp1_pick_bodied_relation_row_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_mvp1_pick_serialize_source_prefix_edges() -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^serialize_source_field_source_text,
+      target: rust_inhabitant_atom(id: ^rust_mvp1_pick_source_literal)
+    ),
+    rust_named_edge(
+      name: ^serialize_source_field_source_grammar,
+      target: rust_inhabitant_atom(id: ^rust_production_mvp1_fn_pick)
+    )
+  ]
+}
+
+fn rust_mvp1_pick_serialize_source_node() -> Node {
+  let _authority = rust_mvp1_pick_source_text
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: rust_mvp1_pick_serialize_source_prefix_edges(),
+      right: [
+        rust_named_edge(
+          name: ^grammar_relation_field_tokens,
+          target: grammar_relation_tokens_node(
+            tokens: rust_mvp1_pick_concrete_tokens(),
+            token_to_node: rust_concrete_token_node
+          )
+        )
+      ]
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_mvp1_pick_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(empty_map(), ^dag_binding_fn_one_or_two, "one_or_two")
+  let m1 = map_insert(m0, ^dag_binding_mvp1_pick_lit_one, "1")
+  map_insert(m1, ^dag_binding_mvp1_pick_lit_two, "2")
+}
+
+data rust_conditional_else_mid_lex_dissolution_trigger: String = "🟡 dissolve-on: rust_token_unwired_else lex packs the then-arm close, else keyword, and else-arm open into one spelling ( } else { ); pick-fn concrete tokens and the double-rbrace bodied scaffold suffix paper over the missing per-arm close in TargetConditionalShape's three-slot if/then/else projection. DISSOLVES WHEN Rust conditional emit uses separate ^rust_token_rbrace, ^rust_token_kw_else, and ^rust_token_lbrace token classes per arm delimiter (and pick golden tokens include inner braces around each arm literal) so transport is one lex class per surface token, not a packed substring."
+
+fn rust_mvp1_pick_additional_lex_rules() -> List<LexRule> {
+  [
+    rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
+    rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { "),
+    rust_lex_rule(token_class: ^dag_token_kw_true, text: "true")
+  ]
+}
+
+fn rust_mvp1_pick_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: rust_wave1_lex_rules().rules,
+      right: rust_mvp1_pick_additional_lex_rules()
+    )
+  }
+}
+
+fn rust_mvp1_pick_lex() -> LexRules {
+  ModeledLexRules { root: rust_mvp1_pick_lex_rules() }
+}
+
+fn rust_mvp1_pick_target_model_core_edges() -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^target_model_edge_selection_policy,
+      target: rust_mvp1_selection_policy_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_declared_inhabitants,
+      target: rust_mvp1_declared_inhabitants_root()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_translation_rules,
+      target: rust_mvp1_pick_translation_rules_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_serialize_source,
+      target: rust_mvp1_pick_serialize_source_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_collection_realization,
+      target: rust_collection_realization_catalog_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_reference_layer_tokens,
+      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_use_site_ownership_realizations,
+      target: target_use_site_ownership_catalog_node(
+        rows: rust_sg_rc_use_site_ownership_catalog()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_value_semantics_carriers,
+      target: target_value_semantics_carriers_node(
+        atoms: rust_value_semantics_carrier_atoms()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_type_expression_projection,
+      target: rust_type_expression_projection_bundle_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_value_expression_projection,
+      target: value_expr_projection_bundle_node(
+        projection: rust_value_expression_projection()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_operator_realizations,
+      target: target_operator_realizations_catalog_node(rows: [])
+    )
+  ]
+}
+
+fn rust_mvp1_pick_target_model_bundle_core() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: rust_mvp1_pick_target_model_core_edges(),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_mvp1_pick_target_model_staging() -> TargetModel {
+  TargetModel {
+    bundle: rust_mvp1_pick_target_model_bundle_core(),
+    lex: rust_mvp1_pick_lex(),
+    binding_spellings: rust_mvp1_pick_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_mvp1_pick_source_text,
+    runtime_row: rust_mvp1_runtime_row()
+  }
 }
 
 fn rust_mvp1_translation_rules_node() -> Node {
@@ -1544,6 +1869,269 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
   let m4 = map_insert(m3, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m5 = map_insert(m4, ^rust_collection_surface_vec, "Vec")
   map_insert(m5, ^target_collection_set_carrier, "Set")
+}
+
+fn rust_mvp1_literal_emit_binding_spellings() -> Map<Symbol, String> {
+  let m0 = rust_mvp1_binding_spellings()
+  let m1 = map_insert(m0, ^dag_binding_fn_one, "one")
+  let m2 = map_insert(m1, ^dag_binding_type_int, "i32")
+  let m3 = map_insert(m2, ^dag_binding_mvp1_bind_x, "x")
+  let m4 = map_insert(m3, ^dag_binding_mvp1_pick_lit_one, "1")
+  map_insert(m4, ^dag_binding_mvp1_pick_lit_two, "2")
+}
+
+fn rust_literal_emit_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: list_append(
+        left: rust_wave1_lex_rules().rules,
+        right: [
+          rust_int_literal_lex_rule(),
+          rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
+          rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
+          rust_lex_rule(token_class: ^rust_token_semicolon, text: "; ")
+        ]
+      ),
+      right: [
+        rust_lex_rule(token_class: ^rust_token_lit_true, text: "true"),
+        rust_lex_rule(token_class: ^rust_token_lit_false, text: "false"),
+        rust_lex_rule(token_class: ^rust_token_ty_bool, text: "bool"),
+        rust_lex_rule(token_class: ^rust_lit_char_a, text: "'a'"),
+        rust_lex_rule(token_class: ^rust_lit_char_b, text: "'b'")
+      ]
+    )
+  }
+}
+
+fn rust_literal_emit_lex() -> LexRules {
+  ModeledLexRules { root: rust_literal_emit_lex_rules() }
+}
+
+data rust_mvp1_bind_int_literal_source_text: String = "fn one() -> i32 { let x = 1; x }"
+
+data rust_mvp1_bind_int_literal_wrong_source_text: String = "fn one() -> i32 { let x = 2; x }"
+
+data rust_mvp1_bind_bool_literal_source_text: String = "fn one() -> i32 { let x = true; x }"
+
+data rust_mvp1_bind_bool_literal_wrong_source_text: String = "fn one() -> i32 { let x = false; x }"
+
+data rust_mvp1_bind_char_literal_source_text: String = "fn one() -> i32 { let x = 'a'; x }"
+
+data rust_mvp1_bind_char_literal_wrong_source_text: String = "fn one() -> i32 { let x = 'b'; x }"
+
+data rust_literal_emit_string_refusal_note: String = "rope-string ValueStringLiteral emit unsupported in target_value_expression_to_concrete_tokens until engine lands literal-kind synthesis"
+
+fn rust_mvp1_type_atom_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_mvp1_nullary_arrow_domain_conj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_mvp1_bind_let_body_node(
+  key_binding: Symbol,
+  value_lit: Symbol,
+  body_binding: Symbol
+) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge { label: Positional, target: rust_mvp1_type_atom_node(identity: key_binding) },
+      Edge { label: Positional, target: rust_mvp1_type_atom_node(identity: value_lit) },
+      Edge { label: Positional, target: rust_mvp1_type_atom_node(identity: body_binding) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_mvp1_arrow_with_body_node(
+  return_type_binding: Symbol,
+  body: Node
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: rust_mvp1_nullary_arrow_domain_conj_node() },
+      Edge {
+        label: Positional,
+        target: rust_mvp1_type_atom_node(identity: return_type_binding)
+      },
+      Edge {
+        label: Positional,
+        target: rust_mvp1_type_atom_node(identity: return_type_binding)
+      },
+      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_mvp1_bind_bool_literal_arrow_node() -> Node {
+  rust_mvp1_arrow_with_body_node(
+    return_type_binding: ^dag_binding_type_int,
+    body: rust_mvp1_bind_let_body_node(
+      key_binding: ^dag_binding_mvp1_bind_x,
+      value_lit: ^rust_token_lit_true,
+      body_binding: ^dag_binding_mvp1_bind_x
+    )
+  )
+}
+
+fn rust_mvp1_bind_bool_literal_wrong_arrow_node() -> Node {
+  rust_mvp1_arrow_with_body_node(
+    return_type_binding: ^dag_binding_type_int,
+    body: rust_mvp1_bind_let_body_node(
+      key_binding: ^dag_binding_mvp1_bind_x,
+      value_lit: ^rust_token_lit_false,
+      body_binding: ^dag_binding_mvp1_bind_x
+    )
+  )
+}
+
+fn rust_mvp1_bind_char_literal_arrow_node() -> Node {
+  rust_mvp1_arrow_with_body_node(
+    return_type_binding: ^dag_binding_type_int,
+    body: rust_mvp1_bind_let_body_node(
+      key_binding: ^dag_binding_mvp1_bind_x,
+      value_lit: ^rust_lit_char_a,
+      body_binding: ^dag_binding_mvp1_bind_x
+    )
+  )
+}
+
+fn rust_mvp1_bind_char_literal_wrong_arrow_node() -> Node {
+  rust_mvp1_arrow_with_body_node(
+    return_type_binding: ^dag_binding_type_int,
+    body: rust_mvp1_bind_let_body_node(
+      key_binding: ^dag_binding_mvp1_bind_x,
+      value_lit: ^rust_lit_char_b,
+      body_binding: ^dag_binding_mvp1_bind_x
+    )
+  )
+}
+
+fn rust_mvp1_bind_literal_signature_with_open() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_kw_fn },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one },
+    FixedToken { token_class: ^rust_token_lparen },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_arrow },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_int },
+    FixedToken { token_class: ^rust_token_lbrace }
+  ]
+}
+
+fn rust_mvp1_bind_literal_block_close() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_rbrace }
+  ]
+}
+
+fn rust_mvp1_bind_literal_bodied_scaffold() -> TargetBodiedArrowStatementScaffold {
+  derive_bodied_arrow_scaffold(
+    signature_with_open: rust_mvp1_bind_literal_signature_with_open(),
+    block_close: rust_mvp1_bind_literal_block_close(),
+    mode: ValueProducing
+  )
+}
+
+fn rust_mvp1_bind_literal_golden_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_kw_fn },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_one },
+    FixedToken { token_class: ^rust_token_lparen },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_arrow },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_type_int },
+    FixedToken { token_class: ^rust_token_lbrace },
+    FixedToken { token_class: ^rust_token_kw_let },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_bind_x },
+    FixedToken { token_class: ^rust_token_equal },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_pick_lit_one },
+    FixedToken { token_class: ^rust_token_semicolon },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_mvp1_bind_x },
+    FixedToken { token_class: ^rust_token_rbrace }
+  ]
+}
+
+fn rust_mvp1_bind_literal_grammar_relation_row() -> RustGrammarRelationRow {
+  RustGrammarRelationRow {
+    production: rust_grammar_production_mvp1_fn_bind_literal(),
+    emitted: dag_mvp1_bind_arrow_with_body_fixture,
+    tokens: rust_mvp1_bind_literal_golden_tokens()
+  }
+}
+
+fn rust_mvp1_bind_literal_bodied_relation_row_node() -> Node {
+  grammar_relation_row_attach_bodied_scaffold(
+    row: rust_grammar_relation_row_node(row: rust_mvp1_bind_literal_grammar_relation_row()),
+    scaffold: rust_mvp1_bind_literal_bodied_scaffold()
+  )
+}
+
+fn rust_mvp1_bind_literal_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^rust_relation_rule_mvp1_fn_bind_literal,
+        target: rust_mvp1_bind_literal_bodied_relation_row_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_mvp1_bind_literal_target_model_bundle() -> Node {
+  let core = rust_mvp1_target_model_core_edges_with_operators(
+    operator_catalog: rust_operator_realizations_catalog_node()
+  )
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold(
+      core,
+      init: Empty,
+      f: fn(acc, edge) {
+        match edge.label {
+          Named { name: n } =>
+            if n == ^target_model_edge_translation_rules {
+              list_snoc_item(
+                xs: acc,
+                item: rust_named_edge(
+                  name: ^target_model_edge_translation_rules,
+                  target: rust_mvp1_bind_literal_translation_rules_node()
+                )
+              )
+            } else {
+              list_snoc_item(xs: acc, item: edge)
+            }
+          Positional => list_snoc_item(xs: acc, item: edge)
+        }
+      }
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_mvp1_bind_literal_target_model() -> TargetModel {
+  TargetModel {
+    bundle: rust_mvp1_bind_literal_target_model_bundle(),
+    lex: rust_literal_emit_lex(),
+    binding_spellings: rust_mvp1_literal_emit_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_mvp1_bind_int_literal_source_text,
+    runtime_row: rust_mvp1_runtime_row()
+  }
 }
 
 fn rust_emit_host_runtime_primitive_type_node() -> Node {
@@ -1927,19 +2515,22 @@ fn rust_ident_lex_rule() -> LexRule {
 
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
-    rules: [
-      rust_lex_rule(token_class: ^rust_token_kw_fn, text: "fn "),
-      rust_ident_lex_rule(),
-      rust_lex_rule(token_class: ^rust_token_ty_i32, text: "i32"),
-      rust_lex_rule(token_class: ^rust_token_plus, text: " + "),
-      rust_lex_rule(token_class: ^rust_token_arrow, text: " -> "),
-      rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
-      rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
-      rust_lex_rule(token_class: ^rust_token_lparen, text: "("),
-      rust_lex_rule(token_class: ^rust_token_rparen, text: ")"),
-      rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
-      rust_lex_rule(token_class: ^rust_token_colon, text: ": ")
-    ]
+    rules: list_append(
+      left: [
+        rust_lex_rule(token_class: ^rust_token_kw_fn, text: "fn "),
+        rust_ident_lex_rule(),
+        rust_lex_rule(token_class: ^rust_token_ty_i32, text: "i32"),
+        rust_lex_rule(token_class: ^rust_token_plus, text: " + "),
+        rust_lex_rule(token_class: ^rust_token_arrow, text: " -> "),
+        rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
+        rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
+        rust_lex_rule(token_class: ^rust_token_lparen, text: "("),
+        rust_lex_rule(token_class: ^rust_token_rparen, text: ")"),
+        rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
+        rust_lex_rule(token_class: ^rust_token_colon, text: ": ")
+      ],
+      right: rust_binop_operator_lex_rules()
+    )
   }
 }
 
@@ -2403,17 +2994,7 @@ fn rust_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn rust_wave1_lex_token_symbol(sym: Symbol) -> Bool {
-  sym == ^rust_token_kw_fn ||
-    sym == ^rust_token_ident ||
-    sym == ^rust_token_ty_i32 ||
-    sym == ^rust_token_plus ||
-    sym == ^rust_token_arrow ||
-    sym == ^rust_token_lbrace ||
-    sym == ^rust_token_rbrace ||
-    sym == ^rust_token_lparen ||
-    sym == ^rust_token_rparen ||
-    sym == ^rust_token_comma ||
-    sym == ^rust_token_colon
+  lex_rule_set_token_class_member(rules: rust_wave1_lex_rules(), token_class: sym)
 }
 
 fn rust_language_model_canonical_symbols() -> Set<Symbol> {
