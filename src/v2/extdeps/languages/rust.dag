@@ -2655,6 +2655,673 @@ fn rust_variant_construct_target_model_staging() -> TargetModel {
   }
 }
 
+data rust_logic_complement_source_text: String = "fn complement(a: Bool) -> Bool { match (a) { True => False, False => True } }"
+
+data rust_logic_complement_swapped_arms_source_text: String = "fn complement(a: Bool) -> Bool { match (a) { True => True, False => False } }"
+
+fn rust_logic_complement_signature_with_open() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_kw_fn },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_complement },
+    FixedToken { token_class: ^rust_token_lparen },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_a },
+    FixedToken { token_class: ^rust_token_colon },
+    FixedToken { token_class: ^rust_token_ty_bool },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_arrow },
+    FixedToken { token_class: ^rust_token_ty_bool },
+    FixedToken { token_class: ^rust_token_lbrace }
+  ]
+}
+
+fn rust_logic_complement_block_close() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_rbrace }
+  ]
+}
+
+fn rust_logic_complement_body_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_unwired_match },
+    FixedToken { token_class: ^rust_token_lparen },
+    FixedToken { token_class: ^dag_binding_param_a },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_lbrace },
+    FixedToken { token_class: ^dag_complement_lit_true },
+    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    FixedToken { token_class: ^dag_complement_lit_false },
+    FixedToken { token_class: ^rust_token_comma },
+    FixedToken { token_class: ^dag_complement_lit_false },
+    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    FixedToken { token_class: ^dag_complement_lit_true },
+    FixedToken { token_class: ^rust_token_rbrace }
+  ]
+}
+
+fn rust_logic_complement_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(
+      left: rust_logic_complement_signature_with_open(),
+      right: rust_logic_complement_body_tokens()
+    ),
+    right: rust_logic_complement_block_close()
+  )
+}
+
+fn rust_logic_complement_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+  derive_bodied_arrow_scaffold(
+    signature_with_open: rust_logic_complement_signature_with_open(),
+    block_close: rust_logic_complement_block_close(),
+    mode: ValueProducing
+  )
+}
+
+fn rust_logic_complement_grammar_sequence() -> GrammarExpr {
+  match fold_list(
+    xs: rust_logic_complement_concrete_tokens(),
+    empty: RustGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        RustGramBuild1StateInit =>
+          RustGramBuild1StateReady {
+            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+          }
+        RustGramBuild1StateReady { expr: acc } =>
+          RustGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            }
+          }
+      }
+    }
+  ) {
+    RustGramBuild1StateInit =>
+      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+    RustGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn rust_logic_complement_grammar_production() -> GrammarProduction {
+  GrammarProduction {
+    name: ^rust_production_fn_logic_complement,
+    expression: rust_logic_complement_grammar_sequence(),
+    emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+  }
+}
+
+fn rust_logic_complement_grammar_relation_row() -> RustGrammarRelationRow {
+  RustGrammarRelationRow {
+    production: rust_logic_complement_grammar_production(),
+    emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+    tokens: rust_logic_complement_concrete_tokens()
+  }
+}
+
+fn rust_logic_complement_scaffold_relation_row_node() -> Node {
+  rust_grammar_relation_row_node(row: rust_logic_complement_grammar_relation_row())
+}
+
+fn rust_logic_complement_bodied_relation_row_node() -> Node {
+  grammar_relation_row_attach_bodied_scaffold(
+    row: rust_logic_complement_scaffold_relation_row_node(),
+    scaffold: rust_logic_complement_bodied_arrow_statement_scaffold()
+  )
+}
+
+fn rust_logic_complement_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^rust_relation_rule_fn_logic_complement,
+        target: rust_logic_complement_bodied_relation_row_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_logic_complement_serialize_source_prefix_edges() -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^serialize_source_field_source_text,
+      target: rust_inhabitant_atom(id: ^rust_logic_complement_source_literal)
+    ),
+    rust_named_edge(
+      name: ^serialize_source_field_source_grammar,
+      target: rust_inhabitant_atom(id: ^rust_production_fn_logic_complement)
+    )
+  ]
+}
+
+fn rust_logic_complement_serialize_source_node() -> Node {
+  let _authority = rust_logic_complement_source_text
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: rust_logic_complement_serialize_source_prefix_edges(),
+      right: [
+        rust_named_edge(
+          name: ^grammar_relation_field_tokens,
+          target: grammar_relation_tokens_node(
+            tokens: rust_logic_complement_concrete_tokens(),
+            token_to_node: rust_concrete_token_node
+          )
+        )
+      ]
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_logic_complement_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(empty_map(), ^dag_binding_fn_complement, "complement")
+  map_insert(m0, ^dag_binding_param_a, "a")
+}
+
+fn rust_logic_complement_additional_lex_rules() -> List<LexRule> {
+  [
+    rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
+    rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
+    rust_lex_rule(token_class: ^rust_token_ty_bool, text: "Bool"),
+    rust_lex_rule(token_class: ^dag_binding_param_a, text: "a"),
+    rust_lex_rule(token_class: ^dag_complement_lit_true, text: "True"),
+    rust_lex_rule(token_class: ^dag_complement_lit_false, text: "False")
+  ]
+}
+
+fn rust_logic_complement_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: rust_wave1_lex_rules().rules,
+      right: rust_logic_complement_additional_lex_rules()
+    )
+  }
+}
+
+fn rust_logic_complement_lex() -> LexRules {
+  ModeledLexRules { root: rust_logic_complement_lex_rules() }
+}
+
+fn rust_logic_complement_target_model_core_edges() -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^target_model_edge_selection_policy,
+      target: rust_selection_policy_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_declared_inhabitants,
+      target: rust_declared_inhabitants_root()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_translation_rules,
+      target: rust_logic_complement_translation_rules_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_serialize_source,
+      target: rust_logic_complement_serialize_source_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_collection_realization,
+      target: rust_collection_realization_catalog_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_reference_layer_tokens,
+      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_use_site_ownership_realizations,
+      target: target_use_site_ownership_catalog_node(
+        rows: rust_sg_rc_use_site_ownership_catalog()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_value_semantics_carriers,
+      target: target_value_semantics_carriers_node(
+        atoms: rust_value_semantics_carrier_atoms()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_type_expression_projection,
+      target: rust_type_expression_projection_bundle_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_value_expression_projection,
+      target: value_expr_projection_bundle_node(
+        projection: rust_value_expression_projection()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_operator_realizations,
+      target: target_operator_realizations_catalog_node(rows: [])
+    )
+  ]
+}
+
+fn rust_logic_complement_target_model_bundle_core() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: rust_logic_complement_target_model_core_edges(),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data rust_logic_complement_emit_host_main_suffix: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }\n\nfn main() { let v = complement(True); let d: i32 = match v { False => 0, True => 1 }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+fn rust_logic_complement_host_transport_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^rust_host_transport_logic_complement_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "Cargo.toml",
+        content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "src/main.rs",
+        content: EmittedWithSuffix { suffix: rust_logic_complement_emit_host_main_suffix }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        tool: ^host_tool_cargo,
+        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+      }
+    ],
+    run: ProcessInvocation {
+      tool: ^host_tool_cargo,
+      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn rust_logic_complement_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_logic_complement_host_transport_descriptor(),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn rust_logic_complement_target_model_staging() -> TargetModel {
+  TargetModel {
+    bundle: rust_logic_complement_target_model_bundle_core(),
+    lex: rust_logic_complement_lex(),
+    binding_spellings: rust_logic_complement_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_logic_complement_source_text,
+    runtime_row: rust_logic_complement_runtime_row()
+  }
+}
+
+fn rust_bool_fn_block_close() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_rbrace }
+  ]
+}
+
+fn rust_bool_fn_concrete_tokens(
+  signature_with_open: List<ConcreteSyntaxToken>,
+  body_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(left: signature_with_open, right: body_tokens),
+    right: rust_bool_fn_block_close()
+  )
+}
+
+fn rust_bool_fn_grammar_sequence(tokens: List<ConcreteSyntaxToken>) -> GrammarExpr {
+  match fold_list(
+    xs: tokens,
+    empty: RustGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        RustGramBuild1StateInit =>
+          RustGramBuild1StateReady {
+            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+          }
+        RustGramBuild1StateReady { expr: acc } =>
+          RustGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            }
+          }
+      }
+    }
+  ) {
+    RustGramBuild1StateInit =>
+      rust_grammar_terminal(token_class: ^rust_token_kw_fn)
+    RustGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn rust_bool_fn_bodied_relation_row_node(
+  production_sym: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  signature_with_open: List<ConcreteSyntaxToken>
+) -> Node {
+  grammar_relation_row_attach_bodied_scaffold(
+    row: rust_grammar_relation_row_node(
+      row: RustGrammarRelationRow {
+        production: GrammarProduction {
+          name: production_sym,
+          expression: rust_bool_fn_grammar_sequence(tokens: tokens),
+          emitted: rust_grammar_atom(id: ^rust_surface_fn_item)
+        },
+        emitted: rust_grammar_atom(id: ^rust_surface_fn_item),
+        tokens: tokens
+      }
+    ),
+    scaffold: derive_bodied_arrow_scaffold(
+      signature_with_open: signature_with_open,
+      block_close: rust_bool_fn_block_close(),
+      mode: ValueProducing
+    )
+  )
+}
+
+fn rust_bool_fn_translation_rules_node(
+  relation_sym: Symbol,
+  production_sym: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  signature_with_open: List<ConcreteSyntaxToken>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: relation_sym,
+        target: rust_bool_fn_bodied_relation_row_node(
+          production_sym: production_sym,
+          tokens: tokens,
+          signature_with_open: signature_with_open
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_bool_fn_serialize_source_node(
+  source_literal_sym: Symbol,
+  production_sym: Symbol,
+  tokens: List<ConcreteSyntaxToken>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^serialize_source_field_source_text,
+        target: rust_inhabitant_atom(id: source_literal_sym)
+      ),
+      rust_named_edge(
+        name: ^serialize_source_field_source_grammar,
+        target: rust_inhabitant_atom(id: production_sym)
+      ),
+      rust_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: tokens,
+          token_to_node: rust_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_bool_fn_additional_lex_rules() -> List<LexRule> {
+  [
+    rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
+    rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
+    rust_lex_rule(token_class: ^rust_token_ty_bool, text: "Bool"),
+    rust_lex_rule(token_class: ^dag_binding_param_a, text: "a"),
+    rust_lex_rule(token_class: ^dag_binding_param_b, text: "b"),
+    rust_lex_rule(token_class: ^dag_complement_lit_true, text: "True"),
+    rust_lex_rule(token_class: ^dag_complement_lit_false, text: "False")
+  ]
+}
+
+fn rust_bool_fn_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: list_append(
+        left: rust_wave1_lex_rules().rules,
+        right: rust_bool_fn_additional_lex_rules()
+      )
+    }
+  }
+}
+
+fn rust_bool_fn_target_model_core_edges(
+  translation_rules: Node,
+  serialize_source: Node
+) -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^target_model_edge_selection_policy,
+      target: rust_selection_policy_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_declared_inhabitants,
+      target: rust_declared_inhabitants_root()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_translation_rules,
+      target: translation_rules
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_serialize_source,
+      target: serialize_source
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_collection_realization,
+      target: rust_collection_realization_catalog_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_reference_layer_tokens,
+      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_use_site_ownership_realizations,
+      target: target_use_site_ownership_catalog_node(
+        rows: rust_sg_rc_use_site_ownership_catalog()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_value_semantics_carriers,
+      target: target_value_semantics_carriers_node(
+        atoms: rust_value_semantics_carrier_atoms()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_type_expression_projection,
+      target: rust_type_expression_projection_bundle_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_value_expression_projection,
+      target: value_expr_projection_bundle_node(
+        projection: rust_value_expression_projection()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_operator_realizations,
+      target: target_operator_realizations_catalog_node(rows: [])
+    )
+  ]
+}
+
+fn rust_bool_fn_host_runtime_row(
+  host_identity_sym: Symbol,
+  main_suffix: String
+) -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: HostTransportDescriptor {
+        identity: host_identity_sym,
+        workspace: [
+          WorkspaceFile {
+            path: "Cargo.toml",
+            content: FixedText { text: rust_emit_host_cargo_manifest }
+          },
+          WorkspaceFile {
+            path: "src/main.rs",
+            content: EmittedWithSuffix { suffix: main_suffix }
+          }
+        ],
+        build: [
+          ProcessInvocation {
+            tool: ^host_tool_cargo,
+            args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+          }
+        ],
+        run: ProcessInvocation {
+          tool: ^host_tool_cargo,
+          args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+        },
+        runtime_value_codec: FixedWidthBytes { width: 5 }
+      },
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn rust_bool_fn_target_model(
+  fn_binding: Symbol,
+  fn_spelling: String,
+  source_text: String,
+  signature_with_open: List<ConcreteSyntaxToken>,
+  body_tokens: List<ConcreteSyntaxToken>,
+  production_sym: Symbol,
+  relation_sym: Symbol,
+  source_literal_sym: Symbol,
+  host_identity_sym: Symbol,
+  main_suffix: String
+) -> TargetModel {
+  let tokens = rust_bool_fn_concrete_tokens(
+    signature_with_open: signature_with_open,
+    body_tokens: body_tokens
+  )
+  let m0 = map_insert(empty_map(), fn_binding, fn_spelling)
+  let m1 = map_insert(m0, ^dag_binding_param_a, "a")
+  let binding_spellings = map_insert(m1, ^dag_binding_param_b, "b")
+  TargetModel {
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: rust_bool_fn_target_model_core_edges(
+        translation_rules: rust_bool_fn_translation_rules_node(
+          relation_sym: relation_sym,
+          production_sym: production_sym,
+          tokens: tokens,
+          signature_with_open: signature_with_open
+        ),
+        serialize_source: rust_bool_fn_serialize_source_node(
+          source_literal_sym: source_literal_sym,
+          production_sym: production_sym,
+          tokens: tokens
+        )
+      ),
+      occurrence_id: SyntheticOccurrence
+    },
+    lex: rust_bool_fn_lex(),
+    binding_spellings: binding_spellings,
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: source_text,
+    runtime_row: rust_bool_fn_host_runtime_row(
+      host_identity_sym: host_identity_sym,
+      main_suffix: main_suffix
+    )
+  }
+}
+
+fn rust_bool_binop_signature_with_open(fn_binding: Symbol) -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_kw_fn },
+    BoundToken { token_class: ^rust_token_ident, binding: fn_binding },
+    FixedToken { token_class: ^rust_token_lparen },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_a },
+    FixedToken { token_class: ^rust_token_colon },
+    FixedToken { token_class: ^rust_token_ty_bool },
+    FixedToken { token_class: ^rust_token_comma },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_b },
+    FixedToken { token_class: ^rust_token_colon },
+    FixedToken { token_class: ^rust_token_ty_bool },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_arrow },
+    FixedToken { token_class: ^rust_token_ty_bool },
+    FixedToken { token_class: ^rust_token_lbrace }
+  ]
+}
+
+fn rust_bool_binop_body_tokens(true_body: Symbol, false_body: Symbol) -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_unwired_match },
+    FixedToken { token_class: ^rust_token_lparen },
+    FixedToken { token_class: ^dag_binding_param_a },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_lbrace },
+    FixedToken { token_class: ^dag_complement_lit_true },
+    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    FixedToken { token_class: true_body },
+    FixedToken { token_class: ^rust_token_comma },
+    FixedToken { token_class: ^dag_complement_lit_false },
+    FixedToken { token_class: ^rust_token_unwired_fat_arrow },
+    FixedToken { token_class: false_body },
+    FixedToken { token_class: ^rust_token_rbrace }
+  ]
+}
+
+data rust_logic_meet_source_text: String = "fn meet(a: Bool, b: Bool) -> Bool { match (a) { True => b, False => False } }"
+
+data rust_logic_meet_swapped_arms_source_text: String = "fn meet(a: Bool, b: Bool) -> Bool { match (a) { True => False, False => b } }"
+
+data rust_logic_meet_emit_host_main_suffix: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }\n\nfn main() { let v = meet(True, True); let d: i32 = match v { False => 0, True => 1 }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+fn rust_logic_meet_target_model_staging() -> TargetModel {
+  rust_bool_fn_target_model(
+    fn_binding: ^dag_binding_fn_meet,
+    fn_spelling: "meet",
+    source_text: rust_logic_meet_source_text,
+    signature_with_open: rust_bool_binop_signature_with_open(fn_binding: ^dag_binding_fn_meet),
+    body_tokens: rust_bool_binop_body_tokens(
+      true_body: ^dag_binding_param_b,
+      false_body: ^dag_complement_lit_false
+    ),
+    production_sym: ^rust_production_fn_logic_meet,
+    relation_sym: ^rust_relation_rule_fn_logic_meet,
+    source_literal_sym: ^rust_logic_meet_source_literal,
+    host_identity_sym: ^rust_host_transport_logic_meet_identity,
+    main_suffix: rust_logic_meet_emit_host_main_suffix
+  )
+}
+
+data rust_logic_join_source_text: String = "fn join(a: Bool, b: Bool) -> Bool { match (a) { True => True, False => b } }"
+
+data rust_logic_join_swapped_arms_source_text: String = "fn join(a: Bool, b: Bool) -> Bool { match (a) { True => b, False => True } }"
+
+data rust_logic_join_emit_host_main_suffix: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }\n\nfn main() { let v = join(True, False); let d: i32 = match v { False => 0, True => 1 }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+fn rust_logic_join_target_model_staging() -> TargetModel {
+  rust_bool_fn_target_model(
+    fn_binding: ^dag_binding_fn_join,
+    fn_spelling: "join",
+    source_text: rust_logic_join_source_text,
+    signature_with_open: rust_bool_binop_signature_with_open(fn_binding: ^dag_binding_fn_join),
+    body_tokens: rust_bool_binop_body_tokens(
+      true_body: ^dag_complement_lit_true,
+      false_body: ^dag_binding_param_b
+    ),
+    production_sym: ^rust_production_fn_logic_join,
+    relation_sym: ^rust_relation_rule_fn_logic_join,
+    source_literal_sym: ^rust_logic_join_source_literal,
+    host_identity_sym: ^rust_host_transport_logic_join_identity,
+    main_suffix: rust_logic_join_emit_host_main_suffix
+  )
+}
+
 data rust_rec_source_text: String = "fn mk() -> Rec { Rec { v: 9 } }"
 
 data rust_rec_wrong_value_source_text: String = "fn mk() -> Rec { Rec { v: 8 } }"
