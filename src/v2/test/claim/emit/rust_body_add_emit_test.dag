@@ -7,18 +7,12 @@ import v2.compiler.body_producer {
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
-  rust_lex_rule,
   rust_mvp1_source_text,
   rust_mvp1_target_model_staging,
   rust_mvp1_target_model_with_operators_and_lex,
-  rust_operator_realizations_catalog_node,
-  rust_wave1_lex,
-  rust_wave1_lex_rules
+  rust_wave1_lex
 }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { list_append }
 import v2.std.collection { Map }
-import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.compilers.target_model {
   InfixToken,
   TargetModel,
@@ -118,25 +112,10 @@ fn rust_body_add_empty_operator_catalog() -> Node {
   target_operator_realizations_catalog_node(rows: [])
 }
 
-fn rust_body_add_lex_with_minus() -> LexRules {
-  let base = rust_wave1_lex_rules()
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: list_append(
-        left: base.rules,
-        right: Cons {
-          head: rust_lex_rule(token_class: ^rust_token_minus, text: " - "),
-          tail: Empty
-        }
-      )
-    }
-  }
-}
-
 fn rust_body_add_minus_target_model() -> TargetModel {
   rust_mvp1_target_model_with_operators_and_lex(
     operator_catalog: rust_body_add_minus_operator_catalog(),
-    lex: rust_body_add_lex_with_minus()
+    lex: rust_wave1_lex()
   )
 }
 
@@ -147,7 +126,7 @@ fn rust_body_add_missing_catalog_target_model() -> TargetModel {
   )
 }
 
-fn rust_body_add_emit_add_fn_accepts() -> Bool {
+test fn rust_body_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_body_add_emit_from_tree(target: rust_mvp1_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_mvp1_source_text) && (d == None)
@@ -155,7 +134,7 @@ fn rust_body_add_emit_add_fn_accepts() -> Bool {
   }
 }
 
-fn rust_body_add_emit_operand_swap_discriminates() -> Bool {
+test fn rust_body_add_emit_operand_swap_discriminates() -> Bool {
   match rust_body_add_emit_from_swapped_tree(target: rust_mvp1_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_body_add_swapped_source_text) &&
@@ -165,7 +144,7 @@ fn rust_body_add_emit_operand_swap_discriminates() -> Bool {
   }
 }
 
-fn rust_body_add_emit_catalog_minus_discriminates() -> Bool {
+test fn rust_body_add_emit_catalog_minus_discriminates() -> Bool {
   match rust_body_add_emit_from_tree(target: rust_body_add_minus_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_body_add_minus_source_text) &&
@@ -175,16 +154,9 @@ fn rust_body_add_emit_catalog_minus_discriminates() -> Bool {
   }
 }
 
-fn rust_body_add_emit_missing_catalog_rejects() -> Bool {
+test fn rust_body_add_emit_missing_catalog_rejects() -> Bool {
   match rust_body_add_emit_from_tree(target: rust_body_add_missing_catalog_target_model()) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
-}
-
-test fn rust_body_add_emit_holds() -> Bool {
-  rust_body_add_emit_add_fn_accepts()
-    && rust_body_add_emit_operand_swap_discriminates()
-    && rust_body_add_emit_catalog_minus_discriminates()
-    && rust_body_add_emit_missing_catalog_rejects()
 }
