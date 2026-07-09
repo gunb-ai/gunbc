@@ -6231,6 +6231,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         total_resolve_nanos: 0,
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
+        roster_closure_nodes: 0,
     };
     for summary in summaries {
         merged.total += summary.total;
@@ -6250,6 +6251,11 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
             .performance_receipts
             .extend(summary.performance_receipts);
         merged.total_measured_nanos += summary.total_measured_nanos;
+        // Max, not sum: shards share the std/spec prefix, so summing would double-count it. The
+        // heaviest single shard's closure is the number the per-shard memory peak is a function of.
+        merged.roster_closure_nodes = merged
+            .roster_closure_nodes
+            .max(summary.roster_closure_nodes);
     }
     merged
 }
@@ -6277,6 +6283,7 @@ fn run_discovery_rows(
         total_resolve_nanos: 0,
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
+        roster_closure_nodes: 0,
     };
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     let mut current_entry: Option<String> = None;
@@ -6475,6 +6482,10 @@ fn run_discovery_rows(
             )),
         }
     }
+    // Per-shard input-size receipt: distinct modules typechecked in THIS thread's union closure.
+    // `typecheck_compute_count()` is thread-local and each shard runs on a fresh thread, so it holds
+    // exactly this shard's closure — the node count per-shard resident memory is a function of.
+    summary.roster_closure_nodes = typecheck_compute_count();
     Ok(summary)
 }
 
@@ -9087,8 +9098,8 @@ mod moduleless_entry_skip_tests {
 #[cfg(test)]
 mod witness_timing_attribution_tests {
     use super::{
-        compute_witness_timing_rows, top_n_slowest_witnesses, ClaimOutcome, DiscoverySummary,
-        DiscoveryWitnessOutcome, EntryResolveReceipt,
+        compute_witness_timing_rows, merge_discovery_summaries, top_n_slowest_witnesses,
+        ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
     };
     use crate::v1_interpreter::PerformanceReceipt;
 
@@ -9154,7 +9165,22 @@ mod witness_timing_attribution_tests {
                 },
             ],
             total_measured_nanos: 56_000,
+            roster_closure_nodes: 42,
         }
+    }
+
+    #[test]
+    fn merge_discovery_summaries_takes_max_roster_closure() {
+        // Per-shard closure is MAX-merged, not summed: parallel shards share the std/spec prefix, so
+        // summing would double-count it; the heaviest single shard's closure is what the per-shard
+        // memory peak is a function of. RED if a future edit sums the field (would be 101), drops the
+        // merge line (would stay 0), or reverts the carrier.
+        let mut a = sample_summary();
+        a.roster_closure_nodes = 30;
+        let mut b = sample_summary();
+        b.roster_closure_nodes = 71;
+        let merged = merge_discovery_summaries(vec![a, b]);
+        assert_eq!(merged.roster_closure_nodes, 71);
     }
 
     #[test]
