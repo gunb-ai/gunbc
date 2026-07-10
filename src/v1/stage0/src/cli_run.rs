@@ -7040,10 +7040,9 @@ new file mode 100644
             entry_src,
             "probe_holds"
         ));
-        let mut adjacency: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
+        let mut adjacency: im_rc::HashMap<String, Vec<String>> = im_rc::HashMap::new();
         adjacency.insert("probe_test.dag".to_string(), vec!["helper.dag".to_string()]);
-        let mut memo = std::collections::HashMap::new();
+        let mut memo = im_rc::HashMap::new();
         let read = |member: &str| -> Result<String, String> {
             match member {
                 "probe_test.dag" => Ok(entry_src.to_string()),
@@ -7060,7 +7059,7 @@ new file mode 100644
         .unwrap());
         // Clean closure stays kernel-eligible — the walk discriminates, it does not blanket.
         let clean_helper = "module helper\n\nfn file_gate(path: String) -> Bool { true }\n";
-        let mut memo_clean = std::collections::HashMap::new();
+        let mut memo_clean = im_rc::HashMap::new();
         let read_clean = |member: &str| -> Result<String, String> {
             match member {
                 "probe_test.dag" => Ok(entry_src.to_string()),
@@ -7076,7 +7075,7 @@ new file mode 100644
         )
         .unwrap());
         // Unreadable member = typed refusal, never a silent selection-eligible answer.
-        let mut memo_err = std::collections::HashMap::new();
+        let mut memo_err = im_rc::HashMap::new();
         let read_err =
             |_member: &str| -> Result<String, String> { Err("io: permission denied".to_string()) };
         assert!(super::closure_indicates_live_host_scan_with(
