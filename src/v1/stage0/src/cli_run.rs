@@ -1687,8 +1687,15 @@ pub fn import_closure_live_paths_with_facts(
 }
 
 /// The closure-node definition SHARED by the falsifier/floor calibration emission and
+<<<<<<< HEAD
 /// the space-lens predictor (single authority — docs/plans/space-lens-minimal-project.md;
 /// the predictor binds to THIS function, never a re-derivation): the deduped transitive
+=======
+/// the space-lens memory predictor (single authority is THIS function — the predictor
+/// binds to it, never a re-derivation; predictor design is in flight on PR #6442, and
+/// the landed parent-lane authorities are docs/plans/compute-envelope-model.md (fleet
+/// envelope) and docs/plans/input-envelope-roadmap.md (admission)): the deduped transitive
+>>>>>>> origin/main
 /// import-closure of every roster row plus the given prefix-context entries, counted at
 /// the module-path grain via the pure import walk (no typecheck). On a completed
 /// width-1 run this equals the post-resolve resolved-graph union
@@ -6188,7 +6195,12 @@ pub fn run_discovery_corpus_with_options(
     // reuses that index's parse/typed caches instead of paying the union cold a second time.
     let index = process_shared_index(source_roots);
     // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
+<<<<<<< HEAD
     // OOM kill (space-lens lower-bound pairs, docs/plans/space-lens-minimal-project.md):
+=======
+    // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
+    // in flight on PR #6442; consumer binds to roster_import_closure_nodes_pre_resolve):
+>>>>>>> origin/main
     // the transitive import-CLOSURE size — never the roster/entry count (pairing an
     // entry count against a whole-closure peak inflates bytes-per-node by the fan-in
     // factor). Today every discovered row resolves even when selection skips it (the

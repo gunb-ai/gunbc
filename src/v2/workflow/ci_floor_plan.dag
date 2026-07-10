@@ -1,6 +1,6 @@
 module v2.workflow.ci_floor_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
@@ -594,7 +594,7 @@ fn gunbc_falsifier_spawn_width_from_live_cap() -> HardwareThreadCount {
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
   [[RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
-    scan_dirs: witness_discovery_scan_dirs,
+    scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
     explicit_entries: [],
     node_frontier_selection: SelectionPredictOnly,
     exclude_substrings: witness_exclusion_substrings,
@@ -612,12 +612,10 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan().schedule
 }
 
-fn runnable_scan_dir_count(r: Runnable) -> Optional<Int> {
+fn runnable_scan_dir_count(r: Runnable) -> Int {
   match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
-      Present { value: length(xs: dirs) }
-    RunnableSingleClaim { entry: _, function: _, profile: _ } => Absent
-    RunnableKernelWorkload { fused_op_count: _ } => Absent
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => length(xs: dirs)
+    _ => 0 - 1
   }
 }
 
@@ -625,35 +623,17 @@ fn runnable_selection_applied(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
       match sel { SelectionApplied => true  SelectionOff => false  SelectionPredictOnly => false }
-    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
+    _ => false
   }
 }
 
-fn gunbc_ci_spec_discovery_flip_enrolled() -> CiSpec {
-  ci_spec_with_discovery_scan_dirs(spec: gunbc_ci_spec, dirs: witness_discovery_scan_dirs)
-}
-
-fn witness_ci_corpus_discovery_flip_parked_on_live_spec() -> Bool {
-  (length(xs: gunbc_ci_spec.discovery_scan_dirs) == 0)
-    && (length(xs: witness_discovery_scan_dirs) > 0)
-}
-
-fn witness_ci_corpus_discovery_flip_authored() -> Bool {
-  length(xs: witness_discovery_scan_dirs) > 0
-}
-
 fn witness_ci_corpus_discovery_is_live() -> Bool {
-  witness_ci_corpus_discovery_flip_authored()
-    && (length(xs: gunbc_ci_spec.discovery_scan_dirs) > 0)
-    && match runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) {
-      Present { value: count } => (count > 0) && runnable_selection_applied(r: corpus_runnable_for(spec: gunbc_ci_spec))
-      Absent => false
-    }
+  runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) > 0
+    && runnable_selection_applied(r: corpus_runnable_for(spec: gunbc_ci_spec))
 }
 
 fn witness_ci_corpus_discovery_serializes_at_width_one() -> Bool {
-  match corpus_runnable_for(spec: gunbc_ci_spec_discovery_flip_enrolled()) {
+  match corpus_runnable_for(spec: gunbc_ci_spec) {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: cap, profile: _ } =>
       (length(xs: dirs) > 0) && (cap == 1)
     _ => false

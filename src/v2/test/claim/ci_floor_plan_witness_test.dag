@@ -27,8 +27,6 @@ import v2.workflow.ci_floor_plan {
   witness_falsifier_plan_spawn_width_backs_off_at_live_cap,
   witness_falsifier_envelope_fits_live_cap,
   witness_ci_corpus_discovery_is_live,
-  witness_ci_corpus_discovery_flip_parked_on_live_spec,
-  witness_ci_corpus_discovery_flip_authored,
   witness_ci_corpus_discovery_serializes_at_width_one,
   witness_floor_discovery_flip_serializes_gates_after_corpus,
   witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor,
@@ -38,7 +36,7 @@ import v2.workflow.ci_floor_plan {
   witness_corpus_effective_widths_fit_runner_cap,
   witness_floor_derived_width_leaves_headroom_at_cap,
 }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
+import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate }
 import std.realization_schedule {
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
@@ -69,12 +67,7 @@ data synthetic_exec_kind_nonexec_path_row: ScheduleWitnessEntry = ScheduleWitnes
   kind: ExecutionWitnessKind
 }
 
-data synthetic_specs_discovery_free_note: String = "The live gunbc_ci_spec parks discovery_scan_dirs enrollment until skip-before-resolve + memory receipt (ci_spec_discovery_flip_enrollment_parked_note). Synthetic specs below exercise pure opt-in ROSTER machinery (partition, gating, exact-row carriage) with discovery dirs zeroed. Flip machinery is witnessed via discovery_flip_enrolled_spec (ci_corpus_discovery_flip_witnesses)."
-
-data discovery_flip_enrolled_spec: CiSpec = ci_spec_with_discovery_scan_dirs(
-  spec: gunbc_ci_spec,
-  dirs: witness_discovery_scan_dirs
-)
+data synthetic_specs_discovery_free_note: String = "Since the 2026-07-09 discovery flip (gunbc.ci_spec ci_spec_discovery_flip_note) the live gunbc_ci_spec carries non-empty discovery_scan_dirs. The synthetic specs below exercise pure opt-in ROSTER machinery (partition, gating, exact-row carriage), so they zero the discovery dirs — otherwise every roster assertion would be drowned by the discovery corpus node. The live discovery arm is witnessed separately (ci_corpus_discovery_flip_witnesses)."
 
 data discovery_free_base_spec: CiSpec = ci_spec_with_discovery_scan_dirs(
   spec: gunbc_ci_spec,
@@ -177,7 +170,7 @@ fn witness_floor_discovery_flip_gates_isolated_from_corpus_for(spec: CiSpec) -> 
 }
 
 fn witness_floor_discovery_flip_gates_isolated_from_corpus() -> Bool {
-  witness_floor_discovery_flip_gates_isolated_from_corpus_for(spec: discovery_flip_enrolled_spec)
+  witness_floor_discovery_flip_gates_isolated_from_corpus_for(spec: gunbc_ci_spec)
 }
 
 fn witness_plan_serializes_heavy_resolves() -> Bool {
@@ -352,11 +345,10 @@ test fn falsifier_plan_spawn_width_witnesses() -> Bool {
 }
 
 test fn ci_corpus_discovery_flip_witnesses() -> Bool {
-  witness_ci_corpus_discovery_flip_parked_on_live_spec()
-    && witness_ci_corpus_discovery_flip_authored()
+  witness_ci_corpus_discovery_is_live()
     && witness_ci_corpus_discovery_serializes_at_width_one()
-    && witness_floor_discovery_flip_serializes_gates_after_corpus(spec: discovery_flip_enrolled_spec)
-    && witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: discovery_flip_enrolled_spec)
+    && witness_floor_discovery_flip_serializes_gates_after_corpus(spec: gunbc_ci_spec)
+    && witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: gunbc_ci_spec)
     && witness_floor_discovery_flip_gates_isolated_from_corpus()
     && witness_regen_spec_carries_no_witness_corpus()
     && schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0
