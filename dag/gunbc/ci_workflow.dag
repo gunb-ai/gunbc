@@ -179,7 +179,7 @@ fn ci_release_build_step() -> Step {
 fn ci_floor_step() -> Step {
   RunStep {
     name: Present { value: "gunbc ci (.dag witnesses + gates)" },
-    id: none,
+    id: Present { value: "floor" },
     run: gunbc_ci_floor_run(spec: ci_floor_spec_from_roster()),
     shell: none,
     env: none,
@@ -217,8 +217,8 @@ fn ci_floor_peak_post_script() -> String {
   concat(
     ci_cgroup_peak_locate_shell(),
     concat(
-      "if [ -f \"$d/memory.peak\" ]; then echo \"[calibration] floor_peak_post=$(cat \"$d/memory.peak\") cgroup=$d (scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)\"\n",
-      "else echo \"[calibration] floor_peak_post scope=unavailable (no memory.peak ancestor)\"; fi"
+      "if [ -f \"$d/memory.peak\" ]; then echo \"[calibration] floor_peak_post=$(cat \"$d/memory.peak\") floor_outcome=$\{\{ steps.floor.outcome \}\} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)\"\n",
+      "else echo \"[calibration] floor_peak_post floor_outcome=$\{\{ steps.floor.outcome \}\} scope=unavailable (no memory.peak ancestor)\"; fi"
     )
   )
 }

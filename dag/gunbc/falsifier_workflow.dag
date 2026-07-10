@@ -37,7 +37,7 @@ fn falsifier_invoke() -> String {
 fn falsifier_step() -> Step {
   RunStep {
     name: Present { value: "affected-set falsifier (predict-only cold run)" },
-    id: none,
+    id: Present { value: "floor" },
     run: falsifier_invoke(),
     shell: none,
     env: Present {
