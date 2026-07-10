@@ -49,7 +49,7 @@ fn variant_vis_accepts(src: String) -> Bool {
   }
 }
 
-data variant_vis_doc: String = "src_unique_variants: bare match-arm variants Yes/No are each declared by exactly ONE type (module-unique) -> the interim variant-visibility resolver binds them and resolution ACCEPTS. src_ambiguous_variant: `Yes` is declared by TWO types (Classical, Mood) -> ambiguous -> the resolver REFUSES to bind it (fail-closed, no silent mis-bind), the bare `Yes` stays unbound, resolution REJECTS. The ambiguous case is the discriminating RED control: a flat bind-everything resolver (the wrong model) would bind `Yes` and wrongly accept."
+data variant_vis_doc: String = "End-to-end wire proof: resolution ACCEPTS when SymbolIndex fill-time unique-variant aliases make bare match-arm variants resolvable (Classical-only Yes/No), REJECTS when aliases are withheld (Mood+Classical both declare Yes). SymbolIndex-path-alone equivalence is in symbol_index/containment_test.dag (symbol_index_variant_visibility_equivalence_holds + without_alias RED control)."
 
 data src_unique_variants: String = "module variant_vis_pilot\n\ntype Classical = Yes | No\n\nfn flip(a: Classical) -> Classical { match a { Yes => No, No => Yes } }\n"
 
