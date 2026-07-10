@@ -157,19 +157,29 @@ fn witness_bin_build_args(bin: WitnessBin) -> List<String> {
   }
 }
 
+fn witness_bin_artifact_verified(path: String) -> Bool {
+  let exec = shell.Test.IsExecutable(path: path)
+  if exec.executable {
+    let nonempty = shell.Test.IsNonEmpty(path: path)
+    nonempty.nonempty
+  } else {
+    false
+  }
+}
+
 fn witness_bin_ensure_built_typed(root: String, bin: WitnessBin) -> Bool {
   let path = witness_bin_release_path(root: root, bin_name: bin.bin_name)
   let present = shell.Test.IsExecutable(path: path)
-  if present.executable {
+  let build_ok = if present.executable {
     true
   } else {
     let built = cargo.Build.BuildInheritEnv(extra_args: witness_bin_build_args(bin: bin))
-    if built.success {
-      let verified = shell.Test.IsExecutable(path: path)
-      verified.executable
-    } else {
-      false
-    }
+    built.success
+  }
+  if build_ok {
+    witness_bin_artifact_verified(path: path)
+  } else {
+    false
   }
 }
 

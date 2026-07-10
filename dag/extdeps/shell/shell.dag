@@ -62,6 +62,17 @@ service shell.Test {
       1 => Unit "Path is not executable"
     }
   }
+
+  operation IsNonEmpty {
+    input { path: FilePath }
+    output { nonempty: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-s", "{path}"] }
+    exit {
+      0 => Unit "Path exists with size greater than zero"
+      1 => Unit "Path is missing or zero-byte"
+    }
+  }
 }
 
 service shell.Exec {

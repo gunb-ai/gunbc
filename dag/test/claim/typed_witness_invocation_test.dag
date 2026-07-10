@@ -38,3 +38,13 @@ test fn typed_witness_bin_run_args_splice_holds() -> Bool {
 test fn typed_run_witness_bin_unbuildable_red_control_holds() -> Bool {
   run_witness_bin(var_name: "NO_SUCH", bin_name: "no_such_witness_bin_zzz", args: []) == false
 }
+
+test fn typed_is_nonempty_positive_holds() -> Bool {
+  let result = shell.Test.IsNonEmpty(path: "/bin/sh")
+  result.nonempty
+}
+
+test fn typed_is_nonempty_zero_byte_red_control_holds() -> Bool {
+  let result = shell.Test.IsNonEmpty(path: "/dev/null")
+  result.nonempty == false
+}
