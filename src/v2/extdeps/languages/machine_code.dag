@@ -17,7 +17,7 @@ import v2.std.compilers.lexing {
   WhitespaceChar
 }
 import std.algebra { Empty }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { list_map }
 import v2.std.collection { List, Map }
 import v2.std.machine { Byte }
 import v2.std.text { String }
@@ -403,16 +403,9 @@ fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -
 }
 
 fn mc_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: mc_integer_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: mc_primitive_bundle_from_integer_facts(facts: facts)
-      )
-    }
-  )
+  list_map(xs: mc_integer_facts_catalog, f: fn(facts) {
+    mc_primitive_bundle_from_integer_facts(facts: facts)
+  })
 }
 
 fn machine_code_model_core() -> ModelCore {
