@@ -63,7 +63,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   fold_node,
-  node_subtree_nodes,
   node_with_occurrence_id,
   well_formed
 }
@@ -157,65 +156,10 @@ fn harvest_direct_atom_binding(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
 data resolve_variant_visibility_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "v2.std.symbol_index",
-    decl_name: "symbol_index_lexical_lookup",
+    module_path: "v2.compiler.symbol_index_fill",
+    decl_name: "symbol_index_fill_unique_variant_aliases",
     field: WholeDeclaration
   }
-}
-
-fn harvest_variant_count_of(counts: Map<Symbol, Int>, sym: Symbol) -> Int {
-  match map_get(counts, sym) {
-    Accepted { value: opt, diagnostics: _ } => match opt {
-      Present { value: n } => n
-      Absent => 0
-    }
-    Rejected { diagnostics: _ } => 0
-  }
-}
-
-fn harvest_disj_variant_counts(root: Node) -> Map<Symbol, Int> {
-  fold(
-    node_subtree_nodes(root: root),
-    init: empty_map(),
-    f: fn(counts, n) {
-      match n.kind {
-        TypeNode { connective: Disj } =>
-          fold(n.children, init: counts, f: fn(c, e) {
-            match e.label {
-              Named { name: sym } =>
-                map_insert(m: c, key: sym, value: harvest_variant_count_of(counts: c, sym: sym) + 1)
-              Positional => c
-            }
-          })
-        _ => counts
-      }
-    }
-  )
-}
-
-fn harvest_unique_disj_variant_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
-  let counts = harvest_disj_variant_counts(root: root)
-  fold(
-    node_subtree_nodes(root: root),
-    init: acc,
-    f: fn(a, n) {
-      match n.kind {
-        TypeNode { connective: Disj } =>
-          fold(n.children, init: a, f: fn(a2, e) {
-            match e.label {
-              Named { name: sym } =>
-                if harvest_variant_count_of(counts: counts, sym: sym) == 1 {
-                  map_insert(m: a2, key: sym, value: sym)
-                } else {
-                  a2
-                }
-              Positional => a2
-            }
-          })
-        _ => a
-      }
-    }
-  )
 }
 
 fn namespace_bindings_augment_from_module_atoms(
@@ -351,6 +295,23 @@ fn canonical_atom(identity: Symbol, occurrence_id: NodeOccurrenceId) -> Node {
   )
 }
 
+fn try_symbol_index_atom_identity(namespace: Namespace, name: Symbol) -> Optional<Symbol> {
+  match symbol_index_lexical_lookup(
+    index: namespace.symbol_index,
+    position: namespace.module_qn,
+    name: name
+  ) {
+    Present { value: node } =>
+      match node.kind {
+        TypeNode { connective: Atom { identity: sym } } =>
+          optional_present(value: sym)
+        _ =>
+          optional_present(value: name)
+      }
+    Absent => optional_absent()
+  }
+}
+
 fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
   match lookup_chain(s: scope, name: identity) {
     Accepted { value: found, diagnostics: pending } => match found {
@@ -360,21 +321,32 @@ fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
           diagnostics: pending
         }
       Absent =>
-        if namespace_has_canonical_symbol(
+        match try_symbol_index_atom_identity(
           namespace: scope_root_module(s: scope),
           name: identity
         ) {
-          Accepted {
-            value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
-            diagnostics: pending
-          }
-        } else {
-          Rejected {
-            diagnostics: rejected_with_pending(
-              pending: pending,
-              rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
-            )
-          }
+          Present { value: canonical } =>
+            Accepted {
+              value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
+              diagnostics: pending
+            }
+          Absent =>
+            if namespace_has_canonical_symbol(
+              namespace: scope_root_module(s: scope),
+              name: identity
+            ) {
+              Accepted {
+                value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
+                diagnostics: pending
+              }
+            } else {
+              Rejected {
+                diagnostics: rejected_with_pending(
+                  pending: pending,
+                  rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+                )
+              }
+            }
         }
     }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
