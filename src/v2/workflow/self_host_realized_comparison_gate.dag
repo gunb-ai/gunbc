@@ -9,8 +9,11 @@ import extdeps.languages.bash.program {
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import tools.host_prelude { ensure_gunbc_built }
-import tools.self_host_realized_comparison_transport { realized_comparison_program }
+import tools.host_prelude { ensure_gunbc_built, witness_bin_program }
+import tools.self_host_realized_comparison_transport {
+  realized_comparison_args,
+  realized_comparison_invoke
+}
 
 data srfc_gate_test_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
 data srfc_staleness_gate_witness: String = "self_host_realized_comparison_staleness_gate_holds"
@@ -40,8 +43,16 @@ fn srfc_gunbc_claim_run(function: String) -> ShellStmt {
   ))
 }
 
+fn srfc_emit_program() -> ShellProgram {
+  witness_bin_program(
+    invoke: realized_comparison_invoke(),
+    prereqs: [],
+    args: realized_comparison_args()
+  )
+}
+
 fn srfc_reads_real_bytes_gate_program() -> ShellProgram {
-  let emit_prog = realized_comparison_program()
+  let emit_prog = srfc_emit_program()
   ShellProgram {
     set_e: true,
     statements: concat(
@@ -53,7 +64,7 @@ fn srfc_reads_real_bytes_gate_program() -> ShellProgram {
 }
 
 fn realized_comparison_gate_program() -> ShellProgram {
-  let emit_prog = realized_comparison_program()
+  let emit_prog = srfc_emit_program()
   ShellProgram {
     set_e: true,
     statements: concat(
@@ -68,7 +79,7 @@ fn realized_comparison_gate_program() -> ShellProgram {
 }
 
 fn srfc_staleness_gate_program() -> ShellProgram {
-  let emit_prog = realized_comparison_program()
+  let emit_prog = srfc_emit_program()
   ShellProgram {
     set_e: true,
     statements: concat(

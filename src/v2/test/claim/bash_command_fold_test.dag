@@ -1139,9 +1139,10 @@ fn bash_fold_env_prefixed_wrong_production_rejects_oracle_holds() -> Bool {
 
 fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
   match bash_fold_stmt_bundle_witness(
-    stmt: WithRedir {
-      stmt: Command { words: [Lit { text: "true" }] },
-      redir: StderrToNull
+    stmt: Heredoc {
+      path: Lit { text: "/tmp/x" },
+      delimiter: "EOF",
+      body: "x"
     }
   ) {
     Holds { value: _ } => false
