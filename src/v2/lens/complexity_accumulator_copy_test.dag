@@ -15,8 +15,6 @@ import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
 
-data accumulator_copy_cost_model_note: String = "Unit-tests the COST MODEL (classify_call) directly against the copied-port registry - no fold, no ingest, no intermediate subject. The verdict polarity is prove-safe-or-refuse (classify_call_fail_closed_note): the accumulator as a bare name in a copied port is a Poly(2) suspect; a pure literal in the copied port is the ONLY provable clean; every other reading REFUSES with a named cause - a non-carrier bare name may alias the carrier through a let (^copied_port_name_may_alias), a computed expression is unreadable (^copied_port_computed_argument), a missing argument is unreadable (^copied_port_argument_missing), and an unregistered combiner reached by a carrier is unknown, not safe (^combiner_unregistered_carrier_reaches). The refuses_* rows are the discriminating red controls for the false-clean class (operator ruling 2026-07-09): each goes false if anyone reintroduces a clean-by-default arm."
-
 fn dummy_site() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^accumulator_copy_dummy } },

@@ -19,8 +19,6 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
-data accumulator_copy_fold_analysis_note: String = "Drives the linear accumulator-copy fold end-to-end on real source through the census ingest (tokenize/parse/normalize). The verdict polarity is prove-safe-or-refuse (operator ruling 2026-07-09: no false cleans): a direct copied-port accumulator projects a Poly(2) suspect; a NON-carrier bare name in the copied port REFUSES ^copied_port_name_may_alias (a let can alias any name to the carrier - the old lens called this clean, the exact false-clean class this file's let_alias and noncarrier rows pin RED); a call expression heading the copied-port argument REFUSES ^copied_port_computed_argument (the old port reader took the callee's head symbol as a bare name - reverse(acc) read as the name reverse and passed clean); an unregistered combiner reached by the carrier REFUSES ^combiner_unregistered_carrier_reaches; a fold whose step is not a literal fn REFUSES ^fold_accumulator_unread at the fold site while its body still counts as iterating. Out-of-iteration call sites are outside the rule's domain (a single append is linear) and are silent by design; the report's folds_seen/carriers_bound counters state the domain, never imply clean."
-
 data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
 
 data noncarrier_name_snippet: String = "module lin\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
