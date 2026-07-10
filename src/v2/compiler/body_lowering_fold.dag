@@ -2,10 +2,13 @@ module v2.compiler.body_lowering_fold
 
 import std.algebra { Empty }
 import v2.compiler.fold_lowering { fold_call_to_loop }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
   dag_binding_branded_atom_identity,
+  dag_language_model,
   dag_lex_token_symbol,
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
@@ -17,16 +20,19 @@ import v2.std.collection { Absent, List, Optional, Present, list_at_optional, op
 import v2.std.compilers.body_lowering { lower_binary_infix }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic {
+  Accepted,
   Diagnostic,
   Diagnostics,
   ExternalContractUnknown,
   Outcome,
+  Rejected,
   Unavailable,
   node_locus,
   outcome_accepted,
   outcome_rejected,
   rejected_with_pending
 }
+import v2.std.logic { Bool }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node {
   Arrow,
@@ -295,12 +301,60 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_unwrap_surface_shell(node: Node) -> Node {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if body_lower_is_pass_through_emitted(emitted: emitted) {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_unwrap_surface_shell(node: captured)
+          Absent => node
+        }
+      } else {
+        node
+      }
+    Absent => node
+  }
+}
+
+fn body_lower_comma_list_suffix(param_capture: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: param_capture) {
+    Absent => Absent
+    Present { value: pair } =>
+      match find_named_child(root: pair.right, name: ^grammar_repeat_element_node_projection) {
+        Accepted { value: repeat_spine, diagnostics: _ } =>
+          match sugar_sequence_pair_optional(node: repeat_spine) {
+            Absent => Absent
+            Present { value: inner } => Present { value: inner.right }
+          }
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
 fn body_lower_typed_param_edge(param_capture: Node) -> Optional<Edge> {
   match sugar_sequence_pair_optional(node: param_capture) {
     Absent => Absent
     Present { value: pair } =>
       match body_lower_operand_ref_optional(node: pair.left) {
-        Absent => Absent
+        Absent =>
+          match dag_binding_branded_atom_identity(node: pair.left) {
+            Present { value: binding } =>
+              match sugar_sequence_pair_optional(node: pair.right) {
+                Absent => Absent
+                Present { value: after_colon } =>
+                  match body_lower_type_atom_from_expr(node: after_colon.right) {
+                    Absent => Absent
+                    Present { value: type_node } =>
+                      Present {
+                        value: Edge {
+                          label: Named { name: binding },
+                          target: type_node
+                        }
+                      }
+                  }
+              }
+            Absent => Absent
+          }
         Present { value: binder } =>
           match node_atom_identity_optional(node: binder) {
             Absent => Absent
@@ -327,21 +381,27 @@ fn body_lower_typed_param_edge(param_capture: Node) -> Optional<Edge> {
 fn body_lower_collect_param_edges(param_capture: Node) -> List<Edge> {
   match body_lower_typed_param_edge(param_capture: param_capture) {
     Present { value: edge } =>
-      match find_named_child(root: param_capture, name: ^grammar_repeat_element_node_projection) {
-        Accepted { value: suffix, diagnostics: _ } =>
-          list_append(left: [edge], right: body_lower_collect_param_edges(param_capture: suffix))
-        Rejected { diagnostics: _ } => [edge]
+      match body_lower_comma_list_suffix(param_capture: param_capture) {
+        Present { value: next } =>
+          list_append(left: [edge], right: body_lower_collect_param_edges(param_capture: next))
+        Absent => [edge]
       }
     Absent =>
-      match find_named_child(root: param_capture, name: ^grammar_repeat_element_node_projection) {
-        Accepted { value: suffix, diagnostics: _ } =>
-          body_lower_collect_param_edges(param_capture: suffix)
-        Rejected { diagnostics: _ } => Empty
+      match body_lower_comma_list_suffix(param_capture: param_capture) {
+        Present { value: next } => body_lower_collect_param_edges(param_capture: next)
+        Absent => Empty
       }
   }
 }
 
-fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
+fn body_lower_unwrap_optional_element(node: Node) -> Node {
+  match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+    Accepted { value: child, diagnostics: _ } => child
+    Rejected { diagnostics: _ } => node
+  }
+}
+
+fn body_lower_param_list_comma_spine_optional(param_list: Node) -> Optional<Node> {
   match parse_production_captured_child_optional(node: param_list) {
     Absent => Absent
     Present { value: captured } =>
@@ -351,20 +411,30 @@ fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
           match sugar_sequence_pair_optional(node: pair.right) {
             Absent => Absent
             Present { value: inner } =>
-              let edges = body_lower_collect_param_edges(param_capture: inner.left)
-              if count(edges) == 0 {
-                Present {
-                  value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
-                }
-              } else {
-                Present {
-                  value: node_synthetic(
-                    kind: TypeNode { connective: Conj },
-                    children: edges
-                  )
-                }
+              Present {
+                value: body_lower_unwrap_optional_element(node: inner.left)
               }
           }
+      }
+  }
+}
+
+fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
+  match body_lower_param_list_comma_spine_optional(param_list: param_list) {
+    Absent => Absent
+    Present { value: comma_spine } =>
+      let edges = body_lower_collect_param_edges(param_capture: comma_spine)
+      if count(edges) == 0 {
+        Present {
+          value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+        }
+      } else {
+        Present {
+          value: node_synthetic(
+            kind: TypeNode { connective: Conj },
+            children: edges
+          )
+        }
       }
   }
 }
@@ -379,17 +449,19 @@ fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
 fn body_lower_body_from_fn_captured(captured: Node) -> Optional<Node> {
   match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } =>
-      match parse_production_captured_child_optional(node: body) {
-        Present { value: body_inner } =>
-          match body_lower_try_infix_transform(node: body_inner) {
-            Present { value: transform } => Present { value: transform }
-            Absent =>
-              match body_lower_try_fold_loop(node: body_inner) {
-                Present { value: loop_node } => Present { value: loop_node }
-                Absent => Absent
-              }
+      let stripped = body_lower_unwrap_surface_shell(
+        node: match parse_production_captured_child_optional(node: body) {
+          Present { value: body_inner } => body_inner
+          Absent => body
+        }
+      )
+      match body_lower_try_infix_transform(node: stripped) {
+        Present { value: transform } => Present { value: transform }
+        Absent =>
+          match body_lower_try_fold_loop(node: stripped) {
+            Present { value: loop_node } => Present { value: loop_node }
+            Absent => Absent
           }
-        Absent => Absent
       }
     ParseSubtreeAbsent => Absent
   }
@@ -519,6 +591,97 @@ fn body_lower_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
       Accepted {
         value: lowered,
         diagnostics: cd
+      }
+  }
+}
+
+data body_lower_debug_add_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn body_lower_debug_find_fn_decl(root: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_fn_decl {
+        Present { value: root }
+      } else {
+        fold(root.children, init: Absent, f: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => body_lower_debug_find_fn_decl(root: e.target)
+          }
+        })
+      }
+    Absent =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lower_debug_find_fn_decl(root: e.target)
+        }
+      })
+  }
+}
+
+fn body_lower_debug_parsed_add_fn_decl() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: body_lower_debug_add_source,
+    file: ^body_lower_debug_add_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          body_lower_debug_find_fn_decl(root: artifact.tree)
+      }
+  }
+}
+
+fn body_lower_debug_add_domain_holds() -> Bool {
+  match body_lower_debug_parsed_add_fn_decl() {
+    Absent => false
+    Present { value: fn_decl } =>
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } =>
+          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
+            ParseSubtreeFound { captured: param_list } =>
+              match body_lower_domain_from_param_list(param_list: param_list) {
+                Present { value: _ } => true
+                Absent => false
+              }
+            ParseSubtreeAbsent => false
+          }
+        Absent => false
+      }
+  }
+}
+
+fn body_lower_debug_add_body_holds() -> Bool {
+  match body_lower_debug_parsed_add_fn_decl() {
+    Absent => false
+    Present { value: fn_decl } =>
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } =>
+          match body_lower_body_from_fn_captured(captured: captured) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
+      }
+  }
+}
+
+fn body_lower_debug_add_return_holds() -> Bool {
+  match body_lower_debug_parsed_add_fn_decl() {
+    Absent => false
+    Present { value: fn_decl } =>
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } =>
+          match body_lower_return_type_from_fn_captured(captured: captured) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
       }
   }
 }
