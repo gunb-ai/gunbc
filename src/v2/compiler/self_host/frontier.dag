@@ -8,6 +8,13 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
+type CompilerFrontierCensusAttribution
+  = KnowledgeAttributed { dissolution_trigger: Symbol }
+
+data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = KnowledgeAttributed {
+  dissolution_trigger: ^migrate_when_wave2_per_module_emit_probe_confirms_triggers
+}
+
 type SelfHostFrontierDisposition
   = SelfEmitted
   | SeedRetained { reason: Symbol, migration_trigger: Symbol }

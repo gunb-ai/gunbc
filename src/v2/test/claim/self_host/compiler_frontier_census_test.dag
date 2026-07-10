@@ -35,7 +35,7 @@ test fn compiler_frontier_initial_census_all_seed_retained() -> Bool {
     && compiler_frontier_seed_retained_count() == compiler_frontier_module_count_expected
 }
 
-test fn compiler_frontier_census_holds() -> Bool {
+test fn compiler_frontier_census_composite_holds() -> Bool {
   compiler_frontier_census_holds()
     && compiler_frontier_initial_census_all_seed_retained()
 }
