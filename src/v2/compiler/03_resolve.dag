@@ -39,7 +39,14 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   rejected_with_pending
 }
-import v2.std.qualified_name { QualifiedName }
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
+import v2.std.resolution_policy {
+  ImportScoped,
+  NameResolutionPolicy,
+  NamespaceOnlyY,
+  default_name_resolution_policy,
+  name_resolution_policy_is_namespace_only
+}
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -79,6 +86,16 @@ type Namespace {
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
+
+type ResolveContext {
+  scope: Scope
+  namespace: Namespace
+  policy: NameResolutionPolicy
+  position: QualifiedName
+  expected: Optional<Node>
+  lm: LanguageModel
+  under_module_root: Bool
+}
 
 type EdgeResolveAcc
   = EdgeResolveAccMk { have_seen_first: Bool, acc: Outcome<List<Edge>> }
@@ -231,6 +248,105 @@ fn scope_root_module(s: Scope) -> Namespace {
   match s {
     ScopeFrame { outer: o, locals: _ } => scope_root_module(s: o)
     ScopeRoot { module: m } => m
+  }
+}
+
+fn resolve_ctx_init(
+  namespace: Namespace,
+  lm: LanguageModel,
+  policy: NameResolutionPolicy
+) -> ResolveContext {
+  ResolveContext {
+    scope: scope_from_namespace(namespace: namespace),
+    namespace: namespace,
+    policy: policy,
+    position: namespace.module_qn,
+    expected: optional_absent(),
+    lm: lm,
+    under_module_root: false
+  }
+}
+
+fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
+  ResolveContext {
+    scope: scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    expected: ctx.expected,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root
+  }
+}
+
+fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: qualified_name_snoc(qn: ctx.position, segment: segment),
+    expected: ctx.expected,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root
+  }
+}
+
+fn resolve_ctx_with_expected(ctx: ResolveContext, expected: Optional<Node>) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    expected: expected,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root
+  }
+}
+
+fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bool) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    expected: ctx.expected,
+    lm: ctx.lm,
+    under_module_root: under_module_root
+  }
+}
+
+fn lookup_chain_locals_only(s: Scope, name: Symbol) -> Outcome<Symbol?> {
+  match s {
+    ScopeFrame { locals: m, outer: o } =>
+      match map_get(m, name) {
+        Accepted { value: opt, diagnostics: d_here } => match opt {
+          Present { value: v } =>
+            Accepted { value: optional_present(value: v), diagnostics: d_here }
+          Absent =>
+            match lookup_chain_locals_only(s: o, name: name) {
+              Accepted { value: found, diagnostics: d_outer } =>
+                Accepted {
+                  value: found,
+                  diagnostics: diagnostics_merge(outer: d_here, inner: d_outer)
+                }
+              Rejected { diagnostics: ds } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: d_here, rejected: ds)
+                }
+            }
+        }
+        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+      }
+    ScopeRoot { module: _ } =>
+      Accepted { value: optional_absent(), diagnostics: None }
+  }
+}
+
+fn lookup_chain_for_policy(ctx: ResolveContext, name: Symbol) -> Outcome<Symbol?> {
+  if name_resolution_policy_is_namespace_only(policy: ctx.policy) {
+    lookup_chain_locals_only(s: ctx.scope, name: name)
+  } else {
+    lookup_chain(s: ctx.scope, name: name)
   }
 }
 
