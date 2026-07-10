@@ -115,7 +115,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "ci_prelude_scripts_are_typed_cost_floor_acceptances",
         "ci_measurement_is_exempt_fresh_effect",
         "ci_catalog_projection_has_no_refusals",
-        "ci_uses_steps_are_counted_not_silent"
+        "ci_uses_steps_are_counted_not_silent",
+        "ci_run_step_natures_are_claims_counted_not_silent"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
