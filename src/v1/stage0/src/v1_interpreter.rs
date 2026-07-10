@@ -822,8 +822,12 @@ pub fn eval_recompute_trace_enabled() -> bool {
 // in the seed. Buckets by the ledger key (fn identity x argument identity) and
 // serves only after the stored call's argument names AND values verify equal —
 // a hash collision degrades to recompute, never to a wrong value. Eviction is
-// ScopeExit (the ctx's lifetime); admission stops at the entry cap with the
-// refusal COUNTED (overflow), never silent. Default ON everywhere;
+// ScopeExit at the WITNESS frame: batch surfaces share one ctx across an
+// entry's witnesses and call eval_call_memo_frame_exit after each claim fn
+// (ctx-lifetime retention of argument+result values across witnesses is
+// byte-unbounded — the 2026-07-10 20GiB-class regression). Admission stops at
+// the entry cap with the refusal COUNTED (overflow), never silent. Default ON
+// everywhere;
 // GUNBC_EVAL_MEMO=0 is a diagnostic realization switch (recompute instead of
 // serve — semantics identical), and the receipt discloses hits/misses so a
 // disabled memo is visible as memo_hits=0, never silently assumed working.
