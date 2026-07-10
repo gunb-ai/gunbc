@@ -7,8 +7,9 @@ import extdeps.languages.bash.program {
   lit,
   serialize_bash
 }
+import tools.host_prelude { ClaimRun, gunbc_claims_program, witness_bin, witness_bin_program }
 import v2.workflow.bash_program_emit { bash_program_serialize }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
 
 fn bash_program_fold_sample() -> ShellProgram {
   ShellProgram {
@@ -42,6 +43,41 @@ test fn bash_program_serialize_set_e_has_teeth_holds() -> Bool {
   match bash_program_serialize(p: bash_program_fold_sample()) {
     Accepted { value: folded, diagnostics: _ } =>
       folded != serialize_bash(p: bash_program_fold_sample_no_set_e())
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_program_fold_real_witness_program() -> ShellProgram {
+  witness_bin_program(
+    invoke: witness_bin(var_name: "V1_DAG_PARSE", bin_name: "v1srcdag_parse"),
+    prereqs: [],
+    args: ["--entry", "dag/std/algebra.dag"]
+  )
+}
+
+fn bash_program_fold_real_claims_program() -> ShellProgram {
+  gunbc_claims_program(
+    source_roots: ["src/v2", "dag"],
+    claims: [ClaimRun { entry: "src/v2/test/claim/bash_program_fold_test.dag", function: "bash_program_serialize_matches_oracle_holds" }]
+  )
+}
+
+fn bash_program_serialize_real_witness_probe() -> Outcome<String> {
+  bash_program_serialize(p: bash_program_fold_real_witness_program())
+}
+
+test fn bash_program_serialize_real_witness_program_matches_oracle_holds() -> Bool {
+  match bash_program_serialize(p: bash_program_fold_real_witness_program()) {
+    Accepted { value: folded, diagnostics: _ } =>
+      folded == serialize_bash(p: bash_program_fold_real_witness_program())
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_program_serialize_real_claims_program_matches_oracle_holds() -> Bool {
+  match bash_program_serialize(p: bash_program_fold_real_claims_program()) {
+    Accepted { value: folded, diagnostics: _ } =>
+      folded == serialize_bash(p: bash_program_fold_real_claims_program())
     Rejected { diagnostics: _ } => false
   }
 }
