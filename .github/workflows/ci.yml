@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 125
+    timeout-minutes: 130
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -143,6 +143,7 @@ jobs:
           if test -z "$n"; then echo "floor resolve receipt malformed - fail closed"; exit 1; fi
           if test "$n" -ne 3; then echo "floor resolve count $n differs from declared 3: duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)"; exit 1; fi
           echo "floor resolve count $n matches declared 3 (declared cold-resolve receipt)"
+        timeout-minutes: 5
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -151,7 +152,7 @@ jobs:
         timeout-minutes: 5
   ci_regen:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 125
+    timeout-minutes: 130
     steps:
       - name: Checkout
         uses: actions/checkout@v5
