@@ -13,10 +13,12 @@ import v2.lens.complexity_accumulator_copy.analyze {
   findings_have_suspect
 }
 import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { list_reverse }
 import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Conj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.text { String }
 
 data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
@@ -49,7 +51,7 @@ data item_in_computed_arg_snippet: String = "module hiddenitem\n\nfn f(xs: List<
 
 data computed_let_mention_snippet: String = "module hiddenlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let boxed = Wrapped { inner: acc }\n    mystery(box: boxed)\n  })\n}\n"
 
-data projection_head_call_snippet: String = "module projhead\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    helper.step(a: acc, b: x)\n  })\n}\n"
+data projection_call_residue_note: String = "A projection-headed call (helper.step(a: acc, b: x)) PARSES but lands in a production the analyze walk never classifies as a call - the carrier passes through invisibly (probed by execution 2026-07-10: ingest accepts, zero findings). Declared residue, owned by the namespace lane: '.' is its projection operator (see the general-body-producer design's honest-residue rows); when projection-calls normalize onto the canonical call shape, the existing classify arms cover them and this note dissolves. The ^call_head_unreadable arm below is therefore proven by NODE SURGERY - no parseable surface reaches it today; it guards produced trees (Stage A producer output), where a call node's head edge can target a non-atom."
 
 fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
   let lm = dag_language_model()
@@ -183,11 +185,62 @@ test fn computed_let_mentioning_carrier_refuses_at_unregistered_use() -> Bool {
   }
 }
 
-test fn unreadable_call_head_with_carrier_port_refuses() -> Bool {
-  match findings_of(source_text: projection_head_call_snippet, file: ^projhead_file) {
+fn edge_list_prepend(item: Edge, xs: List<Edge>) -> List<Edge> {
+  Cons { head: item, tail: xs }
+}
+
+fn no_edges() -> List<Edge> {
+  Empty
+}
+
+fn opaque_head_node() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+}
+
+fn edge_target_is_mystery(e: Edge) -> Bool {
+  match node_atom_identity_optional(node: e.target) {
+    Present { value: id } => id == ^mystery_op
     Absent => false
-    Present { value: fs } =>
-      findings_have_refusal_cause(fs: fs, cause: ^call_head_unreadable)
+  }
+}
+
+fn edge_is_seq_left(e: Edge) -> Bool {
+  match e.label {
+    Named { name: nm } => nm == ^grammar_sequence_left_node_projection
+    Positional => false
+  }
+}
+
+fn rebuilt_edge(e: Edge) -> Edge {
+  if edge_is_seq_left(e: e) {
+    if edge_target_is_mystery(e: e) {
+      Edge { label: e.label, target: opaque_head_node() }
+    } else {
+      Edge { label: e.label, target: break_mystery_head(n: e.target) }
+    }
+  } else {
+    Edge { label: e.label, target: break_mystery_head(n: e.target) }
+  }
+}
+
+fn break_mystery_head(n: Node) -> Node {
+  Node {
+    kind: n.kind,
+    children: list_reverse(xs: fold(n.children, init: no_edges(), f: fn(acc, e) {
+      edge_list_prepend(item: rebuilt_edge(e: e), xs: acc)
+    })),
+    occurrence_id: n.occurrence_id
+  }
+}
+
+test fn unreadable_call_head_with_carrier_port_refuses() -> Bool {
+  match ingest(source_text: unregistered_combiner_snippet, file: ^brokenhead_file) {
+    Absent => false
+    Present { value: tree } =>
+      findings_have_refusal_cause(
+        fs: accumulator_copy_findings(root: break_mystery_head(n: tree)),
+        cause: ^call_head_unreadable
+      )
   }
 }
 
