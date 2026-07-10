@@ -167,6 +167,48 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+fn is_ident_boundary_byte(b: u8) -> bool {
+    matches!(
+        b,
+        b'.' | b'{' | b'}' | b'(' | b')' | b',' | b' ' | b'\t' | b'\n' | b';' | b'[' | b']'
+    )
+}
+
+fn is_module_path_reference_boundary(content: &str, end: usize) -> bool {
+    end >= content.len() || is_ident_boundary_byte(content.as_bytes()[end])
+}
+
+fn is_module_path_reference_prefix(content: &str, start: usize) -> bool {
+    start == 0 || is_ident_boundary_byte(content.as_bytes()[start - 1])
+}
+
+/// Qualified `container` references in a `.dag` file — import targets plus dotted
+/// module paths that appear in expressions (the namespace-only dependency edge).
+pub(crate) fn extract_reference_module_paths(
+    content: &str,
+    declared: &HashSet<String>,
+) -> Vec<String> {
+    let mut refs: BTreeSet<String> = BTreeSet::new();
+    for import_module in extract_import_paths(content) {
+        refs.insert(import_module);
+    }
+    let stripped = content
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    for module in declared {
+        if let Some(pos) = stripped.find(module.as_str()) {
+            if is_module_path_reference_prefix(&stripped, pos)
+                && is_module_path_reference_boundary(&stripped, pos + module.len())
+            {
+                refs.insert(module.clone());
+            }
+        }
+    }
+    refs.into_iter().collect()
+}
+
 /// The workspace root is a property of where the process RUNS, never of where the
 /// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
 /// the release binaries across jobs via artifacts, and the build job and the consuming
@@ -9830,6 +9872,13 @@ pub fn fact_cardinality_decl_facts() -> Vec<FactCardinalityDeclFactRaw> {
 pub struct ImportResolutionFactRaw {
     pub path: String,
     pub import_module: String,
+    pub target_declared: bool,
+}
+
+#[derive(Clone)]
+pub struct ReferenceResolutionFactRaw {
+    pub path: String,
+    pub reference_module: String,
     pub target_declared: bool,
 }
 
