@@ -61,7 +61,7 @@ import v2.std.node { Node }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
 
-data bash_program_emit_cost_wall_note: String = "Cost shape, measured 2026-07-10: serializing a NESTED stmt through the whole-tree fold path is superlinear in nesting depth (~1s flat stmt; 64s for a single depth-4 stmt; the ~depth-7 witness programs did not finish in 8min) - root: formal_production_unique_lhs_exact_match deep-validates every lhs candidate subtree per level and the descent re-validates each level (~alternatives^depth). Consequence, realized in this module: compound constructs never enter the whole-tree path. Each compound arm of bash_program_stmt_spelling first serializes its children to spellings (recursion, linear in node count), then emits ONE flat spelling-parameterized row (bash_stmt_*_target_model); the whole-tree fold serves only flat leaves (Command/Assign over Lit|VarRef|Raw words, Exit), where it is a single-level match. Byte-identity vs serialize_bash is the oracle (v2.test.claim.bash_program_fold). The grammar-layer backward-selection cost defect remains open in v2.std.grammar as its own lane; the runtime witness transports stopped serializing bash entirely (typed argv, PR #6457)."
+data bash_program_emit_cost_wall_note: String = "Cost shape, measured 2026-07-10: serializing a NESTED stmt through the whole-tree fold path is superlinear in nesting depth (~1s flat stmt; 64s for a single depth-4 stmt; the ~depth-7 witness programs did not finish in 8min) - root: formal_production_unique_lhs_exact_match deep-validates every lhs candidate subtree per level and the descent re-validates each level (~alternatives^depth). Consequence, realized in this module: compound constructs never enter the whole-tree path. Each compound arm of bash_program_stmt_spelling first serializes its children to spellings (recursion, linear in node count), then emits ONE flat spelling-parameterized row (bash_stmt_*_target_model); the whole-tree fold serves only constant-depth leaves (single-flat-word Command, Assign with a flat value, Exit). A multi-word Command is NOT flat to the fold - its right-nested words-list encoding makes an N-word command depth-N, so word count re-enters the exponential - hence words are spelled per-word (each a constant-depth emit) and joined through the verbatim pass row. Byte-identity vs serialize_bash is the oracle (v2.test.claim.bash_program_fold). The grammar-layer backward-selection cost defect remains open in v2.std.grammar as its own lane; the runtime witness transports stopped serializing bash entirely (typed argv, PR #6457)."
 
 fn bash_program_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Violates {
@@ -110,19 +110,35 @@ fn bash_program_word_is_flat(w: ShellWord) -> Bool {
   }
 }
 
-fn bash_program_words_flat(ws: List<ShellWord>) -> Bool {
+fn bash_program_command_is_single_flat(ws: List<ShellWord>) -> Bool {
   match list_head(xs: ws) {
-    HeadAbsent => true
-    HeadFound { value: w } =>
-      if bash_program_word_is_flat(w: w) {
+    HeadAbsent => false
+    HeadFound { value: only } =>
+      if bash_program_word_is_flat(w: only) {
         match list_tail(xs: ws) {
-          TailFound { tail: t } => bash_program_words_flat(ws: t)
           TailAbsent => true
+          TailFound { tail: t } =>
+            match list_head(xs: t) {
+              HeadAbsent => true
+              HeadFound { value: _ } => false
+            }
         }
       } else {
         false
       }
   }
+}
+
+fn bash_program_words_line_emit(ws: List<ShellWord>) -> Outcome<String> {
+  bind_outcome(
+    o: bash_program_words_joined_spelling(ws: ws),
+    f: fn(line) {
+      bash_program_emit_from_emitted(
+        emitted: bash_word_pass_emitted,
+        target: bash_word_pass_target_model(spelling: line)
+      )
+    }
+  )
 }
 
 fn bash_program_word_spelling(w: ShellWord) -> Outcome<String> {
@@ -261,18 +277,10 @@ fn bash_program_stmt_spelling(stmt: ShellStmt) -> Outcome<String> {
         target: bash_word_pass_target_model(spelling: t)
       )
     Command { words: ws } =>
-      if bash_program_words_flat(ws: ws) {
+      if bash_program_command_is_single_flat(ws: ws) {
         bash_program_flat_fold_serialize(stmt: stmt)
       } else {
-        bind_outcome(
-          o: bash_program_words_joined_spelling(ws: ws),
-          f: fn(line) {
-            bash_program_emit_from_emitted(
-              emitted: bash_word_pass_emitted,
-              target: bash_word_pass_target_model(spelling: line)
-            )
-          }
-        )
+        bash_program_words_line_emit(ws: ws)
       }
     Assign { name: n, value: v } =>
       if bash_program_word_is_flat(w: v) {
