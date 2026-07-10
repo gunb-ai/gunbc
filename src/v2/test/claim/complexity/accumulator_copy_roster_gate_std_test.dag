@@ -1,0 +1,17 @@
+module v2.test.claim.complexity.accumulator_copy_roster_gate_std
+
+import v2.lens.complexity_accumulator_copy.roster_gate { file_gate }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data std_tranche_offline_roster_note: String = "Offline roster gate for dag/std/ tranche 1 (operator ruling: NOT enrolled in CI commit_workflow per #6437 cost trim). List-carrier concat(acc,[x]) folds rewritten to prepend+reverse linear forms in markdown.dag, markdown_markup.dag, serialize.dag, realization.dag, materialization_ladder.dag; change.dag keyed_collect_keys + keyed_invert_patch map rewrite. keyed_merge_row_lists left as concat(acc,[row]) with init:left — non-empty init makes prepend+reverse order-breaking; rescanning left each step is worse constant factor with no asymptotic win. graph.dag neighbor-list append (concat(ns,[x])) left unchanged — per-edge map update, not a fold accumulator. String-carrier concat(acc,piece) folds left as typed debt pending linear string-join realization: http_path.dag (2), markup.dag (2), render.dag (1), render_repeat_string_bootstrap.dag (1), width.dag (1). Substrate dag/std syntax ingest via v2 lens is partial — wet roster gates only v2-ingestible files with stable refusal budgets (change.dag ceiling 13, render_repeat_string_bootstrap.dag ceiling 0); markdown_markup.dag and other cleaned files are behavioral-witness gated (inline prepend+reverse triggers combiner_unregistered_carrier_reaches refusals on substrate concat)."
+
+data std_tranche_string_carrier_debt_count: Int = 7
+
+test fn roster_std_change_dag_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "dag/std/change.dag", refusal_ceiling: 13)
+}
+
+test fn roster_std_render_repeat_string_bootstrap_within_ratchet() -> Bool {
+  file_gate(path: "dag/std/render_repeat_string_bootstrap.dag", refusal_ceiling: 0)
+}

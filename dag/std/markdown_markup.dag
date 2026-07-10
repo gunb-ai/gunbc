@@ -12,7 +12,6 @@ import std.markdown {
   LinkInline,
   ImageInline,
 }
-
 fn markdown_inline_to_markup_nodes(inline: MarkdownInline) -> List<MarkupNode> {
   match inline {
     TextInline { text } =>
@@ -54,5 +53,7 @@ fn markdown_inline_to_markup_nodes(inline: MarkdownInline) -> List<MarkupNode> {
 }
 
 fn markdown_inlines_to_markup_nodes(inlines: List<MarkdownInline>) -> List<MarkupNode> {
-  fold(inlines, init: [], f: (acc, inline) => concat(acc, markdown_inline_to_markup_nodes(inline: inline)))
+  reverse(inlines |> fold(init: [], f: fn(acc, inline) {
+    concat(markdown_inline_to_markup_nodes(inline: inline), acc)
+  }))
 }

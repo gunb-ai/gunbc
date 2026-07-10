@@ -321,13 +321,13 @@ fn provider_is_copy_tier(p: CacheProvider) -> Bool {
 }
 
 fn ladder_distinct_identities(demands: List<FrameDemand>) -> List<String> {
-  demands |> fold(init: [], f: (acc, d) =>
+  reverse(demands |> fold(init: [], f: fn(acc, d) {
     if string_list_contains(xs: acc, wanted: d.identity) {
       acc
     } else {
-      concat(acc, [d.identity])
+      concat([d.identity], acc)
     }
-  )
+  }))
 }
 
 fn ladder_group(demands: List<FrameDemand>, identity: String) -> List<FrameDemand> {
