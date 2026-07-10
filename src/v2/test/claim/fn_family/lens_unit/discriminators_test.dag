@@ -146,8 +146,6 @@ fn two_slot_member(s1: Symbol, s2: Symbol) -> Node {
   conj_of(kids: [atom_node(id: ^shared_head), conj_of(kids: [atom_node(id: s1), atom_node(id: s2)])])
 }
 
-data transitivity_note: String = "First-fit grouping against a representative is sound because sigma-relatedness is transitive under the exact criterion: fillings_all_leaves(anti_unify(M, rep)) forces M's internal skeleton to equal rep's exactly (any internal disagreement would be a non-leaf filling), so two members each related to rep share identical internal skeletons and differ from each other only at leaves - related by construction, never by luck. The witnesses below execute the theorem: alpha_only differs from the rep at slot1, beta_only at slot2, so alpha_only vs beta_only differ at BOTH slots - the pair the transitivity concern targets - and still relate, and all three group as ONE family whose template holes cover the union of varying positions."
-
 test fn witness_relatedness_is_transitive_across_different_slots() -> Bool {
   let rep = two_slot_member(s1: ^x0, s2: ^y0)
   let alpha_only = two_slot_member(s1: ^x1, s2: ^y0)

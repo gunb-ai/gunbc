@@ -12,8 +12,6 @@ import v2.std.collection { Present, Absent, optional_absent }
 import v2.std.decl_index { export_signature_facts_host_scaffold_dissolution_trigger }
 import v2.std.logic { Bool }
 
-data interface_summary_firewall_host_scaffold_note: String = "Host-scaffold witness: reads the live tree via export_signature_facts and module_declaration_facts_live host intrinsics (_facts_live( pattern); floor:host_scaffold — never node-skipped on the CI floor."
-
 data firewall_fixture_roots: List<String> = ["src/v2/test/fixture/interface_summary"]
 
 fn export_fingerprint_for_gate(module_path: NonEmptyStr) -> ContentHash? {

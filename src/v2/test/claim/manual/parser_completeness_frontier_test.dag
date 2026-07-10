@@ -20,8 +20,6 @@ import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.text { String }
 
-data parser_completeness_frontier_note: String = "Parser-completeness ledger (W1b): drives real .dag SOURCE TEXT through assemble_program_from_ingest on dag_language_model(), recording which logic.dag-shaped constructs parse and infer today. Separate from the emit frontier receipt (self_host_module_emit_derisk_test.dag) so W2 can own emit-ownership witness flips without merge conflict."
-
 data parser_frontier_module_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^parser_frontier_module_artifact,

@@ -87,11 +87,7 @@ data floor_corpus_node: Node = Node {
   children: []
 }
 
-data ci_floor_witness_optin_note: String = "CI witness enrollment is OPT-IN (operator inversion, 2026-07-04). The floor runs exactly spec.witness_entries (declared on the GithubActionsCiJob surface of gunbc.commit_workflow.commit_gate_roster), never a tree scan: scan_dirs and discovery_scope_dirs stay empty so the executor's glob path is unreachable from CI, and an EMPTY roster puts no witness-corpus node in the plan at all - the executor's empty-corpus fail-closed diagnostic stays meaningful for accidental emptiness. Tree-wide discovery remains the local path (claim_batch --roster-from-discovery). The former always-on grounding whole-tree node dissolved into this roster: re-enroll it as a CommitWitnessClaim row for src/v2/test/manual/grounding_lens_whole_tree_test.dag. Rows under the execution-corpus scope keep their own node so the measured per-witness RSS width still governs them."
-
 data execution_corpus_scope_prefix: String = "src/v2/test/claim/execution/"
-
-data kind_partition_note: String = "The corpus/execution partition is decided by the DECLARED WitnessKind on each enrolled entry (single authority: the CommitWitnessClaim row in gunbc.commit_workflow), not by path convention. Discrimination is an exhaustive match, never equality: an entry whose kind was never stamped is a loud runtime refusal at the match, where an eq would silently partition it. execution_corpus_scope_prefix is DEMOTED from partition authority to an agreement cross-check (witness_entry_kind_path_agree, consumed by the ci_floor_plan witness test over the live roster) during the migration. dissolve-on: delete the prefix and the agreement check when directory layout no longer mirrors kind - the declared fact is then the only representation."
 
 fn entry_kind_is_execution(w: ScheduleWitnessEntry) -> Bool {
   match w.kind {
@@ -490,8 +486,6 @@ fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec)
 }
 
-data gunbc_falsifier_note: String = "Differential falsifier cadence batch (signed design: docs/plans/affected-set-differential-falsifier.md). One cold tree-wide discovery run with SelectionPredictOnly: every row runs, would-skip predictions are recorded per row, and a predicted-unaffected row that runs red is a counted DIVERGENCE naming a missing selection edge (the red also fails the batch through the normal failure channel). Refused observation aborts the run typed - a refusal is not a divergence. Component 1 (non-hermetic residue) is covered by construction: host-scaffold rows never predict-skip and always run cold; a residue-only cadence shape waits on the reads_live_tree classifier defork (ROADMAP 2-host-scaffold-classifier-defork). Dissolution: divergence rate 0 across 8 consecutive windows retires this batch (delete the falsifier workflow, receipt = the Actions run history); recurrence re-arms for another 8-window cycle, counted."
-
 fn gunbc_falsifier_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThreadCount {
   let budget_count = byte_size_count(b: memory_budget)
   if budget_count <= 0 {
@@ -575,13 +569,9 @@ fn gunbc_ci_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
   gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
 }
 
-data gunbc_ci_regen_floor_plan_spawn_width_note: String = "The claim_executor seed derives a plan's spawn-width function name from the plan-function name (spawn_width_function_name in src/v1/stage0/src/bin/claim_executor.rs: strip _batches, append _plan_spawn_width), so the regen floor plan gunbc_ci_regen_floor_batches reaches gunbc_ci_regen_floor_plan_spawn_width dynamically — the name is constructed at runtime and never appears as a literal reference, which is why the ci_regen job crashed at plan setup (spawn width eval failed: no main function found) on the two-job split (#6352) with no grep-visible reference. This function supplies it, reusing the required ci job's memory-budget-derived width (gunbc_ci_plan_spawn_width) since the regen job runs on the same srv1 runner under the same budget. Without it the non-required ci_regen job is crash-red on a wiring gap instead of honest-red on the true self-host divergence it exists to report."
-
 fn gunbc_ci_regen_floor_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
   gunbc_ci_plan_spawn_width(memory_budget_bytes: memory_budget_bytes)
 }
-
-data gunbc_falsifier_plan_spawn_width_note: String = "claim_executor derives gunbc_falsifier_plan_spawn_width from gunbc_falsifier_batches at runtime (same wiring-gap class as ci_regen, #6393). Unlike ci/regen, the falsifier cold full-corpus discovery batch carries a heavier per-shard envelope (gunbc_falsifier_per_shard_peak_rss_bytes) than floor gate witnesses — run 28993330753 exit-137 @ spawn_width=4 under gunbc_ci_runner_slot_memory_max_live proved the floor per_shard underestimate. This function and gunbc_falsifier_spawn_width_from_live_cap share gunbc_falsifier_memory_derived_width so plan-time spawn_width_cap and runtime eval agree on width=3 at the live 24GiB cap (vs ci width=4). witness_falsifier_plan_spawn_width_backs_off_at_live_cap executes the derived name in the corpus."
 
 fn gunbc_falsifier_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
   gunbc_falsifier_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))

@@ -2,15 +2,11 @@ module gunbc.ci_layer_roots
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 
-data compile_clean_source_roots_note: String = "Compile-clean pool extends witness_layer_roots with src/v1 for cross-tree import resolution only (e.g. dag/test/claim/ownership_movable_test imports v1.compiler.ownership). src/v1 stays excluded from floor witness_layer_roots per gunbc.plans.seed_debt_bundle_item_2 §1 (parse-cursor fork deferred — no floor witness discovery over src/v1)."
-
 fn compile_clean_source_roots() -> List<String> {
   concat(witness_layer_roots, ["src/v1"])
 }
 
 data witness_discovery_scan_dirs: List<String> = ["dag/test/claim", "src/v2/test/claim/manual"]
-
-data discovery_flip_quarantine_note: String = "DISSOLVED (2026-07-09, discovery-flip pre-flight quarantine): interim scaffolding at the enrollment flip (gunbc.ci_spec ci_spec_discovery_flip_note) excluded five pre-existing-red live-tree witnesses from discovery enrollment until fixes landed. All five now unquarantined: dag_import_closure_equals_declared_conformance_closure (swift-pike-439). enforcement/grammar_coverage_witness_test.dag (sharp-swift-243): v1 reject locus pins corrected to parse-stage parse_grammar_choice_overlap_residue; Symbol reason equality grounded via symbol_identity_digest. medium_structure_clean_tree_holds + medium_structure_canonical_read_back_holds (quick-boar-630): three pre-existing leak paths rostered in medium_structure_exception_roster (baseline 54→57). realization_vocab_clean_tree_holds (swift-bear-563, #6398): three pre-existing leak paths rostered in realization_vocab_exception_roster. witness_exclusion_substrings no longer carries discovery-flip quarantine rows."
 
 data witness_exclusion_substrings: List<String> = [
   "impossible_bug",
@@ -25,8 +21,6 @@ data witness_exclusion_substrings: List<String> = [
   "ci_exclusion_proof_test.dag",
   "test/claim/execution/"
 ]
-
-data whole_tree_strict_resolve_exclusion_note: String = "Whole-tree strict-resolve policy beyond floor witness_exclusion_substrings: test trees, eval scaffolds, and modules that cannot strict-resolve under dag+src/v2 but are not floor-discovery roster members. Consumed by whole_tree_resolved_ctx hosts (measure_dependency_view_build, measure_whole_tree_resolve, fn_arrow_decl_substrate_is_whole_tree census, wiring_liveness_whole_tree). NOT folded into witness_exclusion_substrings — floor RunnableDiscoveryBatch scan-dir enrollment must keep src/v2/test/claim/manual visible while whole-tree resolve excludes the broader /test/ tree."
 
 data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
   "test/fixture/",
