@@ -1,6 +1,9 @@
 module v2.compiler.program_partition
 
 import v2.compiler.emit { emit }
+import v2.compiler.emit_module { emit_module_decl_separator }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_rust_generic }
+import v2.compiler.target_carriers { target_source_medium }
 import v2.compiler.infer {
   InferredFacts,
   InferredFactsEntry,
@@ -14,6 +17,12 @@ import v2.compiler.translate {
   translate_project_transform_in_arrow_scope
 }
 import v2.lens.application { subterm_at }
+import v2.extdeps.languages.dag {
+  dag_node_is_module_root_conj,
+  dag_resolve_preserve_module_metadata_subtree,
+  dag_surface_module_header_metadata_edge,
+  parse_production_emitted_identity_optional
+}
 import std.algebra { Empty }
 import v2.std.algebra { any, fold_list, list_append, list_snoc_item }
 import v2.std.collection {
@@ -80,6 +89,7 @@ import v2.std.program_segment {
   WholeProgram,
 }
 import v2.std.witness { Holds, Violates }
+import v2.std.text { String }
 
 type ProgramPartition {
   ambient: InferredTree
@@ -560,6 +570,181 @@ fn partition_segment_is_ambient_arrow_body_behavior(
   }
 }
 
+fn partition_is_import_decl_node(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_import_decl
+    Absent => false
+  }
+}
+
+fn partition_module_emit_skip_edge(edge: Edge) -> Bool {
+  match edge.label {
+    Positional =>
+      dag_resolve_preserve_module_metadata_subtree(node: edge.target)
+    Named { name: sym } =>
+      dag_surface_module_header_metadata_edge(name: sym)
+  }
+}
+
+fn partition_module_emit_semantic_type_decl(
+  name: Symbol,
+  semantic: Node
+) -> Outcome<Medium<String>> {
+  emit_semantic_type_decl_rust_generic(name: name, params: Empty, node: semantic)
+}
+
+fn partition_module_emit_decl_item(
+  tree: InferredTree,
+  item: Node,
+  target: TargetModel
+) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree { root: item, facts: tree.facts },
+    target: target
+  )
+}
+
+fn partition_module_emit_named_item(
+  tree: InferredTree,
+  name: Symbol,
+  target_node: Node,
+  target: TargetModel
+) -> Outcome<Optional<Medium<String>>> {
+  match partition_semantic_type_from_decl_target(target: target_node) {
+    Present { value: semantic } =>
+      bind_outcome(
+        o: partition_module_emit_semantic_type_decl(name: name, semantic: semantic),
+        f: fn(medium) {
+          outcome_accepted(value: Present { value: medium })
+        }
+      )
+    Absent =>
+      if partition_is_import_decl_node(node: target_node) {
+        outcome_accepted(value: Absent)
+      } else {
+        bind_outcome(
+          o: partition_module_emit_decl_item(
+            tree: tree,
+            item: target_node,
+            target: target
+          ),
+          f: fn(medium) {
+            outcome_accepted(value: Present { value: medium })
+          }
+        )
+      }
+  }
+}
+
+fn partition_module_emit_positional_item(
+  tree: InferredTree,
+  target_node: Node,
+  target: TargetModel
+) -> Outcome<Optional<Medium<String>>> {
+  if partition_is_import_decl_node(node: target_node) {
+    outcome_accepted(value: Absent)
+  } else {
+    bind_outcome(
+      o: partition_module_emit_decl_item(
+        tree: tree,
+        item: target_node,
+        target: target
+      ),
+      f: fn(medium) {
+        outcome_accepted(value: Present { value: medium })
+      }
+    )
+  }
+}
+
+fn partition_module_emit_edge(
+  tree: InferredTree,
+  edge: Edge,
+  target: TargetModel
+) -> Outcome<Optional<Medium<String>>> {
+  if partition_module_emit_skip_edge(edge: edge) {
+    outcome_accepted(value: Absent)
+  } else {
+    match edge.label {
+      Named { name: sym } =>
+        partition_module_emit_named_item(
+          tree: tree,
+          name: sym,
+          target_node: edge.target,
+          target: target
+        )
+      Positional =>
+        partition_module_emit_positional_item(
+          tree: tree,
+          target_node: edge.target,
+          target: target
+        )
+    }
+  }
+}
+
+fn partition_module_emit_append_optional(
+  partial: String,
+  optional_medium: Optional<Medium<String>>
+) -> String {
+  match optional_medium {
+    Present { value: medium } =>
+      list_append(
+        left: list_append(left: partial, right: medium.carried),
+        right: emit_module_decl_separator
+      )
+    Absent => partial
+  }
+}
+
+fn partition_module_emit_edges_step(
+  acc: Outcome<String>,
+  tree: InferredTree,
+  edge: Edge,
+  target: TargetModel
+) -> Outcome<String> {
+  bind_outcome(
+    o: acc,
+    f: fn(partial) {
+      bind_outcome(
+        o: partition_module_emit_edge(tree: tree, edge: edge, target: target),
+        f: fn(optional_medium) {
+          outcome_accepted(
+            value: partition_module_emit_append_optional(
+              partial: partial,
+              optional_medium: optional_medium
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
+fn emit_partition_module_source(
+  tree: InferredTree,
+  module_root: Node,
+  target: TargetModel
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: fold_list(
+      xs: module_root.children,
+      empty: outcome_accepted(value: Empty),
+      cons: fn(acc, edge) {
+        partition_module_emit_edges_step(
+          acc: acc,
+          tree: tree,
+          edge: edge,
+          target: target
+        )
+      }
+    ),
+    f: fn(joined) {
+      target_source_medium(text: joined, target: target)
+    }
+  )
+}
+
 fn emit_partition_arrow_body_behavior_source(
   partition: ProgramPartition,
   target: TargetModel
@@ -613,7 +798,15 @@ fn emit_partition_with_target(
     bind_outcome(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
-        emit(tree: tree, target: target)
+        if dag_node_is_module_root_conj(n: tree.root) {
+          emit_partition_module_source(
+            tree: tree,
+            module_root: tree.root,
+            target: target
+          )
+        } else {
+          emit(tree: tree, target: target)
+        }
       }
     )
   }
