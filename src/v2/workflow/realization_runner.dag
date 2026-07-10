@@ -1,7 +1,7 @@
 module v2.workflow.realization_runner
 
-import v2.std.algebra { contains, length, list_snoc_item, non_empty }
-import v2.std.collection { List }
+import v2.std.algebra { contains, list_snoc_item, non_empty }
+import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.dependency { DependencyView }
 import std.types { Int }
 import v2.std.logic { Bool }
@@ -93,27 +93,23 @@ fn runner_first_missing_dependency<V>(
   store: NodeKeyedStore<V>,
   candidate: Node
 ) -> Node {
-  if length(xs: dependencies) == 0 {
-    candidate
-  } else {
-    let head = dependencies.first()
-    if head.dependent == candidate {
-      if node_keyed_store_has_node(store: store, node: head.source) {
-        runner_first_missing_dependency(
-          dependencies: dependencies.skip(n: 1),
-          store: store,
-          candidate: candidate
-        )
-      } else {
-        head.source
-      }
-    } else {
-      runner_first_missing_dependency(
-        dependencies: dependencies.skip(n: 1),
-        store: store,
-        candidate: candidate
-      )
+  match fold(dependencies, init: Absent, f: fn(found, dependency) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if dependency.dependent == candidate {
+          if node_keyed_store_has_node(store: store, node: dependency.source) {
+            Absent
+          } else {
+            Present { value: dependency.source }
+          }
+        } else {
+          Absent
+        }
     }
+  }) {
+    Present { value: node } => node
+    Absent => candidate
   }
 }
 
