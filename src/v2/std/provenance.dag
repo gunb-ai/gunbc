@@ -24,8 +24,6 @@ fn origin_event_from_source(locus: Locus) -> OriginEvent {
   FromSource { locus: locus }
 }
 
-data span_index_map_carrier_note: String = "entries is a Map keyed on OccurrenceId (a single-Int record, so native structural key equality coincides with occurrence_id_eq), the same carrier pattern ParseTable.entries already uses. The prior FreeMonoid<SpanIndexEntry> assoc list paid O(index) per record (snoc), O(index) per lookup (head-first scan), and O(base x incoming) per merge -- 13.4M lookup frames / 242s self-time on one medium-file parse (.dag self-time profile); the same disease as the reconcile merge_envs root fix. Ids are minted fresh per stamp, so record never sees a duplicate key; merge dedup stays explicitly base-wins."
-
 type SpanIndex {
   entries: Map<OccurrenceId, OriginEvent>
 }

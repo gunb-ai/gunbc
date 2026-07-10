@@ -423,5 +423,3 @@ fn roadmap_dashboard_node_http_static_server_spec() -> NodeHttpStaticServerSpec 
 fn roadmap_dashboard_node_http_server_source() -> String {
   serialize_typescript_program(p: emit_node_http_static_server_program(spec: roadmap_dashboard_node_http_static_server_spec()))
 }
-
-data gunbhub_node_http_listen_defaults_dissolution_trigger: String = "dissolve-on: fleet_intent host binding — host 0.0.0.0 / port 8080 are provisioning defaults; fleet_intent should supply the listen address and port as deployment facts, not compile-time constants"

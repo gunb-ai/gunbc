@@ -22,8 +22,6 @@ data gunbc_srv3_os_install_actuate_scope_boundary: Disposition = Terminal {
 
 data srv3_actuator_virtual_media_iso_install_path: NonEmptyStr = srv3_seeded_ubuntu_install_media_install_path
 
-data srv3_seeded_iso_pivot_dissolution_trigger: String = "🟡 dissolve-on: srv3_autoinstall_seed_delivery_refusal — NoCloudNet fail-closed gap DISSOLVES WHEN seeded ISO path proven unattended (boot-once + SOL receipt + OS-up witness green BY EXECUTION) and consumers bind srv3_seeded_ubuntu_install_media_install_path + srv3_ubuntu_autoinstall_on_iso NoCloudLocal delivery"
-
 type AutoinstallSeedDeliveryRefusal {
   install_server_count: Int
   seed_url: NonEmptyStr

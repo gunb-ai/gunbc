@@ -25,8 +25,6 @@ import extdeps.languages.gpu.wgsl.kernel {
 }
 import std.measure { hardware_thread_count_value, bandwidth_count }
 
-data gpu_device_precision_axis_note: String = "The device-precision fidelity axis is INDEPENDENT of the FMA-contraction axis. On the WGSL device every float path is f32; the interpreter oracle is Float64. So ANY FloatApproximate contract decodes Lossy on this device — even FmaContractionRefused — because the loss is precision (f32 vs f64), not fused-multiply-add reassociation. Integer paths are bit-exact, hence Lossless. This is why gpu device fidelity is a SEPARATE call from the SIMD/CPU-lane fidelity where FmaRefused can be Lossless."
-
 fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
   match contract {
     IntegerExact => Lossless

@@ -63,8 +63,6 @@ data host_identity_set_hostname_script_scaffold: Disposition = Scaffold {
   }
 }
 
-data host_identity_set_hostname_script_dissolution_trigger: String = "🟡 dissolve-on: host_identity_set_hostname_script(_cas) — hostnamectl argv authored as String literal (medium-as-string); DISSOLVES WHEN host_effect orchestration emit models hostname mutation as HostEffect intent rows (bash grammar rows), retiring this string leaf."
-
 fn host_identity_set_hostname_script(desired_hostname: DnsLabel) -> String {
   concat(concat("sudo -n ", host_identity_hostnamectl_path), concat(" set-hostname ", desired_hostname as String))
 }

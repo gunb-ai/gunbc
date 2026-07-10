@@ -178,5 +178,3 @@ fn lever_a_local_receipts_hold() -> Bool {
     && witness_entry_root_is_first_witness_layer_root()
     && witness_pool_roots_match_witness_layer_roots()
 }
-
-data lever_a_local_verify_scaffold_note: String = "LOCAL-DEV-ONLY scaffold (scripts/lever_a_local_verify.sh is a pure claim_batch sequencer — no bash verdict logic). dissolves-on: GATE 3 CI self-demonstration of scoped compile-clean in budget retires the script. GATE 1d host refusal (cli_run Refused on diff/disposition failure): cargo test scoped_plan_refuses_on_invalid_diff_base until a host witness enrolls. GATE 1b/1c: inject break inside vs outside disposition entry_paths closure — scoped RED vs GREEN; nightly whole-tree #6299 is catcher. GATE 2: replay merged PR diffs locally; whole-tree baseline cited from runs 28780252806 and 28748751115 only. Core-query soundness: production selection is entry_affected_by_dependency_view (entry_selection.dag); #6274 import-closure equivalence is a separate orphan host receipt (module_grain_affected_equivalence_tests), dissolves when deliverable-3 DependencyView differential receipt lands."

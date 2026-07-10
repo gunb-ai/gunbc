@@ -193,8 +193,6 @@ data cost_red_control_probe: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data cost_red_probe_shape_citation: String = "cost_red_control_probe replicates the illegal-Named-edge Loop shape whose lens property is proven by src/v2/lens/cost/loop_illegal_named.dag (claim_loop_illegal_named); the probe is governance input - running it through cost_lens in-pass derives red_control_status by execution instead of declaring it"
-
 data cost_well_formed_probe: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^enforcement_well_formed_probe } },
   children: [],

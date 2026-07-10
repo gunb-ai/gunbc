@@ -6,8 +6,6 @@ import v2.std.collection { List }
 import v2.std.integer { Int }
 import std.realization_schedule { ScheduleWitnessEntry }
 
-data cross_tree_constructor_binding_witness_note: String = "Regression witness for the dag<->v2 FreeMonoid de-fork (dag-v2-defork-audit §3b): with a dag-tree module in the import closure, a bare imported constructor value (Empty) must still bind to v2.std.algebra's coproduct. Before the dag/std/algebra.dag record->coproduct swap this failed at typecheck with undefined variable: Empty - the dag record-of-methods FreeMonoid shadowed the coproduct on the unqualified type name and the variant binder's Disj filter dropped the arms (reproduced 2026-07-05)."
-
 fn build_reversed() -> List<Int> {
   fold_list(xs: [1, 2], empty: Empty, cons: fn(acc, item) {
     list_append(left: [item], right: acc)

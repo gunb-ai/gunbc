@@ -57,8 +57,6 @@ data host_identity_observed_probed_at_scaffold: Disposition = Scaffold {
   }
 }
 
-data host_identity_observed_probed_at_dissolution_trigger: String = "🟡 dissolve-on: host_identity_observed_probed_at — \"date -Iseconds\" authored as String literal handed to shell.Exec.Run (medium-as-string, single home for the timestamp read; gunbc.host_identity_assimilation imports this fn rather than redefining it); DISSOLVES WHEN host_effect orchestration emit models a clock read as a HostEffect intent row, retiring this string leaf."
-
 fn srv1_host_identity_ssh_transport() -> HostEffectTransport {
   SshShell { ssh_host: operator_host_srv1 as NonEmptyStr }
 }
