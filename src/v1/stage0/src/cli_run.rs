@@ -5827,57 +5827,24 @@ fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> b
     false
 }
 
-/// Closure-wide live-host-scan classification (fix for the cross-FILE fail-open found by
-/// eager-ram-612, 2026-07-10): the file-wide scan above enforces its fail-closed contract
-/// only within ONE file's text, so a live read behind an import (entry → helper with
-/// `filesystem_read`) classified as selection-eligible — the same absorbing shape as the
-/// deleted `entry_file_touched` widen, ignorance read from too-narrow a surface and
-/// answered as if certain. The signal scan now walks the entry's import closure over the
-/// SAME dependency-closure abstraction the `entry_file_touched` decision uses
-/// (`facts.adjacency` — edge source isolated for the container.member migration, see
-/// `dependency_edge_source_migration_note`), with a per-file memo so each file is read
-/// and scanned once per shard. A closure member that cannot be read is a typed refusal,
-/// never a silent selection-eligible reclassification.
-fn closure_indicates_live_host_scan_with(
-    entry_path: &str,
-    adjacency: &HashMap<String, Vec<String>>,
-    signal_memo: &mut HashMap<String, bool>,
-    read_member: impl Fn(&str) -> Result<String, String>,
-) -> Result<bool, String> {
-    for member in import_closure_from_adjacency(entry_path, adjacency) {
-        if let Some(&hit) = signal_memo.get(&member) {
-            if hit {
-                return Ok(true);
-            }
-            continue;
-        }
-        let text = read_member(&member)?;
-        let hit = entry_text_indicates_live_host_scan(&text);
-        signal_memo.insert(member, hit);
-        if hit {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-fn closure_indicates_live_host_scan(
-    entry_path: &str,
-    facts: &ModuleGraphFactsLive,
-    signal_memo: &mut HashMap<String, bool>,
-) -> Result<bool, String> {
-    closure_indicates_live_host_scan_with(entry_path, &facts.adjacency, signal_memo, |member| {
-        let abs = workspace_root().join(member);
-        std::fs::read_to_string(&abs).map_err(|e| {
-            format!(
-                "failed to read closure member {member} for host-scaffold classification: \
-                 {e} — a live-tree signal cannot be ruled out for an unreadable file; \
-                 refusing rather than reclassifying selection-eligible"
-            )
-        })
-    })
-}
-
+// DECLARED DEFICIT — cross-file live-scan classification (eager-ram-612's finding,
+// 2026-07-10): the scan above reads only the ENTRY file's text, so a live read behind
+// an import (entry → helper module whose fn calls `filesystem_read`) is invisible and
+// the witness stays selection-eligible. Closing it at text grade was TRIED and refuted
+// by execution (2026-07-10): scanning the entry's import closure for the same signal
+// substrings classifies essentially the whole corpus host-scaffold, because
+// `dag/std/primitives.dag` — in virtually every closure — DECLARES the live intrinsics,
+// and plan-doc prose mentions them; that zeroed every predict-skip (0 skips on an empty
+// diff), which is the §5 corpus-denominated absorbing fallback this channel just had
+// removed, and it broke the pinned empty-diff-skips ruling (2026-07-05). The sound fix
+// is decl-grain call reachability — "does THIS test fn transitively CALL a live
+// intrinsic" — which is the fn-arrow DependencyView machinery (see
+// `entry_file_touched_grain_interim_note` in entry_selection.dag); text cannot separate
+// a call from a declaration or prose. Until then the exposure is bounded the same way
+// every selection deficit is: an undeclared host-scaffold witness that wrongly
+// predict-skips surfaces in the nightly affected-set falsifier as a COUNTED divergence
+// within one cadence window, and authors can classify a witness explicitly with the
+// `floor:host_scaffold` marker at the entry.
 fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
     std::fs::read_to_string(entry).map_err(|e| {
         format!(
@@ -5887,16 +5854,10 @@ fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
     })
 }
 
-fn discovery_rows_include_host_scaffold(
-    rows: &[DiscoveryRow],
-    facts: &ModuleGraphFactsLive,
-) -> Result<bool, String> {
-    let mut signal_memo: HashMap<String, bool> = HashMap::new();
+fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> Result<bool, String> {
     for row in rows {
         let content = read_entry_content_for_host_scaffold(&row.entry)?;
-        if witness_test_fn_uses_live_host_scan(&content, &row.function)
-            || closure_indicates_live_host_scan(&row.entry, facts, &mut signal_memo)?
-        {
+        if witness_test_fn_uses_live_host_scan(&content, &row.function) {
             return Ok(true);
         }
     }
@@ -6380,8 +6341,7 @@ pub fn run_discovery_corpus_with_options(
         None
     };
     let skip_precompute = if skip_enabled {
-        let host_scaffold_corpus =
-            discovery_rows_include_host_scaffold(&rows, &index.module_graph_facts)?;
+        let host_scaffold_corpus = discovery_rows_include_host_scaffold(&rows)?;
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
                 let precompute = if host_scaffold_corpus {
@@ -6654,8 +6614,6 @@ fn run_discovery_rows(
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_file_touched = true;
     let mut current_entry_content: String = String::new();
-    let mut current_entry_closure_live_scan = false;
-    let mut live_scan_signal_memo: HashMap<String, bool> = HashMap::new();
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
@@ -6722,15 +6680,6 @@ fn run_discovery_rows(
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
             current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
-            current_entry_closure_live_scan = if skip_enabled {
-                closure_indicates_live_host_scan(
-                    &row.entry,
-                    &index.module_graph_facts,
-                    &mut live_scan_signal_memo,
-                )?
-            } else {
-                false
-            };
         }
         let function_edited = skip_enabled
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
@@ -6738,8 +6687,8 @@ fn run_discovery_rows(
             });
         let entry_file_touched = skip_enabled && current_entry_file_touched;
         let would_skip = if skip_enabled {
-            let host_scaffold_witness = current_entry_closure_live_scan
-                || witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
+            let host_scaffold_witness =
+                witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
             match floor_runner_ctx {
                 Some(runner_ctx) => {
                     let skip = if host_scaffold_witness {
@@ -7024,67 +6973,6 @@ new file mode 100644
             source,
             "also_pure"
         ));
-    }
-
-    // The cross-FILE discriminating pair (eager-ram-612's finding, 2026-07-10): a live
-    // read behind an IMPORT is invisible to the entry-file-text scan but must classify
-    // the entry host-scaffold via the closure walk. The first assertion documents the
-    // old behavior's hole (entry text alone says clean); the second is the fix.
-    #[test]
-    fn closure_scan_classifies_live_read_behind_import() {
-        let entry_src = "module probe\n\nimport helper { file_gate }\n\ntest fn probe_holds() -> Bool {\n  file_gate(path: \"x\")\n}\n";
-        let helper_src =
-            "module helper\n\nfn file_gate(path: String) -> Bool {\n  filesystem_read(path: path).length() > 0\n}\n";
-        // Hole in the entry-only scan: no signal in the entry's own text.
-        assert!(!super::witness_test_fn_uses_live_host_scan(
-            entry_src,
-            "probe_holds"
-        ));
-        let mut adjacency: im_rc::HashMap<String, Vec<String>> = im_rc::HashMap::new();
-        adjacency.insert("probe_test.dag".to_string(), vec!["helper.dag".to_string()]);
-        let mut memo = im_rc::HashMap::new();
-        let read = |member: &str| -> Result<String, String> {
-            match member {
-                "probe_test.dag" => Ok(entry_src.to_string()),
-                "helper.dag" => Ok(helper_src.to_string()),
-                other => Err(format!("unexpected member {other}")),
-            }
-        };
-        assert!(super::closure_indicates_live_host_scan_with(
-            "probe_test.dag",
-            &adjacency,
-            &mut memo,
-            read
-        )
-        .unwrap());
-        // Clean closure stays kernel-eligible — the walk discriminates, it does not blanket.
-        let clean_helper = "module helper\n\nfn file_gate(path: String) -> Bool { true }\n";
-        let mut memo_clean = im_rc::HashMap::new();
-        let read_clean = |member: &str| -> Result<String, String> {
-            match member {
-                "probe_test.dag" => Ok(entry_src.to_string()),
-                "helper.dag" => Ok(clean_helper.to_string()),
-                other => Err(format!("unexpected member {other}")),
-            }
-        };
-        assert!(!super::closure_indicates_live_host_scan_with(
-            "probe_test.dag",
-            &adjacency,
-            &mut memo_clean,
-            read_clean
-        )
-        .unwrap());
-        // Unreadable member = typed refusal, never a silent selection-eligible answer.
-        let mut memo_err = im_rc::HashMap::new();
-        let read_err =
-            |_member: &str| -> Result<String, String> { Err("io: permission denied".to_string()) };
-        assert!(super::closure_indicates_live_host_scan_with(
-            "probe_test.dag",
-            &adjacency,
-            &mut memo_err,
-            read_err
-        )
-        .is_err());
     }
 
     #[test]
