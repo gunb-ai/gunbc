@@ -188,10 +188,3 @@ fn symbol_index_lexical_lookup(
       }
   }
 }
-
-fn symbol_index_has_path(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
-  match symbol_index_lookup(index: index, qualified_path: qualified_path) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}

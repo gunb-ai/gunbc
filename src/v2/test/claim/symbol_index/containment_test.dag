@@ -24,7 +24,6 @@ import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
   symbol_index_fill_module_root,
-  symbol_index_has_path,
   symbol_index_lexical_lookup,
   symbol_index_lookup
 }
@@ -120,14 +119,20 @@ data si_index: SymbolIndex = symbol_index_fill_module_root(
 )
 
 test fn symbol_index_materializes_type_variant_paths_holds() -> Bool {
-  symbol_index_has_path(
+  match symbol_index_lookup(
     index: si_index,
     qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Mood.Yes")
-  )
-    && symbol_index_has_path(
-      index: si_index,
-      qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.No")
-    )
+  ) {
+    Present { value: _ } =>
+      match symbol_index_lookup(
+        index: si_index,
+        qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.No")
+      ) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn symbol_index_lexical_lookup_unique_variant_holds() -> Bool {
@@ -182,14 +187,20 @@ test fn symbol_index_flat_index_false_accept_discriminator_holds() -> Bool {
   ) {
     Present { value: _ } => false
     Absent =>
-      symbol_index_has_path(
+      match symbol_index_lookup(
         index: si_index,
         qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Mood.Yes")
-      )
-        && symbol_index_has_path(
-          index: si_index,
-          qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.Yes")
-        )
+      ) {
+        Present { value: _ } =>
+          match symbol_index_lookup(
+            index: si_index,
+            qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.Yes")
+          ) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
+      }
   }
 }
 
