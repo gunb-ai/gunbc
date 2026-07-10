@@ -36,7 +36,7 @@ import std.realization_schedule {
   runnable_forbids_corpus_co_residence, ScheduleWitnessEntry, schedule_witness_entry_eq,
   CorpusWitnessKind, ExecutionWitnessKind
 }
-import v2.std.algebra { length, list_snoc_item, skip }
+import v2.std.algebra { length, list_snoc_item, skip, contains }
 import v2.std.collection { List }
 import std.types { Int }
 
@@ -57,6 +57,12 @@ data synthetic_execution_row: ScheduleWitnessEntry = ScheduleWitnessEntry {
 data synthetic_exec_kind_nonexec_path_row: ScheduleWitnessEntry = ScheduleWitnessEntry {
   entry: "dag/test/claim/synthetic_kind_wins_over_path_witness_test.dag",
   function: "synthetic_kind_wins_over_path_witness",
+  kind: ExecutionWitnessKind
+}
+
+data std_logic_behavioral_floor_entry: ScheduleWitnessEntry = ScheduleWitnessEntry {
+  entry: "src/v2/test/claim/execution/std_logic_behavioral_selfhost_witness_test.dag",
+  function: "std_logic_behavioral_selfhost_all_holds",
   kind: ExecutionWitnessKind
 }
 
@@ -233,6 +239,39 @@ fn witness_light_gate_profile_allows_corpus_co_residence() -> Bool {
   !runnable_forbids_corpus_co_residence(r: gate_runnable(g: LayeringImportsGate))
 }
 
+fn witness_std_logic_behavioral_enrolled_in_ci_spec() -> Bool {
+  contains(
+    xs: gunbc_ci_spec.witness_entries,
+    item: std_logic_behavioral_floor_entry,
+    eq: schedule_witness_entry_eq
+  )
+}
+
+fn witness_std_logic_behavioral_in_execution_corpus_batch() -> Bool {
+  match execution_corpus_runnable_for(spec: gunbc_ci_spec) {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: entries, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
+      contains(
+        xs: entries,
+        item: std_logic_behavioral_floor_entry,
+        eq: schedule_witness_entry_eq
+      )
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+fn witness_std_logic_golden_control_not_behavioral_gate() -> Bool {
+  !contains(
+    xs: gunbc_ci_spec.witness_entries,
+    item: ScheduleWitnessEntry {
+      entry: "src/v2/test/claim/execution/std_logic_behavioral_selfhost_witness_test.dag",
+      function: "std_logic_golden_rust_emit_host_holds",
+      kind: ExecutionWitnessKind
+    },
+    eq: schedule_witness_entry_eq
+  )
+}
+
 
 fn falsifier_batch_selection(mode: NodeFrontierSelection) -> Bool {
   match mode {
@@ -308,4 +347,10 @@ test fn falsifier_plan_spawn_width_witnesses() -> Bool {
 test fn ci_floor_honest_width_fold_witnesses() -> Bool {
   witness_corpus_effective_widths_fit_runner_cap() &&
     witness_floor_derived_width_leaves_headroom_at_cap()
+}
+
+test fn ci_floor_std_logic_behavioral_enrollment_witnesses() -> Bool {
+  witness_std_logic_behavioral_enrolled_in_ci_spec()
+    && witness_std_logic_behavioral_in_execution_corpus_batch()
+    && witness_std_logic_golden_control_not_behavioral_gate()
 }

@@ -153,9 +153,18 @@ fn std_logic_semantic_type_emit_accepts() -> Bool {
 
 data std_logic_golden_rust_emit: String = "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum Classical {\n    True,\n    False,\n}\n\npub fn classical_not(a: Classical) -> Classical {\n    match a {\n        Classical::True => Classical::False,\n        Classical::False => Classical::True,\n    }\n}\n\npub fn classical_and(a: Classical, b: Classical) -> Classical {\n    match a {\n        Classical::False => Classical::False,\n        Classical::True => b,\n    }\n}\n\npub fn classical_or(a: Classical, b: Classical) -> Classical {\n    match a {\n        Classical::True => Classical::True,\n        Classical::False => b,\n    }\n}\n"
 
+data std_logic_golden_wrong_and_rust_emit: String = "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum Classical {\n    True,\n    False,\n}\n\npub fn classical_not(a: Classical) -> Classical {\n    match a {\n        Classical::True => Classical::False,\n        Classical::False => Classical::True,\n    }\n}\n\npub fn classical_and(a: Classical, b: Classical) -> Classical {\n    match a {\n        Classical::False => Classical::False,\n        Classical::True => Classical::True,\n    }\n}\n\npub fn classical_or(a: Classical, b: Classical) -> Classical {\n    match a {\n        Classical::True => Classical::True,\n        Classical::False => b,\n    }\n}\n"
+
 fn std_logic_golden_emit_source() -> Outcome<Medium<String>> {
   Accepted {
     value: Medium { carried: std_logic_golden_rust_emit, fidelity: Lossless },
+    diagnostics: None
+  }
+}
+
+fn std_logic_golden_wrong_and_emit_source() -> Outcome<Medium<String>> {
+  Accepted {
+    value: Medium { carried: std_logic_golden_wrong_and_rust_emit, fidelity: Lossless },
     diagnostics: None
   }
 }

@@ -25,6 +25,7 @@ import v2.extdeps.languages.rust_test {
 }
 import v2.test.fixture.std_logic_module {
   std_logic_golden_emit_source,
+  std_logic_golden_wrong_and_emit_source,
   std_logic_module_emit_source
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
@@ -330,6 +331,15 @@ test fn std_logic_behavioral_selfhost_emit_equals_eval_holds() -> Bool {
   )
 }
 
+test fn std_logic_behavioral_selfhost_wrong_emit_refuses_holds() -> Bool {
+  std_logic_truth_table_verdict_is_fail(
+    run: std_logic_truth_table_run_with_source(
+      call_primitive: std_logic_truth_table_call_primitive_correct,
+      source_outcome: std_logic_golden_wrong_and_emit_source()
+    )
+  )
+}
+
 test fn std_logic_behavioral_selfhost_wrong_oracle_refuses_holds() -> Bool {
   std_logic_truth_table_verdict_is_fail(
     run: std_logic_truth_table_run(call_primitive: std_logic_truth_table_call_primitive_wrong)
@@ -342,5 +352,6 @@ test fn std_logic_witness_truth_table_packed_i32_carries_dissolution_trigger() -
 
 test fn std_logic_behavioral_selfhost_all_holds() -> Bool {
   std_logic_behavioral_selfhost_emit_equals_eval_holds()
+    && std_logic_behavioral_selfhost_wrong_emit_refuses_holds()
     && std_logic_behavioral_selfhost_wrong_oracle_refuses_holds()
 }
