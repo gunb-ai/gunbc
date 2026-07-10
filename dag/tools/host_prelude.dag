@@ -1,6 +1,9 @@
 module tools.host_prelude
 
 import extdeps.shell
+import extdeps.cargo_build
+import extdeps.git
+import extdeps.gunbc
 import std.logic { Bool }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -102,7 +105,7 @@ fn toolchain_provision_shell_exec(script: String) -> Bool {
   result.success
 }
 
-data witness_invocation_doc: String = "Shared witness-binary invocation builder. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module owns the ShellProgram construction and its serialize_bash realization, so a transport carries intent only. Single flip point for the emit(intent, Bash) migration (DESIGN 4; docs/plans/shell-emission-model.md 6): when spelling moves to the v2 row pipeline, only this module changes."
+data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Core.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The ShellProgram builders below (witness_bin_program, gunbc_claims_program) remain as the canonical real-program fixtures for the bash row-emit byte-identity oracles in v2.test.claim.bash_program_fold; they dissolve with the sidecar once the pre-runtime windows migrate."
 
 type WitnessBin {
   var_name: String
@@ -142,11 +145,47 @@ fn witness_bin_program(invoke: WitnessBin, prereqs: List<WitnessBin>, args: List
   }
 }
 
+fn witness_bin_release_path(root: String, bin_name: String) -> String {
+  concat(root, concat("/target/release/", bin_name))
+}
+
+fn witness_bin_build_args(bin: WitnessBin) -> List<String> {
+  if bin.features == "" {
+    ["-p", "v1-compiler", "--release", "--bin", bin.bin_name]
+  } else {
+    ["-p", "v1-compiler", "--release", "--features", bin.features, "--bin", bin.bin_name]
+  }
+}
+
+fn witness_bin_ensure_built_typed(root: String, bin: WitnessBin) -> Bool {
+  let path = witness_bin_release_path(root: root, bin_name: bin.bin_name)
+  let present = shell.Test.IsExecutable(path: path)
+  if present.executable {
+    true
+  } else {
+    let built = cargo.Build.BuildInheritEnv(extra_args: witness_bin_build_args(bin: bin))
+    if built.success {
+      let verified = shell.Test.IsExecutable(path: path)
+      verified.executable
+    } else {
+      false
+    }
+  }
+}
+
 fn run_witness_bin_program(invoke: WitnessBin, prereqs: List<WitnessBin>, args: List<String>) -> Bool {
-  let result = shell.Exec.Run(
-    script: serialize_bash(p: witness_bin_program(invoke: invoke, prereqs: prereqs, args: args))
-  )
-  result.success
+  let root = git.Core.Toplevel()
+  let prereqs_ok = fold(prereqs, init: true, f: (acc, b) =>
+    acc && witness_bin_ensure_built_typed(root: root.path, bin: b))
+  if prereqs_ok && witness_bin_ensure_built_typed(root: root.path, bin: invoke) {
+    let result = gunbc.WitnessBin.Run(
+      bin_path: witness_bin_release_path(root: root.path, bin_name: invoke.bin_name),
+      args: args
+    )
+    result.success
+  } else {
+    false
+  }
 }
 
 fn run_witness_bin(var_name: String, bin_name: String, args: List<String>) -> Bool {
@@ -186,11 +225,29 @@ fn gunbc_claims_program(source_roots: List<String>, claims: List<ClaimRun>) -> S
   }
 }
 
-fn run_gunbc_claims(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
-  let result = shell.Exec.Run(
-    script: serialize_bash(p: gunbc_claims_program(source_roots: source_roots, claims: claims))
+fn gunbc_claim_run_args(source_roots: List<String>, claim: ClaimRun) -> List<String> {
+  concat(
+    concat(
+      ["run"],
+      fold(source_roots, init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
+    ),
+    ["--entry", claim.entry, "--function", claim.function, "--claim-run"]
   )
-  result.success
+}
+
+fn run_gunbc_claims(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
+  let root = git.Core.Toplevel()
+  if witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc")) {
+    fold(claims, init: true, f: (acc, c) => {
+      let result = gunbc.WitnessBin.Run(
+        bin_path: witness_bin_release_path(root: root.path, bin_name: "gunbc"),
+        args: gunbc_claim_run_args(source_roots: source_roots, claim: c)
+      )
+      acc && result.success
+    })
+  } else {
+    false
+  }
 }
 
 data witness_invocation_serialize_scaffold: Disposition = Scaffold {

@@ -51,6 +51,19 @@ service shell.Which {
   }
 }
 
+service shell.Test {
+  operation IsExecutable {
+    input { path: FilePath }
+    output { executable: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-x", "{path}"] }
+    exit {
+      0 => Unit "Path is executable"
+      1 => Unit "Path is not executable"
+    }
+  }
+}
+
 service shell.Exec {
   operation Run {
     input { script: String }

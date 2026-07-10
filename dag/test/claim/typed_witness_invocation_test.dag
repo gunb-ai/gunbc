@@ -1,0 +1,40 @@
+module test.claim.typed_witness_invocation
+
+import extdeps.shell
+import extdeps.git
+import extdeps.gunbc
+import tools.host_prelude { run_witness_bin }
+
+test fn typed_git_toplevel_resolves_holds() -> Bool {
+  let result = git.Core.Toplevel()
+  result.path != ""
+}
+
+test fn typed_is_executable_positive_holds() -> Bool {
+  let result = shell.Test.IsExecutable(path: "/bin/sh")
+  result.executable
+}
+
+test fn typed_is_executable_negative_red_control_holds() -> Bool {
+  let result = shell.Test.IsExecutable(path: "/nonexistent/no/such/binary")
+  result.executable == false
+}
+
+test fn typed_witness_bin_run_argv_holds() -> Bool {
+  let result = gunbc.WitnessBin.Run(bin_path: "/bin/true")
+  result.success
+}
+
+test fn typed_witness_bin_run_nonzero_red_control_holds() -> Bool {
+  let result = gunbc.WitnessBin.Run(bin_path: "/bin/false")
+  result.success == false
+}
+
+test fn typed_witness_bin_run_args_splice_holds() -> Bool {
+  let result = gunbc.WitnessBin.Run(bin_path: "/bin/echo", args: ["alpha", "beta"])
+  result.success && result.stdout == "alpha beta"
+}
+
+test fn typed_run_witness_bin_unbuildable_red_control_holds() -> Bool {
+  run_witness_bin(var_name: "NO_SUCH", bin_name: "no_such_witness_bin_zzz", args: []) == false
+}
