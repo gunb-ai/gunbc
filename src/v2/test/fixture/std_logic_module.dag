@@ -93,11 +93,7 @@ fn std_logic_semantic_type_emit_reject_reason() -> Symbol {
           match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
             HeadAbsent => std_logic_emit_partition_empty_reason
             HeadFound { value: decl } =>
-              match emit_semantic_type_decl_rust_generic(
-                name: decl.name,
-                params: Empty,
-                node: decl.semantic
-              ) {
+              match emit_semantic_type_decl_rust(name: decl.name, node: decl.semantic) {
                 Accepted { value: _, diagnostics: _ } => std_logic_emit_accepted_reason
                 Rejected { diagnostics: r } => r.head.reason
               }
