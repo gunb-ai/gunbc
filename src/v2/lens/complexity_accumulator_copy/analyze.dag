@@ -21,13 +21,14 @@ import v2.extdeps.languages.dag {
   parse_subtree_find_production_captured
 }
 import std.algebra { Cons, Empty }
+import v2.compiler.fold_lowering { fold_call_to_loop, fold_family_head }
 import v2.std.algebra { list_append, list_map, list_reverse }
 import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Named, Node, Positional, Symbol }
+import v2.std.node { Edge, Named, Node, Positional, Symbol, loop_carrier_binder_target }
 import v2.std.node_query { find_named_child }
 
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
@@ -149,29 +150,17 @@ fn call_port_readings(call_capture: Node) -> List<PortReading> {
   )
 }
 
-fn is_fold_family_head(sym: Symbol) -> Bool {
-  (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_list_right) || (sym == ^fold_node)
-}
-
-fn step_fn_first_param(fn_literal: Node) -> Optional<Symbol> {
-  match sequence_right_node(cap: fn_literal) {
-    Absent => Absent
-    Present { value: after_kw_fn } =>
-      match sequence_right_node(cap: after_kw_fn) {
-        Absent => Absent
-        Present { value: after_lparen } =>
-          match sequence_left_node(cap: after_lparen) {
-            Absent => Absent
-            Present { value: params } => sequence_left_symbol(cap: params)
-          }
-      }
-  }
-}
+data fold_family_carrier_note: String = "The carrier read is a named-edge lookup on the LOWERED seam Loop (FLAG F): the located fold call desugars via v2.compiler.fold_lowering.fold_call_to_loop and the accumulator binder is the ^loop_carrier_edge target's atom identity - the lens never re-navigates the surface fn_literal capture (that read has exactly one authority, the lowering). A call the seam refuses (named step fn, no fn literal) yields Absent and the ^fold_accumulator_unread refusal stands: the binder is a callee-resolution fact (Stage B), not a within-body fact, and the lens never fabricates a carrier."
 
 fn fold_family_carrier(call_capture: Node) -> Optional<Symbol> {
-  match find_capture(root: call_capture, emitted: ^dag_surface_fn_literal) {
-    Absent => Absent
-    Present { value: fn_literal } => step_fn_first_param(fn_literal: fn_literal)
+  match fold_call_to_loop(fold_call: call_capture) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: seam_loop, diagnostics: _ } =>
+      match loop_carrier_binder_target(children: seam_loop.children) {
+        Found { target: binder } => node_atom_identity_optional(node: binder)
+        Ambiguous => Absent
+        Absent => Absent
+      }
   }
 }
 
@@ -199,7 +188,7 @@ fn analyze(node: Node, carriers: List<Symbol>, iterating: Bool) -> List<Finding>
     Present { value: cap } =>
       match sequence_left_symbol(cap: cap) {
         Present { value: head } =>
-          if is_fold_family_head(sym: head) {
+          if fold_family_head(sym: head) {
             match fold_family_carrier(call_capture: cap) {
               Present { value: carrier } =>
                 analyze_children(
@@ -269,7 +258,7 @@ fn count_fold_sites(n: Node, bound_only: Bool) -> Int {
       match sequence_left_symbol(cap: cap) {
         Absent => 0
         Present { value: head } =>
-          if is_fold_family_head(sym: head) {
+          if fold_family_head(sym: head) {
             if bound_only {
               match fold_family_carrier(call_capture: cap) {
                 Present { value: _ } => 1
