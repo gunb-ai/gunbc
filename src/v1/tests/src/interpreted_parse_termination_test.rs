@@ -81,7 +81,6 @@ fn interpreted_parse_bisect_add_correctness_holds() {
 }
 
 #[test]
-#[ignore = "StampLexeme body migration deferred on Milestone B branch to preserve std/logic match emit; see validate_ingest_staging_stage_bisect unbound controls"]
 fn interpreted_parse_bisect_unbound_reference_rejected() {
     assert_witness_terminates(
         "witness_bisect_unbound_reference_rejected",
