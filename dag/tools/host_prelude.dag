@@ -2,12 +2,14 @@ module tools.host_prelude
 
 import extdeps.shell
 import std.logic { Bool }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.bash.program {
-  ShellStmt, ShellWord,
+  ShellProgram, ShellStmt, ShellWord,
   Command, If, Subshell, AndOr, WithRedir, Exit,
   Lit, VarRef, Concat, CmdSubst,
   AndThen, OrElse, StderrToNull,
-  lit, var_ref, command, assign, test_not_executable
+  lit, var_ref, command, assign, test_not_executable, serialize_bash
 }
 import tools.build_step { BuildArtifact, emit_verifications }
 
@@ -150,4 +152,104 @@ fn ensure_regen_stage0_built() -> List<ShellStmt> {
 fn toolchain_provision_shell_exec(script: String) -> Bool {
   let result = shell.Exec.Run(script: script)
   result.success
+}
+
+data witness_invocation_doc: String = "Shared witness-binary invocation builder. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module owns the ShellProgram construction and its serialize_bash realization, so a transport carries intent only. Single flip point for the emit(intent, Bash) migration (DESIGN 4; docs/plans/shell-emission-model.md 6): when spelling moves to the v2 row pipeline, only this module changes."
+
+type WitnessBin {
+  var_name: String
+  bin_name: String
+  features: String
+}
+
+fn witness_bin(var_name: String, bin_name: String) -> WitnessBin {
+  WitnessBin { var_name: var_name, bin_name: bin_name, features: "" }
+}
+
+fn witness_bin_ensure_stmts(bin: WitnessBin) -> List<ShellStmt> {
+  ensure_bin_built_and_verified_with_features(
+    var_name: bin.var_name,
+    bin_name: bin.bin_name,
+    features: bin.features
+  )
+}
+
+fn witness_bin_invoke_words(invoke: WitnessBin, args: List<String>) -> List<ShellWord> {
+  concat([var_ref(name: invoke.var_name)], map(args, a => lit(text: a)))
+}
+
+fn witness_bin_program(invoke: WitnessBin, prereqs: List<WitnessBin>, args: List<String>) -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      concat(
+        fold(prereqs, init: [], f: (acc, b) => concat(acc, witness_bin_ensure_stmts(bin: b))),
+        witness_bin_ensure_stmts(bin: invoke)
+      ),
+      [
+        command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
+        command(words: witness_bin_invoke_words(invoke: invoke, args: args))
+      ]
+    )
+  }
+}
+
+fn run_witness_bin_program(invoke: WitnessBin, prereqs: List<WitnessBin>, args: List<String>) -> Bool {
+  let result = shell.Exec.Run(
+    script: serialize_bash(p: witness_bin_program(invoke: invoke, prereqs: prereqs, args: args))
+  )
+  result.success
+}
+
+fn run_witness_bin(var_name: String, bin_name: String, args: List<String>) -> Bool {
+  run_witness_bin_program(
+    invoke: witness_bin(var_name: var_name, bin_name: bin_name),
+    prereqs: [],
+    args: args
+  )
+}
+
+type ClaimRun {
+  entry: String
+  function: String
+}
+
+fn gunbc_claim_run_stmt(source_roots: List<String>, claim: ClaimRun) -> ShellStmt {
+  command(words: concat(
+    concat(
+      [var_ref(name: "GUNBC"), lit(text: "run")],
+      fold(source_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+    ),
+    [
+      lit(text: "--entry"), lit(text: claim.entry),
+      lit(text: "--function"), lit(text: claim.function),
+      lit(text: "--claim-run")
+    ]
+  ))
+}
+
+fn gunbc_claims_program(source_roots: List<String>, claims: List<ClaimRun>) -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      ensure_gunbc_built(),
+      map(claims, c => gunbc_claim_run_stmt(source_roots: source_roots, claim: c))
+    )
+  }
+}
+
+fn run_gunbc_claims(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
+  let result = shell.Exec.Run(
+    script: serialize_bash(p: gunbc_claims_program(source_roots: source_roots, claims: claims))
+  )
+  result.success
+}
+
+data witness_invocation_serialize_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.bash.program",
+    decl_name: "serialize_bash",
+    field: WholeDeclaration
+  }
 }
