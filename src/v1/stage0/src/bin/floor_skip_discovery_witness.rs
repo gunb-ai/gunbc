@@ -90,6 +90,16 @@ fn fixture_line(text: &str, needle: &str) -> i64 {
         .unwrap_or_else(|| panic!("discriminator fixture missing line containing `{needle}`"))
 }
 
+/// The `git diff --name-status -z` value for a single MODIFIED file, coherent with the unified
+/// hunk injected on the other channel: the status letter `M`, a NUL, the path, a trailing NUL.
+/// The separators are code-point 0 (`\0`), matching `git.dag`'s field separator
+/// (`git_diff_name_status_field_separator = from_code_point(0)`) split — NOT a tab. Without this
+/// the name-status channel falls through to the real checkout diff, a non-hermetic two-channel
+/// read; injecting both channels keeps the probe measuring the fixture, not the working tree.
+fn injected_name_status_modify(rel_path: &str) -> String {
+    format!("M\0{rel_path}\0")
+}
+
 fn run_injected_diff_roster(
     rel_path: &str,
     line: i64,
@@ -97,6 +107,8 @@ fn run_injected_diff_roster(
 ) -> DiscoverySummary {
     let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// synthetic touch\n");
     let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
+    let _name_status =
+        EnvVarGuard::set("GUNBC_CI_DIFF_NAME_STATUS", &injected_name_status_modify(rel_path));
     run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
         &[],
@@ -116,6 +128,8 @@ fn run_injected_diff_roster_with_mode(
 ) -> DiscoverySummary {
     let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// synthetic touch\n");
     let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
+    let _name_status =
+        EnvVarGuard::set("GUNBC_CI_DIFF_NAME_STATUS", &injected_name_status_modify(rel_path));
     run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
         &[],
