@@ -5,6 +5,7 @@ import v2.compiler.normalize { NormalizedTree }
 import v2.compiler.resolve {
   DeclaredBinding,
   Namespace,
+  namespace_bindings_augment_from_module_atoms,
   ResolvedTree,
   resolve_with_namespace,
   try_edge_declared_binding
@@ -517,7 +518,10 @@ fn namespace_for_subject(
                 Accepted {
                   value: AdmittedSubject {
                     namespace: Namespace {
-                      bindings: b,
+                      bindings: namespace_bindings_augment_from_module_atoms(
+                        root: subject_module_root,
+                        bindings: b
+                      ),
                       canonical_symbols: base.canonical_symbols
                     },
                     subject_root: subject_module_root
