@@ -322,6 +322,24 @@ fn body_lower_typed_param_edge(param_capture: Node) -> Optional<Edge> {
     Absent => Absent
   }
 }
+}
+
+fn body_lower_collect_param_edges(param_capture: Node) -> List<Edge> {
+  match body_lower_typed_param_edge(param_capture: param_capture) {
+    Present { value: edge } =>
+      match find_named_child(root: param_capture, name: ^grammar_repeat_element_node_projection) {
+        Accepted { value: suffix, diagnostics: _ } =>
+          list_append(left: [edge], right: body_lower_collect_param_edges(param_capture: suffix))
+        Rejected { diagnostics: _ } => [edge]
+      }
+    Absent =>
+      match find_named_child(root: param_capture, name: ^grammar_repeat_element_node_projection) {
+        Accepted { value: suffix, diagnostics: _ } =>
+          body_lower_collect_param_edges(param_capture: suffix)
+        Rejected { diagnostics: _ } => Empty
+      }
+  }
+}
 
 fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
   match parse_production_captured_child_optional(node: param_list) {
@@ -349,22 +367,6 @@ fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
     Absent => Absent
   }
 }
-
-fn body_lower_collect_param_edges(param_capture: Node) -> List<Edge> {
-  match body_lower_typed_param_edge(param_capture: param_capture) {
-    Present { value: edge } =>
-      match find_named_child(root: param_capture, name: ^grammar_repeat_element_node_projection) {
-        Accepted { value: suffix, diagnostics: _ } =>
-          list_append(left: [edge], right: body_lower_collect_param_edges(param_capture: suffix))
-        Rejected { diagnostics: _ } => [edge]
-      }
-    Absent =>
-      match find_named_child(root: param_capture, name: ^grammar_repeat_element_node_projection) {
-        Accepted { value: suffix, diagnostics: _ } =>
-          body_lower_collect_param_edges(param_capture: suffix)
-        Rejected { diagnostics: _ } => Empty
-      }
-  }
 }
 
 fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
