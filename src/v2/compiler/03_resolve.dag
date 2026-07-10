@@ -142,7 +142,14 @@ fn harvest_direct_atom_binding(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
   )
 }
 
-data resolve_variant_visibility_dissolution_trigger: String = "🟡 dissolve-on: interim per-module Disj variant visibility — a bare variant name (e.g. `True` in `match a { True => .. }`) is made resolvable ONLY when exactly one type in the subject module declares it (module-unique); a name declared by >=2 types stays unbound and REFUSES (fail-closed, no silent mis-bind). Dissolves when patterns-via-scrutinee (namespace-only-resolution, rolled into the final self-host fan-out) adds scrutinee-type disambiguation of the ambiguous residue; at that point resolution reads the containment tree via SymbolIndex, not this per-module count."
+data resolve_variant_visibility_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.resolve",
+    decl_name: "harvest_unique_disj_variant_bindings",
+    field: WholeDeclaration
+  }
+}
 
 fn harvest_variant_count_of(counts: Map<Symbol, Int>, sym: Symbol) -> Int {
   match map_get(counts, sym) {
