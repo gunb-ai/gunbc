@@ -18,11 +18,13 @@ import v2.compiler.translate {
 }
 import v2.lens.application { subterm_at }
 import v2.extdeps.languages.dag {
+  dag_lex_token_symbol,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
   parse_production_emitted_identity_optional
 }
+import v2.std.grammar { node_atom_identity_optional }
 import std.algebra { Empty }
 import v2.std.algebra { any, fold_list, is_empty, list_append, list_snoc_item }
 import v2.std.collection {
@@ -250,29 +252,44 @@ fn partition_is_grammar_projection_symbol(sym: Symbol) -> Bool {
     || (sym == ^grammar_optional_element_node_projection)
 }
 
-fn partition_first_positional_atom_identity(root: Node) -> Optional<Symbol> {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(
-        root.children,
-        init: Absent,
-        f: fn(acc, edge) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match edge.label {
-                Positional =>
-                  match edge.target.kind {
-                    TypeNode { connective: Atom { identity: id } } =>
-                      optional_present(value: id)
-                    _ => acc
-                  }
-                _ => acc
-              }
+fn partition_type_decl_is_keyword_atom(sym: Symbol) -> Bool {
+  (sym == ^dag_token_kw_type)
+    || (sym == ^dag_token_kw_data)
+    || (sym == ^dag_token_kw_fn)
+}
+
+fn partition_type_decl_binding_atom_search(root: Node) -> Optional<Symbol> {
+  match dag_resolve_preserve_module_metadata_subtree(node: root) {
+    true => Absent
+    false => {
+      let found_here = match node_atom_identity_optional(node: root) {
+        Present { value: id } =>
+          if partition_type_decl_is_keyword_atom(sym: id) || dag_lex_token_symbol(sym: id) {
+            Absent
+          } else {
+            optional_present(value: id)
           }
-        }
-      )
-    _ => Absent
+        Absent => Absent
+      }
+      match found_here {
+        Present { value: _ } => found_here
+        Absent =>
+          match root.kind {
+            TypeNode { connective: Conj } =>
+              fold(
+                root.children,
+                init: Absent,
+                f: fn(acc, edge) {
+                  match acc {
+                    Present { value: _ } => acc
+                    Absent => partition_type_decl_binding_atom_search(root: edge.target)
+                  }
+                }
+              )
+            _ => Absent
+          }
+      }
+    }
   }
 }
 
@@ -280,7 +297,7 @@ fn partition_type_decl_surface_name(root: Node) -> Optional<Symbol> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == ^dag_surface_type_decl {
-        partition_first_positional_atom_identity(root: root)
+        partition_type_decl_binding_atom_search(root: root)
       } else {
         Absent
       }
