@@ -290,8 +290,9 @@ fn partition_carrier_identities_in_semantic(semantic: Node) -> List<Symbol> {
   )
 }
 
-fn partition_program_structural_value_carriers(root: Node) -> List<Symbol> {
-  let _root = root
+data partition_structural_value_carriers_dissolution_trigger: String = "🟡 dissolve-on: the whole-program emit applies use-site ownership to the module-surface wrapper node (carrier ^dag_surface_module), which is always by-value (a module is never reference-wrapped) — this returns the fixed set of such structural surface carriers. Currently one entry (module surface); expand as further synthetic surface carriers surface. DISSOLVES WHEN the emit stops running use-site ownership over non-value structural surfaces (06_translate scopes the ownership fold to genuine type carriers), at which point no structural-surface value-carrier enrollment is needed."
+
+fn partition_program_structural_value_carriers() -> List<Symbol> {
   [^dag_surface_module]
 }
 
@@ -324,7 +325,7 @@ fn partition_derive_target_for_emit(
       left: partition_user_type_atom_names_from_decls(decls: decls),
       right: partition_user_type_carrier_identities_from_decls(decls: decls)
     ),
-    right: partition_program_structural_value_carriers(root: partition.ambient.root)
+    right: partition_program_structural_value_carriers()
   )
   bind_outcome(
     o: target_model_augment_use_site_ownership_catalog(
