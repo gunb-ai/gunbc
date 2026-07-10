@@ -436,6 +436,10 @@ fn run_witnesses(
     );
     for function in &group.functions {
         run_claim_timed(&ctx, &closure_subject, function, any_failed, timings);
+        // The eval-call memo's eviction scope is the witness frame, not this
+        // shared per-entry ctx — ctx-lifetime retention of argument+result
+        // values across witnesses is byte-unbounded (20GiB-class kills).
+        v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
     }
     Ok(())
 }

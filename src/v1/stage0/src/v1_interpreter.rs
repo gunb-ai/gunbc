@@ -872,6 +872,22 @@ pub fn set_eval_call_memo_enabled(ctx: &InterpContext, enabled: bool) {
     ctx.eval_call_memo.borrow_mut().enabled = enabled;
 }
 
+/// Frame exit for the eval-call memo: the memo's eviction scope is the WITNESS
+/// frame, not the ctx. Batch surfaces (claim_batch, claim_executor) share one
+/// ctx across an entry's witnesses for the resolve-side ReferenceTier share —
+/// but the memo stores full argument+result VALUES, so ctx-lifetime retention
+/// across N witnesses is byte-unbounded by construction (measured 2026-07-10:
+/// single witness plateaus ~3.4GiB, six witnesses in one ctx climb past
+/// ~20GiB to SIGKILL). Callers invoke this after each claim function; the map
+/// and keepalives drain, counters stay CUMULATIVE so receipts remain honest.
+/// Cross-witness serving is an outer-frame promotion that must arrive as a
+/// conscious provider row with byte-bounded admission — never a default.
+pub fn eval_call_memo_frame_exit(ctx: &InterpContext) {
+    let mut m = ctx.eval_call_memo.borrow_mut();
+    m.map.clear();
+    m.keepalive_fns.clear();
+}
+
 #[derive(Default, Clone)]
 pub struct MutationCounters {
     pub map_insert_calls: u64,

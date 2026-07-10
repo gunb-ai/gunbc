@@ -515,6 +515,9 @@ fn run_shared_entry_claims(
             set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
             let outcome = run_claim(&ctx, function);
+            // Witness frame exit: the memo must not retain values across
+            // witnesses sharing this ctx (byte-unbounded, 20GiB-class kills).
+            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
             let wall_nanos = claim_start.elapsed().as_nanos();
             let rn = if first {
                 first = false;
@@ -576,6 +579,9 @@ fn run_memo_shared_claims(
             set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
             let outcome = run_claim(ctx, function);
+            // Witness frame exit — this memoized ctx outlives whole entry
+            // groups, so per-witness release matters here most of all.
+            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(ctx);
             let wall_nanos = claim_start.elapsed().as_nanos();
             let rn = if first {
                 first = false;
