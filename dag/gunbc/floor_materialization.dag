@@ -58,11 +58,11 @@ fn gate_consumer_site(g: Gate) -> String {
   }
 }
 
-data floor_prelude_consumer_sites_note: String = "The two fixed prelude entries every floor process resolves against the shared index (mirrors the Rust FLOOR_RUNNER_ENTRY / ENTRY_SELECTION_ENTRY constants in cli_run.rs). Not a fixture roster copy — a genuinely fixed pair, per merry-moth's 'plus your two prelude entries'. FOLLOW-ON: promote these to single-authority .dag constants consumed by both the host and this row."
+data floor_prelude_consumer_sites_note: String = "The two fixed prelude entries every floor process resolves against the shared index (mirrors the Rust FLOOR_RUNNER_ENTRY / ENTRY_SELECTION_ENTRY constants in cli_run.rs). Not a fixture roster copy — a genuinely fixed pair, per merry-moth's 'plus your two prelude entries'. FOLLOW-ON (priority raised by #6432 review, 2026-07-10): promote these to single-authority .dag constants consumed by both the host and this row — the hand-copied pair had already DIVERGED (entry #2 was v2.workflow.affected_set_selection, NOT the host's ENTRY_SELECTION_ENTRY = v2.lens.affected_set.entry_selection; corrected here after review), which is exactly the parallel-representation drift a single authority would make unwritable (§3)."
 
 data floor_prelude_consumer_sites: List<String> = [
   "src/v2/workflow/affected_set_floor_runner.dag",
-  "src/v2/workflow/affected_set_selection.dag"
+  "src/v2/lens/affected_set/entry_selection.dag"
 ]
 
 fn floor_index_build_consumer_sites(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> List<String> {
