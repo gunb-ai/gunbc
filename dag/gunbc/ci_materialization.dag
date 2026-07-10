@@ -117,6 +117,16 @@ fn workflow_uses_steps_count(w: Workflow) -> Int {
   w.jobs |> fold(init: 0, f: (acc, j) => acc + job_uses_steps_count(job: j))
 }
 
+data ci_run_step_nature_claim_note: String = "Run-step natures are CLAIMS, not derivations — counted (operator ruling, 2026-07-10: hardcoded shell scripts get no affordances; run-steps are supposed to be modeled as typed intents and EMITTED — docs/plans/shell-emission-model.md, where the ci_workflow RunSteps are slice 4 of the pre-runtime census). Until that slice lands, every run-step script in this workflow is an authored bash string, so NO nature in job_run_demands is read off a modeled effect row: FreshEffect is a rostered claim (resolved by projection at gate time) and IdempotentEffect is the weakest default. This count pins the whole claimed-nature surface as residue: a NEW raw-script step must consciously bump the pin — it cannot slide in with a silently defaulted nature — and the slice-4 migration becomes a countable ratchet. Dissolve-on: run-steps authored as typed intents whose effect row supplies the nature; the count then returns to zero and the pin becomes a wall against new raw scripts. Rejected alternative (same ruling): a per-step declared-natures roster — an affordance that makes the raw-string state comfortable, a second parallel ledger over scripts the shell-emission plan already governs."
+
+fn job_run_steps_count(job: Job) -> Int {
+  job.steps |> filter(s => step_is_run(s: s)) |> count()
+}
+
+fn workflow_run_steps_count(w: Workflow) -> Int {
+  w.jobs |> fold(init: 0, f: (acc, j) => acc + job_run_steps_count(job: j))
+}
+
 data ci_cost_floor_exempt_step_names_note: String = "Cost-floor roster BY STEP NAME, resolved to script identities against the live workflow at gate time (never a stale copied string): the two prelude snippets run in every job by construction — plural sites, workflow-isolation LCA — but each is a sub-second environment write whose store-tier discharge would cost more than the recompute it saves. The acceptance is TYPED (AcceptedBelowCostFloor), so the roster is countable and reviewable; an entry here is a claim that the script is below the cost floor, not an escape from the ladder."
 
 data ci_cost_floor_exempt_step_names: List<String> = [
