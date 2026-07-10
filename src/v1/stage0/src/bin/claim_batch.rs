@@ -603,6 +603,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                 &mut any_failed,
                 &mut timings,
             );
+            // Witness frame exit on the single-entry fast path too — this is
+            // the exact path the 6-witness 20GiB-kill recipe runs (the memo
+            // must not retain values across witnesses sharing this ctx).
+            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
         }
         if stats_requested {
             print_interp_stats(&ctx, flatten_baseline);
