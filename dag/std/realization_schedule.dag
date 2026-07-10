@@ -52,13 +52,9 @@ type RealizationObjective {
   goals: List<AxisGoal>
 }
 
-data witness_kind_note: String = "WitnessKind is the declared kind fact for enrolled witnesses (design: docs/plans/interface-summary-declared-use-arity.md section 4). v0 carries exactly the two kinds with a live scheduling consumer: the corpus/execution partition in v2.workflow.ci_floor_plan (formerly a path-prefix convention, now a declared fact). Further kinds (lens-unit, scanner) land only when a consumer projects them; the host-scaffold/live-tree axis stays on the floor:host_scaffold marker authority (v2.workflow.affected_set_floor_runner) and is NOT a kind. Partition consumers must discriminate by exhaustive match, never by equality: a missed kind stamp is Value-absent at runtime, and an exhaustive match refuses loudly where an eq would silently return false."
-
 type WitnessKind
   = CorpusWitnessKind
   | ExecutionWitnessKind
-
-data witness_span_note: String = "WitnessSpan declares which pipeline seam(s) a witness asserts (producer/consumer module-path pair grain). SpanUndeclared is the honest default for the existing population - typed absent, never fabricated. Consumers today: span well-formedness witnessing over the enrollment roster (gunbc.commit_workflow). The derivability/factorability refusal (a span witness derivable from the seam basis is redundant) waits on seam contracts (InterfaceSummary contract slots) and a segment-witness basis; until then span is a declared fact plus well-formedness, nothing more."
 
 type WitnessSeam {
   producer: String
@@ -197,8 +193,6 @@ type NodeFrontierSelection
   | SelectionApplied
   | SelectionPredictOnly
 
-data node_frontier_selection_note: String = "Affected-set selection mode for a discovery batch (signed design: docs/plans/affected-set-differential-falsifier.md, 2026-07-05). SelectionOff: no diff observation, every row runs. SelectionApplied: would-skip is computed AND applied (unaffected rows skip assumed-green). SelectionPredictOnly: would-skip is computed and RECORDED per row but every row still runs cold — the falsifier cadence compares predictions against cold verdicts; a predicted-unaffected row that runs red is a counted divergence naming a missing selection edge. Formerly a Bool (skip_unaffected_node_frontier), which could not express predict-without-apply; two Bools would conflate the state space."
-
 fn node_frontier_selection_eq(left: NodeFrontierSelection, right: NodeFrontierSelection) -> Bool {
   match left {
     SelectionOff => match right {
@@ -232,8 +226,6 @@ type Runnable
       profile: RunnableResourceProfile
     }
   | RunnableKernelWorkload { fused_op_count: Int }
-
-data runnable_kernel_workload_dissolution_trigger: String = "dissolve-on: execution lane attaches extdeps.languages kernel_surface rows to RunnableKernelWorkload when fused_op_count alone is insufficient; op_count is structural on substrate (not a string-label nickname)."
 
 type Schedule = List<List<Runnable>>
 

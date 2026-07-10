@@ -111,66 +111,12 @@ pub fn ancestry_cache_sharing_dissolution_trigger() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn symbol_index_single_authority_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟡 dissolve-on: SymbolIndex + Scope replace TypeEnv.ancestry_str_bindings materialization — see docs/plans/type-env-single-authority-design.md §4–§5; gated on import-chain sub-quadratic scaling receipt (reference_carrier_witness_test) + whole-corpus compile-clean wall-clock baseline.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnvCache {
     pub deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub cycle_set_str: Rc<HashMap<String, bool>>,
     pub variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
-}
-
-pub fn type_env_compositional_authority_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟡 dissolve-on: compositional TypeEnv.parents + ancestry_str_bindings rewire passes in stage0 — ground in v2 std.type_env when PerformanceReceipt subsumes type_env_work_count_profiling_dissolution_trigger.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn type_env_profiling_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn type_env_work_count_profiling_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟡 dissolve-on: build_type_env + merge_type_env_cache + rewire pass counters — fold into PerformanceReceipt at realization-measurement-loop Phase 0.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn type_env_cache_parallel_repr_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟡 dissolve-on: TypeEnvCache String-keyed str_bindings and cycle_set_str parallel to TypeEnv Int-keyed bindings and recursive_type_set — fold into single authority at v2 regen.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn type_env_cache_key_determinism_authority() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Cache-key determinism for resolved_graph disk tier: resolved_graph_cache::encode_cache_payload applies sort_json_value at serialization boundary (not merge_type_env_cache / build_type_env hot paths). B2 de-fork: Rust seed must match this .dag plain map_merge authority.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn visible_bindings_invariant() -> String {
@@ -189,15 +135,6 @@ pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
         cycle_set_str: v1_rt::rc_empty_map::<String, bool>(),
         variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     })
-}
-
-pub fn type_env_counter_dissolution() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The 2026-07-04 use-site inference pathology instrument (env-amplification counters) dissolved with the pathology it measured: the record_* statement calls and their stub fns were deleted (they were also the only corpus instances of a statement-then-expression block the Rust emitter mis-renders — that emitter deficiency is ledgered with the emit-stage work). 2026-07-06: the getter stubs, their hand-injected AtomicU64 realization in the generated seed, the phase_profile heartbeat reads, and the counter-equality witness tests are deleted together (operator ruling: counter witnesses are a parallel representation). The live scaling witnesses are the time-based import-chain tests in src/v1/tests/src/type_env_scope_chain_test.rs.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
