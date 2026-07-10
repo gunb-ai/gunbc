@@ -82,6 +82,56 @@ fn any_port_carries_carrier(ports: List<PortReading>, carriers: List<Symbol>) ->
   })
 }
 
+type LetBindingFact
+  = BindsFresh
+  | BindsComputed
+
+type LetBinding {
+  name: Symbol
+  fact: LetBindingFact
+}
+
+data let_binding_note: String = "The within-body definition closure (Stage A: def edges decide aliasing). A let binder whose RHS closes to a CARRIER joins the carriers list at bind time - transitive closure by construction, so `let g = acc  let h = g` proves h - and needs no carrier here. BindsFresh (RHS a pure literal) and BindsComputed (RHS a computed expression) substitute the port reading via resolve_port_reading BEFORE classification, so classify_call and the copied-port lattice stay untouched. A binder whose RHS is a bare name that closes to NOTHING (unbound in scope) records NO binding: its uses still refuse ^copied_port_name_may_alias - the closure only ever DECIDES, never defaults clean. Reader today: the analyze traversal's let-spine arm over surface captures (binding-name lexeme stamping, dag_grammar_let_expr); repoints to Bind definition edges when stmt-chain lowering lands, deleting the surface read."
+
+fn no_let_binding_fact() -> Optional<LetBindingFact> {
+  Absent
+}
+
+fn some_let_binding_fact(fact: LetBindingFact) -> Optional<LetBindingFact> {
+  Present { value: fact }
+}
+
+fn let_binding_fact_for(name: Symbol, bindings: List<LetBinding>) -> Optional<LetBindingFact> {
+  fold(bindings, init: no_let_binding_fact(), f: fn(acc, b) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if b.name == name {
+          some_let_binding_fact(fact: b.fact)
+        } else {
+          no_let_binding_fact()
+        }
+    }
+  })
+}
+
+fn resolve_port_reading(reading: PortReading, bindings: List<LetBinding>) -> PortReading {
+  match reading {
+    PortBareName { name: n } =>
+      match let_binding_fact_for(name: n, bindings: bindings) {
+        Present { value: fact } =>
+          match fact {
+            BindsFresh => PortPureLiteral
+            BindsComputed => PortComputedExpression
+          }
+        Absent => reading
+      }
+    PortPureLiteral => reading
+    PortComputedExpression => reading
+    PortMissing => reading
+  }
+}
+
 fn classify_copied_port(at: Node, reading: PortReading, carriers: List<Symbol>) -> Optional<Finding> {
   match reading {
     PortBareName { name: n } =>

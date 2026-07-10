@@ -11,6 +11,7 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   parse_subtree_find_production_captured
 }
+import v2.std.algebra { list_snoc_item }
 import v2.std.cardinality {
   Bounded,
   Multiplicity,
@@ -22,7 +23,15 @@ import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node {
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  loop_carrier_binder_target,
+  node_rebuild,
+  well_formed
+}
 import v2.std.text { String }
 
 data fold_lowering_witness_note: String = "Grounds the un-forked fold->Loop desugaring (v2.compiler.fold_lowering) by execution on REAL source, end-to-end through the census ingest (tokenize -> parse_module -> normalize). A surface fold parses as an ordinary call; after the StampLexeme grammar fix its callee carries its NAME (^fold) as an atom identity and the collection likewise (^xs) — the survival sub-facts are the RED control that a grammar regression (head stamped as the token class) breaks. The located fold-call subtree (the first primary_expr capture — the outermost fn-body expression) desugars to the canonical seam Loop, and the kept loop_multiplicity derives PROVEN termination from the fold-iteration measure — the same real derivation the foundation's loop witnesses use, now reached from a real parsed fold call rather than a hand-built loop. Two fail-closed red controls: a non-fold call (head ^g) refuses (never desugars a foreign call), and a fold call carrying no fn-literal iteration body refuses (never fabricates a loop). This is the desugaring the whole-tree body producer will run on every located fold call once corpus walking is affordable; the shape it emits is exactly what the accumulator-copy rule (M3) will key on."
@@ -124,6 +133,52 @@ test fn fold_call_lowers_to_terminating_loop() -> Bool {
         Accepted { value: loop, diagnostics: _ } =>
           is_proven_termination(m: loop_multiplicity(n: loop))
         Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn lowered_fixture_loop() -> Optional<Node> {
+  match ingest_and_locate(source_text: fold_snippet, file: ^fold_probe_file) {
+    Absent => Absent
+    Present { value: call } =>
+      match fold_call_to_loop(fold_call: call) {
+        Accepted { value: loop, diagnostics: _ } => Present { value: loop }
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+test fn lowered_loop_binds_carrier_binder() -> Bool {
+  match lowered_fixture_loop() {
+    Absent => false
+    Present { value: loop } =>
+      match loop_carrier_binder_target(children: loop.children) {
+        Found { target: binder } =>
+          match node_atom_identity_optional(node: binder) {
+            Present { value: sym } => sym == ^acc
+            Absent => false
+          }
+        Ambiguous => false
+        Absent => false
+      }
+  }
+}
+
+test fn duplicate_carrier_edge_is_malformed() -> Bool {
+  match lowered_fixture_loop() {
+    Absent => false
+    Present { value: loop } =>
+      match loop_carrier_binder_target(children: loop.children) {
+        Found { target: binder } =>
+          !well_formed(n: node_rebuild(
+            n: loop,
+            children: list_snoc_item(
+              xs: loop.children,
+              item: Edge { label: Named { name: ^loop_carrier_edge }, target: binder }
+            )
+          ))
+        Ambiguous => false
+        Absent => false
       }
   }
 }
