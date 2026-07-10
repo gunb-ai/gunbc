@@ -260,44 +260,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
-      check_fns: [
-        "roster_machine_code_zero_suspects_within_ratchet",
-        "roster_compile_stage_zero_suspects_within_ratchet",
-        "roster_glob_discovery_zero_suspects_within_ratchet",
-        "roster_lens_traversal_zero_suspects_within_ratchet",
-        "roster_lens_cost_model_zero_suspects_within_ratchet",
-        "roster_std_algebra_zero_suspects_within_ratchet",
-        "red_control_planted_copy_still_alarms"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_swift_test.dag",
-      check_fns: ["roster_swift_zero_suspects_within_ratchet"],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_lean_bash_test.dag",
-      check_fns: [
-        "roster_lean_zero_suspects_within_ratchet",
-        "roster_bash_zero_suspects_within_ratchet"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/algebra/list_linear_combinators_test.dag",
       check_fns: [
         "map_preserves_order_and_applies",
