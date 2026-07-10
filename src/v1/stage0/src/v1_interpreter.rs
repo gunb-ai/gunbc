@@ -2837,6 +2837,9 @@ fn witness_violates(diagnostic: Value, ctx: &InterpContext) -> Value {
 }
 
 fn parse_table_materialization_allows_memo(ctx: &InterpContext, table: &Value) -> bool {
+    // SCAFFOLD (§7 seed-retained): extdeps/realization/parse_table_memo.dag
+    // parse_table_memo_seed_handler_dissolution_trigger — gates ParseTableMemo on
+    // Memoize until reconcile-as-lookup-path / cached_stage_governed runtime dispatch.
     let table_fields = match table {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
         _ => return false,
