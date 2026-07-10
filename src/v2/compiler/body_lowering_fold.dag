@@ -122,7 +122,22 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
               } else {
                 optional_present(value: body_lower_param_ref_atom(identity: id))
               }
-            Absent => Absent
+            Absent =>
+              match sugar_sequence_pair_optional(node: node) {
+                Present { value: pair } => body_lower_operand_ref_optional(node: pair.left)
+                Absent =>
+                  match parse_production_captured_child_optional(node: node) {
+                    Present { value: captured } =>
+                      body_lower_operand_ref_optional(node: captured)
+                    Absent =>
+                      fold(node.children, init: Absent, f: fn(acc, e) {
+                        match acc {
+                          Present { value: _ } => acc
+                          Absent => body_lower_operand_ref_optional(node: e.target)
+                        }
+                      })
+                  }
+              }
           }
       }
   }
@@ -402,26 +417,69 @@ fn body_lower_unwrap_optional_element(node: Node) -> Node {
   }
 }
 
-fn body_lower_param_list_comma_spine_optional(param_list: Node) -> Optional<Node> {
-  match parse_production_captured_child_optional(node: param_list) {
+fn body_lower_param_list_comma_spine_optional(param_list_captured: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: param_list_captured) {
     Absent => Absent
-    Present { value: captured } =>
-      match sugar_sequence_pair_optional(node: captured) {
+    Present { value: pair } =>
+      match sugar_sequence_pair_optional(node: pair.right) {
         Absent => Absent
-        Present { value: pair } =>
-          match sugar_sequence_pair_optional(node: pair.right) {
-            Absent => Absent
-            Present { value: inner } =>
-              Present {
-                value: body_lower_unwrap_optional_element(node: inner.left)
-              }
+        Present { value: inner } =>
+          Present {
+            value: body_lower_unwrap_optional_element(node: inner.left)
           }
       }
   }
 }
 
+fn body_lower_return_type_after_arrow_walk(node: Node) -> Optional<Node> {
+  let stripped = body_lower_unwrap_optional_element(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Present { value: pair } =>
+      match body_lower_sequence_head_is_arrow(node: pair.left) {
+        true =>
+          match parse_subtree_find_production_captured(
+            root: pair.right,
+            emitted: ^dag_surface_type_expr
+          ) {
+            ParseSubtreeFound { captured: type_expr } =>
+              body_lower_type_atom_from_expr(node: type_expr)
+            ParseSubtreeAbsent =>
+              match parse_production_emitted_identity_optional(node: pair.right) {
+                Present { value: emitted } =>
+                  match emitted == ^dag_surface_type_expr {
+                    true =>
+                      match parse_production_captured_child_optional(node: pair.right) {
+                        Present { value: captured } =>
+                          body_lower_type_atom_from_expr(node: captured)
+                        Absent => Absent
+                      }
+                    false => body_lower_type_atom_from_expr(node: pair.right)
+                  }
+                Absent => body_lower_type_atom_from_expr(node: pair.right)
+              }
+          }
+        false =>
+          match body_lower_return_type_after_arrow_walk(node: pair.left) {
+            Present { value: found } => Present { value: found }
+            Absent => body_lower_return_type_after_arrow_walk(node: pair.right)
+          }
+      }
+    Absent =>
+      match parse_production_captured_child_optional(node: stripped) {
+        Present { value: captured } => body_lower_return_type_after_arrow_walk(node: captured)
+        Absent =>
+          fold(stripped.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_return_type_after_arrow_walk(node: e.target)
+            }
+          })
+      }
+  }
+}
+
 fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
-  match body_lower_param_list_comma_spine_optional(param_list: param_list) {
+  match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => Absent
     Present { value: comma_spine } =>
       let edges = body_lower_collect_param_edges(param_capture: comma_spine)
@@ -500,21 +558,13 @@ fn body_lower_type_expr_after_arrow(node: Node) -> Optional<Node> {
 }
 
 fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
-  match body_lower_type_expr_after_arrow(node: captured) {
-    Present { value: type_expr } => body_lower_type_atom_from_expr(node: type_expr)
-    Absent => Absent
-  }
+  body_lower_return_type_after_arrow_walk(node: captured)
 }
 
 fn body_lower_body_from_fn_captured(captured: Node) -> Optional<Node> {
   match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } =>
-      let stripped = body_lower_unwrap_surface_shell(
-        node: match parse_production_captured_child_optional(node: body) {
-          Present { value: body_inner } => body_inner
-          Absent => body
-        }
-      )
+      let stripped = body_lower_unwrap_surface_shell(node: body)
       match body_lower_try_infix_transform(node: stripped) {
         Present { value: transform } => Present { value: transform }
         Absent =>

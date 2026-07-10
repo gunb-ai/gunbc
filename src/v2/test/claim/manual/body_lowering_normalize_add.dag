@@ -19,6 +19,7 @@ import v2.extdeps.languages.dag {
 import v2.std.collection { Absent, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node {
   Arrow,
   Atom,
@@ -125,6 +126,46 @@ fn body_lowering_parsed_fn_decl() -> Optional<Node> {
         Rejected { diagnostics: _ } => Absent
         Accepted { value: artifact, diagnostics: _ } =>
           body_lower_find_fn_decl(root: artifact.tree)
+      }
+  }
+}
+
+fn body_lower_has_arrow_token(root: Node) -> Bool {
+  match node_atom_identity_optional(node: root) {
+    Present { value: id } => id == ^dag_token_arrow
+    Absent =>
+      fold(root.children, init: false, f: fn(acc, e) {
+        if acc {
+          true
+        } else {
+          body_lower_has_arrow_token(root: e.target)
+        }
+      })
+  }
+}
+
+fn body_lowering_fn_body_subtree_holds() -> Bool {
+  match body_lowering_parsed_fn_decl() {
+    Absent => false
+    Present { value: fn_decl } =>
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } =>
+          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
+            ParseSubtreeFound { captured: _ } => true
+            ParseSubtreeAbsent => false
+          }
+        Absent => false
+      }
+  }
+}
+
+fn body_lowering_arrow_token_holds() -> Bool {
+  match body_lowering_parsed_fn_decl() {
+    Absent => false
+    Present { value: fn_decl } =>
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } => body_lower_has_arrow_token(root: captured)
+        Absent => false
       }
   }
 }
