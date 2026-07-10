@@ -31,6 +31,7 @@ import v2.std.compilers.sugar {
   classify_sugar,
   sugar_fold_coproduct_pipe_chain
 }
+import v2.compiler.body_lowering_fold { body_lower_finish }
 import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
@@ -136,10 +137,14 @@ fn normalize_node(n: Node) -> Outcome<Node> {
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: folded, diagnostics: cd } =>
-      match normalize_production_coproduct_fold(n: n, folded: folded, cd: cd) {
+      match body_lower_finish(n: n, folded: folded, cd: cd) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: after_prod, diagnostics: cd1 } =>
-          normalize_sugar_finish(n: n, folded: after_prod, cd: cd1)
+        Accepted { value: after_body, diagnostics: cd0 } =>
+          match normalize_production_coproduct_fold(n: n, folded: after_body, cd: cd0) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: after_prod, diagnostics: cd1 } =>
+              normalize_sugar_finish(n: n, folded: after_prod, cd: cd1)
+          }
       }
   }
 }

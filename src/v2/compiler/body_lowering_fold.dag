@@ -1,0 +1,524 @@
+module v2.compiler.body_lowering_fold
+
+import std.algebra { Empty }
+import v2.compiler.fold_lowering { fold_call_to_loop }
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  dag_binding_branded_atom_identity,
+  dag_lex_token_symbol,
+  dag_resolve_preserve_module_metadata_subtree,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  parse_subtree_find_production_captured
+}
+import v2.std.algebra { list_append, list_snoc_item }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.compilers.body_lowering { lower_binary_infix }
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.diagnostic {
+  Diagnostic,
+  Diagnostics,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected,
+  rejected_with_pending
+}
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.node_query { find_named_child }
+
+data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A): row-keyed dispatch on parse_production_emitted_identity_optional — never an allowlist of grammar projection symbol names. Pass-through productions unwrap via parse_production_captured_child_optional; core shapes (Arrow, ComputationNode behaviors) are positive-shape terminals. Semantic desugars (fold-family) delegate to v2.compiler.fold_lowering. Placement: normalize post-child-fold."
+
+fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn body_lower_is_core_substrate(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Arrow } => true
+    ComputationNode { behavior: _ } => true
+    _ => false
+  }
+}
+
+fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_expr)
+    || (emitted == ^dag_surface_binary_expr)
+    || (emitted == ^dag_surface_unary_expr)
+    || (emitted == ^dag_surface_postfix_expr)
+    || (emitted == ^dag_surface_block_expr)
+    || (emitted == ^dag_surface_fn_body)
+    || (emitted == ^dag_surface_stmt)
+    || (emitted == ^dag_surface_stmt_seq)
+    || (emitted == ^dag_surface_arg)
+}
+
+fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_module)
+    || (emitted == ^dag_surface_module_header)
+    || (emitted == ^dag_surface_import_decl)
+    || (emitted == ^dag_surface_qualified_name)
+    || (emitted == ^dag_surface_top_level_item)
+    || (emitted == ^dag_surface_generic_params)
+    || (emitted == ^dag_surface_param_list)
+    || (emitted == ^dag_surface_type_expr)
+    || (emitted == ^dag_surface_type_decl)
+    || (emitted == ^dag_surface_data_decl)
+    || (emitted == ^dag_surface_import_block)
+}
+
+fn body_lower_param_ref_atom(identity: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: []
+  )
+}
+
+fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if body_lower_is_pass_through_emitted(emitted: emitted) {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_operand_ref_optional(node: captured)
+          Absent => Absent
+        }
+      } else if emitted == ^dag_surface_primary_expr {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_operand_ref_optional(node: captured)
+          Absent => Absent
+        }
+      } else {
+        Absent
+      }
+    Absent =>
+      match dag_binding_branded_atom_identity(node: node) {
+        Present { value: binding } =>
+          Present { value: body_lower_param_ref_atom(identity: binding) }
+        Absent =>
+          match node_atom_identity_optional(node: node) {
+            Present { value: id } =>
+              if dag_lex_token_symbol(sym: id) {
+                Absent
+              } else {
+                Present { value: body_lower_param_ref_atom(identity: id) }
+              }
+            Absent => Absent
+          }
+      }
+  }
+}
+
+fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } =>
+      if dag_lex_token_symbol(sym: id) {
+        Present {
+          value: node_synthetic(
+            kind: TypeNode { connective: Atom { identity: id } },
+            children: []
+          )
+        }
+      } else {
+        Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn body_lower_unwrap_captured(shell: Node) -> Optional<Node> {
+  parse_production_captured_child_optional(node: shell)
+}
+
+fn body_lower_try_infix_from_sequence(node: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: node) {
+    Absent => Absent
+    Present { value: pair } =>
+      match body_lower_operand_ref_optional(node: pair.left) {
+        Absent => Absent
+        Present { value: left } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Present { value: tail } =>
+              match body_lower_operator_atom_optional(node: tail.left) {
+                Absent => Absent
+                Present { value: operator } =>
+                  match body_lower_operand_ref_optional(node: tail.right) {
+                    Absent => Absent
+                    Present { value: right } =>
+                      Present {
+                        value: lower_binary_infix(left: left, operator: operator, right: right)
+                      }
+                  }
+              }
+            Absent =>
+              match find_named_child(root: pair.right, name: ^grammar_repeat_element_node_projection) {
+                Accepted { value: repeat_elem, diagnostics: _ } =>
+                  match sugar_sequence_pair_optional(node: repeat_elem) {
+                    Present { value: rep } =>
+                      match body_lower_operator_atom_optional(node: rep.left) {
+                        Absent => Absent
+                        Present { value: operator } =>
+                          match body_lower_operand_ref_optional(node: rep.right) {
+                            Absent => Absent
+                            Present { value: right } =>
+                              Present {
+                                value: lower_binary_infix(
+                                  left: left,
+                                  operator: operator,
+                                  right: right
+                                )
+                              }
+                          }
+                      }
+                    Absent => Absent
+                  }
+                Rejected { diagnostics: _ } => Absent
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
+  match body_lower_try_infix_from_sequence(node: node) {
+    Present { value: transform } => Present { value: transform }
+    Absent =>
+      match parse_production_captured_child_optional(node: node) {
+        Present { value: captured } => body_lower_try_infix_transform(node: captured)
+        Absent =>
+          fold(node.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_try_infix_transform(node: e.target)
+            }
+          })
+      }
+  }
+}
+
+fn body_lower_try_fold_loop(node: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_primary_expr {
+        match fold_call_to_loop(fold_call: node) {
+          Accepted { value: loop_node, diagnostics: _ } => Present { value: loop_node }
+          Rejected { diagnostics: _ } => Absent
+        }
+      } else if body_lower_is_pass_through_emitted(emitted: id) {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_try_fold_loop(node: captured)
+          Absent => Absent
+        }
+      } else {
+        Absent
+      }
+    Absent =>
+      fold(node.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lower_try_fold_loop(node: e.target)
+        }
+      })
+  }
+}
+
+fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_type_expr {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_type_atom_from_expr(node: captured)
+          Absent => Absent
+        }
+      } else if id == ^dag_surface_qualified_name {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } =>
+            match node_atom_identity_optional(node: captured) {
+              Present { value: sym } =>
+                Present {
+                  value: node_synthetic(
+                    kind: TypeNode { connective: Atom { identity: sym } },
+                    children: []
+                  )
+                }
+              Absent => body_lower_type_atom_from_expr(node: captured)
+            }
+          Absent => Absent
+        }
+      } else {
+        Absent
+      }
+    Absent =>
+      match dag_binding_branded_atom_identity(node: node) {
+        Present { value: binding } =>
+          Present {
+            value: node_synthetic(
+              kind: TypeNode { connective: Atom { identity: binding } },
+              children: []
+            )
+          }
+        Absent =>
+          match node_atom_identity_optional(node: node) {
+            Present { value: sym } =>
+              if dag_lex_token_symbol(sym: sym) {
+                Absent
+              } else {
+                Present {
+                  value: node_synthetic(
+                    kind: TypeNode { connective: Atom { identity: sym } },
+                    children: []
+                  )
+                }
+              }
+            Absent => Absent
+          }
+      }
+  }
+}
+
+fn body_lower_typed_param_edge(param_capture: Node) -> Optional<Edge> {
+  match sugar_sequence_pair_optional(node: param_capture) {
+    Present { value: pair } =>
+      match body_lower_operand_ref_optional(node: pair.left) {
+        Absent => Absent
+        Present { value: binder } =>
+          match node_atom_identity_optional(node: binder) {
+            Present { value: binding } =>
+              match sugar_sequence_pair_optional(node: pair.right) {
+                Present { value: after_colon } =>
+                  match body_lower_type_atom_from_expr(node: after_colon.right) {
+                    Present { value: type_node } =>
+                      Present {
+                        value: Edge {
+                          label: Named { name: binding },
+                          target: type_node
+                        }
+                      }
+                    Absent => Absent
+                  }
+                Absent => Absent
+              }
+            Absent => Absent
+          }
+    Absent => Absent
+  }
+}
+
+fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: param_list) {
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Present { value: pair } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Present { value: inner } =>
+              let edges = body_lower_collect_param_edges(param_capture: inner.left)
+              if count(edges) == 0 {
+                Present {
+                  value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+                }
+              } else {
+                Present {
+                  value: node_synthetic(
+                    kind: TypeNode { connective: Conj },
+                    children: edges
+                  )
+                }
+              }
+            Absent => Absent
+          }
+        Absent => Absent
+    Absent => Absent
+  }
+}
+
+fn body_lower_collect_param_edges(param_capture: Node) -> List<Edge> {
+  match body_lower_typed_param_edge(param_capture: param_capture) {
+    Present { value: edge } =>
+      match find_named_child(root: param_capture, name: ^grammar_repeat_element_node_projection) {
+        Accepted { value: suffix, diagnostics: _ } =>
+          list_append(left: [edge], right: body_lower_collect_param_edges(param_capture: suffix))
+        Rejected { diagnostics: _ } => [edge]
+      }
+    Absent =>
+      match find_named_child(root: param_capture, name: ^grammar_repeat_element_node_projection) {
+        Accepted { value: suffix, diagnostics: _ } =>
+          body_lower_collect_param_edges(param_capture: suffix)
+        Rejected { diagnostics: _ } => Empty
+      }
+  }
+}
+
+fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_type_expr) {
+    ParseSubtreeFound { captured: type_expr } => body_lower_type_atom_from_expr(node: type_expr)
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn body_lower_body_from_fn_captured(captured: Node) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
+    ParseSubtreeFound { captured: body } =>
+      match parse_production_captured_child_optional(node: body) {
+        Present { value: body_inner } =>
+          match body_lower_try_infix_transform(node: body_inner) {
+            Present { value: transform } => Present { value: transform }
+            Absent =>
+              match body_lower_try_fold_loop(node: body_inner) {
+                Present { value: loop_node } => Present { value: loop_node }
+                Absent => Absent
+              }
+          }
+        Absent => Absent
+      }
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+    Present { value: captured } =>
+      match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
+        ParseSubtreeAbsent =>
+          outcome_rejected(
+            d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+          )
+        ParseSubtreeFound { captured: param_list } =>
+          match body_lower_domain_from_param_list(param_list: param_list) {
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+              )
+            Present { value: domain } =>
+              match body_lower_body_from_fn_captured(captured: captured) {
+                Absent =>
+                  outcome_rejected(
+                    d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+                  )
+                Present { value: body } =>
+                  match body_lower_return_type_from_fn_captured(captured: captured) {
+                    Absent =>
+                      outcome_rejected(
+                        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+                      )
+                    Present { value: return_type } =>
+                      outcome_accepted(
+                        value: node_synthetic(
+                          kind: TypeNode { connective: Arrow },
+                          children: [
+                            Edge { label: Positional, target: domain },
+                            Edge { label: Positional, target: return_type },
+                            Edge { label: Positional, target: return_type },
+                            Edge { label: Named { name: ^arrow_body_edge }, target: body }
+                          ]
+                        )
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_unwrap_pass_through(shell: Node, emitted: Symbol) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+    Present { value: captured } => outcome_accepted(value: captured)
+  }
+}
+
+fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+    Present { value: captured } =>
+      match body_lower_try_infix_transform(node: captured) {
+        Present { value: transform } => outcome_accepted(value: transform)
+        Absent =>
+          match body_lower_try_fold_loop(node: captured) {
+            Present { value: loop_node } => outcome_accepted(value: loop_node)
+            Absent =>
+              match body_lower_operand_ref_optional(node: captured) {
+                Present { value: ref } => outcome_accepted(value: ref)
+                Absent =>
+                  outcome_rejected(
+                    d: body_lower_diagnostic(
+                      reason: ^body_lowering_reason_unsupported_form,
+                      n: shell
+                    )
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_production_emitted(shell: Node, emitted: Symbol) -> Outcome<Node> {
+  if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
+    outcome_accepted(value: shell)
+  } else if emitted == ^dag_surface_fn_decl {
+    body_lower_fn_decl_to_arrow(shell: shell)
+  } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+    body_lower_unwrap_pass_through(shell: shell, emitted: emitted)
+  } else if emitted == ^dag_surface_primary_expr {
+    body_lower_primary_expr(shell: shell)
+  } else {
+    outcome_rejected(
+      d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+    )
+  }
+}
+
+fn body_lower_after_children(folded: Node) -> Outcome<Node> {
+  if body_lower_is_core_substrate(node: folded) {
+    outcome_accepted(value: folded)
+  } else if dag_resolve_preserve_module_metadata_subtree(node: folded) {
+    outcome_accepted(value: folded)
+  } else {
+    match parse_production_emitted_identity_optional(node: folded) {
+      Absent => outcome_accepted(value: folded)
+      Present { value: emitted } => body_lower_production_emitted(shell: folded, emitted: emitted)
+    }
+  }
+}
+
+fn body_lower_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
+  match body_lower_after_children(folded: folded) {
+    Rejected { diagnostics: r } =>
+      Rejected {
+        diagnostics: rejected_with_pending(pending: cd, rejected: r)
+      }
+    Accepted { value: lowered, diagnostics: d } =>
+      Accepted {
+        value: lowered,
+        diagnostics: cd
+      }
+  }
+}
