@@ -1,0 +1,150 @@
+module v2.test.fixture.std_logic_module
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.infer { infer }
+import v2.compiler.program_partition { partition_user_semantic_types_from_root }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_rust_generic }
+import v2.compiler.self_host.compiler_closure_emit {
+  emit_compiler_import_closure_from_ingest
+}
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.rust { rust_target_model }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { list_head, HeadFound, HeadAbsent }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data std_logic_emit_accepted_reason: Symbol = ^std_logic_emit_accepted
+data std_logic_emit_assemble_reject_reason: Symbol = ^std_logic_emit_assemble_reject
+data std_logic_emit_infer_reject_reason: Symbol = ^std_logic_emit_infer_reject
+data std_logic_emit_partition_empty_reason: Symbol = ^std_logic_emit_partition_empty
+data std_logic_emit_semantic_reject_reason: Symbol = ^std_logic_emit_semantic_reject
+
+data std_logic_module_path: String = "dag/std/logic.dag"
+
+data std_logic_module_src: String = "module std.logic\n\ntype Classical = True | False\n\nfn classical_not(a: Classical) -> Classical {\n    match a {\n        True => False\n        False => True\n    }\n}\n\nfn classical_and(a: Classical, b: Classical) -> Classical {\n    match a {\n        False => False\n        True => b\n    }\n}\n\nfn classical_or(a: Classical, b: Classical) -> Classical {\n    match a {\n        True => True\n        False => b\n    }\n}\n"
+
+data std_logic_module_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^std_logic_module_artifact,
+  file_path: std_logic_module_path
+}
+
+fn std_logic_module_ingest() -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: std_logic_module_src, fidelity: Lossless },
+      artifact: std_logic_module_artifact,
+      compilation_unit: ^std_logic_module_cu,
+      source_root: DagTree
+    },
+    tail: Empty
+  }
+}
+
+fn std_logic_module_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^std, tail: Cons { head: ^logic, tail: Empty } }
+    },
+    imports: Empty
+  }
+}
+
+fn std_logic_module_emit_source() -> Outcome<Medium<String>> {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      Accepted { value: receipt.source, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn std_logic_module_emit_reject_reason() -> Symbol {
+  match std_logic_module_emit_source() {
+    Accepted { value: _, diagnostics: _ } => std_logic_emit_accepted_reason
+    Rejected { diagnostics: r } => r.head.reason
+  }
+}
+
+fn std_logic_semantic_type_emit_reject_reason() -> Symbol {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => r.head.reason
+        Accepted { value: tree, diagnostics: _ } =>
+          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
+            HeadAbsent => std_logic_emit_partition_empty_reason
+            HeadFound { value: decl } =>
+              match emit_semantic_type_decl_rust_generic(
+                name: decl.name,
+                params: Empty,
+                node: decl.semantic
+              ) {
+                Accepted { value: _, diagnostics: _ } => std_logic_emit_accepted_reason
+                Rejected { diagnostics: r } => r.head.reason
+              }
+          }
+      }
+  }
+}
+
+fn std_logic_module_emit_accepts() -> Bool {
+  match std_logic_module_emit_source() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn std_logic_semantic_type_emit_accepts() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: tree, diagnostics: _ } =>
+          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
+            HeadFound { value: decl } =>
+              match emit_semantic_type_decl_rust_generic(
+                name: decl.name,
+                params: Empty,
+                node: decl.semantic
+              ) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            HeadAbsent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data std_logic_golden_rust_emit: String = "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum Classical {\n    True,\n    False,\n}\n\npub fn classical_not(a: Classical) -> Classical {\n    match a {\n        Classical::True => Classical::False,\n        Classical::False => Classical::True,\n    }\n}\n\npub fn classical_and(a: Classical, b: Classical) -> Classical {\n    match a {\n        Classical::False => Classical::False,\n        Classical::True => b,\n    }\n}\n\npub fn classical_or(a: Classical, b: Classical) -> Classical {\n    match a {\n        Classical::True => Classical::True,\n        Classical::False => b,\n    }\n}\n"
+
+fn std_logic_golden_emit_source() -> Outcome<Medium<String>> {
+  Accepted {
+    value: Medium { carried: std_logic_golden_rust_emit, fidelity: Lossless },
+    diagnostics: None
+  }
+}
