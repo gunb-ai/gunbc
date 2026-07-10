@@ -425,12 +425,30 @@ fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView
   }
 }
 
+data gunbc_ci_corpus_discovery_batch_isolation_note: String = "Discovery-flip batch isolation (run 29120615071 receipt): with SelectionApplied the discovery corpus resolves on the main thread (heavy_whole_tree_resolve memo path) while light gate units in the same antichain batch spawn at gunbc_ci_plan_spawn_width — two resolve-groups in one batch, so discovery's whole-tree index and gate shard threads stack even though spawn_width_cap pins the corpus shard count to 1. Resource edges from floor_corpus_node to every gate when discovery_scan_dirs is non-empty isolate the corpus to its own batch so gates start only after discovery completes and walk_memo holds the shared index. Dissolve-on: resolver graph-major shrinks discovery per-shard below the gate envelope so co-residence is safe again."
+
+fn floor_discovery_flip_corpus_serializes_before_gates_edges(spec: CiSpec) -> List<DependencyView> {
+  if length(xs: spec.discovery_scan_dirs) > 0 {
+    fold(spec.gates, init: [], f: fn(acc, g) {
+      list_snoc_item(
+        xs: acc,
+        item: floor_resource_depends_on(source: floor_corpus_node, dependent: gate_node(g: g))
+      )
+    })
+  } else {
+    []
+  }
+}
+
 fn floor_resource_dependencies(spec: CiSpec) -> List<DependencyView> {
   concat(
-    floor_corpus_exclusion_resource_edges(spec: spec),
+    floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec),
     concat(
-      floor_heavy_resolve_chain_resource_edges(spec: spec),
-      floor_regen_emit_artifact_resource_edges(spec: spec)
+      floor_corpus_exclusion_resource_edges(spec: spec),
+      concat(
+        floor_heavy_resolve_chain_resource_edges(spec: spec),
+        floor_regen_emit_artifact_resource_edges(spec: spec)
+      )
     )
   )
 }
@@ -610,6 +628,14 @@ fn witness_ci_corpus_discovery_serializes_at_width_one() -> Bool {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: cap, profile: _ } =>
       (length(xs: dirs) > 0) && (cap == 1)
     _ => false
+  }
+}
+
+fn witness_floor_discovery_flip_serializes_gates_after_corpus(spec: CiSpec) -> Bool {
+  if length(xs: spec.discovery_scan_dirs) == 0 {
+    true
+  } else {
+    length(xs: floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec)) == length(xs: spec.gates)
   }
 }
 
