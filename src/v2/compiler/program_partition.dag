@@ -815,9 +815,30 @@ fn partition_module_emit_fold_step(
       target: edge.target
     ) {
       Present { value: _ } =>
-        PartitionModuleEmitFoldAcc {
-          partial: acc.partial,
-          deferred: list_snoc_item(xs: acc.deferred, item: edge)
+        match acc.partial {
+          Rejected { diagnostics: r } =>
+            PartitionModuleEmitFoldAcc { partial: Rejected { diagnostics: r }, deferred: acc.deferred }
+          Accepted { value: partial, diagnostics: pd } =>
+            match partition_module_emit_item_edge(
+              tree: tree,
+              module_root: module_root,
+              edge: edge,
+              target: target
+            ) {
+              Rejected { diagnostics: r } =>
+                PartitionModuleEmitFoldAcc { partial: Rejected { diagnostics: r }, deferred: acc.deferred }
+              Accepted { value: optional_medium, diagnostics: cd } =>
+                PartitionModuleEmitFoldAcc {
+                  partial: Accepted {
+                    value: partition_module_emit_append_optional(
+                      partial: partial,
+                      optional_medium: optional_medium
+                    ),
+                    diagnostics: pd
+                  },
+                  deferred: acc.deferred
+                }
+            }
         }
       Absent =>
         PartitionModuleEmitFoldAcc {

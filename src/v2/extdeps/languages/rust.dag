@@ -234,6 +234,7 @@ import v2.std.algebra {
   fold_list,
   fold_list_node,
   fold_list_right,
+  is_empty,
   list_append,
   list_snoc_item,
   ordered_ring_node,
@@ -2556,23 +2557,73 @@ fn rust_coproduct_field_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
   )
 }
 
-fn rust_coproduct_variant_surface_named(vname: Symbol, payload: Node) -> Outcome<Node> {
+fn rust_coproduct_edge_is_grammar_metadata(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: sym } =>
+      (sym == ^grammar_production_identity_node_projection)
+        || (sym == ^grammar_production_captured_node_projection)
+    Positional => false
+  }
+}
+
+fn rust_coproduct_nullary_variant_conj(payload: Node) -> Bool {
   match payload.kind {
     TypeNode { connective: Conj } =>
-      match payload.children {
-        Empty => outcome_accepted(value: rust_decl_surface_variant_nullary(name: vname))
-        Cons { head: _, tail: _ } =>
-          bind_outcome(
-            o: rust_coproduct_field_surfaces(edges: payload.children),
-            f: fn(fields) {
-              outcome_accepted(value: rust_decl_surface_variant_payload(name: vname, fields: fields))
+      if is_empty(xs: payload.children) {
+        true
+      } else {
+        fold(
+          payload.children,
+          init: true,
+          f: fn(ok, edge) {
+            if !ok {
+              false
+            } else if rust_coproduct_edge_is_grammar_metadata(edge: edge) {
+              true
+            } else {
+              match edge.label {
+                Positional =>
+                  match edge.target.kind {
+                    TypeNode { connective: Atom { identity: _ } } => true
+                    TypeNode { connective: Conj } =>
+                      rust_coproduct_nullary_variant_conj(payload: edge.target)
+                    _ => false
+                  }
+                Named { name: _ } => false
+              }
             }
-          )
+          }
+        )
       }
-    _ =>
-      outcome_rejected(
-        d: rust_signature_diagnostic(reason: ^rust_coproduct_variant_payload_not_record, node: payload)
-      )
+    _ => false
+  }
+}
+
+fn rust_coproduct_variant_is_nullary_payload(payload: Node) -> Bool {
+  match payload.kind {
+    TypeNode { connective: Atom { identity: _ } } => true
+    TypeNode { connective: Conj } => rust_coproduct_nullary_variant_conj(payload: payload)
+    _ => false
+  }
+}
+
+fn rust_coproduct_variant_surface_named(vname: Symbol, payload: Node) -> Outcome<Node> {
+  if rust_coproduct_variant_is_nullary_payload(payload: payload) {
+    outcome_accepted(value: rust_decl_surface_variant_nullary(name: vname))
+  } else {
+    match payload.kind {
+      TypeNode { connective: Conj } =>
+        bind_outcome(
+          o: rust_coproduct_field_surfaces(edges: payload.children),
+          f: fn(fields) {
+            outcome_accepted(value: rust_decl_surface_variant_payload(name: vname, fields: fields))
+          }
+        )
+      _ =>
+        outcome_rejected(
+          d: rust_signature_diagnostic(reason: ^rust_coproduct_variant_payload_not_record, node: payload)
+        )
+    }
   }
 }
 
