@@ -286,6 +286,8 @@ fn partition_first_type_decl_ident(root: Node) -> Optional<Symbol> {
                     TypeNode { connective: Atom { identity: id } } =>
                       if partition_type_decl_is_keyword_atom(sym: id) {
                         acc
+                      } else if partition_is_grammar_projection_symbol(sym: id) {
+                        acc
                       } else if id == ^dag_token_ident {
                         acc
                       } else {
@@ -296,11 +298,7 @@ fn partition_first_type_decl_ident(root: Node) -> Optional<Symbol> {
                     _ => acc
                   }
                 Named { name: sym } =>
-                  if partition_is_grammar_projection_symbol(sym: sym) {
-                    partition_first_type_decl_ident(root: edge.target)
-                  } else {
-                    acc
-                  }
+                  partition_first_type_decl_ident(root: edge.target)
                 _ => acc
               }
           }

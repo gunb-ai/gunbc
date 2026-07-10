@@ -16,7 +16,7 @@ import v2.compiler.source_authority {
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { list_head, HeadFound, HeadAbsent }
+import v2.std.algebra { list_head, HeadFound, HeadAbsent, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
@@ -122,6 +122,68 @@ fn std_logic_module_emit_text() -> String {
 
 fn std_logic_produced_emit_matches_golden() -> Bool {
   std_logic_module_emit_text() == std_logic_golden_rust_emit
+}
+
+fn std_logic_produced_emit_len_matches_golden() -> Bool {
+  length(xs: std_logic_module_emit_text()) == length(xs: std_logic_golden_rust_emit)
+}
+
+fn std_logic_semantic_type_name_is_classical() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: tree, diagnostics: _ } =>
+          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
+            HeadAbsent => false
+            HeadFound { value: decl } => decl.name == ^Classical
+          }
+      }
+  }
+}
+
+fn std_logic_semantic_type_name_is_dag_token_ident() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: tree, diagnostics: _ } =>
+          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
+            HeadAbsent => false
+            HeadFound { value: decl } => decl.name == ^dag_token_ident
+          }
+      }
+  }
+}
+
+fn std_logic_semantic_type_name_is_grammar_captured() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: tree, diagnostics: _ } =>
+          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
+            HeadAbsent => false
+            HeadFound { value: decl } =>
+              decl.name == ^grammar_production_captured_node_projection
+          }
+      }
+  }
 }
 
 fn std_logic_semantic_type_emit_accepts() -> Bool {
