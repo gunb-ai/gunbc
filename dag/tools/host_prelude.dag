@@ -97,58 +97,6 @@ fn ensure_discover_source_root_ingest_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
 }
 
-fn ensure_v1_src_dag_parse_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "V1_SRC_DAG_PARSE", bin_name: "v1_src_dag_parse")
-}
-
-fn ensure_effects_rest_transport_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "EFFECTS_REST_TRANSPORT_WITNESS", bin_name: "effects_rest_transport_witness")
-}
-
-fn ensure_infer_semantics_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "INFER_SEMANTICS_WITNESS", bin_name: "infer_semantics_witness")
-}
-
-fn ensure_auth_declared_but_unwired_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "AUTH_DECLARED_BUT_UNWIRED_WITNESS", bin_name: "auth_declared_but_unwired_witness")
-}
-
-fn ensure_bootstrap_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "BOOTSTRAP_WITNESS", bin_name: "bootstrap_witness")
-}
-
-fn ensure_floor_skip_discovery_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "FLOOR_SKIP_DISCOVERY_WITNESS", bin_name: "floor_skip_discovery_witness")
-}
-
-fn ensure_claim_batch_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "CLAIM_BATCH", bin_name: "claim_batch")
-}
-
-fn ensure_interp_recorded_fixture_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "INTERP_RECORDED_FIXTURE_WITNESS", bin_name: "interp_recorded_fixture_witness")
-}
-
-fn ensure_diagnostics_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "DIAGNOSTICS_WITNESS", bin_name: "diagnostics_witness")
-}
-
-fn ensure_dag_collect_fingerprint_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "DAG_COLLECT_FINGERPRINT_WITNESS", bin_name: "dag_collect_fingerprint_witness")
-}
-
-fn ensure_parse_witness_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified_with_features(
-    var_name: "PARSE_WITNESS",
-    bin_name: "parse_witness",
-    features: "text_lookup_work_counter"
-  )
-}
-
-fn ensure_regen_stage0_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "REGEN_STAGE0", bin_name: "regen_stage0")
-}
-
 fn toolchain_provision_shell_exec(script: String) -> Bool {
   let result = shell.Exec.Run(script: script)
   result.success
