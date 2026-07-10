@@ -231,3 +231,36 @@ fn union_view_result_equals_private_resolve_in_every_order() {
         }
     }
 }
+
+/// PROBE (temporary): models the width==1 discovery path in `run_discovery_corpus`.
+/// The executor prelude resolves the PLAN entry on the main thread
+/// (`claim_executor.rs:1863`), then — because `width == 1` returns `run_discovery_rows(..)`
+/// on that SAME thread instead of spawning a shard — discovery reads
+/// `typecheck_compute_count()` as `roster_closure_nodes`. The counter is a cumulative
+/// thread-local that production never resets, so the reported number is
+/// |closure(plan) ∪ closure(roster)|, NOT "this shard's union closure".
+#[test]
+fn probe_width_one_roster_closure_is_contaminated_by_prelude() {
+    let fx = Fixture::new("width-one-probe");
+
+    // What `roster_closure_nodes` CLAIMS to report: the roster's own cold closure.
+    let idx_cold = build_multi_entry_index(&fx.roots);
+    reset_typecheck_compute_count();
+    resolve_entry_with_index(&idx_cold, &fx.entry_b).expect("cold roster resolve");
+    let roster_closure = typecheck_compute_count();
+
+    // What it ACTUALLY reports at width==1: prelude (plan entry) then roster, same thread,
+    // same process-shared index, no reset between.
+    let idx = build_multi_entry_index(&fx.roots);
+    reset_typecheck_compute_count(); // stands in for process start
+    resolve_entry_with_index(&idx, &fx.entry_a).expect("prelude: plan entry");
+    resolve_entry_with_index(&idx, &fx.entry_b).expect("discovery: roster rows");
+    let reported = typecheck_compute_count();
+
+    eprintln!("PROBE roster_closure(cold)={roster_closure} reported(width==1)={reported}");
+    assert_eq!(
+        reported, roster_closure,
+        "width==1 roster_closure_nodes must equal the roster's own closure, but it reports \
+         the whole thread's cumulative union (plan closure included)"
+    );
+}
