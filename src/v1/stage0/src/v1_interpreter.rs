@@ -828,6 +828,12 @@ pub fn eval_recompute_trace_enabled() -> bool {
 // serve — semantics identical), and the receipt discloses hits/misses so a
 // disabled memo is visible as memo_hits=0, never silently assumed working.
 struct EvalCallMemo {
+    // Per-ctx realization switch (read from GUNBC_EVAL_MEMO at ctx
+    // construction, not a process-wide latch): provider-attribution tests pin
+    // the outer eval-frame provider off on their own ctx so an inner
+    // provider's hit counters stay discriminating; semantics are identical
+    // either way (recompute instead of serve).
+    enabled: bool,
     map: std::collections::HashMap<EvalRecomputeKey, Vec<(Vec<(Option<String>, Value)>, Value)>>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
     // (same discipline as EvalRecomputeTrace.keepalive_fns).
@@ -840,6 +846,7 @@ struct EvalCallMemo {
 impl Default for EvalCallMemo {
     fn default() -> Self {
         EvalCallMemo {
+            enabled: eval_call_memo_env_default(),
             map: std::collections::HashMap::new(),
             keepalive_fns: Vec::new(),
             hits: 0,
@@ -851,13 +858,18 @@ impl Default for EvalCallMemo {
 
 const EVAL_CALL_MEMO_ENTRY_CAP: usize = 1_000_000;
 
-pub fn eval_call_memo_enabled() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| {
-        std::env::var("GUNBC_EVAL_MEMO")
-            .map(|v| v != "0")
-            .unwrap_or(true)
-    })
+fn eval_call_memo_env_default() -> bool {
+    std::env::var("GUNBC_EVAL_MEMO")
+        .map(|v| v != "0")
+        .unwrap_or(true)
+}
+
+/// Realization switch, per ctx: an inner provider's by-execution receipt suite
+/// (e.g. the parse-table MemoTier's amortization tests) pins the eval-frame
+/// provider off so pass-2 demands re-execute and the inner door's hit counters
+/// keep discriminating. Values are identical either way.
+pub fn set_eval_call_memo_enabled(ctx: &InterpContext, enabled: bool) {
+    ctx.eval_call_memo.borrow_mut().enabled = enabled;
 }
 
 #[derive(Default, Clone)]
