@@ -10,6 +10,8 @@ import gunbc.ci_gate {
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
@@ -387,7 +389,14 @@ fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate>
   )
 }
 
-data ci_witness_optin_inversion: String = "CI witness enrollment is OPT-IN (operator inversion, 2026-07-04). Witness existence in the tree does not enroll it in CI: the tree-wide glob roster grows quadratically with the corpus (a witness is definable between any two pipeline segments) and had reached the point where the floor timed out - maximum cost, zero delivered signal. A witness gates CI exactly when a CommitWitnessClaim row on the GithubActionsCiJob surface declares it, projected by project_ci_floor_witness_entries into the floor plan's explicit entries (entry x check_fn). Tree-wide discovery remains the local path (claim_batch --roster-from-discovery). dissolve-on: affected-set selection (v2.lens.affected_set) plus floor memoization make per-PR selection-by-affectedness affordable; re-enroll the corpus through the affected set and dissolve this projection back into discovery."
+data ci_witness_optin_inversion: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.commit_workflow",
+    decl_name: "project_ci_floor_witness_entries",
+    field: WholeDeclaration
+  }
+}
 
 fn witness_entries_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
   fold(rows, init: [], f: fn(acc, row) {
