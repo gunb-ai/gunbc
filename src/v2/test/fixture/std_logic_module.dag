@@ -20,7 +20,14 @@ import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.node { Symbol }
 import v2.std.text { String }
+
+data std_logic_emit_accepted_reason: Symbol = ^std_logic_emit_accepted
+data std_logic_emit_assemble_reject_reason: Symbol = ^std_logic_emit_assemble_reject
+data std_logic_emit_infer_reject_reason: Symbol = ^std_logic_emit_infer_reject
+data std_logic_emit_partition_empty_reason: Symbol = ^std_logic_emit_partition_empty
+data std_logic_emit_semantic_reject_reason: Symbol = ^std_logic_emit_semantic_reject
 
 data std_logic_module_path: String = "dag/std/logic.dag"
 
@@ -62,6 +69,40 @@ fn std_logic_module_emit_source() -> Outcome<Medium<String>> {
     Accepted { value: receipt, diagnostics: _ } =>
       Accepted { value: receipt.source, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn std_logic_module_emit_reject_reason() -> Symbol {
+  match std_logic_module_emit_source() {
+    Accepted { value: _, diagnostics: _ } => std_logic_emit_accepted_reason
+    Rejected { diagnostics: r } => r.head.reason
+  }
+}
+
+fn std_logic_semantic_type_emit_reject_reason() -> Symbol {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => r.head.reason
+        Accepted { value: tree, diagnostics: _ } =>
+          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
+            HeadAbsent => std_logic_emit_partition_empty_reason
+            HeadFound { value: decl } =>
+              match emit_semantic_type_decl_rust_generic(
+                name: decl.name,
+                params: Empty,
+                node: decl.semantic
+              ) {
+                Accepted { value: _, diagnostics: _ } => std_logic_emit_accepted_reason
+                Rejected { diagnostics: r } => r.head.reason
+              }
+          }
+      }
   }
 }
 
