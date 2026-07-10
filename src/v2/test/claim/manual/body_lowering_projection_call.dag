@@ -53,15 +53,15 @@ fn body_lowering_bool_node(pass: Bool) -> Node {
 fn body_lowering_find_postfix_expr(root: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: emitted } =>
-      if emitted == ^dag_surface_postfix_expr {
-        Present { value: root }
-      } else {
-        fold(root.children, init: Absent, f: fn(acc, e) {
-          match acc {
-            Present { value: _ } => acc
-            Absent => body_lowering_find_postfix_expr(root: e.target)
-          }
-        })
+      match emitted == ^dag_surface_postfix_expr {
+        true => Present { value: root }
+        false =>
+          fold(root.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lowering_find_postfix_expr(root: e.target)
+            }
+          })
       }
     Absent =>
       fold(root.children, init: Absent, f: fn(acc, e) {
