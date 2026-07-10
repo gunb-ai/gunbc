@@ -1,14 +1,16 @@
 module v2.workflow.source_root_ingest_transport
 
-import extdeps.shell
+import extdeps.git
+import extdeps.gunbc
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt, ShellWord,
-  Command, Lit, VarRef,
-  lit, var_ref, command, serialize_bash
+import tools.host_prelude {
+  ClaimRun,
+  run_gunbc_claims,
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  witness_bin_release_path
 }
-import tools.host_prelude { ensure_discover_source_root_ingest_built, ensure_gunbc_built }
 
 data ingest_source_root: String = "src/v2"
 data ingest_scan_dir: String = "src/v2/test/fixture/program_assembly"
@@ -19,42 +21,39 @@ data ingest_witness_module_roots_parse: String = "program_assembly_real_ingest_m
 data ingest_witness_host_manifest_receipt: String = "program_assembly_real_ingest_host_manifest_receipt_holds"
 data ingest_witness_validate_red: String = "program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots"
 
-fn sri_source_root_flags() -> List<ShellWord> {
-  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+fn sri_claim_source_roots() -> List<String> {
+  concat(witness_layer_roots, [ingest_manifest_dir])
 }
 
-fn emit_manifest_stmt() -> ShellStmt {
-  command(words: [
-    var_ref(name: "DISCOVER_SOURCE_ROOT_INGEST"),
-    lit(text: "--source-root"), lit(text: ingest_source_root),
-    lit(text: "--scan-dir"), lit(text: ingest_scan_dir),
-    lit(text: "--emit-dag-manifest"), lit(text: ingest_manifest_path)
-  ])
-}
-
-fn gunbc_claim_run(function: String) -> ShellStmt {
-  command(words: concat(
-    concat([var_ref(name: "GUNBC"), lit(text: "run")], sri_source_root_flags()),
-    [
-      lit(text: "--source-root"), lit(text: ingest_manifest_dir),
-      lit(text: "--entry"), lit(text: ingest_entry),
-      lit(text: "--function"), lit(text: function),
-      lit(text: "--claim-run")
-    ]
-  ))
+fn emit_manifest_args() -> List<String> {
+  [
+    "--source-root", ingest_source_root,
+    "--scan-dir", ingest_scan_dir,
+    "--emit-dag-manifest", ingest_manifest_path
+  ]
 }
 
 func run_real_ingest_gate() -> Bool {
-  let prog = ShellProgram {
-    set_e: true,
-    statements: concat(ensure_gunbc_built(), ensure_discover_source_root_ingest_built(), [
-      command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
-      emit_manifest_stmt(),
-      gunbc_claim_run(function: ingest_witness_module_roots_parse),
-      gunbc_claim_run(function: ingest_witness_host_manifest_receipt),
-      gunbc_claim_run(function: ingest_witness_validate_red)
-    ])
+  let root = git.Core.Toplevel()
+  let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
+  if witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+    let manifest = gunbc.WitnessBin.Run(
+      bin_path: witness_bin_release_path(root: root.path, bin_name: "discover_source_root_ingest"),
+      args: emit_manifest_args()
+    )
+    if manifest.success {
+      run_gunbc_claims(
+        source_roots: sri_claim_source_roots(),
+        claims: [
+          ClaimRun { entry: ingest_entry, function: ingest_witness_module_roots_parse },
+          ClaimRun { entry: ingest_entry, function: ingest_witness_host_manifest_receipt },
+          ClaimRun { entry: ingest_entry, function: ingest_witness_validate_red }
+        ]
+      )
+    } else {
+      false
+    }
+  } else {
+    false
   }
-  let result = shell.Exec.Run(script: serialize_bash(p: prog))
-  result.success
 }
