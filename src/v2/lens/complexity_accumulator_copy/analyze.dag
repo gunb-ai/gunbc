@@ -29,7 +29,7 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty }
 import v2.compiler.fold_lowering { fold_call_to_loop, fold_family_head }
-import v2.std.algebra { list_append, list_flat_map, list_map, list_reverse }
+import v2.std.algebra { list_append, list_map, list_reverse }
 import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
@@ -110,22 +110,23 @@ fn edge_skips_identifier_count(e: Edge) -> Bool {
   }
 }
 
-fn collect_value_identifiers(n: Node) -> List<Symbol> {
+fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
   let here = match node_atom_identity_optional(node: n) {
     Present { value: id } =>
-      if dag_lex_token_symbol(sym: id) { Empty } else { Cons { head: id, tail: Empty } }
-    Absent => Empty
+      if dag_lex_token_symbol(sym: id) { acc } else { Cons { head: id, tail: acc } }
+    Absent => acc
   }
-  list_append(
-    left: here,
-    right: list_flat_map(xs: n.children, f: fn(e) {
-      if edge_skips_identifier_count(e: e) {
-        Empty
-      } else {
-        collect_value_identifiers(n: e.target)
-      }
-    })
-  )
+  fold(n.children, init: here, f: fn(a, e) {
+    if edge_skips_identifier_count(e: e) {
+      a
+    } else {
+      collect_value_identifiers_into(n: e.target, acc: a)
+    }
+  })
+}
+
+fn collect_value_identifiers(n: Node) -> List<Symbol> {
+  collect_value_identifiers_into(n: n, acc: Empty)
 }
 
 fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
@@ -296,13 +297,14 @@ fn let_resolution(
 }
 
 fn substituted_mentions(raw: List<Symbol>, bindings: List<LetBinding>) -> List<Symbol> {
-  list_flat_map(xs: raw, f: fn(m) {
+  fold(raw, init: Empty, f: fn(acc, m) {
     match let_binding_fact_for(name: m, bindings: bindings) {
-      Absent => Cons { head: m, tail: Empty }
+      Absent => Cons { head: m, tail: acc }
       Present { value: fact } =>
         match fact {
-          BindsFresh => Empty
-          BindsComputed { mentions: ms } => ms
+          BindsFresh => acc
+          BindsComputed { mentions: ms } =>
+            fold(ms, init: acc, f: fn(a2, s) { Cons { head: s, tail: a2 } })
         }
     }
   })
