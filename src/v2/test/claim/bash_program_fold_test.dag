@@ -7,7 +7,7 @@ import extdeps.languages.bash.program {
   lit,
   serialize_bash
 }
-import tools.host_prelude { ClaimRun, gunbc_claims_program, witness_bin, witness_bin_program }
+import tools.host_prelude { ClaimRun, assign_root_stmt, gunbc_claims_program, witness_bin, witness_bin_program }
 import v2.workflow.bash_program_emit { bash_program_serialize }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
 
@@ -64,6 +64,17 @@ fn bash_program_fold_real_claims_program() -> ShellProgram {
 
 fn bash_program_serialize_real_witness_probe() -> Outcome<String> {
   bash_program_serialize(p: bash_program_fold_real_witness_program())
+}
+
+fn bash_program_serialize_depth_probe_assign_root() -> Outcome<String> {
+  bash_program_serialize(p: ShellProgram { set_e: false, statements: [assign_root_stmt()] })
+}
+
+fn bash_program_serialize_depth_probe_flat() -> Outcome<String> {
+  bash_program_serialize(p: ShellProgram {
+    set_e: false,
+    statements: [command(words: [lit(text: "echo"), lit(text: "hi")])]
+  })
 }
 
 test fn bash_program_serialize_real_witness_program_matches_oracle_holds() -> Bool {
