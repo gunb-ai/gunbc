@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 115
+    timeout-minutes: 125
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -150,7 +150,7 @@ jobs:
         timeout-minutes: 5
   ci_regen:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 115
+    timeout-minutes: 125
     steps:
       - name: Checkout
         uses: actions/checkout@v5
