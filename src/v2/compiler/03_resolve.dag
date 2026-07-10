@@ -3,6 +3,7 @@ import v2.std.language_model { LanguageModel }
 
 import v2.compiler.normalize { NormalizedTree }
 import v2.extdeps.languages.dag {
+  dag_fn_decl_param_binding_atoms,
   dag_language_model_canonical_symbols,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
@@ -521,6 +522,18 @@ fn resolve_child_edge(
   }
 }
 
+fn scope_with_fn_decl_params(n: Node, scope: Scope) -> Scope {
+  let params = dag_fn_decl_param_binding_atoms(node: n)
+  if length(xs: params) == 0 {
+    scope
+  } else {
+    ScopeFrame {
+      locals: fold(params, init: empty_map(), f: fn(m, sym) { map_insert(m, sym, sym) }),
+      outer: scope
+    }
+  }
+}
+
 fn resolve_children_homogeneous_scope(
   n: Node,
   scope: Scope,
@@ -528,6 +541,7 @@ fn resolve_children_homogeneous_scope(
   under_module_root: Bool
 ) -> Outcome<Node> {
   let ctx = under_module_root || dag_node_is_module_root_conj(n: n)
+  let scope_here = scope_with_fn_decl_params(n: n, scope: scope)
   match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
@@ -535,7 +549,7 @@ fn resolve_children_homogeneous_scope(
       Accepted { value: done, diagnostics: ad } =>
         match resolve_child_edge(
           e: e,
-          scope: scope,
+          scope: scope_here,
           lm: lm,
           under_module_root: ctx
         ) {

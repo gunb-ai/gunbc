@@ -47,6 +47,7 @@ import v2.std.node {
   Branch,
   ComputationNode,
   Edge,
+  Loop,
   Match,
   Node,
   NodeFold,
@@ -55,6 +56,7 @@ import v2.std.node {
   TypeNode,
   all_edges_positional,
   fold_node,
+  loop_edge_contributes_to_iteration_fold,
   match_arm_body,
   match_arm_pattern,
   well_formed
@@ -105,6 +107,7 @@ type InferGatherFoldAcc {
   pending: Diagnostics
   await_branch_row: Bool
   await_match_row: Bool
+  await_loop_row: Bool
   children_remaining: Int
 }
 
@@ -150,6 +153,22 @@ fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
 fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_branch_arm_type_mismatch,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_loop_shape_invalid_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_loop_shape_invalid,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_loop_iteration_type_mismatch_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_loop_iteration_type_mismatch,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -785,11 +804,105 @@ fn infer_match_bool(
   }
 }
 
+data infer_loop_iteration_flag_c_note: String = "FLAG C (body-lowering design, operator-signed): the first cut types carrier-invariant loops only — every iteration-fold child must resolve to ONE carrier type τ, so the inferred tree states 'body : τ → τ, repeated under the measure'. A refinement-shaped loop (carrier narrows across iterations, e.g. Refined<τ> vs τ) lands in the located infer_loop_iteration_type_mismatch refusal by construction — refused, never silently fabricated as τ → τ. Dissolution trigger: the refinement-typed follow-on (monotone-narrowing carrier) replaces that refusal with a real refinement judgment."
+
+fn infer_loop_iteration_fold_child_targets(node: Node) -> List<Node> {
+  fold(node.children, init: [], f: fn(acc, e) {
+    if loop_edge_contributes_to_iteration_fold(parent: node, e: e) {
+      list_snoc_item(xs: acc, item: e.target)
+    } else {
+      acc
+    }
+  })
+}
+
+fn infer_loop_body_type_at(target: Node, entries: List<InferredFactsEntry>) -> Outcome<Node> {
+  match lookup_inferred_facts_in_entries(entries: entries, key: target) {
+    Violates { diagnostic: d } => outcome_rejected(d)
+    Holds { value: facts } =>
+      Accepted {
+        value: infer_branch_operand_resolved_type(node: target, facts: facts),
+        diagnostics: None
+      }
+  }
+}
+
+fn infer_loop_fixpoint_carrier(
+  node: Node,
+  body_targets: List<Node>,
+  entries: List<InferredFactsEntry>,
+) -> Outcome<Node> {
+  match list_at_optional(xs: body_targets, index: 0) {
+    Absent => outcome_rejected(infer_loop_shape_invalid_diagnostic(node: node))
+    Present { value: first_body } =>
+      bind_outcome(
+        o: infer_loop_body_type_at(target: first_body, entries: entries),
+        f: fn(carrier) {
+          fold(body_targets, init: Accepted { value: carrier, diagnostics: None }, f: fn(acc, target) {
+            match acc {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: c, diagnostics: _ } =>
+                match infer_loop_body_type_at(target: target, entries: entries) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: t, diagnostics: _ } =>
+                    if infer_branch_type_atoms_equal(a: c, b: t) {
+                      acc
+                    } else {
+                      outcome_rejected(infer_loop_iteration_type_mismatch_diagnostic(node: target))
+                    }
+                }
+            }
+          })
+        }
+      )
+  }
+}
+
+fn infer_loop_iteration(
+  node: Node,
+  partials: List<Node>,
+  entries: List<InferredFactsEntry>,
+) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_loop_fixpoint_carrier(
+        node: node,
+        body_targets: infer_loop_iteration_fold_child_targets(node: node),
+        entries: entries
+      ) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: carrier, diagnostics: ud } =>
+          match infer_descent_witness_for_node(n: node) {
+            Violates { diagnostic: d } =>
+              Rejected { diagnostics: diagnostics_singleton(d: d) }
+            Holds { value: descent_proof } =>
+              bind_outcome(
+                o: inferred_facts_from_grounding(
+                  grounding: infer_branch_canonical_grounding(
+                    node: node,
+                    unified_type: carrier
+                  ),
+                  descent: Holds { value: descent_proof }
+                ),
+                f: fn(facts) {
+                  Accepted {
+                    value: facts,
+                    diagnostics: diagnostics_merge(outer: cd, inner: ud)
+                  }
+                }
+              )
+          }
+      }
+  }
+}
+
 fn infer_gather_fold_acc_failed(
   node: Node,
   pending: NonEmptyDiagnostics,
   await_branch_row: Bool,
   await_match_row: Bool,
+  await_loop_row: Bool,
   children_remaining: Int,
 ) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
@@ -799,6 +912,7 @@ fn infer_gather_fold_acc_failed(
     pending: Some { diagnostics: pending },
     await_branch_row: await_branch_row,
     await_match_row: await_match_row,
+    await_loop_row: await_loop_row,
     children_remaining: children_remaining
   }
 }
@@ -809,6 +923,7 @@ fn infer_gather_fold_acc_ok(
   pending: Diagnostics,
   await_branch_row: Bool,
   await_match_row: Bool,
+  await_loop_row: Bool,
   children_remaining: Int,
 ) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
@@ -818,6 +933,7 @@ fn infer_gather_fold_acc_ok(
     pending: pending,
     await_branch_row: await_branch_row,
     await_match_row: await_match_row,
+    await_loop_row: await_loop_row,
     children_remaining: children_remaining
   }
 }
@@ -862,6 +978,7 @@ fn infer_gather_branch_row_on_entries(
         pending: rejected_with_pending(pending: pending, rejected: r),
         await_branch_row: false,
         await_match_row: false,
+        await_loop_row: false,
         children_remaining: 0
       )
     Accepted { value: facts, diagnostics: d } =>
@@ -872,6 +989,7 @@ fn infer_gather_branch_row_on_entries(
             pending: rejected_with_pending(pending: pending, rejected: r),
             await_branch_row: false,
             await_match_row: false,
+            await_loop_row: false,
             children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
@@ -884,6 +1002,7 @@ fn infer_gather_branch_row_on_entries(
             ),
             await_branch_row: false,
             await_match_row: false,
+            await_loop_row: false,
             children_remaining: 0
           )
       }
@@ -903,6 +1022,7 @@ fn infer_gather_match_row_on_entries(
         pending: rejected_with_pending(pending: pending, rejected: r),
         await_branch_row: false,
         await_match_row: false,
+        await_loop_row: false,
         children_remaining: 0
       )
     Accepted { value: facts, diagnostics: d } =>
@@ -913,6 +1033,7 @@ fn infer_gather_match_row_on_entries(
             pending: rejected_with_pending(pending: pending, rejected: r),
             await_branch_row: false,
             await_match_row: false,
+            await_loop_row: false,
             children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
@@ -925,6 +1046,51 @@ fn infer_gather_match_row_on_entries(
             ),
             await_branch_row: false,
             await_match_row: false,
+            await_loop_row: false,
+            children_remaining: 0
+          )
+      }
+  }
+}
+
+fn infer_gather_loop_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+) -> InferGatherFoldAcc {
+  match infer_loop_iteration(node: node, partials: partials, entries: entries) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_fold_acc_ok(
+            node: node,
+            entries: list_snoc_item(xs: entries, item: entry),
+            pending: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: d),
+              inner: ed
+            ),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
             children_remaining: 0
           )
       }
@@ -940,6 +1106,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
         pending: None,
         await_branch_row: true,
         await_match_row: false,
+        await_loop_row: false,
         children_remaining: length(xs: n.children)
       )
     ComputationNode { behavior: Match } =>
@@ -949,6 +1116,17 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
         pending: None,
         await_branch_row: false,
         await_match_row: true,
+        await_loop_row: false,
+        children_remaining: length(xs: n.children)
+      )
+    ComputationNode { behavior: Loop } =>
+      infer_gather_fold_acc_ok(
+        node: n,
+        entries: empty_inferred_facts_entry_list(),
+        pending: None,
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: true,
         children_remaining: length(xs: n.children)
       )
     _ =>
@@ -959,6 +1137,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
             pending: r,
             await_branch_row: false,
             await_match_row: false,
+            await_loop_row: false,
             children_remaining: 0
           )
         Accepted { value: facts, diagnostics: d } =>
@@ -969,6 +1148,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
                 pending: r,
                 await_branch_row: false,
                 await_match_row: false,
+                await_loop_row: false,
                 children_remaining: 0
               )
             Accepted { value: entry, diagnostics: ed } =>
@@ -978,6 +1158,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
                 pending: diagnostics_merge(outer: d, inner: ed),
                 await_branch_row: false,
                 await_match_row: false,
+                await_loop_row: false,
                 children_remaining: 0
               )
           }
@@ -1012,6 +1193,7 @@ fn infer_gather_fold_step(
       ),
       await_branch_row: acc.await_branch_row,
       await_match_row: acc.await_match_row,
+      await_loop_row: acc.await_loop_row,
       children_remaining: acc.children_remaining
     )
   } else {
@@ -1032,6 +1214,13 @@ fn infer_gather_fold_step(
         pending: merged_pending,
         partials: partials
       )
+    } else if acc.await_loop_row && children_remaining == 0 {
+      infer_gather_loop_row_on_entries(
+        node: acc.node,
+        entries: merged_entries,
+        pending: merged_pending,
+        partials: partials
+      )
     } else {
       infer_gather_fold_acc_ok(
         node: acc.node,
@@ -1039,6 +1228,7 @@ fn infer_gather_fold_step(
         pending: merged_pending,
         await_branch_row: acc.await_branch_row,
         await_match_row: acc.await_match_row,
+        await_loop_row: acc.await_loop_row,
         children_remaining: children_remaining
       )
     }

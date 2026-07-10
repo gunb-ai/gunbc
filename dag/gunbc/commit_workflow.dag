@@ -132,6 +132,95 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/loop_multiplicity_measure_test.dag",
+      check_fns: [
+        "loop_strict_measure_infers_proven_termination",
+        "loop_perturbed_measure_is_refused",
+        "loop_lone_non_increasing_measure_is_refused",
+        "loop_lexicographic_measure_proves_with_strict_dimension",
+        "loop_unknown_dimension_poisons_lexicographic_measure",
+        "loop_missing_measure_is_refused",
+        "live_registry_proves_loop_measure",
+        "nested_unproven_loop_still_poisons_the_fold"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/complexity/fold_lowering_test.dag",
+      check_fns: [
+        "fold_probe_ingest_is_accepted",
+        "fold_callee_name_survives_parse",
+        "fold_collection_name_survives_parse",
+        "fold_call_lowers_to_terminating_loop",
+        "non_fold_call_refuses",
+        "bodyless_fold_call_refuses_no_loop_fabricated"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/complexity/accumulator_copy_fold_analysis_test.dag",
+      check_fns: [
+        "quadratic_fold_has_suspect",
+        "real_branch_body_quadratic_is_caught",
+        "noncarrier_name_in_copied_port_refuses_not_clean",
+        "let_alias_refuses_not_clean",
+        "nested_call_head_cannot_masquerade_as_bare_name",
+        "unregistered_combiner_reached_by_carrier_refuses",
+        "named_step_fold_refuses_accumulator_unread",
+        "identity_fold_has_no_finding",
+        "out_of_iteration_append_is_out_of_domain",
+        "report_counters_state_the_domain"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/lens/complexity_accumulator_copy_test.dag",
+      check_fns: [
+        "red_list_append_left_is_suspect",
+        "red_list_snoc_left_is_suspect",
+        "red_map_merge_overlay_is_suspect",
+        "noncarrier_name_in_copied_port_refuses_may_alias",
+        "map_merge_noncarrier_overlay_refuses_may_alias",
+        "pure_literal_in_copied_port_is_provably_fresh",
+        "computed_copied_port_refuses",
+        "missing_copied_port_refuses",
+        "unregistered_combiner_reached_by_carrier_refuses",
+        "unregistered_combiner_without_carrier_is_out_of_scope"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/loop_infer_iteration_test.dag",
+      check_fns: [
+        "loop_infer_invariant_body_accepts_with_carrier_type",
+        "loop_infer_divergent_body_is_refused",
+        "loop_infer_refinement_shaped_body_is_refused",
+        "loop_infer_unregistered_measure_is_refused",
+        "loop_infer_missing_measure_is_refused"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "dag/test/claim/parse_test.dag",
       check_fns: ["parse_witness_floor_holds", "parse_witness_perf_holds"],
       kind: CorpusWitnessKind,
