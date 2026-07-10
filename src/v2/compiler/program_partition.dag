@@ -313,7 +313,17 @@ fn partition_collect_user_semantic_type_edge(
   match edge.label {
     Named { name: sym } =>
       if partition_is_grammar_projection_symbol(sym: sym) {
-        partition_collect_user_semantic_types_from_module(module: edge.target, acc: acc)
+        match edge.target.kind {
+          TypeNode { connective: Conj } =>
+            fold_list(
+              xs: edge.target.children,
+              empty: acc,
+              cons: fn(a, inner) {
+                partition_collect_user_semantic_type_edge(acc: a, edge: inner)
+              }
+            )
+          _ => acc
+        }
       } else {
         match partition_semantic_type_from_decl_target(target: edge.target) {
           Present { value: semantic } =>
@@ -325,21 +335,17 @@ fn partition_collect_user_semantic_type_edge(
         }
       }
     Positional =>
-      if partition_is_grammar_production_shell(node: edge.target) {
-        partition_collect_user_semantic_types_from_module(module: edge.target, acc: acc)
-      } else {
-        match partition_semantic_type_from_decl_target(target: edge.target) {
-          Present { value: semantic } =>
-            match partition_type_decl_surface_name(root: edge.target) {
-              Present { value: name } =>
-                partition_snoc_user_semantic_type_unique(
-                  acc: acc,
-                  item: PartitionUserSemanticType { name: name, semantic: semantic }
-                )
-              Absent => acc
-            }
-          Absent => acc
-        }
+      match partition_semantic_type_from_decl_target(target: edge.target) {
+        Present { value: semantic } =>
+          match partition_type_decl_surface_name(root: edge.target) {
+            Present { value: name } =>
+              partition_snoc_user_semantic_type_unique(
+                acc: acc,
+                item: PartitionUserSemanticType { name: name, semantic: semantic }
+              )
+            Absent => acc
+          }
+        Absent => acc
       }
     _ => acc
   }
@@ -778,10 +784,10 @@ fn partition_module_emit_unwrap_edge(edge: Edge) -> List<Edge> {
                 )
               }
             )
-          _ => [edge]
+          _ => list_snoc_item(xs: Empty, item: edge)
         }
       } else {
-        [edge]
+        list_snoc_item(xs: Empty, item: edge)
       }
     Positional =>
       if partition_is_grammar_production_shell(node: edge.target) {
@@ -797,12 +803,12 @@ fn partition_module_emit_unwrap_edge(edge: Edge) -> List<Edge> {
                 )
               }
             )
-          _ => [edge]
+          _ => list_snoc_item(xs: Empty, item: edge)
         }
       } else {
-        [edge]
+        list_snoc_item(xs: Empty, item: edge)
       }
-    _ => [edge]
+    _ => list_snoc_item(xs: Empty, item: edge)
   }
 }
 
