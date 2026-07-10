@@ -1974,6 +1974,23 @@ pub struct MultiEntryIndex {
     // — never silently serve one file's typecheck for the other's. Records
     // mod_name → declaring_file; a mismatch on a later co-resolve is a typed error.
     module_source_identity: RefCell<HashMap<String, String>>,
+    // Per-process subject-digest → resolved-graph share, the ReferenceTier in
+    // front of the cross-process store (materialization-ladder tier ordering:
+    // the share serves repeats, the store serves the process's FIRST touch of a
+    // subject, and a store hit is INSTALLED here so every later demand takes the
+    // reference). Without the install-back, N same-subject resolves under
+    // GUNBC_RESOLVED_GRAPH_CACHE_DIR each decoded+retained an independent graph
+    // — the ~1 GiB/5s eval-phase runaway receipt (eager-ram-612, 2026-07-10).
+    // Store fills share — never replaces it.
+    resolved_graph_memo: RefCell<
+        HashMap<
+            String,
+            (
+                Rc<v1_compiler_compile::ResolvedGraph>,
+                Rc<HashMap<String, Rc<NewlineIndex>>>,
+            ),
+        >,
+    >,
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
@@ -2036,6 +2053,7 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
         parse_cache: RefCell::new(HashMap::new()),
         typed_module_cache: RefCell::new(HashMap::new()),
         module_source_identity: RefCell::new(HashMap::new()),
+        resolved_graph_memo: RefCell::new(HashMap::new()),
     }
 }
 
@@ -2054,6 +2072,7 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         parse_cache: RefCell::new(HashMap::new()),
         typed_module_cache: RefCell::new(HashMap::new()),
         module_source_identity: RefCell::new(HashMap::new()),
+        resolved_graph_memo: RefCell::new(HashMap::new()),
     }
 }
 
