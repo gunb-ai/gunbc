@@ -216,7 +216,7 @@ fn ci_floor_materialization_receipt_gate_script() -> String {
     concat("d=$(sed -n 's/^duplicated_keys=//p' ", ci_floor_materialization_receipt_path),
     ")\n"
   )
-  let malformed = "if test -z \"$k\"; then echo \"floor materialization receipt malformed - fail closed\"; exit 1; fi\nif test -z \"$u\"; then echo \"floor materialization receipt malformed - fail closed\"; exit 1; fi\n"
+  let malformed = "if test -z \"$k\"; then echo \"floor materialization receipt malformed - fail closed\"; exit 1; fi\nif test -z \"$u\"; then echo \"floor materialization receipt malformed - fail closed\"; exit 1; fi\nif test -z \"$d\"; then echo \"floor materialization receipt malformed - fail closed\"; exit 1; fi\n"
   let keyed_nonzero = "if test \"$k\" -eq 0; then echo \"floor evaluated zero keyed calls - ledger disabled or floor empty - fail closed\"; exit 1; fi\n"
   let ok_line = "echo \"floor materialization receipt: keyed=$k unkeyed=$u duplicated=$d (exact pins for unkeyed and duplicated land from this first counted receipt)\""
   concat(

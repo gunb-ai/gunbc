@@ -133,6 +133,7 @@ jobs:
           d=$(sed -n 's/^duplicated_keys=//p' target/floor-materialization-receipt.txt)
           if test -z "$k"; then echo "floor materialization receipt malformed - fail closed"; exit 1; fi
           if test -z "$u"; then echo "floor materialization receipt malformed - fail closed"; exit 1; fi
+          if test -z "$d"; then echo "floor materialization receipt malformed - fail closed"; exit 1; fi
           if test "$k" -eq 0; then echo "floor evaluated zero keyed calls - ledger disabled or floor empty - fail closed"; exit 1; fi
           echo "floor materialization receipt: keyed=$k unkeyed=$u duplicated=$d (exact pins for unkeyed and duplicated land from this first counted receipt)"
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)

@@ -2810,7 +2810,7 @@ fn eval_pure_named_call(
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
     let trace_on = eval_recompute_trace_enabled();
-    let memo_on = eval_call_memo_enabled();
+    let memo_on = ctx.eval_call_memo.borrow().enabled;
     if !trace_on && !memo_on {
         return call_function(ctx, fn_node, args, env);
     }
