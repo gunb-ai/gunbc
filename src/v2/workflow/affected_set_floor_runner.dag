@@ -32,15 +32,11 @@ type WitnessRunDisposition
   | SkipAssumedGreen
   | Refused { cause: WitnessRefusalCause }
 
-data floor_disposition_refusal_note: String = "Operator rulings (2026-07-05): a failure arm must refuse, never widen. Refused replaces the prior DiffObservationFailClosed/FrontierFailClosed -> RunWitness absorbing arms: the witness is NOT run, the refusal is a per-row typed red (siblings continue; the floor exits nonzero while any refusal count is nonzero), and each cause is its own variant so each failure class has an observable frequency. Empty diff is NOT a state: an empty touched-path set flows through the general disposition (nothing affected -> SkipAssumedGreen) - the prior special arm (empty diff -> run full corpus) was the section-5 absorbing fallback, deleted together with the tests that asserted its reason string. Feature-flag-off is a host config state (node_frontier_selection: SelectionOff), never conflated with an empty diff; observation FAILURE (git could not produce a diff) is the only ignorance state and maps to DiffObservationRefusal. Git-interface grain (name-status, rename pairs) is CLOSED: extdeps.git models `git diff --name-status -z` (GitDiffChangeStatus A/M/D/R<score>/C<score>, rename/copy carrying old_path) as the single typed authority, projected through v2.workflow.floor_diff_observe's NameStatusDiffOk into this runner's DiffPathsProduced.changed_paths (both sides of a rename derived from the typed row via git_diff_status_entries_touched_paths, never pre-flattened by a unified-diff header scrape). Base-ref policy stays in DiffPolicy (workflow layer)."
-
 type FloorWitnessRow {
   label: String
   entry: String
   function: String
 }
-
-data floor_host_scaffold_witness_marker_note: String = "Declared on a `test fn` line (or its body) when the witness reads the live tree via host intrinsics. The claim_executor host-scaffold classifier honors this marker so detection is not limited to Rust substring heuristics alone. DISSOLVE-ON: ROADMAP `2-host-scaffold-classifier-defork` - substrate-declared `reads_live_tree` disposition on TestClaim rows. (Was a // comment block: the v1 interpreter grammar has no comments, so it broke resolve_floor_runner_context and silently disabled the affected-set skip - every floor run fell back to full corpus. Found during the 2026-07-04 CI witness opt-in inversion.)"
 
 data floor_host_scaffold_witness_marker: String = "floor:host_scaffold"
 
@@ -167,10 +163,6 @@ fn floor_kernel_would_skip(
   }
 }
 
-data floor_kernel_would_skip_refused_arm_note: String = "The Refused arm in floor_kernel_would_skip is unreachable by construction: the wrapper builds only DiffPathsProduced/FrontierProduced, and the host errors out on observation/frontier failure before calling it. The arm exists for match totality; refusal semantics live at the disposition authority (floor_witness_run_disposition), which the host consumes directly for failure states. Collapsing refusal into a Bool would be the state-space conflation this PR removes - do not route refusals through this wrapper."
-
-data floor_host_scaffold_would_skip_note: String = "Host-scan walls read the live tree via host intrinsics (`layer_import_facts`, `*_facts_live`, ...). Node-frontier skip is unsound for them: an unrelated diff can leave a corpus-wide violation red while the witness is assumed green."
-
 fn floor_host_scaffold_would_skip(
   changed_paths: List<String>,
   frontier_nodes: List<Node>,
@@ -217,8 +209,6 @@ fn floor_kernel_precompute_would_skip(
     )
   }
 }
-
-data floor_host_scaffold_precompute_would_skip_note: String = "Conservative: host-scaffold witnesses in the corpus always run, so the whole-tree published-mock precompute they may depend on must not be skipped."
 
 fn floor_host_scaffold_precompute_would_skip(
   changed_paths: List<String>,

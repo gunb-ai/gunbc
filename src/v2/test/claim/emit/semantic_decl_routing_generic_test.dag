@@ -1,6 +1,7 @@
 module v2.test.emit.semantic_decl_routing_generic
 
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_rust_generic }
+import extdeps.languages.rust.emit { rust_enum_derives, rust_struct_derives }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -8,13 +9,13 @@ import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, SyntheticOccur
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 
-data semantic_witness_golden: String = "enum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }"
+data semantic_witness_golden: String = concat(rust_enum_derives, "\nenum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }")
 
-data semantic_witness_wrong_golden: String = "enum Witness<C> { Violates { diagnostic: Diagnostic }, Holds { value: C } }"
+data semantic_witness_wrong_golden: String = concat(rust_enum_derives, "\nenum Witness<C> { Violates { diagnostic: Diagnostic }, Holds { value: C } }")
 
-data semantic_pair_golden: String = "struct Pair<K, V> { key: K, value: V }"
+data semantic_pair_golden: String = concat(rust_struct_derives, "\nstruct Pair<K, V> { key: K, value: V }")
 
-data semantic_pair_wrong_golden: String = "struct Pair<K, V> { value: V, key: K }"
+data semantic_pair_wrong_golden: String = concat(rust_struct_derives, "\nstruct Pair<K, V> { value: V, key: K }")
 
 fn sdrg_atom_type(name: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }

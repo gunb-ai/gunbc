@@ -13,8 +13,6 @@ import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
-data corpus_sigma_charter: String = "Corpus witness for the sigma-family wall, live subject dag/tools/dag_compile_clean_scope.dag: the file parses under the dag grammar and its top-level fn decls must contain ZERO sigma-families (k>=2 defs that anti-unify with leaf-only fillings over a shared internal spine). RED means someone spelled an axis into fn-name copies; the fix is one parameterized core plus data rows, never a roster edit here. Parse cost receipt 2026-07-06: ~94s in-interp for the 6KB subject."
-
 data corpus_scope_subject_path: String = "dag/tools/dag_compile_clean_scope.dag"
 
 data corpus_sigma_anchor: Symbol = ^fn_family_corpus_anchor

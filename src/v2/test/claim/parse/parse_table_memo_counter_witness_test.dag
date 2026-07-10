@@ -14,8 +14,6 @@ import v2.std.logic { Bool }
 
 data parse_memo_counter_fixture_source: String = "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }"
 
-data parse_memo_counter_witness_note: String = "CI-safe memo counter wiring witness on a tiny fixture (not the 8min src/v1/01_tokenize.dag scale receipt — that lives in src/v2/test/manual/parse_table_memo_scale_witness.dag). Counters fire only in parse_nonterminal_memoized_core."
-
 fn parse_memo_counter_stats_for_grammar(
   source_text: String,
   grammar: ParseGrammar

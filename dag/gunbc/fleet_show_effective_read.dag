@@ -124,8 +124,6 @@ data fleet_show_effective_read_transport_script_scaffold: Disposition = Scaffold
   }
 }
 
-data fleet_show_effective_read_transport_dissolution_trigger: String = "🟡 dissolve-on: fleet_show_effective_read transport script builders — systemctl show / list-units READ handlers authored as concat-built String literals handed to ShellCommand { script } (medium-as-string; embeds quotes, 2>/dev/null, ||, pipelines); DISSOLVES WHEN host_effect Phase B / orchestration emit (#6106 / shell-emission-model) models fleet effective reads as HostEffect orchestration intent rows (bash grammar rows), retiring these string leaves and medium_structure_exception_roster entry for dag/gunbc/fleet_show_effective_read.dag"
-
 fn fleet_runner_slice_memory_max_read_script(unit: NonEmptyStr) -> String {
   concat(
     concat("systemctl show \"", unit, "\" --property=MemoryMax --value 2>/dev/null || true")

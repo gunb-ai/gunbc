@@ -45,8 +45,6 @@ import extdeps.tmux {
 }
 import extdeps.llm.cli { shape_claude_invoke_argv }
 
-data roadmap_dispatch_actuator_doc: String = "M2 dispatch actuator model: brief fill, worktree+tmux+claude argv construction (bound to extdeps git/tmux/claude interface shapes; this module supplies policy parameters only), tmux session lease (session_lease classifier discipline — observation carries facts only), tmux ls parse, stop. Pure folds — spec docs/plans/dispatch-maintain-cc.md."
-
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: String = "🟡 dissolve-on: tmux-ls name-only lease observation — SessionNameObserved yields UnknownRefused (fail-closed) until dispatch_tmux_process_fingerprint observation transport binds pgrep/cmdline facts into SessionObserved.process_fingerprint; DISSOLVES WHEN M3/M4 wires HostExecArgv receipt rows (tmux capture-pane or ps) feeding classify_dispatch_lease_upsert so Conflict/Drifted/Converged are reachable from observed facts"
 
 data dispatch_repo: String = "gunbc"

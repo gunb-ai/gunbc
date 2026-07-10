@@ -125,5 +125,3 @@ data simd_kernel_float_execution_host_realization_marker: Disposition = Scaffold
     field: WholeDeclaration
   }
 }
-
-data simd_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-kernel-realization-handler (roadmap: simd_kernel_handler_roadmap_bind) — v1_interpreter builtin dispatches contiguous SoA fused pass; dissolve into target_model row emit when self-host lands; retire host opcode literals (mirror relu_mul_add_wire_op_codes) and host FmaContractionPolicy→i64 bridge once bash-emit lane lands"

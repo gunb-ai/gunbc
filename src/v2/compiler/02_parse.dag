@@ -422,8 +422,6 @@ fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
   )
 }
 
-data parse_current_position_key_note: String = "memo position = head token's start byte + 1, with 0 reserved for the empty suffix. Token starts strictly increase (tokenize advances pos by a nonempty lexeme per token), so suffix -> key stays injective while the read is O(1); the prior length(all) - length(remaining) recounted the stream per nonterminal attempt, the residual superlinear driver behind grammar_coverage_p8_wall_clock_blocker (interpreted length() is fold_list, O(n) with a closure apply per cell). The +1 shift keeps the key a natural for byte_limb_hash_peano_digest."
-
 fn parse_current_position(tokens: List<Token>) -> Int {
   match list_head(xs: tokens) {
     HeadFound { value: t } => t.start + 1
@@ -982,10 +980,6 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
   )
 }
 
-data parse_first_ambiguity_note: String = "FIRST-set analysis + choice ambiguity roster (construction over caching; sunny-wren-799)."
-
-data production_first_rows_fixpoint_note: String = "compute_production_first_rows uses |productions| outer sweeps (same outer-counter pattern as compute_nullable_set). Each sweep is monotone: FIRST terminal sets only grow via first_list_union. A terminal enters production P only after nullable-prefix dependencies through other productions stabilize; longest chain length is |productions|, so |productions| sweeps suffice."
-
 type GrammarExprFirstFold {
   terminals: List<Symbol>
   nullable: Bool
@@ -1507,8 +1501,6 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
   }
 }
 
-data grammar_overlap_residue_disposition: String = "Choice-FIRST overlap splits into two states that must not conflate: both_nullable=true is genuine ambiguity (two arms can accept the same token with an empty derivation in play) and stays a fail-closed Rejected; both_nullable=false is a non-LL(1) choice point the runtime handles by construction (parse_choice_first_dispatch routes disjoint FIRST directly and sends overlap to parse_choice_residue_backtrack), so it is a counted, typed Accepted-residue diagnostic (reason parse_grammar_choice_overlap_residue, one per row), never a rejection and never a silent drop. Receipt: the dag grammar carries 5 non-nullable overlap rows (expr, arg, match_arm, field_pattern, if_expr); rejecting them made parse_module refuse every input on main 2026-07-06 while the backtrack arm sat dead - the wall refused what its own runtime handles."
-
 fn grammar_nullable_ambiguity_rows(roster: List<GrammarChoiceAmbiguityRow>) -> List<GrammarChoiceAmbiguityRow> {
   filter(xs: roster, predicate: fn(row) { row.both_nullable })
 }
@@ -1747,8 +1739,6 @@ fn parse_choice_on_present_token(
     }
   }
 }
-
-data parse_choice_dispatch_note: String = "parse_choice_first_dispatch: per-Choice expr_first_fold projects table.nullable_set + table.first_rows (not a second FIRST authority). Disjoint FIRST -> direct arm; overlap or neither-token residue -> parse_choice_residue_backtrack (try L then R, preserving nullable-left empty match on present tokens)."
 
 fn parse_choice_first_dispatch(
   left: GrammarExpr,

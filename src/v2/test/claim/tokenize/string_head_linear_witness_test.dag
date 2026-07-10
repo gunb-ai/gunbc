@@ -47,8 +47,6 @@ data shlw_trunc_quarter_path: String = "src/v2/test/fixture/census_path_trunc/qu
 data shlw_trunc_half_path: String = "src/v2/test/fixture/census_path_trunc/half.txt"
 data shlw_trunc_full_path: String = "src/v2/test/fixture/census_path_trunc/full.txt"
 
-data shlw_note: String = "string_head uses list_head in src/v2/std/text.dag:34-38 (O(1) head; was Poly(2) via fold_list_right). Re-cut 2026-07-05 on calm-bear-548-rebase atop main post-forensics #6283. Executable: string_head_linear_trunc_fixtures_tokenize_accept_holds on census_path_trunc byte-prefix fixtures (2185/4370/8741/17483 B); wall-clock bisect in manual/tokenize_linear_receipt.dag."
-
 fn shlw_first_token_lexeme(tokens: List<Token>) -> String {
   match list_at_optional(xs: tokens, index: 0) {
     Absent => Empty

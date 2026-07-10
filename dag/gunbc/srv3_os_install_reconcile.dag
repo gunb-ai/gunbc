@@ -115,8 +115,6 @@ import gunbc.srv3_os_install_reconcile_types {
   srv3_install_reconcile_dry_run_observed_at,
 }
 
-data srv3_os_install_reconcile_doc: String = "srv3-install-reconcile-a — folds os_install_deduction preflight + srv3_os_install_diagnostic + std.temporal_effect next-step plan. Dry-run (T3) and apply+read-back (T4) entrypoints on srv1 actuator."
-
 data srv3_os_install_reconcile_shell_runner_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

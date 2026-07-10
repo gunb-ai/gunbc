@@ -13,8 +13,6 @@ import gunbc.ci_workflow {
 }
 import gunbc.generated_artifact { FalsifierYamlArtifact, artifact_path }
 
-data falsifier_witness_note: String = "Witnesses for the falsifier cadence surface (signed design: docs/plans/affected-set-differential-falsifier.md). The full yaml projection is witnessed by execution through the generated-artifact drift gate (byte-identity against the committed falsifier.yml); these unit witnesses pin the grounded facts the projection consumes: the rendered cron string, the backstop arithmetic (step-sum plus prelude allowance, per the step-level budget ruling), and the artifact path."
-
 fn falsifier_cron_renders_nightly_utc() -> Bool {
   render_cron_schedule(s: falsifier_nightly_cron) == "0 7 * * *"
 }

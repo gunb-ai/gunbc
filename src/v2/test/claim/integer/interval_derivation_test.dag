@@ -28,8 +28,6 @@ import v2.std.integer {
   integer_nonzero_decimal_digit_widen
 }
 
-data legacy_oracle_note: String = "These rows are the pre-remodel hand-spelled interval bounds, frozen VERBATIM as migration oracles: the derivation (integer_machine_interval_spec via decimal doubling + sub-one) must reproduce every one of them exactly. They are test controls, not authorities - the single authority is the derivation in v2.std.integer. Deleting a row here weakens the migration proof; do not sync these against the lens."
-
 data legacy_int8_spec: IntegerIntervalSpec = integer_interval(
   inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D8] }),
   inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D7] })
