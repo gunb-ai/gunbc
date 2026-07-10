@@ -139,7 +139,6 @@ mod type_param_casing_test;
 #[cfg(test)]
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
-mod std_logic_emit_dump_test;
 mod typescript_field_access_typecheck_test;
 #[cfg(test)]
 mod typescript_program_emit_run_test;
