@@ -696,10 +696,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
-        ParseSubtreeAbsent =>
-          outcome_rejected(
-            d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-          )
+        ParseSubtreeAbsent => outcome_accepted(value: shell)
         ParseSubtreeFound { captured: param_list } =>
           match body_lower_domain_from_param_list(param_list: param_list) {
             Absent =>
@@ -787,7 +784,12 @@ fn body_lower_after_children(folded: Node) -> Outcome<Node> {
   } else {
     match parse_production_emitted_identity_optional(node: folded) {
       Absent => outcome_accepted(value: folded)
-      Present { value: emitted } => body_lower_production_emitted(shell: folded, emitted: emitted)
+      Present { value: emitted } =>
+        if emitted == ^dag_surface_fn_decl {
+          body_lower_fn_decl_to_arrow(shell: folded)
+        } else {
+          outcome_accepted(value: folded)
+        }
     }
   }
 }
