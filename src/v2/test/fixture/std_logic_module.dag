@@ -113,6 +113,17 @@ fn std_logic_module_emit_accepts() -> Bool {
   }
 }
 
+fn std_logic_module_emit_text() -> String {
+  match std_logic_module_emit_source() {
+    Accepted { value: medium, diagnostics: _ } => medium.carried
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn std_logic_produced_emit_matches_golden() -> Bool {
+  std_logic_module_emit_text() == std_logic_golden_rust_emit
+}
+
 fn std_logic_semantic_type_emit_accepts() -> Bool {
   match assemble_program_from_ingest(
     ingest: std_logic_module_ingest(),

@@ -3,6 +3,7 @@ module v2.test.self_host.std_logic_emit_probe
 import v2.test.fixture.std_logic_module {
   std_logic_module_emit_accepts,
   std_logic_module_emit_reject_reason,
+  std_logic_produced_emit_matches_golden,
   std_logic_semantic_type_emit_accepts,
   std_logic_semantic_type_emit_reject_reason
 }
@@ -23,6 +24,10 @@ test fn std_logic_semantic_type_emit_accepts_holds() -> Bool {
 
 test fn std_logic_semantic_type_emit_reject_reason() -> Symbol {
   std_logic_semantic_type_emit_reject_reason()
+}
+
+test fn std_logic_produced_emit_matches_golden_holds() -> Bool {
+  std_logic_produced_emit_matches_golden()
 }
 
 test fn std_logic_emit_probe_all_holds() -> Bool {
