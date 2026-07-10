@@ -38,12 +38,13 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
+  Transform,
   TypeNode,
   node_synthetic
 }
 import v2.std.node_query { find_named_child }
 
-data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A): row-keyed dispatch on parse_production_emitted_identity_optional — never an allowlist of grammar projection symbol names. Pass-through productions unwrap via parse_production_captured_child_optional; core shapes (Arrow, ComputationNode behaviors) are positive-shape terminals. Semantic desugars (fold-family) delegate to v2.compiler.fold_lowering. Placement: normalize post-child-fold."
+data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal."
 
 fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
@@ -784,12 +785,7 @@ fn body_lower_after_children(folded: Node) -> Outcome<Node> {
   } else {
     match parse_production_emitted_identity_optional(node: folded) {
       Absent => outcome_accepted(value: folded)
-      Present { value: emitted } =>
-        if emitted == ^dag_surface_fn_decl {
-          body_lower_fn_decl_to_arrow(shell: folded)
-        } else {
-          outcome_accepted(value: folded)
-        }
+      Present { value: emitted } => body_lower_production_emitted(shell: folded, emitted: emitted)
     }
   }
 }
