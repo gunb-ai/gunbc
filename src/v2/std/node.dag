@@ -271,14 +271,16 @@ fn loop_body_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && (sym == ^loop_bound_edge)
+      Named { name: sym } => acc && ((sym == ^loop_bound_edge) || (sym == ^loop_carrier_edge))
     }
   })
 }
 
 fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
+  let carrier_edges = name_occurrences(name: ^loop_carrier_edge, children: children)
   (bound_edges == 1)
+  && (carrier_edges <= 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
@@ -371,12 +373,16 @@ fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_bound_edge)
 }
 
+fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
+}
+
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
       match e.label {
         Positional => true
-        Named { name: sym } => sym != ^loop_bound_edge
+        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
       }
     _ =>
       match e.label {
