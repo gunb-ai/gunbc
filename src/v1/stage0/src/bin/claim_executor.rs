@@ -48,6 +48,20 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
     }
 }
 
+/// Path-valued arguments resolve against the PROCESS CWD at the CLI boundary, refusing
+/// on a nonexistent path — never falling back to the compile-time-baked workspace root
+/// (`v1_compiler::cli_run::resolve_cli_path_arg`; DESIGN §5 fail-open closed there).
+fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
+    let given = require_value(args, idx, flag)?;
+    match v1_compiler::cli_run::resolve_cli_path_arg("claim_executor", flag, &given) {
+        Ok(resolved) => Ok(resolved),
+        Err(msg) => {
+            eprintln!("{msg}");
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
 fn free_monoid_elems<'a>(value: &'a Value, ctx: &InterpContext) -> Result<Vec<&'a Value>, String> {
     let mut out = Vec::new();
     let mut cur = value;
@@ -1738,11 +1752,11 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--source-root" => {
                 i += 1;
-                source_roots.push(require_value(&args, i, "--source-root")?);
+                source_roots.push(require_path_value(&args, i, "--source-root")?);
             }
             "--plan-entry" => {
                 i += 1;
-                plan_entry = Some(require_value(&args, i, "--plan-entry")?);
+                plan_entry = Some(require_path_value(&args, i, "--plan-entry")?);
             }
             "--plan-function" => {
                 i += 1;
