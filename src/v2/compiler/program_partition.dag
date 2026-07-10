@@ -312,27 +312,13 @@ fn partition_collect_user_semantic_type_edge(
 ) -> List<PartitionUserSemanticType> {
   match edge.label {
     Named { name: sym } =>
-      if partition_is_grammar_projection_symbol(sym: sym) {
-        match edge.target.kind {
-          TypeNode { connective: Conj } =>
-            fold_list(
-              xs: edge.target.children,
-              empty: acc,
-              cons: fn(a, inner) {
-                partition_collect_user_semantic_type_edge(acc: a, edge: inner)
-              }
-            )
-          _ => acc
-        }
-      } else {
-        match partition_semantic_type_from_decl_target(target: edge.target) {
-          Present { value: semantic } =>
-            partition_snoc_user_semantic_type_unique(
-              acc: acc,
-              item: PartitionUserSemanticType { name: sym, semantic: semantic }
-            )
-          Absent => acc
-        }
+      match partition_semantic_type_from_decl_target(target: edge.target) {
+        Present { value: semantic } =>
+          partition_snoc_user_semantic_type_unique(
+            acc: acc,
+            item: PartitionUserSemanticType { name: sym, semantic: semantic }
+          )
+        Absent => acc
       }
     Positional =>
       match partition_semantic_type_from_decl_target(target: edge.target) {
@@ -768,67 +754,6 @@ fn partition_module_emit_skip_edge(edge: Edge) -> Bool {
   }
 }
 
-fn partition_module_emit_unwrap_edge(edge: Edge) -> List<Edge> {
-  match edge.label {
-    Named { name: sym } =>
-      if partition_is_grammar_projection_symbol(sym: sym) {
-        match edge.target.kind {
-          TypeNode { connective: Conj } =>
-            fold_list(
-              xs: edge.target.children,
-              empty: Empty,
-              cons: fn(acc, inner) {
-                list_append(
-                  left: acc,
-                  right: partition_module_emit_unwrap_edge(edge: inner)
-                )
-              }
-            )
-          _ => list_snoc_item(xs: Empty, item: edge)
-        }
-      } else {
-        list_snoc_item(xs: Empty, item: edge)
-      }
-    Positional =>
-      if partition_is_grammar_production_shell(node: edge.target) {
-        match edge.target.kind {
-          TypeNode { connective: Conj } =>
-            fold_list(
-              xs: edge.target.children,
-              empty: Empty,
-              cons: fn(acc, inner) {
-                list_append(
-                  left: acc,
-                  right: partition_module_emit_unwrap_edge(edge: inner)
-                )
-              }
-            )
-          _ => list_snoc_item(xs: Empty, item: edge)
-        }
-      } else {
-        list_snoc_item(xs: Empty, item: edge)
-      }
-    _ => list_snoc_item(xs: Empty, item: edge)
-  }
-}
-
-fn partition_module_emit_work_edges(module_root: Node) -> List<Edge> {
-  fold_list(
-    xs: module_root.children,
-    empty: Empty,
-    cons: fn(acc, edge) {
-      if partition_module_emit_skip_edge(edge: edge) {
-        acc
-      } else {
-        list_append(
-          left: acc,
-          right: partition_module_emit_unwrap_edge(edge: edge)
-        )
-      }
-    }
-  )
-}
-
 fn partition_semantic_type_decl_matches_semantic(
   decl: PartitionUserSemanticType,
   semantic: Node
@@ -1056,7 +981,7 @@ fn emit_partition_module_source(
   target: TargetModel
 ) -> Outcome<Medium<String>> {
   let folded = fold_list(
-    xs: partition_module_emit_work_edges(module_root: module_root),
+    xs: module_root.children,
     empty: partition_module_emit_empty_acc(),
     cons: fn(acc, edge) {
       partition_module_emit_fold_step(

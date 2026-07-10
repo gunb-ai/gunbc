@@ -127,8 +127,6 @@ mod shell_transport_stdin_wet_test;
 #[cfg(test)]
 mod source_root_ingest_manifest_host_test;
 #[cfg(test)]
-mod std_logic_emit_dump_test;
-#[cfg(test)]
 mod sub_value_lattice_factor_test;
 #[cfg(test)]
 mod target_model_runtime_import_repro;
