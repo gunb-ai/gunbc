@@ -16,9 +16,12 @@ import v2.workflow.realization_runner {
   RunnerScheduleComplete,
   node_keyed_store_empty,
   node_keyed_store_has_node,
+  node_keyed_store_node_count,
   node_keyed_store_put,
   runner_dispatch_batch,
   runner_ordering_only,
+  runner_schedule_batch_count,
+  runner_schedule_contains_batch,
   runner_schedule_plan_from_dependencies,
   runner_schedule_store_covers_nodes,
   runner_walk_batches
@@ -66,6 +69,21 @@ fn witness_node_keyed_store_put_and_has() -> Bool {
   )
   node_keyed_store_has_node(store: store, node: runner_test_a_node)
     && !node_keyed_store_has_node(store: store, node: runner_test_b_node)
+    && (node_keyed_store_node_count(store: store) == 1)
+}
+
+fn witness_runner_schedule_batch_helpers() -> Bool {
+  match runner_schedule_plan_from_dependencies(
+    nodes: runner_test_nodes,
+    dependencies: runner_test_dependencies,
+    value: runner_ordering_only
+  ) {
+    RunnerScheduleComplete { batches: batches, store: _ } =>
+      (runner_schedule_batch_count(batches: batches) == 2)
+        && runner_schedule_contains_batch(batches: batches, batch: runner_test_first_batch)
+        && runner_schedule_contains_batch(batches: batches, batch: runner_test_second_batch)
+    RunnerScheduleBlocked { evidence: _ } => false
+  }
 }
 
 fn witness_runner_walk_populates_store_in_dependency_order() -> Bool {
@@ -89,7 +107,7 @@ fn witness_runner_schedule_matches_executor_batches() -> Bool {
     value: runner_ordering_only
   ) {
     RunnerScheduleComplete { batches: batches, store: store } =>
-      (length(xs: batches) == 2)
+      (runner_schedule_batch_count(batches: batches) == 2)
         && runner_schedule_store_covers_nodes(store: store, nodes: runner_test_nodes)
     RunnerScheduleBlocked { evidence: _ } => false
   }
@@ -114,5 +132,6 @@ test fn realization_runner_witnesses() -> Bool {
   witness_node_keyed_store_put_and_has()
     && witness_runner_walk_populates_store_in_dependency_order()
     && witness_runner_schedule_matches_executor_batches()
+    && witness_runner_schedule_batch_helpers()
     && witness_runner_blocks_when_prerequisite_missing()
 }

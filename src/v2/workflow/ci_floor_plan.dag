@@ -430,14 +430,25 @@ data gunbc_ci_corpus_discovery_batch_isolation_note: String = "Discovery-flip ba
 fn floor_discovery_flip_corpus_serializes_before_gates_edges(spec: CiSpec) -> List<DependencyView> {
   if length(xs: spec.discovery_scan_dirs) > 0 {
     fold(spec.gates, init: [], f: fn(acc, g) {
-      list_snoc_item(
-        xs: acc,
-        item: floor_resource_depends_on(source: floor_corpus_node, dependent: gate_node(g: g))
-      )
+      let node = gate_node(g: g)
+      if floor_resource_anchor_node(node: node) {
+        acc
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: floor_resource_depends_on(source: floor_corpus_node, dependent: node)
+        )
+      }
     })
   } else {
     []
   }
+}
+
+fn floor_non_anchor_gate_count(spec: CiSpec) -> Int {
+  fold(spec.gates, init: 0, f: fn(count, g) {
+    if floor_resource_anchor_node(node: gate_node(g: g)) { count } else { count + 1 }
+  })
 }
 
 fn floor_resource_dependencies(spec: CiSpec) -> List<DependencyView> {
@@ -493,6 +504,8 @@ fn runnables_for_executor_batches(batches: List<ExecutorBatch>, spec: CiSpec) ->
     list_snoc_item(xs: acc, item: runnables_for_batch(batch: batch, spec: spec))
   })
 }
+
+data floor_schedule_direct_for_dissolve_on_note: String = "Parallel representation (§2/§3): floor_schedule_direct_for is the legacy scheduler-only projection retained for the move-1 byte-identical receipt (witness_floor_runner_schedule_byte_identical{,_for}). Production scheduling flows through floor_schedule_via_runner_for. Dissolve-on: S2a move 2 lands (compile_to_resolved / module resolution on the runner store) and the receipt witness is deleted — floor_schedule_direct_for goes with it."
 
 fn floor_schedule_direct_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
   match parallel_executor_plan_from_dependencies(
@@ -635,8 +648,14 @@ fn witness_floor_discovery_flip_serializes_gates_after_corpus(spec: CiSpec) -> B
   if length(xs: spec.discovery_scan_dirs) == 0 {
     true
   } else {
-    length(xs: floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec)) == length(xs: spec.gates)
+    length(xs: floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec)) == floor_non_anchor_gate_count(spec: spec)
   }
+}
+
+fn witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: CiSpec) -> Bool {
+  fold(floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec), init: true, f: fn(ok, edge) {
+    ok && (edge.dependent != floor_compile_root_node())
+  })
 }
 
 fn witness_regen_spec_carries_no_witness_corpus() -> Bool {

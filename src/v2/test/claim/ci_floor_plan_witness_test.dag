@@ -29,6 +29,7 @@ import v2.workflow.ci_floor_plan {
   witness_ci_corpus_discovery_is_live,
   witness_ci_corpus_discovery_serializes_at_width_one,
   witness_floor_discovery_flip_serializes_gates_after_corpus,
+  witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor,
   witness_regen_spec_carries_no_witness_corpus,
   witness_floor_runner_schedule_byte_identical,
   witness_floor_runner_schedule_byte_identical_for,
@@ -343,6 +344,7 @@ test fn ci_corpus_discovery_flip_witnesses() -> Bool {
   witness_ci_corpus_discovery_is_live()
     && witness_ci_corpus_discovery_serializes_at_width_one()
     && witness_floor_discovery_flip_serializes_gates_after_corpus(spec: gunbc_ci_spec)
+    && witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: gunbc_ci_spec)
     && witness_floor_discovery_flip_gates_isolated_from_corpus()
     && witness_regen_spec_carries_no_witness_corpus()
     && schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0
