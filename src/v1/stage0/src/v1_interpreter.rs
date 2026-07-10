@@ -2838,10 +2838,9 @@ fn witness_violates(diagnostic: Value, ctx: &InterpContext) -> Value {
 
 fn parse_table_materialization_allows_memo(ctx: &InterpContext, table: &Value) -> bool {
     // SCAFFOLD (§7 seed-retained): extdeps/realization/parse_table_memo.dag
-    // parse_table_memo_seed_handler_dissolution_trigger — gates ParseTableMemo map
-    // insert/serve on Memoize only (after governed door on insert; no memo hit short-
-    // circuit on lookup when Recompute). Case-A: pre-fix insert-before-door leaked
-    // accelerator state that flipped door observables order-dependently.
+    // parse_table_memo_seed_handler_dissolution_trigger (Disposition Scaffold) — seed
+    // try_parse_table_memo_dispatch gates ParseTableMemo map insert/serve on Memoize;
+    // .dag authority: v2.compiler.materialization_allows_memo_store.
     let table_fields = match table {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
         _ => return false,

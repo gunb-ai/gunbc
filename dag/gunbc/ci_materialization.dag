@@ -1,7 +1,7 @@
 module gunbc.ci_materialization
 
 import std.types { Bool, Int, List, String }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Scaffold, RealizationDispatch, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.materialization_ladder {
   Frame, FrameKind,
@@ -168,8 +168,8 @@ data ci_floor_resolve_receipt_path: String = "target/floor-resolve-receipt.txt"
 
 data ci_floor_declared_resolve_count: Int = 3
 
-data ci_floor_resolve_receipt_gate_script_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+data ci_floor_resolve_receipt_gate_shell_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "gunbc.ci_materialization",
     decl_name: "ci_floor_resolve_receipt_gate_script",
@@ -177,18 +177,14 @@ data ci_floor_resolve_receipt_gate_script_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_floor_resolve_receipt_gate_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_floor_resolve_receipt_gate_script — concat-built bash receipt comparator (test -f / sed / exit 1) over claim_executor's target/floor-resolve-receipt.txt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) or a typed extdeps transport realizes the declared cold-resolve gate from ci_floor_declared_resolve_count without hand-concat shell."
-
-data ci_sccache_provider_shell_injection_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+data ci_sccache_provider_shell_injection_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "gunbc.ci_materialization",
     decl_name: "ci_sccache_provider_shell_injection",
     field: WholeDeclaration
   }
 }
-
-data ci_sccache_provider_shell_injection_dissolution_trigger: String = "🟡 dissolve-on: ci_sccache_provider_shell_injection — concat-built GITHUB_ENV probe for fleet sccache daemon; DISSOLVES WHEN materialization-ladder provider realization emits env wiring from ci_sccache_provider row (bash-emit / orchestration emit) instead of a hand-shell fragment beside the catalog projection."
 
 fn ci_floor_resolve_receipt_gate_script() -> String {
   concat(
