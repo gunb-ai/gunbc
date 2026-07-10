@@ -822,13 +822,7 @@ fn partition_module_shell_with_deferred_edges(
   module_root: Node,
   deferred: List<Edge>
 ) -> Node {
-  node_rebuild(
-    n: module_root,
-    children: list_append(
-      left: partition_module_header_edges(module_root: module_root, acc: Empty),
-      right: deferred
-    )
-  )
+  node_rebuild(n: module_root, children: deferred)
 }
 
 fn partition_module_emit_deferred_items(
