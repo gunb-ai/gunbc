@@ -2838,8 +2838,10 @@ fn witness_violates(diagnostic: Value, ctx: &InterpContext) -> Value {
 
 fn parse_table_materialization_allows_memo(ctx: &InterpContext, table: &Value) -> bool {
     // SCAFFOLD (§7 seed-retained): extdeps/realization/parse_table_memo.dag
-    // parse_table_memo_seed_handler_dissolution_trigger — gates ParseTableMemo on
-    // Memoize until reconcile-as-lookup-path / cached_stage_governed runtime dispatch.
+    // parse_table_memo_seed_handler_dissolution_trigger — gates ParseTableMemo map
+    // insert/serve on Memoize only (after governed door on insert; no memo hit short-
+    // circuit on lookup when Recompute). Case-A: pre-fix insert-before-door leaked
+    // accelerator state that flipped door observables order-dependently.
     let table_fields = match table {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
         _ => return false,
@@ -2905,13 +2907,16 @@ fn try_parse_table_memo_dispatch(
             let Some(memo_key) = parse_table_memo_scope_and_key(ctx, table, key) else {
                 return Ok(None);
             };
+            let allows_memo = parse_table_materialization_allows_memo(ctx, table);
             let mut st = ctx.parse_table_memo.borrow_mut();
             st.lookups += 1;
-            if let Some(v) = st.map.get(&memo_key).cloned() {
-                st.hits += 1;
-                drop(st);
-                record_parse_memo_lookup(&memo_key, true);
-                return Ok(Some(witness_holds(v, ctx)));
+            if allows_memo {
+                if let Some(v) = st.map.get(&memo_key).cloned() {
+                    st.hits += 1;
+                    drop(st);
+                    record_parse_memo_lookup(&memo_key, true);
+                    return Ok(Some(witness_holds(v, ctx)));
+                }
             }
             drop(st);
             record_parse_memo_lookup(&memo_key, false);
@@ -2924,15 +2929,17 @@ fn try_parse_table_memo_dispatch(
                 [table, key, value] => [table, key, value],
                 _ => return Ok(None),
             };
-            if let Some(memo_key) = parse_table_memo_scope_and_key(ctx, table, key) {
-                let mut st = ctx.parse_table_memo.borrow_mut();
-                st.keepalive.push((*table).clone());
-                st.keepalive.push((*key).clone());
-                st.keepalive.push((*value).clone());
-                st.map.insert(memo_key, (*value).clone());
-                st.inserts += 1;
-            }
             let result = call_function(ctx, fn_node, args, env)?;
+            if parse_table_materialization_allows_memo(ctx, table) {
+                if let Some(memo_key) = parse_table_memo_scope_and_key(ctx, table, key) {
+                    let mut st = ctx.parse_table_memo.borrow_mut();
+                    st.keepalive.push((*table).clone());
+                    st.keepalive.push((*key).clone());
+                    st.keepalive.push((*value).clone());
+                    st.map.insert(memo_key, (*value).clone());
+                    st.inserts += 1;
+                }
+            }
             Ok(Some(result))
         }
         _ => Ok(None),

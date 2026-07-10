@@ -107,7 +107,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-<<<<<<< HEAD
       entry: "src/v2/test/claim/compiler_materialization_witness_test.dag",
       check_fns: [
         "compiler_materialization_ladder_holds",
@@ -132,7 +131,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "parse_table_memo_governed_store_refused_when_recompute",
         "parse_table_memo_bypass_store_reds",
         "parse_table_memo_governed_memoize_allows_store",
-        "parse_table_memo_warm_equals_cold_content_hash"
+        "parse_table_memo_warm_equals_cold_content_hash",
+        "parse_table_memo_door_order_independent"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -141,8 +141,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-=======
->>>>>>> origin/main
       entry: "dag/test/claim/ci_materialization_witness_test.dag",
       check_fns: [
         "ci_ladder_holds_on_live_workflow",
@@ -151,12 +149,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "ci_prelude_scripts_are_typed_cost_floor_acceptances",
         "ci_measurement_is_exempt_fresh_effect",
         "ci_catalog_projection_has_no_refusals",
-<<<<<<< HEAD
-        "ci_uses_steps_are_counted_not_silent"
-=======
         "ci_uses_steps_are_counted_not_silent",
         "ci_run_step_natures_are_claims_counted_not_silent"
->>>>>>> origin/main
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared

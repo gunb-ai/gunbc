@@ -15,11 +15,7 @@ import gunbc.ci_materialization {
   ci_cache_providers, ci_cost_floor_exempt_step_names,
   ci_sccache_provider_id,
   workflow_run_demands, workflow_scripts_named, step_run_script,
-<<<<<<< HEAD
-  workflow_uses_steps_count
-=======
   workflow_uses_steps_count, workflow_run_steps_count
->>>>>>> origin/main
 }
 import gunbc.ci_workflow { ci_workflow, ci_rust_cgroup_measurement_step }
 import gunbc.ci_spec {
@@ -161,13 +157,10 @@ fn ci_uses_steps_skipped_count() -> Int {
   workflow_uses_steps_count(w: ci_workflow)
 }
 
-<<<<<<< HEAD
-=======
 fn ci_run_step_natures_claimed_not_derived_count() -> Int {
   workflow_run_steps_count(w: ci_workflow)
 }
 
->>>>>>> origin/main
 fn ci_release_build_refused_without_provider_count() -> Int {
   ci_materialization_verdicts_without_sccache()
     |> filter(v => verdict_is_refused_no_provider(v: v, identity: ci_release_build_script()))

@@ -191,11 +191,7 @@ fn ci_floor_step() -> Step {
 
 fn ci_floor_resolve_receipt_gate_step() -> Step {
   RunStep {
-<<<<<<< HEAD
-    name: Present { value: "Floor resolve receipt gate (materialization M1)" },
-=======
     name: Present { value: "Floor resolve receipt gate (declared cold-resolve count)" },
->>>>>>> origin/main
     id: none,
     run: ci_floor_resolve_receipt_gate_script(),
     shell: none,
