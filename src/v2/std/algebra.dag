@@ -108,16 +108,6 @@ fn list_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> U) -> FreeMonoid<U> {
   })
 }
 
-fn list_filter<T>(xs: FreeMonoid<T>, pred: fn(T) -> Bool) -> FreeMonoid<T> {
-  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
-    if pred(item) {
-      Cons { head: item, tail: acc }
-    } else {
-      acc
-    }
-  })
-}
-
 fn list_flat_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> FreeMonoid<U>) -> FreeMonoid<U> {
   fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
     fold_list_right(xs: f(item), empty: acc, snoc: fn(inner, produced) {
