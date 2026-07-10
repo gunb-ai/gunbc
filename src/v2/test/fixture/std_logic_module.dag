@@ -16,7 +16,7 @@ import v2.compiler.source_authority {
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { list_head, HeadFound, HeadAbsent }
+import v2.std.algebra { list_head, HeadFound, HeadAbsent, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
@@ -104,6 +104,17 @@ fn std_logic_semantic_type_emit_reject_reason() -> Symbol {
           }
       }
   }
+}
+
+fn std_logic_module_emit_text() -> String {
+  match std_logic_module_emit_source() {
+    Accepted { value: medium, diagnostics: _ } => medium.carried
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn std_logic_module_emit_len() -> Int {
+  length(xs: std_logic_module_emit_text())
 }
 
 fn std_logic_module_emit_accepts() -> Bool {
