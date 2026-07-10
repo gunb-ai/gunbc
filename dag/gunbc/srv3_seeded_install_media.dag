@@ -32,7 +32,7 @@ import gunbc.ci_deploy_access {
   deploy_access_sudo_n_apt_get_install_command,
 }
 import extdeps.shell
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, String, Bool, ContentHash }
@@ -60,7 +60,14 @@ data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = Scaffold
   }
 }
 
-data install_media_remaster_toolchain_ensure_dissolution_trigger: String = "🟡 dissolve-on: install_media_remaster_toolchain_ensure — xorriso Installed branch via sudo -n deploy_access_apt_get_binary_path (privileged/gated, same class as ci_deploy_access); DISSOLVES WHEN host_effect_apply binds InstallMediaRemasterToolchainEnsure without concat runner glue"
+data install_media_remaster_toolchain_ensure_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_seeded_install_media",
+    decl_name: "install_media_remaster_toolchain_ensure_script",
+    field: WholeDeclaration
+  }
+}
 
 fn install_media_remaster_toolchain_ensure_script() -> String {
   let tool_name = xorriso_cli_tool.name as String
@@ -103,7 +110,14 @@ fn install_media_remaster_toolchain_ensure_script() -> String {
   )
 }
 
-data srv3_seeded_install_media_unattended_not_proven_marker: String = "🟡 scaffold: seeded ISO path modeled but unattended install NOT proven by execution — srv3_os_install_actuate_scope seed-gap fail-closed remains until boot-once + SOL receipt + OS-up witness green"
+data srv3_seeded_install_media_unattended_not_proven_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_os_install_actuate_scope",
+    decl_name: "srv3_autoinstall_seed_delivery_refusal",
+    field: WholeDeclaration
+  }
+}
 
 data srv3_autoinstall_user_data_body: NonEmptyStr = autoinstall_user_data(
   payload: srv3_ubuntu_autoinstall_on_iso,
@@ -195,7 +209,10 @@ fn srv3_seeded_grub_cmdline_names_nocloud() -> Bool {
 }
 
 fn srv3_seeded_install_media_unattended_not_proven_yet() -> Bool {
-  string_contains(s: srv3_seeded_install_media_unattended_not_proven_marker, pattern: "NOT proven by execution")
+  match srv3_seeded_install_media_unattended_not_proven_marker {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 fn srv3_seeded_install_media_remaster_toolchain_is_modeled() -> Bool {

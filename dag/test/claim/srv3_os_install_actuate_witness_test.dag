@@ -1,10 +1,11 @@
 module test.claim.srv3_os_install_actuate
 
 import std.logic { Bool }
+import std.disposition { Scaffold, Terminal }
 import gunbc.srv3_os_install_actuate {
   srv3_os_install_actuator_step_count_is_three,
   srv3_os_install_actuate_runbook_is_declared,
-  srv3_os_install_actuate_shell_runner_dissolution_trigger,
+  srv3_os_install_actuate_shell_runner_scaffold,
   srv3_nbd_proxy_serve_intent,
   srv3_bmcweb_login_body_content,
   srv3_nbd_proxy_serve_script_path,
@@ -76,7 +77,8 @@ test fn nbd_proxy_serve_script_token_is_shell_expandable_var_ref() -> Bool {
 }
 
 test fn srv3_os_install_actuate_shell_runner_carries_dissolution_trigger() -> Bool {
-  string_contains(s: srv3_os_install_actuate_shell_runner_dissolution_trigger, pattern: "dissolve-on:")
-    && string_contains(s: srv3_os_install_actuate_shell_runner_dissolution_trigger, pattern: "medium_structure_exception_roster")
-    && string_contains(s: srv3_os_install_actuate_shell_runner_dissolution_trigger, pattern: "shell.Exec.Run")
+  match srv3_os_install_actuate_shell_runner_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
