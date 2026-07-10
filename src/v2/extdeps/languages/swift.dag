@@ -847,16 +847,9 @@ fn swift_lex() -> LexRules {
 }
 
 fn swift_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
-      )
-    }
-  )
+  list_map(xs: tokens, f: fn(token) {
+    grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
+  })
 }
 
 fn swift_formal_production_fn_add() -> FormalProduction {
@@ -1729,42 +1722,21 @@ fn swift_primitive_bundle_from_nonnumeric_facts(
 }
 
 fn swift_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: swift_integer_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: swift_primitive_bundle_from_integer_facts(facts: facts)
-      )
-    }
-  )
+  list_map(xs: swift_integer_facts_catalog, f: fn(facts) {
+    swift_primitive_bundle_from_integer_facts(facts: facts)
+  })
 }
 
 fn swift_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: swift_float_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: swift_primitive_bundle_from_float_facts(facts: facts)
-      )
-    }
-  )
+  list_map(xs: swift_float_facts_catalog, f: fn(facts) {
+    swift_primitive_bundle_from_float_facts(facts: facts)
+  })
 }
 
 fn swift_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: swift_nonnumeric_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: swift_primitive_bundle_from_nonnumeric_facts(facts: facts)
-      )
-    }
-  )
+  list_map(xs: swift_nonnumeric_facts_catalog, f: fn(facts) {
+    swift_primitive_bundle_from_nonnumeric_facts(facts: facts)
+  })
 }
 
 fn swift_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
@@ -2027,23 +1999,15 @@ fn swift_string_algebra_inhabitance() -> AlgebraInhabitanceDecl {
 }
 
 fn swift_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  fold_list(
-    xs: swift_integer_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(xs: acc, item: swift_integer_algebra_inhabitance(facts: facts))
-    }
-  )
+  list_map(xs: swift_integer_facts_catalog, f: fn(facts) {
+    swift_integer_algebra_inhabitance(facts: facts)
+  })
 }
 
 fn swift_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  fold_list(
-    xs: swift_float_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(xs: acc, item: swift_float_algebra_inhabitance(facts: facts))
-    }
-  )
+  list_map(xs: swift_float_facts_catalog, f: fn(facts) {
+    swift_float_algebra_inhabitance(facts: facts)
+  })
 }
 
 fn swift_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
