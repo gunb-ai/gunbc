@@ -3696,6 +3696,10 @@ fn eval_call_memo_put(
     value: Value,
 ) {
     let mut m = ctx.eval_call_memo.borrow_mut();
+    // Counter invariant: a miss means the call was NOT served (it evaluated),
+    // so a cap-refused store attempt is still a miss — overflow ⊆ misses, and
+    // hits + misses == keyed Ok-resulting calls through the memo path,
+    // including under overflow. `misses` is NOT "entries stored".
     m.misses += 1;
     if m.map.len() >= EVAL_CALL_MEMO_ENTRY_CAP && !m.map.contains_key(&key) {
         m.overflow += 1;
