@@ -100,6 +100,28 @@ service shell.Mktemp {
       nonzero => String "mktemp -d failed"
     }
   }
+
+  operation DirWithTemplate {
+    input { template: FilePath }
+    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["mktemp", "-d", "{template}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mktemp -d with template failed"
+    }
+  }
+}
+
+service shell.Mkdir {
+  operation Parents {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mkdir", "-p", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mkdir -p failed"
+    }
+  }
 }
 
 service shell.Remove {
