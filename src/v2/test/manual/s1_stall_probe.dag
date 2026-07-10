@@ -22,8 +22,6 @@ import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates }
 
-data s1_stall_probe_note: String = "diagnosis probe for S1 census failures: parses a file at the start production via parse_expr directly and reports the byte offset of the first token the parse could NOT consume (the packrat repeat accepts greedily, so Accepted-with-remaining pinpoints the first uncovered construct). Return codes: >=0 stall byte offset; -1 fully consumed (file parses); -2 rejected outright; -3 tokenize rejected; -4 grammar invalid; -5 start production missing; -6 void grammar."
-
 fn stall_offset(path: String) -> Int {
   let lm = dag_language_model()
   let at = port_locus(port: ^s1_stall_probe_locus)

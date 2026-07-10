@@ -151,6 +151,20 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
     }
 }
 
+/// Path-valued arguments resolve against the PROCESS CWD at the CLI boundary, refusing
+/// on a nonexistent path — never falling back to the compile-time-baked workspace root
+/// (`v1_compiler::cli_run::resolve_cli_path_arg`; DESIGN §5 fail-open closed there).
+fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
+    let given = require_value(args, idx, flag)?;
+    match v1_compiler::cli_run::resolve_cli_path_arg("claim_batch", flag, &given) {
+        Ok(resolved) => Ok(resolved),
+        Err(msg) => {
+            eprintln!("{msg}");
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
 struct EntryGroup {
     entry: String,
     functions: Vec<String>,
@@ -183,11 +197,11 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         match args[i].as_str() {
             "--source-root" => {
                 i += 1;
-                source_roots.push(require_value(args, i, "--source-root")?);
+                source_roots.push(require_path_value(args, i, "--source-root")?);
             }
             "--entry" => {
                 i += 1;
-                let entry = require_value(args, i, "--entry")?;
+                let entry = require_path_value(args, i, "--entry")?;
                 entry_groups.push(EntryGroup {
                     entry,
                     functions: Vec::new(),
@@ -223,7 +237,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             "--roster-from-discovery" => roster_from_discovery = true,
             "--scan-dir" => {
                 i += 1;
-                scan_dirs.push(require_value(args, i, "--scan-dir")?);
+                scan_dirs.push(require_path_value(args, i, "--scan-dir")?);
             }
             "--notice-title" => {
                 i += 1;
@@ -636,6 +650,75 @@ fn main() -> ExitCode {
     match run() {
         Ok(code) => code,
         Err(code) => code,
+    }
+}
+
+#[cfg(test)]
+mod cli_path_resolution_wiring_tests {
+    use super::parse_args;
+    use v1_compiler::cli_run::workspace_root;
+
+    fn args(v: &[&str]) -> Vec<String> {
+        std::iter::once("claim_batch")
+            .chain(v.iter().copied())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Absolute existing paths pass parse_args unchanged (resolution applied, no rewrite).
+    #[test]
+    fn absolute_existing_args_parse_and_survive_resolution() {
+        let ws = workspace_root();
+        let root = ws.join("dag").to_string_lossy().into_owned();
+        let entry = ws
+            .join("dag/test/claim/commit_workflow_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let parsed = parse_args(&args(&[
+            "--source-root",
+            &root,
+            "--entry",
+            &entry,
+            "--function",
+            "commit_workflow_witnesses",
+        ]))
+        .unwrap_or_else(|_| panic!("absolute existing paths must parse"));
+        assert_eq!(parsed.source_roots, vec![root]);
+        assert_eq!(parsed.entry_groups.len(), 1);
+        assert_eq!(parsed.entry_groups[0].entry, entry);
+    }
+
+    /// A nonexistent --source-root refuses at the CLI boundary (exit-code error), never
+    /// proceeding to a partial run.
+    #[test]
+    fn nonexistent_source_root_refuses_at_parse() {
+        assert!(parse_args(&args(&["--source-root", "/no/such/tree"])).is_err());
+    }
+
+    /// Relative args resolve against the PROCESS CWD, not the baked workspace root.
+    /// `cargo test` runs bin unit tests with cwd == the package dir (src/v1/stage0),
+    /// where `dag` does not exist — while it DOES exist under the baked workspace root.
+    /// parse_args must therefore agree with the cwd, whichever it is: refuse when
+    /// cwd/dag is absent (a baked-root fallback would accept), accept when present.
+    #[test]
+    fn relative_source_root_follows_process_cwd_not_baked_root() {
+        let cwd = std::env::current_dir().expect("test cwd");
+        let cwd_has_dag = cwd.join("dag").is_dir();
+        let result = parse_args(&args(&[
+            "--source-root",
+            "dag",
+            "--entry",
+            "dag/test/claim/commit_workflow_witness_test.dag",
+            "--function",
+            "commit_workflow_witnesses",
+        ]));
+        assert_eq!(
+            result.is_ok(),
+            cwd_has_dag,
+            "relative --source-root must resolve against the process cwd {} (dag present: {cwd_has_dag}), never the baked workspace root {}",
+            cwd.display(),
+            workspace_root().display()
+        );
     }
 }
 

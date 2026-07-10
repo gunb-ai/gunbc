@@ -154,15 +154,6 @@ pub struct BooleanAlgebra<T> {
 
 pub type FreeMonoid<T> = Vec<T>;
 
-pub fn free_monoid_coproduct_authority() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Structural authority = the coproduct (operator ruling 2026-06-22, dag-v2-defork-audit §3b): the record-of-methods surface this decl once carried is DERIVED from inhabitance (DESIGN §4 — ops from inhabitance, no per-type ops); the method-type table lives in free_monoid_scalar_templates/free_monoid_collection_templates, which never read this decl. The prior record form shadowed src/v2/std/algebra.dag's byte-identical coproduct on the unqualified name and silently dropped Empty/Cons variant bindings in any closure containing both trees (undefined variable: Empty — reproduced 2026-07-05).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
     pub lookup: Rc<dyn Fn(K) -> Witness<V>>,
