@@ -290,6 +290,11 @@ fn partition_carrier_identities_in_semantic(semantic: Node) -> List<Symbol> {
   )
 }
 
+fn partition_program_structural_value_carriers(root: Node) -> List<Symbol> {
+  let _root = root
+  [^dag_surface_module]
+}
+
 fn partition_user_type_carrier_identities_from_decls(
   decls: List<PartitionUserSemanticType>
 ) -> List<Symbol> {
@@ -315,8 +320,11 @@ fn partition_derive_target_for_emit(
   let decls = partition_user_semantic_types_from_root(root: partition.ambient.root)
   let ownership_rows = partition_user_type_ownership_realizations_from_decls(decls: decls)
   let atom_names = list_append(
-    left: partition_user_type_atom_names_from_decls(decls: decls),
-    right: partition_carrier_identities_in_semantic(semantic: partition.ambient.root)
+    left: list_append(
+      left: partition_user_type_atom_names_from_decls(decls: decls),
+      right: partition_user_type_carrier_identities_from_decls(decls: decls)
+    ),
+    right: partition_program_structural_value_carriers(root: partition.ambient.root)
   )
   bind_outcome(
     o: target_model_augment_use_site_ownership_catalog(

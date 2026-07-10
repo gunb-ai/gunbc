@@ -3522,8 +3522,7 @@ fn rust_extended_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_kw_return, text: "return"),
     rust_lex_rule(token_class: ^rust_token_equal, text: "="),
     rust_lex_rule(token_class: ^rust_token_gt, text: ">"),
-    rust_lex_rule(token_class: ^rust_token_semicolon, text: ";"),
-    rust_lex_rule(token_class: ^rust_token_pipe, text: " | ")
+    rust_lex_rule(token_class: ^rust_token_semicolon, text: ";")
   ]
 }
 
