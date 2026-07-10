@@ -66,7 +66,6 @@ fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_expr)
     || (emitted == ^dag_surface_binary_expr)
     || (emitted == ^dag_surface_unary_expr)
-    || (emitted == ^dag_surface_postfix_expr)
     || (emitted == ^dag_surface_block_expr)
     || (emitted == ^dag_surface_fn_body)
     || (emitted == ^dag_surface_stmt)
@@ -745,6 +744,198 @@ fn body_lower_unwrap_pass_through(shell: Node, emitted: Symbol) -> Outcome<Node>
   }
 }
 
+fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: list_append(
+      left: [Edge { label: Positional, target: operator }],
+      right: fold(args, init: Empty, f: fn(acc, arg) {
+        list_snoc_item(xs: acc, item: Edge { label: Positional, target: arg })
+      })
+    )
+  )
+}
+
+fn body_lower_method_operator_atom(sym: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: []
+  )
+}
+
+fn body_lower_arg_operand_optional(arg_capture: Node) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: arg_capture, emitted: ^dag_surface_expr) {
+    ParseSubtreeFound { captured: expr } => body_lower_operand_ref_optional(node: expr)
+    ParseSubtreeAbsent =>
+      match parse_production_emitted_identity_optional(node: arg_capture) {
+        Present { value: emitted } =>
+          if emitted == ^dag_surface_expr {
+            match parse_production_captured_child_optional(node: arg_capture) {
+              Present { value: captured } => body_lower_operand_ref_optional(node: captured)
+              Absent => Absent
+            }
+          } else {
+            body_lower_operand_ref_optional(node: arg_capture)
+          }
+        Absent => body_lower_operand_ref_optional(node: arg_capture)
+      }
+  }
+}
+
+fn body_lower_call_arg_edge_optional(arg_capture: Node) -> Optional<Node> {
+  body_lower_arg_operand_optional(arg_capture: arg_capture)
+}
+
+fn body_lower_collect_call_arg_operands(arg_capture: Node) -> List<Node> {
+  match body_lower_call_arg_edge_optional(arg_capture: arg_capture) {
+    Present { value: operand } =>
+      match body_lower_comma_list_suffix(param_capture: arg_capture) {
+        Present { value: next } =>
+          list_append(
+            left: [operand],
+            right: body_lower_collect_call_arg_operands(arg_capture: next)
+          )
+        Absent => [operand]
+      }
+    Absent =>
+      match body_lower_comma_list_suffix(param_capture: arg_capture) {
+        Present { value: next } => body_lower_collect_call_arg_operands(arg_capture: next)
+        Absent => Empty
+      }
+  }
+}
+
+fn body_lower_call_args_from_capture(args_capture: Node) -> List<Node> {
+  match body_lower_param_list_comma_spine_optional(param_list_captured: args_capture) {
+    Absent => Empty
+    Present { value: comma_spine } => body_lower_collect_call_arg_operands(arg_capture: comma_spine)
+  }
+}
+
+fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<List<Node>> {
+  match sugar_sequence_pair_optional(node: call_suffix) {
+    Absent => Absent
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: pair.left) {
+        Present { value: id } =>
+          if id == ^dag_token_lparen {
+            match sugar_sequence_pair_optional(node: pair.right) {
+              Absent => optional_present(value: Empty)
+              Present { value: inner } =>
+                optional_present(value: body_lower_call_args_from_capture(args_capture: inner.left))
+            }
+          } else {
+            Absent
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
+  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => Absent
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: pair.left) {
+        Present { value: id } =>
+          if id == ^dag_token_dot {
+            match sugar_sequence_pair_optional(node: pair.right) {
+              Absent => Absent
+              Present { value: after_dot } =>
+                match body_lower_param_binding_optional(node: after_dot.left) {
+                  Present { value: method } => optional_present(value: method)
+                  Absent => Absent
+                }
+            }
+          } else {
+            Absent
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn body_lower_postfix_projection_args(repeat_elem: Node) -> List<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => Empty
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: pair.left) {
+        Present { value: id } =>
+          if id == ^dag_token_dot {
+            match sugar_sequence_pair_optional(node: pair.right) {
+              Absent => Empty
+              Present { value: after_dot } =>
+                match sugar_sequence_pair_optional(node: after_dot.right) {
+                  Absent => Empty
+                  Present { value: suffix } =>
+                    match body_lower_postfix_call_suffix_args(call_suffix: suffix.left) {
+                      Present { value: args } => args
+                      Absent => Empty
+                    }
+                }
+            }
+          } else {
+            Empty
+          }
+        Absent => Empty
+      }
+  }
+}
+
+fn body_lower_try_postfix_projection(node: Node) -> Optional<Node> {
+  let stripped = body_lower_unwrap_surface_shell(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => Absent
+    Present { value: pair } =>
+      match body_lower_operand_ref_optional(node: pair.left) {
+        Absent => Absent
+        Present { value: receiver } =>
+          match find_named_child(root: pair.right, name: ^grammar_repeat_element_node_projection) {
+            Accepted { value: repeat_elem, diagnostics: _ } =>
+              match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
+                Absent => Absent
+                Present { value: method } =>
+                  let args = body_lower_postfix_projection_args(repeat_elem: repeat_elem)
+                  Present {
+                    value: body_lower_transform_call(
+                      operator: body_lower_method_operator_atom(sym: method),
+                      args: list_append(
+                        left: [receiver],
+                        right: args
+                      )
+                    )
+                  }
+              }
+            Rejected { diagnostics: _ } => Absent
+          }
+      }
+  }
+}
+
+fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+    Present { value: captured } =>
+      match body_lower_try_postfix_projection(node: captured) {
+        Present { value: transform } => outcome_accepted(value: transform)
+        Absent =>
+          match body_lower_try_infix_transform(node: captured) {
+            Present { value: transform } => outcome_accepted(value: transform)
+            Absent =>
+              match body_lower_try_fold_loop(node: captured) {
+                Present { value: loop_node } => outcome_accepted(value: loop_node)
+                Absent => outcome_accepted(value: shell)
+              }
+          }
+      }
+  }
+}
+
 fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
@@ -752,12 +943,16 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
         d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
       )
     Present { value: captured } =>
-      match body_lower_try_infix_transform(node: captured) {
+      match body_lower_try_postfix_projection(node: captured) {
         Present { value: transform } => outcome_accepted(value: transform)
         Absent =>
-          match body_lower_try_fold_loop(node: captured) {
-            Present { value: loop_node } => outcome_accepted(value: loop_node)
-            Absent => outcome_accepted(value: shell)
+          match body_lower_try_infix_transform(node: captured) {
+            Present { value: transform } => outcome_accepted(value: transform)
+            Absent =>
+              match body_lower_try_fold_loop(node: captured) {
+                Present { value: loop_node } => outcome_accepted(value: loop_node)
+                Absent => outcome_accepted(value: shell)
+              }
           }
       }
   }
@@ -768,6 +963,8 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol) -> Outcome<Node> 
     outcome_accepted(value: shell)
   } else if emitted == ^dag_surface_fn_decl {
     body_lower_fn_decl_to_arrow(shell: shell)
+  } else if emitted == ^dag_surface_postfix_expr {
+    body_lower_postfix_expr(shell: shell)
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {
     body_lower_unwrap_pass_through(shell: shell, emitted: emitted)
   } else if emitted == ^dag_surface_primary_expr {
