@@ -1,9 +1,6 @@
 module v2.compiler.program_partition
 
 import v2.compiler.emit { emit }
-import v2.compiler.emit_module { emit_module_decl_separator }
-import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_rust_generic }
-import v2.compiler.target_carriers { target_source_medium }
 import v2.compiler.infer {
   InferredFacts,
   InferredFactsEntry,
@@ -17,14 +14,8 @@ import v2.compiler.translate {
   translate_project_transform_in_arrow_scope
 }
 import v2.lens.application { subterm_at }
-import v2.extdeps.languages.dag {
-  dag_node_is_module_root_conj,
-  dag_resolve_preserve_module_metadata_subtree,
-  dag_surface_module_header_metadata_edge,
-  parse_production_emitted_identity_optional
-}
 import std.algebra { Empty }
-import v2.std.algebra { any, fold_list, is_empty, list_append, list_snoc_item }
+import v2.std.algebra { any, fold_list, list_append, list_snoc_item }
 import v2.std.collection {
   Absent,
   List,
@@ -72,11 +63,9 @@ import v2.std.node {
   Edge,
   Named,
   Node,
-  Positional,
   Symbol,
   Transform,
   TypeNode,
-  node_rebuild,
   node_subtree_nodes,
   well_formed
 }
@@ -91,7 +80,6 @@ import v2.std.program_segment {
   WholeProgram,
 }
 import v2.std.witness { Holds, Violates }
-import v2.std.text { String }
 
 type ProgramPartition {
   ambient: InferredTree
@@ -105,98 +93,16 @@ type PartitionUserSemanticType {
   semantic: Node
 }
 
-fn partition_is_grammar_production_shell(node: Node) -> Bool {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn partition_is_grammar_structure_conj(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      fold(
-        node.children,
-        init: false,
-        f: fn(found, edge) {
-          if found {
-            true
-          } else {
-            match edge.label {
-              Named { name: sym } =>
-                (sym == ^grammar_sequence_left_node_projection)
-                  || (sym == ^grammar_sequence_right_node_projection)
-                  || (sym == ^grammar_optional_element_node_projection)
-                  || (sym == ^grammar_production_identity_node_projection)
-                  || (sym == ^grammar_production_captured_node_projection)
-              Positional => false
-            }
-          }
-        }
-      )
-    _ => false
-  }
-}
-
-fn partition_user_semantic_record_shape(node: Node) -> Bool {
-  if partition_is_grammar_production_shell(node: node) {
-    false
-  } else if partition_is_grammar_structure_conj(node: node) {
-    false
-  } else {
-    match node.kind {
-      TypeNode { connective: Conj } => true
-      _ => false
-    }
-  }
-}
-
 fn partition_user_semantic_type_shape(node: Node) -> Bool {
   match node.kind {
-    TypeNode { connective: Disj } =>
-      !partition_is_grammar_production_shell(node: node)
-    TypeNode { connective: Conj } => partition_user_semantic_record_shape(node: node)
+    TypeNode { connective: Disj } => true
+    TypeNode { connective: Conj } => true
     _ => false
   }
 }
 
-fn partition_semantic_disj_search_subtree(root: Node) -> Optional<Node> {
-  if partition_is_grammar_production_shell(node: root) {
-    match root.kind {
-      TypeNode { connective: Conj } =>
-        fold(
-          root.children,
-          init: Absent,
-          f: fn(acc, edge) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => partition_semantic_disj_search_subtree(root: edge.target)
-            }
-          }
-        )
-      _ => Absent
-    }
-  } else {
-    match root.kind {
-      TypeNode { connective: Disj } => optional_present(value: root)
-      TypeNode { connective: Conj } =>
-        fold(
-          root.children,
-          init: Absent,
-          f: fn(acc, edge) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => partition_semantic_disj_search_subtree(root: edge.target)
-            }
-          }
-        )
-      _ => Absent
-    }
-  }
-}
-
-fn partition_semantic_record_search_subtree(root: Node) -> Optional<Node> {
-  if partition_user_semantic_record_shape(node: root) {
+fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
+  if partition_user_semantic_type_shape(node: root) {
     optional_present(value: root)
   } else {
     match root.kind {
@@ -207,19 +113,12 @@ fn partition_semantic_record_search_subtree(root: Node) -> Optional<Node> {
           f: fn(acc, edge) {
             match acc {
               Present { value: _ } => acc
-              Absent => partition_semantic_record_search_subtree(root: edge.target)
+              Absent => partition_semantic_type_search_subtree(root: edge.target)
             }
           }
         )
       _ => Absent
     }
-  }
-}
-
-fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
-  match partition_semantic_disj_search_subtree(root: root) {
-    Present { value: disj } => optional_present(value: disj)
-    Absent => partition_semantic_record_search_subtree(root: root)
   }
 }
 
@@ -242,70 +141,6 @@ fn partition_snoc_user_semantic_type_unique(
   }
 }
 
-fn partition_is_grammar_projection_symbol(sym: Symbol) -> Bool {
-  (sym == ^grammar_production_identity_node_projection)
-    || (sym == ^grammar_production_captured_node_projection)
-    || (sym == ^grammar_sequence_left_node_projection)
-    || (sym == ^grammar_sequence_right_node_projection)
-    || (sym == ^grammar_optional_element_node_projection)
-}
-
-fn partition_type_decl_is_keyword_atom(sym: Symbol) -> Bool {
-  (sym == ^dag_token_kw_type)
-    || (sym == ^dag_token_kw_data)
-    || (sym == ^dag_token_kw_fn)
-}
-
-fn partition_first_type_decl_ident(root: Node) -> Optional<Symbol> {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(
-        root.children,
-        init: Absent,
-        f: fn(acc, edge) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match edge.label {
-                Positional =>
-                  match edge.target.kind {
-                    TypeNode { connective: Atom { identity: id } } =>
-                      if partition_type_decl_is_keyword_atom(sym: id) {
-                        acc
-                      } else {
-                        optional_present(value: id)
-                      }
-                    TypeNode { connective: Conj } =>
-                      partition_first_type_decl_ident(root: edge.target)
-                    _ => acc
-                  }
-                Named { name: sym } =>
-                  if partition_is_grammar_projection_symbol(sym: sym) {
-                    partition_first_type_decl_ident(root: edge.target)
-                  } else {
-                    acc
-                  }
-                _ => acc
-              }
-          }
-        }
-      )
-    _ => Absent
-  }
-}
-
-fn partition_type_decl_surface_name(root: Node) -> Optional<Symbol> {
-  match parse_production_emitted_identity_optional(node: root) {
-    Present { value: id } =>
-      if id == ^dag_surface_type_decl {
-        partition_first_type_decl_ident(root: root)
-      } else {
-        Absent
-      }
-    Absent => Absent
-  }
-}
-
 fn partition_collect_user_semantic_type_edge(
   acc: List<PartitionUserSemanticType>,
   edge: Edge
@@ -318,19 +153,6 @@ fn partition_collect_user_semantic_type_edge(
             acc: acc,
             item: PartitionUserSemanticType { name: sym, semantic: semantic }
           )
-        Absent => acc
-      }
-    Positional =>
-      match partition_semantic_type_from_decl_target(target: edge.target) {
-        Present { value: semantic } =>
-          match partition_type_decl_surface_name(root: edge.target) {
-            Present { value: name } =>
-              partition_snoc_user_semantic_type_unique(
-                acc: acc,
-                item: PartitionUserSemanticType { name: name, semantic: semantic }
-              )
-            Absent => acc
-          }
         Absent => acc
       }
     _ => acc
@@ -738,289 +560,6 @@ fn partition_segment_is_ambient_arrow_body_behavior(
   }
 }
 
-fn partition_is_import_decl_node(node: Node) -> Bool {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } => id == ^dag_surface_import_decl
-    Absent => false
-  }
-}
-
-fn partition_module_emit_skip_edge(edge: Edge) -> Bool {
-  match edge.label {
-    Positional =>
-      dag_resolve_preserve_module_metadata_subtree(node: edge.target)
-    Named { name: sym } =>
-      dag_surface_module_header_metadata_edge(name: sym)
-  }
-}
-
-fn partition_semantic_type_decl_matches_semantic(
-  decl: PartitionUserSemanticType,
-  semantic: Node
-) -> Bool {
-  (decl.semantic == semantic)
-    || node_in_subtree_by_identity(root: semantic, needle: decl.semantic)
-    || node_in_subtree_by_identity(root: decl.semantic, needle: semantic)
-}
-
-fn partition_semantic_type_decl_for_semantic(
-  decls: List<PartitionUserSemanticType>,
-  semantic: Node
-) -> Optional<PartitionUserSemanticType> {
-  fold_list(
-    xs: decls,
-    empty: Absent,
-    cons: fn(acc, decl) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if partition_semantic_type_decl_matches_semantic(decl: decl, semantic: semantic) {
-            optional_present(value: decl)
-          } else {
-            acc
-          }
-      }
-    }
-  )
-}
-
-fn partition_module_semantic_type_decl_for_target(
-  module_root: Node,
-  target: Node
-) -> Optional<PartitionUserSemanticType> {
-  match partition_semantic_type_from_decl_target(target: target) {
-    Present { value: semantic } =>
-      match partition_semantic_type_decl_for_semantic(
-        decls: partition_user_semantic_types_from_root(root: module_root),
-        semantic: semantic
-      ) {
-        Present { value: decl } => optional_present(value: decl)
-        Absent =>
-          match partition_type_decl_surface_name(root: target) {
-            Present { value: name } =>
-              optional_present(
-                value: PartitionUserSemanticType { name: name, semantic: semantic }
-              )
-            Absent => Absent
-          }
-      }
-    Absent => Absent
-  }
-}
-
-fn partition_module_header_edges(
-  module_root: Node,
-  acc: List<Edge>
-) -> List<Edge> {
-  fold_list(
-    xs: module_root.children,
-    empty: acc,
-    cons: fn(a, edge) {
-      if partition_module_emit_skip_edge(edge: edge) {
-        list_snoc_item(xs: a, item: edge)
-      } else {
-        a
-      }
-    }
-  )
-}
-
-fn partition_module_emit_semantic_type_decl(
-  name: Symbol,
-  semantic: Node
-) -> Outcome<Medium<String>> {
-  emit_semantic_type_decl_rust_generic(name: name, params: Empty, node: semantic)
-}
-
-type PartitionModuleEmitFoldAcc {
-  partial: Outcome<String>
-  deferred: List<Edge>
-}
-
-fn partition_module_emit_empty_acc() -> PartitionModuleEmitFoldAcc {
-  PartitionModuleEmitFoldAcc {
-    partial: outcome_accepted(value: Empty),
-    deferred: Empty
-  }
-}
-
-fn partition_module_shell_with_deferred_edges(
-  module_root: Node,
-  deferred: List<Edge>
-) -> Node {
-  node_rebuild(n: module_root, children: deferred)
-}
-
-fn partition_module_emit_deferred_items(
-  tree: InferredTree,
-  module_root: Node,
-  deferred: List<Edge>,
-  target: TargetModel
-) -> Outcome<Optional<Medium<String>>> {
-  if is_empty(xs: deferred) {
-    outcome_accepted(value: Absent)
-  } else {
-    bind_outcome(
-      o: emit(
-        tree: InferredTree {
-          root: partition_module_shell_with_deferred_edges(
-            module_root: module_root,
-            deferred: deferred
-          ),
-          facts: tree.facts
-        },
-        target: target
-      ),
-      f: fn(medium) {
-        outcome_accepted(value: Present { value: medium })
-      }
-    )
-  }
-}
-
-fn partition_module_emit_item_edge(
-  tree: InferredTree,
-  module_root: Node,
-  edge: Edge,
-  target: TargetModel
-) -> Outcome<Optional<Medium<String>>> {
-  if partition_is_import_decl_node(node: edge.target) {
-    outcome_accepted(value: Absent)
-  } else {
-    match partition_module_semantic_type_decl_for_target(
-      module_root: module_root,
-      target: edge.target
-    ) {
-      Present { value: decl } =>
-        bind_outcome(
-          o: partition_module_emit_semantic_type_decl(
-            name: decl.name,
-            semantic: decl.semantic
-          ),
-          f: fn(medium) {
-            outcome_accepted(value: Present { value: medium })
-          }
-        )
-      Absent =>
-        outcome_accepted(value: Absent)
-    }
-  }
-}
-
-fn partition_module_emit_fold_step(
-  acc: PartitionModuleEmitFoldAcc,
-  tree: InferredTree,
-  module_root: Node,
-  edge: Edge,
-  target: TargetModel
-) -> PartitionModuleEmitFoldAcc {
-  if partition_module_emit_skip_edge(edge: edge) {
-    acc
-  } else if partition_is_import_decl_node(node: edge.target) {
-    PartitionModuleEmitFoldAcc {
-      partial: acc.partial,
-      deferred: list_snoc_item(xs: acc.deferred, item: edge)
-    }
-  } else {
-    match partition_module_semantic_type_decl_for_target(
-      module_root: module_root,
-      target: edge.target
-    ) {
-      Present { value: _ } =>
-        match acc.partial {
-          Rejected { diagnostics: r } =>
-            PartitionModuleEmitFoldAcc { partial: Rejected { diagnostics: r }, deferred: acc.deferred }
-          Accepted { value: partial, diagnostics: pd } =>
-            match partition_module_emit_item_edge(
-              tree: tree,
-              module_root: module_root,
-              edge: edge,
-              target: target
-            ) {
-              Rejected { diagnostics: r } =>
-                PartitionModuleEmitFoldAcc { partial: Rejected { diagnostics: r }, deferred: acc.deferred }
-              Accepted { value: optional_medium, diagnostics: cd } =>
-                PartitionModuleEmitFoldAcc {
-                  partial: Accepted {
-                    value: partition_module_emit_append_optional(
-                      partial: partial,
-                      optional_medium: optional_medium
-                    ),
-                    diagnostics: pd
-                  },
-                  deferred: acc.deferred
-                }
-            }
-        }
-      Absent =>
-        PartitionModuleEmitFoldAcc {
-          partial: acc.partial,
-          deferred: list_snoc_item(xs: acc.deferred, item: edge)
-        }
-    }
-  }
-}
-
-fn partition_module_emit_append_optional(
-  partial: String,
-  optional_medium: Optional<Medium<String>>
-) -> String {
-  match optional_medium {
-    Present { value: medium } =>
-      list_append(
-        left: list_append(left: partial, right: medium.carried),
-        right: emit_module_decl_separator
-      )
-    Absent => partial
-  }
-}
-
-fn emit_partition_module_source(
-  tree: InferredTree,
-  module_root: Node,
-  target: TargetModel
-) -> Outcome<Medium<String>> {
-  let folded = fold_list(
-    xs: module_root.children,
-    empty: partition_module_emit_empty_acc(),
-    cons: fn(acc, edge) {
-      partition_module_emit_fold_step(
-        acc: acc,
-        tree: tree,
-        module_root: module_root,
-        edge: edge,
-        target: target
-      )
-    }
-  )
-  bind_outcome(
-    o: match folded.partial {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: partial, diagnostics: pd } =>
-        bind_outcome(
-          o: partition_module_emit_deferred_items(
-            tree: tree,
-            module_root: module_root,
-            deferred: folded.deferred,
-            target: target
-          ),
-          f: fn(optional_deferred) {
-            outcome_accepted(
-              value: partition_module_emit_append_optional(
-                partial: partial,
-                optional_medium: optional_deferred
-              ),
-              diagnostics: pd
-            )
-          }
-        )
-    },
-    f: fn(joined) {
-      target_source_medium(text: joined, target: target)
-    }
-  )
-}
-
 fn emit_partition_arrow_body_behavior_source(
   partition: ProgramPartition,
   target: TargetModel
@@ -1074,15 +613,7 @@ fn emit_partition_with_target(
     bind_outcome(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
-        if dag_node_is_module_root_conj(n: tree.root) {
-          emit_partition_module_source(
-            tree: tree,
-            module_root: tree.root,
-            target: target
-          )
-        } else {
-          emit(tree: tree, target: target)
-        }
+        emit(tree: tree, target: target)
       }
     )
   }
