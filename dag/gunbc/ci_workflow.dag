@@ -23,7 +23,7 @@ import gunbc.ci_materialization {
 }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
-import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
 import extdeps.github.actions {
@@ -197,6 +197,15 @@ fn ci_cgroup_peak_locate_shell() -> String {
   )
 }
 
+data ci_cgroup_peak_locate_shell_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_workflow",
+    decl_name: "ci_cgroup_peak_locate_shell",
+    field: WholeDeclaration
+  }
+}
+
 fn ci_floor_peak_pre_script() -> String {
   concat(
     ci_cgroup_peak_locate_shell(),
@@ -213,6 +222,15 @@ fn ci_floor_peak_pre_script() -> String {
   )
 }
 
+data ci_floor_peak_pre_script_shell_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_workflow",
+    decl_name: "ci_floor_peak_pre_script",
+    field: WholeDeclaration
+  }
+}
+
 fn ci_floor_peak_post_script() -> String {
   concat(
     ci_cgroup_peak_locate_shell(),
@@ -221,6 +239,15 @@ fn ci_floor_peak_post_script() -> String {
       "else echo \"[calibration] floor_peak_post floor_outcome=$\{\{ steps.floor.outcome \}\} scope=unavailable (no memory.peak ancestor)\"; fi"
     )
   )
+}
+
+data ci_floor_peak_post_script_shell_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_workflow",
+    decl_name: "ci_floor_peak_post_script",
+    field: WholeDeclaration
+  }
 }
 
 fn ci_floor_peak_pre_step() -> Step {
