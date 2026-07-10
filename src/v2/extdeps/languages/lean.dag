@@ -38,7 +38,7 @@ import v2.std.compilers.lexing {
 import v2.std.collection { List, Map, Set }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, fold_list, list_snoc_item }
+import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, fold_list, list_map }
 import v2.std.text { String }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
@@ -416,16 +416,9 @@ fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactB
 }
 
 fn lean_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: lean_primitive_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: lean_primitive_bundle_from_facts(facts: facts)
-      )
-    }
-  )
+  list_map(xs: lean_primitive_facts_catalog, f: fn(facts) {
+    lean_primitive_bundle_from_facts(facts: facts)
+  })
 }
 
 fn lean_catalog_surface_symbol_step(sym: Symbol, acc: Bool, facts: LeanPrimitiveFacts) -> Bool {
@@ -473,16 +466,9 @@ fn lean_formal_token_classes() -> List<Symbol> {
 }
 
 fn lean_formal_rhs_from_token_classes(classes: List<Symbol>) -> List<FormalGrammarSymbol> {
-  fold_list(
-    xs: classes,
-    empty: Empty,
-    cons: fn(acc, token_class) {
-      list_snoc_item(
-        xs: acc,
-        item: grammar_formal_terminal(identity: token_class)
-      )
-    }
-  )
+  list_map(xs: classes, f: fn(token_class) {
+    grammar_formal_terminal(identity: token_class)
+  })
 }
 
 fn lean_def_dec_formal_production() -> FormalProduction {
@@ -668,13 +654,9 @@ fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabita
 }
 
 fn lean_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  fold_list(
-    xs: lean_primitive_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(xs: acc, item: lean_scalar_algebra_inhabitance(facts: facts))
-    }
-  )
+  list_map(xs: lean_primitive_facts_catalog, f: fn(facts) {
+    lean_scalar_algebra_inhabitance(facts: facts)
+  })
 }
 
 fn lean_model_core() -> ModelCore {

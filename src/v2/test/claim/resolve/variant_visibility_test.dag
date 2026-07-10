@@ -1,0 +1,64 @@
+module v2.test.resolve.variant_visibility
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+
+data variant_vis_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_vis_artifact,
+  file_path: "src/v2/pilot/variant_vis.dag"
+}
+
+fn variant_vis_ingest_for(src: String) -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: variant_vis_artifact,
+      compilation_unit: ^variant_vis_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn variant_vis_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^variant_vis_pilot, tail: Empty } },
+    imports: Empty
+  }
+}
+
+fn variant_vis_accepts(src: String) -> Bool {
+  match assemble_program_from_ingest(
+    ingest: variant_vis_ingest_for(src: src),
+    admission: variant_vis_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data variant_vis_doc: String = "src_unique_variants: bare match-arm variants Yes/No are each declared by exactly ONE type (module-unique) -> the interim variant-visibility resolver binds them and resolution ACCEPTS. src_ambiguous_variant: `Yes` is declared by TWO types (Classical, Mood) -> ambiguous -> the resolver REFUSES to bind it (fail-closed, no silent mis-bind), the bare `Yes` stays unbound, resolution REJECTS. The ambiguous case is the discriminating RED control: a flat bind-everything resolver (the wrong model) would bind `Yes` and wrongly accept."
+
+data src_unique_variants: String = "module variant_vis_pilot\n\ntype Classical = Yes | No\n\nfn flip(a: Classical) -> Classical { match a { Yes => No, No => Yes } }\n"
+
+data src_ambiguous_variant: String = "module variant_vis_pilot\n\ntype Classical = Yes | No\n\ntype Mood = Yes | Meh\n\nfn flip(a: Classical) -> Classical { match a { Yes => No, No => Yes } }\n"
+
+test fn variant_visibility_unique_resolves_holds() -> Bool {
+  variant_vis_accepts(src: src_unique_variants)
+}
+
+test fn variant_visibility_ambiguous_refuses_holds() -> Bool {
+  !variant_vis_accepts(src: src_ambiguous_variant)
+}
