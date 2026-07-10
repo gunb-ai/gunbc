@@ -27,6 +27,7 @@ import v2.workflow.ci_floor_plan {
   witness_falsifier_plan_spawn_width_backs_off_at_live_cap,
   witness_falsifier_envelope_fits_live_cap,
   witness_ci_corpus_discovery_is_live,
+  witness_ci_corpus_discovery_serializes_at_width_one,
   witness_regen_spec_carries_no_witness_corpus,
   witness_corpus_effective_widths_fit_runner_cap,
   witness_floor_derived_width_leaves_headroom_at_cap,
