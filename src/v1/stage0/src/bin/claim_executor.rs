@@ -2010,6 +2010,46 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
 
+    // The materialization-receipt chain by execution: a real entry resolves, a
+    // claim evaluates on its InterpContext, the ctx Drop absorbs ledger totals
+    // into the process accumulator, and the drain returns them exactly once.
+    // nextest runs each test in its own process, so the env latch and the
+    // process accumulator are fresh here by construction.
+    #[test]
+    fn materialization_receipt_totals_absorb_on_ctx_drop() {
+        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/test/claim/materialization_ladder_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let _ = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+        {
+            let (graph, indices) =
+                resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
+            let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+            let outcome = run_claim(&ctx, "single_pure_demand_is_accepted_recompute");
+            assert!(
+                matches!(outcome, ClaimOutcome::Pass),
+                "claim must pass for the receipt to be meaningful"
+            );
+        }
+        let totals = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+        assert!(
+            totals.keyed_calls > 0,
+            "ctx Drop must absorb ledger totals into the process accumulator"
+        );
+        assert_eq!(
+            v1_compiler::v1_interpreter::take_process_eval_recompute_totals().keyed_calls,
+            0,
+            "drain must take the totals exactly once"
+        );
+    }
+
     fn single(entry: &str, function: &str) -> Runnable {
         Runnable::SingleClaim {
             entry: entry.to_string(),
