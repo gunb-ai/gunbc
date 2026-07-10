@@ -21,7 +21,6 @@ import v2.extdeps.languages.dag {
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
-  parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
 import std.algebra { Empty }
@@ -179,21 +178,7 @@ fn partition_semantic_disj_search_subtree(root: Node) -> Optional<Node> {
     }
   } else {
     match root.kind {
-      TypeNode { connective: Disj } =>
-        if partition_user_semantic_type_shape(node: root) {
-          optional_present(value: root)
-        } else {
-          fold(
-            root.children,
-            init: Absent,
-            f: fn(acc, edge) {
-              match acc {
-                Present { value: _ } => acc
-                Absent => partition_semantic_disj_search_subtree(root: edge.target)
-              }
-            }
-          )
-        }
+      TypeNode { connective: Disj } => optional_present(value: root)
       TypeNode { connective: Conj } =>
         fold(
           root.children,
@@ -294,8 +279,6 @@ fn partition_first_type_decl_ident(root: Node) -> Optional<Symbol> {
                     TypeNode { connective: Atom { identity: id } } =>
                       if partition_type_decl_is_keyword_atom(sym: id) {
                         acc
-                      } else if partition_is_grammar_projection_symbol(sym: id) {
-                        acc
                       } else {
                         optional_present(value: id)
                       }
@@ -304,7 +287,11 @@ fn partition_first_type_decl_ident(root: Node) -> Optional<Symbol> {
                     _ => acc
                   }
                 Named { name: sym } =>
-                  partition_first_type_decl_ident(root: edge.target)
+                  if partition_is_grammar_projection_symbol(sym: sym) {
+                    partition_first_type_decl_ident(root: edge.target)
+                  } else {
+                    acc
+                  }
                 _ => acc
               }
           }
@@ -318,11 +305,7 @@ fn partition_type_decl_surface_name(root: Node) -> Optional<Symbol> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == ^dag_surface_type_decl {
-        match parse_production_captured_child_optional(node: root) {
-          Present { value: captured } =>
-            partition_first_type_decl_ident(root: captured)
-          Absent => partition_first_type_decl_ident(root: root)
-        }
+        partition_first_type_decl_ident(root: root)
       } else {
         Absent
       }
@@ -336,27 +319,13 @@ fn partition_collect_user_semantic_type_edge(
 ) -> List<PartitionUserSemanticType> {
   match edge.label {
     Named { name: sym } =>
-      if partition_is_grammar_projection_symbol(sym: sym) {
-        match edge.target.kind {
-          TypeNode { connective: Conj } =>
-            fold_list(
-              xs: edge.target.children,
-              empty: acc,
-              cons: fn(a, child_edge) {
-                partition_collect_user_semantic_type_edge(acc: a, edge: child_edge)
-              }
-            )
-          _ => acc
-        }
-      } else {
-        match partition_semantic_type_from_decl_target(target: edge.target) {
-          Present { value: semantic } =>
-            partition_snoc_user_semantic_type_unique(
-              acc: acc,
-              item: PartitionUserSemanticType { name: sym, semantic: semantic }
-            )
-          Absent => acc
-        }
+      match partition_semantic_type_from_decl_target(target: edge.target) {
+        Present { value: semantic } =>
+          partition_snoc_user_semantic_type_unique(
+            acc: acc,
+            item: PartitionUserSemanticType { name: sym, semantic: semantic }
+          )
+        Absent => acc
       }
     Positional =>
       match partition_semantic_type_from_decl_target(target: edge.target) {
