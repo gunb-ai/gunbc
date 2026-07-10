@@ -3351,33 +3351,29 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
         return;
     }
     let t = ctx.eval_recompute_trace.borrow();
+    let totals = trace_totals(&t);
     let mut duplicated: Vec<(&EvalRecomputeEntry, u128)> = t
         .map
         .values()
         .filter(|e| e.count >= 2)
-        .map(|e| (e, e.total_ns - e.total_ns / u128::from(e.count)))
+        .map(|e| (e, entry_wasted_ns(e)))
         .collect();
     duplicated.sort_by(|a, b| b.1.cmp(&a.1));
-    let total_wasted_ns: u128 = duplicated.iter().map(|(_, w)| *w).sum();
-    let (single_site, multi_site): (Vec<_>, Vec<_>) =
-        duplicated.iter().partition(|(e, _)| e.sites.len() == 1);
-    let single_site_wasted_ns: u128 = single_site.iter().map(|(_, w)| *w).sum();
-    let multi_site_wasted_ns: u128 = multi_site.iter().map(|(_, w)| *w).sum();
     eprintln!(
         "[recompute-trace] keyed_calls={} unkeyed_calls={} overflow_calls={} distinct_keys={} duplicated_keys={} wasted_ms={} (durations inclusive of callees)",
-        t.keyed_calls,
-        t.unkeyed_calls,
-        t.overflow_calls,
-        t.map.len(),
-        duplicated.len(),
-        total_wasted_ns / 1_000_000
+        totals.keyed_calls,
+        totals.unkeyed_calls,
+        totals.overflow_calls,
+        totals.distinct_keys,
+        totals.duplicated_keys,
+        totals.wasted_ns_total / 1_000_000
     );
     eprintln!(
         "[recompute-trace] gap: single_site_keys={} wasted_ms={} (same call expression re-hit — value-coincident/loop-borne, memoize/Share territory) | multi_site_keys={} wasted_ms={} (cross-site duplicate demand — static rewire candidates)",
-        single_site.len(),
-        single_site_wasted_ns / 1_000_000,
-        multi_site.len(),
-        multi_site_wasted_ns / 1_000_000
+        totals.single_site_keys,
+        totals.wasted_ns_single_site / 1_000_000,
+        totals.multi_site_keys,
+        totals.wasted_ns_multi_site / 1_000_000
     );
     for (e, wasted_ns) in duplicated.iter().take(20) {
         let site_labels: Vec<&str> = e
@@ -3410,6 +3406,107 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
         );
     }
 }
+
+// Everything a re-evaluated key cost beyond one evaluation's amortized share.
+fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
+    e.total_ns - e.total_ns / u128::from(e.count)
+}
+
+/// Ledger totals for one InterpContext — the materialization demand receipt at
+/// the eval-frame grain. Key counts are deterministic for a fixed corpus and
+/// entry set; wasted_ns durations are observational and must never gate.
+#[derive(Default, Clone)]
+pub struct EvalRecomputeTotals {
+    pub keyed_calls: u64,
+    pub unkeyed_calls: u64,
+    pub overflow_calls: u64,
+    pub distinct_keys: u64,
+    pub duplicated_keys: u64,
+    pub single_site_keys: u64,
+    pub multi_site_keys: u64,
+    pub wasted_ns_total: u128,
+    pub wasted_ns_single_site: u128,
+    pub wasted_ns_multi_site: u128,
+}
+
+impl EvalRecomputeTotals {
+    pub fn absorb(&mut self, o: &EvalRecomputeTotals) {
+        self.keyed_calls += o.keyed_calls;
+        self.unkeyed_calls += o.unkeyed_calls;
+        self.overflow_calls += o.overflow_calls;
+        self.distinct_keys += o.distinct_keys;
+        self.duplicated_keys += o.duplicated_keys;
+        self.single_site_keys += o.single_site_keys;
+        self.multi_site_keys += o.multi_site_keys;
+        self.wasted_ns_total += o.wasted_ns_total;
+        self.wasted_ns_single_site += o.wasted_ns_single_site;
+        self.wasted_ns_multi_site += o.wasted_ns_multi_site;
+    }
+}
+
+fn trace_totals(t: &EvalRecomputeTrace) -> EvalRecomputeTotals {
+    let mut out = EvalRecomputeTotals {
+        keyed_calls: t.keyed_calls,
+        unkeyed_calls: t.unkeyed_calls,
+        overflow_calls: t.overflow_calls,
+        distinct_keys: t.map.len() as u64,
+        ..EvalRecomputeTotals::default()
+    };
+    for e in t.map.values() {
+        if e.count < 2 {
+            continue;
+        }
+        let w = entry_wasted_ns(e);
+        out.duplicated_keys += 1;
+        out.wasted_ns_total += w;
+        if e.sites.len() == 1 {
+            out.single_site_keys += 1;
+            out.wasted_ns_single_site += w;
+        } else {
+            out.multi_site_keys += 1;
+            out.wasted_ns_multi_site += w;
+        }
+    }
+    out
+}
+
+pub fn eval_recompute_totals(ctx: &InterpContext) -> EvalRecomputeTotals {
+    trace_totals(&ctx.eval_recompute_trace.borrow())
+}
+
+// Process-wide accumulator fed by InterpContext::drop, so EVERY eval path in
+// the process lands in the receipt by construction — harvest is not a
+// per-call-site discipline a future site could forget. Sums at the totals
+// grain only: raw ledger keys are address-based and single-ctx.
+static PROCESS_EVAL_RECOMPUTE_TOTALS: std::sync::Mutex<Option<EvalRecomputeTotals>> =
+    std::sync::Mutex::new(None);
+
+/// Drain the process-wide ledger totals (e.g. to write a receipt file at the
+/// end of a floor walk). Returns zeroed totals when tracing was disabled.
+pub fn take_process_eval_recompute_totals() -> EvalRecomputeTotals {
+    PROCESS_EVAL_RECOMPUTE_TOTALS
+        .lock()
+        .ok()
+        .and_then(|mut g| g.take())
+        .unwrap_or_default()
+}
+
+impl Drop for InterpContext {
+    fn drop(&mut self) {
+        if !eval_recompute_trace_enabled() {
+            return;
+        }
+        let totals = trace_totals(&self.eval_recompute_trace.borrow());
+        if totals.keyed_calls == 0 && totals.unkeyed_calls == 0 {
+            return;
+        }
+        if let Ok(mut g) = PROCESS_EVAL_RECOMPUTE_TOTALS.lock() {
+            g.get_or_insert_with(EvalRecomputeTotals::default)
+                .absorb(&totals);
+        }
+    }
+}
+
 fn value_rc_identity(v: &Value) -> Option<usize> {
     match v {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
