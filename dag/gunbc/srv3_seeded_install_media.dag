@@ -110,7 +110,14 @@ fn install_media_remaster_toolchain_ensure_script() -> String {
   )
 }
 
-data srv3_seeded_install_media_unattended_not_proven_marker: String = "🟡 scaffold: seeded ISO path modeled but unattended install NOT proven by execution — srv3_os_install_actuate_scope seed-gap fail-closed remains until boot-once + SOL receipt + OS-up witness green"
+data srv3_seeded_install_media_unattended_not_proven_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_os_install_actuate_scope",
+    decl_name: "srv3_autoinstall_seed_delivery_refusal",
+    field: WholeDeclaration
+  }
+}
 
 data srv3_autoinstall_user_data_body: NonEmptyStr = autoinstall_user_data(
   payload: srv3_ubuntu_autoinstall_on_iso,
@@ -202,7 +209,10 @@ fn srv3_seeded_grub_cmdline_names_nocloud() -> Bool {
 }
 
 fn srv3_seeded_install_media_unattended_not_proven_yet() -> Bool {
-  string_contains(s: srv3_seeded_install_media_unattended_not_proven_marker, pattern: "NOT proven by execution")
+  match srv3_seeded_install_media_unattended_not_proven_marker {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 fn srv3_seeded_install_media_remaster_toolchain_is_modeled() -> Bool {

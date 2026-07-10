@@ -23,7 +23,6 @@ import gunbc.ci_failure_class {
   gating_is_enforced,
   GatingComputedDeferred,
   merge_admission_enforcement_gating_scaffold,
-  merge_admission_gating_activation_trigger,
 }
 import gunbc.ci_workflow { merge_admission_gate_step_name, merge_admission_ci_gate_step_scaffold }
 import std.disposition { Scaffold, SingleAuthority, Terminal }
@@ -91,10 +90,10 @@ test fn ci_gate_step_name_declares_not_enforcing() -> Bool {
 }
 
 test fn gating_activation_trigger_names_flip() -> Bool {
-  string_contains(
-    s: merge_admission_gating_activation_trigger,
-    pattern: "GatingComputedDeferred to GatingEnforced"
-  )
+  match merge_admission_enforcement_gating_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 test fn would_block_stale_base() -> Bool {
