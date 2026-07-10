@@ -594,7 +594,7 @@ fn gunbc_falsifier_spawn_width_from_live_cap() -> HardwareThreadCount {
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
   [[RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
-    scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
+    scan_dirs: witness_discovery_scan_dirs,
     explicit_entries: [],
     node_frontier_selection: SelectionPredictOnly,
     exclude_substrings: witness_exclusion_substrings,
