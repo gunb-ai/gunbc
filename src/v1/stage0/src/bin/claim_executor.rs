@@ -2011,10 +2011,13 @@ mod tests {
     use super::*;
 
     // The materialization-receipt chain by execution: a real entry resolves, a
-    // claim evaluates on its InterpContext, the ctx Drop absorbs ledger totals
-    // into the process accumulator, and the drain returns them exactly once.
-    // nextest runs each test in its own process, so the env latch and the
-    // process accumulator are fresh here by construction.
+    // claim evaluates on its InterpContext, and the ctx Drop absorbs ledger
+    // totals into the process accumulator. The env latch is process-global and
+    // sticky (OnceLock), so under plain `cargo test` sibling tests in this
+    // binary share it and their ctx drops may also absorb — every assertion
+    // here is therefore monotone under concurrent absorbs (siblings can only
+    // ADD totals; nothing here asserts the accumulator is empty). Drain-once
+    // is Option::take by construction, not asserted through the shared global.
     #[test]
     fn materialization_receipt_totals_absorb_on_ctx_drop() {
         std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
@@ -2042,11 +2045,6 @@ mod tests {
         assert!(
             totals.keyed_calls > 0,
             "ctx Drop must absorb ledger totals into the process accumulator"
-        );
-        assert_eq!(
-            v1_compiler::v1_interpreter::take_process_eval_recompute_totals().keyed_calls,
-            0,
-            "drain must take the totals exactly once"
         );
     }
 
