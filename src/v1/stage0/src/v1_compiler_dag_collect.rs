@@ -222,15 +222,6 @@ pub fn dag_collect_node_tree(
     }
 }
 
-pub fn dag_collect_synthetic_key_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Synthetic span-0 keys embed the fingerprint; the Absent branch recovers it by substring and must not re-hash.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn dag_collect_insert_slots(
     node: Rc<Node>,
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
@@ -287,15 +278,6 @@ pub fn dag_collect_from_module(
             },
         )
     }
-}
-
-pub fn dag_collect_collision_threading_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Dissolve-on: drop collision_errors threading once synthetic-key construction proof is a typed wall (key embeds fp ⇒ key-equal ⇒ fp-equal); kept for emit_dag gate shape.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
