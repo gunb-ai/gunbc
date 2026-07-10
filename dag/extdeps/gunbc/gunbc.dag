@@ -91,14 +91,14 @@ data packages: List<WorkspacePackage> = [
 
 service gunbc.WitnessBin {
   operation Run {
-    input { bin_path: FilePath, args: List<String> = [] }
+    input { workdir: FilePath, bin_path: FilePath, args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["{bin_path}", args] }
+    transport shell { argv: ["env", "-C", "{workdir}", "{bin_path}", args] }
     exit {
       0 => Unit
       nonzero => String "Witness binary exited nonzero"

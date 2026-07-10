@@ -173,7 +173,7 @@ fn witness_bin_ensure_built_typed(root: String, bin: WitnessBin) -> Bool {
   let build_ok = if present.executable {
     true
   } else {
-    let built = cargo.Build.BuildInheritEnv(extra_args: witness_bin_build_args(bin: bin))
+    let built = cargo.Build.BuildInheritEnv(workdir: root, extra_args: witness_bin_build_args(bin: bin))
     built.success
   }
   if build_ok {
@@ -189,6 +189,7 @@ fn run_witness_bin_program(invoke: WitnessBin, prereqs: List<WitnessBin>, args: 
     acc && witness_bin_ensure_built_typed(root: root.path, bin: b))
   if prereqs_ok && witness_bin_ensure_built_typed(root: root.path, bin: invoke) {
     let result = gunbc.WitnessBin.Run(
+      workdir: root.path,
       bin_path: witness_bin_release_path(root: root.path, bin_name: invoke.bin_name),
       args: args
     )
@@ -250,6 +251,7 @@ fn run_gunbc_claims(source_roots: List<String>, claims: List<ClaimRun>) -> Bool 
   if witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc")) {
     fold(claims, init: true, f: (acc, c) => {
       let result = gunbc.WitnessBin.Run(
+        workdir: root.path,
         bin_path: witness_bin_release_path(root: root.path, bin_name: "gunbc"),
         args: gunbc_claim_run_args(source_roots: source_roots, claim: c)
       )

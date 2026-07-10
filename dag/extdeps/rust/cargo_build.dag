@@ -1,5 +1,6 @@
 module extdeps.cargo_build
 
+import std.types { FilePath }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -36,13 +37,13 @@ service cargo.Build {
   }
 
   operation BuildInheritEnv {
-    input { extra_args: List<String> = [] }
+    input { workdir: FilePath, extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "build", extra_args] }
+    transport shell { argv: ["env", "-C", "{workdir}", "cargo", "build", extra_args] }
     exit {
       0 => Unit
       101 => String "Compilation failed"
