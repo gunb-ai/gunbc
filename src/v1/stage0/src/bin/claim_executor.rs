@@ -1313,6 +1313,49 @@ fn write_resolve_receipt(batch_records: &[BatchRecord]) {
     );
 }
 
+/// The materialization demand receipt at the eval-frame grain: process-wide
+/// ledger totals accumulated by every InterpContext on Drop (threads included),
+/// written once at walk end. Key counts are deterministic for a fixed corpus +
+/// plan; wasted_ms lines are observational and must never gate. The derived
+/// ci.yml gate compares unkeyed_calls to the declared row (0 = every call
+/// carried a computable identity) and fails closed on a missing file or a
+/// zeroed keyed_calls (a floor that evaluated nothing is a lie, so disabling
+/// the trace cannot silently green the gate).
+fn write_materialization_receipt() {
+    let t = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
+    let body = format!(
+        "keyed_calls={}\nunkeyed_calls={}\noverflow_calls={}\ndistinct_keys={}\nduplicated_keys={}\nsingle_site_keys={}\nmulti_site_keys={}\nwasted_ms_total={}\nwasted_ms_single_site={}\nwasted_ms_multi_site={}\n",
+        t.keyed_calls,
+        t.unkeyed_calls,
+        t.overflow_calls,
+        t.distinct_keys,
+        t.duplicated_keys,
+        t.single_site_keys,
+        t.multi_site_keys,
+        t.wasted_ns_total / 1_000_000,
+        t.wasted_ns_single_site / 1_000_000,
+        t.wasted_ns_multi_site / 1_000_000
+    );
+    let path = std::path::Path::new("target/floor-materialization-receipt.txt");
+    if let Err(e) = std::fs::create_dir_all("target").and_then(|_| std::fs::write(path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write materialization receipt {}: {e} (gate downstream will fail closed on the missing file)",
+            path.display()
+        );
+        return;
+    }
+    eprintln!(
+        "[receipt] floor materialization: keyed_calls={} unkeyed_calls={} duplicated_keys={} (single_site={} multi_site={}) wasted_ms={} (receipt: {})",
+        t.keyed_calls,
+        t.unkeyed_calls,
+        t.duplicated_keys,
+        t.single_site_keys,
+        t.multi_site_keys,
+        t.wasted_ns_total / 1_000_000,
+        path.display()
+    );
+}
+
 /// Emit a fractal Gantt tree to stderr when GUNBC_FLOOR_GANTT=1.
 fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
     let gantt_enabled = std::env::var("GUNBC_FLOOR_GANTT")
@@ -1529,6 +1572,10 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
     write_resolve_receipt(&batch_records);
+    // Memo contexts absorb their ledger totals into the process accumulator on
+    // Drop, so they must die before the materialization receipt is written.
+    drop(walk_memo);
+    write_materialization_receipt();
     WalkOutcome {
         any_failed,
         batches_run,
@@ -1946,6 +1993,13 @@ fn run() -> Result<ExitCode, ExitCode> {
 }
 
 fn main() -> ExitCode {
+    // The materialization demand receipt is mandatory on the floor: enable the
+    // interpreter's recompute-trace ledger unless the environment already set
+    // it. An explicit =0 zeroes the receipt, and the derived ci.yml gate fails
+    // closed on keyed_calls=0 — disabling is loud, never silent.
+    if std::env::var_os("GUNBC_RECOMPUTE_TRACE").is_none() {
+        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+    }
     match run() {
         Ok(code) => code,
         Err(code) => code,

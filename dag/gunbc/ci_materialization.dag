@@ -186,6 +186,50 @@ data ci_sccache_provider_shell_injection_dissolution_trigger: Disposition = Scaf
   }
 }
 
+data ci_floor_materialization_receipt_note: String = "Increment 1 of INFERRED materialization (operator ruling 2026-07-10: code is forcefully framed under materialization — running IS enrolling; and: plural pure demand means a provider or a hard error, no wall-clock term in any verdict, exemptions only as declared human-signed rows). The interpreter ledgers every keyed pure call (fn identity x argument content identity); every InterpContext absorbs its ledger totals into a process-wide accumulator on Drop — BY CONSTRUCTION, so no eval path (threaded, memoized, or future) can escape the receipt by forgetting a harvest call. claim_executor writes target/floor-materialization-receipt.txt at walk end. WHAT GATES NOW (the two free walls, measured clean on two workloads 2026-07-10: 1,568-call gate eval and 93,870-call artifact regen, both unkeyed_calls=0): the receipt must exist; keyed_calls must be nonzero (a floor that evaluated nothing is a lie — an explicit GUNBC_RECOMPUTE_TRACE=0 zeroes the receipt and reds this gate, so disabling is loud, never an escape hatch); unkeyed_calls must equal the declared row (0 = every call carried a computable identity — the identity-computability wall; the one remaining unkeyed class is closures, whose captured-env identity is not computed yet). WHAT FOLLOWS (named, not yet gated): the duplicated_keys ceiling row lands from the FIRST CI receipt — the same measure-then-pin path the resolve gate took (1 to 3) — red on increase, lowered consciously as the eval-frame provider (single_site class, discharge wholesale) and the rewire worklist (multi_site class) burn it down, then per-frame-class flip to hard error at zero. wasted_ms lines are observational timing and MUST never gate. Consciously NO new witness entry file: this gate is a derived ci.yml step, so ci_floor_declared_resolve_count stays untouched by this increment."
+
+data ci_floor_materialization_receipt_path: String = "target/floor-materialization-receipt.txt"
+
+data ci_floor_declared_unkeyed_calls: Int = 0
+
+data ci_floor_materialization_receipt_gate_shell_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_materialization",
+    decl_name: "ci_floor_materialization_receipt_gate_script",
+    field: WholeDeclaration
+  }
+}
+
+fn ci_floor_materialization_receipt_gate_script() -> String {
+  let missing = concat(
+    concat("if ! test -f ", ci_floor_materialization_receipt_path),
+    "; then echo \"floor materialization receipt missing - fail closed\"; exit 1; fi\n"
+  )
+  let read_keyed = concat(
+    concat("k=$(sed -n 's/^keyed_calls=//p' ", ci_floor_materialization_receipt_path),
+    ")\n"
+  )
+  let read_unkeyed = concat(
+    concat("u=$(sed -n 's/^unkeyed_calls=//p' ", ci_floor_materialization_receipt_path),
+    ")\n"
+  )
+  let malformed = "if test -z \"$k\"; then echo \"floor materialization receipt malformed - fail closed\"; exit 1; fi\nif test -z \"$u\"; then echo \"floor materialization receipt malformed - fail closed\"; exit 1; fi\n"
+  let keyed_nonzero = "if test \"$k\" -eq 0; then echo \"floor evaluated zero keyed calls - ledger disabled or floor empty - fail closed\"; exit 1; fi\n"
+  let unkeyed_wall = concat(
+    concat("if test \"$u\" -ne ", to_string(ci_floor_declared_unkeyed_calls)),
+    concat(
+      concat("; then echo \"floor unkeyed calls $u differ from declared ", to_string(ci_floor_declared_unkeyed_calls)),
+      ": a call without computable identity entered the floor - fix the identity, never widen the declaration (dag/gunbc/ci_materialization.dag ci_floor_declared_unkeyed_calls)\"; exit 1; fi\n"
+    )
+  )
+  let ok_line = "echo \"floor materialization receipt: keyed=$k unkeyed=$u (identity-computability wall)\""
+  concat(
+    concat(concat(missing, read_keyed), concat(read_unkeyed, malformed)),
+    concat(concat(keyed_nonzero, unkeyed_wall), ok_line)
+  )
+}
+
 fn ci_floor_resolve_receipt_gate_script() -> String {
   concat(
     concat(
