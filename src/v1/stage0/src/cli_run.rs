@@ -2143,8 +2143,20 @@ fn resolve_entry_with_parse_cache(
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
+        // Share before store (ladder tier ordering): a subject this process has
+        // already decoded or built is served by reference — never re-decoded.
+        if let Some((graph, si)) = index.resolved_graph_memo.borrow().get(&subject) {
+            return Ok((graph.clone(), si.clone()));
+        }
         match cross_process_lookup(&cache_root, &subject) {
             CacheLookupResult::Hit(hit) => {
+                eprintln!(
+                    "[resolved-graph-cache] decode subject={subject} (installed into process share)"
+                );
+                index
+                    .resolved_graph_memo
+                    .borrow_mut()
+                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -2257,6 +2269,12 @@ fn resolve_entry_with_parse_cache(
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
         let _ = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref());
+        // Build fills the share through the same seam as a store hit, so a
+        // same-subject re-resolve later in this process takes the reference.
+        index
+            .resolved_graph_memo
+            .borrow_mut()
+            .insert(subject, (typed.clone(), source_indices.clone()));
     }
 
     Ok((typed, source_indices))
