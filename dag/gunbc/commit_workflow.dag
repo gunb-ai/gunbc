@@ -107,6 +107,40 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/compiler_materialization_witness_test.dag",
+      check_fns: [
+        "compiler_materialization_ladder_holds",
+        "compiler_catalog_projection_has_no_refusals",
+        "parse_table_memo_provider_projects_from_catalog",
+        "compile_stage_memo_provider_projects_from_catalog",
+        "parse_table_carrier_inhabits_realization",
+        "compile_stage_carrier_inhabits_realization",
+        "parse_table_empty_uses_catalog_identity",
+        "single_site_demands_are_accepted_single_recompute",
+        "parse_table_memo_plural_reds_without_provider"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/parse/parse_table_memo_governed_witness_test.dag",
+      check_fns: [
+        "parse_table_memo_governed_store_refused_when_recompute",
+        "parse_table_memo_bypass_store_reds",
+        "parse_table_memo_governed_memoize_allows_store",
+        "parse_table_memo_warm_equals_cold_content_hash",
+        "parse_table_memo_door_order_independent"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "dag/test/claim/ci_materialization_witness_test.dag",
       check_fns: [
         "ci_ladder_holds_on_live_workflow",
