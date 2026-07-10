@@ -1,0 +1,29 @@
+module v2.test.manual.self_host_reason_reveal_probe
+
+import v2.compiler.self_host.compiler_closure_emit {
+  emit_compiler_import_closure_from_ingest
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.test.manual.self_host_module_emit_derisk {
+  derisk_ingest_for,
+  derisk_module_admission,
+  src_single_arm_match,
+  src_type_decl
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+fn reason_of(src: String) -> Symbol {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => ^emit_accepted
+    Rejected { diagnostics: nd } => nd.head.reason
+  }
+}
+
+fn reason_of_singlearm() -> Symbol { reason_of(src: src_single_arm_match) }
+fn reason_of_type_decl() -> Symbol { reason_of(src: src_type_decl) }
