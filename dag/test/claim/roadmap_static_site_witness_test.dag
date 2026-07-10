@@ -2,6 +2,7 @@ module test.claim.roadmap_static_site_witness
 
 import std.content_hash { content_hash_atom }
 import std.types { NonEmptyStr, ContentHash }
+import std.disposition { Scaffold, Terminal }
 import extdeps.http.server { TextPlainUtf8, ApplicationJsonUtf8 }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
@@ -14,7 +15,7 @@ import gunbc.roadmap_static_site {
   roadmap_site_static_route_authority_paths,
   served_static_route_literal_path,
   roadmap_site_readback_script,
-  roadmap_site_readback_shell_dissolution_trigger,
+  roadmap_site_readback_script_scaffold,
   roadmap_site_roadmap_md_artifact,
   roadmap_site_dispatch_json_artifact,
   roadmap_site_roadmap_url_path,
@@ -129,9 +130,10 @@ fn witness_emitted_server_has_static_paths() -> Bool {
 }
 
 fn witness_readback_shell_marked_scaffold() -> Bool {
-  string_contains(s: roadmap_site_readback_shell_dissolution_trigger, pattern: "dissolve-on: roadmap_site_readback_shell")
-    && string_contains(s: roadmap_site_readback_shell_dissolution_trigger, pattern: "live_deploy_emit_shell_dissolution_trigger")
-    && string_contains(s: roadmap_site_readback_shell_dissolution_trigger, pattern: "medium_structure_exception_roster")
+  match roadmap_site_readback_script_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 fn witness_readback_script_checks_health_and_digests() -> Bool {

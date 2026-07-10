@@ -1,0 +1,126 @@
+module v2.lens.complexity_accumulator_copy
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
+import v2.lens.cost {
+  PolynomialCost,
+  SizeVariable,
+  SymbolicCost,
+  polynomial_degree_two
+}
+import v2.std.algebra { CopiedPortFact, copied_port_fact_registry, fold_list }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+
+type PortReading
+  = PortBareName { name: Symbol }
+  | PortPureLiteral
+  | PortComputedExpression
+  | PortMissing
+
+type Finding
+  = Poly2Suspect { at: Node, cost: SymbolicCost }
+  | Unclassifiable { at: Node, cause: Symbol }
+
+fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
+  fold(xs, init: false, f: fn(acc, s) {
+    if acc { true } else { s == needle }
+  })
+}
+
+fn row_matches_combiner(row: CopiedPortFact, combiner: Symbol) -> Bool {
+  row.combiner == combiner
+}
+
+fn some_copied_port_index(idx: Int) -> Optional<Int> {
+  Present { value: idx }
+}
+
+fn copied_port_index_of(combiner: Symbol) -> Optional<Int> {
+  fold_list(
+    xs: copied_port_fact_registry,
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if row_matches_combiner(row: row, combiner: combiner) {
+            some_copied_port_index(idx: row.copied_port_index)
+          } else {
+            Absent
+          }
+      }
+    }
+  )
+}
+
+fn poly_two_cost(n: Node) -> SymbolicCost {
+  PolynomialCost {
+    variable: SizeVariable { source: n },
+    degree: polynomial_degree_two()
+  }
+}
+
+fn some_finding(f: Finding) -> Optional<Finding> {
+  Present { value: f }
+}
+
+fn port_carries_carrier(p: PortReading, carriers: List<Symbol>) -> Bool {
+  match p {
+    PortBareName { name: n } => symbol_in(needle: n, xs: carriers)
+    PortPureLiteral => false
+    PortComputedExpression => false
+    PortMissing => false
+  }
+}
+
+fn any_port_carries_carrier(ports: List<PortReading>, carriers: List<Symbol>) -> Bool {
+  fold(ports, init: false, f: fn(acc, p) {
+    if acc { true } else { port_carries_carrier(p: p, carriers: carriers) }
+  })
+}
+
+fn classify_copied_port(at: Node, reading: PortReading, carriers: List<Symbol>) -> Optional<Finding> {
+  match reading {
+    PortBareName { name: n } =>
+      if symbol_in(needle: n, xs: carriers) {
+        some_finding(f: Poly2Suspect { at: at, cost: poly_two_cost(n: at) })
+      } else {
+        some_finding(f: Unclassifiable { at: at, cause: ^copied_port_name_may_alias })
+      }
+    PortPureLiteral => Absent
+    PortComputedExpression =>
+      some_finding(f: Unclassifiable { at: at, cause: ^copied_port_computed_argument })
+    PortMissing =>
+      some_finding(f: Unclassifiable { at: at, cause: ^copied_port_argument_missing })
+  }
+}
+
+fn classify_call(
+  at: Node,
+  combiner: Symbol,
+  ports: List<PortReading>,
+  carriers: List<Symbol>
+) -> Optional<Finding> {
+  match copied_port_index_of(combiner: combiner) {
+    Absent =>
+      if any_port_carries_carrier(ports: ports, carriers: carriers) {
+        some_finding(f: Unclassifiable { at: at, cause: ^combiner_unregistered_carrier_reaches })
+      } else {
+        Absent
+      }
+    Present { value: idx } =>
+      match list_at_optional(xs: ports, index: idx) {
+        Absent =>
+          some_finding(f: Unclassifiable { at: at, cause: ^copied_port_argument_missing })
+        Present { value: reading } =>
+          classify_copied_port(at: at, reading: reading, carriers: carriers)
+      }
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
