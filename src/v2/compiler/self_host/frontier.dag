@@ -231,6 +231,26 @@ fn compiler_frontier_roster_count() -> Int {
   length(xs: compiler_frontier_roster)
 }
 
+fn count_rows_with_module_path(xs: List<CompilerModuleFrontierRow>, target: String) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      if row.module_path == target { count + 1 } else { count }
+    }
+  )
+}
+
+fn compiler_frontier_roster_paths_unique_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && (count_rows_with_module_path(xs: compiler_frontier_roster, target: row.module_path) == 1)
+    }
+  )
+}
+
 fn count_self_emitted_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int {
   fold_list(
     xs: xs,
@@ -269,17 +289,26 @@ fn compiler_frontier_roster_complete_holds() -> Bool {
   compiler_frontier_roster_count() == compiler_frontier_module_count_expected
 }
 
-fn compiler_frontier_disposition_partition_holds() -> Bool {
-  (compiler_frontier_self_emitted_count() + compiler_frontier_seed_retained_count()) == compiler_frontier_roster_count()
+fn compiler_frontier_known_module_path_exactly_once_holds() -> Bool {
+  count_rows_with_module_path(
+    xs: compiler_frontier_roster,
+    target: "src/v2/compiler/00_compile.dag"
+  ) == 1
 }
 
+fn compiler_frontier_phantom_module_path_absent_holds() -> Bool {
+  count_rows_with_module_path(
+    xs: compiler_frontier_roster,
+    target: "src/v2/compiler/not_a_real_module.dag"
+  ) == 0
+}
 fn compiler_frontier_self_emitted_baseline_holds() -> Bool {
   compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
 }
 
 fn compiler_frontier_census_holds() -> Bool {
   compiler_frontier_roster_complete_holds()
-    && compiler_frontier_disposition_partition_holds()
+    && compiler_frontier_roster_paths_unique_holds()
     && compiler_frontier_self_emitted_baseline_holds()
 }
 
