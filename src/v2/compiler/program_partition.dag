@@ -242,7 +242,13 @@ fn partition_snoc_user_semantic_type_unique(
   }
 }
 
-fn partition_first_positional_atom_identity(root: Node) -> Optional<Symbol> {
+fn partition_type_decl_is_keyword_atom(sym: Symbol) -> Bool {
+  (sym == ^dag_token_kw_type)
+    || (sym == ^dag_token_kw_data)
+    || (sym == ^dag_token_kw_fn)
+}
+
+fn partition_first_type_decl_ident(root: Node) -> Optional<Symbol> {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(
@@ -256,7 +262,13 @@ fn partition_first_positional_atom_identity(root: Node) -> Optional<Symbol> {
                 Positional =>
                   match edge.target.kind {
                     TypeNode { connective: Atom { identity: id } } =>
-                      optional_present(value: id)
+                      if partition_type_decl_is_keyword_atom(sym: id) {
+                        acc
+                      } else {
+                        optional_present(value: id)
+                      }
+                    TypeNode { connective: Conj } =>
+                      partition_first_type_decl_ident(root: edge.target)
                     _ => acc
                   }
                 _ => acc
@@ -272,7 +284,7 @@ fn partition_type_decl_surface_name(root: Node) -> Optional<Symbol> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == ^dag_surface_type_decl {
-        partition_first_positional_atom_identity(root: root)
+        partition_first_type_decl_ident(root: root)
       } else {
         Absent
       }
