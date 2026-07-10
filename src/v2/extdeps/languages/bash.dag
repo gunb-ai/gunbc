@@ -1,7 +1,7 @@
 module v2.extdeps.languages.bash
 
 import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list_right, list_flat_map, list_map }
 import v2.std.grammar {
   FormalGrammarSymbol,
   FormalProduction,
@@ -58,20 +58,16 @@ fn bash_word_atom(id: Symbol) -> Node {
 fn bash_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: fold_list(
-      xs: tokens,
-      empty: Empty,
-      cons: fn(acc, token) {
-        match token {
-          BoundToken { binding: binding, token_class: _ } =>
-            list_snoc_item(
-              xs: acc,
-              item: Edge { label: Positional, target: bash_word_atom(id: binding) }
-            )
-          FixedToken { token_class: _ } => acc
-        }
+    children: list_flat_map(xs: tokens, f: fn(token) {
+      match token {
+        BoundToken { binding: binding, token_class: _ } =>
+          Cons {
+            head: Edge { label: Positional, target: bash_word_atom(id: binding) },
+            tail: Empty
+          }
+        FixedToken { token_class: _ } => Empty
       }
-    ),
+    }),
     occurrence_id: SyntheticOccurrence
   }
 }
@@ -85,13 +81,9 @@ fn bash_formal_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSym
 }
 
 fn bash_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: bash_formal_symbol_from_token(token: token))
-    }
-  )
+  list_map(xs: tokens, f: fn(token) {
+    bash_formal_symbol_from_token(token: token)
+  })
 }
 
 fn bash_formal_production_from_fixture(
@@ -1135,10 +1127,10 @@ fn bash_env_binding_spelling(b: EnvBinding) -> String {
 }
 
 fn bash_env_prefix(env: FreeMonoid<EnvBinding>) -> String {
-  fold_list(
+  fold_list_right(
     xs: env,
     empty: "",
-    cons: fn(acc, b) { concat(acc, bash_env_binding_spelling(b: b)) }
+    snoc: fn(acc, b) { concat(bash_env_binding_spelling(b: b), acc) }
   )
 }
 

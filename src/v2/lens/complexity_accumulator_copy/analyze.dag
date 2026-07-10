@@ -21,7 +21,7 @@ import v2.extdeps.languages.dag {
   parse_subtree_find_production_captured
 }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { list_append, list_snoc_item }
+import v2.std.algebra { list_append, list_map, list_reverse }
 import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
@@ -64,7 +64,7 @@ fn collect_direct_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<No
     Present { value: id } =>
       if id == emitted {
         match parse_production_captured_child_optional(node: n) {
-          Present { value: c } => list_snoc_item(xs: acc, item: c)
+          Present { value: c } => Cons { head: c, tail: acc }
           Absent => acc
         }
       } else {
@@ -137,15 +137,16 @@ fn port_reading(arg_capture: Node) -> PortReading {
 }
 
 fn call_port_readings(call_capture: Node) -> List<PortReading> {
-  fold(
-    collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: Empty),
-    init: Empty,
-    f: fn(acc, arg) { list_snoc_item(xs: acc, item: port_reading(arg_capture: arg)) }
+  list_map(
+    xs: list_reverse(
+      xs: collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: Empty)
+    ),
+    f: fn(arg) { port_reading(arg_capture: arg) }
   )
 }
 
 fn is_fold_family_head(sym: Symbol) -> Bool {
-  (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_node)
+  (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_list_right) || (sym == ^fold_node)
 }
 
 fn step_fn_first_param(fn_literal: Node) -> Optional<Symbol> {

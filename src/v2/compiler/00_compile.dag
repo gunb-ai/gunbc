@@ -24,7 +24,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { list_append, list_snoc_item }
+import v2.std.algebra { list_append, list_reverse }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
@@ -150,17 +150,11 @@ fn apply_compile_lens(
   }
 }
 
-fn append_lens_gate_witness(
+fn prepend_lens_gate_witness(
   witnesses: List<LensGateWitness>,
   witness: Witness<Node>
 ) -> List<LensGateWitness> {
-  fold(
-    [LensGateWitness { witness: witness }],
-    init: witnesses,
-    f: fn(acc, item) {
-      list_snoc_item(xs: acc, item: item)
-    }
-  )
+  Cons { head: LensGateWitness { witness: witness }, tail: witnesses }
 }
 
 fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
@@ -171,29 +165,32 @@ fn run_required_lens_gates(
   inferred: InferredTree,
   lenses: List<CompileLens>
 ) -> Outcome<List<LensGateWitness>> {
-  fold(
-    lenses,
-    init: outcome_accepted(value: empty_lens_gate_witnesses()),
-    f: fn(acc_outcome, lens) {
-      match acc_outcome {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: witnesses, diagnostics: od } =>
-          bind_outcome_accepted(
-            od: od,
-            inner: bind_outcome(
-              o: apply_compile_lens(lens: lens, inferred: inferred, mode: CompileLensEnforce),
-              f: fn(w) {
-                outcome_accepted(
-                  value: append_lens_gate_witness(
-                    witnesses: witnesses,
-                    witness: w
+  bind_outcome(
+    o: fold(
+      lenses,
+      init: outcome_accepted(value: empty_lens_gate_witnesses()),
+      f: fn(acc_outcome, lens) {
+        match acc_outcome {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: witnesses, diagnostics: od } =>
+            bind_outcome_accepted(
+              od: od,
+              inner: bind_outcome(
+                o: apply_compile_lens(lens: lens, inferred: inferred, mode: CompileLensEnforce),
+                f: fn(w) {
+                  outcome_accepted(
+                    value: prepend_lens_gate_witness(
+                      witnesses: witnesses,
+                      witness: w
+                    )
                   )
-                )
-              }
+                }
+              )
             )
-          )
+        }
       }
-    }
+    ),
+    f: fn(collected) { outcome_accepted(value: list_reverse(xs: collected)) }
   )
 }
 
