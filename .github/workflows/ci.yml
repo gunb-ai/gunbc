@@ -93,6 +93,7 @@ jobs:
           else echo "[calibration] floor_peak_pre scope=unavailable (no memory.peak ancestor)"; fi
         timeout-minutes: 5
       - name: gunbc ci (.dag witnesses + gates)
+        id: floor
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
@@ -131,8 +132,8 @@ jobs:
         run: |
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
           while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
-          if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") cgroup=$d (scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"
-          else echo "[calibration] floor_peak_post scope=unavailable (no memory.peak ancestor)"; fi
+          if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"
+          else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
         if: always()
         timeout-minutes: 5
       - name: Floor resolve receipt gate (declared cold-resolve count)
