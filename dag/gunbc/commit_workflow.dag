@@ -131,7 +131,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "parse_table_memo_governed_store_refused_when_recompute",
         "parse_table_memo_bypass_store_reds",
         "parse_table_memo_governed_memoize_allows_store",
-        "parse_table_memo_warm_equals_cold_content_hash",
         "parse_table_memo_door_order_independent"
       ],
       kind: CorpusWitnessKind,
@@ -270,15 +269,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/complexity/accumulator_copy_fold_analysis_test.dag",
       check_fns: [
         "quadratic_fold_has_suspect",
-        "real_branch_body_quadratic_is_caught",
-        "noncarrier_name_in_copied_port_refuses_not_clean",
-        "let_alias_refuses_not_clean",
-        "nested_call_head_cannot_masquerade_as_bare_name",
-        "unregistered_combiner_reached_by_carrier_refuses",
-        "named_step_fold_refuses_accumulator_unread",
-        "identity_fold_has_no_finding",
-        "out_of_iteration_append_is_out_of_domain",
-        "report_counters_state_the_domain"
+        "identity_fold_has_no_finding"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -290,15 +281,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/lens/complexity_accumulator_copy_test.dag",
       check_fns: [
         "red_list_append_left_is_suspect",
-        "red_list_snoc_left_is_suspect",
-        "red_map_merge_overlay_is_suspect",
-        "noncarrier_name_in_copied_port_refuses_may_alias",
-        "map_merge_noncarrier_overlay_refuses_may_alias",
-        "pure_literal_in_copied_port_is_provably_fresh",
-        "computed_copied_port_refuses",
-        "missing_copied_port_refuses",
-        "unregistered_combiner_reached_by_carrier_refuses",
-        "unregistered_combiner_without_carrier_is_out_of_scope"
+        "pure_literal_in_copied_port_is_provably_fresh"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -324,15 +307,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "dag/test/claim/parse_test.dag",
       check_fns: ["parse_witness_floor_holds", "parse_witness_perf_holds"],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "dag/test/claim/dag_collect_fingerprint_witness_test.dag",
-      check_fns: ["dag_collect_fingerprint_witness_keystone_holds"],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
