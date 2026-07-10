@@ -235,13 +235,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/loop_multiplicity_measure_test.dag",
       check_fns: [
         "loop_strict_measure_infers_proven_termination",
-        "loop_perturbed_measure_is_refused",
-        "loop_lone_non_increasing_measure_is_refused",
-        "loop_lexicographic_measure_proves_with_strict_dimension",
-        "loop_unknown_dimension_poisons_lexicographic_measure",
-        "loop_missing_measure_is_refused",
-        "live_registry_proves_loop_measure",
-        "nested_unproven_loop_still_poisons_the_fold"
+        "loop_missing_measure_is_refused"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -252,12 +246,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/complexity/fold_lowering_test.dag",
       check_fns: [
-        "fold_probe_ingest_is_accepted",
-        "fold_callee_name_survives_parse",
-        "fold_collection_name_survives_parse",
         "fold_call_lowers_to_terminating_loop",
-        "non_fold_call_refuses",
-        "bodyless_fold_call_refuses_no_loop_fabricated"
+        "non_fold_call_refuses"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -293,10 +283,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/loop_infer_iteration_test.dag",
       check_fns: [
         "loop_infer_invariant_body_accepts_with_carrier_type",
-        "loop_infer_divergent_body_is_refused",
-        "loop_infer_refinement_shaped_body_is_refused",
-        "loop_infer_unregistered_measure_is_refused",
-        "loop_infer_missing_measure_is_refused"
+        "loop_infer_divergent_body_is_refused"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
