@@ -1,6 +1,7 @@
 module v2.test.manual.self_host_reason_reveal_probe
 
 import v2.compiler.self_host.compiler_closure_emit {
+  CompilerClosureEmitReceipt,
   emit_compiler_import_closure_from_ingest
 }
 import v2.extdeps.languages.rust { rust_target_model }
@@ -10,8 +11,9 @@ import v2.test.manual.self_host_module_emit_derisk {
   src_single_arm_match,
   src_type_decl
 }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Symbol }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, PortLocus, Rejected, Textual }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 
 fn reason_of(src: String) -> Symbol {
@@ -27,3 +29,41 @@ fn reason_of(src: String) -> Symbol {
 
 fn reason_of_singlearm() -> Symbol { reason_of(src: src_single_arm_match) }
 fn reason_of_type_decl() -> Symbol { reason_of(src: src_type_decl) }
+
+fn locus_atom_id(d: Diagnostic) -> Symbol {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match a.at.kind {
+        TypeNode { connective: Atom { identity: id } } => id
+        _ => ^non_atom_locus
+      }
+    PortLocus { anchor: _ } => ^port_locus
+    Textual { file: _, extent: _ } => ^textual_locus
+  }
+}
+
+fn missing_token_class(src: String) -> Symbol {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => ^emit_accepted
+    Rejected { diagnostics: nd } => locus_atom_id(d: nd.head)
+  }
+}
+fn missing_token_class_singlearm() -> Symbol { missing_token_class(src: src_single_arm_match) }
+fn missing_token_class_type() -> Symbol { missing_token_class(src: src_type_decl) }
+
+fn emitted_source(src: String) -> String {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: r, diagnostics: _ } => r.source.carried
+    Rejected { diagnostics: nd } => nd.head.reason
+  }
+}
+fn emitted_type_source() -> String { emitted_source(src: src_type_decl) }
+fn emitted_singlearm_source() -> String { emitted_source(src: src_single_arm_match) }
