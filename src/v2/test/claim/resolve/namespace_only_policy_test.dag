@@ -1,0 +1,79 @@
+module v2.test.resolve.namespace_only_policy
+
+import v2.compiler.resolve {
+  ResolveContext,
+  Namespace,
+  empty_canonical_symbol_set,
+  resolve_atom,
+  scope_from_namespace
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { empty_map, optional_absent }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Node,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
+import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY }
+import v2.test.claim.symbol_index.containment {
+  si_index,
+  si_module_qn
+}
+
+fn policy_pilot_namespace() -> Namespace {
+  Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: si_index,
+    module_qn: si_module_qn
+  }
+}
+
+fn policy_pilot_yes_atom() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^Yes } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn policy_pilot_resolve_yes(
+  policy: NameResolutionPolicy,
+  position: QualifiedName
+) -> Bool {
+  let namespace = policy_pilot_namespace()
+  match resolve_atom(
+    ctx: ResolveContext {
+      scope: scope_from_namespace(namespace: namespace),
+      namespace: namespace,
+      policy: policy,
+      position: position,
+      expected: optional_absent(),
+      lm: dag_language_model(),
+      under_module_root: true
+    },
+    n: policy_pilot_yes_atom(),
+    identity: ^Yes
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn namespace_only_policy_disambiguates_at_type_position_holds() -> Bool {
+  policy_pilot_resolve_yes(
+    policy: NamespaceOnlyY,
+    position: qualified_name_snoc(qn: si_module_qn, segment: ^Classical)
+  )
+}
+
+test fn import_scoped_policy_ambiguous_at_module_position_red_holds() -> Bool {
+  !policy_pilot_resolve_yes(
+    policy: ImportScoped,
+    position: si_module_qn
+  )
+}
