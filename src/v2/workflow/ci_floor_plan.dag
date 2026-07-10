@@ -1,6 +1,6 @@
 module v2.workflow.ci_floor_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
@@ -620,13 +620,28 @@ fn runnable_scan_dir_count(r: Runnable) -> Int {
   }
 }
 
+fn gunbc_ci_spec_discovery_flip_enrolled() -> CiSpec {
+  ci_spec_with_discovery_scan_dirs(spec: gunbc_ci_spec, dirs: witness_discovery_scan_dirs)
+}
+
+fn witness_ci_corpus_discovery_flip_parked_on_live_spec() -> Bool {
+  (length(xs: gunbc_ci_spec.discovery_scan_dirs) == 0)
+    && (length(xs: witness_discovery_scan_dirs) > 0)
+}
+
+fn witness_ci_corpus_discovery_flip_authored() -> Bool {
+  length(xs: witness_discovery_scan_dirs) > 0
+}
+
 fn witness_ci_corpus_discovery_is_live() -> Bool {
-  runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) > 0
+  witness_ci_corpus_discovery_flip_authored()
+    && (length(xs: gunbc_ci_spec.discovery_scan_dirs) > 0)
+    && (runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) > 0)
     && runnable_selection_applied(r: corpus_runnable_for(spec: gunbc_ci_spec))
 }
 
 fn witness_ci_corpus_discovery_serializes_at_width_one() -> Bool {
-  match corpus_runnable_for(spec: gunbc_ci_spec) {
+  match corpus_runnable_for(spec: gunbc_ci_spec_discovery_flip_enrolled()) {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: cap, profile: _ } =>
       (length(xs: dirs) > 0) && (cap == 1)
     _ => false
