@@ -72,6 +72,32 @@ fn std_logic_module_emit_accepts() -> Bool {
   }
 }
 
+fn std_logic_module_assemble_accepts() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn std_logic_module_assemble_infer_accepts() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn std_logic_semantic_type_emit_accepts() -> Bool {
   match assemble_program_from_ingest(
     ingest: std_logic_module_ingest(),
