@@ -30,15 +30,6 @@ use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn subtree_size_rename_marker() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Constructor-owner ruling (§1c) collision fix: SizeBound's tree bound arm was named TreeSize, colliding with RankingDimension.TreeSize (std.termination) in this module's own scope once one arm name may have only one owner. Renamed to SubtreeSize — the more precise fact: a tree-descent bound measures the shrinking SUBTREE consumed per step. RankingDimension.TreeSize (the ranking-dimension taxonomy, ~12 sites in v1.complexity/induction) keeps the shared name.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum SizeBound {

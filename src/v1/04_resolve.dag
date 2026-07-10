@@ -76,8 +76,6 @@ fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node?
   } else { none }
 }
 
-data phantom_match_flat_scope: String = "Constructor-owner ruling (§1c): the nullary-variant-as-type fallback searches the FLAT visible set — the module's own str_bindings plus its direct parents' str_bindings, one level, never the recursive ancestry flatten. Unique match resolves; anything else falls through to the UnresolvedType error at the caller (fail-closed)."
-
 fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> List<Node> {
   let direct_bindings = fold(env.parents, init: env.str_bindings, f: (acc, parent) =>
     map_merge(parent.str_bindings, acc)
@@ -118,8 +116,6 @@ fn with_authored_identity(identity: Node, structural: Node) -> Node {
     match_pattern: structural.match_pattern, expr_data: structural.expr_data
   }
 }
-
-data transparent_primitive_alias_rhs_dissolution_trigger: String = "🟢 intentional: resolve-side predicate for kernel-type transparent alias RHS — skip nominal re-brand in preserve_nominal_brand_on_resolve / peel_nominal_alias_identity until ParamKind partition lands."
 
 fn is_transparent_primitive_alias_rhs(structural: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   structural.connective == NoConnective && structural.children |> count == 0
