@@ -97,6 +97,7 @@ import v2.std.model_core {
   PrimitiveFactBundle,
   PrimitiveOperationRef
 }
+import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
   FixedToken,
@@ -2557,12 +2558,19 @@ fn rust_coproduct_field_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
   )
 }
 
-fn rust_coproduct_edge_is_grammar_navigable(edge: Edge) -> Bool {
+fn rust_coproduct_edge_is_grammar_metadata(edge: Edge) -> Bool {
   match edge.label {
     Named { name: sym } =>
       (sym == ^grammar_production_identity_node_projection)
         || (sym == ^grammar_production_captured_node_projection)
-        || (sym == ^grammar_sequence_left_node_projection)
+    Positional => false
+  }
+}
+
+fn rust_coproduct_edge_is_grammar_navigable(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: sym } =>
+      (sym == ^grammar_sequence_left_node_projection)
         || (sym == ^grammar_sequence_right_node_projection)
         || (sym == ^grammar_optional_element_node_projection)
     Positional => false
@@ -2589,6 +2597,8 @@ fn rust_coproduct_nullary_variant_conj(payload: Node) -> Bool {
           f: fn(ok, edge) {
             if !ok {
               false
+            } else if rust_coproduct_edge_is_grammar_metadata(edge: edge) {
+              true
             } else if rust_coproduct_edge_is_grammar_navigable(edge: edge) {
               rust_coproduct_nullary_follow_edge(edge: edge)
             } else {
@@ -2605,21 +2615,23 @@ fn rust_coproduct_nullary_variant_conj(payload: Node) -> Bool {
 }
 
 fn rust_coproduct_variant_is_nullary_payload(payload: Node) -> Bool {
-  match payload.kind {
+  let stripped = sugar_unwrap_production_shell(node: payload)
+  match stripped.kind {
     TypeNode { connective: Atom { identity: _ } } => true
-    TypeNode { connective: Conj } => rust_coproduct_nullary_variant_conj(payload: payload)
+    TypeNode { connective: Conj } => rust_coproduct_nullary_variant_conj(payload: stripped)
     _ => false
   }
 }
 
 fn rust_coproduct_variant_surface_named(vname: Symbol, payload: Node) -> Outcome<Node> {
+  let stripped = sugar_unwrap_production_shell(node: payload)
   if rust_coproduct_variant_is_nullary_payload(payload: payload) {
     outcome_accepted(value: rust_decl_surface_variant_nullary(name: vname))
   } else {
-    match payload.kind {
+    match stripped.kind {
       TypeNode { connective: Conj } =>
         bind_outcome(
-          o: rust_coproduct_field_surfaces(edges: payload.children),
+          o: rust_coproduct_field_surfaces(edges: stripped.children),
           f: fn(fields) {
             outcome_accepted(value: rust_decl_surface_variant_payload(name: vname, fields: fields))
           }

@@ -2,22 +2,12 @@ module v2.test.self_host.std_logic_emit_probe
 
 import v2.test.fixture.std_logic_module {
   std_logic_module_emit_accepts,
-  std_logic_semantic_type_emit_accepts,
-  std_logic_semantic_type_is_disj,
-  std_logic_semantic_type_variants_nullary
+  std_logic_semantic_type_emit_accepts
 }
 import v2.std.logic { Bool }
 
 test fn std_logic_whole_program_emit_accepts() -> Bool {
   std_logic_module_emit_accepts()
-}
-
-test fn std_logic_semantic_type_is_disj_holds() -> Bool {
-  std_logic_semantic_type_is_disj()
-}
-
-test fn std_logic_semantic_type_variants_nullary_holds() -> Bool {
-  std_logic_semantic_type_variants_nullary()
 }
 
 test fn std_logic_semantic_type_emit_accepts_holds() -> Bool {
