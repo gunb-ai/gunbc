@@ -250,85 +250,6 @@ fn partition_is_grammar_projection_symbol(sym: Symbol) -> Bool {
     || (sym == ^grammar_optional_element_node_projection)
 }
 
-fn partition_type_decl_is_keyword_atom(sym: Symbol) -> Bool {
-  (sym == ^dag_token_kw_type)
-    || (sym == ^dag_token_kw_data)
-    || (sym == ^dag_token_kw_fn)
-}
-
-fn partition_first_type_decl_ident(root: Node) -> Optional<Symbol> {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(
-        root.children,
-        init: Absent,
-        f: fn(acc, edge) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match edge.label {
-                Positional =>
-                  match edge.target.kind {
-                    TypeNode { connective: Atom { identity: id } } =>
-                      if partition_type_decl_is_keyword_atom(sym: id) {
-                        acc
-                      } else {
-                        optional_present(value: id)
-                      }
-                    TypeNode { connective: Conj } =>
-                      partition_first_type_decl_ident(root: edge.target)
-                    _ => acc
-                  }
-                Named { name: sym } =>
-                  if partition_is_grammar_projection_symbol(sym: sym) {
-                    partition_first_type_decl_ident(root: edge.target)
-                  } else {
-                    acc
-                  }
-              }
-          }
-        }
-      )
-    _ => Absent
-  }
-}
-
-fn partition_type_decl_name_search_subtree(root: Node) -> Optional<Symbol> {
-  match partition_type_decl_surface_name(root: root) {
-    Present { value: name } => optional_present(value: name)
-    Absent =>
-      match root.kind {
-        TypeNode { connective: Conj } =>
-          fold(
-            root.children,
-            init: Absent,
-            f: fn(acc, edge) {
-              match acc {
-                Present { value: _ } => acc
-                Absent => partition_type_decl_name_search_subtree(root: edge.target)
-              }
-            }
-          )
-        _ => Absent
-      }
-  }
-}
-
-fn partition_user_semantic_type_decl_name(
-  target: Node,
-  edge_name: Symbol
-) -> Optional<Symbol> {
-  match partition_type_decl_name_search_subtree(root: target) {
-    Present { value: name } => optional_present(value: name)
-    Absent =>
-      if partition_is_grammar_projection_symbol(sym: edge_name) {
-        Absent
-      } else {
-        optional_present(value: edge_name)
-      }
-  }
-}
-
 fn partition_first_positional_atom_identity(root: Node) -> Optional<Symbol> {
   match root.kind {
     TypeNode { connective: Conj } =>
@@ -359,11 +280,32 @@ fn partition_type_decl_surface_name(root: Node) -> Optional<Symbol> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == ^dag_surface_type_decl {
-        partition_first_type_decl_ident(root: root)
+        partition_first_positional_atom_identity(root: root)
       } else {
         Absent
       }
     Absent => Absent
+  }
+}
+
+fn partition_type_decl_name_search_subtree(root: Node) -> Optional<Symbol> {
+  match partition_type_decl_surface_name(root: root) {
+    Present { value: name } => optional_present(value: name)
+    Absent =>
+      match root.kind {
+        TypeNode { connective: Conj } =>
+          fold(
+            root.children,
+            init: Absent,
+            f: fn(acc, edge) {
+              match acc {
+                Present { value: _ } => acc
+                Absent => partition_type_decl_name_search_subtree(root: edge.target)
+              }
+            }
+          )
+        _ => Absent
+      }
   }
 }
 
@@ -869,7 +811,7 @@ fn partition_module_semantic_type_decl_for_target(
       ) {
         Present { value: decl } => optional_present(value: decl)
         Absent =>
-          match partition_type_decl_surface_name(root: target) {
+          match partition_type_decl_name_search_subtree(root: target) {
             Present { value: name } =>
               optional_present(
                 value: PartitionUserSemanticType { name: name, semantic: semantic }

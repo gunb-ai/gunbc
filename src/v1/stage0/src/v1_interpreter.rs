@@ -6067,16 +6067,9 @@ fn eval_emit_host_run_transport_builtin(
         &run_argv,
         ctx,
     );
-    if std::env::var("GUNBC_EMIT_HOST_KEEP_WORKSPACE").is_err() {
-        if let Err(cleanup) = std::fs::remove_dir_all(&workspace) {
-            eprintln!(
-                "emit_host_run_transport: workspace cleanup failed ({}): {cleanup}",
-                workspace.display()
-            );
-        }
-    } else {
+    if let Err(cleanup) = std::fs::remove_dir_all(&workspace) {
         eprintln!(
-            "emit_host_run_transport: kept workspace at {}",
+            "emit_host_run_transport: workspace cleanup failed ({}): {cleanup}",
             workspace.display()
         );
     }
