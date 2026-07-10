@@ -83,6 +83,15 @@ jobs:
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
         timeout-minutes: 45
+      - name: Floor cgroup peak pre-read (calibration; reset if permitted)
+        run: |
+          d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
+          while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
+          if [ -f "$d/memory.peak" ]; then
+            if echo reset > "$d/memory.peak" 2>/dev/null; then echo "[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d"
+            else echo "[calibration] floor_peak_pre reset=unsupported pre_peak=$(cat "$d/memory.peak") scope=span cgroup=$d (post>pre attributes the peak to the floor exactly; post==pre means floor peak <= pre, a job-scoped upper bound)"; fi
+          else echo "[calibration] floor_peak_pre scope=unavailable (no memory.peak ancestor)"; fi
+        timeout-minutes: 5
       - name: gunbc ci (.dag witnesses + gates)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -118,6 +127,14 @@ jobs:
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
         timeout-minutes: 60
+      - name: Floor cgroup peak post-read (calibration; survives a killed floor)
+        run: |
+          d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
+          while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
+          if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") cgroup=$d (scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"
+          else echo "[calibration] floor_peak_post scope=unavailable (no memory.peak ancestor)"; fi
+        if: always()
+        timeout-minutes: 5
       - name: Floor resolve receipt gate (declared cold-resolve count)
         run: |
           if ! test -f target/floor-resolve-receipt.txt; then echo "floor resolve receipt missing - fail closed"; exit 1; fi
