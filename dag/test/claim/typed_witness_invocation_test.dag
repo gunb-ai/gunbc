@@ -21,18 +21,29 @@ test fn typed_is_executable_negative_red_control_holds() -> Bool {
 }
 
 test fn typed_witness_bin_run_argv_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(bin_path: "/bin/true")
+  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/true")
   result.success
 }
 
 test fn typed_witness_bin_run_nonzero_red_control_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(bin_path: "/bin/false")
+  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/false")
   result.success == false
 }
 
 test fn typed_witness_bin_run_args_splice_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(bin_path: "/bin/echo", args: ["alpha", "beta"])
+  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/echo", args: ["alpha", "beta"])
   result.success && result.stdout == "alpha beta"
+}
+
+test fn typed_witness_bin_run_workdir_anchors_holds() -> Bool {
+  let result = gunbc.WitnessBin.Run(workdir: "/tmp", bin_path: "/bin/pwd")
+  result.success && result.stdout == "/tmp"
+}
+
+test fn typed_witness_bin_run_workdir_anchors_root_control_holds() -> Bool {
+  let toplevel = git.Core.Toplevel()
+  let result = gunbc.WitnessBin.Run(workdir: toplevel.path, bin_path: "/bin/pwd")
+  result.success && result.stdout == toplevel.path
 }
 
 test fn typed_run_witness_bin_unbuildable_red_control_holds() -> Bool {

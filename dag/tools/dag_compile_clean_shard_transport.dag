@@ -23,6 +23,7 @@ fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
         destination: stage.path
       )
       let compile = gunbc.WitnessBin.Run(
+        workdir: root.path,
         bin_path: dcc_gunbc_path(root: root.path),
         args: concat(
           ["compile", "--source-root", stage.path],

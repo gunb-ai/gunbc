@@ -1,6 +1,7 @@
 module tools.dag_compile_clean_shard_totality_transport
 
 import extdeps.shell
+import extdeps.git
 import std.types { String, Bool, List }
 
 type LiveDagEntryGlobResult {
@@ -10,6 +11,7 @@ type LiveDagEntryGlobResult {
 }
 
 fn run_live_dag_entry_glob() -> LiveDagEntryGlobResult {
-  let result = shell.Find.Files(root: "dag", name_glob: "*.dag")
+  let toplevel = git.Core.Toplevel()
+  let result = shell.Find.Files(workdir: toplevel.path, root: "dag", name_glob: "*.dag")
   LiveDagEntryGlobResult { success: result.success, stdout: result.stdout, stderr: result.stderr }
 }

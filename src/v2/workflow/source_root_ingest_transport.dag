@@ -38,6 +38,7 @@ func run_real_ingest_gate() -> Bool {
   let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
   if witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
     let manifest = gunbc.WitnessBin.Run(
+      workdir: root.path,
       bin_path: witness_bin_release_path(root: root.path, bin_name: "discover_source_root_ingest"),
       args: emit_manifest_args()
     )

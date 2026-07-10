@@ -50,6 +50,7 @@ fn run_clean_tree_compile_typed() -> Bool {
     let out = shell.Mktemp.Dir()
     if out.success {
       let compile = gunbc.WitnessBin.Run(
+        workdir: root.path,
         bin_path: dcc_gunbc_path(root: root.path),
         args: dcc_clean_tree_compile_args(out_dir: out.path)
       )
@@ -85,6 +86,7 @@ fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_suc
         content: source
       )
       let compile = gunbc.WitnessBin.Run(
+        workdir: root.path,
         bin_path: dcc_gunbc_path(root: root.path),
         args: dcc_perturb_compile_args(tmp: tmp.path)
       )

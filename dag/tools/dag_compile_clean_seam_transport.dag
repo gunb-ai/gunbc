@@ -81,14 +81,17 @@ fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
       )
       let gunbc_path = dcc_gunbc_path(root: root.path)
       let compile_y = gunbc.WitnessBin.Run(
+        workdir: root.path,
         bin_path: gunbc_path,
         args: cross_shard_seam_compile_args(stage: stage_y.path, broken_dag: broken_dag, out_dir: out_y.path)
       )
       let compile_x = gunbc.WitnessBin.Run(
+        workdir: root.path,
         bin_path: gunbc_path,
         args: cross_shard_seam_compile_args(stage: stage_x.path, broken_dag: broken_dag, out_dir: out_x.path)
       )
       let compile_m = gunbc.WitnessBin.Run(
+        workdir: root.path,
         bin_path: gunbc_path,
         args: cross_shard_seam_compile_args(stage: "", broken_dag: broken_dag, out_dir: out_m.path)
       )

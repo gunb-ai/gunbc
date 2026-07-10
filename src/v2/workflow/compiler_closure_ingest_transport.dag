@@ -48,6 +48,7 @@ func run_compiler_closure_ingest_gate() -> Bool {
         )
         if manifest_dir.success {
           let emitted = gunbc.WitnessBin.Run(
+            workdir: root.path,
             bin_path: witness_bin_release_path(root: root.path, bin_name: "discover_source_root_ingest"),
             args: closure_manifest_emit_args(manifest_dir: manifest_dir.path)
           )
