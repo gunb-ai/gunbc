@@ -161,8 +161,9 @@ fn partition_user_semantic_type_shape(node: Node) -> Bool {
 }
 
 fn partition_semantic_disj_search_subtree(root: Node) -> Optional<Node> {
-  if partition_is_grammar_production_shell(node: root) {
+  if partition_user_semantic_type_shape(node: root) {
     match root.kind {
+      TypeNode { connective: Disj } => optional_present(value: root)
       TypeNode { connective: Conj } =>
         fold(
           root.children,
@@ -178,8 +179,18 @@ fn partition_semantic_disj_search_subtree(root: Node) -> Optional<Node> {
     }
   } else {
     match root.kind {
-      TypeNode { connective: Disj } => optional_present(value: root)
       TypeNode { connective: Conj } =>
+        fold(
+          root.children,
+          init: Absent,
+          f: fn(acc, edge) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => partition_semantic_disj_search_subtree(root: edge.target)
+            }
+          }
+        )
+      TypeNode { connective: Disj } =>
         fold(
           root.children,
           init: Absent,
@@ -271,6 +282,8 @@ fn partition_first_type_decl_ident(root: Node) -> Optional<Symbol> {
                   match edge.target.kind {
                     TypeNode { connective: Atom { identity: id } } =>
                       if partition_type_decl_is_keyword_atom(sym: id) {
+                        acc
+                      } else if id == ^dag_token_ident {
                         acc
                       } else {
                         optional_present(value: id)
