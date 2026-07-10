@@ -43,6 +43,14 @@ test fn std_logic_partition_type_decl_count_gt_0() -> Bool {
   std_logic_partition_type_decl_count() > 0
 }
 
+test fn std_logic_partition_fn_decl_count_gt_0() -> Bool {
+  std_logic_partition_fn_decl_count() > 0
+}
+
+test fn std_logic_assemble_accepts_holds() -> Bool {
+  std_logic_assemble_accepts()
+}
+
 test fn std_logic_assemble_reject_is_unbound_symbol_holds() -> Bool {
   std_logic_assemble_reject_is_unbound_symbol()
 }
