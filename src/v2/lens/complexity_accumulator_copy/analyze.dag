@@ -29,7 +29,7 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty }
 import v2.compiler.fold_lowering { fold_call_to_loop, fold_family_head }
-import v2.std.algebra { list_append, list_map, list_reverse }
+import v2.std.algebra { list_append, list_flat_map, list_map, list_reverse }
 import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
@@ -110,19 +110,22 @@ fn edge_skips_identifier_count(e: Edge) -> Bool {
   }
 }
 
-fn count_value_identifiers(n: Node) -> Int {
+fn collect_value_identifiers(n: Node) -> List<Symbol> {
   let here = match node_atom_identity_optional(node: n) {
     Present { value: id } =>
-      if dag_lex_token_symbol(sym: id) { 0 } else { 1 }
-    Absent => 0
+      if dag_lex_token_symbol(sym: id) { Empty } else { Cons { head: id, tail: Empty } }
+    Absent => Empty
   }
-  fold(n.children, init: here, f: fn(acc, e) {
-    if edge_skips_identifier_count(e: e) {
-      acc
-    } else {
-      acc + count_value_identifiers(n: e.target)
-    }
-  })
+  list_append(
+    left: here,
+    right: list_flat_map(xs: n.children, f: fn(e) {
+      if edge_skips_identifier_count(e: e) {
+        Empty
+      } else {
+        collect_value_identifiers(n: e.target)
+      }
+    })
+  )
 }
 
 fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
@@ -133,18 +136,18 @@ fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
 }
 
 fn port_reading(arg_capture: Node) -> PortReading {
-  let idents = count_value_identifiers(n: arg_capture)
-  if idents == 0 {
-    PortPureLiteral
-  } else {
-    if idents == 1 {
-      match arg_value_symbol(arg_capture: arg_capture) {
-        Present { value: sym } => PortBareName { name: sym }
-        Absent => PortComputedExpression
+  let mentions = collect_value_identifiers(n: arg_capture)
+  match mentions {
+    Empty => PortPureLiteral
+    Cons { head: _, tail: rest } =>
+      match rest {
+        Empty =>
+          match arg_value_symbol(arg_capture: arg_capture) {
+            Present { value: sym } => PortBareName { name: sym }
+            Absent => PortComputedExpression { mentions: mentions }
+          }
+        Cons { head: _, tail: _ } => PortComputedExpression { mentions: mentions }
       }
-    } else {
-      PortComputedExpression
-    }
   }
 }
 
@@ -250,31 +253,59 @@ fn let_resolution(
       match let_rhs_node(let_capture: let_capture) {
         Absent => LetUndecided
         Present { value: rhs } =>
-          let idents = count_value_identifiers(n: rhs)
-          if idents == 0 {
-            LetBindsFact { binding: LetBinding { name: binder, fact: BindsFresh } }
-          } else {
-            if idents == 1 {
-              match arg_value_symbol(arg_capture: rhs) {
-                Absent =>
-                  LetBindsFact { binding: LetBinding { name: binder, fact: BindsComputed } }
-                Present { value: s } =>
-                  if symbol_in(needle: s, xs: carriers) {
-                    LetJoinsCarriers { name: binder }
-                  } else {
-                    match let_binding_fact_for(name: s, bindings: bindings) {
-                      Present { value: fact } =>
-                        LetBindsFact { binding: LetBinding { name: binder, fact: fact } }
-                      Absent => LetUndecided
+          let mentions = collect_value_identifiers(n: rhs)
+          match mentions {
+            Empty => LetBindsFact { binding: LetBinding { name: binder, fact: BindsFresh } }
+            Cons { head: _, tail: rest } =>
+              match rest {
+                Empty =>
+                  match arg_value_symbol(arg_capture: rhs) {
+                    Absent =>
+                      LetBindsFact {
+                        binding: LetBinding {
+                          name: binder,
+                          fact: BindsComputed {
+                            mentions: substituted_mentions(raw: mentions, bindings: bindings)
+                          }
+                        }
+                      }
+                    Present { value: s } =>
+                      if symbol_in(needle: s, xs: carriers) {
+                        LetJoinsCarriers { name: binder }
+                      } else {
+                        match let_binding_fact_for(name: s, bindings: bindings) {
+                          Present { value: fact } =>
+                            LetBindsFact { binding: LetBinding { name: binder, fact: fact } }
+                          Absent => LetUndecided
+                        }
+                      }
+                  }
+                Cons { head: _, tail: _ } =>
+                  LetBindsFact {
+                    binding: LetBinding {
+                      name: binder,
+                      fact: BindsComputed {
+                        mentions: substituted_mentions(raw: mentions, bindings: bindings)
+                      }
                     }
                   }
               }
-            } else {
-              LetBindsFact { binding: LetBinding { name: binder, fact: BindsComputed } }
-            }
           }
       }
   }
+}
+
+fn substituted_mentions(raw: List<Symbol>, bindings: List<LetBinding>) -> List<Symbol> {
+  list_flat_map(xs: raw, f: fn(m) {
+    match let_binding_fact_for(name: m, bindings: bindings) {
+      Absent => Cons { head: m, tail: Empty }
+      Present { value: fact } =>
+        match fact {
+          BindsFresh => Empty
+          BindsComputed { mentions: ms } => ms
+        }
+    }
+  })
 }
 
 fn analyze_children(
