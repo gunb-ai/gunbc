@@ -1,0 +1,324 @@
+module v2.compiler.self_host.frontier
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+type CompilerFrontierCensusAttribution
+  = KnowledgeAttributed { dissolution_trigger: Symbol }
+
+data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = KnowledgeAttributed {
+  dissolution_trigger: ^migrate_when_wave2_per_module_emit_probe_confirms_triggers
+}
+
+type SelfHostFrontierDisposition
+  = SelfEmitted
+  | SeedRetained { reason: Symbol, migration_trigger: Symbol }
+
+type CompilerModuleFrontierRow {
+  module_path: String
+  disposition: SelfHostFrontierDisposition
+}
+
+data compiler_frontier_module_count_expected: Int = 27
+
+data compiler_frontier_self_emitted_baseline: Int = 0
+
+fn seed_retained_compiler_frontier_row(
+  module_path: String,
+  reason: Symbol,
+  migration_trigger: Symbol
+) -> CompilerModuleFrontierRow {
+  CompilerModuleFrontierRow {
+    module_path: module_path,
+    disposition: SeedRetained {
+      reason: reason,
+      migration_trigger: migration_trigger
+    }
+  }
+}
+
+data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/00_compile.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/01_tokenize.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/02_parse.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_parse_cursor_grounded
+)
+
+data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/03_body_producer.dag",
+  reason: ^reason_substrate_migration_pending,
+  migration_trigger: ^migrate_when_general_body_producer_lands
+)
+
+data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/03_ingest.dag",
+  reason: ^reason_substrate_migration_pending,
+  migration_trigger: ^migrate_when_reparse_lookahead_lands
+)
+
+data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/03_name_resolve.dag",
+  reason: ^reason_substrate_migration_pending,
+  migration_trigger: ^migrate_when_namespace_only_resolution_lands
+)
+
+data compiler_frontier_row_03_normalize: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/03_normalize.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_03_resolve: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/03_resolve.dag",
+  reason: ^reason_substrate_migration_pending,
+  migration_trigger: ^migrate_when_namespace_only_resolution_lands
+)
+
+data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/04_infer.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_05_emit: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/05_emit.dag",
+  reason: ^reason_emit_surface_incomplete,
+  migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
+)
+
+data compiler_frontier_row_05_emit_orchestration: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/05_emit_orchestration.dag",
+  reason: ^reason_emit_surface_incomplete,
+  migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
+)
+
+data compiler_frontier_row_05_eval: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/05_eval.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_v2_evaluator_host_effects_lands
+)
+
+data compiler_frontier_row_06_translate: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/06_translate.dag",
+  reason: ^reason_emit_surface_incomplete,
+  migration_trigger: ^migrate_when_rust_value_expression_projection_wired
+)
+
+data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/07_target_carriers.dag",
+  reason: ^reason_emit_surface_incomplete,
+  migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
+)
+
+data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/discovery_enumeration.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_emit_host: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/emit_host.dag",
+  reason: ^reason_emit_surface_incomplete,
+  migration_trigger: ^migrate_when_emit_host_modules_self_emit
+)
+
+data compiler_frontier_row_emit_module: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/emit_module.dag",
+  reason: ^reason_emit_surface_incomplete,
+  migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
+)
+
+data compiler_frontier_row_emit_produced: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/emit_produced.dag",
+  reason: ^reason_emit_surface_incomplete,
+  migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
+)
+
+data compiler_frontier_row_emit_semantic_decl: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/emit_semantic_decl.dag",
+  reason: ^reason_emit_surface_incomplete,
+  migration_trigger: ^migrate_when_rust_decl_emit_track_a_completes
+)
+
+data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/fold_lowering.dag",
+  reason: ^reason_substrate_migration_pending,
+  migration_trigger: ^migrate_when_body_lowering_generalizes
+)
+
+data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/materialization_carriers.dag",
+  reason: ^reason_substrate_migration_pending,
+  migration_trigger: ^migrate_when_materialize_spine_lane_lands
+)
+
+data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/parse_engine_hooks.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_parse_cursor_grounded
+)
+
+data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/program_assembly.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/program_partition.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_self_host: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/self_host.dag",
+  reason: ^reason_substrate_migration_pending,
+  migration_trigger: ^migrate_when_frontier_harness_repurposed
+)
+
+data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/source_authority.dag",
+  reason: ^reason_v1_regen_stage0_authority,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+)
+
+data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+  module_path: "src/v2/compiler/use_site_verdict.dag",
+  reason: ^reason_substrate_migration_pending,
+  migration_trigger: ^migrate_when_ownership_defork_lands
+)
+
+data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
+  compiler_frontier_row_00_compile,
+  compiler_frontier_row_01_tokenize,
+  compiler_frontier_row_02_parse,
+  compiler_frontier_row_03_body_producer,
+  compiler_frontier_row_03_ingest,
+  compiler_frontier_row_03_name_resolve,
+  compiler_frontier_row_03_normalize,
+  compiler_frontier_row_03_resolve,
+  compiler_frontier_row_04_infer,
+  compiler_frontier_row_05_emit,
+  compiler_frontier_row_05_emit_orchestration,
+  compiler_frontier_row_05_eval,
+  compiler_frontier_row_06_translate,
+  compiler_frontier_row_07_target_carriers,
+  compiler_frontier_row_discovery_enumeration,
+  compiler_frontier_row_emit_host,
+  compiler_frontier_row_emit_module,
+  compiler_frontier_row_emit_produced,
+  compiler_frontier_row_emit_semantic_decl,
+  compiler_frontier_row_fold_lowering,
+  compiler_frontier_row_materialization_carriers,
+  compiler_frontier_row_parse_engine_hooks,
+  compiler_frontier_row_program_assembly,
+  compiler_frontier_row_program_partition,
+  compiler_frontier_row_self_host,
+  compiler_frontier_row_source_authority,
+  compiler_frontier_row_use_site_verdict
+]
+
+fn compiler_frontier_roster_count() -> Int {
+  length(xs: compiler_frontier_roster)
+}
+
+fn count_rows_with_module_path(xs: List<CompilerModuleFrontierRow>, target: String) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      if row.module_path == target { count + 1 } else { count }
+    }
+  )
+}
+
+fn compiler_frontier_roster_paths_unique_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && (count_rows_with_module_path(xs: compiler_frontier_roster, target: row.module_path) == 1)
+    }
+  )
+}
+
+fn count_self_emitted_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      match row.disposition {
+        SelfEmitted => count + 1
+        SeedRetained { reason: _, migration_trigger: _ } => count
+      }
+    }
+  )
+}
+
+fn count_seed_retained_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      match row.disposition {
+        SelfEmitted => count
+        SeedRetained { reason: _, migration_trigger: _ } => count + 1
+      }
+    }
+  )
+}
+
+fn compiler_frontier_self_emitted_count() -> Int {
+  count_self_emitted_frontier_rows(xs: compiler_frontier_roster)
+}
+
+fn compiler_frontier_seed_retained_count() -> Int {
+  count_seed_retained_frontier_rows(xs: compiler_frontier_roster)
+}
+
+fn compiler_frontier_roster_complete_holds() -> Bool {
+  compiler_frontier_roster_count() == compiler_frontier_module_count_expected
+}
+
+fn compiler_frontier_known_module_path_exactly_once_holds() -> Bool {
+  count_rows_with_module_path(
+    xs: compiler_frontier_roster,
+    target: "src/v2/compiler/00_compile.dag"
+  ) == 1
+}
+
+fn compiler_frontier_phantom_module_path_absent_holds() -> Bool {
+  count_rows_with_module_path(
+    xs: compiler_frontier_roster,
+    target: "src/v2/compiler/not_a_real_module.dag"
+  ) == 0
+}
+fn compiler_frontier_self_emitted_baseline_holds() -> Bool {
+  compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
+}
+
+fn compiler_frontier_census_holds() -> Bool {
+  compiler_frontier_roster_complete_holds()
+    && compiler_frontier_roster_paths_unique_holds()
+    && compiler_frontier_self_emitted_baseline_holds()
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}
