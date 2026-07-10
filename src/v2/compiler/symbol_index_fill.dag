@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.std.algebra { fold_list }
-import v2.std.collection { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 import v2.std.symbol_index { SymbolIndex, symbol_index_insert }

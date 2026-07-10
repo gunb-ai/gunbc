@@ -1,8 +1,6 @@
 module v2.std.symbol_index
 
-import std.algebra { FreeMonoid }
-import std.disposition { Accepted, Rejected }
-import v2.std.algebra { fold_list, is_empty }
+import v2.std.algebra { is_empty }
 import v2.std.collection {
   Absent,
   Map,
@@ -14,6 +12,7 @@ import v2.std.collection {
   optional_absent,
   optional_present
 }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_snoc }

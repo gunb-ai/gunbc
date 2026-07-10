@@ -164,11 +164,20 @@ fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<Symbol> {
   }
 }
 
-data qualified_name_string_roundtrip_host_disposition: Disposition = Scaffold {
+data qualified_name_from_dotted_string_host_disposition: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "v2.std.compilers.lexing",
-    decl_name: "symbol_intern_lexeme",
+    module_path: "v2.std.qualified_name",
+    decl_name: "qualified_name_from_dotted_string",
+    field: WholeDeclaration
+  }
+}
+
+data qualified_name_to_dotted_string_host_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.std.qualified_name",
+    decl_name: "qualified_name_to_dotted_string",
     field: WholeDeclaration
   }
 }
@@ -197,13 +206,6 @@ fn qualified_name_init(qn: QualifiedName) -> QualifiedName {
 
 fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
   list_snoc_item(xs: qn, item: segment)
-}
-
-fn qualified_name_is_empty(qn: QualifiedName) -> Bool {
-  match qn {
-    Empty => true
-    Cons { head: _, tail: _ } => false
-  }
 }
 
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {

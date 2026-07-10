@@ -1,13 +1,32 @@
 module v2.test.claim.qualified_name.path_algebra_test
 
 import std.algebra { Cons, Empty }
+import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.logic { Bool }
 import v2.std.qualified_name {
   qualified_name_from_dotted_string,
+  qualified_name_from_dotted_string_host_disposition,
   qualified_name_init,
   qualified_name_snoc,
-  qualified_name_to_dotted_string
+  qualified_name_to_dotted_string,
+  qualified_name_to_dotted_string_host_disposition
 }
-import v2.std.logic { Bool }
+
+fn host_disposition_binds_bridge(
+  disposition: Disposition,
+  module_path: String,
+  decl_name: String
+) -> Bool {
+  match disposition {
+    Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>
+      bind.module_path == module_path
+        && bind.decl_name == decl_name
+        && bind.field == WholeDeclaration
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: _ } => false
+  }
+}
 
 test fn qualified_name_to_dotted_string_roundtrip_holds() -> Bool {
   let qn = qualified_name_from_dotted_string(dotted: "v2.std.text")
@@ -30,4 +49,20 @@ test fn qualified_name_init_empty_on_singleton_holds() -> Bool {
   let qn = qualified_name_from_dotted_string(dotted: "std")
   let parent = qualified_name_init(qn: qn)
   qualified_name_to_dotted_string(qn: parent) == ""
+}
+
+test fn qualified_name_from_dotted_string_host_scaffold_binds_bridge_holds() -> Bool {
+  host_disposition_binds_bridge(
+    disposition: qualified_name_from_dotted_string_host_disposition,
+    module_path: "v2.std.qualified_name",
+    decl_name: "qualified_name_from_dotted_string"
+  )
+}
+
+test fn qualified_name_to_dotted_string_host_scaffold_binds_bridge_holds() -> Bool {
+  host_disposition_binds_bridge(
+    disposition: qualified_name_to_dotted_string_host_disposition,
+    module_path: "v2.std.qualified_name",
+    decl_name: "qualified_name_to_dotted_string"
+  )
 }
