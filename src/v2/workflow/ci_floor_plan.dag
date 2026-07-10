@@ -9,7 +9,7 @@ import gunbc.ci_spec {
   SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
 }
 import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
-import v2.std.collection { List }
+import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
@@ -61,7 +61,8 @@ import std.realization_schedule {
   runnable_heavy_whole_tree_resolve,
   runnable_forbids_corpus_co_residence,
   cost_account_predicted_zero,
-  schedule_lens_verdict_for_ci_floor
+  schedule_lens_verdict_for_ci_floor,
+  schedule_eq
 }
 import v2.workflow.executor {
   ExecutorBatch,
@@ -70,6 +71,13 @@ import v2.workflow.executor {
   ExecutorRunComplete,
   ExecutorRunRunnable,
   parallel_executor_plan_from_dependencies
+}
+import v2.workflow.realization_runner {
+  RunnerScheduleBlocked,
+  RunnerScheduleComplete,
+  runner_ordering_only,
+  runner_schedule_plan_from_dependencies,
+  runner_schedule_store_covers_nodes
 }
 
 data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
@@ -462,19 +470,55 @@ fn runnables_for_batch(batch: ExecutorBatch, spec: CiSpec) -> List<Runnable> {
   })
 }
 
-fn floor_schedule_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
+fn runnables_for_executor_batches(batches: List<ExecutorBatch>, spec: CiSpec) -> List<List<Runnable>> {
+  fold(batches, init: [], f: fn(acc, batch) {
+    list_snoc_item(xs: acc, item: runnables_for_batch(batch: batch, spec: spec))
+  })
+}
+
+fn floor_schedule_direct_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
   match parallel_executor_plan_from_dependencies(
     nodes: floor_nodes(spec: spec),
     dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy),
     scheduled: []
   ) {
     ExecutorRunComplete { batches: batches, scheduled: _ } =>
-      fold(batches, init: [], f: fn(acc, batch) {
-        list_snoc_item(xs: acc, item: runnables_for_batch(batch: batch, spec: spec))
-      })
+      runnables_for_executor_batches(batches: batches, spec: spec)
     ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
   }
+}
+
+fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
+  match runner_schedule_plan_from_dependencies(
+    nodes: floor_nodes(spec: spec),
+    dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy),
+    value: runner_ordering_only
+  ) {
+    RunnerScheduleComplete { batches: batches, store: store } =>
+      if runner_schedule_store_covers_nodes(store: store, nodes: floor_nodes(spec: spec)) {
+        runnables_for_executor_batches(batches: batches, spec: spec)
+      } else {
+        [[floor_unrunnable_sentinel()]]
+      }
+    RunnerScheduleBlocked { evidence: _ } => [[floor_unrunnable_sentinel()]]
+  }
+}
+
+fn floor_schedule_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
+  floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
+}
+
+fn witness_floor_runner_schedule_byte_identical_for(spec: CiSpec, serialize_heavy: Bool) -> Bool {
+  schedule_eq(
+    left: floor_schedule_direct_for(spec: spec, serialize_heavy: serialize_heavy),
+    right: floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
+  )
+}
+
+fn witness_floor_runner_schedule_byte_identical() -> Bool {
+  witness_floor_runner_schedule_byte_identical_for(spec: gunbc_ci_spec, serialize_heavy: true)
+    && witness_floor_runner_schedule_byte_identical_for(spec: gunbc_ci_spec, serialize_heavy: false)
 }
 
 fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
@@ -536,10 +580,12 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan().schedule
 }
 
-fn runnable_scan_dir_count(r: Runnable) -> Int {
+fn runnable_scan_dir_count(r: Runnable) -> Optional<Int> {
   match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => length(xs: dirs)
-    _ => 0 - 1
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
+      Present { value: length(xs: dirs) }
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => Absent
+    RunnableKernelWorkload { fused_op_count: _ } => Absent
   }
 }
 
@@ -547,13 +593,16 @@ fn runnable_selection_applied(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
       match sel { SelectionApplied => true  SelectionOff => false  SelectionPredictOnly => false }
-    _ => false
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
   }
 }
 
 fn witness_ci_corpus_discovery_is_live() -> Bool {
-  runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) > 0
-    && runnable_selection_applied(r: corpus_runnable_for(spec: gunbc_ci_spec))
+  match runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) {
+    Present { value: count } => (count > 0) && runnable_selection_applied(r: corpus_runnable_for(spec: gunbc_ci_spec))
+    Absent => false
+  }
 }
 
 fn witness_ci_corpus_discovery_serializes_at_width_one() -> Bool {

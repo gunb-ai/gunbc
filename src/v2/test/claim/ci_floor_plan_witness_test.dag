@@ -29,6 +29,8 @@ import v2.workflow.ci_floor_plan {
   witness_ci_corpus_discovery_is_live,
   witness_ci_corpus_discovery_serializes_at_width_one,
   witness_regen_spec_carries_no_witness_corpus,
+  witness_floor_runner_schedule_byte_identical,
+  witness_floor_runner_schedule_byte_identical_for,
   witness_corpus_effective_widths_fit_runner_cap,
   witness_floor_derived_width_leaves_headroom_at_cap,
 }
@@ -320,6 +322,12 @@ test fn ci_corpus_discovery_flip_witnesses() -> Bool {
     && witness_ci_corpus_discovery_serializes_at_width_one()
     && witness_regen_spec_carries_no_witness_corpus()
     && schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0
+}
+
+test fn ci_floor_runner_migration_witnesses() -> Bool {
+  witness_floor_runner_schedule_byte_identical()
+    && witness_floor_runner_schedule_byte_identical_for(spec: optin_spec, serialize_heavy: true)
+    && witness_floor_runner_schedule_byte_identical_for(spec: optin_spec, serialize_heavy: false)
 }
 
 test fn ci_floor_honest_width_fold_witnesses() -> Bool {

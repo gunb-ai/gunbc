@@ -3,6 +3,7 @@ module v2.workflow.realization_runner
 import v2.std.algebra { contains, fold, list_snoc_item, non_empty }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView }
+import std.types { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.workflow.executor {
@@ -12,9 +13,14 @@ import v2.workflow.executor {
   ExecutorRunComplete,
   ExecutorRunRunnable,
   ExecutorBlockedEvidence,
+  ExecutorEmptyFrontier,
   parallel_executor_plan_from_dependencies
 }
 import v2.workflow.scheduler { scheduler_execution_dependencies }
+
+type RunnerOrderingResult = RunnerOrderingOnly {}
+
+data runner_ordering_only: RunnerOrderingResult = RunnerOrderingOnly {}
 
 type NodeKeyedStoreEntry<V> {
   node: Node
@@ -237,21 +243,21 @@ fn runner_schedule_plan_from_dependencies<V>(
 }
 
 fn runner_schedule_store_covers_nodes<V>(
-  plan: RunnerScheduleComplete<V>,
+  store: NodeKeyedStore<V>,
   nodes: List<Node>
 ) -> Bool {
   fold(nodes, init: true, f: fn(ok, node) {
-    ok && node_keyed_store_has_node(store: plan.store, node: node)
+    ok && node_keyed_store_has_node(store: store, node: node)
   })
 }
 
-fn runner_schedule_batch_count<V>(plan: RunnerScheduleComplete<V>) -> Int {
-  fold(plan.batches, init: 0, f: fn(count, _) { count + 1 })
+fn runner_schedule_batch_count(batches: List<ExecutorBatch>) -> Int {
+  fold(batches, init: 0, f: fn(count, _) { count + 1 })
 }
 
-fn runner_schedule_contains_batch<V>(
-  plan: RunnerScheduleComplete<V>,
+fn runner_schedule_contains_batch(
+  batches: List<ExecutorBatch>,
   batch: ExecutorBatch
 ) -> Bool {
-  contains(xs: plan.batches, item: batch, eq: fn(left, right) { left == right })
+  contains(xs: batches, item: batch, eq: fn(left, right) { left == right })
 }
