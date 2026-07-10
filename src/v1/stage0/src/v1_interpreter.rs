@@ -2404,12 +2404,9 @@ fn match_pattern(
 
 pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &["resolve_type_node"];
 
-pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme"];
+pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme", "symbol_lexeme"];
 
-pub(crate) const STD_QUALIFIED_NAME_BRIDGE_FNS: &[&str] = &[
-    "qualified_name_from_dotted_string",
-    "qualified_name_to_dotted_string",
-];
+pub(crate) const STD_QUALIFIED_NAME_BRIDGE_FNS: &[&str] = &["qualified_name_from_dotted_string"];
 
 pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
 
@@ -2618,6 +2615,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             "symbol_intern_lexeme" => {
                 crate::coproduct_reflection::eval_symbol_intern_lexeme(ctx, &args)
             }
+            "symbol_lexeme" => crate::coproduct_reflection::eval_symbol_lexeme(ctx, &args),
             _ => unreachable!("lexing bridge fn set mismatch"),
         };
     }
@@ -2626,9 +2624,6 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return match func_name.as_str() {
             "qualified_name_from_dotted_string" => {
                 crate::coproduct_reflection::eval_qualified_name_from_dotted_string(ctx, &args)
-            }
-            "qualified_name_to_dotted_string" => {
-                crate::coproduct_reflection::eval_qualified_name_to_dotted_string(ctx, &args)
             }
             _ => unreachable!("qualified_name bridge fn set mismatch"),
         };

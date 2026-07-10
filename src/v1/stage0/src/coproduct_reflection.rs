@@ -67,6 +67,14 @@ pub fn eval_symbol_intern_lexeme(
     Ok(Value::Str(spelling))
 }
 
+pub fn eval_symbol_lexeme(
+    _ctx: &InterpContext,
+    args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let sym = expect_symbol(args.first().map(|(_, v)| v), "symbol_lexeme")?;
+    Ok(Value::Str(sym.to_string()))
+}
+
 pub(crate) fn type_item_by_name<'a>(
     ctx: &'a InterpContext,
     type_name: &str,
@@ -362,21 +370,6 @@ pub fn eval_qualified_name_from_dotted_string(
     )?;
     Ok(crate::cli_run::free_monoid_symbol_value_from_dotted_string(
         ctx, &dotted,
-    ))
-}
-
-pub fn eval_qualified_name_to_dotted_string(
-    _ctx: &InterpContext,
-    args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    let qn = args
-        .first()
-        .map(|(_, v)| v)
-        .ok_or_else(|| InterpError::TypeError {
-            msg: "qualified_name_to_dotted_string requires a QualifiedName".to_string(),
-        })?;
-    Ok(Value::Str(
-        crate::v1_interpreter::free_monoid_symbol_value_to_dotted_string(qn),
     ))
 }
 
