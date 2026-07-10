@@ -77,10 +77,7 @@ jobs:
         timeout-minutes: 45
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)
         run: |
-<<<<<<< HEAD
-=======
           # dissolve-on: bash-emit (#5828 / gap-B emit(intent, Bash)) realizes the cgroup peak observation as an emitted ShellProgram intent (the floor_diff_observe.dag pattern: model the observation, emit the transport) or a typed host Observe effect; these concat-built runners retire then. Until that lands they are §2 transport scaffolds bound by the three Scaffold rows in gunbc.ci_workflow (locate/pre/post *_shell_emit_dissolution_trigger).
->>>>>>> origin/main
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
           while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
           if [ -f "$d/memory.peak" ]; then
@@ -99,13 +96,11 @@ jobs:
         timeout-minutes: 120
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
-<<<<<<< HEAD
-=======
           # dissolve-on: bash-emit (#5828 / gap-B emit(intent, Bash)) realizes the cgroup peak observation as an emitted ShellProgram intent (the floor_diff_observe.dag pattern: model the observation, emit the transport) or a typed host Observe effect; these concat-built runners retire then. Until that lands they are §2 transport scaffolds bound by the three Scaffold rows in gunbc.ci_workflow (locate/pre/post *_shell_emit_dissolution_trigger).
->>>>>>> origin/main
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
           while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
           if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"
           else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
         if: always()
         timeout-minutes: 5
+
