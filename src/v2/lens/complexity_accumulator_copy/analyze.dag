@@ -110,10 +110,18 @@ fn edge_skips_identifier_count(e: Edge) -> Bool {
   }
 }
 
+fn symbol_list_prepend(item: Symbol, xs: List<Symbol>) -> List<Symbol> {
+  Cons { head: item, tail: xs }
+}
+
+fn symbol_list_length(xs: List<Symbol>) -> Int {
+  fold(xs, init: 0, f: fn(acc, s) { acc + 1 })
+}
+
 fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
   let here = match node_atom_identity_optional(node: n) {
     Present { value: id } =>
-      if dag_lex_token_symbol(sym: id) { acc } else { Cons { head: id, tail: acc } }
+      if dag_lex_token_symbol(sym: id) { acc } else { symbol_list_prepend(item: id, xs: acc) }
     Absent => acc
   }
   fold(n.children, init: here, f: fn(a, e) {
@@ -138,17 +146,18 @@ fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
 
 fn port_reading(arg_capture: Node) -> PortReading {
   let mentions = collect_value_identifiers(n: arg_capture)
-  match mentions {
-    Empty => PortPureLiteral
-    Cons { head: _, tail: rest } =>
-      match rest {
-        Empty =>
-          match arg_value_symbol(arg_capture: arg_capture) {
-            Present { value: sym } => PortBareName { name: sym }
-            Absent => PortComputedExpression { mentions: mentions }
-          }
-        Cons { head: _, tail: _ } => PortComputedExpression { mentions: mentions }
+  let idents = symbol_list_length(xs: mentions)
+  if idents == 0 {
+    PortPureLiteral
+  } else {
+    if idents == 1 {
+      match arg_value_symbol(arg_capture: arg_capture) {
+        Present { value: sym } => PortBareName { name: sym }
+        Absent => PortComputedExpression { mentions: mentions }
       }
+    } else {
+      PortComputedExpression { mentions: mentions }
+    }
   }
 }
 
@@ -255,60 +264,44 @@ fn let_resolution(
         Absent => LetUndecided
         Present { value: rhs } =>
           let mentions = collect_value_identifiers(n: rhs)
-          match mentions {
-            Empty => LetBindsFact { binding: LetBinding { name: binder, fact: BindsFresh } }
-            Cons { head: _, tail: rest } =>
-              match rest {
-                Empty =>
-                  match arg_value_symbol(arg_capture: rhs) {
-                    Absent =>
-                      LetBindsFact {
-                        binding: LetBinding {
-                          name: binder,
-                          fact: BindsComputed {
-                            mentions: substituted_mentions(raw: mentions, bindings: bindings)
-                          }
-                        }
-                      }
-                    Present { value: s } =>
-                      if symbol_in(needle: s, xs: carriers) {
-                        LetJoinsCarriers { name: binder }
-                      } else {
-                        match let_binding_fact_for(name: s, bindings: bindings) {
-                          Present { value: fact } =>
-                            LetBindsFact { binding: LetBinding { name: binder, fact: fact } }
-                          Absent => LetUndecided
-                        }
-                      }
-                  }
-                Cons { head: _, tail: _ } =>
+          let idents = symbol_list_length(xs: mentions)
+          if idents == 0 {
+            LetBindsFact { binding: LetBinding { name: binder, fact: BindsFresh } }
+          } else {
+            if idents == 1 {
+              match arg_value_symbol(arg_capture: rhs) {
+                Absent =>
                   LetBindsFact {
                     binding: LetBinding {
                       name: binder,
-                      fact: BindsComputed {
-                        mentions: substituted_mentions(raw: mentions, bindings: bindings)
-                      }
+                      fact: BindsComputed { mentions: mentions }
+                    }
+                  }
+                Present { value: s } =>
+                  if symbol_in(needle: s, xs: carriers) {
+                    LetJoinsCarriers { name: binder }
+                  } else {
+                    match let_binding_fact_for(name: s, bindings: bindings) {
+                      Present { value: fact } =>
+                        LetBindsFact { binding: LetBinding { name: binder, fact: fact } }
+                      Absent => LetUndecided
                     }
                   }
               }
+            } else {
+              LetBindsFact {
+                binding: LetBinding {
+                  name: binder,
+                  fact: BindsComputed { mentions: mentions }
+                }
+              }
+            }
           }
       }
   }
 }
 
-fn substituted_mentions(raw: List<Symbol>, bindings: List<LetBinding>) -> List<Symbol> {
-  fold(raw, init: Empty, f: fn(acc, m) {
-    match let_binding_fact_for(name: m, bindings: bindings) {
-      Absent => Cons { head: m, tail: acc }
-      Present { value: fact } =>
-        match fact {
-          BindsFresh => acc
-          BindsComputed { mentions: ms } =>
-            fold(ms, init: acc, f: fn(a2, s) { Cons { head: s, tail: a2 } })
-        }
-    }
-  })
-}
+data mentions_depth_note: String = "BindsComputed stores the RHS's RAW mentions (depth-1 closure): a computed let whose RHS names a carrier directly is caught at its unregistered use, but a chain through a SECOND computed let (b mentions a, a mentions the carrier) is not - bind-time substitution was priced and rejected here because every fold-literal splice it needs is itself an unregistered-carrier call site, trading one silent hole for four counted refusals. The chain case is a declared residue; it dissolves in Stage B, where callee/definition facts prove the substitution without accumulator threading."
 
 fn analyze_children(
   n: Node,
