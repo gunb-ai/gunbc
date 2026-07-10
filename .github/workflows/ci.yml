@@ -144,6 +144,17 @@ jobs:
           if test "$n" -ne 3; then echo "floor resolve count $n differs from declared 3: duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)"; exit 1; fi
           echo "floor resolve count $n matches declared 3 (declared cold-resolve receipt)"
         timeout-minutes: 5
+      - name: Floor materialization receipt gate (demand ledger; pins land from first counted receipt)
+        run: |
+          if ! test -f target/floor-materialization-receipt.txt; then echo "floor materialization receipt missing - fail closed"; exit 1; fi
+          k=$(sed -n 's/^keyed_calls=//p' target/floor-materialization-receipt.txt)
+          u=$(sed -n 's/^unkeyed_calls=//p' target/floor-materialization-receipt.txt)
+          d=$(sed -n 's/^duplicated_keys=//p' target/floor-materialization-receipt.txt)
+          if test -z "$k"; then echo "floor materialization receipt malformed - fail closed"; exit 1; fi
+          if test -z "$u"; then echo "floor materialization receipt malformed - fail closed"; exit 1; fi
+          if test -z "$d"; then echo "floor materialization receipt malformed - fail closed"; exit 1; fi
+          if test "$k" -eq 0; then echo "floor evaluated zero keyed calls - ledger disabled or floor empty - fail closed"; exit 1; fi
+          echo "floor materialization receipt: keyed=$k unkeyed=$u duplicated=$d (exact pins for unkeyed and duplicated land from this first counted receipt)"
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -330,3 +341,4 @@ jobs:
           if [ -x "$BIN" ]; then "$BIN" --measure-cgroup-peak; else echo "[measurement] cgroup peak: unavailable (claim_executor not built)"; fi
         if: always()
         timeout-minutes: 5
+

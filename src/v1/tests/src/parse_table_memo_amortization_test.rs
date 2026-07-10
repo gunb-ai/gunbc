@@ -64,11 +64,16 @@ impl AmortHarness {
     }
 
     fn fresh_ctx(&self) -> v1_interpreter::InterpContext {
-        v1_interpreter::InterpContext::new(
+        let ctx = v1_interpreter::InterpContext::new(
             &self.graph,
             self.source_indices.clone(),
             v1_interpreter::ExecutionMode::Wet,
-        )
+        );
+        // This suite is the parse-table MemoTier's discriminating receipt:
+        // the outer eval-frame provider would serve pass-2 demands wholesale
+        // and blind the door's hit counters, so pin it off for these ctxs.
+        v1_interpreter::set_eval_call_memo_enabled(&ctx, false);
+        ctx
     }
 
     fn run_bool(&self, ctx: &v1_interpreter::InterpContext, function: &str) {
@@ -100,6 +105,9 @@ fn run_witness_on_sources(
         resolved.source_indices.clone(),
         v1_interpreter::ExecutionMode::Wet,
     );
+    // Same pin as AmortHarness::fresh_ctx: keep the parse-table door's
+    // counters discriminating by refusing the outer eval-frame provider.
+    v1_interpreter::set_eval_call_memo_enabled(&ctx, false);
     let start = Instant::now();
     match v1_interpreter::run_in_context(&ctx, function, false) {
         Ok(Value::Bool(true)) => {}

@@ -757,13 +757,13 @@ struct EvalRecomputeTrace {
 // overflow is counted and disclosed in the report.
 const EVAL_RECOMPUTE_KEY_CAP: usize = 4_000_000;
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 struct EvalRecomputeKey {
     fn_ptr: usize,
     args: Vec<EvalRecomputeArgKey>,
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 enum EvalRecomputeArgKey {
     Null,
     Bool(bool),
@@ -816,6 +816,60 @@ const EVAL_RECOMPUTE_SITE_CAP: usize = 4;
 pub fn eval_recompute_trace_enabled() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var("GUNBC_RECOMPUTE_TRACE").is_ok_and(|v| v != "0"))
+}
+
+// The eval-frame memo: the ladder's single-site discharge provider, realized
+// in the seed. Buckets by the ledger key (fn identity x argument identity) and
+// serves only after the stored call's argument names AND values verify equal —
+// a hash collision degrades to recompute, never to a wrong value. Eviction is
+// ScopeExit (the ctx's lifetime); admission stops at the entry cap with the
+// refusal COUNTED (overflow), never silent. Default ON everywhere;
+// GUNBC_EVAL_MEMO=0 is a diagnostic realization switch (recompute instead of
+// serve — semantics identical), and the receipt discloses hits/misses so a
+// disabled memo is visible as memo_hits=0, never silently assumed working.
+struct EvalCallMemo {
+    // Per-ctx realization switch (read from GUNBC_EVAL_MEMO at ctx
+    // construction, not a process-wide latch): provider-attribution tests pin
+    // the outer eval-frame provider off on their own ctx so an inner
+    // provider's hit counters stay discriminating; semantics are identical
+    // either way (recompute instead of serve).
+    enabled: bool,
+    map: std::collections::HashMap<EvalRecomputeKey, Vec<(Vec<(Option<String>, Value)>, Value)>>,
+    // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
+    // (same discipline as EvalRecomputeTrace.keepalive_fns).
+    keepalive_fns: Vec<Rc<Node>>,
+    hits: u64,
+    misses: u64,
+    overflow: u64,
+}
+
+impl Default for EvalCallMemo {
+    fn default() -> Self {
+        EvalCallMemo {
+            enabled: eval_call_memo_env_default(),
+            map: std::collections::HashMap::new(),
+            keepalive_fns: Vec::new(),
+            hits: 0,
+            misses: 0,
+            overflow: 0,
+        }
+    }
+}
+
+const EVAL_CALL_MEMO_ENTRY_CAP: usize = 1_000_000;
+
+fn eval_call_memo_env_default() -> bool {
+    std::env::var("GUNBC_EVAL_MEMO")
+        .map(|v| v != "0")
+        .unwrap_or(true)
+}
+
+/// Realization switch, per ctx: an inner provider's by-execution receipt suite
+/// (e.g. the parse-table MemoTier's amortization tests) pins the eval-frame
+/// provider off so pass-2 demands re-execute and the inner door's hit counters
+/// keep discriminating. Values are identical either way.
+pub fn set_eval_call_memo_enabled(ctx: &InterpContext, enabled: bool) {
+    ctx.eval_call_memo.borrow_mut().enabled = enabled;
 }
 
 #[derive(Default, Clone)]
@@ -1109,6 +1163,7 @@ pub struct InterpContext {
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
+    eval_call_memo: std::cell::RefCell<EvalCallMemo>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
@@ -1254,6 +1309,7 @@ impl InterpContext {
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
+            eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
@@ -2404,7 +2460,7 @@ fn match_pattern(
 
 pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &["resolve_type_node"];
 
-pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme"];
+pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme", "symbol_lexeme"];
 
 pub(crate) const STD_QUALIFIED_NAME_BRIDGE_FNS: &[&str] = &["qualified_name_from_dotted_string"];
 
@@ -2615,6 +2671,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             "symbol_intern_lexeme" => {
                 crate::coproduct_reflection::eval_symbol_intern_lexeme(ctx, &args)
             }
+            "symbol_lexeme" => crate::coproduct_reflection::eval_symbol_lexeme(ctx, &args),
             _ => unreachable!("lexing bridge fn set mismatch"),
         };
     }
@@ -2730,28 +2787,76 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         pure_call_memo_put(ctx, &fn_node, key, &args, result.clone());
         return Ok(result);
     }
-    if eval_recompute_trace_enabled() && fn_node.uses.is_empty() {
-        return match eval_recompute_key(ctx, &fn_node, &args) {
-            Some(key) => {
-                let started = Instant::now();
-                let result = call_function(ctx, &fn_node, &args, env);
+    if fn_node.uses.is_empty() {
+        return eval_pure_named_call(ctx, node, &fn_node, &func_name, &args, env);
+    }
+    call_function(ctx, &fn_node, &args, env)
+}
+
+/// Pure named-fn calls flow through here: the demand ledger records every
+/// keyed call, and the eval-frame memo (the ladder's single-site discharge
+/// provider) serves repeated demands from the first evaluation. A memo hit
+/// still records the DEMAND in the ledger — plurality is the fact the receipt
+/// counts; the provider changes its cost, never its count. Soundness: the memo
+/// is hash-bucketed on the ledger key but serves only after the stored call's
+/// argument names AND values verify equal (Value::eq, the one equality
+/// authority) — a hash collision degrades to recompute, never to a wrong
+/// value. Unkeyed calls (closure args) stay unmemoized and are counted.
+fn eval_pure_named_call(
+    ctx: &InterpContext,
+    call_node: &Rc<Node>,
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> InterpResult<Value> {
+    let trace_on = eval_recompute_trace_enabled();
+    let memo_on = ctx.eval_call_memo.borrow().enabled;
+    if !trace_on && !memo_on {
+        return call_function(ctx, fn_node, args, env);
+    }
+    let started = Instant::now();
+    let key = match eval_recompute_key(ctx, fn_node, args) {
+        Some(key) => key,
+        None => {
+            if trace_on {
+                eval_recompute_record_unkeyed(ctx, func_name);
+            }
+            return call_function(ctx, fn_node, args, env);
+        }
+    };
+    if memo_on {
+        if let Some(v) = eval_call_memo_get(ctx, &key, args) {
+            if trace_on {
                 eval_recompute_record(
                     ctx,
-                    node,
-                    &fn_node,
-                    &func_name,
+                    call_node,
+                    fn_node,
+                    func_name,
                     key,
                     started.elapsed().as_nanos(),
                 );
-                result
             }
-            None => {
-                eval_recompute_record_unkeyed(ctx, &func_name);
-                call_function(ctx, &fn_node, &args, env)
-            }
-        };
+            return Ok(v);
+        }
     }
-    call_function(ctx, &fn_node, &args, env)
+    let result = call_function(ctx, fn_node, args, env);
+    if memo_on {
+        if let Ok(v) = &result {
+            eval_call_memo_put(ctx, fn_node, key.clone(), args, v.clone());
+        }
+    }
+    if trace_on {
+        eval_recompute_record(
+            ctx,
+            call_node,
+            fn_node,
+            func_name,
+            key,
+            started.elapsed().as_nanos(),
+        );
+    }
+    result
 }
 
 fn eval_fold_list_native(
@@ -3351,33 +3456,29 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
         return;
     }
     let t = ctx.eval_recompute_trace.borrow();
+    let totals = trace_totals(&t);
     let mut duplicated: Vec<(&EvalRecomputeEntry, u128)> = t
         .map
         .values()
         .filter(|e| e.count >= 2)
-        .map(|e| (e, e.total_ns - e.total_ns / u128::from(e.count)))
+        .map(|e| (e, entry_wasted_ns(e)))
         .collect();
     duplicated.sort_by(|a, b| b.1.cmp(&a.1));
-    let total_wasted_ns: u128 = duplicated.iter().map(|(_, w)| *w).sum();
-    let (single_site, multi_site): (Vec<_>, Vec<_>) =
-        duplicated.iter().partition(|(e, _)| e.sites.len() == 1);
-    let single_site_wasted_ns: u128 = single_site.iter().map(|(_, w)| *w).sum();
-    let multi_site_wasted_ns: u128 = multi_site.iter().map(|(_, w)| *w).sum();
     eprintln!(
         "[recompute-trace] keyed_calls={} unkeyed_calls={} overflow_calls={} distinct_keys={} duplicated_keys={} wasted_ms={} (durations inclusive of callees)",
-        t.keyed_calls,
-        t.unkeyed_calls,
-        t.overflow_calls,
-        t.map.len(),
-        duplicated.len(),
-        total_wasted_ns / 1_000_000
+        totals.keyed_calls,
+        totals.unkeyed_calls,
+        totals.overflow_calls,
+        totals.distinct_keys,
+        totals.duplicated_keys,
+        totals.wasted_ns_total / 1_000_000
     );
     eprintln!(
         "[recompute-trace] gap: single_site_keys={} wasted_ms={} (same call expression re-hit — value-coincident/loop-borne, memoize/Share territory) | multi_site_keys={} wasted_ms={} (cross-site duplicate demand — static rewire candidates)",
-        single_site.len(),
-        single_site_wasted_ns / 1_000_000,
-        multi_site.len(),
-        multi_site_wasted_ns / 1_000_000
+        totals.single_site_keys,
+        totals.wasted_ns_single_site / 1_000_000,
+        totals.multi_site_keys,
+        totals.wasted_ns_multi_site / 1_000_000
     );
     for (e, wasted_ns) in duplicated.iter().take(20) {
         let site_labels: Vec<&str> = e
@@ -3409,7 +3510,129 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
             name, count
         );
     }
+    let (hits, misses, overflow) = eval_call_memo_counters(ctx);
+    eprintln!(
+        "[recompute-trace] eval-memo: hits={} misses={} overflow={} (verified-hit serve; a hit still counts as a demand above)",
+        hits, misses, overflow
+    );
 }
+
+// Everything a re-evaluated key cost beyond one evaluation's amortized share.
+fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
+    e.total_ns - e.total_ns / u128::from(e.count)
+}
+
+/// Ledger totals for one InterpContext — the materialization demand receipt at
+/// the eval-frame grain. Key counts are deterministic for a fixed corpus and
+/// entry set; wasted_ns durations are observational and must never gate.
+#[derive(Default, Clone)]
+pub struct EvalRecomputeTotals {
+    pub keyed_calls: u64,
+    pub unkeyed_calls: u64,
+    pub overflow_calls: u64,
+    pub distinct_keys: u64,
+    pub duplicated_keys: u64,
+    pub single_site_keys: u64,
+    pub multi_site_keys: u64,
+    pub wasted_ns_total: u128,
+    pub wasted_ns_single_site: u128,
+    pub wasted_ns_multi_site: u128,
+    pub memo_hits: u64,
+    pub memo_misses: u64,
+    pub memo_overflow: u64,
+}
+
+impl EvalRecomputeTotals {
+    pub fn absorb(&mut self, o: &EvalRecomputeTotals) {
+        self.keyed_calls += o.keyed_calls;
+        self.unkeyed_calls += o.unkeyed_calls;
+        self.overflow_calls += o.overflow_calls;
+        self.distinct_keys += o.distinct_keys;
+        self.duplicated_keys += o.duplicated_keys;
+        self.single_site_keys += o.single_site_keys;
+        self.multi_site_keys += o.multi_site_keys;
+        self.wasted_ns_total += o.wasted_ns_total;
+        self.wasted_ns_single_site += o.wasted_ns_single_site;
+        self.wasted_ns_multi_site += o.wasted_ns_multi_site;
+        self.memo_hits += o.memo_hits;
+        self.memo_misses += o.memo_misses;
+        self.memo_overflow += o.memo_overflow;
+    }
+}
+
+fn trace_totals(t: &EvalRecomputeTrace) -> EvalRecomputeTotals {
+    let mut out = EvalRecomputeTotals {
+        keyed_calls: t.keyed_calls,
+        unkeyed_calls: t.unkeyed_calls,
+        overflow_calls: t.overflow_calls,
+        distinct_keys: t.map.len() as u64,
+        ..EvalRecomputeTotals::default()
+    };
+    for e in t.map.values() {
+        if e.count < 2 {
+            continue;
+        }
+        let w = entry_wasted_ns(e);
+        out.duplicated_keys += 1;
+        out.wasted_ns_total += w;
+        if e.sites.len() == 1 {
+            out.single_site_keys += 1;
+            out.wasted_ns_single_site += w;
+        } else {
+            out.multi_site_keys += 1;
+            out.wasted_ns_multi_site += w;
+        }
+    }
+    out
+}
+
+pub fn eval_recompute_totals(ctx: &InterpContext) -> EvalRecomputeTotals {
+    let mut out = trace_totals(&ctx.eval_recompute_trace.borrow());
+    let m = ctx.eval_call_memo.borrow();
+    out.memo_hits = m.hits;
+    out.memo_misses = m.misses;
+    out.memo_overflow = m.overflow;
+    out
+}
+
+// Process-wide accumulator fed by InterpContext::drop, so EVERY eval path in
+// the process lands in the receipt by construction — harvest is not a
+// per-call-site discipline a future site could forget. Sums at the totals
+// grain only: raw ledger keys are address-based and single-ctx.
+static PROCESS_EVAL_RECOMPUTE_TOTALS: std::sync::Mutex<Option<EvalRecomputeTotals>> =
+    std::sync::Mutex::new(None);
+
+/// Drain the process-wide ledger totals (e.g. to write a receipt file at the
+/// end of a floor walk). Returns zeroed totals when tracing was disabled.
+pub fn take_process_eval_recompute_totals() -> EvalRecomputeTotals {
+    // A poisoned lock still holds structurally valid totals (absorb is
+    // add-only), so recover the data rather than silently returning zeroes.
+    PROCESS_EVAL_RECOMPUTE_TOTALS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+        .unwrap_or_default()
+}
+
+impl Drop for InterpContext {
+    fn drop(&mut self) {
+        if !eval_recompute_trace_enabled() {
+            return;
+        }
+        let totals = eval_recompute_totals(self);
+        if totals.keyed_calls == 0 && totals.unkeyed_calls == 0 {
+            return;
+        }
+        // Recover a poisoned lock rather than dropping this ctx's contribution
+        // without a trace — absorb is add-only, so the state stays valid.
+        let mut g = PROCESS_EVAL_RECOMPUTE_TOTALS
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        g.get_or_insert_with(EvalRecomputeTotals::default)
+            .absorb(&totals);
+    }
+}
+
 fn value_rc_identity(v: &Value) -> Option<usize> {
     match v {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
@@ -3420,6 +3643,74 @@ fn value_rc_identity(v: &Value) -> Option<usize> {
         Value::Set(s) => Some(Rc::as_ptr(s) as usize),
         _ => None,
     }
+}
+
+// Same-allocation composites are equal without a walk; everything else takes
+// the full structural equality (Value::eq, the one equality authority).
+fn value_fast_eq(a: &Value, b: &Value) -> bool {
+    if let (Some(x), Some(y)) = (value_rc_identity(a), value_rc_identity(b)) {
+        if x == y {
+            return true;
+        }
+    }
+    a == b
+}
+
+// A stored call matches only when argument NAMES and values both agree —
+// names participate in parameter binding, so value-equal args under different
+// labels are a different call, never served.
+fn eval_call_memo_args_match(
+    stored: &[(Option<String>, Value)],
+    args: &[(Option<String>, Value)],
+) -> bool {
+    stored.len() == args.len()
+        && stored
+            .iter()
+            .zip(args.iter())
+            .all(|((sn, sv), (an, av))| sn == an && value_fast_eq(sv, av))
+}
+
+fn eval_call_memo_get(
+    ctx: &InterpContext,
+    key: &EvalRecomputeKey,
+    args: &[(Option<String>, Value)],
+) -> Option<Value> {
+    let mut m = ctx.eval_call_memo.borrow_mut();
+    let mm = &mut *m;
+    if let Some(bucket) = mm.map.get(key) {
+        for (stored_args, value) in bucket {
+            if eval_call_memo_args_match(stored_args, args) {
+                mm.hits += 1;
+                return Some(value.clone());
+            }
+        }
+    }
+    None
+}
+
+fn eval_call_memo_put(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    key: EvalRecomputeKey,
+    args: &[(Option<String>, Value)],
+    value: Value,
+) {
+    let mut m = ctx.eval_call_memo.borrow_mut();
+    m.misses += 1;
+    if m.map.len() >= EVAL_CALL_MEMO_ENTRY_CAP && !m.map.contains_key(&key) {
+        m.overflow += 1;
+        return;
+    }
+    m.keepalive_fns.push(fn_node.clone());
+    let stored_args: Vec<(Option<String>, Value)> = args.to_vec();
+    m.map.entry(key).or_default().push((stored_args, value));
+}
+
+/// Per-ctx memo counters (hits, misses, overflow) — for witnesses and
+/// diagnostics; the process receipt aggregates these via ctx Drop.
+pub fn eval_call_memo_counters(ctx: &InterpContext) -> (u64, u64, u64) {
+    let m = ctx.eval_call_memo.borrow();
+    (m.hits, m.misses, m.overflow)
 }
 fn pure_call_memo_key(
     fn_node: &Rc<Node>,
