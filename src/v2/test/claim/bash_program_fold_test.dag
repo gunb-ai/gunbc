@@ -2,9 +2,12 @@ module v2.test.claim.bash_program_fold
 
 import extdeps.languages.bash.program {
   CmdSubst,
+  AndOr,
   Command,
   Exit,
   If,
+  OrElse,
+  Subshell,
   Concat,
   Lit,
   ShellProgram,
@@ -165,5 +168,35 @@ fn bash_program_probe_if_body_exit_bytes() -> Outcome<String> {
       cond: Command { words: [Lit { text: "true" }] },
       then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }]
     }
+  ] })
+}
+
+fn bash_program_probe_if_body_two_cmds() -> Bool {
+  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
+    If { cond: Command { words: [Lit { text: "true" }] }, then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Command { words: [Lit { text: "bye" }] }] }
+  ] })
+}
+
+fn bash_program_probe_if_body_only_exit() -> Bool {
+  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
+    If { cond: Command { words: [Lit { text: "true" }] }, then: [Exit { code: 1 }] }
+  ] })
+}
+
+fn bash_program_probe_subshell_exit() -> Bool {
+  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
+    Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }
+  ] })
+}
+
+fn bash_program_probe_andor_exit() -> Bool {
+  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
+    AndOr { left: Command { words: [Lit { text: "true" }] }, op: OrElse, right: Exit { code: 1 } }
+  ] })
+}
+
+fn bash_program_probe_subshell_exit_bytes() -> Outcome<String> {
+  bash_program_serialize(p: ShellProgram { set_e: false, statements: [
+    Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }
   ] })
 }
