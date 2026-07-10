@@ -44,8 +44,7 @@ import v2.std.resolution_policy {
   ImportScoped,
   NameResolutionPolicy,
   NamespaceOnlyY,
-  default_name_resolution_policy,
-  name_resolution_policy_is_namespace_only
+  default_name_resolution_policy
 }
 import v2.std.symbol_index {
   SymbolIndex,
@@ -343,10 +342,9 @@ fn lookup_chain_locals_only(s: Scope, name: Symbol) -> Outcome<Symbol?> {
 }
 
 fn lookup_chain_for_policy(ctx: ResolveContext, name: Symbol) -> Outcome<Symbol?> {
-  if name_resolution_policy_is_namespace_only(policy: ctx.policy) {
-    lookup_chain_locals_only(s: ctx.scope, name: name)
-  } else {
-    lookup_chain(s: ctx.scope, name: name)
+  match ctx.policy {
+    NamespaceOnlyY => lookup_chain_locals_only(s: ctx.scope, name: name)
+    ImportScoped => lookup_chain(s: ctx.scope, name: name)
   }
 }
 
@@ -412,10 +410,9 @@ fn canonical_atom(identity: Symbol, occurrence_id: NodeOccurrenceId) -> Node {
 }
 
 fn symbol_index_lookup_position(ctx: ResolveContext) -> QualifiedName {
-  if name_resolution_policy_is_namespace_only(policy: ctx.policy) {
-    ctx.position
-  } else {
-    ctx.namespace.module_qn
+  match ctx.policy {
+    NamespaceOnlyY => ctx.position
+    ImportScoped => ctx.namespace.module_qn
   }
 }
 

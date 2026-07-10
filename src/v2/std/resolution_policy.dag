@@ -7,10 +7,3 @@ type NameResolutionPolicy
 fn default_name_resolution_policy() -> NameResolutionPolicy {
   ImportScoped
 }
-
-fn name_resolution_policy_is_namespace_only(policy: NameResolutionPolicy) -> Bool {
-  match policy {
-    NamespaceOnlyY => true
-    ImportScoped => false
-  }
-}
