@@ -574,12 +574,20 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     if entry_groups.len() == 1 {
         let group = &entry_groups[0];
+        // Two lines so the log cannot lie about sequencing: the past-tense line
+        // printed BEFORE the resolve once mis-attributed a resolve-phase OOM to
+        // witness eval (eager-ram-612 bisect, 2026-07-10).
         eprintln!(
-            "claim_batch: resolved {} once; running {} witness(es)",
+            "claim_batch: resolving {} once ({} witness(es))",
             group.entry,
             group.functions.len()
         );
         let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
+        eprintln!(
+            "claim_batch: resolved {}; running {} witness(es)",
+            group.entry,
+            group.functions.len()
+        );
         let closure_subject = closure_subject_for_entry(&index, &group.entry).map_err(|e| {
             eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
             ExitCode::from(1)

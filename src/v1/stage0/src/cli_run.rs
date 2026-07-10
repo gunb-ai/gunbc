@@ -2268,7 +2268,14 @@ fn resolve_entry_with_parse_cache(
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
-        let _ = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref());
+        // A failed store write is a disclosed refusal, never a silent shrug —
+        // the swallowed error hid that big closures never landed on disk (only
+        // the prelude artifact ever existed), which mis-shaped a whole OOM
+        // investigation (receipt: eager-ram-612 bisect, 2026-07-10).
+        if let Err(e) = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref())
+        {
+            eprintln!("[resolved-graph-cache] write refused subject={subject}: {e}");
+        }
         // Build fills the share through the same seam as a store hit, so a
         // same-subject re-resolve later in this process takes the reference.
         index
