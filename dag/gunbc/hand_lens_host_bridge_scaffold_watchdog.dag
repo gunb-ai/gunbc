@@ -5,11 +5,12 @@ import gunbc.hand_lens_host_bridge_scaffold_index {
   extdeps_external_authority_host_bridge_dissolution_trigger,
 }
 import std.types { List, String, Bool }
+import std.disposition { Disposition, Scaffold, Terminal }
 
 type HostBridgeScaffoldRow {
   lens_module: String
   host_seam: String
-  dissolution_trigger: String
+  dissolution_trigger: Disposition
 }
 
 data transport_script_position_scaffold_row: HostBridgeScaffoldRow = HostBridgeScaffoldRow {
@@ -30,7 +31,10 @@ data hand_lens_host_bridge_scaffold_roster: List<HostBridgeScaffoldRow> = [
 ]
 
 fn scaffold_dissolution_trigger_nonempty(row: HostBridgeScaffoldRow) -> Bool {
-  row.dissolution_trigger != ""
+  match row.dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 fn scaffold_dissolution_trigger_matches_authority(row: HostBridgeScaffoldRow) -> Bool {

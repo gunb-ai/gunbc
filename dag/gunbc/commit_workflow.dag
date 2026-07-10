@@ -10,6 +10,8 @@ import gunbc.ci_gate {
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
@@ -98,6 +100,58 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "dag/test/claim/github_merge_state_witness_test.dag",
       check_fns: ["witness_clean_and_blocked_are_distinct_variants"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "dag/test/claim/ci_materialization_witness_test.dag",
+      check_fns: [
+        "ci_ladder_holds_on_live_workflow",
+        "ci_release_build_is_plural_and_discharged_by_sccache",
+        "ci_ladder_reds_without_sccache_provider",
+        "ci_prelude_scripts_are_typed_cost_floor_acceptances",
+        "ci_measurement_is_exempt_fresh_effect",
+        "ci_catalog_projection_has_no_refusals",
+        "ci_uses_steps_are_counted_not_silent",
+        "ci_run_step_natures_are_claims_counted_not_silent"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "dag/test/claim/materialization_ladder_witness_test.dag",
+      check_fns: [
+        "authored_duplication_in_shared_frame_is_error",
+        "cross_frame_duplicate_discharged_by_covering_provider",
+        "obligation_without_provider_is_typed_refusal",
+        "provider_scope_too_narrow_is_refused",
+        "existence_keyed_provider_is_refused",
+        "declared_replay_frame_obligates_up_front",
+        "unbounded_siblings_frame_obligates_up_front",
+        "fresh_effect_duplication_is_exempt_not_cached",
+        "world_read_without_envelope_is_refused",
+        "world_read_with_declared_envelope_is_discharged",
+        "single_pure_demand_is_accepted_recompute",
+        "zero_demand_pure_declaration_is_dead_computation",
+        "zero_demand_effect_is_the_use_not_dead",
+        "value_single_take_no_borrows_is_moved",
+        "value_plural_readonly_is_shared_by_reference",
+        "value_take_with_borrows_is_priced_demotion_to_copy",
+        "value_fold_carry_excluded_from_plurality_but_blocks_move",
+        "value_double_take_is_affine_refusal_not_a_caching_opportunity",
+        "value_reference_share_requires_the_carrier_capability",
+        "value_demotion_requires_declared_copy_provider",
+        "value_zero_use_is_dead",
+        "reference_provider_cannot_discharge_isolation_obligation",
+        "below_cost_floor_duplication_is_typed_acceptance",
+        "conflicting_natures_on_one_identity_are_refused"
+      ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -390,7 +444,14 @@ fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate>
   )
 }
 
-data ci_witness_optin_inversion: String = "CI witness enrollment is OPT-IN (operator inversion, 2026-07-04). Witness existence in the tree does not enroll it in CI: the tree-wide glob roster grows quadratically with the corpus (a witness is definable between any two pipeline segments) and had reached the point where the floor timed out - maximum cost, zero delivered signal. A witness gates CI exactly when a CommitWitnessClaim row on the GithubActionsCiJob surface declares it, projected by project_ci_floor_witness_entries into the floor plan's explicit entries (entry x check_fn). Tree-wide discovery remains the local path (claim_batch --roster-from-discovery). dissolve-on: affected-set selection (v2.lens.affected_set) plus floor memoization make per-PR selection-by-affectedness affordable; re-enroll the corpus through the affected set and dissolve this projection back into discovery."
+data ci_witness_optin_inversion: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.commit_workflow",
+    decl_name: "project_ci_floor_witness_entries",
+    field: WholeDeclaration
+  }
+}
 
 fn witness_entries_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
   fold(rows, init: [], f: fn(acc, row) {

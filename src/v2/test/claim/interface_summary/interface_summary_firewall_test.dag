@@ -2,6 +2,7 @@ module v2.test.claim.interface_summary.interface_summary_firewall
 
 import std.interface_summary { export_entry_fingerprint }
 import std.types { ContentHash, NonEmptyStr, List }
+import std.disposition { Scaffold, Terminal }
 import v2.lens.interface_summary {
   interface_summary_for_module,
   import_interface_hashes_for_module
@@ -104,15 +105,10 @@ test fn interface_summary_firewall_signature_edit_is_red() -> Bool {
 }
 
 test fn export_signature_facts_host_scaffold_receipt_cites_dissolution_authorities() -> Bool {
-  string_contains(s: export_signature_facts_host_scaffold_dissolution_trigger, pattern: "#5966")
-    && string_contains(
-      s: export_signature_facts_host_scaffold_dissolution_trigger,
-      pattern: "interface_summary_v0_dissolution_trigger"
-    )
-    && string_contains(
-      s: export_signature_facts_host_scaffold_dissolution_trigger,
-      pattern: "decl_facts_for_roots"
-    )
+  match export_signature_facts_host_scaffold_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool {

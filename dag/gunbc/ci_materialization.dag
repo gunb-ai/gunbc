@@ -1,0 +1,208 @@
+module gunbc.ci_materialization
+
+import std.types { Bool, Int, List, String }
+import std.materialization_ladder {
+  Frame, FrameKind,
+  SharedStateFrame, IsolatedChildrenFrame, UnboundedSiblingsFrame,
+  FrameDemand, DemandNature, IdempotentEffect, FreshEffect,
+  CacheProvider, CoversIdentities,
+  empty_frame_path,
+  string_list_contains
+}
+import extdeps.cache.materialization {
+  CatalogProviderProjection, provider_from_catalog,
+  projected_providers, projection_refusal_count
+}
+import extdeps.cache.sccache { sccache_local_facts, sccache_local_id }
+import gunbc.ci_spec { ci_release_build_script }
+import extdeps.github.actions { Workflow, Job, Step, RunStep, UsesStep }
+
+data ci_materialization_note: String = "The worked example the ladder was built for (operator, 2026-07-08): CI emits shell which runs the gunbc binary, and the runs in shell are one frame above the runs in the binary — not fundamentally different, since both are emitted by the same program. This module models the emitted GitHub Actions workflow as a frame tree (workflow = isolated children; each job = a shared-state frame of steps), extracts every RunStep script as a FrameDemand at its site, and declares the cache providers that discharge the obligations the ladder finds. The flagship: the release build script is demanded by THREE sibling jobs (ci, ci_regen, rust_tests warm) whose LCA is the workflow isolation boundary — unrewireable redundancy, so it MUST be discharged by a covering store-tier provider; that provider is the sccache row below, and the shell fragment that realizes it in the emitted ci.yml is DERIVED from this module (ci_sccache_provider_shell_injection), so deleting the provider row would orphan the injection, and deleting the injection while the row stands is drift the witness reds. Grain honesty: identity is the step's run-script string — deploy scripts EMBED the release build script as a superset string and do not group with it at this grain; sub-step decomposition arrives when demands derive from the DependencyView rather than emitted argv (the forward-wiring thread). UsesStep actions are foreign computations and carry no demand row yet; their caching (actions/cache) is itself a provider to model when uses-grain demands land."
+
+data ci_fleet_frame_note: String = "The fleet frame (recurring CI invocations over time) is DEFINED but not yet in live sites: UnboundedSiblingsFrame is declared-emergent, so enrolling it obligates a cross-run provider for EVERY pure step up front — exactly right, and exactly what the floor does not have yet (the affected-set / floor-memoization thread; the only cross-run providers live today are sccache and actions/cache, which cover the toolchain, not the floor). Enrolling ci_fleet_frame into ci_step_site is the ratchet flip that FORCES the cross-run floor provider — the typed dissolve-on trigger for the C2 census rows in docs/plans/duplicate-work-graph-lens-design.md section 10a. Until then the cross-run redundancy is state-4 unexpected-emergent only in the formal sense that the model has not yet declared it; the design doc names it, so it is prepared-for in prose and unprepared-for in the graph — the gap this note keeps countable."
+
+fn ci_fleet_frame() -> Frame {
+  Frame { name: "github-actions-ci-runs", kind: UnboundedSiblingsFrame }
+}
+
+fn ci_workflow_frame() -> Frame {
+  Frame { name: "gunbc-ci", kind: IsolatedChildrenFrame }
+}
+
+fn ci_job_frame(job_id: String) -> Frame {
+  Frame { name: job_id, kind: SharedStateFrame }
+}
+
+fn ci_step_frame(step_name: String) -> Frame {
+  Frame { name: step_name, kind: SharedStateFrame }
+}
+
+fn ci_step_site(job_id: String, step_name: String) -> List<Frame> {
+  [ci_workflow_frame(), ci_job_frame(job_id: job_id), ci_step_frame(step_name: step_name)]
+}
+
+fn step_is_run(s: Step) -> Bool {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => true
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+fn step_run_script(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn step_display_name(s: Step) -> String {
+  match s {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n {
+        Present { value: v } => v
+        Absent => "run-step"
+      }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n {
+        Present { value: v } => v
+        Absent => "uses-step"
+      }
+  }
+}
+
+data ci_no_demands: List<FrameDemand> = []
+data ci_no_identity_strings: List<String> = []
+
+fn job_run_demands(job: Job, fresh_scripts: List<String>) -> List<FrameDemand> {
+  job.steps
+    |> filter(s => step_is_run(s: s))
+    |> map(s => FrameDemand {
+      identity: step_run_script(s: s),
+      site: ci_step_site(job_id: job.id, step_name: step_display_name(s: s)),
+      nature: if string_list_contains(xs: fresh_scripts, wanted: step_run_script(s: s)) {
+        FreshEffect
+      } else {
+        IdempotentEffect
+      }
+    })
+}
+
+fn workflow_run_demands(w: Workflow, fresh_scripts: List<String>) -> List<FrameDemand> {
+  w.jobs |> fold(
+    init: ci_no_demands,
+    f: (acc, j) => concat(acc, job_run_demands(job: j, fresh_scripts: fresh_scripts))
+  )
+}
+
+fn job_scripts_named(job: Job, names: List<String>) -> List<String> {
+  job.steps
+    |> filter(s => step_is_run(s: s) && string_list_contains(xs: names, wanted: step_display_name(s: s)))
+    |> map(s => step_run_script(s: s))
+}
+
+fn workflow_scripts_named(w: Workflow, names: List<String>) -> List<String> {
+  w.jobs |> fold(
+    init: ci_no_identity_strings,
+    f: (acc, j) => concat(acc, job_scripts_named(job: j, names: names))
+  )
+}
+
+data ci_uses_step_silence_note: String = "Denominator, not silence (the complexity-lens false-clean lesson, operator 2026-07-10): UsesStep actions are foreign computations this gate does NOT analyze — checkout, toolchain setup, cargo cache restore. Producing no demand row for them is a KNOWN blind spot, so it is COUNTED and pinned by the enrolled witness: a new foreign action entering the workflow must consciously bump the pinned count, never slide in unexamined. Dissolve-on: uses-grain demands (each action's cited cache behavior modeled, actions/cache as a provider row), at which point the count returns to zero and the pin becomes a wall. Nature default is the WEAKEST claim: an unrostered run-step is IdempotentEffect (never PureComputation — purity is not provable from an argv string; overclaiming it would let a misdeclared WorldRead be legally memoized). Verdict-identical under the ladder, honest under section 5."
+
+fn job_uses_steps_count(job: Job) -> Int {
+  job.steps |> filter(s => !step_is_run(s: s)) |> count()
+}
+
+fn workflow_uses_steps_count(w: Workflow) -> Int {
+  w.jobs |> fold(init: 0, f: (acc, j) => acc + job_uses_steps_count(job: j))
+}
+
+data ci_run_step_nature_claim_note: String = "Run-step natures are CLAIMS, not derivations — counted (operator ruling, 2026-07-10: hardcoded shell scripts get no affordances; run-steps are supposed to be modeled as typed intents and EMITTED — docs/plans/shell-emission-model.md, where the ci_workflow RunSteps are slice 4 of the pre-runtime census). Until that slice lands, every run-step script in this workflow is an authored bash string, so NO nature in job_run_demands is read off a modeled effect row: FreshEffect is a rostered claim (resolved by projection at gate time) and IdempotentEffect is the weakest default. This count pins the whole claimed-nature surface as residue: a NEW raw-script step must consciously bump the pin — it cannot slide in with a silently defaulted nature — and the slice-4 migration becomes a countable ratchet. Dissolve-on: run-steps authored as typed intents whose effect row supplies the nature; the count then returns to zero and the pin becomes a wall against new raw scripts. Rejected alternative (same ruling): a per-step declared-natures roster — an affordance that makes the raw-string state comfortable, a second parallel ledger over scripts the shell-emission plan already governs."
+
+fn job_run_steps_count(job: Job) -> Int {
+  job.steps |> filter(s => step_is_run(s: s)) |> count()
+}
+
+fn workflow_run_steps_count(w: Workflow) -> Int {
+  w.jobs |> fold(init: 0, f: (acc, j) => acc + job_run_steps_count(job: j))
+}
+
+data ci_cost_floor_exempt_step_names_note: String = "Cost-floor roster BY STEP NAME, resolved to script identities against the live workflow at gate time (never a stale copied string): the two prelude snippets run in every job by construction — plural sites, workflow-isolation LCA — but each is a sub-second environment write whose store-tier discharge would cost more than the recompute it saves. The acceptance is TYPED (AcceptedBelowCostFloor), so the roster is countable and reviewable; an entry here is a claim that the script is below the cost floor, not an escape from the ladder."
+
+data ci_cost_floor_exempt_step_names: List<String> = [
+  "Isolate toolchain dirs",
+  "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)"
+]
+
+data ci_sccache_provider_note: String = "C0 (operator ruling, 2026-07-09): this provider row is DERIVED from the cited catalog, never hand-typed. extdeps.cache.sccache owns what sccache IS (NativeInternal content hashing over RustcInvocation+ToolchainSpec, PerHostFilesystem locality, Lru eviction — cited to the vendor); this module owns only the ROLE: scope (whole tree, covers every LCA including the fleet frame — why the release build is already cross-run warm while the floor is not) and coverage (the release build script). provider_from_catalog maps cited mechanism to required class (NativeInternal => ContentKeyed, never mtime or existence — the #6352 wall; PerHostFilesystem => artifact tier; Lru => SpacePacked, sound to drop, costs one recompile). The F-commit hand-typed tier facts are deleted; a catalog correction now flows into this gate with zero edits here, and if the catalog row ever stops projecting (Never/Manual eviction, prefix fallback) the refusal is COUNTED by the enrolled witness, never a silent shrink of the provider list."
+
+fn ci_sccache_projection() -> CatalogProviderProjection {
+  provider_from_catalog(
+    facts: sccache_local_facts,
+    scope: empty_frame_path,
+    coverage: CoversIdentities { identities: [ci_release_build_script()] }
+  )
+}
+
+fn ci_catalog_provider_projections() -> List<CatalogProviderProjection> {
+  [ci_sccache_projection()]
+}
+
+fn ci_cache_providers() -> List<CacheProvider> {
+  projected_providers(ps: ci_catalog_provider_projections())
+}
+
+fn ci_catalog_projection_refusals() -> Int {
+  projection_refusal_count(ps: ci_catalog_provider_projections())
+}
+
+fn ci_sccache_provider_id() -> String {
+  sccache_local_id
+}
+
+data ci_floor_resolve_receipt_note: String = "The counted cold-resolve receipt of the lens-infra case study (operator go, 2026-07-09; the N-lenses-recompute-one-resolve pathology loyal-wren-398 root-caused from the affected-set OOM): make the floor's cold-resolve spend a COUNTED, gated number. MEASURED (CI run 29057118970 and a local floor, 2026-07-09): resolves_total = 1 — the union index (S1 process_shared_index) plus walk_memo ALREADY collapse cross-entry duplication at the floor; the one counted cold resolve is the batch-1 compile-clean entry (~24s), and the enrolled witnesses' per-entry resolves pool on the discovery corpus key (~4s tail against the warm shared index). So this gate PINS the counted cold-resolve ledger: a new cold entry resolve (a new enrolled witness ENTRY file, a shared-index bypass, a walk_memo regression) reds the same run that introduces it and must consciously bump this row. LIVE RECEIPT of that semantics (run 29058798771): enrolling the ladder witness file moved the count 1 -> 3 — each enrolled entry pays its own closure resolve against the shared index — and the gate redded that exact run; the bump to 3 acknowledges the two witness-entry resolves as declared debt. Ratchet direction: the shared-resolve rewire (one closure resolve per source-roots set, handed to every consumer as a readonly reference — the loyal-wren lane) collapses the per-entry resolves back toward 1, lowering this row consciously. claim_executor writes target/floor-resolve-receipt.txt (resolves_total = per-result entry resolves actually paid, walk-memo hits excluded; discovery_corpus_resolve_ms observational on its own key, never conflated); the derived ci.yml step compares resolves_total to the declared row. The duplication this lane still owes lives OUTSIDE this receipt: the affected-set whole-tree resolve class (loyal-wren lane: value-tier declaration plus the persistent content-keyed store) and cross-run cold compiles (the fleet frame, provider rows with warm-equals-cold receipts). The gate lives on the ci job only; the regen job runs a different plan and enrolls when its count is pinned. Naming note: an earlier draft tagged this receipt M1 — retired 2026-07-10 (operator no-codename rule; and DESIGN's floor-shared-compute-memoization thread already uses M1/M2 for a different pair)."
+
+data ci_floor_resolve_receipt_path: String = "target/floor-resolve-receipt.txt"
+
+data ci_floor_declared_resolve_count: Int = 3
+
+fn ci_floor_resolve_receipt_gate_script() -> String {
+  concat(
+    concat(
+      concat(
+        concat("if ! test -f ", ci_floor_resolve_receipt_path),
+        concat("; then echo \"floor resolve receipt missing - fail closed\"; exit 1; fi\n", "n=$(sed -n 's/^resolves_total=//p' ")
+      ),
+      concat(
+        concat(ci_floor_resolve_receipt_path, ")\n"),
+        "if test -z \"$n\"; then echo \"floor resolve receipt malformed - fail closed\"; exit 1; fi\n"
+      )
+    ),
+    concat(
+      concat(
+        concat("if test \"$n\" -ne ", to_string(ci_floor_declared_resolve_count)),
+        concat("; then echo \"floor resolve count $n differs from declared ", to_string(ci_floor_declared_resolve_count))
+      ),
+      concat(
+        ": duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)\"; exit 1; fi\n",
+        concat(
+          concat("echo \"floor resolve count $n matches declared ", to_string(ci_floor_declared_resolve_count)),
+          " (declared cold-resolve receipt)\""
+        )
+      )
+    )
+  )
+}
+
+fn ci_sccache_provider_shell_injection() -> String {
+  concat(
+    "if sccache --show-stats >/dev/null 2>&1; then\n",
+    concat(
+      "  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n",
+      concat(
+        "  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\n",
+        "fi"
+      )
+    )
+  )
+}
