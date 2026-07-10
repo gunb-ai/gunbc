@@ -206,6 +206,43 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
+      check_fns: [
+        "roster_swift_zero_suspects_within_ratchet",
+        "roster_lean_zero_suspects_within_ratchet",
+        "roster_bash_zero_suspects_within_ratchet",
+        "roster_machine_code_zero_suspects_within_ratchet",
+        "roster_compile_stage_zero_suspects_within_ratchet",
+        "roster_glob_discovery_zero_suspects_within_ratchet",
+        "roster_lens_traversal_zero_suspects_within_ratchet",
+        "roster_lens_cost_model_zero_suspects_within_ratchet",
+        "roster_std_algebra_zero_suspects_within_ratchet",
+        "red_control_planted_copy_still_alarms"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/algebra/list_linear_combinators_test.dag",
+      check_fns: [
+        "map_preserves_order_and_applies",
+        "map_of_empty_is_empty",
+        "filter_keeps_order_of_survivors",
+        "filter_none_survive_is_empty",
+        "flat_map_concatenates_groups_in_order",
+        "flat_map_drops_empty_groups",
+        "reverse_reverses"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/loop_infer_iteration_test.dag",
       check_fns: [
         "loop_infer_invariant_body_accepts_with_carrier_type",
