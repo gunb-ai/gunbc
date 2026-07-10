@@ -67,6 +67,14 @@ pub fn eval_symbol_intern_lexeme(
     Ok(Value::Str(spelling))
 }
 
+pub fn eval_symbol_lexeme(
+    _ctx: &InterpContext,
+    args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let sym = expect_symbol(args.first().map(|(_, v)| v), "symbol_lexeme")?;
+    Ok(Value::Str(sym.to_string()))
+}
+
 pub(crate) fn type_item_by_name<'a>(
     ctx: &'a InterpContext,
     type_name: &str,
