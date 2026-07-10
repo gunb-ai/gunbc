@@ -6470,7 +6470,10 @@ fn run_discovery_rows(
     // modules are resident for the shard's lifetime, so they are part of the memory this count is
     // paired against. Row closures fold in below as each entry resolves.
     let mut closure_modules: HashSet<String> = HashSet::new();
-    for prefix_ctx in [floor_runner_ctx, entry_selection_ctx].into_iter().flatten() {
+    for prefix_ctx in [floor_runner_ctx, entry_selection_ctx]
+        .into_iter()
+        .flatten()
+    {
         collect_typed_module_names(
             prefix_ctx.modules.iter().cloned(),
             &prefix_ctx.source_indices,
