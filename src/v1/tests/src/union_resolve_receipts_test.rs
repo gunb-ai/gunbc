@@ -231,3 +231,62 @@ fn union_view_result_equals_private_resolve_in_every_order() {
         }
     }
 }
+
+/// The discovery input-size axis (`DiscoverySummary::roster_closure_nodes`) must be a property of
+/// the SOURCE closure, not of the resolving thread's typecheck cache.
+///
+/// RED control against the counter-based reading this replaced. `typecheck_compute_count()` counts
+/// cache misses and is never reset in production, so a prior resolve on the same thread deflates it
+/// for the entry that follows. That prior resolve is not hypothetical: on the `width == 1` discovery
+/// path `floor_diff_edits_from_line_ranges` resolves every changed file on the discovery thread
+/// before the roster rows, and `floor_skip_discovery_witness` runs discovery three times in one
+/// thread. Here `entry_a` stands in for that prior work. The counter moves; the closure must not.
+#[test]
+fn roster_closure_count_is_independent_of_thread_cache_warmth() {
+    let fx = Fixture::new("warmth-independence");
+
+    // The same fold `run_discovery_rows` applies to every graph it resolves.
+    macro_rules! closure_of {
+        ($graph:expr, $si:expr) => {
+            $graph
+                .modules
+                .iter()
+                .map(|m| v1_compiler::v1_std_core::authored_name_at($si.clone(), m.module.clone()))
+                .collect::<std::collections::BTreeSet<String>>()
+        };
+    }
+
+    // COLD: entry_b resolved against a fresh index, nothing typechecked before it.
+    let idx_cold = build_multi_entry_index(&fx.roots);
+    reset_typecheck_compute_count();
+    let (graph_cold, si_cold) = resolve_entry_with_index(&idx_cold, &fx.entry_b).expect("cold b");
+    let counter_cold = typecheck_compute_count();
+    let closure_cold: std::collections::BTreeSet<String> = closure_of!(graph_cold, si_cold);
+
+    // WARM: a prior entry resolves on the SAME index/thread first, then entry_b.
+    let idx_warm = build_multi_entry_index(&fx.roots);
+    reset_typecheck_compute_count();
+    resolve_entry_with_index(&idx_warm, &fx.entry_a).expect("prior same-thread resolve");
+    let (graph_warm, si_warm) = resolve_entry_with_index(&idx_warm, &fx.entry_b).expect("warm b");
+    let counter_warm = typecheck_compute_count();
+    let closure_warm: std::collections::BTreeSet<String> = closure_of!(graph_warm, si_warm);
+
+    assert!(
+        !closure_cold.is_empty(),
+        "fixture must resolve a non-empty closure, else this control proves nothing"
+    );
+    // The defect, made visible: the counter after the same measurement window differs purely
+    // because of what the thread happened to resolve earlier. Reading it as a closure size is the
+    // bug this test guards. (Cumulative: a's closure is folded in, so warm > cold.)
+    assert!(
+        counter_warm > counter_cold,
+        "precondition: the compute counter must be contaminated by the prior resolve \
+         (cold={counter_cold}, warm={counter_warm}) — otherwise this control is not discriminating"
+    );
+    // The property that must hold: the graph-derived closure is identical either way.
+    assert_eq!(
+        closure_warm, closure_cold,
+        "roster_closure_nodes must count the union closure of the resolved graphs, which is \
+         independent of what this thread typechecked earlier"
+    );
+}
