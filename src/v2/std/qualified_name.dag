@@ -162,6 +162,22 @@ fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<Symbol> {
   }
 }
 
+fn qualified_name_to_dotted_string(qn: QualifiedName) -> String {
+  qualified_name_to_dotted_string(qn: qn)
+}
+
+fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
+  qualified_name_snoc(qn: qn, segment: segment)
+}
+
+fn qualified_name_init(qn: QualifiedName) -> QualifiedName {
+  qualified_name_init(qn: qn)
+}
+
+fn symbol_spelling(sym: Symbol) -> String {
+  symbol_spelling(sym: sym)
+}
+
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
   match root.kind {
     TypeNode { connective: Conj } =>
