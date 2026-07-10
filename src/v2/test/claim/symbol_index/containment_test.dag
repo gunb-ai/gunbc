@@ -20,7 +20,10 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.compiler.symbol_index_fill {
+  symbol_index_fill_containment_node,
+  symbol_index_fill_module_root
+}
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -211,5 +214,76 @@ test fn symbol_index_lookup_miss_red_control_holds() -> Bool {
   ) {
     Present { value: _ } => false
     Absent => true
+  }
+}
+
+data si_unique_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.symbol_index_unique"
+)
+
+data si_unique_module_root_node: Node = si_module_root(
+  qn_spine: si_qn_spine(segments: si_unique_module_qn),
+  exports: [
+    si_type_with_variants(type_sym: ^Classical, variants: [^Yes, ^No])
+  ]
+)
+
+data si_unique_index: SymbolIndex = symbol_index_fill_module_root(
+  index: empty_symbol_index(),
+  root: si_unique_module_root_node
+)
+
+test fn symbol_index_unique_variant_alias_at_module_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_unique_index,
+    position: si_unique_module_qn,
+    name: ^Yes
+  ) {
+    Present { value: _ } =>
+      match symbol_index_lexical_lookup(
+        index: si_unique_index,
+        position: si_unique_module_qn,
+        name: ^No
+      ) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+data si_unique_index_containment_only: SymbolIndex = symbol_index_fill_containment_node(
+  index: empty_symbol_index(),
+  path: si_unique_module_qn,
+  node: si_unique_module_root_node
+)
+
+test fn symbol_index_unique_variant_without_alias_red_control_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_unique_index_containment_only,
+    position: si_unique_module_qn,
+    name: ^Yes
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn symbol_index_variant_visibility_equivalence_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_unique_index,
+    position: si_unique_module_qn,
+    name: ^Yes
+  ) {
+    Present { value: _ } =>
+      match symbol_index_lexical_lookup(
+        index: si_index,
+        position: si_module_qn,
+        name: ^Yes
+      ) {
+        Present { value: _ } => false
+        Absent => true
+      }
+    Absent => false
   }
 }
