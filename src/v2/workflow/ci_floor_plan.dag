@@ -63,7 +63,8 @@ import std.realization_schedule {
   runnable_forbids_corpus_co_residence,
   cost_account_predicted_zero,
   schedule_lens_verdict_for_ci_floor,
-  schedule_eq
+  schedule_eq,
+  runnable_selection_applied
 }
 import v2.workflow.executor {
   ExecutorBatch,
@@ -616,14 +617,6 @@ fn runnable_scan_dir_count(r: Runnable) -> Int {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => length(xs: dirs)
     _ => 0 - 1
-  }
-}
-
-fn runnable_selection_applied(r: Runnable) -> Bool {
-  match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
-      match sel { SelectionApplied => true  SelectionOff => false  SelectionPredictOnly => false }
-    _ => false
   }
 }
 
