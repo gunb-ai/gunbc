@@ -1,0 +1,25 @@
+module v2.test.manual.std_logic_emit_debug
+
+import v2.test.fixture.std_logic_module {
+  std_logic_golden_rust_emit,
+  std_logic_module_emit_source
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+test fn std_logic_emit_equals_golden_holds() -> Bool {
+  match std_logic_module_emit_source() {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == std_logic_golden_rust_emit
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn std_logic_emit_equals_golden_holds() -> Bool {
+  match std_logic_module_emit_source() {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == std_logic_golden_rust_emit
+    Rejected { diagnostics: _ } => false
+  }
+}
