@@ -2,6 +2,9 @@ module v2.test.claim.bash_program_fold
 
 import extdeps.languages.bash.program {
   CmdSubst,
+  Command,
+  Exit,
+  If,
   Concat,
   Lit,
   ShellProgram,
@@ -141,4 +144,26 @@ fn bash_program_real_witness_fold_bytes_probe() -> Outcome<String> {
 
 fn bash_program_real_witness_sidecar_bytes_probe() -> String {
   serialize_bash(p: bash_program_fold_real_witness_program())
+}
+
+fn bash_program_probe_exit_alone() -> Bool {
+  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [Exit { code: 1 }] })
+}
+
+fn bash_program_probe_if_body_exit() -> Bool {
+  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
+    If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }]
+    }
+  ] })
+}
+
+fn bash_program_probe_if_body_exit_bytes() -> Outcome<String> {
+  bash_program_serialize(p: ShellProgram { set_e: false, statements: [
+    If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }]
+    }
+  ] })
 }
