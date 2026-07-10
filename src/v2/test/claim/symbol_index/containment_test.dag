@@ -153,6 +153,46 @@ test fn symbol_index_lexical_lookup_ambiguous_variant_absent_holds() -> Bool {
   }
 }
 
+test fn symbol_index_position_disambiguates_same_bare_name_holds() -> Bool {
+  let classical_position = qualified_name_snoc(qn: si_module_qn, segment: ^Classical)
+  let mood_position = qualified_name_snoc(qn: si_module_qn, segment: ^Mood)
+  match symbol_index_lexical_lookup(
+    index: si_index,
+    position: classical_position,
+    name: ^Yes
+  ) {
+    Present { value: _ } =>
+      match symbol_index_lexical_lookup(
+        index: si_index,
+        position: mood_position,
+        name: ^Yes
+      ) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn symbol_index_flat_index_false_accept_discriminator_holds() -> Bool {
+  match symbol_index_lexical_lookup(
+    index: si_index,
+    position: si_module_qn,
+    name: ^Yes
+  ) {
+    Present { value: _ } => false
+    Absent =>
+      symbol_index_has_path(
+        index: si_index,
+        qualified_path: "v2.test.symbol_index_pilot.Mood.Yes"
+      )
+        && symbol_index_has_path(
+          index: si_index,
+          qualified_path: "v2.test.symbol_index_pilot.Classical.Yes"
+        )
+  }
+}
+
 test fn symbol_index_lookup_miss_red_control_holds() -> Bool {
   match symbol_index_lookup(
     index: si_index,
