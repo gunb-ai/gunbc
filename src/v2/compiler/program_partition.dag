@@ -250,13 +250,6 @@ fn partition_is_grammar_projection_symbol(sym: Symbol) -> Bool {
     || (sym == ^grammar_optional_element_node_projection)
 }
 
-fn partition_is_grammar_projection_named_edge(edge: Edge) -> Bool {
-  match edge.label {
-    Named { name: sym } => partition_is_grammar_projection_symbol(sym: sym)
-    _ => false
-  }
-}
-
 fn partition_type_decl_is_keyword_atom(sym: Symbol) -> Bool {
   (sym == ^dag_token_kw_type)
     || (sym == ^dag_token_kw_data)
@@ -923,24 +916,6 @@ fn partition_module_emit_fold_step(
 ) -> PartitionModuleEmitFoldAcc {
   if partition_module_emit_skip_edge(edge: edge) {
     acc
-  } else if partition_is_grammar_projection_named_edge(edge: edge) {
-    match edge.target.kind {
-      TypeNode { connective: Conj } =>
-        fold_list(
-          xs: edge.target.children,
-          empty: acc,
-          cons: fn(folded, child_edge) {
-            partition_module_emit_fold_step(
-              acc: folded,
-              tree: tree,
-              module_root: module_root,
-              edge: child_edge,
-              target: target
-            )
-          }
-        )
-      _ => acc
-    }
   } else if partition_is_import_decl_node(node: edge.target) {
     PartitionModuleEmitFoldAcc {
       partial: acc.partial,
