@@ -6159,6 +6159,35 @@ pub fn run_discovery_corpus_with_options(
     // when the executor prelude already resolved its entries on this thread, discovery
     // reuses that index's parse/typed caches instead of paying the union cold a second time.
     let index = process_shared_index(source_roots);
+    // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
+    // OOM kill (space-lens lower-bound pairs, docs/plans/space-lens-minimal-project.md):
+    // the transitive import-CLOSURE size via the pure walk over module-graph facts — the
+    // same module set the resolve produces — never the roster/entry count (pairing an
+    // entry count against a whole-closure peak inflates bytes-per-node by the fan-in
+    // factor). Prefix contexts (floor runner, entry selection) join the union exactly
+    // when selection will resolve them: they are resident in the same peak.
+    {
+        let mut closure_paths: BTreeSet<String> = BTreeSet::new();
+        let prefix_entries: &[&str] = if selection_enabled {
+            &[FLOOR_RUNNER_ENTRY, ENTRY_SELECTION_ENTRY]
+        } else {
+            &[]
+        };
+        for entry in rows
+            .iter()
+            .map(|r| r.entry.as_str())
+            .chain(prefix_entries.iter().copied())
+        {
+            for path in import_closure_live_paths_with_facts(entry, &index.module_graph_facts) {
+                closure_paths.insert(workspace_relative_repo_path(&path));
+            }
+        }
+        eprintln!(
+            "[calibration] roster_import_closure_nodes={} rows={} (pure import walk, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
+            closure_paths.len(),
+            rows.len()
+        );
+    }
     // Empty diff is not a state (operator ruling 2026-07-05): an empty touched-path
     // set flows through the general selection machinery — empty frontier, zero edited
     // fns — so every row takes the normal not-affected skip. Disabling selection here
