@@ -1,0 +1,155 @@
+module v2.test.claim.complexity.accumulator_copy_fold_analysis
+
+import std.algebra { Cons, Empty }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.lens.complexity_accumulator_copy { Finding }
+import v2.lens.complexity_accumulator_copy.analyze {
+  accumulator_copy_findings,
+  accumulator_copy_report,
+  findings_have_refusal,
+  findings_have_refusal_cause,
+  findings_have_suspect
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+data noncarrier_name_snippet: String = "module lin\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
+
+data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
+
+data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: acc, right: Cons { head: r, tail: Empty })\n    } else {\n      acc\n    }\n  })\n}\n"
+
+data let_alias_snippet: String = "module alias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = acc\n    list_append(left: grown, right: x)\n  })\n}\n"
+
+data nested_call_snippet: String = "module nested\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: reverse(acc), right: x) })\n}\n"
+
+data unregistered_combiner_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { mystery_op(a: acc, b: x) })\n}\n"
+
+data out_of_iteration_snippet: String = "module once\n\nfn f(xs: List<Int>, ys: List<Int>) -> Int {\n  list_append(left: xs, right: ys)\n}\n"
+
+data named_step_snippet: String = "module namedstep\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
+
+fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+          }
+      }
+  }
+}
+
+fn findings_of(source_text: String, file: Symbol) -> Optional<List<Finding>> {
+  match ingest(source_text: source_text, file: file) {
+    Absent => Absent
+    Present { value: tree } => Present { value: accumulator_copy_findings(root: tree) }
+  }
+}
+
+fn is_empty_findings(fs: List<Finding>) -> Bool {
+  match fs {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+test fn quadratic_fold_has_suspect() -> Bool {
+  match findings_of(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: fs } => findings_have_suspect(fs: fs)
+  }
+}
+
+test fn real_branch_body_quadratic_is_caught() -> Bool {
+  match findings_of(source_text: real_branch_body_snippet, file: ^rs_file) {
+    Absent => false
+    Present { value: fs } => findings_have_suspect(fs: fs)
+  }
+}
+
+test fn noncarrier_name_in_copied_port_refuses_not_clean() -> Bool {
+  match findings_of(source_text: noncarrier_name_snippet, file: ^lin_file) {
+    Absent => false
+    Present { value: fs } =>
+      if findings_have_suspect(fs: fs) {
+        false
+      } else {
+        findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+      }
+  }
+}
+
+test fn let_alias_refuses_not_clean() -> Bool {
+  match findings_of(source_text: let_alias_snippet, file: ^alias_file) {
+    Absent => false
+    Present { value: fs } =>
+      findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+  }
+}
+
+test fn nested_call_head_cannot_masquerade_as_bare_name() -> Bool {
+  match findings_of(source_text: nested_call_snippet, file: ^nested_file) {
+    Absent => false
+    Present { value: fs } =>
+      findings_have_refusal_cause(fs: fs, cause: ^copied_port_computed_argument)
+  }
+}
+
+test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {
+  match findings_of(source_text: unregistered_combiner_snippet, file: ^unreg_file) {
+    Absent => false
+    Present { value: fs } =>
+      findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+test fn named_step_fold_refuses_accumulator_unread() -> Bool {
+  match findings_of(source_text: named_step_snippet, file: ^namedstep_file) {
+    Absent => false
+    Present { value: fs } =>
+      findings_have_refusal_cause(fs: fs, cause: ^fold_accumulator_unread)
+  }
+}
+
+test fn identity_fold_has_no_finding() -> Bool {
+  match findings_of(source_text: identity_snippet, file: ^ident_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn out_of_iteration_append_is_out_of_domain() -> Bool {
+  match findings_of(source_text: out_of_iteration_snippet, file: ^once_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn report_counters_state_the_domain() -> Bool {
+  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: tree } =>
+      let r = accumulator_copy_report(root: tree)
+      (r.folds_seen == 1) && (r.carriers_bound == 1)
+  }
+    && match ingest(source_text: named_step_snippet, file: ^namedstep_file) {
+      Absent => false
+      Present { value: tree } =>
+        let r = accumulator_copy_report(root: tree)
+        (r.folds_seen == 1) && (r.carriers_bound == 0)
+    }
+}

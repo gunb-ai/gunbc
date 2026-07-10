@@ -219,15 +219,6 @@ pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
     dag_node_surface_fingerprint_rec(node.clone())
 }
 
-pub fn dag_collect_fp_memo_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Dissolve-on: ground on std.content_hash + node-keyed memo table once v2 adoption clears for this stage. Realization threads a per-collect memo reset at collect_dag_nodes entry; Rust seed uses Rc::as_ptr until then.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn dag_collect_fp_memo_reset() -> bool {
     true
 }

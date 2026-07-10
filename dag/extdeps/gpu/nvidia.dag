@@ -15,8 +15,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data nvidia_rtx_5090_catalog_grounding_note: String = "NVIDIA GeForce RTX 5090 (Blackwell), figures from NVIDIA's published spec page: 21760 CUDA cores; 32 GB GDDR7 (modeled as MemoryKind.Dram — GDDR is a graphics DRAM); 1792 GB/s memory bandwidth (base unit bytes/second, matching extdeps.storage per-lane convention); 575 W total graphics power; 2.41 GHz boost clock. Compute capability sm_120 = major 12 minor 0 (docs.nvidia.com compute-capabilities). Runtimes: Cuda (the GpuRuntime enum has no Vulkan/DirectX variant, so only Cuda is asserted)."
-
 data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   vendor: nvidia,
   model: "GeForce RTX 5090",

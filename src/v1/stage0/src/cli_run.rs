@@ -175,6 +175,155 @@ pub fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
+///
+/// `workspace_root()` above is baked from `env!("CARGO_MANIFEST_DIR")` at COMPILE time,
+/// and part of the shared resolution pipeline (`pool_roots_abs`) anchors RELATIVE source
+/// roots to that baked path while the module-content index reads them relative to the
+/// process cwd. For the claim bins that meant a run from any other cwd (e.g. a git
+/// worktree) silently mixed two trees — module contents from the cwd, import-graph facts
+/// from the baked root — wrong answers with zero diagnostic (DESIGN §5 fail-open).
+///
+/// The bins therefore resolve their path-valued arguments HERE, at the CLI boundary,
+/// with standard CLI semantics: a relative path resolves against the PROCESS CWD, and a
+/// resolved path that does not exist is a refusal naming the argument, the given value,
+/// and the resolution base — never a fallback to the baked root, never a partial run.
+/// When the cwd IS the baked workspace root, the relative spelling and the absolutized
+/// spelling denote the same file for every downstream consumer (cwd-anchored reads and
+/// baked-root-anchored reads agree), so the given spelling passes through unchanged and
+/// the normal case (and CI) stays byte-identical. Any other cwd absolutizes, so the
+/// baked-root anchoring in the shared pipeline can never re-route the read.
+pub fn resolve_cli_path_arg(bin: &str, flag: &str, given: &str) -> Result<String, String> {
+    if Path::new(given).is_absolute() {
+        return resolve_cli_path_arg_against(bin, flag, given, Path::new("/"));
+    }
+    let cwd = std::env::current_dir().map_err(|e| {
+        format!(
+            "{bin}: {flag} {given}: cannot resolve a relative CLI path — the process \
+             working directory is unavailable: {e}"
+        )
+    })?;
+    resolve_cli_path_arg_against(bin, flag, given, &cwd)
+}
+
+/// Core of [`resolve_cli_path_arg`] with an explicit resolution base (testable without
+/// mutating the process-global cwd).
+fn resolve_cli_path_arg_against(
+    bin: &str,
+    flag: &str,
+    given: &str,
+    base: &Path,
+) -> Result<String, String> {
+    let given_path = Path::new(given);
+    if given_path.is_absolute() {
+        if !given_path.exists() {
+            return Err(format!(
+                "{bin}: {flag} {given}: absolute path does not exist; refusing (no \
+                 fallback to the compiled-in workspace root {})",
+                workspace_root().display()
+            ));
+        }
+        return Ok(given.to_string());
+    }
+    let resolved = base.join(given_path);
+    if !resolved.exists() {
+        return Err(format!(
+            "{bin}: {flag} {given}: resolved against the process working directory {} \
+             to {}, which does not exist; refusing — relative CLI paths resolve against \
+             the process cwd, never the compiled-in workspace root {} — run from the \
+             tree you meant or pass an absolute path",
+            base.display(),
+            resolved.display(),
+            workspace_root().display()
+        ));
+    }
+    let ws = workspace_root();
+    if same_canonical_file(&base.to_string_lossy(), &ws.to_string_lossy()) {
+        return Ok(given.to_string());
+    }
+    Ok(resolved.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod cli_path_arg_resolution_tests {
+    use super::{resolve_cli_path_arg_against, workspace_root};
+
+    fn fixture_base(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("gunbc-cli-path-arg-{tag}-{}", std::process::id()))
+    }
+
+    /// (a) Relative arg with base == workspace root: byte-identical pass-through —
+    /// the exact string the bins forwarded before this boundary existed.
+    #[test]
+    fn relative_arg_at_workspace_root_passes_through_unchanged() {
+        let ws = workspace_root();
+        let resolved = resolve_cli_path_arg_against("claim_batch", "--source-root", "dag", &ws)
+            .expect("`dag` exists under the workspace root");
+        assert_eq!(resolved, "dag");
+    }
+
+    /// (b) Relative arg from a different cwd resolves against THAT cwd — the result is
+    /// the absolutized fixture path, never the bare relative spelling (which the shared
+    /// pipeline would re-anchor to the baked workspace root) and never a baked-root path.
+    #[test]
+    fn relative_arg_from_other_cwd_resolves_against_that_cwd() {
+        let base = fixture_base("other-cwd");
+        std::fs::create_dir_all(base.join("dag")).expect("create fixture tree");
+        std::fs::write(base.join("dag/mini.dag"), "module mini\n").expect("write fixture module");
+
+        let root = resolve_cli_path_arg_against("claim_batch", "--source-root", "dag", &base)
+            .expect("fixture tree exists under the fixture cwd");
+        assert_eq!(root, base.join("dag").to_string_lossy());
+        assert_ne!(
+            root, "dag",
+            "must absolutize away from the baked-root anchor"
+        );
+
+        let entry = resolve_cli_path_arg_against("claim_batch", "--entry", "dag/mini.dag", &base)
+            .expect("fixture entry exists under the fixture cwd");
+        assert_eq!(entry, base.join("dag/mini.dag").to_string_lossy());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// (c) Nonexistent relative path: refusal names the argument, the given value, and
+    /// the resolution base — and does NOT resolve against the baked workspace root even
+    /// though the path exists there (the discriminating red control for the fail-open).
+    #[test]
+    fn nonexistent_relative_arg_refuses_naming_flag_value_and_base() {
+        let base = fixture_base("refusal");
+        std::fs::create_dir_all(&base).expect("create empty fixture cwd");
+        // `dag` exists under the baked workspace root but NOT under `base`; a baked-root
+        // fallback would return Ok here — the refusal is the proof there is none.
+        let err = resolve_cli_path_arg_against("claim_batch", "--source-root", "dag", &base)
+            .expect_err("missing path must refuse, never fall back to the baked root");
+        assert!(err.contains("claim_batch"), "names the binary: {err}");
+        assert!(err.contains("--source-root"), "names the argument: {err}");
+        assert!(err.contains("dag"), "names the given value: {err}");
+        assert!(
+            err.contains(&base.display().to_string()),
+            "names the resolution base: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Nonexistent absolute path refuses too — never proceeds partially.
+    #[test]
+    fn nonexistent_absolute_arg_refuses() {
+        let missing = fixture_base("absolute-missing").join("no/such/entry.dag");
+        let missing_str = missing.to_string_lossy().into_owned();
+        let err = resolve_cli_path_arg_against(
+            "claim_executor",
+            "--plan-entry",
+            &missing_str,
+            std::path::Path::new("/"),
+        )
+        .expect_err("missing absolute path must refuse");
+        assert!(err.contains("--plan-entry"), "names the argument: {err}");
+        assert!(err.contains(&missing_str), "names the given value: {err}");
+    }
+}
+
 /// Empty ingest-manifest placeholder excluded from the module index when a later
 /// source root carries the host-emitted manifest (source-root ingest / closure gates).
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
@@ -3057,8 +3206,12 @@ fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContex
                 }
             }
         }
-        _ => ExitClass::NotProcessExit {
-            type_name: "<non-variant>".to_string(),
+        // Non-variant returns: render the actual value (symbols resolve to their
+        // interned names via the active context) instead of an opaque "<non-variant>".
+        // This makes `--function`-run diagnostics — e.g. a helper returning a
+        // diagnostic reason Symbol — legible instead of blind.
+        other => ExitClass::NotProcessExit {
+            type_name: ctx.format_value(other),
         },
     }
 }

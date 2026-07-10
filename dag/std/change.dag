@@ -3,8 +3,6 @@ module std.change
 import std.types { List, Bool }
 import std.algebra { Monoid }
 
-data keyed_change_doc: String = "Keyed delta fold carrier — generic keyed zip-fold into an algebraic codomain. Unchanged vanishes by monoid identity (never by filtering). Three-way uses a join-semilattice with KeyedUnchanged as the benign bottom (safety inversion of std.termination.DescentEvidence, whose bottom is the fail state). KeyedLeafVerdict is the single three-way authority (verdict is the plan). Codomain carries NO Unknown element."
-
 type KeyedRow<K, V> {
   row_key: K
   value: V

@@ -17,9 +17,10 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
   install_media_remaster_bash_emit_dissolution_trigger,
   install_media_remaster_script,
   install_media_remaster_script_applies_grub_cmdline,
-  install_media_remaster_classification_is_string_scaffolded_not_typed,
+  install_media_remaster_classification_scaffold_marked,
   install_media_remaster_chmod_is_file_access_upsert_scaffold,
 }
+import std.disposition { Scaffold, Terminal }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
 
@@ -44,12 +45,14 @@ test fn srv3_seeded_install_media_path_and_delivery() -> Bool {
 }
 
 test fn srv3_seeded_install_media_remaster_carries_dissolution_trigger() -> Bool {
-  string_contains(s: install_media_remaster_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
-    && string_contains(s: install_media_remaster_bash_emit_dissolution_trigger, pattern: "xorriso")
+  match install_media_remaster_bash_emit_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
-test fn install_media_remaster_classification_is_string_scaffolded_not_typed() -> Bool {
-  install_media_remaster_classification_is_string_scaffolded_not_typed()
+test fn install_media_remaster_scaffolds_marked() -> Bool {
+  install_media_remaster_classification_scaffold_marked()
     && install_media_remaster_chmod_is_file_access_upsert_scaffold()
 }
 

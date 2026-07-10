@@ -141,8 +141,6 @@ data bash_fold_diagnostic_anchor: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data bash_fold_diagnostic_anchor_dissolution_trigger: String = "🟡 dissolve-on: bash_fold_diagnostic_anchor — shared empty Conj placeholder locus for fold reject diagnostics (bash_fold_unsupported_variant_diagnostic, bash_fold_delegated_needs_component_spellings_diagnostic, bash_fold_words_absent_diagnostic, bash_fold_stmts_absent_diagnostic, wrong-fixture build failures). DISSOLVES WHEN #5920 STEP 3 follow-on lands: production emit callers (orch_emit_run beyond env-free RawLine; stmt-shaped fold serialize) surface bash_fold_word_emitted_witness / bash_fold_stmt_bundle_witness Violates diagnostics through emit() with node_locus over the offending ShellWord or ShellStmt subtree in BashFoldStmtBundle.emitted, retiring the synthetic anchor."
-
 fn bash_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
     reason: variant,
@@ -1100,8 +1098,6 @@ fn bash_fold_lex_rules() -> LexRuleSet {
 fn bash_fold_lex() -> LexRules {
   ModeledLexRules { root: bash_fold_lex_rules() }
 }
-
-data bash_fold_word_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0000}/\\u{0001}/\\u{0002} kind-marker lex bytes (kind_lit/kind_var/stmt_kind_tag) and zero-width bash_fold_kind_emit_transform/bash_fold_stmt_kind_tag_emit_transform are replaced by real bash word-class lexing that disambiguates lit vs var and stmt production tags without sentinel bytes"
 
 fn bash_fold_kind_emit_transform(_spelling: String) -> String {
   ""

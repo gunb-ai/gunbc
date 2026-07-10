@@ -8,8 +8,6 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data expected_conformance_closure_note: String = "Golden test expectation for import_closure_live on the conformance entry — the §5 discriminating input proving the deriver by execution, updated when the entry's real imports change. This is NOT a declared parallel representation consumed by production: the rust gate derives its closure live from import_closure_live (tools.rust_stage0_gates), nothing reads this list but these witnesses."
-
 data expected_conformance_closure: FreeMonoid<String> = [
   "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
   "dag/std/algebra.dag",

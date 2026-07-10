@@ -51,8 +51,6 @@ fn host_effect_drive(intent: HostEffectIntent) -> Drive {
   host_effect_drive_from_evidence(evidence: intent.evidence)
 }
 
-data host_effect_converge_loop_drive_authority: String = "Only host_effect_converge_loop_evidence may derive ConvergeLoop. Arbitrary NonIdempotent rows and breaking LatticeEffect shapes are not retry policy — they settle OneShot (terminal failure)."
-
 data host_effect_converge_loop_reason: String = "converge to fixpoint — external redrive until observed state matches desired"
 
 data host_effect_identity_evidence: IdempotencyEvidence = IdentityEffect

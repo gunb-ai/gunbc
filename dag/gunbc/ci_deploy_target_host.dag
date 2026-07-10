@@ -2,6 +2,8 @@ module gunbc.ci_deploy_target_host
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.access { AccessDecision, Permit, Deny }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
@@ -201,6 +203,15 @@ fn gunbc_ci_deploy_srv1_runner_spec() -> RunnerSpec {
   host_pinned_runner_spec(offer: srv1_offer, host: operator_host_srv1)
 }
 
+data deploy_target_host_preflight_shell_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
 fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {
   match proof {
     RunnerIdentityOnHost { host: id } =>
@@ -236,5 +247,3 @@ fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {
       )
   }
 }
-
-data deploy_target_host_preflight_shell_dissolution_trigger: String = "🟡 dissolve-on: deploy_target_host_preflight_block — bash hostname/RUNNER_NAME proof script built with concat/string shell (extends deploy_access_preflight_shell + live_deploy medium-as-string debt, #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — target-host proof modeled as HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash script emit and medium_structure_exception_roster entry for dag/gunbc/ci_deploy_target_host.dag"

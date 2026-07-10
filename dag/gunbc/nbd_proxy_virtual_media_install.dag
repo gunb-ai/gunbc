@@ -1,5 +1,8 @@
 module gunbc.nbd_proxy_virtual_media_install
 
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
 import std.types { List, Int, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size }
 import extdeps.bmc.types {
@@ -127,7 +130,14 @@ fn os_install_actuator_plan(mechanism: OsInstallMechanism, export: NbdProxyServe
   }
 }
 
-data srv3_nbd_proxy_export_dissolution_trigger: String = "🟡 dissolve-on: srv3_nbd_proxy_export_placeholder — byte_size(0) NbdProxyServeInterface scaffold; DISSOLVES WHEN live serve binds export_byte_count from grounded ISO artifact ByteSize after install_media_fetch receipt"
+data srv3_nbd_proxy_export_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.nbd_proxy_virtual_media_install",
+    decl_name: "srv3_nbd_proxy_export_placeholder",
+    field: WholeDeclaration
+  }
+}
 
 data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeInterface {
   export_byte_count: byte_size(0),

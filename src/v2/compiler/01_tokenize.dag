@@ -155,8 +155,6 @@ fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult
   }
 }
 
-data lex_repeat_loop_short_circuit_note: String = "genuinely short-circuiting recursive walk, same repair shape as parse_match_arm_stmt_step: the prior fold_list over init.remaining kept no-op-iterating every remaining source char after done flipped true, an O(remaining) tax per repeat attempt at every lex position (O(n^2) per file; the residual whale behind grammar_coverage_p8_wall_clock_blocker, attributed by the big-fold .dag-site dump). Recursion depth is bounded by the matched run's length and rides stacker::maybe_grow in the interpreter."
-
 fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
   match state.done {
     true => state
@@ -185,8 +183,6 @@ fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
 fn lex_repeat_loop(elem_r: LexMatchThunk, init: RepeatState) -> RepeatState {
   lex_repeat_step(elem_r: elem_r, state: init)
 }
-
-data lex_delimited_step_short_circuit_note: String = "same short-circuit repair as lex_repeat_step, for the delimited combinator (string literals, block comments): the prior fold_list over the post-open remaining source kept no-op-iterating every char after done flipped true. Termination: every non-done arm either sets done or consumes a nonempty body_lex, strictly shrinking remaining; a source-exhausted state rejects via body_r on the empty remainder (done + failed), matching the fold version's unterminated-delimiter rejection."
 
 fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: DelimitedState) -> DelimitedState {
   match state.done {
@@ -224,8 +220,6 @@ fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: Deli
       }
   }
 }
-
-data lex_compiled_rule_note: String = "a rule's matcher thunk is a pure function of the rule alone, so it is derived once per tokenize (lex_compile_rules at walk init) and reused at every source position -- the prior shape re-ran fold_lex_pattern per (rule, position) attempt, ~400k rebuilds/min on a medium file (.dag self-time profile). lex_try_rule keeps its one-shot signature for external claim tests and compiles on the fly."
 
 type CompiledLexRule {
   rule: LexRule
