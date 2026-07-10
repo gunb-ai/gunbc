@@ -1,6 +1,9 @@
 module v2.compiler.program_partition
 
 import v2.compiler.emit { emit }
+import v2.compiler.emit_module { emit_module_decl_separator }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_rust }
+import v2.compiler.target_carriers { target_source_medium }
 import v2.compiler.infer {
   InferredFacts,
   InferredFactsEntry,
@@ -14,8 +17,13 @@ import v2.compiler.translate {
   translate_project_transform_in_arrow_scope
 }
 import v2.lens.application { subterm_at }
+import v2.extdeps.languages.dag {
+  dag_node_is_fn_decl,
+  dag_node_is_module_root_conj
+}
 import std.algebra { Empty }
-import v2.std.algebra { any, fold_list, list_append, list_snoc_item }
+import v2.std.algebra { any, fold_list, is_empty, list_append, list_snoc_item }
+import v2.std.text { String }
 import v2.std.collection {
   Absent,
   List,
@@ -91,6 +99,11 @@ type ProgramPartition {
 type PartitionUserSemanticType {
   name: Symbol
   semantic: Node
+}
+
+type PartitionUserFnDecl {
+  name: Symbol
+  decl: Node
 }
 
 fn partition_user_semantic_type_shape(node: Node) -> Bool {
@@ -178,6 +191,56 @@ fn partition_collect_user_semantic_types_from_module(
 
 fn partition_user_semantic_types_from_root(root: Node) -> List<PartitionUserSemanticType> {
   partition_collect_user_semantic_types_from_module(module: root, acc: Empty)
+}
+
+fn partition_snoc_user_fn_decl_unique(
+  acc: List<PartitionUserFnDecl>,
+  item: PartitionUserFnDecl
+) -> List<PartitionUserFnDecl> {
+  if any(xs: acc, predicate: fn(d) { d.name == item.name }) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: item)
+  }
+}
+
+fn partition_collect_user_fn_decl_edge(
+  acc: List<PartitionUserFnDecl>,
+  edge: Edge
+) -> List<PartitionUserFnDecl> {
+  match edge.label {
+    Named { name: sym } =>
+      if dag_node_is_fn_decl(node: edge.target) {
+        partition_snoc_user_fn_decl_unique(
+          acc: acc,
+          item: PartitionUserFnDecl { name: sym, decl: edge.target }
+        )
+      } else {
+        acc
+      }
+    _ => acc
+  }
+}
+
+fn partition_collect_user_fn_decls_from_module(
+  module: Node,
+  acc: List<PartitionUserFnDecl>
+) -> List<PartitionUserFnDecl> {
+  match module.kind {
+    TypeNode { connective: Conj } =>
+      fold_list(
+        xs: module.children,
+        empty: acc,
+        cons: fn(a, edge) {
+          partition_collect_user_fn_decl_edge(acc: a, edge: edge)
+        }
+      )
+    _ => acc
+  }
+}
+
+fn partition_user_fn_decls_from_root(root: Node) -> List<PartitionUserFnDecl> {
+  partition_collect_user_fn_decls_from_module(module: root, acc: Empty)
 }
 
 fn partition_user_type_ownership_realization(
@@ -595,6 +658,133 @@ fn emit_partition_arrow_body_behavior_source(
   )
 }
 
+fn partition_per_decl_append_source(partial: String, medium: Medium<String>) -> String {
+  list_append(
+    left: list_append(left: partial, right: medium.carried),
+    right: emit_module_decl_separator
+  )
+}
+
+fn partition_emit_type_decl_step(
+  acc: Outcome<String>,
+  decl: PartitionUserSemanticType
+) -> Outcome<String> {
+  bind_outcome(
+    o: acc,
+    f: fn(partial) {
+      bind_outcome(
+        o: emit_semantic_type_decl_rust(name: decl.name, node: decl.semantic),
+        f: fn(medium) {
+          outcome_accepted(
+            value: partition_per_decl_append_source(partial: partial, medium: medium)
+          )
+        }
+      )
+    }
+  )
+}
+
+fn partition_emit_type_decls_source(
+  partial: Outcome<String>,
+  decls: List<PartitionUserSemanticType>
+) -> Outcome<String> {
+  fold_list(
+    xs: decls,
+    empty: partial,
+    cons: fn(acc, decl) {
+      partition_emit_type_decl_step(acc: acc, decl: decl)
+    }
+  )
+}
+
+fn partition_fn_decl_inferred_tree(
+  ambient: InferredTree,
+  fn_decl: PartitionUserFnDecl
+) -> InferredTree {
+  InferredTree {
+    root: fn_decl.decl,
+    facts: ambient.facts
+  }
+}
+
+fn partition_emit_fn_decl_step(
+  acc: Outcome<String>,
+  fn_decl: PartitionUserFnDecl,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<String> {
+  bind_outcome(
+    o: acc,
+    f: fn(partial) {
+      bind_outcome(
+        o: emit(
+          tree: partition_fn_decl_inferred_tree(ambient: tree, fn_decl: fn_decl),
+          target: target
+        ),
+        f: fn(medium) {
+          outcome_accepted(
+            value: partition_per_decl_append_source(partial: partial, medium: medium)
+          )
+        }
+      )
+    }
+  )
+}
+
+fn partition_emit_fn_decls_source(
+  partial: Outcome<String>,
+  decls: List<PartitionUserFnDecl>,
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<String> {
+  fold_list(
+    xs: decls,
+    empty: partial,
+    cons: fn(acc, fn_decl) {
+      partition_emit_fn_decl_step(
+        acc: acc,
+        fn_decl: fn_decl,
+        tree: tree,
+        target: target
+      )
+    }
+  )
+}
+
+fn partition_should_emit_module_per_decl(partition: ProgramPartition) -> Bool {
+  match partition.segment {
+    WholeProgram => dag_node_is_module_root_conj(n: partition.root)
+    _ => false
+  }
+}
+
+fn emit_partition_module_per_decl_source(
+  tree: InferredTree,
+  target: TargetModel
+) -> Outcome<Medium<String>> {
+  let type_decls = partition_user_semantic_types_from_root(root: tree.root)
+  let fn_decls = partition_user_fn_decls_from_root(root: tree.root)
+  bind_outcome(
+    o: partition_emit_type_decls_source(
+      partial: outcome_accepted(value: Empty),
+      decls: type_decls
+    ),
+    f: fn(after_types) {
+      bind_outcome(
+        o: partition_emit_fn_decls_source(
+          partial: outcome_accepted(value: after_types),
+          decls: fn_decls,
+          tree: tree,
+          target: target
+        ),
+        f: fn(joined) {
+          target_source_medium(text: joined, target: target)
+        }
+      )
+    }
+  )
+}
+
 fn emit_partition_with_target(
   partition: ProgramPartition,
   target: TargetModel
@@ -613,7 +803,11 @@ fn emit_partition_with_target(
     bind_outcome(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
-        emit(tree: tree, target: target)
+        if partition_should_emit_module_per_decl(partition: partition) {
+          emit_partition_module_per_decl_source(tree: tree, target: target)
+        } else {
+          emit(tree: tree, target: target)
+        }
       }
     )
   }
