@@ -1,0 +1,164 @@
+module v2.test.claim.complexity.accumulator_copy_roster_gate
+
+import extdeps.filesystem.filesystem_io
+import std.algebra { Cons, Empty }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.complexity_accumulator_copy { Finding }
+import v2.lens.complexity_accumulator_copy.analyze {
+  accumulator_copy_findings,
+  finding_is_refusal,
+  finding_is_suspect,
+  findings_have_suspect
+}
+import v2.std.algebra { fold_list }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.compilers.lexing { LexRules, token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, ParseGrammar, VoidGrammar }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+type RosterVerdict
+  = RosterClean
+  | RosterIngestRegressed
+  | RosterSuspectFound
+  | RosterRatchetExceeded { refusals: Int, ceiling: Int }
+
+fn ingest_findings(path: String) -> Optional<List<Finding>> {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^accumulator_copy_roster_gate_port)
+  match lm.grammar {
+    VoidGrammar => Absent
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(
+            text: filesystem_read(path: path).content,
+            file: ^accumulator_copy_roster_subject,
+            rules: lm.lex
+          ) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => Absent
+                    Accepted { value: tree, diagnostics: _ } =>
+                      Present { value: accumulator_copy_findings(root: tree) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
+  fold_list(xs: fs, empty: 0, cons: fn(acc, f) {
+    if pred(f) { acc + 1 } else { acc }
+  })
+}
+
+fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
+  match ingest_findings(path: path) {
+    Absent => RosterIngestRegressed
+    Present { value: fs } =>
+      if count_matching(fs: fs, pred: finding_is_suspect) > 0 {
+        RosterSuspectFound
+      } else {
+        let refusals = count_matching(fs: fs, pred: finding_is_refusal)
+        if refusals > refusal_ceiling {
+          RosterRatchetExceeded { refusals: refusals, ceiling: refusal_ceiling }
+        } else {
+          RosterClean
+        }
+      }
+  }
+}
+
+fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
+  match file_verdict(path: path, refusal_ceiling: refusal_ceiling) {
+    RosterClean => true
+    RosterIngestRegressed => false
+    RosterSuspectFound => false
+    RosterRatchetExceeded { refusals: _, ceiling: _ } => false
+  }
+}
+
+test fn roster_swift_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/extdeps/languages/swift.dag", refusal_ceiling: 0)
+}
+
+test fn roster_lean_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/extdeps/languages/lean.dag", refusal_ceiling: 0)
+}
+
+test fn roster_bash_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/extdeps/languages/bash.dag", refusal_ceiling: 0)
+}
+
+test fn roster_machine_code_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/extdeps/languages/machine_code.dag", refusal_ceiling: 0)
+}
+
+test fn roster_compile_stage_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/compiler/00_compile.dag", refusal_ceiling: 0)
+}
+
+test fn roster_glob_discovery_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/workflow/glob_discovery_law.dag", refusal_ceiling: 0)
+}
+
+test fn roster_lens_traversal_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/lens/complexity_accumulator_copy/analyze.dag", refusal_ceiling: 0)
+}
+
+test fn roster_lens_cost_model_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/lens/complexity_accumulator_copy.dag", refusal_ceiling: 0)
+}
+
+test fn roster_std_algebra_zero_suspects_within_ratchet() -> Bool {
+  file_gate(path: "src/v2/std/algebra.dag", refusal_ceiling: 0)
+}
+
+data planted_copy_snippet: String = "module planted\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+test fn red_control_planted_copy_still_alarms() -> Bool {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^accumulator_copy_roster_gate_port)
+  match lm.grammar {
+    VoidGrammar => false
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: planted_copy_snippet, file: ^planted_file, rules: lm.lex) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: tree, diagnostics: _ } =>
+                      findings_have_suspect(fs: accumulator_copy_findings(root: tree))
+                  }
+              }
+          }
+      }
+  }
+}
