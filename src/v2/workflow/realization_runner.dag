@@ -1,7 +1,7 @@
 module v2.workflow.realization_runner
 
 import v2.std.algebra { contains, list_snoc_item, non_empty }
-import v2.std.collection { List, Optional, Absent, Present }
+import v2.std.collection { List }
 import v2.std.dependency { DependencyView }
 import std.types { Int }
 import v2.std.logic { Bool }
@@ -88,28 +88,32 @@ type RunnerBlockedEvidence
   = RunnerMissingDependency { node: Node, prerequisite: Node }
   | RunnerExecutorBlocked { evidence: ExecutorBlockedEvidence }
 
+type RunnerMissingPrerequisite
+  = RunnerPrerequisiteNotFoundYet {}
+  | RunnerPrerequisiteMissing { node: Node }
+
 fn runner_first_missing_dependency<V>(
   dependencies: List<DependencyView>,
   store: NodeKeyedStore<V>,
   candidate: Node
 ) -> Node {
-  match fold(dependencies, init: Absent, f: fn(found, dependency) {
+  match fold(dependencies, init: RunnerPrerequisiteNotFoundYet {}, f: fn(found, dependency) {
     match found {
-      Present { value: _ } => found
-      Absent =>
+      RunnerPrerequisiteMissing { node: _ } => found
+      RunnerPrerequisiteNotFoundYet {} =>
         if dependency.dependent == candidate {
           if node_keyed_store_has_node(store: store, node: dependency.source) {
-            Absent
+            RunnerPrerequisiteNotFoundYet {}
           } else {
-            Present { value: dependency.source }
+            RunnerPrerequisiteMissing { node: dependency.source }
           }
         } else {
-          Absent
+          RunnerPrerequisiteNotFoundYet {}
         }
     }
   }) {
-    Present { value: node } => node
-    Absent => candidate
+    RunnerPrerequisiteMissing { node: node } => node
+    RunnerPrerequisiteNotFoundYet {} => candidate
   }
 }
 
