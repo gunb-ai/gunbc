@@ -453,14 +453,11 @@ fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate>
   )
 }
 
-data ci_witness_optin_inversion: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.commit_workflow",
-    decl_name: "project_ci_floor_witness_entries",
-    field: WholeDeclaration
-  }
+data ci_witness_optin_inversion: Disposition = Terminal {
+  reason: "Opt-in inversion (operator, 2026-07-04) DISSOLVE FIRED at the discovery flip (operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10, see gunbc.ci_spec ci_spec_discovery_flip_note): the corpus re-enrolled through CiSpec.discovery_scan_dirs with SelectionApplied, so per-PR CI runs tree-wide discovery shrunk to the diff's affected set. The scaffold's dissolve-on (affected-set selection + floor memoization make per-PR selection-by-affectedness affordable) is satisfied at discovery width=1 under union-resolve S1. project_ci_floor_witness_entries is Terminal, not interim: CommitWitnessClaim rows remain live as the explicit-entry roster (execution-kind rows with their own resource profile, and any row that must run as declared) - only the roster's EXCLUSIVITY as witness source dissolved."
 }
+
+data witness_projection_explicit_arms_note: String = "The enrollment projections match EXPLICITLY on every CommitCheckKind variant (no wildcard arm): a future variant added to the coproduct then reds every projection at compile time instead of being silently dropped by a `_ => acc` absorption - fail-open enrollment (a declared row contributing zero entries with no diagnostic) is unwritable, not detected."
 
 fn witness_entries_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
   fold(rows, init: [], f: fn(acc, row) {

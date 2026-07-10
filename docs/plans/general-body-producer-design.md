@@ -195,6 +195,22 @@ unresolvable callee still refuses).
   *Discipline:* the Loop edge addition must update `loop_behavior_edges_conform`,
   `loop_edge_contributes_to_iteration_fold` (`node.dag:374-387`, consumed by `cost.dag:381`), and
   canonical hashing **in one motion** — a partial update forks the well-formedness authority.
+  *Landed (PR #6443, 2026-07-10) — the within-body FACT layer:* FLAG E one-table consolidation
+  (`SugarKey` = surface-atom | production identity; type_alias_rhs migrated as the proof); FLAG F
+  3-edge seam Loop (exactly-one-legal-name `^loop_carrier_edge`, at-most-one, excluded from the
+  iteration fold in the same motion; both extra-named-edge RED controls still fire) with the seam
+  widened to the whole fold family and the lens's carrier read repointed to
+  `loop_carrier_binder_target` (the surface fn_literal navigation deleted — one authority);
+  the let binder is lexeme-stamped via `dag_grammar_binding_name_terminal` (the Bind prerequisite);
+  and the lens's definition closure decides aliasing (`let grown = acc` is now a PROVEN suspect,
+  transitive; pure-literal RHS decides fresh/clean; an unbound RHS records no binding and the
+  may_alias refusal stands — RED control `let_unknown_alias_still_refuses_may_alias`).
+  `^fold_accumulator_unread` narrows to the named-step residue (`f: step` — a callee-resolution
+  fact, Stage B). *Remaining in Stage A:* the fn_decl/fn_literal → Arrow producer rows and the
+  scaffold dissolution — **gated on the namespace lane's containment `SymbolIndex`** (decl names
+  bind via module-root edges / the namespace authority, not decl subtrees; a near-zero-coverage
+  slice would land a dual authority without dissolving anything), staged behind the typed
+  wrapper-retained frontier (lowered | wrapper-retained{cause}, counted, corpus stays green).
 
 - **Stage B — cross-decl resolution.** Callee signatures resolve named args to declaration
   positions; qualified heads resolve through the containment tree (rides the namespace-only lane's
@@ -206,8 +222,8 @@ unresolvable callee still refuses).
 - **Stage C — per-op derivation.** Run the cost lens over each callee's own lowered body and
   derive, per parameter port, whether output size is linear in that port — materialized as
   `CopiedPortFact` rows (reuse the carrier, `algebra.dag:707-710`; §2's net-concepts test). The
-  hand registry becomes a citation cache; fold-family membership (`is_fold_family_head`, which
-  today omits `fold_list_right` — its own citation's copy mechanism) is likewise derived.
+  hand registry becomes a citation cache; fold-family membership (`fold_family_head`, owned by
+  `v2.compiler.fold_lowering` since PR #6443 — one authority for seam and lens) is likewise derived.
   *Dissolves:* `^combiner_unregistered_carrier_reaches` and the calls-inside-argument half of
   `^copied_port_computed_argument`; the closed-world refusal is **retained** for callees whose
   bodies cannot be resolved or priced.
@@ -255,27 +271,28 @@ rows on the frontier, not surprises:
 - No escape hatches: there is no mode in which the producer "proceeds as if" a refusal had not
   fired; diagnostic replay reads state only.
 
-## 9. Flags for operator sign
+## 9. Flags — SIGNED (operator, 2026-07-10)
 
-- **FLAG D — binding-key protocol.** Eval resolves param refs by structural node equality against
-  `symbol_atom_node(binding)`; the lowering conforms by emitting occurrence-normalized synthetic
-  param refs. The alternative — re-grounding `EnvironmentBindingKey` on binding *identity* rather
-  than whole-node equality — is cleaner but is an eval-protocol change. Recommendation: conform
-  now; name the identity re-grounding as a follow-on with the silent `allocate_literal`
-  fall-through (a §5 fail-open the current protocol carries) as its motivating defect.
-- **FLAG E — one rule table.** Generalize the `SugarRule` key to (surface-atom | production
-  identity) and migrate the existing type_alias_rhs hook onto it, vs adding fn_decl as a sibling
-  hand-inlined arm with a declared consolidation trigger. Recommendation: one table — the sibling
-  arm is the nickname trap in slow motion.
-- **FLAG F — Loop accumulator edge.** Extends the seam Loop from 2 to 3 edges (body, measure,
-  carrier binder). Touches `LoopBoundEdges` conformance, the iteration-fold edge predicate, and
-  canonical hashing in one motion; termination and cost consumers are unaffected (they read the
-  measure edge, which is unchanged). Recommendation: sign the 3-edge shape now so Stage A does not
-  need a mid-flight shape change.
+- **FLAG D — binding-key protocol. SIGNED: conform now.** Eval resolves param refs by structural
+  node equality against `symbol_atom_node(binding)`; the lowering conforms by emitting
+  occurrence-normalized synthetic param refs. The identity re-grounding of `EnvironmentBindingKey`
+  (which also deletes the silent `allocate_literal` fall-through, a §5 fail-open the current
+  protocol carries) is **required cleanup before this feature closes** — operator condition on the
+  sign, carried in the dissolution trigger below, not an optional follow-on.
+- **FLAG E — one rule table. SIGNED: one table.** Generalize the `SugarRule` key to (surface-atom
+  | production identity) and migrate the existing type_alias_rhs hook onto it as the proof; no
+  sibling hand-inlined arm.
+- **FLAG F — Loop accumulator edge. SIGNED: 3-edge shape.** The seam Loop grows body + measure +
+  carrier binder; `LoopBoundEdges` conformance, the iteration-fold edge predicate, and canonical
+  hashing update in one motion. Termination and cost consumers unaffected (they read the measure
+  edge, unchanged).
 
 ## Dissolution trigger (DESIGN §6)
 
-This document dissolves when Stage D lands: the general producer subsumes `03_body_producer.dag`'s
-fixture family and the lens's within-body/cross-decl refusal buckets are zeroed with live RED
-controls — at which point the surviving content (the §7 cost carriers) migrates to its own
+This document dissolves when BOTH hold: (1) Stage D lands — the general producer subsumes
+`03_body_producer.dag`'s fixture family and the lens's within-body/cross-decl refusal buckets are
+zeroed with live RED controls; and (2) the FLAG D binding-key re-grounding lands —
+`EnvironmentBindingKey` keyed on binding identity and the silent `allocate_literal` fall-through
+deleted (the feature does not close over the conform-time protocol; operator condition,
+2026-07-10). At that point the surviving content (the §7 cost carriers) migrates to its own
 follow-on design and this file is deleted.
