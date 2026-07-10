@@ -2,7 +2,10 @@ module v2.test.self_host.std_logic_emit_probe
 
 import v2.test.fixture.std_logic_module {
   std_logic_module_emit_accepts,
+  std_logic_module_emit_len,
   std_logic_module_emit_reject_reason,
+  std_logic_partition_fn_decl_count,
+  std_logic_partition_type_decl_count,
   std_logic_semantic_type_emit_accepts,
   std_logic_semantic_type_emit_reject_reason
 }
@@ -28,4 +31,16 @@ test fn std_logic_semantic_type_emit_reject_reason() -> Symbol {
 test fn std_logic_emit_probe_all_holds() -> Bool {
   std_logic_whole_program_emit_accepts()
     && std_logic_semantic_type_emit_accepts_holds()
+}
+
+test fn std_logic_module_emit_len_gt_400() -> Bool {
+  std_logic_module_emit_len() > 400
+}
+
+test fn std_logic_partition_type_decl_count_gt_0() -> Bool {
+  std_logic_partition_type_decl_count() > 0
+}
+
+test fn std_logic_partition_fn_decl_count_gt_0() -> Bool {
+  std_logic_partition_fn_decl_count() > 0
 }

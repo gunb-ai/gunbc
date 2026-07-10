@@ -3,8 +3,8 @@ module v2.test.fixture.std_logic_module
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
-import v2.compiler.infer { infer }
-import v2.compiler.program_partition { partition_user_semantic_types_from_root }
+import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.program_partition { partition_user_semantic_types_from_root, partition_user_fn_decls_from_root }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_rust_generic }
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
@@ -121,6 +121,33 @@ fn std_logic_module_emit_accepts() -> Bool {
   match std_logic_module_emit_source() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
+  }
+}
+
+fn std_logic_inferred_tree_from_fixture() -> Outcome<InferredTree> {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
+  }
+}
+
+fn std_logic_partition_type_decl_count() -> Int {
+  match std_logic_inferred_tree_from_fixture() {
+    Accepted { value: tree, diagnostics: _ } =>
+      length(xs: partition_user_semantic_types_from_root(root: tree.root))
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn std_logic_partition_fn_decl_count() -> Int {
+  match std_logic_inferred_tree_from_fixture() {
+    Accepted { value: tree, diagnostics: _ } =>
+      length(xs: partition_user_fn_decls_from_root(root: tree.root))
+    Rejected { diagnostics: _ } => 0
   }
 }
 
