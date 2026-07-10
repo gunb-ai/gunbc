@@ -179,7 +179,11 @@ fn is_module_path_reference_boundary(content: &str, end: usize) -> bool {
 }
 
 fn is_module_path_reference_prefix(content: &str, start: usize) -> bool {
-    start == 0 || is_ident_boundary_byte(content.as_bytes()[start - 1])
+    if start == 0 {
+        return true;
+    }
+    let b = content.as_bytes()[start - 1];
+    !(b.is_ascii_alphanumeric() || b == b'_' || b == b'.')
 }
 
 /// Qualified `container` references in a `.dag` file — import targets plus dotted
@@ -9902,12 +9906,16 @@ fn is_excluded_import_path(rel: &str, exclude_substrings: &[String]) -> bool {
 static IMPORT_RESOLUTION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 #[cfg(test)]
+static REFERENCE_RESOLUTION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+#[cfg(test)]
 static MODULE_DECLARATION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
 #[cfg(test)]
 pub(crate) fn reset_import_resolution_facts_call_counts_for_test() {
     IMPORT_RESOLUTION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+    REFERENCE_RESOLUTION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
     MODULE_DECLARATION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
 }
 
@@ -9957,6 +9965,50 @@ pub fn import_resolution_facts(
                 out.push(ImportResolutionFactRaw {
                     path: rel.clone(),
                     import_module,
+                    target_declared,
+                });
+            }
+        }
+    }
+    out
+}
+
+pub fn reference_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ReferenceResolutionFactRaw> {
+    #[cfg(test)]
+    REFERENCE_RESOLUTION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let abs_importer_roots = pool_roots_abs(importer_roots);
+    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    let mut out = Vec::new();
+    for root in &abs_importer_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files);
+        dag_files.sort();
+        for file in dag_files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            for reference_module in extract_reference_module_paths(&content, &declared) {
+                let target_declared = declared.contains(&reference_module);
+                out.push(ReferenceResolutionFactRaw {
+                    path: rel.clone(),
+                    reference_module,
                     target_declared,
                 });
             }

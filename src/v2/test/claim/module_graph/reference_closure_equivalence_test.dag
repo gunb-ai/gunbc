@@ -1,0 +1,89 @@
+module v2.test.module_graph.reference_closure_equivalence
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.lens.module_graph {
+  import_closure_live,
+  reference_closure_live
+}
+import std.algebra { FreeMonoid }
+import v2.std.algebra { contains, for_all, list_snoc_item, fold_list }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data expected_conformance_closure: FreeMonoid<String> = [
+  "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+  "dag/std/algebra.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/primitives.dag",
+  "src/v2/std/algebra.dag",
+  "src/v2/std/collection.dag",
+  "src/v2/std/diagnostic.dag",
+  "src/v2/std/logic.dag",
+  "src/v2/std/node.dag",
+  "src/v2/std/node_query.dag",
+  "src/v2/std/witness.dag"
+]
+
+data conformance_entry: String = "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag"
+
+data bogus_never_referenced: String = "src/v2/std/__bogus_never_referenced__.dag"
+
+data no_paths: FreeMonoid<String> = []
+
+data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from container references instead of import declarations. On the current corpus every cross-module edge is still an import, so reference-closure must equal import-closure on the conformance witness — equal module sets imply the same resolve inputs. A strict superset without equality would be a located deficit before any import deletion."
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn set_subset(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
+  for_all(xs: xs, predicate: fn(x) { contains(xs: ys, item: x, eq: string_eq) })
+}
+
+fn set_equal(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
+  set_subset(xs: xs, ys: ys) && set_subset(xs: ys, ys: xs)
+}
+
+fn import_conformance_closure() -> FreeMonoid<String> {
+  import_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
+}
+
+fn reference_conformance_closure() -> FreeMonoid<String> {
+  reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
+}
+
+test fn reference_closure_superset_of_import_closure_holds() -> Bool {
+  set_subset(xs: import_conformance_closure(), ys: reference_conformance_closure())
+}
+
+test fn reference_closure_equals_import_closure_on_conformance_holds() -> Bool {
+  set_equal(
+    xs: import_conformance_closure(),
+    ys: reference_conformance_closure()
+  )
+}
+
+test fn reference_closure_matches_declared_conformance_closure_holds() -> Bool {
+  set_equal(xs: reference_conformance_closure(), ys: expected_conformance_closure)
+}
+
+test fn reference_closure_drift_discriminates_over_declaration_red_holds() -> Bool {
+  let with_bogus = list_snoc_item(xs: expected_conformance_closure, item: bogus_never_referenced)
+  set_equal(xs: reference_conformance_closure(), ys: with_bogus) == false
+}
+
+test fn import_reference_closure_mismatch_discriminates_red_holds() -> Bool {
+  let declared_without_entry = fold_list(
+    xs: expected_conformance_closure,
+    empty: no_paths,
+    cons: fn(acc, p) {
+      if string_eq(a: p, b: conformance_entry) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: p)
+      }
+    }
+  )
+  set_equal(xs: import_conformance_closure(), ys: declared_without_entry) == false
+}

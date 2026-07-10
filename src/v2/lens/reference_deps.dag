@@ -1,0 +1,23 @@
+module v2.lens.reference_deps
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+type ReferenceResolutionFact {
+  path: String
+  reference_module: String
+  target_declared: Bool
+}
+
+fn reference_resolution_facts_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ReferenceResolutionFact> {
+  reference_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
