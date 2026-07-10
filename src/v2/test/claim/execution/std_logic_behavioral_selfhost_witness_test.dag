@@ -19,8 +19,8 @@ import v2.extdeps.languages.rust {
 }
 import v2.extdeps.languages.rust_test {
   rust_std_logic_witness_target_model_staging,
-  rust_std_logic_witness_truth_table_bits,
-  rust_std_logic_witness_truth_table_wrong_bits
+  rust_std_logic_witness_truth_table_packed_i32,
+  rust_std_logic_witness_truth_table_wrong_packed_i32
 }
 import v2.test.fixture.std_logic_module {
   std_logic_golden_emit_source,
@@ -83,17 +83,19 @@ data std_logic_truth_table_claim_root: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn std_logic_truth_table_oct5_value(bits: Int) -> RuntimeValue {
+data std_logic_truth_table_packed_i32_note: String = "Witness harness packed i32 scalar (oct5 wire encoding of the truth-table bitmask), not BitWidth — mirrors the golden Rust main's `let mut bits: i32` accumulator. Dissolve-on: emit-host witness payload carries a typed value-Measure carrier when wire-format scalars are modeled."
+
+fn std_logic_truth_table_oct5_value(packed_i32: Int) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
       primitive_type: rust_emit_host_runtime_primitive_type_node(),
       bytes: emit_host_octets_byte_string(
         octets: [
           0,
-          bits % 256,
-          (bits / 256) % 256,
-          (bits / 65536) % 256,
-          (bits / 16777216) % 256
+          packed_i32 % 256,
+          (packed_i32 / 256) % 256,
+          (packed_i32 / 65536) % 256,
+          (packed_i32 / 16777216) % 256
         ]
       )
     }
@@ -109,13 +111,13 @@ fn std_logic_truth_table_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 }
 
 fn std_logic_truth_table_call_primitive(
-  bits: Int,
+  packed_i32: Int,
   node: Node,
   _args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
   Accepted {
-    value: std_logic_truth_table_oct5_value(bits: bits),
+    value: std_logic_truth_table_oct5_value(packed_i32: packed_i32),
     diagnostics: None
   }
 }
@@ -126,7 +128,7 @@ fn std_logic_truth_table_call_primitive_correct(
   env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
   std_logic_truth_table_call_primitive(
-    bits: rust_std_logic_witness_truth_table_bits,
+    packed_i32: rust_std_logic_witness_truth_table_packed_i32,
     node: node,
     args: args,
     env: env
@@ -139,7 +141,7 @@ fn std_logic_truth_table_call_primitive_wrong(
   env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
   std_logic_truth_table_call_primitive(
-    bits: rust_std_logic_witness_truth_table_wrong_bits,
+    packed_i32: rust_std_logic_witness_truth_table_wrong_packed_i32,
     node: node,
     args: args,
     env: env
@@ -151,7 +153,7 @@ fn std_logic_truth_table_allocate_literal(
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
   Accepted {
-    value: std_logic_truth_table_oct5_value(bits: rust_std_logic_witness_truth_table_bits),
+    value: std_logic_truth_table_oct5_value(packed_i32: rust_std_logic_witness_truth_table_packed_i32),
     diagnostics: None
   }
 }
