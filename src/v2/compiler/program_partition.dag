@@ -105,16 +105,98 @@ type PartitionUserSemanticType {
   semantic: Node
 }
 
-fn partition_user_semantic_type_shape(node: Node) -> Bool {
+fn partition_is_grammar_production_shell(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn partition_is_grammar_structure_conj(node: Node) -> Bool {
   match node.kind {
-    TypeNode { connective: Disj } => true
-    TypeNode { connective: Conj } => true
+    TypeNode { connective: Conj } =>
+      fold(
+        node.children,
+        init: false,
+        f: fn(found, edge) {
+          if found {
+            true
+          } else {
+            match edge.label {
+              Named { name: sym } =>
+                (sym == ^grammar_sequence_left_node_projection)
+                  || (sym == ^grammar_sequence_right_node_projection)
+                  || (sym == ^grammar_optional_element_node_projection)
+                  || (sym == ^grammar_production_identity_node_projection)
+                  || (sym == ^grammar_production_captured_node_projection)
+              Positional => false
+            }
+          }
+        }
+      )
     _ => false
   }
 }
 
-fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
-  if partition_user_semantic_type_shape(node: root) {
+fn partition_user_semantic_record_shape(node: Node) -> Bool {
+  if partition_is_grammar_production_shell(node: node) {
+    false
+  } else if partition_is_grammar_structure_conj(node: node) {
+    false
+  } else {
+    match node.kind {
+      TypeNode { connective: Conj } => true
+      _ => false
+    }
+  }
+}
+
+fn partition_user_semantic_type_shape(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Disj } =>
+      !partition_is_grammar_production_shell(node: node)
+    TypeNode { connective: Conj } => partition_user_semantic_record_shape(node: node)
+    _ => false
+  }
+}
+
+fn partition_semantic_disj_search_subtree(root: Node) -> Optional<Node> {
+  if partition_is_grammar_production_shell(node: root) {
+    match root.kind {
+      TypeNode { connective: Conj } =>
+        fold(
+          root.children,
+          init: Absent,
+          f: fn(acc, edge) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => partition_semantic_disj_search_subtree(root: edge.target)
+            }
+          }
+        )
+      _ => Absent
+    }
+  } else {
+    match root.kind {
+      TypeNode { connective: Disj } => optional_present(value: root)
+      TypeNode { connective: Conj } =>
+        fold(
+          root.children,
+          init: Absent,
+          f: fn(acc, edge) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => partition_semantic_disj_search_subtree(root: edge.target)
+            }
+          }
+        )
+      _ => Absent
+    }
+  }
+}
+
+fn partition_semantic_record_search_subtree(root: Node) -> Optional<Node> {
+  if partition_user_semantic_record_shape(node: root) {
     optional_present(value: root)
   } else {
     match root.kind {
@@ -125,12 +207,19 @@ fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
           f: fn(acc, edge) {
             match acc {
               Present { value: _ } => acc
-              Absent => partition_semantic_type_search_subtree(root: edge.target)
+              Absent => partition_semantic_record_search_subtree(root: edge.target)
             }
           }
         )
       _ => Absent
     }
+  }
+}
+
+fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
+  match partition_semantic_disj_search_subtree(root: root) {
+    Present { value: disj } => optional_present(value: disj)
+    Absent => partition_semantic_record_search_subtree(root: root)
   }
 }
 

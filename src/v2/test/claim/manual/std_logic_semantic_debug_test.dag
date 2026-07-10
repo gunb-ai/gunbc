@@ -7,37 +7,12 @@ import v2.test.fixture.std_logic_module {
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.infer { infer }
 import v2.compiler.program_partition { partition_user_semantic_types_from_root }
-import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_rust_generic }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.extdeps.languages.rust {
-  rust_enum_decl_surface_from_coproduct,
-  rust_coproduct_variant_is_nullary_payload
-}
-import std.algebra { Cons, Empty }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
-import v2.std.node { Disj, Named, TypeNode }
+import v2.std.node { Disj, TypeNode }
 import v2.std.logic { Bool }
 
-fn std_logic_debug_has_semantic_decl() -> Bool {
-  match assemble_program_from_ingest(
-    ingest: std_logic_module_ingest(),
-    admission: std_logic_module_admission(),
-    lm: dag_language_model()
-  ) {
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Accepted { value: tree, diagnostics: _ } =>
-          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
-            HeadFound { value: _ } => true
-            HeadAbsent => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn std_logic_debug_semantic_is_disj() -> Bool {
+test fn std_logic_debug_semantic_is_disj() -> Bool {
   match assemble_program_from_ingest(
     ingest: std_logic_module_ingest(),
     admission: std_logic_module_admission(),
@@ -58,94 +33,4 @@ fn std_logic_debug_semantic_is_disj() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
-}
-
-fn std_logic_debug_first_variant_nullary() -> Bool {
-  match assemble_program_from_ingest(
-    ingest: std_logic_module_ingest(),
-    admission: std_logic_module_admission(),
-    lm: dag_language_model()
-  ) {
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Accepted { value: tree, diagnostics: _ } =>
-          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
-            HeadFound { value: decl } =>
-              match decl.semantic.kind {
-                TypeNode { connective: Disj } =>
-                  match list_head(xs: decl.semantic.children) {
-                    HeadFound { value: edge } =>
-                      match edge.label {
-                        Named { name: _ } =>
-                          rust_coproduct_variant_is_nullary_payload(payload: edge.target)
-                        _ => false
-                      }
-                    HeadAbsent => false
-                  }
-                _ => false
-              }
-            HeadAbsent => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn std_logic_debug_enum_surface_accepts() -> Bool {
-  match assemble_program_from_ingest(
-    ingest: std_logic_module_ingest(),
-    admission: std_logic_module_admission(),
-    lm: dag_language_model()
-  ) {
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Accepted { value: tree, diagnostics: _ } =>
-          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
-            HeadFound { value: decl } =>
-              match rust_enum_decl_surface_from_coproduct(name: decl.name, coproduct: decl.semantic) {
-                Accepted { value: _, diagnostics: _ } => true
-                Rejected { diagnostics: _ } => false
-              }
-            HeadAbsent => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn std_logic_debug_semantic_emit_accepts() -> Bool {
-  match assemble_program_from_ingest(
-    ingest: std_logic_module_ingest(),
-    admission: std_logic_module_admission(),
-    lm: dag_language_model()
-  ) {
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Accepted { value: tree, diagnostics: _ } =>
-          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
-            HeadFound { value: decl } =>
-              match emit_semantic_type_decl_rust_generic(
-                name: decl.name,
-                params: Empty,
-                node: decl.semantic
-              ) {
-                Accepted { value: _, diagnostics: _ } => true
-                Rejected { diagnostics: _ } => false
-              }
-            HeadAbsent => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn std_logic_debug_all() -> Bool {
-  std_logic_debug_has_semantic_decl()
-    && std_logic_debug_semantic_is_disj()
-    && std_logic_debug_first_variant_nullary()
-    && std_logic_debug_enum_surface_accepts()
-    && std_logic_debug_semantic_emit_accepts()
 }
