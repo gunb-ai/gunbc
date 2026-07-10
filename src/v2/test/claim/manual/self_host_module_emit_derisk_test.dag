@@ -18,6 +18,7 @@ import v2.compiler.source_authority {
 }
 import v2.extdeps.languages.rust { rust_target_model }
 import std.algebra { Cons, Empty }
+import v2.std.algebra { length }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
@@ -92,6 +93,21 @@ fn derisk_emit_accepts(src: String) -> Bool {
 test fn self_host_frontier_emit_ownership_miss_accepts() -> Bool {
   derisk_emit_accepts(src: src_single_arm_match)
     && derisk_infer_accepts(src: src_single_arm_match)
+}
+
+fn derisk_emit_text_for(src: String) -> String {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: derisk_ingest_for(src: src),
+    admission: derisk_module_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } => receipt.source.carried
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+test fn derisk_single_arm_emit_len_probe() -> Int {
+  length(xs: derisk_emit_text_for(src: src_single_arm_match))
 }
 
 test fn self_host_frontier_emit_two_user_types_accepts() -> Bool {
