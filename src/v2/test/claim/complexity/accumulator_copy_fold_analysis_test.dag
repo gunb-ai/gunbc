@@ -37,6 +37,12 @@ data out_of_iteration_snippet: String = "module once\n\nfn f(xs: List<Int>, ys: 
 
 data named_step_snippet: String = "module namedstep\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
 
+data let_unknown_alias_snippet: String = "module unknownalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = mystery\n    list_append(left: grown, right: x)\n  })\n}\n"
+
+data let_fresh_snippet: String = "module freshlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let seed = 0\n    list_append(left: seed, right: x)\n  })\n}\n"
+
+data let_transitive_alias_snippet: String = "module transalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let g = acc\n    let h = g\n    list_append(left: h, right: x)\n  })\n}\n"
+
 fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
@@ -93,11 +99,40 @@ test fn noncarrier_name_in_copied_port_refuses_not_clean() -> Bool {
   }
 }
 
-test fn let_alias_refuses_not_clean() -> Bool {
+test fn let_alias_is_proven_suspect() -> Bool {
   match findings_of(source_text: let_alias_snippet, file: ^alias_file) {
     Absent => false
     Present { value: fs } =>
-      findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+      findings_have_suspect(fs: fs)
+      && !findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+  }
+}
+
+test fn let_transitive_alias_is_proven_suspect() -> Bool {
+  match findings_of(source_text: let_transitive_alias_snippet, file: ^transalias_file) {
+    Absent => false
+    Present { value: fs } =>
+      findings_have_suspect(fs: fs)
+      && !findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+  }
+}
+
+test fn let_fresh_binding_is_provably_clean() -> Bool {
+  match findings_of(source_text: let_fresh_snippet, file: ^freshlet_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn let_unknown_alias_still_refuses_may_alias() -> Bool {
+  match findings_of(source_text: let_unknown_alias_snippet, file: ^unknownalias_file) {
+    Absent => false
+    Present { value: fs } =>
+      if findings_have_suspect(fs: fs) {
+        false
+      } else {
+        findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+      }
   }
 }
 
