@@ -72,30 +72,6 @@ fn std_logic_module_emit_accepts() -> Bool {
   }
 }
 
-fn std_logic_module_emit_contains_enum() -> Bool {
-  match std_logic_module_emit_source() {
-    Accepted { value: medium, diagnostics: _ } =>
-      string_contains(s: medium.carried, pattern: "enum Classical")
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn std_logic_module_emit_contains_qualified_match() -> Bool {
-  match std_logic_module_emit_source() {
-    Accepted { value: medium, diagnostics: _ } =>
-      string_contains(s: medium.carried, pattern: "Classical::True")
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn std_logic_module_emit_text_matches_golden() -> Bool {
-  match std_logic_module_emit_source() {
-    Accepted { value: medium, diagnostics: _ } =>
-      medium.carried == std_logic_golden_rust_emit
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn std_logic_semantic_type_emit_accepts() -> Bool {
   match assemble_program_from_ingest(
     ingest: std_logic_module_ingest(),

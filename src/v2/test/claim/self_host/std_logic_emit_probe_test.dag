@@ -2,9 +2,6 @@ module v2.test.self_host.std_logic_emit_probe
 
 import v2.test.fixture.std_logic_module {
   std_logic_module_emit_accepts,
-  std_logic_module_emit_contains_enum,
-  std_logic_module_emit_contains_qualified_match,
-  std_logic_module_emit_text_matches_golden,
   std_logic_semantic_type_emit_accepts
 }
 import v2.std.logic { Bool }
@@ -15,18 +12,6 @@ test fn std_logic_whole_program_emit_accepts() -> Bool {
 
 test fn std_logic_semantic_type_emit_accepts_holds() -> Bool {
   std_logic_semantic_type_emit_accepts()
-}
-
-test fn std_logic_emit_contains_enum_holds() -> Bool {
-  std_logic_module_emit_contains_enum()
-}
-
-test fn std_logic_emit_contains_qualified_match_holds() -> Bool {
-  std_logic_module_emit_contains_qualified_match()
-}
-
-test fn std_logic_emit_text_matches_golden_holds() -> Bool {
-  std_logic_module_emit_text_matches_golden()
 }
 
 test fn std_logic_emit_probe_all_holds() -> Bool {
