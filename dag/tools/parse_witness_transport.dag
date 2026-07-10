@@ -1,44 +1,19 @@
 module tools.parse_witness_transport
 
-import extdeps.shell
-import extdeps.languages.bash.program {
-  ShellProgram,
-  lit, var_ref, command, serialize_bash
-}
-import tools.host_prelude { ensure_parse_witness_built }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import tools.host_prelude { WitnessBin, run_witness_bin_program }
 
-fn parse_witness_program(suite: String) -> ShellProgram {
-  let root = var_ref(name: "ROOT")
-  ShellProgram {
-    set_e: true,
-    statements: concat(ensure_parse_witness_built(), [
-      command(words: [lit(text: "cd"), root]),
-      command(words: [
-        var_ref(name: "PARSE_WITNESS"),
-        lit(text: "--suite"),
-        lit(text: suite)
-      ])
-    ])
-  }
-}
-
-data parse_witness_transport_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "extdeps.languages.bash.program",
-    decl_name: "serialize_bash",
-    field: WholeDeclaration
+fn parse_witness_bin() -> WitnessBin {
+  WitnessBin {
+    var_name: "PARSE_WITNESS",
+    bin_name: "parse_witness",
+    features: "text_lookup_work_counter"
   }
 }
 
 fn run_parse_witness_floor() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: parse_witness_program(suite: "floor")))
-  result.success
+  run_witness_bin_program(invoke: parse_witness_bin(), prereqs: [], args: ["--suite", "floor"])
 }
 
 fn run_parse_witness_perf() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: parse_witness_program(suite: "perf")))
-  result.success
+  run_witness_bin_program(invoke: parse_witness_bin(), prereqs: [], args: ["--suite", "perf"])
 }

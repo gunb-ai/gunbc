@@ -9,7 +9,8 @@ import gunbc.ci_gate {
 }
 import gunbc.ci_layer_roots {
   witness_layer_roots,
-  witness_layer_source_flags
+  witness_layer_source_flags,
+  witness_discovery_scan_dirs
 }
 import gunbc.commit_workflow {
   commit_gate_roster,
@@ -49,9 +50,13 @@ type DeployStage {
   runner: RunnerSpec
 }
 
+data ci_spec_witness_entries_note: String = "witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): declared CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion in gunbc.commit_workflow), projected as explicit entries. Since the discovery flip (see ci_spec_discovery_flip_note) the roster is no longer the only witness source: discovery_scan_dirs re-admits the tree-wide corpus shrunk by affected-set selection, and the roster remains the home for rows that must run as declared explicit entries (execution-kind rows with their own resource profile). Empty witness_entries AND empty discovery_scan_dirs means the plan carries no witness-corpus node at all (the regen spec's shape)."
+
+data ci_spec_discovery_flip_note: String = "discovery_scan_dirs is the affected-set enrollment flip (operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
 type CiSpec {
   gates: List<Gate>
   witness_entries: List<ScheduleWitnessEntry>
+  discovery_scan_dirs: List<String>
   diff_policy: DiffPolicy
   notice_title: String
   deploy_stages: List<DeployStage>
@@ -85,6 +90,7 @@ data gunbc_ci_deploy_stages: List<DeployStage> = []
 data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,
   witness_entries: gunbc_ci_floor_witness_entries,
+  discovery_scan_dirs: witness_discovery_scan_dirs,
   diff_policy: {
     base: "origin/main",
     head: "HEAD",
@@ -97,6 +103,7 @@ data gunbc_ci_spec: CiSpec = {
 data gunbc_ci_regen_spec: CiSpec = {
   gates: gunbc_ci_regen_floor_gates,
   witness_entries: [],
+  discovery_scan_dirs: [],
   diff_policy: {
     base: "origin/main",
     head: "HEAD",
@@ -110,6 +117,18 @@ fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<ScheduleWitnessEntry
   CiSpec {
     gates: spec.gates,
     witness_entries: entries,
+    discovery_scan_dirs: spec.discovery_scan_dirs,
+    diff_policy: spec.diff_policy,
+    notice_title: spec.notice_title,
+    deploy_stages: spec.deploy_stages,
+  }
+}
+
+fn ci_spec_with_discovery_scan_dirs(spec: CiSpec, dirs: List<String>) -> CiSpec {
+  CiSpec {
+    gates: spec.gates,
+    witness_entries: spec.witness_entries,
+    discovery_scan_dirs: dirs,
     diff_policy: spec.diff_policy,
     notice_title: spec.notice_title,
     deploy_stages: spec.deploy_stages,
