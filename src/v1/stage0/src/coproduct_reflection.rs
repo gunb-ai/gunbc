@@ -369,9 +369,12 @@ pub fn eval_qualified_name_to_dotted_string(
     _ctx: &InterpContext,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let qn = args.first().map(|(_, v)| v).ok_or_else(|| InterpError::TypeError {
-        msg: "qualified_name_to_dotted_string requires a QualifiedName".to_string(),
-    })?;
+    let qn = args
+        .first()
+        .map(|(_, v)| v)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "qualified_name_to_dotted_string requires a QualifiedName".to_string(),
+        })?;
     Ok(Value::Str(
         crate::v1_interpreter::free_monoid_symbol_value_to_dotted_string(qn),
     ))
@@ -381,9 +384,12 @@ pub fn eval_qualified_name_snoc(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let qn = args.first().map(|(_, v)| v).ok_or_else(|| InterpError::TypeError {
-        msg: "qualified_name_snoc requires a QualifiedName".to_string(),
-    })?;
+    let qn = args
+        .first()
+        .map(|(_, v)| v)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "qualified_name_snoc requires a QualifiedName".to_string(),
+        })?;
     let segment = expect_symbol(args.get(1).map(|(_, v)| v), "qualified_name_snoc")?;
     let dotted = crate::v1_interpreter::free_monoid_symbol_value_to_dotted_string(qn);
     let new_dotted = if dotted.is_empty() {
@@ -392,7 +398,8 @@ pub fn eval_qualified_name_snoc(
         format!("{dotted}.{segment}")
     };
     Ok(crate::cli_run::free_monoid_symbol_value_from_dotted_string(
-        ctx, &new_dotted,
+        ctx,
+        &new_dotted,
     ))
 }
 
@@ -400,9 +407,12 @@ pub fn eval_qualified_name_init(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let qn = args.first().map(|(_, v)| v).ok_or_else(|| InterpError::TypeError {
-        msg: "qualified_name_init requires a QualifiedName".to_string(),
-    })?;
+    let qn = args
+        .first()
+        .map(|(_, v)| v)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "qualified_name_init requires a QualifiedName".to_string(),
+        })?;
     let dotted = crate::v1_interpreter::free_monoid_symbol_value_to_dotted_string(qn);
     let parent = match dotted.rsplit_once('.') {
         Some((prefix, _)) => prefix,

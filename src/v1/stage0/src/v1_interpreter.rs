@@ -2639,9 +2639,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             "qualified_name_init" => {
                 crate::coproduct_reflection::eval_qualified_name_init(ctx, &args)
             }
-            "symbol_spelling" => {
-                crate::coproduct_reflection::eval_symbol_spelling(ctx, &args)
-            }
+            "symbol_spelling" => crate::coproduct_reflection::eval_symbol_spelling(ctx, &args),
             _ => unreachable!("qualified_name bridge fn set mismatch"),
         };
     }
