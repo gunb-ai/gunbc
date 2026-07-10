@@ -255,27 +255,28 @@ rows on the frontier, not surprises:
 - No escape hatches: there is no mode in which the producer "proceeds as if" a refusal had not
   fired; diagnostic replay reads state only.
 
-## 9. Flags for operator sign
+## 9. Flags — SIGNED (operator, 2026-07-10)
 
-- **FLAG D — binding-key protocol.** Eval resolves param refs by structural node equality against
-  `symbol_atom_node(binding)`; the lowering conforms by emitting occurrence-normalized synthetic
-  param refs. The alternative — re-grounding `EnvironmentBindingKey` on binding *identity* rather
-  than whole-node equality — is cleaner but is an eval-protocol change. Recommendation: conform
-  now; name the identity re-grounding as a follow-on with the silent `allocate_literal`
-  fall-through (a §5 fail-open the current protocol carries) as its motivating defect.
-- **FLAG E — one rule table.** Generalize the `SugarRule` key to (surface-atom | production
-  identity) and migrate the existing type_alias_rhs hook onto it, vs adding fn_decl as a sibling
-  hand-inlined arm with a declared consolidation trigger. Recommendation: one table — the sibling
-  arm is the nickname trap in slow motion.
-- **FLAG F — Loop accumulator edge.** Extends the seam Loop from 2 to 3 edges (body, measure,
-  carrier binder). Touches `LoopBoundEdges` conformance, the iteration-fold edge predicate, and
-  canonical hashing in one motion; termination and cost consumers are unaffected (they read the
-  measure edge, which is unchanged). Recommendation: sign the 3-edge shape now so Stage A does not
-  need a mid-flight shape change.
+- **FLAG D — binding-key protocol. SIGNED: conform now.** Eval resolves param refs by structural
+  node equality against `symbol_atom_node(binding)`; the lowering conforms by emitting
+  occurrence-normalized synthetic param refs. The identity re-grounding of `EnvironmentBindingKey`
+  (which also deletes the silent `allocate_literal` fall-through, a §5 fail-open the current
+  protocol carries) is **required cleanup before this feature closes** — operator condition on the
+  sign, carried in the dissolution trigger below, not an optional follow-on.
+- **FLAG E — one rule table. SIGNED: one table.** Generalize the `SugarRule` key to (surface-atom
+  | production identity) and migrate the existing type_alias_rhs hook onto it as the proof; no
+  sibling hand-inlined arm.
+- **FLAG F — Loop accumulator edge. SIGNED: 3-edge shape.** The seam Loop grows body + measure +
+  carrier binder; `LoopBoundEdges` conformance, the iteration-fold edge predicate, and canonical
+  hashing update in one motion. Termination and cost consumers unaffected (they read the measure
+  edge, unchanged).
 
 ## Dissolution trigger (DESIGN §6)
 
-This document dissolves when Stage D lands: the general producer subsumes `03_body_producer.dag`'s
-fixture family and the lens's within-body/cross-decl refusal buckets are zeroed with live RED
-controls — at which point the surviving content (the §7 cost carriers) migrates to its own
+This document dissolves when BOTH hold: (1) Stage D lands — the general producer subsumes
+`03_body_producer.dag`'s fixture family and the lens's within-body/cross-decl refusal buckets are
+zeroed with live RED controls; and (2) the FLAG D binding-key re-grounding lands —
+`EnvironmentBindingKey` keyed on binding identity and the silent `allocate_literal` fall-through
+deleted (the feature does not close over the conform-time protocol; operator condition,
+2026-07-10). At that point the surviving content (the §7 cost carriers) migrates to its own
 follow-on design and this file is deleted.
