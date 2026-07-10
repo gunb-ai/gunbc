@@ -1324,7 +1324,7 @@ fn write_resolve_receipt(batch_records: &[BatchRecord]) {
 fn write_materialization_receipt() {
     let t = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
     let body = format!(
-        "keyed_calls={}\nunkeyed_calls={}\noverflow_calls={}\ndistinct_keys={}\nduplicated_keys={}\nsingle_site_keys={}\nmulti_site_keys={}\nwasted_ms_total={}\nwasted_ms_single_site={}\nwasted_ms_multi_site={}\n",
+        "keyed_calls={}\nunkeyed_calls={}\noverflow_calls={}\ndistinct_keys={}\nduplicated_keys={}\nsingle_site_keys={}\nmulti_site_keys={}\nwasted_ms_total={}\nwasted_ms_single_site={}\nwasted_ms_multi_site={}\nmemo_hits={}\nmemo_misses={}\nmemo_overflow={}\n",
         t.keyed_calls,
         t.unkeyed_calls,
         t.overflow_calls,
@@ -1334,7 +1334,10 @@ fn write_materialization_receipt() {
         t.multi_site_keys,
         t.wasted_ns_total / 1_000_000,
         t.wasted_ns_single_site / 1_000_000,
-        t.wasted_ns_multi_site / 1_000_000
+        t.wasted_ns_multi_site / 1_000_000,
+        t.memo_hits,
+        t.memo_misses,
+        t.memo_overflow
     );
     let path = std::path::Path::new("target/floor-materialization-receipt.txt");
     if let Err(e) = std::fs::create_dir_all("target").and_then(|_| std::fs::write(path, &body)) {
@@ -1345,13 +1348,15 @@ fn write_materialization_receipt() {
         return;
     }
     eprintln!(
-        "[receipt] floor materialization: keyed_calls={} unkeyed_calls={} duplicated_keys={} (single_site={} multi_site={}) wasted_ms={} (receipt: {})",
+        "[receipt] floor materialization: keyed_calls={} unkeyed_calls={} duplicated_keys={} (single_site={} multi_site={}) wasted_ms={} memo_hits={} memo_misses={} (receipt: {})",
         t.keyed_calls,
         t.unkeyed_calls,
         t.duplicated_keys,
         t.single_site_keys,
         t.multi_site_keys,
         t.wasted_ns_total / 1_000_000,
+        t.memo_hits,
+        t.memo_misses,
         path.display()
     );
 }
@@ -2046,6 +2051,52 @@ mod tests {
             totals.keyed_calls > 0,
             "ctx Drop must absorb ledger totals into the process accumulator"
         );
+    }
+
+    // The eval-frame memo by execution: the same pure claim evaluated twice on
+    // one ctx must (a) produce identical values — the memo-vs-recompute
+    // equivalence oracle at the value grain — and (b) record verified hits, so
+    // "the cache worked" is a counted fact, never an assumption. Assertions
+    // are per-ctx (eval_call_memo_counters), immune to test-process sharing.
+    #[test]
+    fn eval_call_memo_serves_verified_hits_with_identical_values() {
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/test/claim/materialization_ladder_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) =
+            resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+        let first = run_value(
+            &ctx,
+            "cross_frame_duplicate_discharged_by_covering_provider",
+        )
+        .expect("first evaluation");
+        let (_, misses_after_first, _) = v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
+        let second = run_value(
+            &ctx,
+            "cross_frame_duplicate_discharged_by_covering_provider",
+        )
+        .expect("second evaluation");
+        assert!(
+            first == second,
+            "memo-served evaluation must equal the recomputed one"
+        );
+        let (hits, misses, overflow) = v1_compiler::v1_interpreter::eval_call_memo_counters(&ctx);
+        assert!(
+            hits > 0,
+            "second identical evaluation must serve verified hits from the eval memo"
+        );
+        assert!(
+            misses >= misses_after_first,
+            "miss counter is monotone (counted, never reset)"
+        );
+        assert_eq!(overflow, 0, "tiny workload must not hit the entry cap");
     }
 
     fn single(entry: &str, function: &str) -> Runnable {

@@ -757,13 +757,13 @@ struct EvalRecomputeTrace {
 // overflow is counted and disclosed in the report.
 const EVAL_RECOMPUTE_KEY_CAP: usize = 4_000_000;
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 struct EvalRecomputeKey {
     fn_ptr: usize,
     args: Vec<EvalRecomputeArgKey>,
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 enum EvalRecomputeArgKey {
     Null,
     Bool(bool),
@@ -816,6 +816,48 @@ const EVAL_RECOMPUTE_SITE_CAP: usize = 4;
 pub fn eval_recompute_trace_enabled() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var("GUNBC_RECOMPUTE_TRACE").is_ok_and(|v| v != "0"))
+}
+
+// The eval-frame memo: the ladder's single-site discharge provider, realized
+// in the seed. Buckets by the ledger key (fn identity x argument identity) and
+// serves only after the stored call's argument names AND values verify equal —
+// a hash collision degrades to recompute, never to a wrong value. Eviction is
+// ScopeExit (the ctx's lifetime); admission stops at the entry cap with the
+// refusal COUNTED (overflow), never silent. Default ON everywhere;
+// GUNBC_EVAL_MEMO=0 is a diagnostic realization switch (recompute instead of
+// serve — semantics identical), and the receipt discloses hits/misses so a
+// disabled memo is visible as memo_hits=0, never silently assumed working.
+struct EvalCallMemo {
+    map: std::collections::HashMap<EvalRecomputeKey, Vec<(Vec<(Option<String>, Value)>, Value)>>,
+    // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
+    // (same discipline as EvalRecomputeTrace.keepalive_fns).
+    keepalive_fns: Vec<Rc<Node>>,
+    hits: u64,
+    misses: u64,
+    overflow: u64,
+}
+
+impl Default for EvalCallMemo {
+    fn default() -> Self {
+        EvalCallMemo {
+            map: std::collections::HashMap::new(),
+            keepalive_fns: Vec::new(),
+            hits: 0,
+            misses: 0,
+            overflow: 0,
+        }
+    }
+}
+
+const EVAL_CALL_MEMO_ENTRY_CAP: usize = 1_000_000;
+
+pub fn eval_call_memo_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        std::env::var("GUNBC_EVAL_MEMO")
+            .map(|v| v != "0")
+            .unwrap_or(true)
+    })
 }
 
 #[derive(Default, Clone)]
@@ -1109,6 +1151,7 @@ pub struct InterpContext {
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
+    eval_call_memo: std::cell::RefCell<EvalCallMemo>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
@@ -1254,6 +1297,7 @@ impl InterpContext {
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
+            eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
@@ -3453,6 +3497,11 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
             name, count
         );
     }
+    let (hits, misses, overflow) = eval_call_memo_counters(ctx);
+    eprintln!(
+        "[recompute-trace] eval-memo: hits={} misses={} overflow={} (verified-hit serve; a hit still counts as a demand above)",
+        hits, misses, overflow
+    );
 }
 
 // Everything a re-evaluated key cost beyond one evaluation's amortized share.
@@ -3475,6 +3524,9 @@ pub struct EvalRecomputeTotals {
     pub wasted_ns_total: u128,
     pub wasted_ns_single_site: u128,
     pub wasted_ns_multi_site: u128,
+    pub memo_hits: u64,
+    pub memo_misses: u64,
+    pub memo_overflow: u64,
 }
 
 impl EvalRecomputeTotals {
@@ -3489,6 +3541,9 @@ impl EvalRecomputeTotals {
         self.wasted_ns_total += o.wasted_ns_total;
         self.wasted_ns_single_site += o.wasted_ns_single_site;
         self.wasted_ns_multi_site += o.wasted_ns_multi_site;
+        self.memo_hits += o.memo_hits;
+        self.memo_misses += o.memo_misses;
+        self.memo_overflow += o.memo_overflow;
     }
 }
 
@@ -3519,7 +3574,12 @@ fn trace_totals(t: &EvalRecomputeTrace) -> EvalRecomputeTotals {
 }
 
 pub fn eval_recompute_totals(ctx: &InterpContext) -> EvalRecomputeTotals {
-    trace_totals(&ctx.eval_recompute_trace.borrow())
+    let mut out = trace_totals(&ctx.eval_recompute_trace.borrow());
+    let m = ctx.eval_call_memo.borrow();
+    out.memo_hits = m.hits;
+    out.memo_misses = m.misses;
+    out.memo_overflow = m.overflow;
+    out
 }
 
 // Process-wide accumulator fed by InterpContext::drop, so EVERY eval path in
@@ -3532,10 +3592,12 @@ static PROCESS_EVAL_RECOMPUTE_TOTALS: std::sync::Mutex<Option<EvalRecomputeTotal
 /// Drain the process-wide ledger totals (e.g. to write a receipt file at the
 /// end of a floor walk). Returns zeroed totals when tracing was disabled.
 pub fn take_process_eval_recompute_totals() -> EvalRecomputeTotals {
+    // A poisoned lock still holds structurally valid totals (absorb is
+    // add-only), so recover the data rather than silently returning zeroes.
     PROCESS_EVAL_RECOMPUTE_TOTALS
         .lock()
-        .ok()
-        .and_then(|mut g| g.take())
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
         .unwrap_or_default()
 }
 
@@ -3544,14 +3606,17 @@ impl Drop for InterpContext {
         if !eval_recompute_trace_enabled() {
             return;
         }
-        let totals = trace_totals(&self.eval_recompute_trace.borrow());
+        let totals = eval_recompute_totals(self);
         if totals.keyed_calls == 0 && totals.unkeyed_calls == 0 {
             return;
         }
-        if let Ok(mut g) = PROCESS_EVAL_RECOMPUTE_TOTALS.lock() {
-            g.get_or_insert_with(EvalRecomputeTotals::default)
-                .absorb(&totals);
-        }
+        // Recover a poisoned lock rather than dropping this ctx's contribution
+        // without a trace — absorb is add-only, so the state stays valid.
+        let mut g = PROCESS_EVAL_RECOMPUTE_TOTALS
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        g.get_or_insert_with(EvalRecomputeTotals::default)
+            .absorb(&totals);
     }
 }
 
@@ -3565,6 +3630,74 @@ fn value_rc_identity(v: &Value) -> Option<usize> {
         Value::Set(s) => Some(Rc::as_ptr(s) as usize),
         _ => None,
     }
+}
+
+// Same-allocation composites are equal without a walk; everything else takes
+// the full structural equality (Value::eq, the one equality authority).
+fn value_fast_eq(a: &Value, b: &Value) -> bool {
+    if let (Some(x), Some(y)) = (value_rc_identity(a), value_rc_identity(b)) {
+        if x == y {
+            return true;
+        }
+    }
+    a == b
+}
+
+// A stored call matches only when argument NAMES and values both agree —
+// names participate in parameter binding, so value-equal args under different
+// labels are a different call, never served.
+fn eval_call_memo_args_match(
+    stored: &[(Option<String>, Value)],
+    args: &[(Option<String>, Value)],
+) -> bool {
+    stored.len() == args.len()
+        && stored
+            .iter()
+            .zip(args.iter())
+            .all(|((sn, sv), (an, av))| sn == an && value_fast_eq(sv, av))
+}
+
+fn eval_call_memo_get(
+    ctx: &InterpContext,
+    key: &EvalRecomputeKey,
+    args: &[(Option<String>, Value)],
+) -> Option<Value> {
+    let mut m = ctx.eval_call_memo.borrow_mut();
+    let mm = &mut *m;
+    if let Some(bucket) = mm.map.get(key) {
+        for (stored_args, value) in bucket {
+            if eval_call_memo_args_match(stored_args, args) {
+                mm.hits += 1;
+                return Some(value.clone());
+            }
+        }
+    }
+    None
+}
+
+fn eval_call_memo_put(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    key: EvalRecomputeKey,
+    args: &[(Option<String>, Value)],
+    value: Value,
+) {
+    let mut m = ctx.eval_call_memo.borrow_mut();
+    m.misses += 1;
+    if m.map.len() >= EVAL_CALL_MEMO_ENTRY_CAP && !m.map.contains_key(&key) {
+        m.overflow += 1;
+        return;
+    }
+    m.keepalive_fns.push(fn_node.clone());
+    let stored_args: Vec<(Option<String>, Value)> = args.to_vec();
+    m.map.entry(key).or_default().push((stored_args, value));
+}
+
+/// Per-ctx memo counters (hits, misses, overflow) — for witnesses and
+/// diagnostics; the process receipt aggregates these via ctx Drop.
+pub fn eval_call_memo_counters(ctx: &InterpContext) -> (u64, u64, u64) {
+    let m = ctx.eval_call_memo.borrow();
+    (m.hits, m.misses, m.overflow)
 }
 fn pure_call_memo_key(
     fn_node: &Rc<Node>,
