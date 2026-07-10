@@ -5,6 +5,7 @@ import std.realization {
   Materialization, Recompute, Memoize, Share,
   Placement, LocalInProcess, LocalFilesystem, RemoteNetwork
 }
+<<<<<<< HEAD
 import std.disposition { Disposition, Terminal }
 
 data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
@@ -22,6 +23,8 @@ data materialization_ladder_verdict_predicate_contract: Disposition = Terminal {
 data materialization_ladder_value_binding_predicate_contract: Disposition = Terminal {
   reason: "Structural coproduct readers over ValueMaterialization/AccessMode (value_verdict_is_*, value_materialization_*, access_is_*) — closed by the value-tier vocabulary; discriminating corpus: materialization_ladder_witness_test value_* cells."
 }
+=======
+>>>>>>> origin/main
 
 data materialization_ladder_ownership_convergence_note: String = "Section-3 convergence thread (like the fnv1a64 dual-surface row in DESIGN): v1.compiler.ownership (src/v1/ownership.dag, generated twin v1_compiler_ownership.rs) is the EVAL-FRAME INSTANCE of this ladder, built very early as the emitter's materialization decision. The mapping is exact: BindingUsage.consumers = FrameDemand sites at binding grain; binding_fan_out (Threaded excluded) = demand plurality — Threaded IS the iteration-carry/reduce-spine edge, excluded from plurality exactly as the spine's critical path is excluded from independence width; OwnershipDecision.SoleOwner = single-demand move (AcceptedSingleRecompute at value grain); fan_out>1 inside one function body (a shared-state frame) = the Share/clone decision; SharedError with consumer_count+sites = plurality refused in an affine-uniqueness context (a context-requirement refinement this std ladder does not yet model — the residue that keeps the v1 instance load-bearing); the v3-era zero arm (fan_out==0 and pure = dead code; ==0 with effect = valid, the effect IS the use) is DeadComputation / AcceptedEffectIsTheUse here. Two surfaces, one concept, tracked so the fork does not widen. Dissolution: when the emit stage migrates onto the v2/std spine, ownership decisions ground on this ladder (demand plurality per frame) and v1.compiler.ownership retires with the seed."
 
