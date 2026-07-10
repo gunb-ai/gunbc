@@ -161,9 +161,8 @@ fn partition_user_semantic_type_shape(node: Node) -> Bool {
 }
 
 fn partition_semantic_disj_search_subtree(root: Node) -> Optional<Node> {
-  if partition_user_semantic_type_shape(node: root) {
+  if partition_is_grammar_production_shell(node: root) {
     match root.kind {
-      TypeNode { connective: Disj } => optional_present(value: root)
       TypeNode { connective: Conj } =>
         fold(
           root.children,
@@ -179,18 +178,22 @@ fn partition_semantic_disj_search_subtree(root: Node) -> Optional<Node> {
     }
   } else {
     match root.kind {
-      TypeNode { connective: Conj } =>
-        fold(
-          root.children,
-          init: Absent,
-          f: fn(acc, edge) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => partition_semantic_disj_search_subtree(root: edge.target)
-            }
-          }
-        )
       TypeNode { connective: Disj } =>
+        if partition_user_semantic_type_shape(node: root) {
+          optional_present(value: root)
+        } else {
+          fold(
+            root.children,
+            init: Absent,
+            f: fn(acc, edge) {
+              match acc {
+                Present { value: _ } => acc
+                Absent => partition_semantic_disj_search_subtree(root: edge.target)
+              }
+            }
+          )
+        }
+      TypeNode { connective: Conj } =>
         fold(
           root.children,
           init: Absent,
