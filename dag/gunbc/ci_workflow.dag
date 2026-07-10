@@ -23,7 +23,7 @@ import gunbc.ci_materialization {
 }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
-import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
+import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
 import extdeps.github.actions {
