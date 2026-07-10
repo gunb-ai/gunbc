@@ -164,6 +164,41 @@ fn body_lower_unwrap_captured(shell: Node) -> Optional<Node> {
   parse_production_captured_child_optional(node: shell)
 }
 
+fn body_lower_infix_from_operator_seq(left: Node, op_seq: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: op_seq)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => Absent
+    Present { value: pair } =>
+      match body_lower_operator_atom_optional(node: pair.left) {
+        Absent => Absent
+        Present { value: operator } =>
+          match body_lower_operand_ref_optional(node: pair.right) {
+            Absent => Absent
+            Present { value: right } =>
+              Present {
+                value: lower_binary_infix(left: left, operator: operator, right: right)
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_infix_from_operator_tail(left: Node, tail: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: tail) {
+    Present { value: pair } =>
+      match body_lower_infix_from_operator_seq(left: left, op_seq: pair.left) {
+        Present { value: found } => Present { value: found }
+        Absent => body_lower_infix_from_operator_tail(left: left, tail: pair.right)
+      }
+    Absent =>
+      match find_named_child(root: tail, name: ^grammar_repeat_element_node_projection) {
+        Accepted { value: repeat_elem, diagnostics: _ } =>
+          body_lower_infix_from_repeat_element(left: left, repeat_elem: repeat_elem)
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
 fn body_lower_infix_from_repeat_element(left: Node, repeat_elem: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
@@ -210,26 +245,7 @@ fn body_lower_try_infix_from_sequence(node: Node) -> Optional<Node> {
       match body_lower_operand_ref_optional(node: pair.left) {
         Absent => Absent
         Present { value: left } =>
-          match sugar_sequence_pair_optional(node: pair.right) {
-            Present { value: tail } =>
-              match body_lower_operator_atom_optional(node: tail.left) {
-                Absent => Absent
-                Present { value: operator } =>
-                  match body_lower_operand_ref_optional(node: tail.right) {
-                    Absent => Absent
-                    Present { value: right } =>
-                      Present {
-                        value: lower_binary_infix(left: left, operator: operator, right: right)
-                      }
-                  }
-              }
-            Absent =>
-              match find_named_child(root: pair.right, name: ^grammar_repeat_element_node_projection) {
-                Accepted { value: repeat_elem, diagnostics: _ } =>
-                  body_lower_infix_from_repeat_element(left: left, repeat_elem: repeat_elem)
-                Rejected { diagnostics: _ } => Absent
-              }
-          }
+          body_lower_infix_from_operator_tail(left: left, tail: pair.right)
       }
   }
 }
@@ -239,11 +255,31 @@ fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
   match body_lower_try_infix_from_sequence(node: stripped) {
     Present { value: transform } => Present { value: transform }
     Absent =>
-      match find_named_child(root: stripped, name: ^grammar_repeat_element_node_projection) {
-        Accepted { value: repeat_elem, diagnostics: _ } =>
-          match body_lower_try_infix_transform(node: repeat_elem) {
+      match sugar_sequence_pair_optional(node: stripped) {
+        Present { value: pair } =>
+          match body_lower_try_infix_transform(node: pair.left) {
             Present { value: transform } => Present { value: transform }
-            Absent =>
+            Absent => body_lower_try_infix_transform(node: pair.right)
+          }
+        Absent =>
+          match find_named_child(root: stripped, name: ^grammar_repeat_element_node_projection) {
+            Accepted { value: repeat_elem, diagnostics: _ } =>
+              match body_lower_try_infix_transform(node: repeat_elem) {
+                Present { value: transform } => Present { value: transform }
+                Absent =>
+                  match parse_production_captured_child_optional(node: stripped) {
+                    Present { value: captured } =>
+                      body_lower_try_infix_transform(node: captured)
+                    Absent =>
+                      fold(stripped.children, init: Absent, f: fn(acc, e) {
+                        match acc {
+                          Present { value: _ } => acc
+                          Absent => body_lower_try_infix_transform(node: e.target)
+                        }
+                      })
+                  }
+              }
+            Rejected { diagnostics: _ } =>
               match parse_production_captured_child_optional(node: stripped) {
                 Present { value: captured } => body_lower_try_infix_transform(node: captured)
                 Absent =>
@@ -254,17 +290,6 @@ fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
                     }
                   })
               }
-          }
-        Rejected { diagnostics: _ } =>
-          match parse_production_captured_child_optional(node: stripped) {
-            Present { value: captured } => body_lower_try_infix_transform(node: captured)
-            Absent =>
-              fold(stripped.children, init: Absent, f: fn(acc, e) {
-                match acc {
-                  Present { value: _ } => acc
-                  Absent => body_lower_try_infix_transform(node: e.target)
-                }
-              })
           }
       }
   }
