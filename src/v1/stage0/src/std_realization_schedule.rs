@@ -74,15 +74,6 @@ pub struct RealizationObjective {
     pub goals: Rc<Vec<AxisGoal>>,
 }
 
-pub fn witness_kind_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "WitnessKind is the declared kind fact for enrolled witnesses (design: docs/plans/interface-summary-declared-use-arity.md section 4). v0 carries exactly the two kinds with a live scheduling consumer: the corpus/execution partition in v2.workflow.ci_floor_plan (formerly a path-prefix convention, now a declared fact). Further kinds (lens-unit, scanner) land only when a consumer projects them; the host-scaffold/live-tree axis stays on the floor:host_scaffold marker authority (v2.workflow.affected_set_floor_runner) and is NOT a kind. Partition consumers must discriminate by exhaustive match, never by equality: a missed kind stamp is Value-absent at runtime, and an exhaustive match refuses loudly where an eq would silently return false.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -90,15 +81,6 @@ pub fn witness_kind_note() -> String {
 pub enum WitnessKind {
     CorpusWitnessKind,
     ExecutionWitnessKind,
-}
-
-pub fn witness_span_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "WitnessSpan declares which pipeline seam(s) a witness asserts (producer/consumer module-path pair grain). SpanUndeclared is the honest default for the existing population - typed absent, never fabricated. Consumers today: span well-formedness witnessing over the enrollment roster (gunbc.commit_workflow). The derivability/factorability refusal (a span witness derivable from the seam basis is redundant) waits on seam contracts (InterfaceSummary contract slots) and a segment-witness basis; until then span is a declared fact plus well-formedness, nothing more.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -302,15 +284,6 @@ pub enum NodeFrontierSelection {
     SelectionPredictOnly,
 }
 
-pub fn node_frontier_selection_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Affected-set selection mode for a discovery batch (signed design: docs/plans/affected-set-differential-falsifier.md, 2026-07-05). SelectionOff: no diff observation, every row runs. SelectionApplied: would-skip is computed AND applied (unaffected rows skip assumed-green). SelectionPredictOnly: would-skip is computed and RECORDED per row but every row still runs cold — the falsifier cadence compares predictions against cold verdicts; a predicted-unaffected row that runs red is a counted divergence naming a missing selection edge. Formerly a Bool (skip_unaffected_node_frontier), which could not express predict-without-apply; two Bools would conflate the state space.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn node_frontier_selection_eq(
     left: NodeFrontierSelection,
     right: NodeFrontierSelection,
@@ -355,15 +328,6 @@ pub enum Runnable {
     RunnableKernelWorkload {
         fused_op_count: i64,
     },
-}
-
-pub fn runnable_kernel_workload_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "dissolve-on: execution lane attaches extdeps.languages kernel_surface rows to RunnableKernelWorkload when fused_op_count alone is insufficient; op_count is structural on substrate (not a string-label nickname).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;

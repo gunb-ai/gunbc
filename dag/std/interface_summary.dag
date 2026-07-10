@@ -1,6 +1,8 @@
 module std.interface_summary
 
 import std.types { ContentHash, NonEmptyStr, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
 
 type InterfaceHash = ContentHash where brand("InterfaceHash")
@@ -29,7 +31,14 @@ type InterfaceSummary {
   interface_hash: InterfaceHash
 }
 
-data interface_summary_v0_dissolution_trigger: String = "dissolve-on: semantic contract slot (FLAG D) populates per-seam as P formulas ground; signature-only v0 is the interim carrier. Per-declaration export grain + module rollup hash (FLAG B)."
+data interface_summary_v0_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.interface_summary",
+    decl_name: "export_entry_fingerprint",
+    field: WholeDeclaration
+  }
+}
 
 fn signature_contract(signature: SignatureFingerprint) -> InterfaceContract {
   SignatureContract { signature: signature }
