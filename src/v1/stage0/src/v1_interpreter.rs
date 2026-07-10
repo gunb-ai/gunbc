@@ -2730,28 +2730,76 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         pure_call_memo_put(ctx, &fn_node, key, &args, result.clone());
         return Ok(result);
     }
-    if eval_recompute_trace_enabled() && fn_node.uses.is_empty() {
-        return match eval_recompute_key(ctx, &fn_node, &args) {
-            Some(key) => {
-                let started = Instant::now();
-                let result = call_function(ctx, &fn_node, &args, env);
+    if fn_node.uses.is_empty() {
+        return eval_pure_named_call(ctx, node, &fn_node, &func_name, &args, env);
+    }
+    call_function(ctx, &fn_node, &args, env)
+}
+
+/// Pure named-fn calls flow through here: the demand ledger records every
+/// keyed call, and the eval-frame memo (the ladder's single-site discharge
+/// provider) serves repeated demands from the first evaluation. A memo hit
+/// still records the DEMAND in the ledger — plurality is the fact the receipt
+/// counts; the provider changes its cost, never its count. Soundness: the memo
+/// is hash-bucketed on the ledger key but serves only after the stored call's
+/// argument names AND values verify equal (Value::eq, the one equality
+/// authority) — a hash collision degrades to recompute, never to a wrong
+/// value. Unkeyed calls (closure args) stay unmemoized and are counted.
+fn eval_pure_named_call(
+    ctx: &InterpContext,
+    call_node: &Rc<Node>,
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> InterpResult<Value> {
+    let trace_on = eval_recompute_trace_enabled();
+    let memo_on = eval_call_memo_enabled();
+    if !trace_on && !memo_on {
+        return call_function(ctx, fn_node, args, env);
+    }
+    let started = Instant::now();
+    let key = match eval_recompute_key(ctx, fn_node, args) {
+        Some(key) => key,
+        None => {
+            if trace_on {
+                eval_recompute_record_unkeyed(ctx, func_name);
+            }
+            return call_function(ctx, fn_node, args, env);
+        }
+    };
+    if memo_on {
+        if let Some(v) = eval_call_memo_get(ctx, &key, args) {
+            if trace_on {
                 eval_recompute_record(
                     ctx,
-                    node,
-                    &fn_node,
-                    &func_name,
+                    call_node,
+                    fn_node,
+                    func_name,
                     key,
                     started.elapsed().as_nanos(),
                 );
-                result
             }
-            None => {
-                eval_recompute_record_unkeyed(ctx, &func_name);
-                call_function(ctx, &fn_node, &args, env)
-            }
-        };
+            return Ok(v);
+        }
     }
-    call_function(ctx, &fn_node, &args, env)
+    let result = call_function(ctx, fn_node, args, env);
+    if memo_on {
+        if let Ok(v) = &result {
+            eval_call_memo_put(ctx, fn_node, key.clone(), args, v.clone());
+        }
+    }
+    if trace_on {
+        eval_recompute_record(
+            ctx,
+            call_node,
+            fn_node,
+            func_name,
+            key,
+            started.elapsed().as_nanos(),
+        );
+    }
+    result
 }
 
 fn eval_fold_list_native(
