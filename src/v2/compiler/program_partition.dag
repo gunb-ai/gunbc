@@ -242,6 +242,14 @@ fn partition_snoc_user_semantic_type_unique(
   }
 }
 
+fn partition_is_grammar_projection_symbol(sym: Symbol) -> Bool {
+  (sym == ^grammar_production_identity_node_projection)
+    || (sym == ^grammar_production_captured_node_projection)
+    || (sym == ^grammar_sequence_left_node_projection)
+    || (sym == ^grammar_sequence_right_node_projection)
+    || (sym == ^grammar_optional_element_node_projection)
+}
+
 fn partition_first_positional_atom_identity(root: Node) -> Optional<Symbol> {
   match root.kind {
     TypeNode { connective: Conj } =>
@@ -280,24 +288,57 @@ fn partition_type_decl_surface_name(root: Node) -> Optional<Symbol> {
   }
 }
 
+fn partition_type_decl_name_search_subtree(root: Node) -> Optional<Symbol> {
+  match partition_type_decl_surface_name(root: root) {
+    Present { value: name } => optional_present(value: name)
+    Absent =>
+      match root.kind {
+        TypeNode { connective: Conj } =>
+          fold(
+            root.children,
+            init: Absent,
+            f: fn(acc, edge) {
+              match acc {
+                Present { value: _ } => acc
+                Absent => partition_type_decl_name_search_subtree(root: edge.target)
+              }
+            }
+          )
+        _ => Absent
+      }
+  }
+}
+
 fn partition_collect_user_semantic_type_edge(
   acc: List<PartitionUserSemanticType>,
   edge: Edge
 ) -> List<PartitionUserSemanticType> {
   match edge.label {
     Named { name: sym } =>
-      match partition_semantic_type_from_decl_target(target: edge.target) {
-        Present { value: semantic } =>
-          partition_snoc_user_semantic_type_unique(
-            acc: acc,
-            item: PartitionUserSemanticType { name: sym, semantic: semantic }
-          )
-        Absent => acc
+      if partition_is_grammar_projection_symbol(sym: sym) {
+        acc
+      } else {
+        match partition_semantic_type_from_decl_target(target: edge.target) {
+          Present { value: semantic } =>
+            match partition_type_decl_name_search_subtree(root: edge.target) {
+              Present { value: name } =>
+                partition_snoc_user_semantic_type_unique(
+                  acc: acc,
+                  item: PartitionUserSemanticType { name: name, semantic: semantic }
+                )
+              Absent =>
+                partition_snoc_user_semantic_type_unique(
+                  acc: acc,
+                  item: PartitionUserSemanticType { name: sym, semantic: semantic }
+                )
+            }
+          Absent => acc
+        }
       }
     Positional =>
       match partition_semantic_type_from_decl_target(target: edge.target) {
         Present { value: semantic } =>
-          match partition_type_decl_surface_name(root: edge.target) {
+          match partition_type_decl_name_search_subtree(root: edge.target) {
             Present { value: name } =>
               partition_snoc_user_semantic_type_unique(
                 acc: acc,
@@ -770,7 +811,7 @@ fn partition_module_semantic_type_decl_for_target(
       ) {
         Present { value: decl } => optional_present(value: decl)
         Absent =>
-          match partition_type_decl_surface_name(root: target) {
+          match partition_type_decl_name_search_subtree(root: target) {
             Present { value: name } =>
               optional_present(
                 value: PartitionUserSemanticType { name: name, semantic: semantic }
