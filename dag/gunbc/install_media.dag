@@ -12,8 +12,6 @@ import std.upsert_decision {
   Apply,
 }
 
-data install_media_doc: String = "Seeded install-media observation→verdict→plan (gunbc workflow policy). Not std — ISO remaster/fetch/replace semantics live here, not in universal resource namespace."
-
 type SeededInstallMediaObservation
   = MediaAbsent
   | MediaConverged

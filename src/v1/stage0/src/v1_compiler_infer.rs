@@ -818,15 +818,6 @@ pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option
     }
 }
 
-pub fn variant_owner_node_authority() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Constructor-owner ruling (DESIGN resolver-graph-major §1c, 2026-07-04): a constructor literal's owner is the BINDING EDGE — scope.locals binds the arm name to its owning coproduct node at env construction (local declaration or direct import), so owner lookup is O(1) map_get + dealias. No whole-environment scan, no expected-type owner-picking, no name round-trip through lookup_type_by_name (the owner node rides the binding even when the enum's name is not itself visible). Unbound constructor literal = UnresolvedType error; two visible owners for one arm name = VariantCollision at env construction.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn variant_owner_node(scope: Rc<InferScope>, name: String) -> Option<Rc<Node>> {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(binding) => match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
@@ -898,15 +889,6 @@ pub fn type_mismatch_error(
         }),
         module_name.clone(),
     )
-}
-
-pub fn optional_coproduct_field_shape_predicate_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟡 dissolve-on: field_type_is_optional_coproduct + rejects_string_for_optional_coproduct_field — CardOptional+Disj Bool predicates over lookup_type_for-resolved shape; ground as inhabitable OptionalCoproduct in std_types at v2 regen.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rejects_string_for_optional_coproduct_field(
@@ -5658,15 +5640,6 @@ pub fn expand_alias_chain_for_field_access(
             }
         }
     }
-}
-
-pub fn expand_type_for_field_access_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟡 dissolve-on: parallel alias/inferred chase to expand_type_for_field_access — unify with 04_resolve.dag resolve_scrutinee_type_node once regen lands.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn expand_type_for_field_access_with_seen(
@@ -15068,15 +15041,6 @@ pub fn direct_import_exporter_count(
         __result
     })
     .len() as i64)
-}
-
-pub fn local_authority_for_name_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟡 dissolve-on: single-exporter rewire canonical picks last TypedModule in compilation list (filter then last); multi-exporter names skip rewire and defer to merge_type_env_cache overlay-wins — ground on import-order authority at v2 regen.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rewire_inherited_str_binding(

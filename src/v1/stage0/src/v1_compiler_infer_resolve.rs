@@ -119,15 +119,6 @@ pub fn lookup_unit_variant_phantom_type(
     }
 }
 
-pub fn phantom_match_flat_scope() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Constructor-owner ruling (§1c): the nullary-variant-as-type fallback searches the FLAT visible set — the module's own str_bindings plus its direct parents' str_bindings, one level, never the recursive ancestry flatten. Unique match resolves; anything else falls through to the UnresolvedType error at the caller (fail-closed).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn collect_unit_variant_phantom_matches(
     env: Rc<TypeEnv>,
     variant_name: String,
@@ -196,15 +187,6 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
         match_pattern: structural.match_pattern.clone(),
         expr_data: structural.expr_data.clone(),
     })
-}
-
-pub fn transparent_primitive_alias_rhs_dissolution_trigger() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟢 intentional: resolve-side predicate for kernel-type transparent alias RHS — skip nominal re-brand in preserve_nominal_brand_on_resolve / peel_nominal_alias_identity until ParamKind partition lands.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn is_transparent_primitive_alias_rhs(

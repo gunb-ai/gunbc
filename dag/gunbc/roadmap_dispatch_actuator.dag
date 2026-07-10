@@ -44,10 +44,17 @@ import extdeps.tmux {
   shape_tmux_kill_session_argv,
 }
 import extdeps.llm.cli { shape_claude_invoke_argv }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data roadmap_dispatch_actuator_doc: String = "M2 dispatch actuator model: brief fill, worktree+tmux+claude argv construction (bound to extdeps git/tmux/claude interface shapes; this module supplies policy parameters only), tmux session lease (session_lease classifier discipline — observation carries facts only), tmux ls parse, stop. Pure folds — spec docs/plans/dispatch-maintain-cc.md."
-
-data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: String = "🟡 dissolve-on: tmux-ls name-only lease observation — SessionNameObserved yields UnknownRefused (fail-closed) until dispatch_tmux_process_fingerprint observation transport binds pgrep/cmdline facts into SessionObserved.process_fingerprint; DISSOLVES WHEN M3/M4 wires HostExecArgv receipt rows (tmux capture-pane or ps) feeding classify_dispatch_lease_upsert so Conflict/Drifted/Converged are reachable from observed facts"
+data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_dispatch_actuator",
+    decl_name: "classify_dispatch_lease_upsert",
+    field: WholeDeclaration
+  }
+}
 
 data dispatch_repo: String = "gunbc"
 data dispatch_worktree_root: String = "/opt/gunbc/dispatch-worktrees"

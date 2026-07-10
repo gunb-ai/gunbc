@@ -14,8 +14,6 @@ import v2.std.grammar { ModeledGrammar, ParseGrammar, VoidGrammar }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data s1_closure_receipt_note: String = "S1 self-hosting receipt: v2's own front half (tokenize -> parse -> normalize, interpreted) accepts every file in the parse pipeline's transitive import closure -- the union of import closures rooted at 01_tokenize, 02_parse, 03_normalize, and extdeps/languages/dag (the language model). That set IS 'v2's parser parsing itself': every module the parser needs in order to exist. This harness's OWN loader closure is wider (extdeps.filesystem.filesystem_io and its uri/types subtree, imported here only to read the subject files at test time) -- that plumbing is test infrastructure, not part of the parser, and is deliberately not in the subject; the subject rows are the pipeline-rooted closure, drift-checkable by re-deriving the import BFS from those four roots. The grammar is validated ONCE per run (parse_module revalidates per call, a ~20s/file base this harness amortizes away). Fail-closed: a Void or invalid grammar fails every path, a Rejected stage fails that path by name; the claim is failures == []."
-
 data s1_closure_paths: List<String> = [
   "dag/std/algebra.dag",
   "dag/std/error_primitives.dag",

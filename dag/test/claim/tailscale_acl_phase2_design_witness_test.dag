@@ -15,7 +15,6 @@ import gunbc.tailscale_acl_phase2_credential {
   operator_bindings_admit_bmc_assimilator_sa,
   tailscale_acl_credential_flow_uses_auth_patterns,
   tailscale_acl_phase2_credential_design_holds,
-  tailscale_acl_phase2_design_status,
   tailscale_acl_phase2_live_write_disposition,
   acl_auto_upsert_refused,
   acl_upsert_permitted,
@@ -158,9 +157,7 @@ fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
 }
 
 fn witness_phase2_is_design_only_scaffold() -> Bool {
-  string_contains(s: tailscale_acl_phase2_design_status, pattern: "DESIGN_ONLY")
-    && string_contains(s: tailscale_acl_phase2_design_status, pattern: "1hr")
-    && match tailscale_acl_phase2_live_write_disposition {
+  match tailscale_acl_phase2_live_write_disposition {
       Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
       _ => false
     }

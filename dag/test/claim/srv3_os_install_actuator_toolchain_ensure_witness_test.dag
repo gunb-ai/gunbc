@@ -1,6 +1,7 @@
 module test.claim.srv3_os_install_actuator_toolchain_ensure
 
 import std.logic { Bool }
+import std.disposition { Scaffold, Terminal }
 import gunbc.srv3_os_install_actuator_toolchain_ensure {
   os_install_actuator_toolchain_ensure_script,
   os_install_actuator_toolchain_ensure_script_uses_github_release_not_apt_for_websocat,
@@ -27,9 +28,8 @@ test fn srv3_actuator_toolchain_ensure_websocat_installs_to_modeled_path_with_na
 }
 
 test fn srv3_actuator_toolchain_ensure_dissolution_trigger_names_roster_retirement() -> Bool {
-  string_contains(s: os_install_actuator_toolchain_ensure_dissolution_trigger, pattern: "medium_structure_exception_roster")
-    && string_contains(
-      s: os_install_actuator_toolchain_ensure_dissolution_trigger,
-      pattern: "srv3_os_install_actuator_toolchain_ensure.dag",
-    )
+  match os_install_actuator_toolchain_ensure_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }

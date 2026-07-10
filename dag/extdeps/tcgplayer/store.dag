@@ -1,6 +1,8 @@
 module extdeps.tcgplayer.store
 
 import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, NamedField }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
@@ -16,8 +18,6 @@ type StoreInventoryUpdateResponse {
   success: Bool?
   errors: List<String>?
 }
-
-data tcgplayer_store_money_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: UpdateSkuPrice price input is a bare USD Float pending value-Measure grounding on std.measure MoneyAmountMicro. BLOCKED on the numeric-tower decimal <-> money_amount_micro conversion std lacks today (the store encode seam needs Nat micros -> decimal string, and there is no Nat div/mod primitive to format it). Wire-fidelity Float is the reviewer-sanctioned transport-seam representation until it lands. See gunbc.tools.card_intake tcgplayer_money_measure_grounding_dissolution_trigger for the shared gate. DISSOLVES WHEN std.measure gains that conversion and the price input lifts to MoneyAmountMicro encoded to decimal at the seam."
 
 data structural_coverage_gap_store_operations_residual: List<String> = [
   "modeled operations cover sku price and quantity updates for an authenticated store; the",
@@ -83,5 +83,14 @@ service tcgplayer.Store {
       404 => TcgplayerErrorEnvelope
       5xx => TcgplayerErrorEnvelope
     }
+  }
+}
+
+data tcgplayer_store_money_measure_grounding_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.tcgplayer.store",
+    decl_name: "UpdateSkuPrice",
+    field: NamedField { field_name: "price" }
   }
 }

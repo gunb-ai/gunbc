@@ -32,8 +32,6 @@ data gunbc_runner_slot_allocation_authority_disposition: Disposition = Terminal 
   reason: "Single authority for srv1/srv2 runner-slot desired allocation (operator brief 2026-07-05): 8 cores · 8GiB MemoryMax · 32GiB MemorySwapMax · 10 slots/host · static oversubscription policy (Σ per-slot MemoryMax may exceed runner_slice_cap — expressed and checked, not silent). Downstream: gunbc.ci_floor_measurement (declared vs live cap fork), gunbc.ci_runner_placement, gunbc.host_converge, gunbc.runner_slot_enforcement, gunbc.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
 }
 
-data gunbc_runner_slot_oversubscription_policy: String = "static: ten slots × 8GiB per-slot MemoryMax = 80GiB declared demand vs 80GiB runner_slice_cap on 128c/125GiB hosts — intentional full utilization; admission backpressure is labels/slots, not Σ≤slice silently assumed."
-
 fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
   RunnerSlotDesired {
     memory_max: byte_size(8589934592),

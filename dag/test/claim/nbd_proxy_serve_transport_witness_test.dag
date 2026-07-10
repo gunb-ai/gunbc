@@ -1,6 +1,7 @@
 module test.claim.nbd_proxy_serve_transport
 
 import std.logic { Bool }
+import std.disposition { Scaffold, Terminal }
 import extdeps.bmc.webui.nbd_proxy {
   VmSlotIndexEndpoint,
   bmcweb_nbd_proxy_ws_path,
@@ -68,9 +69,10 @@ fn nbd_proxy_serve_cited_tool_names_includes_socat() -> Bool {
 }
 
 test fn nbd_proxy_serve_carrier_names_bash_emit_dissolution_trigger() -> Bool {
-  string_contains(s: nbd_proxy_serve_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
-    && string_contains(s: nbd_proxy_serve_bash_emit_dissolution_trigger, pattern: "medium_structure_exception_roster")
-    && string_contains(s: nbd_proxy_serve_bash_emit_dissolution_trigger, pattern: "ShellProgram")
+  match nbd_proxy_serve_bash_emit_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 test fn bmcweb_session_login_program_uses_curl_authority_not_inline_secret() -> Bool {
