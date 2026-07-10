@@ -43,6 +43,7 @@ import v2.std.node {
   Bind,
   ComputationNode,
   Conj,
+  Disj,
   Edge,
   Named,
   Node,
@@ -54,6 +55,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   fold_node,
+  node_subtree_nodes,
   node_with_occurrence_id,
   well_formed
 }
@@ -134,9 +136,35 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
 }
 
 fn harvest_direct_atom_binding(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
-  fold_node(
-    n: root,
-    algebra: direct_atom_binding_fold(base: acc)
+  fold(
+    node_subtree_nodes(root: root),
+    init: acc,
+    f: fn(a, n) {
+      match n.kind {
+        TypeNode { connective: Atom { identity: sym } } =>
+          map_insert(m: a, key: sym, value: sym)
+        _ => a
+      }
+    }
+  )
+}
+
+fn harvest_disj_variant_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  fold(
+    node_subtree_nodes(root: root),
+    init: acc,
+    f: fn(a, n) {
+      match n.kind {
+        TypeNode { connective: Disj } =>
+          fold(n.children, init: a, f: fn(a2, e) {
+            match e.label {
+              Named { name: sym } => map_insert(m: a2, key: sym, value: sym)
+              Positional => a2
+            }
+          })
+        _ => a
+      }
+    }
   )
 }
 
@@ -193,7 +221,10 @@ fn namespace_bindings_augment_from_module_atoms(
   root: Node,
   bindings: Map<Symbol, Symbol>
 ) -> Map<Symbol, Symbol> {
-  harvest_direct_atom_binding(root: root, acc: bindings)
+  harvest_disj_variant_bindings(
+    root: root,
+    acc: harvest_direct_atom_binding(root: root, acc: bindings)
+  )
 }
 
 fn scope_from_namespace(namespace: Namespace) -> Scope {
