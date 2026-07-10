@@ -91,7 +91,6 @@ type ResolveContext {
   namespace: Namespace
   policy: NameResolutionPolicy
   position: QualifiedName
-  expected: Optional<Node>
   lm: LanguageModel
   under_module_root: Bool
 }
@@ -260,7 +259,6 @@ fn resolve_ctx_init(
     namespace: namespace,
     policy: policy,
     position: namespace.module_qn,
-    expected: optional_absent(),
     lm: lm,
     under_module_root: false
   }
@@ -272,7 +270,6 @@ fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
     namespace: ctx.namespace,
     policy: ctx.policy,
     position: ctx.position,
-    expected: ctx.expected,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root
   }
@@ -284,19 +281,6 @@ fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveCon
     namespace: ctx.namespace,
     policy: ctx.policy,
     position: qualified_name_snoc(qn: ctx.position, segment: segment),
-    expected: ctx.expected,
-    lm: ctx.lm,
-    under_module_root: ctx.under_module_root
-  }
-}
-
-fn resolve_ctx_with_expected(ctx: ResolveContext, expected: Optional<Node>) -> ResolveContext {
-  ResolveContext {
-    scope: ctx.scope,
-    namespace: ctx.namespace,
-    policy: ctx.policy,
-    position: ctx.position,
-    expected: expected,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root
   }
@@ -308,7 +292,6 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
     namespace: ctx.namespace,
     policy: ctx.policy,
     position: ctx.position,
-    expected: ctx.expected,
     lm: ctx.lm,
     under_module_root: under_module_root
   }

@@ -8,7 +8,7 @@ import v2.compiler.resolve {
   scope_from_namespace
 }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { empty_map, optional_absent }
+import v2.std.collection { empty_map }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -52,7 +52,6 @@ fn policy_pilot_resolve_yes(
       namespace: namespace,
       policy: policy,
       position: position,
-      expected: optional_absent(),
       lm: dag_language_model(),
       under_module_root: true
     },
