@@ -10,6 +10,7 @@ import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
 import gunbc.ci_spec {
   CiSpec, DiffPolicy, DiffMergeBase, Gate, RustMonolithGate,
   gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates, gunbc_ci_rust_job_gates,
+  gunbc_ci_regen_floor_gates,
   ci_release_features,
   scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
   ci_release_build_script, gunbc_ci_rust_job_run, gunbc_ci_rust_gate_only_script, ci_floor_build_verify_script,
@@ -26,6 +27,7 @@ data reflect_gate_type: Symbol = ^Gate
 data spec_alternate_notice: CiSpec = {
   gates: [],
   witness_entries: [],
+  discovery_scan_dirs: [],
   diff_policy: {
     base: "upstream/dev",
     head: "HEAD",
@@ -96,7 +98,7 @@ fn witness_gate_roster_matches_coproduct_arms() -> Bool {
   match coproduct_nullary_inhabitants(type_name: reflect_gate_type) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       bag_eq(
-        xs: gate_arm_symbols(gates: gunbc_ci_gates),
+        xs: gate_arm_symbols(gates: concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates)),
         ys: arm_keys,
         eq: symbol_eq
       ) && bag_eq(
