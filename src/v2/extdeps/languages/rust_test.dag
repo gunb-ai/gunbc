@@ -122,6 +122,7 @@ import v2.extdeps.languages.rust {
   rust_sg_rc_use_site_ownership_catalog,
   rust_source_text_authority,
   rust_target_model_bundle_core,
+  rust_target_model_node,
   rust_target_model_core_edges_with_operators,
   rust_type_expression_projection_bundle_node,
   rust_value_expression_projection,
@@ -3461,5 +3462,58 @@ fn rust_type_alias_decl_structural_target_model() -> TargetModel {
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+data rust_std_logic_witness_truth_table_bits: Int = 454
+
+data rust_std_logic_witness_truth_table_wrong_bits: Int = 455
+
+data rust_std_logic_witness_emit_host_main_suffix: String = "\n\nfn std_logic_witness_enc(c: Classical) -> i32 {\n    match c {\n        Classical::True => 1,\n        Classical::False => 0,\n    }\n}\n\nfn main() {\n    let mut bits: i32 = 0;\n    bits |= std_logic_witness_enc(classical_not(Classical::True)) << 0;\n    bits |= std_logic_witness_enc(classical_not(Classical::False)) << 1;\n    bits |= std_logic_witness_enc(classical_and(Classical::True, Classical::True)) << 2;\n    bits |= std_logic_witness_enc(classical_and(Classical::True, Classical::False)) << 3;\n    bits |= std_logic_witness_enc(classical_and(Classical::False, Classical::True)) << 4;\n    bits |= std_logic_witness_enc(classical_and(Classical::False, Classical::False)) << 5;\n    bits |= std_logic_witness_enc(classical_or(Classical::True, Classical::True)) << 6;\n    bits |= std_logic_witness_enc(classical_or(Classical::True, Classical::False)) << 7;\n    bits |= std_logic_witness_enc(classical_or(Classical::False, Classical::True)) << 8;\n    bits |= std_logic_witness_enc(classical_or(Classical::False, Classical::False)) << 9;\n    let bytes = [\n        0u8,\n        (bits & 0xff) as u8,\n        ((bits >> 8) & 0xff) as u8,\n        ((bits >> 16) & 0xff) as u8,\n        ((bits >> 24) & 0xff) as u8,\n    ];\n    let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes);\n}\n"
+
+fn rust_std_logic_witness_host_transport_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^rust_host_transport_std_logic_witness_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "Cargo.toml",
+        content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "src/main.rs",
+        content: EmittedWithSuffix { suffix: rust_std_logic_witness_emit_host_main_suffix }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        tool: ^host_tool_cargo,
+        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+      }
+    ],
+    run: ProcessInvocation {
+      tool: ^host_tool_cargo,
+      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn rust_std_logic_witness_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_std_logic_witness_host_transport_descriptor(),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn rust_std_logic_witness_target_model_staging() -> TargetModel {
+  TargetModel {
+    bundle: rust_target_model_node(),
+    lex: rust_fn_add_lex(),
+    binding_spellings: rust_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_source_text_authority(),
+    runtime_row: rust_std_logic_witness_runtime_row()
   }
 }

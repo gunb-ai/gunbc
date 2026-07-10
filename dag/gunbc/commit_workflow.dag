@@ -158,6 +158,24 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/self_host/std_logic_emit_probe_test.dag",
+      check_fns: ["std_logic_emit_probe_all_holds"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/execution/std_logic_behavioral_selfhost_witness_test.dag",
+      check_fns: ["std_logic_behavioral_selfhost_all_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
     check: CommitCargoFmtCheck,
     surfaces: [GitPrePushHook]
   }
