@@ -193,6 +193,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "dag/test/claim/floor_materialization_witness_test.dag",
+      check_fns: [
+        "floor_index_build_share_is_shared_by_reference",
+        "floor_index_build_has_plural_readers",
+        "floor_index_build_reds_without_reference_provider"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: doc_reachability_witness_entry,
       check_fns: ["doc_graph_has_no_orphan_docs", "doc_graph_has_no_dangling_links"],
       kind: CorpusWitnessKind,
