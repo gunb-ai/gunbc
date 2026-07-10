@@ -5806,6 +5806,7 @@ fn entry_text_indicates_live_host_scan(text: &str) -> bool {
         || text.contains("layer_import_facts")
         || text.contains("_live(")
         || text.contains("_facts_live(")
+        || text.contains("filesystem_read")
 }
 
 fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> bool {
@@ -5826,6 +5827,57 @@ fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> b
     false
 }
 
+/// Closure-wide live-host-scan classification (fix for the cross-FILE fail-open found by
+/// eager-ram-612, 2026-07-10): the file-wide scan above enforces its fail-closed contract
+/// only within ONE file's text, so a live read behind an import (entry → helper with
+/// `filesystem_read`) classified as selection-eligible — the same absorbing shape as the
+/// deleted `entry_file_touched` widen, ignorance read from too-narrow a surface and
+/// answered as if certain. The signal scan now walks the entry's import closure over the
+/// SAME dependency-closure abstraction the `entry_file_touched` decision uses
+/// (`facts.adjacency` — edge source isolated for the container.member migration, see
+/// `dependency_edge_source_migration_note`), with a per-file memo so each file is read
+/// and scanned once per shard. A closure member that cannot be read is a typed refusal,
+/// never a silent selection-eligible reclassification.
+fn closure_indicates_live_host_scan_with(
+    entry_path: &str,
+    adjacency: &HashMap<String, Vec<String>>,
+    signal_memo: &mut HashMap<String, bool>,
+    read_member: impl Fn(&str) -> Result<String, String>,
+) -> Result<bool, String> {
+    for member in import_closure_from_adjacency(entry_path, adjacency) {
+        if let Some(&hit) = signal_memo.get(&member) {
+            if hit {
+                return Ok(true);
+            }
+            continue;
+        }
+        let text = read_member(&member)?;
+        let hit = entry_text_indicates_live_host_scan(&text);
+        signal_memo.insert(member, hit);
+        if hit {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn closure_indicates_live_host_scan(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    signal_memo: &mut HashMap<String, bool>,
+) -> Result<bool, String> {
+    closure_indicates_live_host_scan_with(entry_path, &facts.adjacency, signal_memo, |member| {
+        let abs = workspace_root().join(member);
+        std::fs::read_to_string(&abs).map_err(|e| {
+            format!(
+                "failed to read closure member {member} for host-scaffold classification: \
+                 {e} — a live-tree signal cannot be ruled out for an unreadable file; \
+                 refusing rather than reclassifying selection-eligible"
+            )
+        })
+    })
+}
+
 fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
     std::fs::read_to_string(entry).map_err(|e| {
         format!(
@@ -5835,10 +5887,16 @@ fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
     })
 }
 
-fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> Result<bool, String> {
+fn discovery_rows_include_host_scaffold(
+    rows: &[DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+) -> Result<bool, String> {
+    let mut signal_memo: HashMap<String, bool> = HashMap::new();
     for row in rows {
         let content = read_entry_content_for_host_scaffold(&row.entry)?;
-        if witness_test_fn_uses_live_host_scan(&content, &row.function) {
+        if witness_test_fn_uses_live_host_scan(&content, &row.function)
+            || closure_indicates_live_host_scan(&row.entry, facts, &mut signal_memo)?
+        {
             return Ok(true);
         }
     }
@@ -6262,7 +6320,7 @@ pub fn run_discovery_corpus_with_options(
     // selected subset or it overcounts the resident set.
     let pre_resolve_closure_nodes = {
         let prefix_entries: &[&str] = if selection_enabled {
-            &[FLOOR_RUNNER_ENTRY, ENTRY_SELECTION_ENTRY]
+            &[FLOOR_RUNNER_ENTRY]
         } else {
             &[]
         };
@@ -6321,24 +6379,9 @@ pub fn run_discovery_corpus_with_options(
     } else {
         None
     };
-    let entry_selection_ctx = if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
-        match resolve_entry_with_index(&index, ENTRY_SELECTION_ENTRY) {
-            Ok((graph, source_indices)) => {
-                Some(make_eval_context(&graph, source_indices, execution_mode))
-            }
-            Err(msg) => {
-                return Err(format!(
-                    "entry_selection resolve failed ({msg}) — a non-Off node_frontier_selection \
-                     declares the DependencyView entry selector ({ENTRY_SELECTION_ENTRY}) \
-                     and it must resolve; no silent full-corpus fallback"
-                ));
-            }
-        }
-    } else {
-        None
-    };
     let skip_precompute = if skip_enabled {
-        let host_scaffold_corpus = discovery_rows_include_host_scaffold(&rows)?;
+        let host_scaffold_corpus =
+            discovery_rows_include_host_scaffold(&rows, &index.module_graph_facts)?;
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
                 let precompute = if host_scaffold_corpus {
@@ -6404,7 +6447,6 @@ pub fn run_discovery_corpus_with_options(
             &changed_paths,
             &diff_edits,
             floor_runner_ctx.as_ref(),
-            entry_selection_ctx.as_ref(),
             whole_tree_published_keys.clone(),
         )?;
         // Definition-drift oracle (single-authority reconciliation, executable): on a
@@ -6473,22 +6515,6 @@ pub fn run_discovery_corpus_with_options(
             } else {
                 None
             };
-            let entry_selection = if selection_for_shards != NodeFrontierSelectionMode::Off {
-                match resolve_entry_with_index(&index, ENTRY_SELECTION_ENTRY) {
-                    Ok((graph, source_indices)) => {
-                        Some(make_eval_context(&graph, source_indices, execution_mode))
-                    }
-                    Err(msg) => {
-                        return Err(format!(
-                            "entry_selection resolve failed in shard ({msg}) — declared \
-                             DependencyView entry selector must resolve; no silent \
-                             run-everything fallback"
-                        ));
-                    }
-                }
-            } else {
-                None
-            };
             run_discovery_rows(
                 &shard_rows,
                 &index,
@@ -6497,7 +6523,6 @@ pub fn run_discovery_corpus_with_options(
                 &paths,
                 &seeds,
                 runner.as_ref(),
-                entry_selection.as_ref(),
                 keys,
             )
         }));
@@ -6589,7 +6614,6 @@ fn run_discovery_rows(
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
-    entry_selection_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
@@ -6608,20 +6632,21 @@ fn run_discovery_rows(
     };
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     // This shard's union closure, accumulated from the graphs it resolves. Seeded with the prefix
-    // contexts: the floor runner and entry-selection closures are resolved once per shard and their
-    // modules are resident for the shard's lifetime, so they are part of the memory this count is
-    // paired against. Row closures fold in below as each entry resolves.
+    // context: the floor runner closure is resolved once per shard and its modules are resident
+    // for the shard's lifetime, so they are part of the memory this count is paired against
+    // (the entry-selection prefix context was retired with the import-closure reground — the
+    // entry_file_touched decision now reads the module-graph facts, no interpreter context).
+    // Row closures fold in below as each entry resolves.
     let mut closure_modules: HashSet<String> = HashSet::new();
-    for prefix_ctx in [floor_runner_ctx, entry_selection_ctx]
-        .into_iter()
-        .flatten()
-    {
+    for prefix_ctx in [floor_runner_ctx].into_iter().flatten() {
         collect_typed_module_names(
             prefix_ctx.modules.iter().cloned(),
             &prefix_ctx.source_indices,
             &mut closure_modules,
         );
     }
+    // Existence set for the entry_file_touched refuse-vs-answer decision, built once per shard.
+    let module_graph_declared_paths = index.module_graph_facts.declared_repo_paths();
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
@@ -6629,6 +6654,8 @@ fn run_discovery_rows(
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_file_touched = true;
     let mut current_entry_content: String = String::new();
+    let mut current_entry_closure_live_scan = false;
+    let mut live_scan_signal_memo: HashMap<String, bool> = HashMap::new();
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
@@ -6680,23 +6707,12 @@ fn run_discovery_rows(
                 current_entry_file_touched = if touched_entry_paths.is_empty() {
                     false
                 } else {
-                    match entry_selection_ctx {
-                        Some(es_ctx) => entry_file_touched_via_dependency_view(
-                            es_ctx,
-                            &workspace_relative_repo_path(&row.entry),
-                            &pool_roots,
-                            &touched_entry_paths,
-                        )?,
-                        None => {
-                            return Err(format!(
-                                "entry_selection context missing for entry {} — \
-                                 a non-Off node_frontier_selection declares the DependencyView \
-                                 entry selector and it must resolve; no silent \
-                                 run-everything fallback",
-                                row.entry
-                            ));
-                        }
-                    }
+                    entry_file_touched_via_import_closure(
+                        &row.entry,
+                        &index.module_graph_facts,
+                        &module_graph_declared_paths,
+                        &touched_entry_paths,
+                    )?
                 };
             } else {
                 current_entry_frontier_nodes.clear();
@@ -6706,6 +6722,15 @@ fn run_discovery_rows(
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
             current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
+            current_entry_closure_live_scan = if skip_enabled {
+                closure_indicates_live_host_scan(
+                    &row.entry,
+                    &index.module_graph_facts,
+                    &mut live_scan_signal_memo,
+                )?
+            } else {
+                false
+            };
         }
         let function_edited = skip_enabled
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
@@ -6713,8 +6738,8 @@ fn run_discovery_rows(
             });
         let entry_file_touched = skip_enabled && current_entry_file_touched;
         let would_skip = if skip_enabled {
-            let host_scaffold_witness =
-                witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
+            let host_scaffold_witness = current_entry_closure_live_scan
+                || witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
             match floor_runner_ctx {
                 Some(runner_ctx) => {
                     let skip = if host_scaffold_witness {
@@ -6999,6 +7024,68 @@ new file mode 100644
             source,
             "also_pure"
         ));
+    }
+
+    // The cross-FILE discriminating pair (eager-ram-612's finding, 2026-07-10): a live
+    // read behind an IMPORT is invisible to the entry-file-text scan but must classify
+    // the entry host-scaffold via the closure walk. The first assertion documents the
+    // old behavior's hole (entry text alone says clean); the second is the fix.
+    #[test]
+    fn closure_scan_classifies_live_read_behind_import() {
+        let entry_src = "module probe\n\nimport helper { file_gate }\n\ntest fn probe_holds() -> Bool {\n  file_gate(path: \"x\")\n}\n";
+        let helper_src =
+            "module helper\n\nfn file_gate(path: String) -> Bool {\n  filesystem_read(path: path).length() > 0\n}\n";
+        // Hole in the entry-only scan: no signal in the entry's own text.
+        assert!(!super::witness_test_fn_uses_live_host_scan(
+            entry_src,
+            "probe_holds"
+        ));
+        let mut adjacency: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        adjacency.insert("probe_test.dag".to_string(), vec!["helper.dag".to_string()]);
+        let mut memo = std::collections::HashMap::new();
+        let read = |member: &str| -> Result<String, String> {
+            match member {
+                "probe_test.dag" => Ok(entry_src.to_string()),
+                "helper.dag" => Ok(helper_src.to_string()),
+                other => Err(format!("unexpected member {other}")),
+            }
+        };
+        assert!(super::closure_indicates_live_host_scan_with(
+            "probe_test.dag",
+            &adjacency,
+            &mut memo,
+            read
+        )
+        .unwrap());
+        // Clean closure stays kernel-eligible — the walk discriminates, it does not blanket.
+        let clean_helper = "module helper\n\nfn file_gate(path: String) -> Bool { true }\n";
+        let mut memo_clean = std::collections::HashMap::new();
+        let read_clean = |member: &str| -> Result<String, String> {
+            match member {
+                "probe_test.dag" => Ok(entry_src.to_string()),
+                "helper.dag" => Ok(clean_helper.to_string()),
+                other => Err(format!("unexpected member {other}")),
+            }
+        };
+        assert!(!super::closure_indicates_live_host_scan_with(
+            "probe_test.dag",
+            &adjacency,
+            &mut memo_clean,
+            read_clean
+        )
+        .unwrap());
+        // Unreadable member = typed refusal, never a silent selection-eligible answer.
+        let mut memo_err = std::collections::HashMap::new();
+        let read_err =
+            |_member: &str| -> Result<String, String> { Err("io: permission denied".to_string()) };
+        assert!(super::closure_indicates_live_host_scan_with(
+            "probe_test.dag",
+            &adjacency,
+            &mut memo_err,
+            read_err
+        )
+        .is_err());
     }
 
     #[test]
@@ -7643,16 +7730,16 @@ mod floor_witness_a_prove {
 // BLOCKED (unaffordable resolve); this receipt is re-scoped to MODULE grain, using the landed
 // `import_closure_live` authority (#6210/#6231).
 //
-// ORPHAN #6274 SCAFFOLD (lever-a slice 2 — NOT production): Live floor discovery
-// (`run_discovery_rows`, cli_run.rs:5923) exercises `entry_file_touched_via_dependency_view`
-// over `ENTRY_SELECTION_ENTRY` (`entry_affected_by_dependency_view`, DependencyView).
-// This harness intentionally keeps the superseded import-closure pair —
-// `entry_affected_by_touched_paths` (MODULE_GRAPH_ENTRY) vs Rust `import_closure_files_from_graph`
-// oracle — to prove #6274 decision-level agreement only. It does NOT certify production
-// selection after slice 2; a divergence in `entry_affected_by_dependency_view` would not
-// surface here (§5 specification-without-execution if mislabeled as production receipt).
-// DISSOLVES WHEN deliverable-3 DependencyView differential receipt lands (≥5 merged PR diffs,
-// `entry_affected_by_dependency_view` vs import-closure oracle); then retire this harness.
+// RE-PROMOTED TO PRODUCTION CERTIFICATION (2026-07-10, operator fork (c) — the #6335
+// partial unwind): live floor discovery's `entry_file_touched` is decided by
+// `entry_file_touched_via_import_closure` (module-graph import-closure grain over
+// `facts.adjacency`), so the pair this harness proves — the `.dag` authority
+// `entry_affected_by_touched_paths` (MODULE_GRAPH_ENTRY) vs the independent Rust oracle
+// (`touched_file_in_import_closure` over `import_closure_files_from_graph`) — is the
+// LIVE decision pair again. Between #6274 and the unwind this block was honestly labeled
+// an orphan scaffold ("does NOT certify production selection after slice 2"); that
+// framing dissolved with the unwind receipt (`entry_file_touched_grain_interim_note`,
+// v2.lens.affected_set.entry_selection). A divergence here is a production selection bug.
 //
 // SCAFFOLD: dissolves into a .dag execution witness when the discovery/diff seed plumbing
 // migrates off the v1 host layer (same trigger as `node_frontier_plumbing_controls` below,
@@ -7758,7 +7845,8 @@ mod module_grain_affected_equivalence_tests {
     }
 
     /// #6274 orphan scaffold only — superseded import-closure query (`module_graph.dag`).
-    /// Production floor uses `entry_affected_by_dependency_view` via `ENTRY_SELECTION_ENTRY`.
+    /// The `.dag` authority side of the live decision pair (production floor realizes it
+    /// via `entry_file_touched_via_import_closure`; this harness certifies the pair).
     fn dag_entry_affected(
         ctx: &v1_interpreter::InterpContext,
         entry_rel: &str,

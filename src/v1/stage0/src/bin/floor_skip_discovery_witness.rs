@@ -107,8 +107,10 @@ fn run_injected_diff_roster(
 ) -> DiscoverySummary {
     let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// synthetic touch\n");
     let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
-    let _name_status =
-        EnvVarGuard::set("GUNBC_CI_DIFF_NAME_STATUS", &injected_name_status_modify(rel_path));
+    let _name_status = EnvVarGuard::set(
+        "GUNBC_CI_DIFF_NAME_STATUS",
+        &injected_name_status_modify(rel_path),
+    );
     run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
         &[],
@@ -128,8 +130,10 @@ fn run_injected_diff_roster_with_mode(
 ) -> DiscoverySummary {
     let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// synthetic touch\n");
     let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
-    let _name_status =
-        EnvVarGuard::set("GUNBC_CI_DIFF_NAME_STATUS", &injected_name_status_modify(rel_path));
+    let _name_status = EnvVarGuard::set(
+        "GUNBC_CI_DIFF_NAME_STATUS",
+        &injected_name_status_modify(rel_path),
+    );
     run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
         &[],

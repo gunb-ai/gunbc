@@ -19,6 +19,8 @@ type ImportResolutionFact {
   target_declared: Bool
 }
 
+data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today the module dependency relation is realized from IMPORT declarations (import_resolution_facts_live below; host twin build_import_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, THIS producer swaps to the reference-derived edge set and nothing above it changes: import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read edges as data, never import syntax). Do not add a second edge producer beside this one; the swap replaces it."
+
 fn import_resolution_facts_live(
   pool_roots: List<String>,
   importer_roots: List<String>,
