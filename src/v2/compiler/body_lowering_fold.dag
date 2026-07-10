@@ -296,28 +296,32 @@ fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
 }
 
 fn body_lower_try_fold_loop(node: Node) -> Optional<Node> {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
-      if id == ^dag_surface_primary_expr {
-        match fold_call_to_loop(fold_call: node) {
-          Accepted { value: loop_node, diagnostics: _ } => optional_present(value: loop_node)
-          Rejected { diagnostics: _ } => optional_absent()
-        }
-      } else if body_lower_is_pass_through_emitted(emitted: id) {
-        match parse_production_captured_child_optional(node: node) {
-          Present { value: captured } => body_lower_try_fold_loop(node: captured)
-          Absent => Absent
-        }
-      } else {
-        Absent
+  match fold_call_to_loop(fold_call: node) {
+    Accepted { value: loop_node, diagnostics: _ } => optional_present(value: loop_node)
+    Rejected { diagnostics: _ } =>
+      match parse_production_emitted_identity_optional(node: node) {
+        Present { value: id } =>
+          if id == ^dag_surface_primary_expr {
+            match parse_production_captured_child_optional(node: node) {
+              Present { value: captured } => body_lower_try_fold_loop(node: captured)
+              Absent => optional_absent()
+            }
+          } else if body_lower_is_pass_through_emitted(emitted: id) {
+            match parse_production_captured_child_optional(node: node) {
+              Present { value: captured } => body_lower_try_fold_loop(node: captured)
+              Absent => optional_absent()
+            }
+          } else {
+            optional_absent()
+          }
+        Absent =>
+          fold(node.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_try_fold_loop(node: e.target)
+            }
+          })
       }
-    Absent =>
-      fold(node.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => body_lower_try_fold_loop(node: e.target)
-        }
-      })
   }
 }
 
@@ -755,17 +759,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
         Absent =>
           match body_lower_try_fold_loop(node: captured) {
             Present { value: loop_node } => outcome_accepted(value: loop_node)
-            Absent =>
-              match body_lower_operand_ref_optional(node: captured) {
-                Present { value: ref } => outcome_accepted(value: ref)
-                Absent =>
-                  outcome_rejected(
-                    d: body_lower_diagnostic(
-                      reason: ^body_lowering_reason_unsupported_form,
-                      n: shell
-                    )
-                  )
-              }
+            Absent => outcome_accepted(value: shell)
           }
       }
   }

@@ -3,6 +3,7 @@ module v2.test.manual.body_lowering_normalize_add
 import v2.compiler.body_lowering_fold {
   body_lower_body_from_fn_captured,
   body_lower_domain_from_param_list,
+  body_lower_fn_decl_to_arrow,
   body_lower_return_type_from_fn_captured,
   body_lower_try_infix_transform,
   body_lower_unwrap_captured
@@ -308,6 +309,24 @@ fn body_lowering_return_holds() -> Bool {
           }
         Absent => false
       }
+  }
+}
+
+fn body_lowering_arrow_direct_well_formed() -> Bool {
+  match body_lowering_parsed_fn_decl() {
+    Absent => false
+    Present { value: fn_decl } =>
+      match body_lower_fn_decl_to_arrow(shell: fn_decl) {
+        Accepted { value: arrow, diagnostics: _ } => well_formed(n: arrow)
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn body_lowering_normalize_accepts() -> Bool {
+  match body_lowering_normalized_module() {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
