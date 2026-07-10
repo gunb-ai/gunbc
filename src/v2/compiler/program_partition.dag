@@ -242,6 +242,14 @@ fn partition_snoc_user_semantic_type_unique(
   }
 }
 
+fn partition_is_grammar_projection_symbol(sym: Symbol) -> Bool {
+  (sym == ^grammar_production_identity_node_projection)
+    || (sym == ^grammar_production_captured_node_projection)
+    || (sym == ^grammar_sequence_left_node_projection)
+    || (sym == ^grammar_sequence_right_node_projection)
+    || (sym == ^grammar_optional_element_node_projection)
+}
+
 fn partition_type_decl_is_keyword_atom(sym: Symbol) -> Bool {
   (sym == ^dag_token_kw_type)
     || (sym == ^dag_token_kw_data)
@@ -270,6 +278,12 @@ fn partition_first_type_decl_ident(root: Node) -> Optional<Symbol> {
                     TypeNode { connective: Conj } =>
                       partition_first_type_decl_ident(root: edge.target)
                     _ => acc
+                  }
+                Named { name: sym } =>
+                  if partition_is_grammar_projection_symbol(sym: sym) {
+                    partition_first_type_decl_ident(root: edge.target)
+                  } else {
+                    acc
                   }
                 _ => acc
               }
