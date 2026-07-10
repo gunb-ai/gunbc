@@ -3465,6 +3465,8 @@ fn rust_type_alias_decl_structural_target_model() -> TargetModel {
   }
 }
 
+data rust_std_logic_witness_truth_table_packed_i32_dissolution_trigger: String = "🟡 feature: emit-host oct5 wire-format truth-table bitmask scalar · dissolve-on: std.measure WirePayload<I32> (value-Measure carrier) replaces bare Int when emit-host witness payload modeling lands."
+
 data rust_std_logic_witness_truth_table_packed_i32: Int = 454
 
 data rust_std_logic_witness_truth_table_wrong_packed_i32: Int = 455

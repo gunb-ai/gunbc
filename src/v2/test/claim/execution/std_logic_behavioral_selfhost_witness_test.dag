@@ -19,6 +19,7 @@ import v2.extdeps.languages.rust {
 }
 import v2.extdeps.languages.rust_test {
   rust_std_logic_witness_target_model_staging,
+  rust_std_logic_witness_truth_table_packed_i32_dissolution_trigger,
   rust_std_logic_witness_truth_table_packed_i32,
   rust_std_logic_witness_truth_table_wrong_packed_i32
 }
@@ -83,7 +84,7 @@ data std_logic_truth_table_claim_root: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data std_logic_truth_table_packed_i32_note: String = "Witness harness packed i32 scalar (oct5 wire encoding of the truth-table bitmask), not BitWidth — mirrors the golden Rust main's `let mut bits: i32` accumulator. Dissolve-on: emit-host witness payload carries a typed value-Measure carrier when wire-format scalars are modeled."
+data std_logic_truth_table_packed_i32_note: String = rust_std_logic_witness_truth_table_packed_i32_dissolution_trigger
 
 fn std_logic_truth_table_oct5_value(packed_i32: Int) -> RuntimeValue {
   RuntimePrimitive {
@@ -333,6 +334,10 @@ test fn std_logic_behavioral_selfhost_wrong_oracle_refuses_holds() -> Bool {
   std_logic_truth_table_verdict_is_fail(
     run: std_logic_truth_table_run(call_primitive: std_logic_truth_table_call_primitive_wrong)
   )
+}
+
+test fn std_logic_witness_truth_table_packed_i32_carries_dissolution_trigger() -> Bool {
+  std_logic_truth_table_packed_i32_note == rust_std_logic_witness_truth_table_packed_i32_dissolution_trigger
 }
 
 test fn std_logic_behavioral_selfhost_all_holds() -> Bool {

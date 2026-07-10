@@ -917,7 +917,10 @@ fn partition_module_emit_fold_step(
   if partition_module_emit_skip_edge(edge: edge) {
     acc
   } else if partition_is_import_decl_node(node: edge.target) {
-    acc
+    PartitionModuleEmitFoldAcc {
+      partial: acc.partial,
+      deferred: list_snoc_item(xs: acc.deferred, item: edge)
+    }
   } else {
     match partition_module_semantic_type_decl_for_target(
       module_root: module_root,
