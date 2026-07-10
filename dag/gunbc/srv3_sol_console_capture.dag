@@ -9,7 +9,7 @@ import extdeps.bmc.serial_console {
 import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
 import extdeps.shell
 import gunbc.shell_bash_runner { shell_exec_via_bash }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, String, Bool }
@@ -46,6 +46,8 @@ fn srv3_sol_console_capture_log_path_is_declared() -> Bool {
 }
 
 fn srv3_sol_console_capture_carries_dissolution_trigger() -> Bool {
-  string_contains(s: sol_console_capture_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
-    && string_contains(s: sol_console_capture_bash_emit_dissolution_trigger, pattern: "obmc-console")
+  match sol_console_capture_bash_emit_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }

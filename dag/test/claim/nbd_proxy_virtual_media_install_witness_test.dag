@@ -2,6 +2,7 @@ module test.claim.nbd_proxy_virtual_media_install
 
 import std.logic { Bool }
 import std.types { list_length }
+import std.disposition { Scaffold, Terminal }
 import extdeps.bmc.types { BootTargetCd, BootTargetPxe }
 import extdeps.bmc.webui.nbd_proxy { VmSlotIndexEndpoint }
 import gunbc.os_install_mechanism {
@@ -100,7 +101,10 @@ test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
         }
     Absent => false
   }
-    && string_contains(s: nbd_proxy_serve_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
+    && match nbd_proxy_serve_bash_emit_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
+      Terminal { reason: _ } => false
+    }
 }
 
 test fn actuator_toolchain_grant_is_wired() -> Bool {
@@ -108,5 +112,8 @@ test fn actuator_toolchain_grant_is_wired() -> Bool {
 }
 
 test fn nbd_proxy_placeholder_scaffolds_carry_dissolve_on_markers() -> Bool {
-  string_contains(s: srv3_nbd_proxy_export_dissolution_trigger, pattern: "dissolve-on:")
+  match srv3_nbd_proxy_export_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }

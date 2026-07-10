@@ -1,6 +1,7 @@
 module test.claim.srv3_install_media_fetch
 
 import std.logic { Bool }
+import std.disposition { Scaffold, Terminal }
 import std.effects { CreateEffect, CreateIfAbsent, InputField }
 import gunbc.srv3_install_media_fetch {
   srv3_ubuntu_install_media_artifact,
@@ -11,7 +12,7 @@ import gunbc.srv3_install_media_fetch {
   install_media_fetch_first_mirror_url,
   srv3_install_media_fetch_install_path_is_versioned,
   srv3_install_media_fetch_actuator_host_is_srv1,
-  srv3_install_media_fetch_shell_runner_dissolution_trigger,
+  srv3_install_media_fetch_shell_runner_scaffold,
   Absent,
   Present,
   AlreadyPresent,
@@ -100,6 +101,12 @@ test fn install_media_fetch_first_mirror_is_releases_then_cdimage() -> Bool {
 test fn srv3_install_media_fetch_scope_facts() -> Bool {
   srv3_install_media_fetch_install_path_is_versioned()
     && srv3_install_media_fetch_actuator_host_is_srv1()
-    && string_contains(s: srv3_install_media_fetch_shell_runner_dissolution_trigger, pattern: "dissolve-on:")
-    && string_contains(s: install_media_fetch_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
+    && match srv3_install_media_fetch_shell_runner_scaffold {
+      Scaffold { dissolves_to: _, bind: _ } => true
+      Terminal { reason: _ } => false
+    }
+    && match install_media_fetch_bash_emit_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
+      Terminal { reason: _ } => false
+    }
 }
