@@ -10,8 +10,6 @@ type Attribute {
   value: String
 }
 
-data fragment_text_rename_marker: String = "Constructor-owner ruling (§1c) collision fix: Fragment's text arm was named TextNode, colliding with MarkupNode.TextNode in this module's own scope (markup_node_to_fragment even converted one to the other cross-owner via the deleted expected-type pick). Renamed to FragmentText — Fragment is the escaped render tree; MarkupNode (the larger consumer surface, ~15 files) keeps TextNode."
-
 type Fragment
   = Element { tag: String, attributes: List<Attribute>, children: List<Fragment> }
   | FragmentText { content: String }

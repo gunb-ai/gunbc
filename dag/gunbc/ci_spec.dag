@@ -49,8 +49,6 @@ type DeployStage {
   runner: RunnerSpec
 }
 
-data ci_spec_witness_entries_note: String = "witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): the floor runs exactly these declared witnesses, never a tree scan; empty means the plan carries no witness-corpus node at all. Enrollment authority: gunbc.commit_workflow.commit_gate_roster CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion there)."
-
 type CiSpec {
   gates: List<Gate>
   witness_entries: List<ScheduleWitnessEntry>
@@ -62,8 +60,6 @@ type CiSpec {
 data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
 data gunbc_ci_regen_floor_gates: List<Gate> = project_ci_regen_job_gates(roster: commit_gate_roster)
-
-data gunbc_ci_two_job_split_note: String = "Two-job split (operator ruling 2026-07-07, #6350): the self-host fixed-point class — RegenVerifyGate + SelfHostStalenessGate — is a §7 ASPIRATION, not a current invariant (the committed seed is knowingly hand-maintained ahead of its .dag), so enforcing byte-identical self-host as a HARD required gate keeps main red-by-construction on unfinished aspiration. project_ci_floor_gates (GithubActionsCiJob surface) is the REQUIRED green job — every grounded invariant, must go green. project_ci_regen_job_gates (GithubActionsCiRegenJob surface) is the NON-required regen job — honest-red until the seed<->.dag reconcile lands. The green job was formerly kept §5-honest against escape-hatch (debt growing silently behind the non-required red door) by a REQUIRED regen_divergence ratchet (monotone-shrink guard, auto-promote to hard at count 0), REMOVED 2026-07-07 (operator ruling) as imminent-to-obsolete interim scaffolding once the accept-fresh self-host fixpoint drives divergence to 0 — see gunbc.ci_workflow ci_regen_ratchet_removed_note. Interim trade recorded there: debt growth behind the non-required door is unguarded until the fixpoint lands, at which point RegenVerifyGate returns to the required surface. SelfHostReadsRealBytesGate (provenance, measured-holding) stays on the required green surface."
 
 data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
 
@@ -83,8 +79,6 @@ data gunbc_ci_deploy_srv1_stage: DeployStage = {
   access: ci_deploy_srv1_access,
   runner: gunbc_ci_deploy_srv1_runner_spec(),
 }
-
-data gunbc_ci_deploy_stages_disable_note: String = "DISABLED (operator ask 2026-07-08): the srv1 auto-deploy stage is un-enrolled from CI. On every push to main the deploy_dashboard_srv1 job queued ~18m waiting for the [self-hosted, linux, arm64, srv1] runner to pick it up, then got cancel-in-progress'd by the next push (receipt: runs 28909628928 / 28908499073, deploy job cancelled after the ci job finished). deploy_stages is the single enrollment authority (CiSpec.deploy_stages, same opt-in shape as witness_entries) - an empty list emits NO deploy job (the regen spec already ships deploy_stages: []). The stage record gunbc_ci_deploy_srv1_stage and its access/target-host model stay defined and witness-covered so RE-ENABLING is one edit: gunbc_ci_deploy_stages = [gunbc_ci_deploy_srv1_stage]. DISSOLVE-ON: srv1 self-hosted runner restored, or dashboard deploy re-homed off push-to-main CI."
 
 data gunbc_ci_deploy_stages: List<DeployStage> = []
 
@@ -127,10 +121,6 @@ data ci_release_features: String = "text_lookup_work_counter"
 fn ci_repo_root_shell() -> String {
   "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 }
-
-data ci_release_build_regen_stage0_note: String = "regen_stage0 is built here (unconditionally, via cargo) alongside claim_executor/gunbc — NOT lazily via ensure_regen_stage0_built's build-if-absent. On the self-hosted runners target/release/ persists across jobs, so build-if-absent would run a STALE regen_stage0 from a prior commit; the ci_regen job's RegenVerifyGate then compares against a stale --emit-fresh / --verify output. cargo build is source-change-aware, so listing --bin regen_stage0 here guarantees a fresh binary (the same stale-binary hazard formerly bit the removed ci_regen_ratchet's no-count refusal, receipt run 28841755357 @ 7927413). discover_source_root_ingest is listed for the same reason — batch-3 SourceRootIngestGate must not cold-compile under parallel host-effect load (receipt run 28899262773 @ 85731657415 returned Bool(false) when the bin was absent from the release build line)."
-
-data ci_release_build_discover_source_root_ingest_note: String = "discover_source_root_ingest is built here (unconditionally, via cargo) alongside claim_executor/gunbc/regen_stage0 — NOT lazily via ensure_discover_source_root_ingest_built's build-if-absent during batch-3 SourceRootIngestGate. Receipt: CI runs 28894057709 @ 9c020d57 — source_root_ingest_gate_passes returned Bool(false) while emit_host_gate_passes ran in parallel; lazy build-if-absent races parallel cargo under fleet pressure. Pre-building removes the race (same class as regen_stage0 above)."
 
 fn ci_release_build_line() -> String {
   concat(

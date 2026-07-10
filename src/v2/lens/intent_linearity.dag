@@ -67,8 +67,6 @@ fn linearity_registry() -> FreeMonoid<LinearityRule> {
   [ unroll_to_fold_rule(), complexity_reducible_rule(), dup_type_to_generic_rule(), sigma_fn_family_rule() ]
 }
 
-data parallel_representation_wall_dissolved: String = "The ParallelRepresentationRule apparatus (ImportGraph declared-vs-derived closure wall, WallNow on import_closure_live) formerly lived here. It dissolved when its only subject — tools.rust_stage0_gates declared_consumed_input_closures, the hand-typed consumed-.dag path list — was replaced by construction: the gate now derives the closure from v2.lens.module_graph.import_closure_live directly, so a declared parallel representation of an import closure is no longer writable and a validation wall over it has no subject (§5: construction over validation; §6: an inert lens is a lie, so the machinery is deleted, not kept idle). If a future declared representation genuinely cannot be constructed away, re-derive the wall from git history rather than keeping it inert here."
-
 fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
   rule.detect(steps)
 }

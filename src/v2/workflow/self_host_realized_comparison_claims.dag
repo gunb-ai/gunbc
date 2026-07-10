@@ -20,8 +20,6 @@ import tools.self_host_realized_comparison_transport {
   run_self_host_realized_comparison_emit
 }
 
-data self_host_reads_real_bytes_emit_prerequisite_note: String = "RegenVerifyGate lives on GithubActionsCiRegenJob (#6350 two-job split); SelfHostReadsRealBytesGate stays on the required ci job and must materialize target/v2-emit-fresh-realize here before fold_side_bytes reads the emitted tree — not assume a prior regen job artifact."
-
 fn realized_comparison_fixture_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^realized_comparison_fixture_leaf } },

@@ -3057,8 +3057,12 @@ fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContex
                 }
             }
         }
-        _ => ExitClass::NotProcessExit {
-            type_name: "<non-variant>".to_string(),
+        // Non-variant returns: render the actual value (symbols resolve to their
+        // interned names via the active context) instead of an opaque "<non-variant>".
+        // This makes `--function`-run diagnostics — e.g. a helper returning a
+        // diagnostic reason Symbol — legible instead of blind.
+        other => ExitClass::NotProcessExit {
+            type_name: ctx.format_value(other),
         },
     }
 }
