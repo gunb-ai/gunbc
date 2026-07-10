@@ -1,6 +1,8 @@
 module v2.test.self_host.std_logic_emit_probe
 
 import v2.test.fixture.std_logic_module {
+  std_logic_assemble_accepts,
+  std_logic_assemble_reject_is_unbound_symbol,
   std_logic_module_emit_accepts,
   std_logic_module_emit_len,
   std_logic_module_emit_reject_reason,
@@ -41,6 +43,10 @@ test fn std_logic_partition_type_decl_count_gt_0() -> Bool {
   std_logic_partition_type_decl_count() > 0
 }
 
-test fn std_logic_partition_fn_decl_count_gt_0() -> Bool {
-  std_logic_partition_fn_decl_count() > 0
+test fn std_logic_assemble_reject_is_unbound_symbol_holds() -> Bool {
+  std_logic_assemble_reject_is_unbound_symbol()
+}
+
+test fn std_logic_whole_program_emit_reject_reason_probe() -> Symbol {
+  std_logic_module_emit_reject_reason()
 }

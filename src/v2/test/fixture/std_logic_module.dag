@@ -124,6 +124,34 @@ fn std_logic_module_emit_accepts() -> Bool {
   }
 }
 
+fn std_logic_assemble_accepts() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn std_logic_assemble_reject_reason() -> Symbol {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => std_logic_emit_accepted_reason
+    Rejected { diagnostics: r } => r.head.reason
+  }
+}
+
+data std_logic_resolve_unbound_reason: Symbol = ^resolve_reason_unbound_symbol
+
+fn std_logic_assemble_reject_is_unbound_symbol() -> Bool {
+  std_logic_assemble_reject_reason() == std_logic_resolve_unbound_reason
+}
+
 fn std_logic_inferred_tree_from_fixture() -> Outcome<InferredTree> {
   match assemble_program_from_ingest(
     ingest: std_logic_module_ingest(),
