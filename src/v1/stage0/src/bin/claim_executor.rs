@@ -2060,6 +2060,12 @@ mod tests {
     // are per-ctx (eval_call_memo_counters), immune to test-process sharing.
     #[test]
     fn eval_call_memo_serves_verified_hits_with_identical_values() {
+        // Every ledger-touching test must set the trace var BEFORE its first
+        // eval: the enablement latch is process-wide and initialized once, so
+        // whichever test evaluates first fixes it for every sibling (this
+        // exact ordering red-failed the receipt test when this test ran
+        // first without the var).
+        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
         let root = workspace_root();
         let roots = vec![
             root.join("src/v2").to_string_lossy().into_owned(),
