@@ -8,7 +8,8 @@ fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
   let base = parse_table_empty()
   ParseTableRealization {
     artifact_kind: base.artifact_kind,
-    interface: base.interface,
+    provider_id: base.provider_id,
+    materialization: base.materialization,
     grammar_digest: grammar,
     token_stream_digest: tokens,
     entries: base.entries,
