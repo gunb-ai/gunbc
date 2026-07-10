@@ -155,6 +155,7 @@ fn ci_floor_spec_from_roster() -> CiSpec {
   {
     gates: project_ci_floor_gates(roster: commit_gate_roster),
     witness_entries: project_ci_floor_witness_entries(roster: commit_gate_roster),
+    discovery_scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
     diff_policy: gunbc_ci_spec.diff_policy,
     notice_title: gunbc_ci_spec.notice_title,
     deploy_stages: [],
@@ -321,7 +322,13 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 90
 
+<<<<<<< HEAD
 data gunbc_ci_floor_step_timeout_minutes: Duration = 45
+=======
+data gunbc_ci_floor_step_timeout_minutes: Duration = 60
+
+data gunbc_ci_floor_step_timeout_discovery_flip_note: String = "30 -> 60 at the 2026-07-09 discovery flip (gunbc.ci_spec ci_spec_discovery_flip_note): the corpus discovery batch adds a whole-tree resolve plus the always-run live-tree rows to the floor step, and the width fold now derives width 2 on the live 24GiB slot (executor base overhead ~8.3GiB re-measured under the flip). Local flip pre-flight wall-clock ~40min at width 5 under a 33.5GiB budget. Revisit down when floor memoization / resolver graph-major shrink the resolve wall; the affected-set selection receipts (skip counts per PR) are the cost dial to watch."
+>>>>>>> origin/session/gentle-stag-677-flip
 
 data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
