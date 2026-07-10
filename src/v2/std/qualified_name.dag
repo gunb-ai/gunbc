@@ -12,7 +12,9 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { HeadAbsent, HeadFound, fold_list_right, list_head }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list_right, list_head, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.logic { Bool }
@@ -162,20 +164,46 @@ fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<Symbol> {
   }
 }
 
+data qualified_name_string_roundtrip_host_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.std.compilers.lexing",
+    decl_name: "symbol_intern_lexeme",
+    field: WholeDeclaration
+  }
+}
+
 fn qualified_name_to_dotted_string(qn: QualifiedName) -> String {
   qualified_name_to_dotted_string(qn: qn)
 }
 
-fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
-  qualified_name_snoc(qn: qn, segment: segment)
+fn qualified_name_drop_last_segment(tail: QualifiedName) -> QualifiedName {
+  match tail {
+    Empty => Empty
+    Cons { head: _, tail: Empty } => Empty
+    Cons { head: h, tail: rest } =>
+      Cons { head: h, tail: qualified_name_drop_last_segment(rest) }
+  }
 }
 
 fn qualified_name_init(qn: QualifiedName) -> QualifiedName {
-  qualified_name_init(qn: qn)
+  match qn {
+    Empty => Empty
+    Cons { head: _, tail: Empty } => Empty
+    Cons { head: h, tail: t } =>
+      Cons { head: h, tail: qualified_name_drop_last_segment(t) }
+  }
 }
 
-fn symbol_spelling(sym: Symbol) -> String {
-  symbol_spelling(sym: sym)
+fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
+  list_snoc_item(xs: qn, item: segment)
+}
+
+fn qualified_name_is_empty(qn: QualifiedName) -> Bool {
+  match qn {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
 }
 
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {

@@ -2409,9 +2409,6 @@ pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme"];
 pub(crate) const STD_QUALIFIED_NAME_BRIDGE_FNS: &[&str] = &[
     "qualified_name_from_dotted_string",
     "qualified_name_to_dotted_string",
-    "qualified_name_snoc",
-    "qualified_name_init",
-    "symbol_spelling",
 ];
 
 pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
@@ -2633,13 +2630,6 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             "qualified_name_to_dotted_string" => {
                 crate::coproduct_reflection::eval_qualified_name_to_dotted_string(ctx, &args)
             }
-            "qualified_name_snoc" => {
-                crate::coproduct_reflection::eval_qualified_name_snoc(ctx, &args)
-            }
-            "qualified_name_init" => {
-                crate::coproduct_reflection::eval_qualified_name_init(ctx, &args)
-            }
-            "symbol_spelling" => crate::coproduct_reflection::eval_symbol_spelling(ctx, &args),
             _ => unreachable!("qualified_name bridge fn set mismatch"),
         };
     }

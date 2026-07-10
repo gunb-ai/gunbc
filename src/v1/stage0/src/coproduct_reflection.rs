@@ -380,58 +380,6 @@ pub fn eval_qualified_name_to_dotted_string(
     ))
 }
 
-pub fn eval_qualified_name_snoc(
-    ctx: &InterpContext,
-    args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    let qn = args
-        .first()
-        .map(|(_, v)| v)
-        .ok_or_else(|| InterpError::TypeError {
-            msg: "qualified_name_snoc requires a QualifiedName".to_string(),
-        })?;
-    let segment = expect_symbol(args.get(1).map(|(_, v)| v), "qualified_name_snoc")?;
-    let dotted = crate::v1_interpreter::free_monoid_symbol_value_to_dotted_string(qn);
-    let new_dotted = if dotted.is_empty() {
-        segment.to_string()
-    } else {
-        format!("{dotted}.{segment}")
-    };
-    Ok(crate::cli_run::free_monoid_symbol_value_from_dotted_string(
-        ctx,
-        &new_dotted,
-    ))
-}
-
-pub fn eval_qualified_name_init(
-    ctx: &InterpContext,
-    args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    let qn = args
-        .first()
-        .map(|(_, v)| v)
-        .ok_or_else(|| InterpError::TypeError {
-            msg: "qualified_name_init requires a QualifiedName".to_string(),
-        })?;
-    let dotted = crate::v1_interpreter::free_monoid_symbol_value_to_dotted_string(qn);
-    let parent = match dotted.rsplit_once('.') {
-        Some((prefix, _)) => prefix,
-        None => "",
-    };
-    Ok(crate::cli_run::free_monoid_symbol_value_from_dotted_string(
-        ctx, parent,
-    ))
-}
-
-pub fn eval_symbol_spelling(
-    ctx: &InterpContext,
-    args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    let spelling = expect_symbol(args.first().map(|(_, v)| v), "symbol_spelling")?;
-    let _ = ctx.sym(spelling);
-    Ok(Value::Str(spelling.to_string()))
-}
-
 fn concept_decl_record(
     ctx: &InterpContext,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,

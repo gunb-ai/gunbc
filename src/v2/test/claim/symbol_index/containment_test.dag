@@ -122,11 +122,11 @@ data si_index: SymbolIndex = symbol_index_fill_module_root(
 test fn symbol_index_materializes_type_variant_paths_holds() -> Bool {
   symbol_index_has_path(
     index: si_index,
-    qualified_path: "v2.test.symbol_index_pilot.Mood.Yes"
+    qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Mood.Yes")
   )
     && symbol_index_has_path(
       index: si_index,
-      qualified_path: "v2.test.symbol_index_pilot.Classical.No"
+      qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.No")
     )
 }
 
@@ -184,11 +184,11 @@ test fn symbol_index_flat_index_false_accept_discriminator_holds() -> Bool {
     Absent =>
       symbol_index_has_path(
         index: si_index,
-        qualified_path: "v2.test.symbol_index_pilot.Mood.Yes"
+        qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Mood.Yes")
       )
         && symbol_index_has_path(
           index: si_index,
-          qualified_path: "v2.test.symbol_index_pilot.Classical.Yes"
+          qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.Yes")
         )
   }
 }
@@ -196,7 +196,7 @@ test fn symbol_index_flat_index_false_accept_discriminator_holds() -> Bool {
 test fn symbol_index_lookup_miss_red_control_holds() -> Bool {
   match symbol_index_lookup(
     index: si_index,
-    qualified_path: "v2.test.symbol_index_pilot.Missing"
+    qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Missing")
   ) {
     Present { value: _ } => false
     Absent => true
