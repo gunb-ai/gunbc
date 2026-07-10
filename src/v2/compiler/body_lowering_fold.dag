@@ -492,9 +492,7 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol) -> Outcome<Node> 
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_primary_expr(shell: shell)
   } else {
-    outcome_rejected(
-      d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-    )
+    outcome_accepted(value: shell)
   }
 }
 
