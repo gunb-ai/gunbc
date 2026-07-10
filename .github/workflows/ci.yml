@@ -118,6 +118,13 @@ jobs:
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
         timeout-minutes: 30
+      - name: Floor resolve receipt gate (declared cold-resolve count)
+        run: |
+          if ! test -f target/floor-resolve-receipt.txt; then echo "floor resolve receipt missing - fail closed"; exit 1; fi
+          n=$(sed -n 's/^resolves_total=//p' target/floor-resolve-receipt.txt)
+          if test -z "$n"; then echo "floor resolve receipt malformed - fail closed"; exit 1; fi
+          if test "$n" -ne 3; then echo "floor resolve count $n differs from declared 3: duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)"; exit 1; fi
+          echo "floor resolve count $n matches declared 3 (declared cold-resolve receipt)"
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
