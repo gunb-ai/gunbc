@@ -2557,12 +2557,23 @@ fn rust_coproduct_field_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
   )
 }
 
-fn rust_coproduct_edge_is_grammar_metadata(edge: Edge) -> Bool {
+fn rust_coproduct_edge_is_grammar_navigable(edge: Edge) -> Bool {
   match edge.label {
     Named { name: sym } =>
       (sym == ^grammar_production_identity_node_projection)
         || (sym == ^grammar_production_captured_node_projection)
+        || (sym == ^grammar_sequence_left_node_projection)
+        || (sym == ^grammar_sequence_right_node_projection)
+        || (sym == ^grammar_optional_element_node_projection)
     Positional => false
+  }
+}
+
+fn rust_coproduct_nullary_follow_edge(edge: Edge) -> Bool {
+  match edge.target.kind {
+    TypeNode { connective: Atom { identity: _ } } => true
+    TypeNode { connective: Conj } => rust_coproduct_nullary_variant_conj(payload: edge.target)
+    _ => false
   }
 }
 
@@ -2578,17 +2589,11 @@ fn rust_coproduct_nullary_variant_conj(payload: Node) -> Bool {
           f: fn(ok, edge) {
             if !ok {
               false
-            } else if rust_coproduct_edge_is_grammar_metadata(edge: edge) {
-              true
+            } else if rust_coproduct_edge_is_grammar_navigable(edge: edge) {
+              rust_coproduct_nullary_follow_edge(edge: edge)
             } else {
               match edge.label {
-                Positional =>
-                  match edge.target.kind {
-                    TypeNode { connective: Atom { identity: _ } } => true
-                    TypeNode { connective: Conj } =>
-                      rust_coproduct_nullary_variant_conj(payload: edge.target)
-                    _ => false
-                  }
+                Positional => rust_coproduct_nullary_follow_edge(edge: edge)
                 Named { name: _ } => false
               }
             }

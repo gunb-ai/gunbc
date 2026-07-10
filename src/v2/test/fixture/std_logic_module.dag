@@ -14,9 +14,13 @@ import v2.compiler.source_authority {
   SourceRootIngest
 }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust {
+  rust_target_model,
+  rust_coproduct_variant_is_nullary_payload
+}
 import std.algebra { Cons, Empty }
-import v2.std.algebra { list_head, HeadFound, HeadAbsent }
+import v2.std.algebra { list_head, HeadFound, HeadAbsent, length }
+import v2.std.node { Disj, Edge, Named, TypeNode }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
@@ -68,6 +72,67 @@ fn std_logic_module_emit_source() -> Outcome<Medium<String>> {
 fn std_logic_module_emit_accepts() -> Bool {
   match std_logic_module_emit_source() {
     Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn std_logic_semantic_type_is_disj() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: tree, diagnostics: _ } =>
+          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
+            HeadFound { value: decl } =>
+              match decl.semantic.kind {
+                TypeNode { connective: Disj } => true
+                _ => false
+              }
+            HeadAbsent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn std_logic_semantic_type_variants_nullary() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: std_logic_module_ingest(),
+    admission: std_logic_module_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: tree, diagnostics: _ } =>
+          match list_head(xs: partition_user_semantic_types_from_root(root: tree.root)) {
+            HeadFound { value: decl } =>
+              match decl.semantic.kind {
+                TypeNode { connective: Disj } =>
+                  fold(
+                    decl.semantic.children,
+                    init: true,
+                    f: fn(ok, edge) {
+                      if !ok {
+                        false
+                      } else {
+                        match edge.label {
+                          Named { name: _ } =>
+                            rust_coproduct_variant_is_nullary_payload(payload: edge.target)
+                          _ => false
+                        }
+                      }
+                    }
+                  )
+                _ => false
+              }
+            HeadAbsent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
