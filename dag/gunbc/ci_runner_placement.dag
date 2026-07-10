@@ -10,6 +10,7 @@ import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
   gunbc_runner_pool_budget,
@@ -66,6 +67,7 @@ type RunnerHostDeployment {
   runner_count: Int
   runner_slice_cap: ByteSize
   per_runner_memory_cap: ByteSize
+  per_runner_memory_swap_cap: ByteSize
   build_tokens: HardwareThreadCount
   runner: RunnerSpec
   workload_class: WorkloadClass
@@ -156,6 +158,7 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
     runner_count: declared_runner_count(),
     runner_slice_cap: gunbc_runner_pool_budget,
     per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
+    per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
     build_tokens: nproc,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
