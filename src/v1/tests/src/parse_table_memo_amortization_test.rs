@@ -159,6 +159,32 @@ fn parse_table_grammar_memo_multi_file_ingest_parses() {
 }
 
 #[test]
+fn parse_table_memo_warm_equals_cold_content_hash() {
+    let harness = AmortHarness::new();
+
+    let cold_ctx = harness.fresh_ctx();
+    harness.run_bool(
+        &cold_ctx,
+        "witness_parse_table_memo_hit_path_content_hash_stable",
+    );
+
+    let warm_ctx = harness.fresh_ctx();
+    harness.run_bool(
+        &warm_ctx,
+        "witness_parse_table_memo_hit_path_content_hash_stable",
+    );
+    harness.run_bool(
+        &warm_ctx,
+        "witness_parse_table_memo_hit_path_content_hash_stable",
+    );
+    let warm_stats = warm_ctx.parse_table_memo_stats_snapshot();
+    assert!(
+        warm_stats.hits > 0,
+        "warm second pass must hit parse_table_lookup memo, got {warm_stats:?}"
+    );
+}
+
+#[test]
 fn parse_table_memo_hit_path_content_hash_stable_on_nontrivial_source() {
     let ctx = run_witness(
         "witness_parse_table_memo_hit_path_content_hash_stable",

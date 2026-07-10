@@ -14,7 +14,11 @@ import v2.compiler.normalize { normalize, NormalizedTree }
 import v2.compiler.parse { parse }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
-import v2.std.staging { then_outcome, cached_stage, CacheProbe, Miss }
+import v2.std.staging { then_outcome, CacheProbe, Miss }
+import v2.compiler.materialization_carriers {
+  cached_stage_realization,
+  cached_stage_governed,
+}
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.language_model { LanguageModel }
@@ -469,7 +473,11 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
         g: then_outcome(
           f: stage_normalize(),
           g: then_outcome(
-            f: cached_stage(lookup: resolve_cache_miss, stage: stage_resolve(lm: lm)),
+            f: cached_stage_governed(
+              realization: cached_stage_realization(),
+              lookup: resolve_cache_miss,
+              stage: stage_resolve(lm: lm)
+            ),
             g: stage_translate(target: target)
           )
         )

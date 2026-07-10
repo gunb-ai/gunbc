@@ -1968,6 +1968,22 @@ fn bump_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.with(|c| c.set(c.get().saturating_add(1)));
 }
 
+/// Accumulate the authored module names of a set of typed modules into `out`.
+///
+/// This is the closure-size primitive: `|out|` after folding every graph a shard resolved is the
+/// distinct-module count of that shard's union closure. It reads the resolved graph, so it is a
+/// fact about the source snapshot — unlike `typecheck_compute_count()`, which reads a cumulative
+/// per-thread miss counter and therefore reports a closure size only when the thread started cold.
+fn collect_typed_module_names(
+    modules: impl IntoIterator<Item = Rc<TypedModule>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    out: &mut HashSet<String>,
+) {
+    for m in modules {
+        out.insert(authored_name_at(source_indices.clone(), m.module.clone()));
+    }
+}
+
 fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
     let mut t = table;
     for name in v1_rt::map_keys(&kernel_type_set()).iter().cloned() {
@@ -4101,6 +4117,21 @@ pub struct DiscoverySummary {
     pub total_resolve_nanos: u128,
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
     pub total_measured_nanos: u128,
+    /// Distinct modules in this shard's union closure — the union of authored module names across
+    /// every graph the shard resolved (its prefix contexts plus each roster entry). The per-shard
+    /// input-size axis that per-shard resident memory is a function of. Max-merged across shards —
+    /// the heaviest shard's closure governs the peak. This is the calibration pair's missing half:
+    /// per-shard RSS is already emitted, the node count was not.
+    ///
+    /// Derived from the graphs, NOT from `typecheck_compute_count()`. That counter counts typecheck
+    /// cache MISSES on the current thread and is never reset in production, so it equals a closure
+    /// size only from a cold start — a condition this measurement cannot assume. It is warm here on
+    /// the `width == 1` path (the same thread already resolved the changed-file entries in
+    /// `floor_diff_edits_from_line_ranges` and both prefix entries), and warm across repeat calls in
+    /// `floor_skip_discovery_witness`, which runs discovery three times in one thread. The union of
+    /// module names is a property of the source closure: independent of cache warmth, resolve order,
+    /// and — critically for a calibration datum — of the diff under test.
+    pub roster_closure_nodes: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -6379,6 +6410,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         total_resolve_nanos: 0,
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
+        roster_closure_nodes: 0,
     };
     for summary in summaries {
         merged.total += summary.total;
@@ -6398,6 +6430,11 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
             .performance_receipts
             .extend(summary.performance_receipts);
         merged.total_measured_nanos += summary.total_measured_nanos;
+        // Max, not sum: shards share the std/spec prefix, so summing would double-count it. The
+        // heaviest single shard's closure is the number the per-shard memory peak is a function of.
+        merged.roster_closure_nodes = merged
+            .roster_closure_nodes
+            .max(summary.roster_closure_nodes);
     }
     merged
 }
@@ -6425,8 +6462,24 @@ fn run_discovery_rows(
         total_resolve_nanos: 0,
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
+        roster_closure_nodes: 0,
     };
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
+    // This shard's union closure, accumulated from the graphs it resolves. Seeded with the prefix
+    // contexts: the floor runner and entry-selection closures are resolved once per shard and their
+    // modules are resident for the shard's lifetime, so they are part of the memory this count is
+    // paired against. Row closures fold in below as each entry resolves.
+    let mut closure_modules: HashSet<String> = HashSet::new();
+    for prefix_ctx in [floor_runner_ctx, entry_selection_ctx]
+        .into_iter()
+        .flatten()
+    {
+        collect_typed_module_names(
+            prefix_ctx.modules.iter().cloned(),
+            &prefix_ctx.source_indices,
+            &mut closure_modules,
+        );
+    }
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
@@ -6452,6 +6505,11 @@ fn run_discovery_rows(
                 resolve_entry_with_index_for_discovery_corpus(index, &row.entry)
                     .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
             let resolve_nanos = resolve_started.elapsed().as_nanos();
+            collect_typed_module_names(
+                graph.modules.iter().cloned(),
+                &source_indices,
+                &mut closure_modules,
+            );
             summary.total_resolve_nanos += resolve_nanos;
             summary.entry_resolve_receipts.push(EntryResolveReceipt {
                 entry: row.entry.clone(),
@@ -6623,6 +6681,10 @@ fn run_discovery_rows(
             )),
         }
     }
+    // Per-shard input-size receipt: distinct modules in THIS shard's union closure, counted from the
+    // graphs resolved above rather than from the thread's typecheck-miss counter (see the field doc
+    // on `DiscoverySummary::roster_closure_nodes` for why the counter is not bounded to this window).
+    summary.roster_closure_nodes = closure_modules.len();
     Ok(summary)
 }
 
@@ -9235,8 +9297,8 @@ mod moduleless_entry_skip_tests {
 #[cfg(test)]
 mod witness_timing_attribution_tests {
     use super::{
-        compute_witness_timing_rows, top_n_slowest_witnesses, ClaimOutcome, DiscoverySummary,
-        DiscoveryWitnessOutcome, EntryResolveReceipt,
+        compute_witness_timing_rows, merge_discovery_summaries, top_n_slowest_witnesses,
+        ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
     };
     use crate::v1_interpreter::PerformanceReceipt;
 
@@ -9302,7 +9364,22 @@ mod witness_timing_attribution_tests {
                 },
             ],
             total_measured_nanos: 56_000,
+            roster_closure_nodes: 42,
         }
+    }
+
+    #[test]
+    fn merge_discovery_summaries_takes_max_roster_closure() {
+        // Per-shard closure is MAX-merged, not summed: parallel shards share the std/spec prefix, so
+        // summing would double-count it; the heaviest single shard's closure is what the per-shard
+        // memory peak is a function of. RED if a future edit sums the field (would be 101), drops the
+        // merge line (would stay 0), or reverts the carrier.
+        let mut a = sample_summary();
+        a.roster_closure_nodes = 30;
+        let mut b = sample_summary();
+        b.roster_closure_nodes = 71;
+        let merged = merge_discovery_summaries(vec![a, b]);
+        assert_eq!(merged.roster_closure_nodes, 71);
     }
 
     #[test]
