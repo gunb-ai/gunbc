@@ -31,6 +31,15 @@ The architecture is already designed and signed. This doc only fills the one hol
 
 So the whole lens reduces to: **declared node-count ceiling × calibrated bytes-per-node + base**, evaluated statically, refusing when the input is undeclared.
 
+## What the prediction feeds — two knobs, not one
+
+The affected-set lane (loyal-wren-398) root-caused the host OOM as **systematic, not intermittent**: a `width == 1` shard at ~6.7 GiB is killed under its own 24 GiB slot cap purely by **host-level** oversubscription (the kernel evicts the biggest resident process host-wide; ~25 × 24 GiB committed on 134 GiB physical). The load-bearing consequence for this lens: when the kill is host-level, **narrowing width does nothing** — width is the per-shard lever, but no width choice fits a host that is already oversubscribed. So the per-shard prediction must feed **two** knobs (`compute-envelope-model.md`'s split), and the systematic case is served by the second:
+
+1. **Within-job width** — `floor(slot_budget ÷ predicted_per_shard)`. Handles the cap-relative case.
+2. **Cross-job packing / admission** — how many big residents co-reside on a host. When `predicted_per_shard` exceeds available host headroom, the remedy is to **refuse co-residence** (fail-closed admission), not to pick a smaller width. This is the CTRL arm (runner-slot converge to live==declared + `MemoryMax` de-drift) that the affected-set lane recommends first, and it is what the systematic kill actually requires.
+
+So slice 4 below wires the prediction into the width formula *and* records that the same value is the packing/admission input; the admission-refusal path is the systematic-case remedy, not an optional extra. Calibration input for this comes directly from the affected-set lane's per-PR flip receipts (per-shard RSS + `roster_closure_nodes`), **including RSS-at-kill as a lower bound** on runs that 137 before completing — the flipped corpus peak has otherwise never been observed.
+
 ## The one irreducible empirical coefficient (and its dissolution)
 
 `bytes_per_node` — how many bytes of resident memory one typed node occupies — is **not** a graph property; it is a property of how a node is *represented* in memory. Today a typed node is a Rust struct, so its byte cost must be measured. This is the sole non-derived input, and it is quarantined to one declared row.
