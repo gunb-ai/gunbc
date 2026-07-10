@@ -51,5 +51,5 @@ test fn ci_uses_steps_are_counted_not_silent() -> Bool {
 }
 
 test fn ci_run_step_natures_are_claims_counted_not_silent() -> Bool {
-  ci_run_step_natures_claimed_not_derived_count() == 17
+  ci_run_step_natures_claimed_not_derived_count() == 19
 }

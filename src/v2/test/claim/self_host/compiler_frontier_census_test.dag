@@ -1,0 +1,41 @@
+module v2.test.self_host.compiler_frontier_census
+
+import v2.compiler.self_host.frontier {
+  compiler_frontier_census_holds,
+  compiler_frontier_known_module_path_exactly_once_holds,
+  compiler_frontier_module_count_expected,
+  compiler_frontier_phantom_module_path_absent_holds,
+  compiler_frontier_roster_complete_holds,
+  compiler_frontier_roster_count,
+  compiler_frontier_roster_paths_unique_holds,
+  compiler_frontier_seed_retained_count,
+  compiler_frontier_self_emitted_count
+}
+import v2.std.logic { Bool }
+
+test fn compiler_frontier_roster_count_matches_expected() -> Bool {
+  compiler_frontier_roster_count() == compiler_frontier_module_count_expected
+}
+
+test fn compiler_frontier_roster_is_complete() -> Bool {
+  compiler_frontier_roster_complete_holds()
+}
+
+test fn compiler_frontier_roster_paths_are_unique() -> Bool {
+  compiler_frontier_roster_paths_unique_holds()
+}
+
+test fn compiler_frontier_duplicate_path_red_refuses() -> Bool {
+  compiler_frontier_known_module_path_exactly_once_holds()
+    && compiler_frontier_phantom_module_path_absent_holds()
+}
+
+test fn compiler_frontier_initial_census_all_seed_retained() -> Bool {
+  compiler_frontier_self_emitted_count() == 0
+    && compiler_frontier_seed_retained_count() == compiler_frontier_module_count_expected
+}
+
+test fn compiler_frontier_census_composite_holds() -> Bool {
+  compiler_frontier_census_holds()
+    && compiler_frontier_initial_census_all_seed_retained()
+}

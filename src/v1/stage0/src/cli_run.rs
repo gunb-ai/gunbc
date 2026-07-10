@@ -1686,6 +1686,36 @@ pub fn import_closure_live_paths_with_facts(
     import_closure_from_adjacency(entry_path, &facts.adjacency)
 }
 
+/// The closure-node definition SHARED by the falsifier/floor calibration emission and
+/// the space-lens memory predictor (single authority is THIS function — the predictor
+/// binds to it, never a re-derivation; predictor design is in flight on PR #6442, and
+/// the landed parent-lane authorities are docs/plans/compute-envelope-model.md (fleet
+/// envelope) and docs/plans/input-envelope-roadmap.md (admission)): the deduped transitive
+/// import-closure of every roster row plus the given prefix-context entries, counted at
+/// the module-path grain via the pure import walk (no typecheck). On a completed
+/// width-1 run this equals the post-resolve resolved-graph union
+/// (`DiscoverySummary.roster_closure_nodes`) — resolve resolves exactly the transitive
+/// imports — and `run_discovery_corpus_with_options` asserts that equality as the
+/// definition-drift oracle (an implicit prelude module the walk misses, or a resolve
+/// seeding change, localizes here instead of silently skewing bytes-per-node).
+pub fn roster_import_closure_nodes_pre_resolve(
+    rows: &[DiscoveryRow],
+    prefix_entries: &[&str],
+    facts: &ModuleGraphFactsLive,
+) -> usize {
+    let mut closure_paths: BTreeSet<String> = BTreeSet::new();
+    for entry in rows
+        .iter()
+        .map(|r| r.entry.as_str())
+        .chain(prefix_entries.iter().copied())
+    {
+        for path in import_closure_live_paths_with_facts(entry, facts) {
+            closure_paths.insert(workspace_relative_repo_path(&path));
+        }
+    }
+    closure_paths.len()
+}
+
 #[cfg(test)]
 fn resolve_transitively_bfs_legacy(
     entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
@@ -6159,6 +6189,34 @@ pub fn run_discovery_corpus_with_options(
     // when the executor prelude already resolved its entries on this thread, discovery
     // reuses that index's parse/typed caches instead of paying the union cold a second time.
     let index = process_shared_index(source_roots);
+    // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
+    // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
+    // in flight on PR #6442; consumer binds to roster_import_closure_nodes_pre_resolve):
+    // the transitive import-CLOSURE size — never the roster/entry count (pairing an
+    // entry count against a whole-closure peak inflates bytes-per-node by the fan-in
+    // factor). Today every discovered row resolves even when selection skips it (the
+    // skip is execution-grain; skip-before-resolve is the de-fork plan's open step), so
+    // the all-rows walk IS the resident union for both the ci and falsifier jobs.
+    // Dissolve-on: when skip-before-resolve lands, this emission must switch to the
+    // selected subset or it overcounts the resident set.
+    let pre_resolve_closure_nodes = {
+        let prefix_entries: &[&str] = if selection_enabled {
+            &[FLOOR_RUNNER_ENTRY, ENTRY_SELECTION_ENTRY]
+        } else {
+            &[]
+        };
+        let n = roster_import_closure_nodes_pre_resolve(
+            &rows,
+            prefix_entries,
+            &index.module_graph_facts,
+        );
+        eprintln!(
+            "[calibration] roster_import_closure_nodes={} rows={} (pure import walk, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
+            n,
+            rows.len()
+        );
+        n
+    };
     // Empty diff is not a state (operator ruling 2026-07-05): an empty touched-path
     // set flows through the general selection machinery — empty frontier, zero edited
     // fns — so every row takes the normal not-affected skip. Disabling selection here
@@ -6277,7 +6335,7 @@ pub fn run_discovery_corpus_with_options(
     };
     let width = capped_width.max(1);
     if width == 1 {
-        return run_discovery_rows(
+        let summary = run_discovery_rows(
             &rows,
             &index,
             execution_mode,
@@ -6287,7 +6345,30 @@ pub fn run_discovery_corpus_with_options(
             floor_runner_ctx.as_ref(),
             entry_selection_ctx.as_ref(),
             whole_tree_published_keys.clone(),
+        )?;
+        // Definition-drift oracle (single-authority reconciliation, executable): on a
+        // COMPLETED width-1 run the pre-resolve import walk and the post-resolve
+        // resolved-graph union must agree — resolve resolves exactly the transitive
+        // imports. Width-1 only: the merged multi-shard field is max-over-shards, not
+        // the process union, so the comparison is ill-posed there. A mismatch means one
+        // closure definition is wrong (an implicit prelude module the walk missed, or a
+        // resolve seeding change) and the space-lens calibration pair would silently
+        // skew — refuse rather than emit a lying receipt.
+        if summary.roster_closure_nodes != pre_resolve_closure_nodes {
+            return Err(format!(
+                "[calibration] closure-definition drift: pre-resolve import walk = {} nodes, \
+                 post-resolve resolved union = {} — the two closure definitions diverged \
+                 (implicit prelude/kernel module in resolve the import walk cannot see, or a \
+                 seeding change); reconcile the definitions before trusting bytes-per-node \
+                 calibration (roster_import_closure_nodes_pre_resolve is the shared authority)",
+                pre_resolve_closure_nodes, summary.roster_closure_nodes
+            ));
+        }
+        eprintln!(
+            "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
+            pre_resolve_closure_nodes
         );
+        return Ok(summary);
     }
     let shards = shard_row_indices_by_entry(&rows, width);
     eprintln!(

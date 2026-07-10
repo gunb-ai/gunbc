@@ -724,6 +724,14 @@ fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   list_append(left: xs, right: Cons { head: item, tail: Empty })
 }
 
+fn list_init<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
+  match xs {
+    Empty => Empty
+    Cons { head: _, tail: Empty } => Empty
+    Cons { head: h, tail: t } => Cons { head: h, tail: list_init(xs: t) }
+  }
+}
+
 type CopiedPortFact {
   combiner: Symbol
   copied_port_index: Int
