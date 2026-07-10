@@ -90,6 +90,20 @@ fn fixture_line(text: &str, needle: &str) -> i64 {
         .unwrap_or_else(|| panic!("discriminator fixture missing line containing `{needle}`"))
 }
 
+/// The `git diff --name-status -z` record for a single MODIFIED file, coherent with the unified
+/// hunk injected on the other channel, in the injection transport's AT-REST encoding: each
+/// wire-format NUL separator is written as the octal escape `\000`, because a POSIX environment
+/// variable is a C string and cannot carry a raw NUL byte (`std::env::set_var` panics on one —
+/// proven by execution 2026-07-10). The injection arm in `floor_diff_observe.dag`
+/// (`floor_name_status_injection_encoding_note`) decodes with `printf %b`, so the consumer sees
+/// the identical NUL-separated bytes the real-git arm produces and `git.dag`'s
+/// `from_code_point(0)` split stays the single parse authority. Without this channel injected,
+/// the name-status read falls through to the real checkout diff — a non-hermetic two-channel
+/// observation measuring the working tree instead of the fixture.
+fn injected_name_status_modify(rel_path: &str) -> String {
+    format!("M\\000{rel_path}\\000")
+}
+
 fn run_injected_diff_roster(
     rel_path: &str,
     line: i64,
@@ -97,6 +111,10 @@ fn run_injected_diff_roster(
 ) -> DiscoverySummary {
     let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// synthetic touch\n");
     let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
+    let _name_status = EnvVarGuard::set(
+        "GUNBC_CI_DIFF_NAME_STATUS",
+        &injected_name_status_modify(rel_path),
+    );
     run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
         &[],
@@ -116,6 +134,10 @@ fn run_injected_diff_roster_with_mode(
 ) -> DiscoverySummary {
     let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// synthetic touch\n");
     let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
+    let _name_status = EnvVarGuard::set(
+        "GUNBC_CI_DIFF_NAME_STATUS",
+        &injected_name_status_modify(rel_path),
+    );
     run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
         &[],

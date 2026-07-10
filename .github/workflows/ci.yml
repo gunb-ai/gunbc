@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 135
+    timeout-minutes: 150
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -62,14 +62,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest --bin floor_skip_discovery_witness) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest --bin floor_skip_discovery_witness ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest --bin floor_skip_discovery_witness || exit 1
                 else
                   exit 1
                 fi
@@ -80,7 +80,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/floor_skip_discovery_witness"
           sccache --show-stats 2>/dev/null || true
         timeout-minutes: 45
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)
@@ -158,6 +158,11 @@ jobs:
           if test "$k" -eq 0; then echo "floor evaluated zero keyed calls - ledger disabled or floor empty - fail closed"; exit 1; fi
           echo "floor materialization receipt: keyed=$k unkeyed=$u duplicated=$d (exact pins for unkeyed and duplicated land from this first counted receipt)"
         timeout-minutes: 5
+      - name: Affected-set selection control (floor_skip_discovery_witness)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/floor_skip_discovery_witness"
+        timeout-minutes: 15
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -166,7 +171,7 @@ jobs:
         timeout-minutes: 5
   ci_regen:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 135
+    timeout-minutes: 150
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -210,14 +215,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest --bin floor_skip_discovery_witness) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest --bin floor_skip_discovery_witness ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest --bin floor_skip_discovery_witness || exit 1
                 else
                   exit 1
                 fi
@@ -228,7 +233,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/floor_skip_discovery_witness"
           sccache --show-stats 2>/dev/null || true
         timeout-minutes: 45
       - name: gunbc ci regen (self-host fixed-point — non-required)
@@ -292,14 +297,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest --bin floor_skip_discovery_witness) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest --bin floor_skip_discovery_witness ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin regen_stage0 --bin discover_source_root_ingest --bin floor_skip_discovery_witness || exit 1
                 else
                   exit 1
                 fi
@@ -310,7 +315,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/floor_skip_discovery_witness"
           sccache --show-stats 2>/dev/null || true
         timeout-minutes: 46
       - name: v1 rust gate (fmt + nextest)
