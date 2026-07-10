@@ -134,3 +134,11 @@ fn bash_program_real_witness_probe_matches_sidecar() -> Bool {
 fn bash_program_assign_root_probe_matches_sidecar() -> Bool {
   bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [assign_root_stmt()] })
 }
+
+fn bash_program_real_witness_fold_bytes_probe() -> Outcome<String> {
+  bash_program_serialize(p: bash_program_fold_real_witness_program())
+}
+
+fn bash_program_real_witness_sidecar_bytes_probe() -> String {
+  serialize_bash(p: bash_program_fold_real_witness_program())
+}
