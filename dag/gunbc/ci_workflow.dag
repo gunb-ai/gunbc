@@ -206,7 +206,7 @@ fn ci_floor_resolve_receipt_gate_step() -> Step {
 
 fn ci_floor_materialization_receipt_gate_step() -> Step {
   RunStep {
-    name: Present { value: "Floor materialization receipt gate (identity-computability wall)" },
+    name: Present { value: "Floor materialization receipt gate (demand ledger; pins land from first counted receipt)" },
     id: none,
     run: ci_floor_materialization_receipt_gate_script(),
     shell: none,
