@@ -1563,9 +1563,29 @@ fn body_lower_collect_match_arms(sequence_capture: Node) -> List<Node> {
         Rejected { diagnostics: _ } => first_arms
       }
     Rejected { diagnostics: _ } =>
-      match body_lower_match_arm_wire_optional(arm_capture: unwrapped) {
-        Present { value: arm } => [arm]
-        Absent => Empty
+      match sugar_sequence_pair_optional(node: unwrapped) {
+        Present { value: pair } =>
+          match body_lower_match_arm_wire_optional(arm_capture: pair.left) {
+            Present { value: arm } =>
+              match body_lower_after_comma_tail_optional(node: pair.right) {
+                Present { value: tail } =>
+                  list_append(
+                    left: [arm],
+                    right: body_lower_collect_match_arms(sequence_capture: tail)
+                  )
+                Absent => [arm]
+              }
+            Absent =>
+              match body_lower_after_comma_tail_optional(node: pair.right) {
+                Present { value: tail } => body_lower_collect_match_arms(sequence_capture: tail)
+                Absent => Empty
+              }
+          }
+        Absent =>
+          match body_lower_match_arm_wire_optional(arm_capture: unwrapped) {
+            Present { value: arm } => [arm]
+            Absent => Empty
+          }
       }
   }
 }

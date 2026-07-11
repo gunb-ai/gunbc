@@ -271,25 +271,6 @@ fn body_lowering_match_arms_found_witness() -> Bool {
   }
 }
 
-fn body_lowering_match_scrutinee_found_witness_RED() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match body_lower_match_scrutinee_optional(captured: captured) {
-                Present { value: _ } => true
-                Absent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
 fn body_lowering_match_lowers_to_match_witness() -> Bool {
   body_lowering_match_lowers_to_match()
 }
