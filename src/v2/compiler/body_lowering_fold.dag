@@ -49,7 +49,7 @@ import v2.std.node {
 }
 import v2.std.node_query { find_named_child }
 
-data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal."
+data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into FLAG E one SugarKey table (general-body-producer-design §9) once Slices 0–1 receipts land; no permanent sibling hand-inlined arm. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; unknown emitted identities refuse (never silent shell accept)."
 
 fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
@@ -735,7 +735,9 @@ fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
                     ParseSubtreeFound { captured: expr } =>
                       body_lower_try_body_lowered(node: expr)
                     ParseSubtreeAbsent =>
-                      outcome_accepted(value: optional_present(value: body))
+                      outcome_rejected(
+                        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: body)
+                      )
                   }
               }
           }
@@ -797,7 +799,17 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_unwrap_pass_through(shell: Node, emitted: Symbol) -> Outcome<Node> {
+fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node> {
+  match body_lower_operand_ref_optional(node: captured) {
+    Present { value: operand } => outcome_accepted(value: operand)
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+      )
+  }
+}
+
+fn body_lower_unwrap_pass_through(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
       outcome_rejected(
@@ -995,10 +1007,7 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
                 Accepted { value: fold_result, diagnostics: _ } =>
                   match fold_result {
                     Present { value: loop_node } => outcome_accepted(value: loop_node)
-                    Absent =>
-                      outcome_rejected(
-                        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-                      )
+                    Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
                   }
               }
           }
@@ -1024,10 +1033,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
                 Accepted { value: fold_result, diagnostics: _ } =>
                   match fold_result {
                     Present { value: loop_node } => outcome_accepted(value: loop_node)
-                    Absent =>
-                      outcome_rejected(
-                        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-                      )
+                    Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
                   }
               }
           }
@@ -1043,11 +1049,13 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol) -> Outcome<Node> 
   } else if emitted == ^dag_surface_postfix_expr {
     body_lower_postfix_expr(shell: shell)
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {
-    body_lower_unwrap_pass_through(shell: shell, emitted: emitted)
+    body_lower_unwrap_pass_through(shell: shell)
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_primary_expr(shell: shell)
   } else {
-    outcome_accepted(value: shell)
+    outcome_rejected(
+      d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+    )
   }
 }
 
