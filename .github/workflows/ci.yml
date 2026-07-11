@@ -17,7 +17,7 @@ env:
   RUSTFLAGS: -D warnings
 jobs:
   build:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: [ubicloud-standard-16-arm]
     timeout-minutes: 65
     steps:
       - name: Checkout
@@ -98,7 +98,7 @@ jobs:
           compression-level: 0
         timeout-minutes: 10
   ci:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: [ubicloud-standard-16-arm]
     needs: [build]
     timeout-minutes: 180
     steps:
@@ -245,7 +245,7 @@ jobs:
           "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
         timeout-minutes: 60
   emit_determinism:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: [ubicloud-standard-16-arm]
     needs: [ci]
     timeout-minutes: 50
     steps:
