@@ -1,6 +1,7 @@
 module v2.test.manual.body_lowering_match
 
 import v2.compiler.body_lowering_fold {
+  body_lower_match_arm_wire_optional,
   body_lower_match_arms_optional,
   body_lower_match_scrutinee_optional,
   body_lower_operand_ref_optional,
@@ -16,6 +17,7 @@ import v2.extdeps.languages.dag {
   parse_subtree_find_production_captured
 }
 import std.algebra { Cons, Empty }
+import v2.std.algebra { length }
 import v2.std.collection { Absent, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -262,8 +264,34 @@ fn body_lowering_match_arms_found_witness() -> Bool {
           match body_lower_unwrap_captured(shell: shell) {
             Present { value: captured } =>
               match body_lower_match_arms_optional(captured: captured) {
-                Present { value: _ } => true
+                Present { value: arms } => length(xs: arms) > 0
                 Absent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_match_first_arm_wire_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: captured } =>
+              match parse_subtree_find_production_captured(
+                root: captured,
+                emitted: ^dag_surface_match_arm
+              ) {
+                ParseSubtreeFound { captured: arm } =>
+                  match body_lower_match_arm_wire_optional(arm_capture: arm) {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
+                ParseSubtreeAbsent => false
               }
             Absent => false
           }
