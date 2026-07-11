@@ -6280,7 +6280,10 @@ fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
 /// targets this entry, every kernel witness in the entry would skip — receipt:
 /// `green_skip_for_file_outside_import_closure` (diff outside import closure → empty
 /// frontier / no touch). Host-scaffold entries are excluded (changed_paths can select
-/// them without import-closure overlap).
+/// them without import-closure overlap). Data-item edits land in `overlapping_data_items`
+/// (not `touched_entry_files`); any edited data-item file in the entry import closure
+/// must resolve so `rerun_frontier_nodes_for_entry` can discriminate referenced nodes
+/// (`red_node_frontier_fires_for_referenced_data_item`).
 fn entry_qualifies_for_skip_without_resolve(
     entry_path: &str,
     row_functions: &[&str],
@@ -6310,6 +6313,23 @@ fn entry_qualifies_for_skip_without_resolve(
         touched_entry_paths,
     )? {
         return Ok(false);
+    }
+    if !diff_edits.overlapping_data_items.is_empty() {
+        let data_item_files: Vec<String> = diff_edits
+            .overlapping_data_items
+            .iter()
+            .map(|(file, _)| file.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        if entry_file_touched_via_import_closure(
+            entry_path,
+            facts,
+            declared_paths,
+            &data_item_files,
+        )? {
+            return Ok(false);
+        }
     }
     let content = read_entry_content_for_host_scaffold(entry_path)?;
     if entry_text_indicates_live_host_scan(&content) {
@@ -7155,7 +7175,7 @@ fn run_discovery_rows(
     };
     if !entry_fast_skip.is_empty() {
         eprintln!(
-            "run_discovery_corpus: skip-before-resolve fast path for {} entr(y/ies) (import-closure unaffected, no declaration edits, no host-scaffold)",
+            "run_discovery_corpus: skip-before-resolve fast path for {} entr(y/ies) (import-closure unaffected, no declaration edits, no data-item edits in closure, no host-scaffold)",
             entry_fast_skip.len()
         );
     }
@@ -8750,6 +8770,50 @@ mod node_frontier_plumbing_controls {
             )
             .expect("qualify"),
             "unaffected entry must qualify for skip-before-resolve when diff is outside import closure"
+        );
+    }
+
+    // RED guard: data-item edits in the entry import closure must not fast-skip — the
+    // node-frontier machinery needs resolve to discriminate referenced nodes.
+    #[test]
+    fn skip_without_resolve_fast_path_ineligible_for_referenced_data_item() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = abs(&ws, FIXTURE);
+        let text = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
+        let data_line = text
+            .lines()
+            .position(|l| l.contains("data floor_disc_node_a"))
+            .map(|i| (i + 1) as i64)
+            .expect("floor_disc_node_a line");
+        let diff = diff_at(&fixture_abs, data_line);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from referenced-node diff");
+        assert!(
+            !diff_edits.overlapping_data_items.is_empty(),
+            "data-item diff must populate overlapping_data_items"
+        );
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
+        let funcs: Vec<String> = scan_test_decl_lines(&content)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        let func_refs: Vec<&str> = funcs.iter().map(|s| s.as_str()).collect();
+        assert!(
+            !super::entry_qualifies_for_skip_without_resolve(
+                &fixture_abs,
+                &func_refs,
+                &index.module_graph_facts,
+                &declared,
+                &touched_paths,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "entry must NOT qualify for skip-before-resolve when diff edits a data item in its import closure"
         );
     }
 
