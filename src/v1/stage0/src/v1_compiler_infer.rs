@@ -47,10 +47,12 @@ pub use crate::v1_compiler_infer_emit_info::{
 pub use crate::v1_compiler_infer_env::{
     empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
     is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
-    merge_inductive_fields, merge_type_env_cache, put_inductive_field, put_inductive_field_cross,
-    str_bindings_from_bindings,
+    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
+    put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
 };
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, TypeEnvCache};
+pub use crate::v1_compiler_infer_env::{
+    GuardedTypeEnvCacheMerge, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
+};
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
@@ -109,8 +111,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    FieldNotFound, InternalError, SoleConstructorViolation, TypeMismatch, UnresolvedType,
-    VariantCollision,
+    CrossParentBindingConflict, FieldNotFound, InternalError, SoleConstructorViolation,
+    TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -11867,17 +11869,26 @@ pub fn type_env_cache_from_bindings(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParentCacheRow {
+    pub import_path: String,
+    pub cache: Rc<TypeEnvCache>,
+}
+
 pub fn union_parent_type_env_caches(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
-) -> Rc<TypeEnvCache> {
+) -> Rc<GuardedTypeEnvCacheMerge> {
     {
         let parent_caches = Rc::new({
             let mut __result = Vec::new();
             for imp in resolved_imports.clone().iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                        Some(parent) => Rc::new(vec![parent.type_env_cache.clone()]),
+                        Some(parent) => Rc::new(vec![Rc::new(ParentCacheRow {
+                            import_path: imp.module_path.clone(),
+                            cache: parent.type_env_cache.clone(),
+                        })]),
                         None => Rc::new(vec![]),
                     })
                     .iter()
@@ -11887,7 +11898,10 @@ pub fn union_parent_type_env_caches(
             __result
         });
         match parent_caches.clone().first().cloned() {
-            None => empty_type_env_cache(),
+            None => Rc::new(GuardedTypeEnvCacheMerge {
+                cache: empty_type_env_cache(),
+                conflicts: Rc::new(vec![]),
+            }),
             Some(head) => Rc::new(
                 parent_caches
                     .clone()
@@ -11899,9 +11913,17 @@ pub fn union_parent_type_env_caches(
             .iter()
             .cloned()
             .fold(
-                head.clone(),
-                |acc: Rc<TypeEnvCache>, cache: Rc<TypeEnvCache>| {
-                    merge_type_env_cache(acc, cache.clone())
+                Rc::new(GuardedTypeEnvCacheMerge {
+                    cache: head.cache.clone(),
+                    conflicts: Rc::new(vec![]),
+                }),
+                |acc: Rc<GuardedTypeEnvCacheMerge>, row: Rc<ParentCacheRow>| {
+                    merge_type_env_cache_guarded(
+                        acc.cache.clone(),
+                        row.cache.clone(),
+                        row.import_path.clone(),
+                        acc.conflicts.clone(),
+                    )
                 },
             ),
         }
@@ -12631,8 +12653,23 @@ pub fn build_type_env(
             source_indices.clone(),
             compiler_recursive_name_set(),
         );
-        let import_cache =
+        let import_union =
             union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
+        let import_cache = import_union.cache.clone();
+        let cross_parent_conflict_diags = Rc::new({
+            let mut __result = Vec::new();
+            for c in import_union.conflicts.clone().iter().cloned() {
+                __result.push(make_error_node(
+                    Rc::new(CompilerDiagnostic::CrossParentBindingConflict {
+                        name: c.name.clone(),
+                        import_path: c.import_path.clone(),
+                        span: c.span.clone(),
+                    }),
+                    module_name_str.clone(),
+                ));
+            }
+            __result
+        });
         let ancestry_cache = if ((module.resolved_imports.clone().len() as i64) == 1) {
             import_cache.clone()
         } else {
@@ -13154,7 +13191,9 @@ pub fn build_type_env_unresolved(
             compiler_recursive_name_set(),
         );
         let import_cache =
-            union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
+            union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone())
+                .cache
+                .clone();
         let ancestry_cache = if ((module.resolved_imports.clone().len() as i64) == 1) {
             import_cache.clone()
         } else {

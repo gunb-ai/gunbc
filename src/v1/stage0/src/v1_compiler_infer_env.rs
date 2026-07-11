@@ -4,6 +4,7 @@
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion};
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -135,6 +136,193 @@ pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
         cycle_set_str: v1_rt::rc_empty_map::<String, bool>(),
         variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeEnvCacheMergeConflict {
+    pub name: String,
+    pub import_path: String,
+    pub span: Rc<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GuardedTypeEnvCacheMerge {
+    pub cache: Rc<TypeEnvCache>,
+    pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+}
+
+pub fn guarded_cache_union_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cross-parent cache union (S2a move 2 increment B cut 2; operator/lane ruling 2026-07-11): a name reachable from two PEER imports with different bindings is a refusal state, never a precedence pick - overlay-wins across the parents union was a latent silent-shadowing fail-open (namespace-only ruling: no ambiguity at any layer). The union is therefore order-INDEPENDENT by construction: keys present in both sides must carry the SAME binding (declaration-site span fast path, structural fallback) or the merge records a typed, located conflict; equal entries are SKIPPED, not re-inserted, which is also the retained-bytes fix - the unguarded merge materialized a fresh O(|ancestry|) HAMT per module (rc_map_merge path-copies per key), the measured ~16.3MiB/module residency class. Positional layers keep overlay-wins: the kernel scope layer (merge_type_env_cache below) and locals-over-ancestry are lexical nearest-wins from the containment ruling, not peer-merge precedence.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn binding_same_authority(a: Rc<TypeBinding>, b: Rc<TypeBinding>) -> bool {
+    if (a.resolved.clone().span.clone() == b.resolved.clone().span.clone()) {
+        true
+    } else {
+        (a.clone() == b.clone())
+    }
+}
+
+pub fn guarded_union_str_bindings(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+    import_path: String,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<GuardedStrBindingsUnion> {
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        Rc::new(GuardedStrBindingsUnion {
+            bindings: acc.clone(),
+            conflicts: conflicts.clone(),
+        }),
+        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(
+            &overlay,
+            name.clone(),
+        ) {
+            None => state.clone(),
+            Some(incoming) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
+                None => Rc::new(GuardedStrBindingsUnion {
+                    bindings: v1_rt::rc_map_insert(
+                        state.bindings.clone(),
+                        name.clone(),
+                        incoming.clone(),
+                    ),
+                    conflicts: state.conflicts.clone(),
+                }),
+                Some(existing) => {
+                    if binding_same_authority(existing.clone(), incoming.clone()) {
+                        state.clone()
+                    } else {
+                        Rc::new(GuardedStrBindingsUnion {
+                            bindings: v1_rt::rc_map_insert(
+                                state.bindings.clone(),
+                                name.clone(),
+                                incoming.clone(),
+                            ),
+                            conflicts: v1_rt::concat(
+                                state.conflicts.clone(),
+                                Rc::new(vec![Rc::new(TypeEnvCacheMergeConflict {
+                                    name: name.clone(),
+                                    import_path: import_path.clone(),
+                                    span: incoming.resolved.clone().span.clone(),
+                                })]),
+                            ),
+                        })
+                    }
+                }
+            },
+        },
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GuardedStrBindingsUnion {
+    pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+}
+
+pub fn union_deps_map_skip_equal(
+    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
+    overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        acc.clone(),
+        |m: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
+            &overlay,
+            name.clone(),
+        ) {
+            None => m.clone(),
+            Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
+                None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+                Some(existing) => {
+                    if (existing.clone() == incoming.clone()) {
+                        m.clone()
+                    } else {
+                        v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
+                    }
+                }
+            },
+        },
+    )
+}
+
+pub fn union_bool_set_skip_equal(
+    acc: Rc<HashMap<String, bool>>,
+    overlay: Rc<HashMap<String, bool>>,
+) -> Rc<HashMap<String, bool>> {
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        acc.clone(),
+        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&m, name.clone()) {
+            Some(_) => m.clone(),
+            None => match v1_rt::map_get(&overlay, name.clone()) {
+                Some(v) => v1_rt::rc_map_insert(m.clone(), name.clone(), v.clone()),
+                None => m.clone(),
+            },
+        },
+    )
+}
+
+pub fn union_variant_locals_skip_equal(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        acc.clone(),
+        |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+            &overlay,
+            name.clone(),
+        ) {
+            None => m.clone(),
+            Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
+                None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+                Some(existing) => {
+                    if binding_same_authority(existing.clone(), incoming.clone()) {
+                        m.clone()
+                    } else {
+                        v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
+                    }
+                }
+            },
+        },
+    )
+}
+
+pub fn merge_type_env_cache_guarded(
+    base: Rc<TypeEnvCache>,
+    overlay: Rc<TypeEnvCache>,
+    import_path: String,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<GuardedTypeEnvCacheMerge> {
+    {
+        let str_union = guarded_union_str_bindings(
+            base.str_bindings.clone(),
+            overlay.str_bindings.clone(),
+            import_path.clone(),
+            conflicts.clone(),
+        );
+        Rc::new(GuardedTypeEnvCacheMerge {
+            cache: Rc::new(TypeEnvCache {
+                deps_map: union_deps_map_skip_equal(
+                    base.deps_map.clone(),
+                    overlay.deps_map.clone(),
+                ),
+                str_bindings: str_union.bindings.clone(),
+                cycle_set_str: union_bool_set_skip_equal(
+                    base.cycle_set_str.clone(),
+                    overlay.cycle_set_str.clone(),
+                ),
+                variant_locals: union_variant_locals_skip_equal(
+                    base.variant_locals.clone(),
+                    overlay.variant_locals.clone(),
+                ),
+            }),
+            conflicts: str_union.conflicts.clone(),
+        })
+    }
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {

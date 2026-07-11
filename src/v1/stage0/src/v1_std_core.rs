@@ -434,6 +434,11 @@ pub enum CompilerDiagnostic {
         name: String,
         span: Rc<SourceSpan>,
     },
+    CrossParentBindingConflict {
+        name: String,
+        import_path: String,
+        span: Rc<SourceSpan>,
+    },
 }
 impl CompilerDiagnostic {
     pub fn span(&self) -> Rc<SourceSpan> {
@@ -456,6 +461,7 @@ impl CompilerDiagnostic {
             CompilerDiagnostic::VariantCollision { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::SoleConstructorViolation { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::UnlistedImportUse { span: __val, .. } => __val.clone(),
+            CompilerDiagnostic::CrossParentBindingConflict { span: __val, .. } => __val.clone(),
         }
     }
 }
@@ -491,200 +497,32 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
+        CompilerDiagnostic::CrossParentBindingConflict { span: s, .. } => s.clone(),
     }
 }
 
 pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     match (*d.clone()).clone() {
-        CompilerDiagnostic::UnresolvedImport {
-            module_path: m,
-            importing_module: i,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("unresolved import: module '".to_string(), m.clone()),
-                    "' not found (imported by '".to_string(),
-                ),
-                i.clone(),
-            ),
-            "')".to_string(),
-        ),
-        CompilerDiagnostic::MissingExport {
-            name: n,
-            module_path: m,
-            importing_module: i,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("name '".to_string(), n.clone()),
-                            "' not found in module '".to_string(),
-                        ),
-                        m.clone(),
-                    ),
-                    "' (imported by '".to_string(),
-                ),
-                i.clone(),
-            ),
-            "')".to_string(),
-        ),
-        CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(
-            v1_rt::concat("unresolved type '".to_string(), n.clone()),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::TypeMismatch {
-            expected: e,
-            got: g,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("type mismatch: expected '".to_string(), e.clone()),
-                    "', got '".to_string(),
-                ),
-                g.clone(),
-            ),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::ArityMismatch {
-            name: n,
-            expected: e,
-            got: g,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("type ".to_string(), n.clone()),
-                        " expects ".to_string(),
-                    ),
-                    (e.clone()).to_string(),
-                ),
-                " type arguments, got ".to_string(),
-            ),
-            (g.clone()).to_string(),
-        ),
-        CompilerDiagnostic::VariantNotFound {
-            variant: v,
-            type_name: t,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("variant '".to_string(), v.clone()),
-                    "' not found in type '".to_string(),
-                ),
-                t.clone(),
-            ),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::FieldNotFound {
-            field: f,
-            type_name: t,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("field '".to_string(), f.clone()),
-                    "' not found in type '".to_string(),
-                ),
-                t.clone(),
-            ),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat(
-            "non-exhaustive match: missing variant(s) ".to_string(),
-            ms.clone().join(&", ".to_string()),
-        ),
-        CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat(
-            "circular dependency detected: ".to_string(),
-            ms.clone().join(&" -> ".to_string()),
-        ),
-        CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(
-            v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::MissingAnnotation {
-            fn_name: f,
-            what: w,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("function '".to_string(), f.clone()),
-                    "' requires ".to_string(),
-                ),
-                w.clone(),
-            ),
-            " annotation".to_string(),
-        ),
-        CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
-        CompilerDiagnostic::InternalError { message: m, .. } => m.clone(),
-        CompilerDiagnostic::ComplexityUnknown {
-            func_name: f,
-            reason: r,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat("complexity: ".to_string(), f.clone()),
-                ": ".to_string(),
-            ),
-            r.clone(),
-        ),
-        CompilerDiagnostic::OwnershipViolation {
-            binding: b,
-            fn_name: f,
-            consumers: c,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("ownership: binding '".to_string(), b.clone()),
-                            "' in '".to_string(),
-                        ),
-                        f.clone(),
-                    ),
-                    "' has ".to_string(),
-                ),
-                (c.clone()).to_string(),
-            ),
-            " consumers".to_string(),
-        ),
-        CompilerDiagnostic::VariantCollision {
-            variant: v,
-            enum1: e1,
-            enum2: e2,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("variant '".to_string(), v.clone()),
-                            "' appears in both '".to_string(),
-                        ),
-                        e1.clone(),
-                    ),
-                    "' and '".to_string(),
-                ),
-                e2.clone(),
-            ),
-            "'".to_string(),
-        ),
-        CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(
-            v1_rt::concat("sole_constructor type '".to_string(), t.clone()),
-            "' cannot be constructed outside its defining module".to_string(),
-        ),
-        CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(
-            v1_rt::concat("unlisted import use '".to_string(), n.clone()),
-            "' (referenced but not in any import's name list)".to_string(),
-        ),
-    }
+    CompilerDiagnostic::UnresolvedImport { module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unresolved import: module '".to_string(), m.clone()), "' not found (imported by '".to_string()), i.clone()), "')".to_string()),
+    CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
+    CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
+    CompilerDiagnostic::ArityMismatch { name: n, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type ".to_string(), n.clone()), " expects ".to_string()), (e.clone()).to_string()), " type arguments, got ".to_string()), (g.clone()).to_string()),
+    CompilerDiagnostic::VariantNotFound { variant: v, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' not found in type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::FieldNotFound { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("field '".to_string(), f.clone()), "' not found in type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
+    CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
+    CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::MissingAnnotation { fn_name: f, what: w, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("function '".to_string(), f.clone()), "' requires ".to_string()), w.clone()), " annotation".to_string()),
+    CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
+    CompilerDiagnostic::InternalError { message: m, .. } => m.clone(),
+    CompilerDiagnostic::ComplexityUnknown { func_name: f, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("complexity: ".to_string(), f.clone()), ": ".to_string()), r.clone()),
+    CompilerDiagnostic::OwnershipViolation { binding: b, fn_name: f, consumers: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ownership: binding '".to_string(), b.clone()), "' in '".to_string()), f.clone()), "' has ".to_string()), (c.clone()).to_string()), " consumers".to_string()),
+    CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
+    CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
+    CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
+    CompilerDiagnostic::CrossParentBindingConflict { name: n, import_path: p, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cross-parent binding conflict: name '".to_string(), n.clone()), "' reaches this module from import '".to_string()), p.clone()), "' with a DIFFERENT binding than an earlier import - one name, one authority (DESIGN 3); a silent overlay-wins here is the shadowing fail-open class, so this refuses instead".to_string()),
+}
 }
 
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
@@ -714,6 +552,7 @@ pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnosti
         CompilerDiagnostic::VariantCollision { .. } => true,
         CompilerDiagnostic::SoleConstructorViolation { .. } => true,
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
+        CompilerDiagnostic::CrossParentBindingConflict { .. } => true,
         _ => false,
     }
 }
