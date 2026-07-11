@@ -11,7 +11,6 @@ import v2.compiler.self_host.frontier_probe {
   RealizationGap,
   SelfEmitReady,
   UnclassifiedProbeReason,
-  frontier_blocker_class_is_classified,
   frontier_probe_blocker_rank
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -429,7 +428,13 @@ fn compiler_frontier_roster_all_classified_holds() -> Bool {
     xs: compiler_frontier_roster,
     empty: true,
     cons: fn(ok, row) {
-      ok && frontier_blocker_class_is_classified(blocker: row.measured_probe.blocker_class)
+      ok && match row.measured_probe.blocker_class {
+        UnclassifiedProbeReason { reason: _ } => false
+        SelfEmitReady => true
+        NameResolutionGap => true
+        EmitSurfaceGap => true
+        RealizationGap => true
+      }
     }
   )
 }

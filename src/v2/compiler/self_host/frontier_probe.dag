@@ -11,6 +11,7 @@ import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
+import v2.std.text { String }
 
 type FrontierBlockerClass
   = SelfEmitReady
@@ -71,16 +72,6 @@ fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
     RealizationGap
   } else {
     UnclassifiedProbeReason { reason: reason }
-  }
-}
-
-fn frontier_blocker_class_is_classified(blocker: FrontierBlockerClass) -> Bool {
-  match blocker {
-    UnclassifiedProbeReason { reason: _ } => false
-    SelfEmitReady => true
-    NameResolutionGap => true
-    EmitSurfaceGap => true
-    RealizationGap => true
   }
 }
 
