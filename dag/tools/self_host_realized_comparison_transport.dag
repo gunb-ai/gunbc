@@ -35,8 +35,8 @@ fn realized_comparison_invoke() -> WitnessBin {
 
 fn realized_comparison_args() -> List<String> {
   [
-    "--emit-fresh", realized_comparison_stable_dir(),
-    "--write-manifest", realized_comparison_roster_manifest_path()
+    "--emit-fresh", realized_comparison_stable_dir_rel,
+    "--write-manifest", realized_comparison_roster_manifest_rel
   ]
 }
 
