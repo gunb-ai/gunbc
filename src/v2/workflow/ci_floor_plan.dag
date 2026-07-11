@@ -41,6 +41,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_floor_executor_base_overhead_bytes,
 }
 import gunbc.ci_budget_tree { srv1_floor_memory_budget }
+import gunbc.ci_runner_target { ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import std.realization_schedule {
   SelectionApplied,
@@ -550,7 +551,7 @@ fn gunbc_falsifier_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareTh
 }
 
 fn gunbc_falsifier_spawn_width_from_live_cap() -> HardwareThreadCount {
-  gunbc_falsifier_spawn_width_for_budget(memory_budget: gunbc_ci_runner_slot_ram_speed_ceiling())
+  gunbc_falsifier_spawn_width_for_budget(memory_budget: ci_runner_target_ram_speed_budget(target: selected_ci_runner_target()))
 }
 
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
@@ -686,7 +687,7 @@ fn gunbc_falsifier_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadC
 }
 
 fn witness_falsifier_plan_spawn_width_backs_off_at_live_cap() -> Bool {
-  let ceiling = byte_size_count(b: gunbc_ci_runner_slot_ram_speed_ceiling())
+  let ceiling = byte_size_count(b: ci_runner_target_ram_speed_budget(target: selected_ci_runner_target()))
   let falsifier_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: ceiling))
   let ci_width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: ceiling))
   let fallback_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: 0))
@@ -700,7 +701,7 @@ fn witness_falsifier_plan_spawn_width_backs_off_at_live_cap() -> Bool {
 data falsifier_slot_capacity_deficit_note: String = "PINNED CAPACITY DEFICIT (2026-07-11, converged slot shape): the falsifier's minimum envelope - executor base overhead (8910036989) + one cold-corpus shard (gunbc_falsifier_per_shard_peak_rss_bytes) - EXCEEDS the usable fraction of the applied 16GiB/15GiB slot. It fit only the stale 24GiB hand-set regime, which is why the nightly has been dark (exit-137 series, 07-06..07-10) and why weakening this witness would enshrine the degradation (DESIGN 5). The deficit is the SLOT SHAPE, not the width formula: width already floors at 1 and the same envelope fits the 24GiB-class reference below. Dissolve-on: the falsifier is routed to a runner offer whose envelope fits (the runner-offer-rows lane; a 64GB-class shape holds it with 3x headroom - ubicloud receipt run 29162064482 peaked 13.5GiB uncapped) OR the executor base overhead shrinks below the slot's usable budget minus one shard; then this pin flips back to a fits-assert against the live ceiling."
 
 fn witness_falsifier_envelope_deficit_on_slot_is_pinned() -> Bool {
-  let width = hardware_thread_count_value(t: gunbc_falsifier_spawn_width_from_live_cap())
+  let width = hardware_thread_count_value(t: gunbc_falsifier_spawn_width_for_budget(memory_budget: gunbc_ci_runner_slot_ram_speed_ceiling()))
   let committed = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes()) + width * byte_size_count(b: gunbc_falsifier_per_shard_peak_rss_bytes())
   let usable_at_ceiling = byte_size_count(b: measure_scale_fraction_floor(
     m: gunbc_ci_runner_slot_ram_speed_ceiling(),
