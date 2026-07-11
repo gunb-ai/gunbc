@@ -9963,13 +9963,6 @@ pub struct ImportResolutionFactRaw {
 }
 
 #[derive(Clone)]
-pub struct ReferenceResolutionFactRaw {
-    pub path: String,
-    pub reference_module: String,
-    pub target_declared: bool,
-}
-
-#[derive(Clone)]
 pub struct ModuleDeclarationFactRaw {
     pub module: String,
     pub path: String,
@@ -9989,16 +9982,12 @@ fn is_excluded_import_path(rel: &str, exclude_substrings: &[String]) -> bool {
 static IMPORT_RESOLUTION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 #[cfg(test)]
-static REFERENCE_RESOLUTION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-#[cfg(test)]
 static MODULE_DECLARATION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
 #[cfg(test)]
 pub(crate) fn reset_import_resolution_facts_call_counts_for_test() {
     IMPORT_RESOLUTION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
-    REFERENCE_RESOLUTION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
     MODULE_DECLARATION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
 }
 
@@ -10056,19 +10045,12 @@ pub fn import_resolution_facts(
     out
 }
 
-pub fn reference_resolution_facts(
-    pool_roots: &[String],
+/// Enumerate workspace-relative `.dag` file paths under `importer_roots` (no content scan).
+pub fn dag_file_paths_under_roots(
     importer_roots: &[String],
     exclude_substrings: &[String],
-) -> Vec<ReferenceResolutionFactRaw> {
-    #[cfg(test)]
-    REFERENCE_RESOLUTION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let abs_pool_roots = pool_roots_abs(pool_roots);
+) -> Vec<String> {
     let abs_importer_roots = pool_roots_abs(importer_roots);
-    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
-        .into_iter()
-        .map(|(k, _)| k)
-        .collect();
     let mut out = Vec::new();
     for root in &abs_importer_roots {
         let root_path = Path::new(root);
@@ -10083,20 +10065,11 @@ pub fn reference_resolution_facts(
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
-            let content = match std::fs::read_to_string(&file) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            for reference_module in extract_reference_module_paths(&content, &declared) {
-                let target_declared = declared.contains(&reference_module);
-                out.push(ReferenceResolutionFactRaw {
-                    path: rel.clone(),
-                    reference_module,
-                    target_declared,
-                });
-            }
+            out.push(rel);
         }
     }
+    out.sort();
+    out.dedup();
     out
 }
 

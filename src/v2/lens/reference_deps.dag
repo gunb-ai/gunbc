@@ -14,10 +14,37 @@ import v2.lens.module_graph {
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.algebra { FreeMonoid }
-import v2.std.algebra { fold_list, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  parse_qualified_name_segments_from_capture,
+  qualified_name_from_module_node,
+  qualified_name_from_segment_list
+}
+import v2.std.algebra {
+  contains,
+  fold,
+  fold_list,
+  is_empty,
+  is_prefix_of,
+  length,
+  list_snoc_item
+}
 import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_insert }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { find_named_child }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_dotted_string,
+  qualified_name_from_node
+}
 import v2.std.text { String }
 
 type ReferenceResolutionFact {
@@ -26,7 +53,18 @@ type ReferenceResolutionFact {
   target_declared: Bool
 }
 
-data reference_deps_text_scan_disposition: Disposition = Scaffold {
+type ReferenceIngestRefusal {
+  path: String
+  stage: String
+  reason: Symbol
+}
+
+type ReferenceResolutionCensus {
+  facts: List<ReferenceResolutionFact>
+  refusals: List<ReferenceIngestRefusal>
+}
+
+data reference_deps_parsed_tree_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "v2.compiler.symbol_index_fill",
@@ -35,17 +73,349 @@ data reference_deps_text_scan_disposition: Disposition = Scaffold {
   }
 }
 
-data reference_deps_dissolution_note: String = "Interim host text-scan for container.module reference edges (B2). Dissolves when namespace-only ingest walks the containment-tree SymbolIndex and dependency edges are derived from resolved qualified-name projections — same single authority as v2.compiler.symbol_index_fill / v2.lens.module_graph dependency_edge_source_migration_note."
+data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). Dissolves when symbol_index_fill projects the same edges from the filled containment tree as the single authority."
+
+data reference_deps_file_anchor: Symbol = ^reference_deps_file_anchor
+
+data empty_reference_facts: List<ReferenceResolutionFact> = []
+
+data empty_reference_refusals: List<ReferenceIngestRefusal> = []
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  is_prefix_of(prefix: a, xs: b, eq: symbol_eq)
+    && is_prefix_of(prefix: b, xs: a, eq: symbol_eq)
+}
+
+fn reference_fact_eq(a: ReferenceResolutionFact, b: ReferenceResolutionFact) -> Bool {
+  string_eq(a: a.path, b: b.path)
+    && string_eq(a: a.reference_module, b: b.reference_module)
+}
+
+fn reference_snoc_fact_unique(
+  acc: List<ReferenceResolutionFact>,
+  fact: ReferenceResolutionFact
+) -> List<ReferenceResolutionFact> {
+  if contains(xs: acc, item: fact, eq: reference_fact_eq) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: fact)
+  }
+}
+
+fn reference_snoc_refusal(
+  acc: List<ReferenceIngestRefusal>,
+  refusal: ReferenceIngestRefusal
+) -> List<ReferenceIngestRefusal> {
+  list_snoc_item(xs: acc, item: refusal)
+}
+
+fn reference_deps_ingest_source_text(
+  source_text: String,
+  file: Symbol
+) -> Outcome<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: file, rules: lm.lex) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: artifact, diagnostics: _ } =>
+          outcome_accepted(value: normalize(parse_tree: artifact.tree))
+      }
+  }
+}
+
+fn reference_optional_qn_from_qualified_name_production(
+  production_node: Node,
+  module_root: Node
+) -> Optional<QualifiedName> {
+  match parse_production_captured_child_optional(node: production_node) {
+    Absent => Absent
+    Present { value: capture } =>
+      match parse_qualified_name_segments_from_capture(qn_capture: capture, root: module_root) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: segments, diagnostics: _ } =>
+          match qualified_name_from_segment_list(segments: segments, root: module_root) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: qn, diagnostics: _ } => Present { value: qn }
+          }
+      }
+  }
+}
+
+fn reference_optional_qn_from_import_decl(node: Node, module_root: Node) -> Optional<QualifiedName> {
+  match find_named_child(root: node, name: ^dag_surface_import_decl_qualified_name) {
+    Accepted { value: qn_node, diagnostics: _ } =>
+      match qualified_name_from_node(root: qn_node) {
+        Accepted { value: qn, diagnostics: _ } => Present { value: qn }
+        Rejected { diagnostics: _ } => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn reference_collect_qn_site_step(
+  acc: List<QualifiedName>,
+  site_qn: QualifiedName,
+  module_qn: QualifiedName
+) -> List<QualifiedName> {
+  if qualified_name_eq(a: site_qn, b: module_qn) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: site_qn)
+  }
+}
+
+fn reference_collect_qn_site_optional_step(
+  acc: List<QualifiedName>,
+  site: Optional<QualifiedName>,
+  module_qn: QualifiedName
+) -> List<QualifiedName> {
+  match site {
+    Absent => acc
+    Present { value: site_qn } =>
+      reference_collect_qn_site_step(acc: acc, site_qn: site_qn, module_qn: module_qn)
+  }
+}
+
+fn reference_collect_qn_sites_from_node(
+  node: Node,
+  module_root: Node,
+  module_qn: QualifiedName,
+  acc: List<QualifiedName>
+) -> List<QualifiedName> {
+  let acc1 = match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_qualified_name {
+        reference_collect_qn_site_optional_step(
+          acc: acc,
+          site: reference_optional_qn_from_qualified_name_production(
+            production_node: node,
+            module_root: module_root
+          ),
+          module_qn: module_qn
+        )
+      } else if id == ^dag_surface_import_decl {
+        reference_collect_qn_site_optional_step(
+          acc: acc,
+          site: reference_optional_qn_from_import_decl(node: node, module_root: module_root),
+          module_qn: module_qn
+        )
+      } else {
+        acc
+      }
+    Absent => acc
+  }
+  fold(node.children, init: acc1, f: fn(a, edge) {
+    reference_collect_qn_sites_from_node(
+      node: edge.target,
+      module_root: module_root,
+      module_qn: module_qn,
+      acc: a
+    )
+  })
+}
+
+fn reference_collect_qn_sites(module_root: Node) -> List<QualifiedName> {
+  let module_qn = match qualified_name_from_module_node(root: module_root) {
+    Accepted { value: qn, diagnostics: _ } => qn
+    Rejected { diagnostics: _ } => Empty
+  }
+  reference_collect_qn_sites_from_node(
+    node: module_root,
+    module_root: module_root,
+    module_qn: module_qn,
+    acc: Empty
+  )
+}
+
+fn reference_declared_module_prefix_facts(
+  rel_path: String,
+  ref_qn: QualifiedName,
+  declared: List<ModuleDeclarationFact>,
+  acc: List<ReferenceResolutionFact>
+) -> List<ReferenceResolutionFact> {
+  fold_list(
+    xs: declared,
+    empty: acc,
+    cons: fn(a, fact) {
+      let decl_qn = qualified_name_from_dotted_string(dotted: fact.module)
+      if is_prefix_of(prefix: decl_qn, xs: ref_qn, eq: symbol_eq) {
+        reference_snoc_fact_unique(
+          acc: a,
+          fact: ReferenceResolutionFact {
+            path: rel_path,
+            reference_module: fact.module,
+            target_declared: true
+          }
+        )
+      } else {
+        a
+      }
+    }
+  )
+}
+
+fn reference_facts_for_qn_sites(
+  rel_path: String,
+  sites: List<QualifiedName>,
+  declared: List<ModuleDeclarationFact>,
+  acc: List<ReferenceResolutionFact>
+) -> List<ReferenceResolutionFact> {
+  fold_list(
+    xs: sites,
+    empty: acc,
+    cons: fn(a, site_qn) {
+      reference_declared_module_prefix_facts(
+        rel_path: rel_path,
+        ref_qn: site_qn,
+        declared: declared,
+        acc: a
+      )
+    }
+  )
+}
+
+fn reference_file_census_parsed(
+  rel_path: String,
+  module_root: Node,
+  declared: List<ModuleDeclarationFact>
+) -> ReferenceResolutionCensus {
+  ReferenceResolutionCensus {
+    facts: reference_facts_for_qn_sites(
+      rel_path: rel_path,
+      sites: reference_collect_qn_sites(module_root: module_root),
+      declared: declared,
+      acc: empty_reference_facts
+    ),
+    refusals: empty_reference_refusals
+  }
+}
+
+fn reference_file_census_refused(
+  rel_path: String,
+  stage: String,
+  reason: Symbol
+) -> ReferenceResolutionCensus {
+  ReferenceResolutionCensus {
+    facts: empty_reference_facts,
+    refusals: [
+      ReferenceIngestRefusal {
+        path: rel_path,
+        stage: stage,
+        reason: reason
+      }
+    ]
+  }
+}
+
+fn reference_file_census(
+  rel_path: String,
+  declared: List<ModuleDeclarationFact>
+) -> ReferenceResolutionCensus {
+  let source_text = filesystem_read(path: rel_path).content
+  match reference_deps_ingest_source_text(
+    source_text: source_text,
+    file: reference_deps_file_anchor
+  ) {
+    Rejected { diagnostics: d } =>
+      reference_file_census_refused(
+        rel_path: rel_path,
+        stage: "ingest",
+        reason: d.head.reason
+      )
+    Accepted { value: module_root, diagnostics: _ } =>
+      reference_file_census_parsed(
+        rel_path: rel_path,
+        module_root: module_root,
+        declared: declared
+      )
+  }
+}
+
+fn reference_merge_census(
+  acc: ReferenceResolutionCensus,
+  row: ReferenceResolutionCensus
+) -> ReferenceResolutionCensus {
+  ReferenceResolutionCensus {
+    facts: fold_list(
+      xs: row.facts,
+      empty: acc.facts,
+      cons: fn(a, fact) { reference_snoc_fact_unique(acc: a, fact: fact) }
+    ),
+    refusals: fold_list(
+      xs: row.refusals,
+      empty: acc.refusals,
+      cons: fn(a, refusal) { reference_snoc_refusal(acc: a, refusal: refusal) }
+    )
+  }
+}
+
+fn reference_empty_census() -> ReferenceResolutionCensus {
+  ReferenceResolutionCensus {
+    facts: empty_reference_facts,
+    refusals: empty_reference_refusals
+  }
+}
+
+fn reference_resolution_census_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> ReferenceResolutionCensus {
+  let declared = module_declaration_facts_live(pool_roots: pool_roots)
+  let paths = dag_file_paths_under_roots(
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+  fold_list(
+    xs: paths,
+    empty: reference_empty_census(),
+    cons: fn(acc, rel_path) {
+      reference_merge_census(
+        acc: acc,
+        row: reference_file_census(rel_path: rel_path, declared: declared)
+      )
+    }
+  )
+}
 
 fn reference_resolution_facts_live(
   pool_roots: List<String>,
   importer_roots: List<String>,
   exclude_substrings: List<String>
 ) -> List<ReferenceResolutionFact> {
-  reference_resolution_facts(
+  let census = reference_resolution_census_live(
     pool_roots: pool_roots,
     importer_roots: importer_roots,
     exclude_substrings: exclude_substrings
+  )
+  if is_empty(xs: census.refusals) {
+    census.facts
+  } else {
+    empty_reference_facts
+  }
+}
+
+fn reference_resolution_refusal_count_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> Int {
+  length(
+    xs: reference_resolution_census_live(
+      pool_roots: pool_roots,
+      importer_roots: importer_roots,
+      exclude_substrings: exclude_substrings
+    ).refusals
   )
 }
 
@@ -112,15 +482,20 @@ fn reference_closure_live_excluding(
   pool_roots: List<String>,
   exclude_substrings: List<String>
 ) -> FreeMonoid<String> {
-  reference_closure(
-    entry_path: entry_path,
-    edges: reference_resolution_facts_live(
-      pool_roots: pool_roots,
-      importer_roots: pool_roots,
-      exclude_substrings: exclude_substrings
-    ),
-    nodes: module_declaration_facts_live(pool_roots: pool_roots)
+  let census = reference_resolution_census_live(
+    pool_roots: pool_roots,
+    importer_roots: pool_roots,
+    exclude_substrings: exclude_substrings
   )
+  if is_empty(xs: census.refusals) {
+    reference_closure(
+      entry_path: entry_path,
+      edges: census.facts,
+      nodes: module_declaration_facts_live(pool_roots: pool_roots)
+    )
+  } else {
+    no_paths
+  }
 }
 
 fn reference_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {

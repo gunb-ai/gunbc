@@ -29,7 +29,7 @@ data bogus_never_referenced: String = "src/v2/std/__bogus_never_referenced__.dag
 
 data no_paths: FreeMonoid<String> = []
 
-data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from container references instead of import declarations. On the current corpus every cross-module edge is still an import, so reference-closure must equal import-closure on the conformance witness — equal module sets imply the same resolve inputs. A strict superset without equality would be a located deficit before any import deletion."
+data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current corpus every cross-module edge is still an import, so reference-closure must equal import-closure on the conformance witness — equal module sets imply the same resolve inputs. Any ingest refusal poisons reference-closure (fail-closed); a strict superset without equality would be a located deficit before any import deletion."
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
