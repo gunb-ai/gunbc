@@ -124,7 +124,7 @@ data gunbc_ci_regen_spec: CiSpec = {
     head: "HEAD",
     mode: DiffMergeBase
   },
-  notice_title: "self-host fixed-point (regen + staleness) — non-required",
+  notice_title: "self-host fixed-point (regen + staleness) — required; folded into ci job",
   deploy_stages: [],
 }
 

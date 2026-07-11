@@ -126,11 +126,33 @@ test fn computed_copied_port_refuses() -> Bool {
   refuses_with(
     o: classify(
       combiner: ^list_append,
-      ports: [PortComputedExpression, bare(s: ^item)],
+      ports: [PortComputedExpression { mentions: [] }, bare(s: ^item)],
       carriers: [^acc]
     ),
     cause: ^copied_port_computed_argument
   )
+}
+
+test fn computed_mention_of_carrier_reaching_unregistered_combiner_refuses() -> Bool {
+  refuses_with(
+    o: classify(
+      combiner: ^mystery,
+      ports: [PortComputedExpression { mentions: [^wrapped, ^acc] }],
+      carriers: [^acc]
+    ),
+    cause: ^combiner_unregistered_carrier_reaches
+  )
+}
+
+test fn computed_without_carrier_mention_at_unregistered_combiner_is_clean() -> Bool {
+  match classify(
+    combiner: ^mystery,
+    ports: [PortComputedExpression { mentions: [^wrapped, ^item] }],
+    carriers: [^acc]
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 test fn missing_copied_port_refuses() -> Bool {
