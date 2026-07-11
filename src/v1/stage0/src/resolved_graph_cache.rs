@@ -114,6 +114,23 @@ pub fn resolved_graph_cache_root_from_env() -> Option<PathBuf> {
     std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR").map(PathBuf::from)
 }
 
+thread_local! {
+    /// Successful store decodes on this thread. With the process share installed
+    /// in front of the store (the ladder's tier ordering: share serves repeats,
+    /// store serves the first touch), decodes == distinct subjects touched — a
+    /// second decode of one subject within a process is the inversion coming
+    /// back. Disclosed so the frequency is observable, never absorbed.
+    static DECODE_COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+pub fn decode_count() -> u64 {
+    DECODE_COUNT.with(|c| c.get())
+}
+
+fn record_decode() {
+    DECODE_COUNT.with(|c| c.set(c.get() + 1));
+}
+
 fn extract_module_path(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
@@ -312,6 +329,7 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
         diagnostics: decoded.diagnostics.clone(),
         emit_graph_info: decoded.emit_graph_info.clone(),
     });
+    record_decode();
     CacheLookupResult::Hit(CachedResolvedGraph {
         graph,
         source_indices,

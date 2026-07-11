@@ -75,3 +75,15 @@ Today each shard builds its **own private copy** of the shared std/spec prefix (
 ## Ownership / homing
 
 This lane is operator-signed and multi-owner (`compute-envelope-model.md` names warm-lark-306, quick-ant-298, sharp-stag-782, calm-carp-204, bright-stag-194) and it touches load-bearing substrate (`std.realization*`, the scheduler, `CostAccount`). Per project discipline it should be homed as a proper work item under those owners, not run out of a closed "ci floor measurement" session. This doc is the model-first artifact for that sign-off; no load-bearing `.dag` file is edited until it is signed.
+
+## Interim floor calibration emission (landed #6425)
+
+**Authority:** `roster_import_closure_nodes_pre_resolve` in `src/v1/stage0/src/cli_run.rs` — deduped transitive import-closure of discovery rows plus prefix-context entries, counted at module-path grain via the pure import walk (no typecheck). The space-lens predictor and floor calibration emission bind here.
+
+| Label | Carrier | Meaning |
+|---|---|---|
+| `roster_import_closure_nodes` | stderr, pre-resolve | Import-closure module count |
+| `floor_peak_pre` / `floor_peak_post` | cgroup `memory.peak` steps in `gunbc.ci_workflow` | Job-scoped peak; censored lower bound on OOM kill |
+| `floor_outcome` | post step | Step outcome paired with peak |
+
+**Dissolve-on:** skip-before-resolve (count selected resident subset); bash-emit (#5828) for cgroup shell; resolver graph-major / S2a node-keyed store shrinks the closure the calibration measures.

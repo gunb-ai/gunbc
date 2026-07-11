@@ -227,6 +227,23 @@ type Runnable
     }
   | RunnableKernelWorkload { fused_op_count: Int }
 
+fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> Bool {
+  match sel {
+    SelectionApplied => true
+    SelectionOff => false
+    SelectionPredictOnly => false
+  }
+}
+
+fn runnable_selection_applied(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
+      node_frontier_selection_applied(sel: sel)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
 type Schedule = List<List<Runnable>>
 
 type RealizationPlan<S> {
