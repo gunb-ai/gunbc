@@ -529,7 +529,9 @@ mod process_workspace_root_tests {
     #[test]
     fn anchor_source_root_resolves_relative_dag() {
         let anchored = anchor_source_root("dag");
-        assert!(Path::new(&anchored).join("gunbc/ci_layer_roots.dag").is_file());
+        assert!(Path::new(&anchored)
+            .join("gunbc/ci_layer_roots.dag")
+            .is_file());
     }
 
     #[test]
@@ -981,10 +983,7 @@ pub(crate) fn is_test_dag(path: &str) -> bool {
 pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
     let mut paths = Vec::new();
     for root in witness_layer_roots() {
-        collect_dag_files_tolerant(
-            &Path::new(&anchor_source_root(&root)),
-            &mut paths,
-        );
+        collect_dag_files_tolerant(&Path::new(&anchor_source_root(&root)), &mut paths);
     }
     let mut out = Vec::new();
     for p in paths {
@@ -2085,9 +2084,8 @@ fn resolve_discovery_entry_for_corpus_row(
     let closure_subject = subject_digest_for_closure(&sources);
     let resolve_started = std::time::Instant::now();
     set_phase(FloorPhase::Resolve, entry_path);
-    let (graph, source_indices) =
-        resolve_entry_with_index_for_discovery_corpus(index, entry_path)
-            .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
+    let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)
+        .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
     let resolve_nanos = resolve_started.elapsed().as_nanos();
     collect_typed_module_names(
         graph.modules.iter().cloned(),
@@ -2102,15 +2100,11 @@ fn resolve_discovery_entry_for_corpus_row(
         whole_tree_published_keys,
     );
     let (frontier_nodes, touches_frontier, entry_file_touched) = if skip_enabled {
-        let frontier_nodes =
-            rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
+        let frontier_nodes = rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
         let touches_frontier = if frontier_nodes.is_empty() {
             false
         } else {
-            entry_touches_rerun_frontier(
-                &entry_ctx,
-                &list_value_from_vec(frontier_nodes.clone()),
-            )?
+            entry_touches_rerun_frontier(&entry_ctx, &list_value_from_vec(frontier_nodes.clone()))?
         };
         let entry_file_touched = if touched_entry_paths.is_empty() {
             false
