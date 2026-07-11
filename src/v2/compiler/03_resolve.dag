@@ -642,16 +642,24 @@ data scope_with_fn_decl_params_interim_note: String = "Interim-for-FLAG-D: bare 
 
 fn scope_with_fn_decl_params(n: Node, scope: Scope) -> Scope {
   let params = dag_fn_decl_param_binding_atoms(node: n)
-  let merged = fold(
-    params,
-    init: add_arrow_domain_named_params(n: n, acc: empty_map()),
-    f: fn(m, sym) {
-      map_insert(m, sym, sym)
+  if length(xs: params) == 0 {
+    let arrow_locals = add_arrow_domain_named_params(n: n, acc: empty_map())
+    if arrow_locals == empty_map() {
+      scope
+    } else {
+      ScopeFrame {
+        locals: arrow_locals,
+        outer: scope
+      }
     }
-  )
-  if merged == empty_map() {
-    scope
   } else {
+    let merged = fold(
+      params,
+      init: add_arrow_domain_named_params(n: n, acc: empty_map()),
+      f: fn(m, sym) {
+        map_insert(m, sym, sym)
+      }
+    )
     ScopeFrame {
       locals: merged,
       outer: scope

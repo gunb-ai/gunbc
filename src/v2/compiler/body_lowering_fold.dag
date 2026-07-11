@@ -1,7 +1,11 @@
 module v2.compiler.body_lowering_fold
 
 import std.algebra { Empty }
-import v2.compiler.fold_lowering { fold_call_to_loop }
+import v2.compiler.fold_lowering {
+  fold_call_head_symbol,
+  fold_call_to_loop,
+  fold_family_head
+}
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
@@ -23,6 +27,7 @@ import v2.std.diagnostic {
   Outcome,
   Unavailable,
   node_locus,
+  diagnostics_merge,
   outcome_accepted,
   outcome_rejected,
   rejected_with_pending
@@ -295,33 +300,49 @@ fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_try_fold_loop(node: Node) -> Optional<Node> {
-  match fold_call_to_loop(fold_call: node) {
-    Accepted { value: loop_node, diagnostics: _ } => optional_present(value: loop_node)
-    Rejected { diagnostics: _ } =>
-      match parse_production_emitted_identity_optional(node: node) {
-        Present { value: id } =>
-          if id == ^dag_surface_primary_expr {
-            match parse_production_captured_child_optional(node: node) {
-              Present { value: captured } => body_lower_try_fold_loop(node: captured)
-              Absent => optional_absent()
-            }
-          } else if body_lower_is_pass_through_emitted(emitted: id) {
-            match parse_production_captured_child_optional(node: node) {
-              Present { value: captured } => body_lower_try_fold_loop(node: captured)
-              Absent => optional_absent()
-            }
-          } else {
-            optional_absent()
-          }
-        Absent =>
-          fold(node.children, init: Absent, f: fn(acc, e) {
-            match acc {
+fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_primary_expr {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_try_fold_loop(node: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else if body_lower_is_pass_through_emitted(emitted: id) {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_try_fold_loop(node: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
+      } else {
+        outcome_accepted(value: optional_absent())
+      }
+    Absent =>
+      fold(node.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: found, diagnostics: _ } =>
+            match found {
               Present { value: _ } => acc
               Absent => body_lower_try_fold_loop(node: e.target)
             }
-          })
+        }
+      })
+  }
+}
+
+fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
+  match fold_call_head_symbol(fold_call: node) {
+    Present { value: head } =>
+      if fold_family_head(sym: head) {
+        match fold_call_to_loop(fold_call: node) {
+          Accepted { value: loop_node, diagnostics: _ } =>
+            outcome_accepted(value: optional_present(value: loop_node))
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      } else {
+        body_lower_try_fold_loop_search(node: node)
       }
+    Absent => body_lower_try_fold_loop_search(node: node)
   }
 }
 
@@ -672,44 +693,54 @@ fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
   body_lower_return_type_after_arrow_walk(node: captured)
 }
 
-fn body_lower_try_body_lowered(node: Node) -> Optional<Node> {
+fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_try_infix_transform(node: node) {
-    Present { value: lowered } => Present { value: lowered }
+    Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
     Absent =>
       match body_lower_try_fold_loop(node: node) {
-        Present { value: lowered } => Present { value: lowered }
-        Absent =>
-          let stripped = body_lower_unwrap_surface_shell(node: node)
-          match body_lower_try_infix_transform(node: stripped) {
-            Present { value: lowered } => Present { value: lowered }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: fold_result, diagnostics: _ } =>
+          match fold_result {
+            Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
             Absent =>
-              match body_lower_try_fold_loop(node: stripped) {
-                Present { value: lowered } => Present { value: lowered }
-                Absent => Absent
+              let stripped = body_lower_unwrap_surface_shell(node: node)
+              match body_lower_try_infix_transform(node: stripped) {
+                Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
+                Absent =>
+                  match body_lower_try_fold_loop(node: stripped) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: stripped_fold, diagnostics: _ } =>
+                      outcome_accepted(value: stripped_fold)
+                  }
               }
           }
       }
   }
 }
 
-fn body_lower_body_from_fn_captured(captured: Node) -> Optional<Node> {
+fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
   match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } =>
       match body_lower_try_body_lowered(node: body) {
-        Present { value: lowered } => Present { value: lowered }
-        Absent =>
-          match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_binary_expr) {
-            ParseSubtreeFound { captured: binary } =>
-              body_lower_try_body_lowered(node: binary)
-            ParseSubtreeAbsent =>
-              match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_expr) {
-                ParseSubtreeFound { captured: expr } =>
-                  body_lower_try_body_lowered(node: expr)
-                ParseSubtreeAbsent => Absent
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: found, diagnostics: _ } =>
+          match found {
+            Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
+            Absent =>
+              match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_binary_expr) {
+                ParseSubtreeFound { captured: binary } =>
+                  body_lower_try_body_lowered(node: binary)
+                ParseSubtreeAbsent =>
+                  match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_expr) {
+                    ParseSubtreeFound { captured: expr } =>
+                      body_lower_try_body_lowered(node: expr)
+                    ParseSubtreeAbsent =>
+                      outcome_accepted(value: optional_present(value: body))
+                  }
               }
           }
       }
-    ParseSubtreeAbsent => Absent
+    ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
   }
 }
 
@@ -721,28 +752,44 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
-        ParseSubtreeAbsent => outcome_accepted(value: shell)
+        ParseSubtreeAbsent =>
+          outcome_rejected(
+            d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+          )
         ParseSubtreeFound { captured: param_list } =>
           match body_lower_domain_from_param_list(param_list: param_list) {
-            Absent => outcome_accepted(value: shell)
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+              )
             Present { value: domain } =>
               match body_lower_body_from_fn_captured(captured: captured) {
-                Absent => outcome_accepted(value: shell)
-                Present { value: body } =>
-                  match body_lower_return_type_from_fn_captured(captured: captured) {
-                    Absent => outcome_accepted(value: shell)
-                    Present { value: return_type } =>
-                      outcome_accepted(
-                        value: node_synthetic(
-                          kind: TypeNode { connective: Arrow },
-                          children: [
-                            Edge { label: Positional, target: domain },
-                            Edge { label: Positional, target: return_type },
-                            Edge { label: Positional, target: return_type },
-                            Edge { label: Named { name: ^arrow_body_edge }, target: body }
-                          ]
-                        )
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: body_opt, diagnostics: _ } =>
+                  match body_opt {
+                    Absent =>
+                      outcome_rejected(
+                        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
                       )
+                    Present { value: body } =>
+                      match body_lower_return_type_from_fn_captured(captured: captured) {
+                        Absent =>
+                          outcome_rejected(
+                            d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+                          )
+                        Present { value: return_type } =>
+                          outcome_accepted(
+                            value: node_synthetic(
+                              kind: TypeNode { connective: Arrow },
+                              children: [
+                                Edge { label: Positional, target: domain },
+                                Edge { label: Positional, target: return_type },
+                                Edge { label: Positional, target: return_type },
+                                Edge { label: Named { name: ^arrow_body_edge }, target: body }
+                              ]
+                            )
+                          )
+                      }
                   }
               }
           }
@@ -944,8 +991,15 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
             Present { value: transform } => outcome_accepted(value: transform)
             Absent =>
               match body_lower_try_fold_loop(node: captured) {
-                Present { value: loop_node } => outcome_accepted(value: loop_node)
-                Absent => outcome_accepted(value: shell)
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: fold_result, diagnostics: _ } =>
+                  match fold_result {
+                    Present { value: loop_node } => outcome_accepted(value: loop_node)
+                    Absent =>
+                      outcome_rejected(
+                        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+                      )
+                  }
               }
           }
       }
@@ -966,8 +1020,15 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
             Present { value: transform } => outcome_accepted(value: transform)
             Absent =>
               match body_lower_try_fold_loop(node: captured) {
-                Present { value: loop_node } => outcome_accepted(value: loop_node)
-                Absent => outcome_accepted(value: shell)
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: fold_result, diagnostics: _ } =>
+                  match fold_result {
+                    Present { value: loop_node } => outcome_accepted(value: loop_node)
+                    Absent =>
+                      outcome_rejected(
+                        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+                      )
+                  }
               }
           }
       }
@@ -1012,7 +1073,7 @@ fn body_lower_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
     Accepted { value: lowered, diagnostics: d } =>
       Accepted {
         value: lowered,
-        diagnostics: cd
+        diagnostics: diagnostics_merge(outer: cd, inner: d)
       }
   }
 }

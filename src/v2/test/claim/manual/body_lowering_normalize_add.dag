@@ -289,8 +289,12 @@ fn body_lowering_body_holds() -> Bool {
       match body_lower_unwrap_captured(shell: fn_decl) {
         Present { value: captured } =>
           match body_lower_body_from_fn_captured(captured: captured) {
-            Present { value: _ } => true
-            Absent => false
+            Rejected { diagnostics: _ } => false
+            Accepted { value: body_opt, diagnostics: _ } =>
+              match body_opt {
+                Present { value: _ } => true
+                Absent => false
+              }
           }
         Absent => false
       }
