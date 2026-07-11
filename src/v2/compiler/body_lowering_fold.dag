@@ -72,18 +72,18 @@ fn body_lower_wrapper_retained_diagnostic(n: Node) -> Diagnostic {
 }
 
 type BodyLoweringDiagnosticClass
-  = KnownBodyLoweringReason
+  = WrapperRetainedEmittedReason
+  | UnsupportedFormReason
+  | PostfixFieldAccessRefusedReason
   | UnclassifiedBodyLoweringReason { reason: Symbol }
 
-fn body_lower_is_known_diagnostic_reason(reason: Symbol) -> Bool {
-  reason == ^body_lowering_reason_wrapper_retained_emitted
-    || reason == ^body_lowering_reason_unsupported_form
-    || reason == ^body_lowering_reason_postfix_field_access_refused
-}
-
 fn body_lower_classify_diagnostic_reason(reason: Symbol) -> BodyLoweringDiagnosticClass {
-  if body_lower_is_known_diagnostic_reason(reason: reason) {
-    KnownBodyLoweringReason
+  if reason == ^body_lowering_reason_wrapper_retained_emitted {
+    WrapperRetainedEmittedReason
+  } else if reason == ^body_lowering_reason_unsupported_form {
+    UnsupportedFormReason
+  } else if reason == ^body_lowering_reason_postfix_field_access_refused {
+    PostfixFieldAccessRefusedReason
   } else {
     UnclassifiedBodyLoweringReason { reason: reason }
   }
