@@ -708,7 +708,8 @@ fn reference_closure_bfs_parsed_walk(
   declared: List<ModuleDeclarationFact>,
   module_to_path: Map<String, String>,
   pool_roots: List<String>,
-  exclude_substrings: List<String>
+  exclude_substrings: List<String>,
+  census_cache: Map<String, ReferenceResolutionCensus>
 ) -> Outcome<FreeMonoid<String>> {
   match state.queue |> first {
     Absent => outcome_accepted(value: state.reached)
@@ -720,38 +721,71 @@ fn reference_closure_bfs_parsed_walk(
           declared: declared,
           module_to_path: module_to_path,
           pool_roots: pool_roots,
-          exclude_substrings: exclude_substrings
+          exclude_substrings: exclude_substrings,
+          census_cache: census_cache
         )
       } else {
-        let census = reference_file_census(
-          rel_path: path,
-          declared: declared,
-          pool_roots: pool_roots,
-          exclude_substrings: exclude_substrings
-        )
-        if is_empty(xs: census.refusals) {
-          let neighbors = reference_neighbor_paths_from_facts(
-            facts: census.facts,
-            module_to_path: module_to_path,
-            exclude_substrings: exclude_substrings,
-            acc: Empty
-          )
-          let next = bfs_absorb_neighbors(
-            state: ImportClosureBfsState {
-              reached: list_snoc_item(xs: state.reached, item: path),
-              queue: rest
-            },
-            neighbors: neighbors
-          )
-          reference_closure_bfs_parsed_walk(
-            state: next,
-            declared: declared,
-            module_to_path: module_to_path,
-            pool_roots: pool_roots,
-            exclude_substrings: exclude_substrings
-          )
-        } else {
-          outcome_rejected(d: reference_first_refusal_diagnostic(refusals: census.refusals))
+        match map_lookup_where_rejected_unreachable(m: census_cache, key: path) {
+          Present { value: census } =>
+            if is_empty(xs: census.refusals) {
+              let neighbors = reference_neighbor_paths_from_facts(
+                facts: census.facts,
+                module_to_path: module_to_path,
+                exclude_substrings: exclude_substrings,
+                acc: Empty
+              )
+              let next = bfs_absorb_neighbors(
+                state: ImportClosureBfsState {
+                  reached: list_snoc_item(xs: state.reached, item: path),
+                  queue: rest
+                },
+                neighbors: neighbors
+              )
+              reference_closure_bfs_parsed_walk(
+                state: next,
+                declared: declared,
+                module_to_path: module_to_path,
+                pool_roots: pool_roots,
+                exclude_substrings: exclude_substrings,
+                census_cache: census_cache
+              )
+            } else {
+              outcome_rejected(d: reference_first_refusal_diagnostic(refusals: census.refusals))
+            }
+          Absent => {
+            let census = reference_file_census(
+              rel_path: path,
+              declared: declared,
+              pool_roots: pool_roots,
+              exclude_substrings: exclude_substrings
+            )
+            let next_cache = map_insert(m: census_cache, key: path, value: census)
+            if is_empty(xs: census.refusals) {
+              let neighbors = reference_neighbor_paths_from_facts(
+                facts: census.facts,
+                module_to_path: module_to_path,
+                exclude_substrings: exclude_substrings,
+                acc: Empty
+              )
+              let next = bfs_absorb_neighbors(
+                state: ImportClosureBfsState {
+                  reached: list_snoc_item(xs: state.reached, item: path),
+                  queue: rest
+                },
+                neighbors: neighbors
+              )
+              reference_closure_bfs_parsed_walk(
+                state: next,
+                declared: declared,
+                module_to_path: module_to_path,
+                pool_roots: pool_roots,
+                exclude_substrings: exclude_substrings,
+                census_cache: next_cache
+              )
+            } else {
+              outcome_rejected(d: reference_first_refusal_diagnostic(refusals: census.refusals))
+            }
+          }
         }
       }
   }
@@ -778,7 +812,8 @@ fn reference_closure_live_excluding(
       declared: declared,
       module_to_path: build_module_to_path(nodes: declared),
       pool_roots: pool_roots,
-      exclude_substrings: exclude_substrings
+      exclude_substrings: exclude_substrings,
+      census_cache: empty_map()
     )
   }
 }

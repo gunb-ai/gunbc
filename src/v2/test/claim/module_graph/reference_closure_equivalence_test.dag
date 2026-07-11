@@ -46,33 +46,26 @@ fn import_conformance_closure() -> FreeMonoid<String> {
   import_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
 }
 
+fn reference_conformance_closure_outcome() -> Outcome<FreeMonoid<String>> {
+  reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
+}
+
 fn reference_conformance_closure_accepted() -> FreeMonoid<String> {
-  match reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots) {
+  match reference_conformance_closure_outcome() {
     Accepted { value: closure, diagnostics: _ } => closure
     Rejected { diagnostics: _ } => no_paths
   }
 }
 
-test fn reference_closure_live_accepted_on_conformance_holds() -> Bool {
-  match reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots) {
-    Accepted { value: _, diagnostics: _ } => true
+test fn reference_closure_conformance_equivalence_holds() -> Bool {
+  match reference_conformance_closure_outcome() {
+    Accepted { value: reference_closure, diagnostics: _ } =>
+      let import_closure = import_conformance_closure()
+      set_subset(xs: import_closure, ys: reference_closure)
+        && set_equal(xs: import_closure, ys: reference_closure)
+        && set_equal(xs: reference_closure, ys: expected_conformance_closure)
     Rejected { diagnostics: _ } => false
   }
-}
-
-test fn reference_closure_superset_of_import_closure_holds() -> Bool {
-  set_subset(xs: import_conformance_closure(), ys: reference_conformance_closure_accepted())
-}
-
-test fn reference_closure_equals_import_closure_on_conformance_holds() -> Bool {
-  set_equal(
-    xs: import_conformance_closure(),
-    ys: reference_conformance_closure_accepted()
-  )
-}
-
-test fn reference_closure_matches_declared_conformance_closure_holds() -> Bool {
-  set_equal(xs: reference_conformance_closure_accepted(), ys: expected_conformance_closure)
 }
 
 test fn reference_closure_drift_discriminates_over_declaration_red_holds() -> Bool {
