@@ -20,6 +20,8 @@ import v2.extdeps.languages.bash {
   bash_stmt_brace_group_target_model,
   bash_stmt_env_prefixed_emitted,
   bash_stmt_env_prefixed_target_model,
+  bash_stmt_exit_emitted,
+  bash_stmt_exit_target_model,
   bash_stmt_heredoc_emitted,
   bash_stmt_heredoc_target_model,
   bash_stmt_if_emitted,
@@ -296,7 +298,11 @@ fn bash_program_stmt_spelling(stmt: ShellStmt) -> Outcome<String> {
           }
         )
       }
-    Exit { code: _ } => bash_program_flat_fold_serialize(stmt: stmt)
+    Exit { code: c } =>
+      bash_program_emit_from_emitted(
+        emitted: bash_stmt_exit_emitted,
+        target: bash_stmt_exit_target_model(code: to_string(c))
+      )
     If { cond: c, then: body } =>
       bind_outcome(
         o: bash_program_stmt_spelling(stmt: c),
