@@ -167,22 +167,51 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+/// The workspace root is a property of where the process RUNS, never of where the
+/// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
+/// the release binaries across jobs via artifacts, and the build job and the consuming
+/// job can land on different runner instances whose checkouts live at different
+/// absolute paths — the baked path then names a SIBLING runner's tree (observed
+/// 2026-07-11: `build_module_path_index` refusing srv2-01 paths against a baked
+/// srv2-02 root after the #6472 job split). Same class as the mixed-tree hazard
+/// documented on `resolve_cli_path_arg` below, one level up.
+///
+/// Derivation: nearest ancestor of the process cwd that is a checkout root (`.git`
+/// entry — a directory for clones, a file for worktrees). Computed once per process.
+/// A cwd outside any checkout refuses loudly — no fallback to a compile-time path
+/// (DESIGN §5: refuse, never widen).
 pub fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("workspace root")
-        .to_path_buf()
+    static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    ROOT.get_or_init(|| {
+        let cwd =
+            std::env::current_dir().expect("workspace_root: process working directory unavailable");
+        for dir in cwd.ancestors() {
+            if dir.join(".git").exists() {
+                return dir.to_path_buf();
+            }
+        }
+        panic!(
+            "workspace_root: process cwd {} is not inside a git checkout; run from \
+             the workspace (the compile-time CARGO_MANIFEST_DIR fallback was removed: \
+             binaries are shared across runner workspaces and the compiling checkout's \
+             path is not a runtime fact)",
+            cwd.display()
+        )
+    })
+    .clone()
 }
 
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
 ///
-/// `workspace_root()` above is baked from `env!("CARGO_MANIFEST_DIR")` at COMPILE time,
-/// and part of the shared resolution pipeline (`pool_roots_abs`) anchors RELATIVE source
-/// roots to that baked path while the module-content index reads them relative to the
-/// process cwd. For the claim bins that meant a run from any other cwd (e.g. a git
-/// worktree) silently mixed two trees — module contents from the cwd, import-graph facts
-/// from the baked root — wrong answers with zero diagnostic (DESIGN §5 fail-open).
+/// `workspace_root()` above was HISTORICALLY baked from `env!("CARGO_MANIFEST_DIR")` at
+/// COMPILE time (now cwd-derived at runtime, see its doc), and part of the shared
+/// resolution pipeline (`pool_roots_abs`) anchors RELATIVE source roots to that path
+/// while the module-content index reads them relative to the process cwd. For the claim
+/// bins that meant a run from any other cwd (e.g. a git worktree) silently mixed two
+/// trees — module contents from the cwd, import-graph facts from the baked root — wrong
+/// answers with zero diagnostic (DESIGN §5 fail-open). The runtime derivation removes
+/// the cross-tree case; this boundary keeps the in-tree case exact (a cwd BELOW the
+/// checkout root still resolves CLI args against the cwd, not the root).
 ///
 /// The bins therefore resolve their path-valued arguments HERE, at the CLI boundary,
 /// with standard CLI semantics: a relative path resolves against the PROCESS CWD, and a
