@@ -949,13 +949,13 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
             Absent => body_lower_wrapper_retained_shell(shell: shell)
             Present { value: domain } =>
               match body_lower_body_from_fn_captured(captured: captured) {
-                Rejected { diagnostics: _ } => body_lower_wrapper_retained_shell(shell: shell)
-                Accepted { value: body_opt, diagnostics: _ } =>
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: body_opt, diagnostics: bd0 } =>
                   match body_opt {
                     Absent => body_lower_wrapper_retained_shell(shell: shell)
                     Present { value: body } =>
                       match body_lower_reify_transform_body(body: body) {
-                        Rejected { diagnostics: _ } => body_lower_wrapper_retained_shell(shell: shell)
+                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
                         Accepted { value: reified_body, diagnostics: bd } =>
                           match body_lower_return_type_from_fn_captured(captured: captured) {
                             Absent => body_lower_wrapper_retained_shell(shell: shell)
@@ -970,7 +970,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
                                     Edge { label: Named { name: ^arrow_body_edge }, target: reified_body }
                                   ]
                                 ),
-                                diagnostics: bd
+                                diagnostics: diagnostics_merge(outer: bd0, inner: bd)
                               )
                           }
                       }

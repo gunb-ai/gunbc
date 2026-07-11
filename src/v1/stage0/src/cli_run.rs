@@ -203,6 +203,8 @@ pub fn workspace_root() -> PathBuf {
 
 /// Runtime workspace root for path normalization in the claim bins and module-graph pipeline.
 ///
+/// INTERIM hand-Rust scaffold (§7): dissolves when claim-bin path resolution is emitted from
+/// `.dag` orchestration and the seed `cli_run.rs` runtime-root helpers shrink to zero.
 /// Unlike [`workspace_root`] (compile-time from `CARGO_MANIFEST_DIR`), this resolves against
 /// the process environment. sccache can ship a binary built on one runner checkout path to
 /// another; anchoring file reads to the compile-time root desyncs module-graph facts from
@@ -487,7 +489,7 @@ mod cli_path_arg_resolution_tests {
 mod process_workspace_root_tests {
     use super::{
         anchor_source_root, process_workspace_root, repo_relative_path,
-        workspace_relative_repo_path, workspace_root,
+        repo_relative_path_normalized, workspace_relative_repo_path, workspace_root,
     };
     use std::path::Path;
 
@@ -517,19 +519,17 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn anchor_source_root_reanchors_baked_absolute_path() {
+    fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();
         let baked = workspace_root();
-        if ws == baked {
+        let abs = baked.join("dag/gunbc/ci_layer_roots.dag");
+        if !abs.is_file() {
             return;
         }
-        let stale = baked.join("dag");
-        if !stale.is_dir() {
-            return;
-        }
-        let reanchored = anchor_source_root(&stale.to_string_lossy());
-        assert_eq!(reanchored, ws.join("dag").to_string_lossy());
-        assert!(Path::new(&reanchored).is_dir());
+        let rel = repo_relative_path_normalized(&abs);
+        assert_eq!(rel, "dag/gunbc/ci_layer_roots.dag");
+        assert_eq!(workspace_relative_repo_path(&abs.to_string_lossy()), rel);
+        assert!(ws.join(&rel).is_file());
     }
 }
 
@@ -941,14 +941,7 @@ pub fn free_monoid_symbol_value_from_dotted_string(
 }
 
 pub(crate) fn repo_rel(path: &Path) -> String {
-    let ws = workspace_root();
-    let s = path.to_string_lossy().replace('\\', "/");
-    let prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
-    s.strip_prefix(&prefix)
-        .map(|p| p.to_string())
-        .unwrap_or(s)
-        .trim_start_matches("./")
-        .to_string()
+    repo_relative_path_normalized(path)
 }
 
 pub(crate) fn is_test_dag(path: &str) -> bool {
