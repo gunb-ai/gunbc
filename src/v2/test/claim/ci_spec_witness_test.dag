@@ -122,10 +122,12 @@ fn witness_notice_title_from_spec() -> Bool {
 
 fn witness_run_script_invokes_scheduler() -> Bool {
   let script = gunbc_ci_run_script(spec: gunbc_ci_spec)
+  let floor_script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: git_fetch_script(policy: gunbc_ci_spec.diff_policy)) &&
     string_contains(s: script, pattern: scheduler_invoke(spec: gunbc_ci_spec)) &&
     string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches") &&
-    !string_contains(s: script, pattern: "--bin claim_batch") &&
+    !string_contains(s: floor_script, pattern: "--bin claim_batch") &&
+    !string_contains(s: floor_script, pattern: "cargo build") &&
     !string_contains(s: script, pattern: "cargo run -p v1-compiler --release --bin claim_executor")
 }
 
