@@ -1,7 +1,8 @@
 module v2.lens.reference_deps
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -11,6 +12,17 @@ type ReferenceResolutionFact {
   reference_module: String
   target_declared: Bool
 }
+
+data reference_deps_text_scan_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.symbol_index_fill",
+    decl_name: "symbol_index_fill_module_roots",
+    field: WholeDeclaration
+  }
+}
+
+data reference_deps_dissolution_note: String = "Interim host text-scan for container.module reference edges (B2). Dissolves when namespace-only ingest walks the containment-tree SymbolIndex and dependency edges are derived from resolved qualified-name projections — same single authority as v2.compiler.symbol_index_fill / v2.lens.module_graph dependency_edge_source_migration_note."
 
 fn reference_resolution_facts_live(
   pool_roots: List<String>,

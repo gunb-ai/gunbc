@@ -202,15 +202,62 @@ pub(crate) fn extract_reference_module_paths(
         .collect::<Vec<_>>()
         .join("\n");
     for module in declared {
-        if let Some(pos) = stripped.find(module.as_str()) {
+        let module_str = module.as_str();
+        let module_len = module.len();
+        let mut search_start = 0;
+        while search_start < stripped.len() {
+            let Some(rel_pos) = stripped[search_start..].find(module_str) else {
+                break;
+            };
+            let pos = search_start + rel_pos;
             if is_module_path_reference_prefix(&stripped, pos)
-                && is_module_path_reference_boundary(&stripped, pos + module.len())
+                && is_module_path_reference_boundary(&stripped, pos + module_len)
             {
                 refs.insert(module.clone());
+                break;
             }
+            search_start = pos + 1;
         }
     }
     refs.into_iter().collect()
+}
+
+#[cfg(test)]
+mod extract_reference_module_paths_tests {
+    use super::extract_reference_module_paths;
+    use std::collections::HashSet;
+
+    fn declared(modules: &[&str]) -> HashSet<String> {
+        modules.iter().map(|m| (*m).to_string()).collect()
+    }
+
+    #[test]
+    fn finds_valid_occurrence_after_false_prefix_collision() {
+        let refs = extract_reference_module_paths(
+            "fn f(x: std.algebra_extra) -> Bool { let y = std.algebra }\n",
+            &declared(&["std.algebra"]),
+        );
+        assert!(refs.contains(&"std.algebra".to_string()));
+    }
+
+    #[test]
+    fn rejects_substring_inside_longer_identifier_only() {
+        let refs = extract_reference_module_paths(
+            "fn f(x: mystd.algebra_extra) -> Bool { }\n",
+            &declared(&["std.algebra"]),
+        );
+        assert!(!refs.contains(&"std.algebra".to_string()));
+    }
+
+    #[test]
+    fn v2_prefix_does_not_false_match_inner_module() {
+        let refs = extract_reference_module_paths(
+            "import v2.std.algebra { bag_eq }\n",
+            &declared(&["std.algebra", "v2.std.algebra"]),
+        );
+        assert!(refs.contains(&"v2.std.algebra".to_string()));
+        assert!(!refs.contains(&"std.algebra".to_string()));
+    }
 }
 
 /// The workspace root is a property of where the process RUNS, never of where the
