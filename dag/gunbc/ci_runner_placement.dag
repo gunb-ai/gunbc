@@ -68,6 +68,7 @@ type RunnerHostDeployment {
   runner_slice_cap: ByteSize
   per_runner_memory_cap: ByteSize
   per_runner_memory_swap_cap: ByteSize
+  per_runner_memory_high_cap: ByteSize
   build_tokens: HardwareThreadCount
   runner: RunnerSpec
   workload_class: WorkloadClass
@@ -159,6 +160,7 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
     runner_slice_cap: gunbc_runner_pool_budget,
     per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
     per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
+    per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
     build_tokens: nproc,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
