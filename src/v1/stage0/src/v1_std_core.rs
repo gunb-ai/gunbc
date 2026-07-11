@@ -543,7 +543,6 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
-        CompilerDiagnostic::CrossParentBindingConflict { .. } => true,
         _ => false,
     }
 }

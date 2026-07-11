@@ -303,13 +303,13 @@ pub struct NodeResolveResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ItemResult {
+pub struct ItemResolveResult {
     pub item: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FieldResult {
+pub struct FieldResolveResult {
     pub field: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
@@ -351,7 +351,7 @@ pub struct TransportResolveResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ParamResult {
+pub struct ParamResolveResult {
     pub param: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
@@ -1826,7 +1826,11 @@ pub fn resolve_optional_node(
     }
 }
 
-pub fn resolve_field(field: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<FieldResult> {
+pub fn resolve_field(
+    field: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<FieldResolveResult> {
     {
         let authored_type = field_node_type_expr(field.clone());
         let type_result = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
@@ -1851,7 +1855,7 @@ pub fn resolve_field(field: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
             Some(result) => result.diagnostics.clone(),
             None => Rc::new(vec![]),
         };
-        Rc::new(FieldResult {
+        Rc::new(FieldResolveResult {
             field: make_field_node(
                 field_node_name_at(field.clone(), env.source_indices.clone()),
                 type_resolved.clone(),
@@ -1869,7 +1873,11 @@ pub fn resolve_field(field: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
     }
 }
 
-pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<ParamResult> {
+pub fn resolve_param(
+    param: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<ParamResolveResult> {
     {
         let authored_type = param_node_type_expr(param.clone());
         let type_result = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
@@ -1924,7 +1932,7 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
             Some(result) => Some(result.expr.clone()),
             None => None,
         };
-        Rc::new(ParamResult {
+        Rc::new(ParamResolveResult {
             param: make_resolved_param_node(
                 param_node_name_at(param.clone(), env.source_indices.clone()),
                 rendered_type.clone(),
@@ -3080,7 +3088,11 @@ pub fn has_duplicate_type_param_name(names: Rc<Vec<String>>) -> bool {
     }
 }
 
-pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<ItemResult> {
+pub fn resolve_item_types(
+    item: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<ItemResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let tp_names = if ((item.connective.clone() != Connective::NoConnective)
             && (item.transport.clone() == None))
@@ -3328,7 +3340,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 module_name.clone(),
                             ),
                         );
-                        Rc::new(ItemResult {
+                        Rc::new(ItemResolveResult {
                             item: Rc::new(Node {
                                 name: child.name.clone(),
                                 span: child.span.clone(),
@@ -3382,7 +3394,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                                 module_name.clone(),
                                             ),
                                         );
-                                        Rc::new(ItemResult {
+                                        Rc::new(ItemResolveResult {
                                             item: Rc::new(Node {
                                                 name: field.name.clone(),
                                                 span: field.span.clone(),
@@ -3428,7 +3440,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                                 }
                                 __result
                             });
-                            Rc::new(ItemResult {
+                            Rc::new(ItemResolveResult {
                                 item: Rc::new(Node {
                                     name: variant.name.clone(),
                                     span: variant.span.clone(),
@@ -3483,7 +3495,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
             }
             __result
         });
-        Rc::new(ItemResult {
+        Rc::new(ItemResolveResult {
             item: Rc::new(Node {
                 name: item.name.clone(),
                 span: item.span.clone(),

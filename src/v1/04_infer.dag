@@ -103,7 +103,7 @@ import v1.compiler.infer_resolve {
   resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
   is_user_generic_use_site,
-  NodeResolveResult, ItemResult
+  NodeResolveResult, ItemResolveResult
 }
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
@@ -284,11 +284,6 @@ data cross_tree_forks_channel_note: String = "Out-of-band ledger channel (S2a mo
 
 type ParentModulesResult {
   modules: List<TypedModule>
-  diagnostics: List<ErrorNode>
-}
-
-type VariantResult {
-  variant: Node
   diagnostics: List<ErrorNode>
 }
 
@@ -3043,7 +3038,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   }
 }
 
-type SizeExpr
+type DescentSizeExpr
   = ParamSize { param: String }
   | DividedSize { param: String, divisor: Int }
 
@@ -3053,13 +3048,13 @@ type DescentContext {
   param_order: List<String>
   type_env: TypeEnv
   sub_value_vars: Map<String, SubValueRelation>
-  size_aliases: Map<String, SizeExpr>
+  size_aliases: Map<String, DescentSizeExpr>
   scope_locals: Map<String, TypeBinding>
   func_env: ResolvedFuncEnv
   per_field_vars: Map<String, Map<String, SubValueRelation>>
 }
 
-fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
+fn classify_size_expr(val: Node, ctx: DescentContext) -> DescentSizeExpr? {
   match val.expr_data {
     ExprMethodCall { method_semantics: _ } =>
       let mname = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
