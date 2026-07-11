@@ -6994,6 +6994,19 @@ new file mode 100644
     }
 
     #[test]
+    fn live_tree_disposition_sibling_named_row_is_not_the_declaration() {
+        // `live_tree_disposition_note` shares the prefix but is a different decl —
+        // it must neither classify the entry nor trip the malformed-row refusal.
+        let source = "module m\n\ndata live_tree_disposition_note: String = \"doc row\"\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n";
+        assert!(!super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
+        let note_only = "module m\n\ndata live_tree_disposition_note: String = \"doc row\"\n";
+        assert!(
+            super::parse_entry_live_tree_disposition("m_test.dag", note_only).unwrap(),
+            "a note-only entry stays undeclared = ReadsLiveTree"
+        );
+    }
+
+    #[test]
     fn live_tree_disposition_malformed_variant_refuses() {
         let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = MaybeLive\n";
         let err = super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap_err();
