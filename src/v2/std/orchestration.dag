@@ -37,9 +37,13 @@ type Predicate
   = ExitZero { run: Run }
   | LogMatches { source: String, pattern: String }
   | StrEq { lhs: String, rhs: String }
+  | StrEmpty { operand: String }
+  | StrNonempty { operand: String }
   | Not { inner: Predicate }
   | And { lhs: Predicate, rhs: Predicate }
   | Or { lhs: Predicate, rhs: Predicate }
+
+data predicate_string_test_note: String = "StrEq is binary [ lhs = rhs ]. Unary empty/nonempty tests are StrEmpty (-z) and StrNonempty (-n); do not encode them as StrEq with a literal \"\" operand."
 
 type EscalationLevel {
   detect: Predicate

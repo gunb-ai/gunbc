@@ -167,6 +167,31 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
+// receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// 🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust
+// (landed on main as #6484 .git-ancestor walk); DISSOLVES WHEN cli_run.rs Chunk F lands
+// (cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP
+// 5-dissolve-patches cli_run.rs shrink retires HAND path-dependent root entirely.
+// Discriminating receipt: workspace_root_discovery_tests (same kernel as workspace_root()).
+/// Single authority for workspace-root discovery (.git ancestor walk).
+/// `workspace_root()` memoizes from the process cwd; tests pass an explicit start path.
+pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
+    for dir in start_cwd.ancestors() {
+        if dir.join(".git").exists() {
+            return dir.to_path_buf();
+        }
+    }
+    panic!(
+        "workspace_root: {} is not inside a git checkout; run from \
+         the workspace (the compile-time CARGO_MANIFEST_DIR fallback was removed: \
+         binaries are shared across runner workspaces and the compiling checkout's \
+         path is not a runtime fact)",
+        start_cwd.display()
+    )
+}
+
 /// The workspace root is a property of where the process RUNS, never of where the
 /// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
 /// the release binaries across jobs via artifacts, and the build job and the consuming
@@ -180,23 +205,16 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
 /// entry — a directory for clones, a file for worktrees). Computed once per process.
 /// A cwd outside any checkout refuses loudly — no fallback to a compile-time path
 /// (DESIGN §5: refuse, never widen).
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): runtime checkout-root
+// derivation (#6484 / #6472 job-split). Dissolves when release bins receive checkout-root
+// at spawn (env/argv) or Step 5 deletes this Rust parallel and the v2 floor workflow
+// owns path resolution.
 pub fn workspace_root() -> PathBuf {
     static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     ROOT.get_or_init(|| {
         let cwd =
             std::env::current_dir().expect("workspace_root: process working directory unavailable");
-        for dir in cwd.ancestors() {
-            if dir.join(".git").exists() {
-                return dir.to_path_buf();
-            }
-        }
-        panic!(
-            "workspace_root: process cwd {} is not inside a git checkout; run from \
-             the workspace (the compile-time CARGO_MANIFEST_DIR fallback was removed: \
-             binaries are shared across runner workspaces and the compiling checkout's \
-             path is not a runtime fact)",
-            cwd.display()
-        )
+        workspace_root_from(&cwd)
     })
     .clone()
 }
@@ -595,6 +613,50 @@ mod process_workspace_root_tests {
         let _ = repo_relative_path_normalized(Path::new(
             "no-such-dir/no-such-file-gunbc-red-control.dag",
         ));
+    }
+}
+
+#[cfg(test)]
+mod workspace_root_discovery_tests {
+    use super::workspace_root_from;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    fn fixture_root(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("gunbc-ws-root-{tag}-{}", std::process::id()))
+    }
+
+    fn canonical(p: &Path) -> PathBuf {
+        std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+    }
+
+    /// Cross-job / worktree: claim bins run from a checkout subdirectory must resolve
+    /// the same root as `git rev-parse --show-toplevel`, not the compile-time baked path.
+    #[test]
+    fn from_subdirectory_matches_git_toplevel() {
+        let top = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git rev-parse");
+        assert!(top.status.success(), "must run inside a git checkout");
+        let top = PathBuf::from(String::from_utf8(top.stdout).unwrap().trim());
+        let sub = top.join("dag");
+        assert!(sub.is_dir(), "dag/ must exist under checkout");
+        let got = workspace_root_from(&sub);
+        assert_eq!(canonical(&got), canonical(&top));
+    }
+
+    /// Fail-closed: Cargo.toml+dag/ without a `.git` ancestor is not a checkout root.
+    #[test]
+    fn refuses_path_outside_git_checkout() {
+        let root = fixture_root("no-git");
+        std::fs::create_dir_all(root.join("dag")).expect("dag dir");
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("Cargo.toml");
+        let nested = root.join("nested/deep");
+        std::fs::create_dir_all(&nested).expect("nested");
+        let result = std::panic::catch_unwind(|| workspace_root_from(&nested));
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(result.is_err(), "must panic outside a git checkout");
     }
 }
 
@@ -6302,6 +6364,130 @@ fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
     })
 }
 
+/// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
+/// when import-closure `entry_file_touched` is false and no declaration-level edit
+/// targets this entry, every kernel witness in the entry would skip — receipt:
+/// `green_skip_for_file_outside_import_closure` (diff outside import closure → empty
+/// frontier / no touch). Host-scaffold entries are excluded (changed_paths can select
+/// them without import-closure overlap). Data-item edits land in `overlapping_data_items`
+/// (not `touched_entry_files`); any edited data-item file in the entry import closure
+/// must resolve so `rerun_frontier_nodes_for_entry` can discriminate referenced nodes
+/// (`red_node_frontier_fires_for_referenced_data_item`).
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): pre-resolve skip for rows
+// provably outside all three skip axes without loading the resolved graph. Dissolves at
+// Step 5 (`docs/plans/affected-set-precompute-pruning.md`) when the Rust parallel
+// (`NodeFrontierSeeds`, `run_discovery_rows` selection) is deleted and the `.dag`
+// `floor_witness_run_disposition` query owns the same predicate end-to-end.
+fn entry_qualifies_for_skip_without_resolve(
+    entry_path: &str,
+    row_functions: &[&str],
+    facts: &ModuleGraphFactsLive,
+    declared_paths: &HashSet<String>,
+    touched_entry_paths: &[String],
+    diff_edits: &FloorDiffEdits,
+) -> Result<bool, String> {
+    if diff_edits
+        .edited_test_fns
+        .iter()
+        .any(|(file, _)| diff_file_matches_entry(file, entry_path))
+    {
+        return Ok(false);
+    }
+    if diff_edits
+        .touched_entry_files
+        .iter()
+        .any(|file| diff_file_matches_entry(file, entry_path))
+    {
+        return Ok(false);
+    }
+    if entry_file_touched_via_import_closure(
+        entry_path,
+        facts,
+        declared_paths,
+        touched_entry_paths,
+    )? {
+        return Ok(false);
+    }
+    if !diff_edits.overlapping_data_items.is_empty() {
+        let data_item_files: Vec<String> = diff_edits
+            .overlapping_data_items
+            .iter()
+            .map(|(file, _)| file.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        if entry_file_touched_via_import_closure(
+            entry_path,
+            facts,
+            declared_paths,
+            &data_item_files,
+        )? {
+            return Ok(false);
+        }
+    }
+    let content = read_entry_content_for_host_scaffold(entry_path)?;
+    if entry_text_indicates_live_host_scan(&content) {
+        return Ok(false);
+    }
+    if row_functions
+        .iter()
+        .any(|func| witness_test_fn_uses_live_host_scan(&content, func))
+    {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+fn discovery_entry_fast_skip_without_resolve(
+    rows: &[DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+    declared_paths: &HashSet<String>,
+    touched_entry_paths: &[String],
+    diff_edits: &FloorDiffEdits,
+) -> Result<HashSet<String>, String> {
+    let mut by_entry: HashMap<String, Vec<&str>> = HashMap::new();
+    for row in rows {
+        by_entry
+            .entry(row.entry.clone())
+            .or_default()
+            .push(row.function.as_str());
+    }
+    let mut fast = HashSet::new();
+    for (entry, funcs) in by_entry {
+        if entry_qualifies_for_skip_without_resolve(
+            &entry,
+            &funcs,
+            facts,
+            declared_paths,
+            touched_entry_paths,
+            diff_edits,
+        )? {
+            fast.insert(entry);
+        }
+    }
+    Ok(fast)
+}
+
+/// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
+/// same import-closure modules the pre-resolve walk uses (`roster_import_closure_nodes_pre_resolve`).
+// SCAFFOLD (§7): calibration-only companion to skip-before-resolve above; dissolves with it.
+fn augment_closure_modules_from_import_facts(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    out: &mut HashSet<String>,
+) {
+    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .map(|p| workspace_relative_repo_path(&p))
+        .collect();
+    for node in &facts.nodes {
+        let rel = workspace_relative_repo_path(&node.path);
+        if closure_paths.contains(&rel) {
+            out.insert(node.module.clone());
+        }
+    }
+}
+
 fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> Result<bool, String> {
     for row in rows {
         let content = read_entry_content_for_host_scaffold(&row.entry)?;
@@ -7071,7 +7257,49 @@ fn run_discovery_rows(
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
+    let entry_fast_skip = if selection == NodeFrontierSelectionMode::Applied {
+        discovery_entry_fast_skip_without_resolve(
+            rows,
+            &index.module_graph_facts,
+            &module_graph_declared_paths,
+            &touched_entry_paths,
+            diff_edits,
+        )?
+    } else {
+        HashSet::new()
+    };
+    if !entry_fast_skip.is_empty() {
+        eprintln!(
+            "run_discovery_corpus: skip-before-resolve fast path for {} entr(y/ies) (import-closure unaffected, no declaration edits, no data-item edits in closure, no host-scaffold)",
+            entry_fast_skip.len()
+        );
+    }
     for row in rows {
+        // Applied only: PredictOnly must resolve + run cold and record via the post-resolve
+        // would_skip path (falsifier semantics — docs/plans/affected-set-differential-falsifier.md).
+        if selection == NodeFrontierSelectionMode::Applied
+            && entry_fast_skip.contains(&row.entry)
+        {
+            if current_entry.as_deref() != Some(row.entry.as_str()) {
+                augment_closure_modules_from_import_facts(
+                    &row.entry,
+                    &index.module_graph_facts,
+                    &mut closure_modules,
+                );
+                current_entry = Some(row.entry.clone());
+                current_entry_touches = false;
+                current_entry_file_touched = false;
+                current_entry_frontier_nodes.clear();
+                current_closure_subject = None;
+                ctx = None;
+            }
+            summary.skipped += 1;
+            eprintln!(
+                "SKIP [assumed-green node-frontier] {} ({})",
+                row.function, row.entry
+            );
+            continue;
+        }
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
             if entry_eligible_for_discovery_skip_before_resolve(
@@ -8524,7 +8752,7 @@ mod node_frontier_plumbing_controls {
     use super::{
         build_multi_entry_index, call_floor_kernel_would_skip, entry_touches_rerun_frontier,
         floor_diff_edits_from_diff_text, list_value_from_vec, parse_unified_diff_line_ranges,
-        rerun_frontier_nodes_for_entry,
+        rerun_frontier_nodes_for_entry, scan_test_decl_lines,
     };
     use crate::v1_interpreter::ExecutionMode;
     use std::path::PathBuf;
@@ -8609,6 +8837,82 @@ mod node_frontier_plumbing_controls {
                 || !entry_touches_rerun_frontier(&ctx, &list_value_from_vec(nodes))
                     .expect("touch check"),
             "entry must NOT touch frontier when diff is on a file outside its import closure"
+        );
+    }
+
+    #[test]
+    fn skip_without_resolve_fast_path_eligible_outside_import_closure() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = abs(&ws, FIXTURE);
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
+        let funcs: Vec<String> = scan_test_decl_lines(&content)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        let func_refs: Vec<&str> = funcs.iter().map(|s| s.as_str()).collect();
+        assert!(
+            super::entry_qualifies_for_skip_without_resolve(
+                &fixture_abs,
+                &func_refs,
+                &index.module_graph_facts,
+                &declared,
+                &touched_paths,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "unaffected entry must qualify for skip-before-resolve when diff is outside import closure"
+        );
+    }
+
+    // RED guard: data-item edits in the entry import closure must not fast-skip — the
+    // node-frontier machinery needs resolve to discriminate referenced nodes.
+    #[test]
+    fn skip_without_resolve_fast_path_ineligible_for_referenced_data_item() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = abs(&ws, FIXTURE);
+        let text = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
+        let data_line = text
+            .lines()
+            .position(|l| l.contains("data floor_disc_node_a"))
+            .map(|i| (i + 1) as i64)
+            .expect("floor_disc_node_a line");
+        let diff = diff_at(&fixture_abs, data_line);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from referenced-node diff");
+        assert!(
+            !diff_edits.overlapping_data_items.is_empty(),
+            "data-item diff must populate overlapping_data_items"
+        );
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
+        let funcs: Vec<String> = scan_test_decl_lines(&content)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        let func_refs: Vec<&str> = funcs.iter().map(|s| s.as_str()).collect();
+        assert!(
+            !super::entry_qualifies_for_skip_without_resolve(
+                &fixture_abs,
+                &func_refs,
+                &index.module_graph_facts,
+                &declared,
+                &touched_paths,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "entry must NOT qualify for skip-before-resolve when diff edits a data item in its import closure"
         );
     }
 
@@ -9996,6 +10300,9 @@ const LAYER_STD: &str = "LayerPrefixStd";
 const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 
 fn rel_path_for_layer_import(path: &Path) -> String {
+    if path.is_relative() {
+        return path.to_string_lossy().replace('\\', "/");
+    }
     repo_relative_path_normalized(path)
 }
 
@@ -10004,7 +10311,8 @@ fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
 }
 
 fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
-    let root_path = Path::new(root);
+    let abs_root = anchor_source_root(root);
+    let root_path = Path::new(&abs_root);
     if !root_path.is_dir() {
         return;
     }
@@ -12985,8 +13293,10 @@ mod module_path_index_tests {
     }
 
     #[test]
-    fn default_source_roots_derive_from_authority() {
+    fn workspace_root_prefers_process_cwd_anchor() {
         let ws = workspace_root();
+        assert!(ws.join("Cargo.toml").is_file());
+        assert!(ws.join("dag").is_dir());
         assert_eq!(
             default_source_roots(),
             vec![
