@@ -1477,6 +1477,73 @@ fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Optional<Node> {
+  match body_lower_match_spine_left(spine: stripped) {
+    Present { value: left } =>
+      match body_lower_match_spine_right(spine: stripped) {
+        Present { value: right } =>
+          match body_lower_pattern_atom_optional(pattern_capture: left) {
+            Present { value: pat_node } =>
+              match body_lower_match_spine_left(spine: right) {
+                Present { value: arrow_node } =>
+                  match node_atom_identity_optional(node: arrow_node) {
+                    Present { value: arrow } =>
+                      if arrow == ^dag_token_fat_arrow {
+                        match body_lower_match_spine_right(spine: right) {
+                          Present { value: body_capture } =>
+                            match body_lower_match_arm_body_optional(
+                              body_capture: body_capture
+                            ) {
+                              Present { value: body } =>
+                                optional_present(
+                                  value: body_lower_match_arm_wire(
+                                    pat_node: pat_node,
+                                    body: body
+                                  )
+                                )
+                              Absent => optional_absent()
+                            }
+                          Absent => optional_absent()
+                        }
+                      } else {
+                        optional_absent()
+                      }
+                    Absent => optional_absent()
+                  }
+                Absent =>
+                  match sugar_sequence_pair_optional(node: right) {
+                    Present { value: after_pattern } =>
+                      match node_atom_identity_optional(node: after_pattern.left) {
+                        Present { value: arrow } =>
+                          if arrow == ^dag_token_fat_arrow {
+                            match body_lower_match_arm_body_optional(
+                              body_capture: after_pattern.right
+                            ) {
+                              Present { value: body } =>
+                                optional_present(
+                                  value: body_lower_match_arm_wire(
+                                    pat_node: pat_node,
+                                    body: body
+                                  )
+                                )
+                              Absent => optional_absent()
+                            }
+                          } else {
+                            optional_absent()
+                          }
+                        Absent => optional_absent()
+                      }
+                    Absent => optional_absent()
+                  }
+              }
+            Absent => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
 fn body_lower_match_arm_wire_optional(arm_capture: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: arm_capture)
   match parse_production_emitted_identity_optional(node: stripped) {
@@ -1487,39 +1554,16 @@ fn body_lower_match_arm_wire_optional(arm_capture: Node) -> Optional<Node> {
             body_lower_match_arm_wire_optional(arm_capture: captured)
           Absent => optional_absent()
         }
+      } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: captured } =>
+            body_lower_match_arm_wire_optional(arm_capture: captured)
+          Absent => optional_absent()
+        }
       } else {
         optional_absent()
       }
-    Absent =>
-      match sugar_sequence_pair_optional(node: stripped) {
-        Present { value: pair } =>
-          match body_lower_pattern_atom_optional(pattern_capture: pair.left) {
-            Present { value: pat_node } =>
-              match sugar_sequence_pair_optional(node: pair.right) {
-                Present { value: after_pattern } =>
-                  match node_atom_identity_optional(node: after_pattern.left) {
-                    Present { value: arrow } =>
-                      if arrow == ^dag_token_fat_arrow {
-                        match body_lower_match_arm_body_optional(
-                          body_capture: after_pattern.right
-                        ) {
-                          Present { value: body } =>
-                            optional_present(
-                              value: body_lower_match_arm_wire(pat_node: pat_node, body: body)
-                            )
-                          Absent => optional_absent()
-                        }
-                      } else {
-                        optional_absent()
-                      }
-                    Absent => optional_absent()
-                  }
-                Absent => optional_absent()
-              }
-            Absent => optional_absent()
-          }
-        Absent => optional_absent()
-      }
+    Absent => body_lower_match_arm_wire_from_sequence(stripped: stripped)
   }
 }
 
