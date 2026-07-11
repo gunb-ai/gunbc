@@ -81,6 +81,7 @@ fn v2_self_hosting_body() -> List<MarkdownBlock> {
       li(text: "**Scope of the first fixed point** — whole `src/v2`, or a defined compiler-core subset first, before widening to the full bin set Track Z must replace?"),
       li(text: "**TS sequencing** — pursue Track T in parallel with A, or after the Rust fixed point lands?"),
     ]),
+    p(text: "Related: [S2 — v2 emits v2: strategic direction & decomposition](s2-v2-self-emit-direction.md) — the active lane decomposition toward the Track Z fixed point (B-rungs, whole-module harness lead)."),
   ]
 }
 

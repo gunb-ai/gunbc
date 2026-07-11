@@ -133,6 +133,8 @@ The ② lens-residue emitters above (`serialize_yaml`, plus the `serialize_gitig
 
 Found in the same sweep, fixable now with existing authority (dispatched separately): `lit(text: "dag")` hardcoded as a policy literal in `compiler_closure_ingest_transport` (×3) + `source_root_ingest_transport` (×1) — should fold `witness_layer_roots`, the way `layering_imports_transport`'s `source_root_flags()` already does. A §3 policy-leak (an argv carrying a literal it should receive as a parameter).
 
+Related: [emitter ownership de-fork](emitter-ownership-defork.md) — one authority for clone-vs-move at the emit seam, no silent fallback (lane `node://adhoc-0717d295-672`, PR #6248).
+
 ## Dissolution trigger (DESIGN §6)
 
 Delete this doc when both arcs it tracks are witnessed-complete: (1) the §5 containment guard's frozen exception roster has emptied — every bash-sidecar importer migrated to `emit(intent, Bash)`, the guard flipped from ratchet to pure wall, and `program.dag` deleted — and the §5.1 `MediumStructureLeak` rosters (GHA-expr first) likewise empty as each medium becomes a `Medium<R>` `Node` emitted via grammar rows; (2) the §6/(A)+(B) intent layer is real — `Diagnostic`/orchestration intent emits via realization rows under a green round-trip law (the §5.2 oracle), so emission=ingestion⁻¹ is a witnessed property of the intent layer and not just the syntax layer. At that point the rule lives in the executable guard and the round-trip oracle (single authority, fail-closed by construction per DESIGN §5/§6), and this prose tracker is redundant.

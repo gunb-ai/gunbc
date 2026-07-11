@@ -182,3 +182,5 @@ Wall-clock + peak-RSS (current (c)) are NOT sufficient — they can improve whil
 2. **Share the duplicate `floor_runner` resolves.** `resolve_floor_runner_context` and `floor_runner_eval_context` resolve the same `affected_set_floor_runner.dag` closure twice per run; memoize/share it (the M1 `walk_memo` in `claim_executor` is the precedent — a `heavy_whole_tree_resolve`-keyed in-process memo).
 
 **Fence rationale:** both parts amplify or are amplified by the resolve-duplication that resolver-B (#6155, compositional `build_type_env` — kill the whole-ancestry-per-module quadratic) is removing. Landing pruning on top of the current quadratic resolve would multiply the very work #6155 is deleting. Start this only after #6155 lands green; harvest `session/quick-carp-343`; deliver acceptance (a)(b)(c)+count-receipt.
+
+Related: [affected-set differential falsifier + non-hermetic residue cadence](affected-set-differential-falsifier.md) — the signed falsifier-side design (roster authority = the `reads_live_tree` / host-scaffold disposition facts; the nightly cadence whose counted divergences backstop the selection this doc prunes).

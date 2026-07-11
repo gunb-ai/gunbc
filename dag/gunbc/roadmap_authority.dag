@@ -199,7 +199,7 @@ fn section_2() -> RoadmapSection {
           RoadmapEdge { child: nid(s: "1-sched-resource-aware"), parent: nid(s: "1-bics-design") },
         ],
       ),
-      section_prose(content: "Receipts + adjacent levers: [fractal Gantt](docs/plans/ci-floor-fractal-gantt.md) · [memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [resolver pathology profile](docs/plans/resolver-pathology-profile-receipt.md) · [representation minimization](docs/plans/representation-minimization.md) · [shared-compute memoization](docs/plans/floor-shared-compute-memoization.md) *(M1 ✓ #6008; M2 gated on determinism #5941)* · [OOM reclassification](docs/plans/ci-oom-reclassification.md) · [post-engine deferred ledger + algorithm audit](docs/plans/post-engine-pr-roadmap.md)."),
+      section_prose(content: "Receipts + adjacent levers: [fractal Gantt](docs/plans/ci-floor-fractal-gantt.md) · [memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [resolver pathology profile](docs/plans/resolver-pathology-profile-receipt.md) · [representation minimization](docs/plans/representation-minimization.md) · [shared-compute memoization](docs/plans/floor-shared-compute-memoization.md) *(M1 ✓ #6008; M2 gated on determinism #5941)* · [OOM reclassification](docs/plans/ci-oom-reclassification.md) · [post-engine deferred ledger + algorithm audit](docs/plans/post-engine-pr-roadmap.md) · [CI-performance tanking evidence — 2026-07-10/11 main-red incident](docs/plans/ci-performance-tanking-evidence.md)."),
       section_group(
         label: "Control plane — the #6096 re-land, done right (G2/G3)",
         nodes: [

@@ -91,6 +91,8 @@ End goal is settled (Rust + TypeScript, `.dag` authority, delete v1 — see END 
 2. **Scope of the first fixed point** — whole `src/v2`, or a defined compiler-core subset first, before widening to the full bin set Track Z must replace?
 3. **TS sequencing** — pursue Track T in parallel with A, or after the Rust fixed point lands?
 
+Related: [S2 — v2 emits v2: strategic direction & decomposition](s2-v2-self-emit-direction.md) — the active lane decomposition toward the Track Z fixed point (B-rungs, whole-module harness lead).
+
 ## Dissolution trigger (DESIGN §6)
 
 Delete this doc when Track Z lands: `self_host.dag` asserts the real-digest fixed point (Stage C) and `src/v1` is gone. At that point the self-host witness + the absent `src/v1` *are* the authority and this tracker is redundant.
