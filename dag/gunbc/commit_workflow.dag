@@ -50,6 +50,10 @@ type CommitWorkflowRealizationBinding {
   artifact: GeneratedArtifact
 }
 
+data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
+  reason: "The v1 Rust test suite (cargo fmt --all --check plus cargo nextest run -p v1-compiler-tests) was REMOVED from CI 2026-07-11 (operator ruling) — its RustMonolithGate enrollment, the rust_tests job, and rust_gates_ci.dag's CI consumers are all gone. This records the removal as intentional, not silent (the review-flagged concern). Rationale: rust_tests was NON-required (only the ci job is protection-required on the gunbc main ruleset; rust_tests and ci_regen were not) AND red on main (it exercises the v1 seed, which is being deleted under the §7 burn-down), so it delivered a permanent non-required red — the §5 tolerated-red anti-pattern — at ~37 GiB, the fleet's single largest CI memory job. Coverage after removal: cargo fmt stays enforced by the pre-push hook (CommitCargoFmtCheck on GitPrePushHook); cargo nextest run -p v1-compiler-tests runs LOCALLY, not in CI. Return trigger — NONE by design: this suite does not re-enroll. It is retired WITH the v1 seed and deleted at §7 terminal collapse. Re-enrolling RustMonolithGate onto the required ci floor is explicitly REJECTED — it would move the ~37 GiB red job into the required merge gate. Compile-level v1 seed breakage is still caught by the required floor's DagCompileCleanGate and RegenVerifyGate; only the seed's runtime test behavior moves local."
+}
+
 data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: EmitHostGate },
