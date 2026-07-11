@@ -167,6 +167,31 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
+// receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// 🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust
+// (landed on main as #6484 .git-ancestor walk); DISSOLVES WHEN cli_run.rs Chunk F lands
+// (cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP
+// 5-dissolve-patches cli_run.rs shrink retires HAND path-dependent root entirely.
+// Discriminating receipt: workspace_root_discovery_tests (same kernel as workspace_root()).
+/// Single authority for workspace-root discovery (.git ancestor walk).
+/// `workspace_root()` memoizes from the process cwd; tests pass an explicit start path.
+pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
+    for dir in start_cwd.ancestors() {
+        if dir.join(".git").exists() {
+            return dir.to_path_buf();
+        }
+    }
+    panic!(
+        "workspace_root: {} is not inside a git checkout; run from \
+         the workspace (the compile-time CARGO_MANIFEST_DIR fallback was removed: \
+         binaries are shared across runner workspaces and the compiling checkout's \
+         path is not a runtime fact)",
+        start_cwd.display()
+    )
+}
+
 /// The workspace root is a property of where the process RUNS, never of where the
 /// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
 /// the release binaries across jobs via artifacts, and the build job and the consuming
@@ -189,18 +214,7 @@ pub fn workspace_root() -> PathBuf {
     ROOT.get_or_init(|| {
         let cwd =
             std::env::current_dir().expect("workspace_root: process working directory unavailable");
-        for dir in cwd.ancestors() {
-            if dir.join(".git").exists() {
-                return dir.to_path_buf();
-            }
-        }
-        panic!(
-            "workspace_root: process cwd {} is not inside a git checkout; run from \
-             the workspace (the compile-time CARGO_MANIFEST_DIR fallback was removed: \
-             binaries are shared across runner workspaces and the compiling checkout's \
-             path is not a runtime fact)",
-            cwd.display()
-        )
+        workspace_root_from(&cwd)
     })
     .clone()
 }
@@ -599,6 +613,50 @@ mod process_workspace_root_tests {
         let _ = repo_relative_path_normalized(Path::new(
             "no-such-dir/no-such-file-gunbc-red-control.dag",
         ));
+    }
+}
+
+#[cfg(test)]
+mod workspace_root_discovery_tests {
+    use super::workspace_root_from;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    fn fixture_root(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("gunbc-ws-root-{tag}-{}", std::process::id()))
+    }
+
+    fn canonical(p: &Path) -> PathBuf {
+        std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+    }
+
+    /// Cross-job / worktree: claim bins run from a checkout subdirectory must resolve
+    /// the same root as `git rev-parse --show-toplevel`, not the compile-time baked path.
+    #[test]
+    fn from_subdirectory_matches_git_toplevel() {
+        let top = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git rev-parse");
+        assert!(top.status.success(), "must run inside a git checkout");
+        let top = PathBuf::from(String::from_utf8(top.stdout).unwrap().trim());
+        let sub = top.join("dag");
+        assert!(sub.is_dir(), "dag/ must exist under checkout");
+        let got = workspace_root_from(&sub);
+        assert_eq!(canonical(&got), canonical(&top));
+    }
+
+    /// Fail-closed: Cargo.toml+dag/ without a `.git` ancestor is not a checkout root.
+    #[test]
+    fn refuses_path_outside_git_checkout() {
+        let root = fixture_root("no-git");
+        std::fs::create_dir_all(root.join("dag")).expect("dag dir");
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("Cargo.toml");
+        let nested = root.join("nested/deep");
+        std::fs::create_dir_all(&nested).expect("nested");
+        let result = std::panic::catch_unwind(|| workspace_root_from(&nested));
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(result.is_err(), "must panic outside a git checkout");
     }
 }
 

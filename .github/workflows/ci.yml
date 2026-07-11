@@ -167,6 +167,10 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
+          # 🟡 dissolve-on: ci_floor_disposition_marker_init_script — concat-built bash floor step opener stamping floor_running into target/ci-floor-disposition.txt (clears stale documentation_only_skipped on persistent self-hosted runners before docs-only branch); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes floor disposition initialization through orchestration emit and the marker init retires without a transport scaffold
+          # Positive floor-running stamp at the start of every floor step clears stale documentation_only_skipped left in target/ on persistent self-hosted runners (review 37010 / operator ruling 2026-07-11). Receipt gates skip only on an exact documentation_only_skipped match — never on file presence alone.
+          mkdir -p target
+          echo floor_running > target/ci-floor-disposition.txt
           _ci_changed=$(git diff --name-only origin/main...HEAD 2>/dev/null || true)
           if [ -n "$_ci_changed" ]; then
           # Interim plan-artifact scoping: merge-base diffs whose only changed paths are under docs/ or dag/gunbc/plans/ run compile-clean then skip the witness corpus. Path-prefix matching is an interim heuristic — dissolve-on: affected-set-scoped compile-clean (Ruling 1 path grain) replaces it. Empty _ci_changed (git fetch/diff failure) short-circuits this block and falls through to the full floor (fail-closed, not widening). Merge-admission stamps Skipped (not Success) via CI_FLOOR_DISPOSITION=documentation_only_skipped so floor-not-run ≠ floor-green. Generated-artifact carriers (.gitignore, README.md/CLAUDE.md/DESIGN.md symlinks) are excluded from the allowlist — their only drift guard is floor-resident; whitelisting them would self-shortcut that gate (#6236 class). CI substrate (.github/workflows/ci.yml, dag/gunbc/ci_spec.dag, ci_spec witnesses) is likewise excluded.
@@ -185,8 +189,10 @@ jobs:
           _ci_diff_eof_
             if [ "$PLAN_ARTIFACT_ONLY" = "1" ]; then
               "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry "$ROOT/dag/tools/floor_effect_gate_witness.dag" --function dag_compile_clean_gate_passes || exit $?
+              mkdir -p target
+              echo documentation_only_skipped > target/ci-floor-disposition.txt
               echo "claim_executor: plan-artifact-only diff — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=documentation_only_skipped)"
-              CI_FLOOR_DISPOSITION=documentation_only_skipped "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/merge_admission_stamp.dag --function main
+              CI_FLOOR_DISPOSITION=documentation_only_skipped "$ROOT/target/release/gunbc" run --source-root dag --entry dag/tools/merge_admission_stamp.dag --function main
               exit $?
             fi
           fi
@@ -194,7 +200,7 @@ jobs:
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
           FLOOR_EXIT=$?
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          CI_FLOOR_EXIT=$FLOOR_EXIT "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/merge_admission_stamp.dag --function main
+          CI_FLOOR_EXIT=$FLOOR_EXIT "$ROOT/target/release/gunbc" run --source-root dag --entry dag/tools/merge_admission_stamp.dag --function main
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
@@ -210,6 +216,9 @@ jobs:
         timeout-minutes: 5
       - name: Floor resolve receipt gate (declared cold-resolve count)
         run: |
+          # 🟡 dissolve-on: ci_documentation_only_gate_skip_prefix — concat-built bash receipt-gate skip predicate over target/ci-floor-disposition.txt (documentation-only floor-not-run); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes documentation-only disposition through orchestration emit and receipt gates read CI_FLOOR_DISPOSITION without a transport scaffold
+          if test -f target/ci-floor-disposition.txt; then _disp=$(cat target/ci-floor-disposition.txt)
+          if test "$_disp" = "documentation_only_skipped"; then echo "floor resolve receipt gate: skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; no receipt debt incurred)"; exit 0; fi; fi
           if ! test -f target/floor-resolve-receipt.txt; then echo "floor resolve receipt missing - fail closed"; exit 1; fi
           n=$(sed -n 's/^resolves_total=//p' target/floor-resolve-receipt.txt)
           if test -z "$n"; then echo "floor resolve receipt malformed - fail closed"; exit 1; fi
@@ -218,6 +227,9 @@ jobs:
         timeout-minutes: 5
       - name: Floor materialization receipt gate (demand ledger; disclosure gate — count pins retracted, walls tracked in ci_materialization.dag)
         run: |
+          # 🟡 dissolve-on: ci_documentation_only_gate_skip_prefix — concat-built bash receipt-gate skip predicate over target/ci-floor-disposition.txt (documentation-only floor-not-run); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes documentation-only disposition through orchestration emit and receipt gates read CI_FLOOR_DISPOSITION without a transport scaffold
+          if test -f target/ci-floor-disposition.txt; then _disp=$(cat target/ci-floor-disposition.txt)
+          if test "$_disp" = "documentation_only_skipped"; then echo "floor materialization receipt gate: skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; no receipt debt incurred)"; exit 0; fi; fi
           if ! test -f target/floor-materialization-receipt.txt; then echo "floor materialization receipt missing - fail closed"; exit 1; fi
           k=$(sed -n 's/^keyed_calls=//p' target/floor-materialization-receipt.txt)
           u=$(sed -n 's/^unkeyed_calls=//p' target/floor-materialization-receipt.txt)
@@ -231,13 +243,19 @@ jobs:
       - name: Affected-set selection control (floor_skip_discovery_witness)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          # 🟡 dissolve-on: ci_documentation_only_gate_skip_prefix — concat-built bash receipt-gate skip predicate over target/ci-floor-disposition.txt (documentation-only floor-not-run); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes documentation-only disposition through orchestration emit and receipt gates read CI_FLOOR_DISPOSITION without a transport scaffold
+          if test -f target/ci-floor-disposition.txt; then _disp=$(cat target/ci-floor-disposition.txt)
+          if test "$_disp" = "documentation_only_skipped"; then echo "Affected-set selection control: skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; hermetic selection suite requires full floor context)"; exit 0; fi; fi
           "$ROOT/target/release/floor_skip_discovery_witness"
         timeout-minutes: 15
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/merge_admission_gate.dag --function main
+          # 🟡 dissolve-on: ci_documentation_only_gate_skip_prefix — concat-built bash receipt-gate skip predicate over target/ci-floor-disposition.txt (documentation-only floor-not-run); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes documentation-only disposition through orchestration emit and receipt gates read CI_FLOOR_DISPOSITION without a transport scaffold
+          if test -f target/ci-floor-disposition.txt; then _disp=$(cat target/ci-floor-disposition.txt)
+          if test "$_disp" = "documentation_only_skipped"; then echo "merge-admission gate: skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; merge-admission stamp already recorded Skipped disposition)"; exit 0; fi; fi
+          "$ROOT/target/release/gunbc" run --source-root dag --entry dag/tools/merge_admission_gate.dag --function main
         timeout-minutes: 5
       - name: gunbc ci regen (self-host fixed-point — required; folded into ci job 2026-07-11)
         run: |
