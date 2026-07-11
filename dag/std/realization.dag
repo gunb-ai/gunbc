@@ -130,11 +130,11 @@ fn has_collapsible_peer<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> Bo
 }
 
 fn reconcile<S>(steps: List<RealizedStep<S>>) -> List<RealizedStep<S>> {
-  steps |> fold(init: [], f: (acc, s) =>
+  reverse(steps |> fold(init: [], f: fn(acc, s) {
     if has_collapsible_peer(acc: acc, s: s) {
       mark_collapsible_share(acc: acc, s: s)
     } else {
-      concat(acc, [s])
+      concat([s], acc)
     }
-  )
+  }))
 }

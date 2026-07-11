@@ -9,7 +9,6 @@ import std.markup {
   UrlContext,
 
 }
-
 type HeadingLevel = H1 | H2 | H3 | H4 | H5 | H6
 
 type MarkdownInline
@@ -102,10 +101,9 @@ fn markdown_inline_to_fragments(inline: MarkdownInline) -> List<Fragment> {
 }
 
 fn markdown_inlines_to_fragments(inlines: List<MarkdownInline>) -> List<Fragment> {
-  fold(inlines,
-    init: [],
-    f: (acc, inline) => concat(acc, markdown_inline_to_fragments(inline: inline))
-  )
+  reverse(inlines |> fold(init: [], f: fn(acc, inline) {
+    concat(markdown_inline_to_fragments(inline: inline), acc)
+  }))
 }
 
 fn markdown_list_item_to_fragment(item: MarkdownListItem) -> Fragment {
