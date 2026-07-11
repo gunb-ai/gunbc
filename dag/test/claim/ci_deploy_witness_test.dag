@@ -111,8 +111,8 @@ fn witness_deploy_run_script_invokes_gunbc_wet() -> Bool {
   let script = gunbc_ci_deploy_run_script(stage: gunbc_ci_deploy_srv1_stage)
   string_contains(s: script, pattern: live_deploy_apply_entry)
     && string_contains(s: script, pattern: live_deploy_apply_srv1_wet_function)
-    && string_contains(s: script, pattern: "$ROOT/target/release/gunbc")
-    && string_contains(s: script, pattern: "--source-root dag")
+    && string_contains(s: script, pattern: "\"$ROOT/target/release/gunbc\" run")
+    && string_contains(s: script, pattern: "--source-root \"$ROOT/dag\"")
 }
 
 fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
