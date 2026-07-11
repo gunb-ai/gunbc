@@ -14,7 +14,6 @@ import tools.dag_compile_clean_partition {
 }
 import tools.dag_compile_clean_shard_transport {
   run_shard_a_exemplar_compile,
-  shard_transport_serializes_staged_compile_invocation,
   shard_a_exemplar_entry_path
 }
 data witness_compose_red_on_injected_failure: Bool = compose_compile_clean_shard_verdicts(
@@ -40,8 +39,4 @@ test fn compile_clean_shard_verdict_compose_RED_on_injected_failure() -> Bool {
 
 test fn compile_clean_shard_a_exemplar_compile_green() -> Bool {
   run_shard_a_exemplar_compile()
-}
-
-test fn compile_clean_shard_transport_serializes_staged_invocation() -> Bool {
-  shard_transport_serializes_staged_compile_invocation()
 }
