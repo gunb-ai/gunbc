@@ -20,13 +20,17 @@ import gunbc.commit_workflow {
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
+import gunbc.ci_diff_defaults { ci_merge_base_ref }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_floor_stamp_merge_admission_script,
-  merge_admission_stamp_invoke,
+  ci_floor_disposition_marker_path,
+  ci_floor_disposition_marker_init_script,
   merge_admission_floor_disposition_documentation_only_skipped,
+  merge_admission_floor_disposition_floor_running,
+  merge_admission_stamp_invoke,
 }
 import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -110,7 +114,7 @@ data gunbc_ci_spec: CiSpec = {
   witness_entries: gunbc_ci_floor_witness_entries,
   discovery_scan_dirs: witness_discovery_scan_dirs,
   diff_policy: {
-    base: "origin/main",
+    base: ci_merge_base_ref,
     head: "HEAD",
     mode: DiffMergeBase
   },
@@ -123,7 +127,7 @@ data gunbc_ci_regen_spec: CiSpec = {
   witness_entries: [],
   discovery_scan_dirs: [],
   diff_policy: {
-    base: "origin/main",
+    base: ci_merge_base_ref,
     head: "HEAD",
     mode: DiffMergeBase
   },
@@ -136,7 +140,7 @@ data gunbc_ci_emit_determinism_spec: CiSpec = {
   witness_entries: [],
   discovery_scan_dirs: [],
   diff_policy: {
-    base: "origin/main",
+    base: ci_merge_base_ref,
     head: "HEAD",
     mode: DiffMergeBase
   },
@@ -443,10 +447,19 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
           concat(
             concat(concat("    ", concat(ci_plan_artifact_compile_clean_invoke(), " || exit $?\n"))),
             concat(
-              "    echo \"claim_executor: plan-artifact-only diff — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=",
-              merge_admission_floor_disposition_documentation_only_skipped
+              "    mkdir -p target\n",
+              concat(
+                concat("    echo ", merge_admission_floor_disposition_documentation_only_skipped),
+                concat(" > ", concat(ci_floor_disposition_marker_path, "\n"))
+              )
             )
           ),
+          concat(
+            "    echo \"claim_executor: plan-artifact-only diff — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=",
+            merge_admission_floor_disposition_documentation_only_skipped
+          )
+        ),
+        concat(
           concat(
             ")\"\n",
             concat(
@@ -456,11 +469,11 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
                 concat(" ", merge_admission_stamp_invoke())
               )
             )
+          ),
+          concat(
+            "    exit $?\n",
+            "  fi\nfi\n"
           )
-        ),
-        concat(
-          "    exit $?\n",
-          "  fi\nfi\n"
         )
       )
     )
@@ -505,10 +518,13 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
     concat(
       concat(git_fetch_script(policy: spec.diff_policy), "\n"),
       concat(
-        concat(ci_documentation_only_floor_shortcut_script(policy: spec.diff_policy), "\n"),
+        concat(ci_floor_disposition_marker_init_script(), "\n"),
         concat(
-          concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
-          ci_floor_stamp_merge_admission_script()
+          concat(ci_documentation_only_floor_shortcut_script(policy: spec.diff_policy), "\n"),
+          concat(
+            concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
+            ci_floor_stamp_merge_admission_script()
+          )
         )
       )
     )
