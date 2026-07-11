@@ -5,8 +5,7 @@ import v2.lens.module_graph { import_closure_live, no_paths }
 import v2.lens.reference_deps {
   reference_closure_ingest_refusal_witness,
   reference_closure_live,
-  reference_closure_parsed_live,
-  reference_parsed_tree_facts_match_import_facts_at_path
+  reference_parsed_tree_matches_import_facts_on_closure
 }
 import v2.lens.module_graph { module_graph_exclude_substrings }
 import std.algebra { FreeMonoid }
@@ -47,7 +46,7 @@ data conformance_import_envelope_dissolution_note: String = "conformance_imports
 
 data bogus_never_referenced: String = "src/v2/std/__bogus_never_referenced__.dag"
 
-data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current import-only corpus reference_closure_live delegates to import_closure_live_excluding (no fact re-materialization); must match the declared golden (witnessed here) and import_closure_live (witnessed in import_closure_live_test.dag on the same golden). reference_closure_parsed_live closure is exercised green-by-execution against import_closure_live on the conformance fixture; reference_parsed_tree_facts_match_import_facts_at_path is the per-entry census check. Drift control (bogus path not in closure) and import/reference mismatch RED controls are folded into reference_closure_b2_safety_wall_holds."
+data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the import-only corpus reference_closure_live delegates to import_closure_live_excluding (no fact re-materialization); must match the declared golden (witnessed here) and import_closure_live (witnessed in import_closure_live_test.dag on the same golden). reference_parsed_tree_matches_import_facts_on_closure proves parsed≡import census at every import-closure member on the conformance fixture (import-only corpus: parsed-BFS neighbors agree with import facts when census matches at each member). reference_closure_parsed_live stays scaffold-only until parse-per-member cost is bounded. Drift control and import/reference mismatch RED controls are folded into reference_closure_b2_safety_wall_holds."
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
@@ -69,24 +68,12 @@ fn reference_conformance_closure_outcome() -> Outcome<FreeMonoid<String>> {
   reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
 }
 
-fn parsed_closure_matches_import_on_conformance_fixture() -> Bool {
-  match reference_closure_parsed_live(
-    entry_path: conformance_entry,
-    pool_roots: witness_layer_roots
-  ) {
-    Accepted { value: parsed_closure, diagnostics: _ } =>
-      set_equal(xs: parsed_closure, ys: import_conformance_closure())
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 test fn reference_closure_b2_safety_wall_holds() -> Bool {
-  let parsed_census_ok = reference_parsed_tree_facts_match_import_facts_at_path(
-    rel_path: conformance_entry,
+  let parsed_closure_census_ok = reference_parsed_tree_matches_import_facts_on_closure(
+    entry_path: conformance_entry,
     pool_roots: witness_layer_roots,
     exclude_substrings: module_graph_exclude_substrings
   )
-  let parsed_closure_matches_import = parsed_closure_matches_import_on_conformance_fixture()
   match reference_closure_ingest_refusal_witness(pool_roots: witness_layer_roots) {
     Rejected { diagnostics: _ } =>
       match reference_conformance_closure_outcome() {
@@ -103,8 +90,7 @@ test fn reference_closure_b2_safety_wall_holds() -> Bool {
               }
             }
           )
-          parsed_census_ok
-            && parsed_closure_matches_import
+          parsed_closure_census_ok
             && set_equal(xs: import_conformance_closure(), ys: declared_without_entry) == false
             && set_equal(xs: reference_closure, ys: expected_conformance_closure)
             && set_equal(xs: reference_closure, ys: with_bogus) == false
