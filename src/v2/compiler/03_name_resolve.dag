@@ -1,6 +1,7 @@
 module v2.compiler.name_resolve
 import v2.std.language_model { LanguageModel }
 
+import v2.compiler.normalize { NormalizedTree }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.resolve {
