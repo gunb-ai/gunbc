@@ -16,6 +16,7 @@ import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_gates,
   project_ci_regen_job_gates,
+  project_ci_emit_determinism_job_gates,
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
@@ -83,6 +84,8 @@ data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_ga
 
 data gunbc_ci_regen_floor_gates: List<Gate> = project_ci_regen_job_gates(roster: commit_gate_roster)
 
+data gunbc_ci_emit_determinism_floor_gates: List<Gate> = project_ci_emit_determinism_job_gates(roster: commit_gate_roster)
+
 data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
 
 data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
@@ -125,6 +128,19 @@ data gunbc_ci_regen_spec: CiSpec = {
     mode: DiffMergeBase
   },
   notice_title: "self-host fixed-point (regen + staleness) — required; folded into ci job",
+  deploy_stages: [],
+}
+
+data gunbc_ci_emit_determinism_spec: CiSpec = {
+  gates: gunbc_ci_emit_determinism_floor_gates,
+  witness_entries: [],
+  discovery_scan_dirs: [],
+  diff_policy: {
+    base: "origin/main",
+    head: "HEAD",
+    mode: DiffMergeBase
+  },
+  notice_title: "emit determinism (two full-corpus emits, diff -r byte-identity) — serial job, off the floor path",
   deploy_stages: [],
 }
 
