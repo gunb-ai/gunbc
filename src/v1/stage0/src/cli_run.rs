@@ -210,18 +210,7 @@ pub fn workspace_root() -> PathBuf {
     ROOT.get_or_init(|| {
         let cwd =
             std::env::current_dir().expect("workspace_root: process working directory unavailable");
-        for dir in cwd.ancestors() {
-            if dir.join(".git").exists() {
-                return dir.to_path_buf();
-            }
-        }
-        panic!(
-            "workspace_root: process cwd {} is not inside a git checkout; run from \
-             the workspace (the compile-time CARGO_MANIFEST_DIR fallback was removed: \
-             binaries are shared across runner workspaces and the compiling checkout's \
-             path is not a runtime fact)",
-            cwd.display()
-        )
+        workspace_root_from(&cwd)
     })
     .clone()
 }
