@@ -98,7 +98,7 @@ data gunbc_ci_cap_split_disposition: Disposition = Terminal {
 data gunbc_ci_runner_slot_memory_max_live: ByteSize = byte_size(25769803776)
 
 data gunbc_ci_runner_slot_memory_max_live_source: Disposition = Terminal {
-  reason: "Converge receipt 2026-07-05 (rust_tests cgroup-peak step, run 28731491727, srv1-03): memory.max=25769803776 (24 GiB) live on the actions-runner@ slot cgroup, host_ram=134314582016. DIVERGES from gunbc_ci_runner_cgroup_memory_cap (declared 8 GiB per gunbc.runner_slot_allocation): the live MemoryMax is hand-set on the hosts until converge applies the model. Consumers sizing within-run compile parallelism read gunbc_ci_runner_slot_memory_max_live until gunbc_runner_slot_allocation_live_cap_dissolve_on closes. Dissolve-on: converge read-back proves live == declared, then collapse to gunbc.runner_slot_allocation single authority."
+  reason: "Converge receipt 2026-07-05 (rust_tests cgroup-peak step, run 28731491727, srv1-03): memory.max=25769803776 (24 GiB) live on the actions-runner@ slot cgroup, host_ram=134314582016. DIVERGES from gunbc_ci_runner_cgroup_memory_cap (declared 16 GiB per gunbc.runner_slot_allocation, operator ruling 2026-07-10; 8 GiB at receipt time): the live MemoryMax is hand-set on the hosts until converge applies the model. Consumers sizing within-run compile parallelism read gunbc_ci_runner_slot_memory_max_live until gunbc_runner_slot_allocation_live_cap_dissolve_on closes. Dissolve-on: converge read-back proves live == declared (reachable now — the swap knob derives from the authority and converge_per_slot_cap readback-verifies), then collapse to gunbc.runner_slot_allocation single authority."
 }
 
 type ExecutorBaseOverhead

@@ -17,17 +17,17 @@ import gunbc.ci_materialization {
   workflow_run_demands, workflow_scripts_named, step_run_script,
   workflow_uses_steps_count, workflow_run_steps_count
 }
-import gunbc.ci_workflow { ci_workflow, ci_rust_cgroup_measurement_step }
+import gunbc.ci_workflow { ci_workflow, ci_floor_peak_pre_step, ci_floor_peak_post_step }
 import gunbc.ci_spec {
   ci_release_build_script,
   DeployStage, gunbc_ci_deploy_stages, gunbc_ci_deploy_run_script
 }
 
-data ci_materialization_gate_note: String = "The live binding: the ladder run over the ACTUAL emitted workflow (gunbc.ci_workflow data row), never a fixture copy of it. Demands, exemption identities, and fresh-effect scripts are all resolved against the same authority the ci.yml is emitted from, so a workflow edit that introduces cross-job duplication without a covering provider reds the enrolled witness in the same CI run that would have paid the duplication. Fresh effects: the cgroup measurement script (a measurement re-run is a new fact, never memoizable) and every deploy stage script (a deploy is the effect being the use); both resolved by projection, not copied strings."
+data ci_materialization_gate_note: String = "The live binding: the ladder run over the ACTUAL emitted workflow (gunbc.ci_workflow data row), never a fixture copy of it. Demands, exemption identities, and fresh-effect scripts are all resolved against the same authority the ci.yml is emitted from, so a workflow edit that introduces cross-job duplication without a covering provider reds the enrolled witness in the same CI run that would have paid the duplication. Fresh effects: the floor cgroup-peak measurement scripts (a memory.peak read is a new fact each run, never memoizable — the rust_tests cgroup-peak measurement was the prior subject; it retired with the rust_tests job 2026-07-11, and the ci-job floor peak pre/post reads are the same measurement category) and every deploy stage script (a deploy is the effect being the use); all resolved by projection, not copied strings."
 
 fn ci_fresh_effect_scripts() -> List<String> {
   concat(
-    [step_run_script(s: ci_rust_cgroup_measurement_step())],
+    [step_run_script(s: ci_floor_peak_pre_step()), step_run_script(s: ci_floor_peak_post_step())],
     map(gunbc_ci_deploy_stages, s => gunbc_ci_deploy_run_script(stage: s))
   )
 }

@@ -1,14 +1,17 @@
 module v2.workflow.compiler_closure_ingest_transport
 
 import extdeps.shell
+import extdeps.git
+import extdeps.gunbc
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt, ShellWord,
-  Command, Concat, CmdSubst,
-  lit, var_ref, command, assign, serialize_bash
+import tools.host_prelude {
+  ClaimRun,
+  run_gunbc_claims,
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  witness_bin_release_path
 }
-import tools.host_prelude { ensure_discover_source_root_ingest_built, ensure_gunbc_built }
 
 data closure_source_root: String = "src/v2"
 data closure_entry: String = "src/v2/compiler/00_compile.dag"
@@ -18,91 +21,57 @@ data closure_witness_layer_roots: String = "self_host_closure_witness_layer_root
 data closure_gap4_entry: String = "src/v2/test/claim/languages/gap4_parse_tokens_remain_test.dag"
 data closure_gap4_witness: String = "gap4_match_arm_let_stmt_parses_holds"
 
-fn cc_source_root_flags() -> List<ShellWord> {
-  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
-}
-
-fn emit_closure_manifest_stmt() -> ShellStmt {
-  command(words: [
-    var_ref(name: "DISCOVER_SOURCE_ROOT_INGEST"),
-    lit(text: "--source-root"), lit(text: closure_source_root),
-    lit(text: "--entry"), lit(text: closure_entry),
-    lit(text: "--emit-dag-manifest"),
-    Concat {
-      parts: [
-        var_ref(name: "CLOSURE_MANIFEST_DIR"),
-        lit(text: "/host_source_root_ingest_manifest.dag")
-      ]
-    }
-  ])
-}
-
-fn closure_gunbc_claim_run(function: String) -> ShellStmt {
-  command(words: concat(
-    concat([var_ref(name: "GUNBC"), lit(text: "run")], cc_source_root_flags()),
-    [
-      lit(text: "--source-root"), var_ref(name: "CLOSURE_MANIFEST_DIR"),
-      lit(text: "--entry"), lit(text: closure_test_entry),
-      lit(text: "--function"), lit(text: function),
-      lit(text: "--claim-run")
-    ]
-  ))
-}
-
-fn closure_gunbc_claim_run_no_overlay(function: String) -> ShellStmt {
-  command(words: concat(
-    concat([var_ref(name: "GUNBC"), lit(text: "run")], cc_source_root_flags()),
-    [
-      lit(text: "--entry"), lit(text: closure_test_entry),
-      lit(text: "--function"), lit(text: function),
-      lit(text: "--claim-run")
-    ]
-  ))
-}
-
-fn closure_gunbc_gap4_claim_run() -> ShellStmt {
-  command(words: concat(
-    concat([var_ref(name: "GUNBC"), lit(text: "run")], cc_source_root_flags()),
-    [
-      lit(text: "--entry"), lit(text: closure_gap4_entry),
-      lit(text: "--function"), lit(text: closure_gap4_witness),
-      lit(text: "--claim-run")
-    ]
-  ))
+fn closure_manifest_emit_args(manifest_dir: String) -> List<String> {
+  [
+    "--source-root", closure_source_root,
+    "--entry", closure_entry,
+    "--emit-dag-manifest", concat(manifest_dir, "/host_source_root_ingest_manifest.dag")
+  ]
 }
 
 func run_compiler_closure_ingest_gate() -> Bool {
-  let prog = ShellProgram {
-    set_e: true,
-    statements: concat(ensure_gunbc_built(), ensure_discover_source_root_ingest_built(), [
-      command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
-      closure_gunbc_claim_run_no_overlay(function: closure_witness_layer_roots),
-      closure_gunbc_gap4_claim_run(),
-      command(words: [
-        lit(text: "mkdir"),
-        lit(text: "-p"),
-        Concat { parts: [var_ref(name: "ROOT"), lit(text: "/target")] }
-      ]),
-      assign(
-        name: "CLOSURE_MANIFEST_DIR",
-        value: CmdSubst {
-          body: command(words: [
-            lit(text: "mktemp"),
-            lit(text: "-d"),
-            Concat {
-              parts: [
-                var_ref(name: "ROOT"),
-                lit(text: "/target/closure-ingest-XXXXXX")
-              ]
-            }
-          ])
+  let root = git.Core.Toplevel()
+  let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
+  if witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+    let pre_overlay = run_gunbc_claims(
+      source_roots: witness_layer_roots,
+      claims: [
+        ClaimRun { entry: closure_test_entry, function: closure_witness_layer_roots },
+        ClaimRun { entry: closure_gap4_entry, function: closure_gap4_witness }
+      ]
+    )
+    if pre_overlay {
+      let target_ready = shell.Mkdir.Parents(path: concat(root.path, "/target"))
+      if target_ready.success {
+        let manifest_dir = shell.Mktemp.DirWithTemplate(
+          template: concat(root.path, "/target/closure-ingest-XXXXXX")
+        )
+        if manifest_dir.success {
+          let emitted = gunbc.WitnessBin.Run(
+            workdir: root.path,
+            bin_path: witness_bin_release_path(root: root.path, bin_name: "discover_source_root_ingest"),
+            args: closure_manifest_emit_args(manifest_dir: manifest_dir.path)
+          )
+          let overlay = if emitted.success {
+            run_gunbc_claims(
+              source_roots: concat(witness_layer_roots, [manifest_dir.path]),
+              claims: [ClaimRun { entry: closure_test_entry, function: closure_witness_module_count }]
+            )
+          } else {
+            false
+          }
+          let cleaned = shell.Remove.RecursiveForce(path: manifest_dir.path)
+          overlay && cleaned.success
+        } else {
+          false
         }
-      ),
-      emit_closure_manifest_stmt(),
-      closure_gunbc_claim_run(function: closure_witness_module_count),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), var_ref(name: "CLOSURE_MANIFEST_DIR")])
-    ])
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+  } else {
+    false
   }
-  let result = shell.Exec.Run(script: serialize_bash(p: prog))
-  result.success
 }

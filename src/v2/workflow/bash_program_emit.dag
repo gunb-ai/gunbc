@@ -1,14 +1,51 @@
 module v2.workflow.bash_program_emit
 
-import extdeps.languages.bash.program { ShellProgram, ShellStmt }
+import extdeps.languages.bash.program { AndOrOp, Command, ShellProgram, ShellStmt, ShellWord, Redir }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.bash {
+  bash_redir_stderr_null_emitted,
+  bash_redir_stderr_null_target_model,
+  bash_redir_stdout_and_stderr_null_emitted,
+  bash_redir_stdout_and_stderr_null_target_model,
+  bash_redir_stdout_to_stderr_emitted,
+  bash_redir_stdout_to_stderr_target_model,
+  bash_redir_to_file_emitted,
+  bash_redir_to_file_target_model,
+  bash_stmt_andor_emitted,
+  bash_stmt_andor_target_model,
+  bash_stmt_assign_emitted,
+  bash_stmt_assign_target_model,
+  bash_stmt_brace_group_emitted,
+  bash_stmt_brace_group_target_model,
+  bash_stmt_env_prefixed_emitted,
+  bash_stmt_env_prefixed_target_model,
+  bash_stmt_exit_emitted,
+  bash_stmt_exit_target_model,
+  bash_stmt_heredoc_emitted,
+  bash_stmt_heredoc_target_model,
+  bash_stmt_if_emitted,
+  bash_stmt_if_target_model,
+  bash_stmt_negation_emitted,
+  bash_stmt_negation_target_model,
+  bash_stmt_pipe_emitted,
+  bash_stmt_pipe_target_model,
+  bash_stmt_subshell_emitted,
+  bash_stmt_subshell_target_model,
+  bash_stmt_with_redir_emitted,
+  bash_stmt_with_redir_target_model,
+  bash_word_cmdsubst_emitted,
+  bash_word_cmdsubst_target_model,
+  bash_word_pass_emitted,
+  bash_word_pass_target_model
+}
 import v2.extdeps.languages.bash_command_fold {
   bash_fold_stmt_emitted_witness,
   bash_fold_target_model_for_stmt_witness
 }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.collection { List, Map }
+import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -21,9 +58,12 @@ import v2.std.diagnostic {
   bind_outcome,
   node_locus
 }
+import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
+
+data bash_program_emit_cost_wall_note: String = "Cost shape, measured 2026-07-10: serializing a NESTED stmt through the whole-tree fold path is superlinear in nesting depth (~1s flat stmt; 64s for a single depth-4 stmt; the ~depth-7 witness programs did not finish in 8min) - root: formal_production_unique_lhs_exact_match deep-validates every lhs candidate subtree per level and the descent re-validates each level (~alternatives^depth). Consequence, realized in this module: compound constructs never enter the whole-tree path. Each compound arm of bash_program_stmt_spelling first serializes its children to spellings (recursion, linear in node count), then emits ONE flat spelling-parameterized row (bash_stmt_*_target_model); the whole-tree fold serves only constant-depth leaves (single-flat-word Command, Assign with a flat value, Exit). A multi-word Command is NOT flat to the fold - its right-nested words-list encoding makes an N-word command depth-N, so word count re-enters the exponential - hence words are spelled per-word (each a constant-depth emit) and joined through the verbatim pass row. Byte-identity vs serialize_bash is the oracle (v2.test.claim.bash_program_fold). The grammar-layer backward-selection cost defect remains open in v2.std.grammar as its own lane; the runtime witness transports stopped serializing bash entirely (typed argv, PR #6457)."
 
 fn bash_program_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Violates {
@@ -35,29 +75,369 @@ fn bash_program_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
   }
 }
 
-fn bash_program_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {
+fn bash_program_emit_from_emitted(emitted: Node, target: TargetModel) -> Outcome<String> {
+  let tree = InferredTree {
+    root: emitted,
+    facts: Map { lookup: bash_program_emit_facts_lookup }
+  }
+  match emit(tree: tree, target: target) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => Accepted { value: source.carried, diagnostics: None }
+        Some { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn bash_program_flat_fold_serialize(stmt: ShellStmt) -> Outcome<String> {
   match bash_fold_stmt_emitted_witness(stmt: stmt) {
     Holds { value: emitted } =>
       match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
         Holds { value: target } =>
-          match emit(
-            tree: InferredTree {
-              root: emitted,
-              facts: Map { lookup: bash_program_emit_facts_lookup }
-            },
-            target: target
-          ) {
-            Accepted { value: source, diagnostics: d } =>
-              match d {
-                None => Accepted { value: source.carried, diagnostics: None }
-                Some { diagnostics: r } => Rejected { diagnostics: r }
-              }
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          }
+          bash_program_emit_from_emitted(emitted: emitted, target: target)
         Violates { diagnostic: dd } => Rejected { diagnostics: Some { diagnostics: [dd] } }
       }
     Violates { diagnostic: dd } => Rejected { diagnostics: Some { diagnostics: [dd] } }
   }
+}
+
+fn bash_program_word_is_flat(w: ShellWord) -> Bool {
+  match w {
+    Lit { text: _ } => true
+    VarRef { name: _ } => true
+    Raw { text: _ } => true
+    Concat { parts: _ } => false
+    CmdSubst { body: _ } => false
+  }
+}
+
+fn bash_program_command_is_single_flat(ws: List<ShellWord>) -> Bool {
+  match list_head(xs: ws) {
+    HeadAbsent => false
+    HeadFound { value: only } =>
+      if bash_program_word_is_flat(w: only) {
+        match list_tail(xs: ws) {
+          TailAbsent => true
+          TailFound { tail: t } =>
+            match list_head(xs: t) {
+              HeadAbsent => true
+              HeadFound { value: _ } => false
+            }
+        }
+      } else {
+        false
+      }
+  }
+}
+
+fn bash_program_words_line_emit(ws: List<ShellWord>) -> Outcome<String> {
+  bind_outcome(
+    o: bash_program_words_joined_spelling(ws: ws),
+    f: fn(line) {
+      bash_program_emit_from_emitted(
+        emitted: bash_word_pass_emitted,
+        target: bash_word_pass_target_model(spelling: line)
+      )
+    }
+  )
+}
+
+fn bash_program_word_spelling(w: ShellWord) -> Outcome<String> {
+  match w {
+    Concat { parts: ps } => bash_program_concat_parts_spelling(parts: ps)
+    CmdSubst { body: b } =>
+      bind_outcome(
+        o: bash_program_stmt_spelling(stmt: b),
+        f: fn(body_spelling) {
+          bash_program_emit_from_emitted(
+            emitted: bash_word_cmdsubst_emitted,
+            target: bash_word_cmdsubst_target_model(body: body_spelling)
+          )
+        }
+      )
+    Lit { text: _ } => bash_program_flat_fold_serialize(stmt: Command { words: [w] })
+    VarRef { name: _ } => bash_program_flat_fold_serialize(stmt: Command { words: [w] })
+    Raw { text: _ } => bash_program_flat_fold_serialize(stmt: Command { words: [w] })
+  }
+}
+
+fn bash_program_concat_parts_spelling(parts: List<ShellWord>) -> Outcome<String> {
+  match list_head(xs: parts) {
+    HeadAbsent => Accepted { value: "", diagnostics: None }
+    HeadFound { value: w } =>
+      bind_outcome(
+        o: bash_program_word_spelling(w: w),
+        f: fn(part) {
+          match list_tail(xs: parts) {
+            TailFound { tail: t } =>
+              bind_outcome(
+                o: bash_program_concat_parts_spelling(parts: t),
+                f: fn(rest) { Accepted { value: concat(part, rest), diagnostics: None } }
+              )
+            TailAbsent => Accepted { value: part, diagnostics: None }
+          }
+        }
+      )
+  }
+}
+
+fn bash_program_words_joined_spelling(ws: List<ShellWord>) -> Outcome<String> {
+  match list_head(xs: ws) {
+    HeadAbsent => Accepted { value: "", diagnostics: None }
+    HeadFound { value: w } =>
+      bind_outcome(
+        o: bash_program_word_spelling(w: w),
+        f: fn(part) {
+          match list_tail(xs: ws) {
+            TailFound { tail: t } =>
+              match list_head(xs: t) {
+                HeadAbsent => Accepted { value: part, diagnostics: None }
+                HeadFound { value: _ } =>
+                  bind_outcome(
+                    o: bash_program_words_joined_spelling(ws: t),
+                    f: fn(rest) {
+                      Accepted { value: concat(part, concat(" ", rest)), diagnostics: None }
+                    }
+                  )
+              }
+            TailAbsent => Accepted { value: part, diagnostics: None }
+          }
+        }
+      )
+  }
+}
+
+fn bash_program_redir_spelling(r: Redir) -> Outcome<String> {
+  match r {
+    StderrToNull =>
+      bash_program_emit_from_emitted(
+        emitted: bash_redir_stderr_null_emitted,
+        target: bash_redir_stderr_null_target_model()
+      )
+    StdoutAndStderrToNull =>
+      bash_program_emit_from_emitted(
+        emitted: bash_redir_stdout_and_stderr_null_emitted,
+        target: bash_redir_stdout_and_stderr_null_target_model()
+      )
+    StdoutToStderr =>
+      bash_program_emit_from_emitted(
+        emitted: bash_redir_stdout_to_stderr_emitted,
+        target: bash_redir_stdout_to_stderr_target_model()
+      )
+    RedirToFile { path: p } =>
+      bind_outcome(
+        o: bash_program_word_spelling(w: p),
+        f: fn(path_spelling) {
+          bash_program_emit_from_emitted(
+            emitted: bash_redir_to_file_emitted,
+            target: bash_redir_to_file_target_model(path: path_spelling)
+          )
+        }
+      )
+  }
+}
+
+fn bash_program_stmts_semi_spelling_from(
+  acc: String,
+  first: Bool,
+  rest: List<ShellStmt>
+) -> Outcome<String> {
+  match list_head(xs: rest) {
+    HeadAbsent => Accepted { value: acc, diagnostics: None }
+    HeadFound { value: s } =>
+      bind_outcome(
+        o: bash_program_stmt_spelling(stmt: s),
+        f: fn(part) {
+          let next = if first { part } else { concat(acc, concat("; ", part)) }
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              bash_program_stmts_semi_spelling_from(acc: next, first: false, rest: t)
+            TailAbsent => Accepted { value: next, diagnostics: None }
+          }
+        }
+      )
+  }
+}
+
+fn bash_program_stmts_semi_spelling(stmts: List<ShellStmt>) -> Outcome<String> {
+  bash_program_stmts_semi_spelling_from(acc: "", first: true, rest: stmts)
+}
+
+fn bash_program_andor_op_spelling(op: AndOrOp) -> String {
+  match op {
+    AndThen => "&&"
+    OrElse => "||"
+  }
+}
+
+fn bash_program_stmt_spelling(stmt: ShellStmt) -> Outcome<String> {
+  match stmt {
+    RawLine { text: t } =>
+      bash_program_emit_from_emitted(
+        emitted: bash_word_pass_emitted,
+        target: bash_word_pass_target_model(spelling: t)
+      )
+    Command { words: ws } =>
+      if bash_program_command_is_single_flat(ws: ws) {
+        bash_program_flat_fold_serialize(stmt: stmt)
+      } else {
+        bash_program_words_line_emit(ws: ws)
+      }
+    Assign { name: n, value: v } =>
+      if bash_program_word_is_flat(w: v) {
+        bash_program_flat_fold_serialize(stmt: stmt)
+      } else {
+        bind_outcome(
+          o: bash_program_word_spelling(w: v),
+          f: fn(value_spelling) {
+            bash_program_emit_from_emitted(
+              emitted: bash_stmt_assign_emitted,
+              target: bash_stmt_assign_target_model(name: n, value: value_spelling)
+            )
+          }
+        )
+      }
+    Exit { code: c } =>
+      bash_program_emit_from_emitted(
+        emitted: bash_stmt_exit_emitted,
+        target: bash_stmt_exit_target_model(code: to_string(c))
+      )
+    If { cond: c, then: body } =>
+      bind_outcome(
+        o: bash_program_stmt_spelling(stmt: c),
+        f: fn(cond_spelling) {
+          bind_outcome(
+            o: bash_program_stmts_semi_spelling(stmts: body),
+            f: fn(body_spelling) {
+              bash_program_emit_from_emitted(
+                emitted: bash_stmt_if_emitted,
+                target: bash_stmt_if_target_model(cond: cond_spelling, body: body_spelling)
+              )
+            }
+          )
+        }
+      )
+    Subshell { body: b } =>
+      bind_outcome(
+        o: bash_program_stmts_semi_spelling(stmts: b),
+        f: fn(body_spelling) {
+          bash_program_emit_from_emitted(
+            emitted: bash_stmt_subshell_emitted,
+            target: bash_stmt_subshell_target_model(body: body_spelling)
+          )
+        }
+      )
+    BraceGroup { body: b } =>
+      bind_outcome(
+        o: bash_program_stmts_semi_spelling(stmts: b),
+        f: fn(body_spelling) {
+          bash_program_emit_from_emitted(
+            emitted: bash_stmt_brace_group_emitted,
+            target: bash_stmt_brace_group_target_model(body: body_spelling)
+          )
+        }
+      )
+    AndOr { left: l, op: o, right: r } =>
+      bind_outcome(
+        o: bash_program_stmt_spelling(stmt: l),
+        f: fn(left_spelling) {
+          bind_outcome(
+            o: bash_program_stmt_spelling(stmt: r),
+            f: fn(right_spelling) {
+              bash_program_emit_from_emitted(
+                emitted: bash_stmt_andor_emitted,
+                target: bash_stmt_andor_target_model(
+                  left: left_spelling,
+                  op: bash_program_andor_op_spelling(op: o),
+                  right: right_spelling
+                )
+              )
+            }
+          )
+        }
+      )
+    Pipe { left: l, right: r } =>
+      bind_outcome(
+        o: bash_program_stmt_spelling(stmt: l),
+        f: fn(left_spelling) {
+          bind_outcome(
+            o: bash_program_stmt_spelling(stmt: r),
+            f: fn(right_spelling) {
+              bash_program_emit_from_emitted(
+                emitted: bash_stmt_pipe_emitted,
+                target: bash_stmt_pipe_target_model(left: left_spelling, right: right_spelling)
+              )
+            }
+          )
+        }
+      )
+    EnvPrefixed { name: n, value: v, command: c } =>
+      bind_outcome(
+        o: bash_program_word_spelling(w: v),
+        f: fn(value_spelling) {
+          bind_outcome(
+            o: bash_program_stmt_spelling(stmt: c),
+            f: fn(command_spelling) {
+              bash_program_emit_from_emitted(
+                emitted: bash_stmt_env_prefixed_emitted,
+                target: bash_stmt_env_prefixed_target_model(
+                  name: n,
+                  value: value_spelling,
+                  command: command_spelling
+                )
+              )
+            }
+          )
+        }
+      )
+    WithRedir { stmt: st, redir: rd } =>
+      bind_outcome(
+        o: bash_program_stmt_spelling(stmt: st),
+        f: fn(stmt_spelling) {
+          bind_outcome(
+            o: bash_program_redir_spelling(r: rd),
+            f: fn(redir_spelling) {
+              bash_program_emit_from_emitted(
+                emitted: bash_stmt_with_redir_emitted,
+                target: bash_stmt_with_redir_target_model(
+                  stmt: stmt_spelling,
+                  redir: redir_spelling
+                )
+              )
+            }
+          )
+        }
+      )
+    Heredoc { path: p, delimiter: d, body: b } =>
+      bind_outcome(
+        o: bash_program_word_spelling(w: p),
+        f: fn(path_spelling) {
+          bash_program_emit_from_emitted(
+            emitted: bash_stmt_heredoc_emitted,
+            target: bash_stmt_heredoc_target_model(
+              path: path_spelling,
+              delimiter: d,
+              body: b
+            )
+          )
+        }
+      )
+    Negation { stmt: st } =>
+      bind_outcome(
+        o: bash_program_stmt_spelling(stmt: st),
+        f: fn(inner_spelling) {
+          bash_program_emit_from_emitted(
+            emitted: bash_stmt_negation_emitted,
+            target: bash_stmt_negation_target_model(inner: inner_spelling)
+          )
+        }
+      )
+  }
+}
+
+fn bash_program_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {
+  bash_program_stmt_spelling(stmt: stmt)
 }
 
 fn bash_program_serialize_body(stmts: List<ShellStmt>) -> Outcome<String> {

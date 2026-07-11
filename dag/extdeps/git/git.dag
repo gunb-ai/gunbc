@@ -234,6 +234,17 @@ service git.Core {
     }
   }
 
+  operation Toplevel {
+    input {}
+    output { path: FilePath from "stdout" }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "--show-toplevel"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
   operation HeadCommit {
     input {}
     output {

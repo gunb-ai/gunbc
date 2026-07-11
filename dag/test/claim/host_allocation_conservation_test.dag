@@ -10,8 +10,8 @@ import gunbc.fleet_host_budget {
   gunbc_runner_pool_budget,
 }
 
-test fn declared_runner_count_is_ten() -> Bool {
-  declared_runner_count() == 10
+test fn declared_runner_count_is_five() -> Bool {
+  declared_runner_count() == 5
 }
 
 test fn allocation_conserves_when_pools_fit() -> Bool {

@@ -1,14 +1,27 @@
 module v2.test.claim.bash_program_fold
 
 import extdeps.languages.bash.program {
+  CmdSubst,
+  AndOr,
+  Command,
+  Exit,
+  If,
+  OrElse,
+  Subshell,
+  Concat,
+  Lit,
   ShellProgram,
+  StderrToNull,
+  VarRef,
+  WithRedir,
   assign,
   command,
   lit,
   serialize_bash
 }
-import v2.workflow.bash_program_emit { bash_program_serialize }
-import v2.std.diagnostic { Accepted, Rejected }
+import tools.host_prelude { ClaimRun, assign_root_stmt, gunbc_claims_program, witness_bin, witness_bin_program }
+import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
 
 fn bash_program_fold_sample() -> ShellProgram {
   ShellProgram {
@@ -30,12 +43,15 @@ fn bash_program_fold_sample_no_set_e() -> ShellProgram {
   }
 }
 
-test fn bash_program_serialize_matches_oracle_holds() -> Bool {
-  match bash_program_serialize(p: bash_program_fold_sample()) {
-    Accepted { value: folded, diagnostics: _ } =>
-      folded == serialize_bash(p: bash_program_fold_sample())
+fn bash_program_serialize_matches_sidecar(p: ShellProgram) -> Bool {
+  match bash_program_serialize(p: p) {
+    Accepted { value: folded, diagnostics: _ } => folded == serialize_bash(p: p)
     Rejected { diagnostics: _ } => false
   }
+}
+
+test fn bash_program_serialize_matches_oracle_holds() -> Bool {
+  bash_program_serialize_matches_sidecar(p: bash_program_fold_sample())
 }
 
 test fn bash_program_serialize_set_e_has_teeth_holds() -> Bool {
@@ -44,4 +60,117 @@ test fn bash_program_serialize_set_e_has_teeth_holds() -> Bool {
       folded != serialize_bash(p: bash_program_fold_sample_no_set_e())
     Rejected { diagnostics: _ } => false
   }
+}
+
+fn bash_program_depth2_cmdsubst_sample() -> ShellProgram {
+  ShellProgram {
+    set_e: false,
+    statements: [
+      assign(name: "ROOT", value: CmdSubst {
+        body: command(words: [lit(text: "pwd")])
+      })
+    ]
+  }
+}
+
+fn bash_program_depth2_redir_sample() -> ShellProgram {
+  ShellProgram {
+    set_e: false,
+    statements: [
+      WithRedir {
+        stmt: command(words: [lit(text: "git"), lit(text: "rev-parse")]),
+        redir: StderrToNull
+      }
+    ]
+  }
+}
+
+fn bash_program_depth2_concat_sample() -> ShellProgram {
+  ShellProgram {
+    set_e: false,
+    statements: [
+      assign(name: "BIN", value: Concat {
+        parts: [VarRef { name: "ROOT" }, Lit { text: "/target/release/gunbc" }]
+      })
+    ]
+  }
+}
+
+test fn bash_program_serialize_cmdsubst_matches_oracle_holds() -> Bool {
+  bash_program_serialize_matches_sidecar(p: bash_program_depth2_cmdsubst_sample())
+}
+
+test fn bash_program_serialize_redir_matches_oracle_holds() -> Bool {
+  bash_program_serialize_matches_sidecar(p: bash_program_depth2_redir_sample())
+}
+
+test fn bash_program_serialize_concat_matches_oracle_holds() -> Bool {
+  bash_program_serialize_matches_sidecar(p: bash_program_depth2_concat_sample())
+}
+
+data bash_program_fold_real_program_probe_note: String = "The real-program builders below are MANUAL probes, deliberately not test fns. History: through the whole-tree fold path (backward row-selection superlinear in nesting depth, and depth includes the right-nested words-list encoding, so an N-word command is depth-N) the full witness program did not finish in 8min (measured 2026-07-10). Through the promoted compositional serializer (v2.workflow.bash_program_emit) the same program serializes byte-identically in ~28s wall (~17s after corpus load, measured 2026-07-11) - linear in node count, ~1s per interpreted row emit. They stay manual because the floor prices witnesses by wall-clock; they become enrollable when interpreter emit overhead drops (interpreter-speed lane), and they dissolve with the sidecar when the pre-runtime windows migrate off ShellProgram."
+
+data bash_program_exit_tail_regression_note: String = "The exit-in-joined-tail tests below are the discriminating controls for the improper-string class fixed in 06_translate (serialize joins once built modeled cons cells with the last spelling attached as an improper native tail; interp == NORMALIZES a top-level hybrid, so a matches-sidecar oracle alone can be fooled when both sides carry the same hybrid - which is why the literal-equality witness exists: it is normalization-independent). Red before the concat grounding of serialize_concrete_syntax_tokens_to_source_string / target_serialize_relation_row_from_model_bounded / token_sequence_to_source_bounded; green after. Declared residue of the same class (not yet grounded, no bash-row consumer today): the type-expression joins in 06_translate (serialize_type_expr_args/separated/record_fields) and the list_append string joins in emit_produced.dag / emit_module.dag - the follow-up sweep grounds them the same way (native concat accumulator), priced by the first oracle that reds on them."
+
+fn bash_program_fold_real_witness_program() -> ShellProgram {
+  witness_bin_program(
+    invoke: witness_bin(var_name: "V1_DAG_PARSE", bin_name: "v1srcdag_parse"),
+    prereqs: [],
+    args: ["--entry", "dag/std/algebra.dag"]
+  )
+}
+
+fn bash_program_fold_real_claims_program() -> ShellProgram {
+  gunbc_claims_program(
+    source_roots: ["src/v2", "dag"],
+    claims: [ClaimRun { entry: "src/v2/test/claim/bash_program_fold_test.dag", function: "bash_program_serialize_matches_oracle_holds" }]
+  )
+}
+
+fn bash_program_serialize_real_witness_probe() -> Outcome<String> {
+  bash_program_serialize(p: bash_program_fold_real_witness_program())
+}
+
+fn bash_program_serialize_depth_probe_assign_root() -> Outcome<String> {
+  bash_program_serialize(p: ShellProgram { set_e: false, statements: [assign_root_stmt()] })
+}
+
+fn bash_program_real_witness_probe_matches_sidecar() -> Bool {
+  bash_program_serialize_matches_sidecar(p: bash_program_fold_real_witness_program())
+}
+
+fn bash_program_real_claims_probe_matches_sidecar() -> Bool {
+  bash_program_serialize_matches_sidecar(p: bash_program_fold_real_claims_program())
+}
+
+fn bash_program_assign_root_probe_matches_sidecar() -> Bool {
+  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [assign_root_stmt()] })
+}
+
+test fn bash_program_exit_in_subshell_tail_matches_oracle_holds() -> Bool {
+  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
+    Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }
+  ] })
+}
+
+test fn bash_program_exit_in_if_body_matches_oracle_holds() -> Bool {
+  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
+    If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }]
+    }
+  ] })
+}
+
+test fn bash_program_exit_spelling_literal_holds() -> Bool {
+  match bash_program_serialize_stmt(stmt: Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }) {
+    Accepted { value: s, diagnostics: d } => s == "('echo' 'hi'; exit 1)"
+    Rejected { diagnostics: r } => false
+  }
+}
+
+test fn bash_program_andor_exit_matches_oracle_holds() -> Bool {
+  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
+    AndOr { left: Command { words: [Lit { text: "true" }] }, op: OrElse, right: Exit { code: 1 } }
+  ] })
 }

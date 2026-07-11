@@ -28,7 +28,7 @@ fn synthetic_correct_schedule() -> List<List<Runnable>> {
         node_frontier_selection: SelectionOff
         profile: runnable_resource_profile_negligible()
       },
-      RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes", profile: runnable_resource_profile_negligible() }
+      RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
     ]
   ]
 }
