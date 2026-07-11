@@ -802,14 +802,7 @@ fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
 }
 
 fn body_lower_reify_operand_node(node: Node) -> Optional<Node> {
-  match body_lower_operand_ref_optional(node: node) {
-    Present { value: ref_node } => Present { value: ref_node }
-    Absent =>
-      match node.kind {
-        TypeNode { connective: Atom { identity: _ } } => Present { value: node }
-        _ => Absent
-      }
-  }
+  body_lower_operand_ref_optional(node: node)
 }
 
 fn body_lower_reify_transform_edge(

@@ -24,7 +24,7 @@ import std.algebra { Cons, Empty }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.grammar { node_atom_identity_optional }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.node {
   Arrow,
   Atom,
@@ -470,6 +470,140 @@ fn body_lowering_normalized_operator_is_plus() -> Bool {
   }
 }
 
+fn body_lower_arrow_operand_identity(arrow: Node, index: Int) -> Optional<Symbol> {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match list_at_optional(xs: body.children, index: index) {
+        Present { value: e } => node_atom_identity_optional(node: e.target)
+        Absent => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn body_lower_arrow_domain_first_binding(arrow: Node) -> Optional<Symbol> {
+  if count(arrow.children) >= 1 {
+    match first(arrow.children) {
+      Present { value: e0 } =>
+        fold(e0.target.children, init: optional_absent(), f: fn(found, e) {
+          match found {
+            Present { value: _ } => found
+            Absent =>
+              match e.label {
+                Named { name: sym } => Present { value: sym }
+                _ => optional_absent()
+              }
+          }
+        })
+      Absent => Absent
+    }
+  } else {
+    Absent
+  }
+}
+
+fn body_lowering_domain_operand1_match() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          match body_lower_arrow_domain_first_binding(arrow: arrow) {
+            Present { value: domain_binding } =>
+              match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
+                Present { value: operand } => domain_binding == operand
+                Absent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_parsed_has_param_bindings() -> Bool {
+  match body_lowering_parsed_fn_decl() {
+    Absent => false
+    Present { value: fn_decl } =>
+      body_lowering_tree_contains_atom(root: fn_decl, wanted: ^dag_binding_param_x)
+        && body_lowering_tree_contains_atom(root: fn_decl, wanted: ^dag_binding_param_y)
+  }
+}
+
+fn body_lowering_normalized_operand1_lexeme_is_x() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
+            Present { value: id } => symbol_lexeme(sym: id) == "x"
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_operand_equals(arrow: Node, index: Int, wanted: Symbol) -> Bool {
+  match body_lower_arrow_operand_identity(arrow: arrow, index: index) {
+    Present { value: id } => id == wanted
+    Absent => false
+  }
+}
+
+fn body_lowering_normalized_left_is_param_x() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          body_lowering_operand_equals(arrow: arrow, index: 1, wanted: ^dag_binding_param_x)
+      }
+  }
+}
+
+fn body_lowering_normalized_right_is_param_y() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          body_lowering_operand_equals(arrow: arrow, index: 2, wanted: ^dag_binding_param_y)
+      }
+  }
+}
+
+fn body_lowering_normalized_matches_fixture_operands() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: normalized_arrow } =>
+          match body_lower_arrow_operand_identity(arrow: normalized_arrow, index: 1) {
+            Present { value: norm_left } =>
+              match body_lower_arrow_operand_identity(arrow: normalized_arrow, index: 2) {
+                Present { value: norm_right } =>
+                  match body_lower_arrow_operand_identity(arrow: dag_add_arrow_with_body_fixture, index: 1) {
+                    Present { value: fix_left } =>
+                      match body_lower_arrow_operand_identity(arrow: dag_add_arrow_with_body_fixture, index: 2) {
+                        Present { value: fix_right } =>
+                          (norm_left == fix_left) && (norm_right == fix_right)
+                        Absent => false
+                      }
+                    Absent => false
+                  }
+                Absent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
 fn body_lowering_normalized_left_operand_is_atom() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
@@ -477,25 +611,9 @@ fn body_lowering_normalized_left_operand_is_atom() -> Bool {
       match body_lower_find_arrow_in_module(root: tree) {
         Absent => false
         Present { value: arrow } =>
-          match find_arrow_body_child(root: arrow) {
-            Accepted { value: body, diagnostics: _ } =>
-              match body.kind {
-                ComputationNode { behavior: Transform } =>
-                  if count(body.children) >= 2 {
-                    match list_at_optional(xs: body.children, index: 1) {
-                      Present { value: e1 } =>
-                        match e1.target.kind {
-                          TypeNode { connective: Atom { identity: _ } } => true
-                          _ => false
-                        }
-                      Absent => false
-                    }
-                  } else {
-                    false
-                  }
-                _ => false
-              }
-            Rejected { diagnostics: _ } => false
+          match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
+            Present { value: _ } => true
+            Absent => false
           }
       }
   }
