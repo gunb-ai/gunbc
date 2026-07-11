@@ -201,6 +201,72 @@ pub fn workspace_root() -> PathBuf {
     .clone()
 }
 
+/// Runtime workspace root for path normalization in the claim bins and module-graph pipeline.
+///
+/// Unlike [`workspace_root`] (compile-time from `CARGO_MANIFEST_DIR`), this resolves against
+/// the process environment. sccache can ship a binary built on one runner checkout path to
+/// another; anchoring file reads to the compile-time root desyncs module-graph facts from
+/// module-content indices (DESIGN §5 — wrong answers with zero diagnostic).
+///
+/// Resolution order: `git rev-parse --show-toplevel` when it names a Cargo.toml+dag/ tree,
+/// else walk up from cwd. Fail-closed panic when neither locates the workspace — no silent
+/// fallback to cwd-relative or absolute spellings as index keys.
+fn process_workspace_root() -> PathBuf {
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(resolve_process_workspace_root).clone()
+}
+
+fn resolve_process_workspace_root() -> PathBuf {
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+    {
+        if output.status.success() {
+            let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !root.is_empty() {
+                let candidate = PathBuf::from(&root);
+                if candidate.join("Cargo.toml").is_file() && candidate.join("dag").is_dir() {
+                    return candidate;
+                }
+            }
+        }
+    }
+    let mut dir = std::env::current_dir().expect("process_workspace_root: cwd unavailable");
+    loop {
+        if dir.join("Cargo.toml").is_file() && dir.join("dag").is_dir() {
+            return dir;
+        }
+        if !dir.pop() {
+            let cwd = std::env::current_dir()
+                .map(|d| d.display().to_string())
+                .unwrap_or_else(|_| "<unavailable>".into());
+            panic!(
+                "process_workspace_root: cannot locate workspace — git rev-parse did not name \
+                 a Cargo.toml+dag/ tree and no such ancestor of cwd {cwd}; compiled-in root \
+                 was {}",
+                workspace_root().display()
+            );
+        }
+    }
+}
+
+/// Repo-relative path under [`process_workspace_root`]. Fail-closed: returns a typed refusal
+/// when `path` is not under the runtime root — never widens to cwd-relative or absolute keys.
+fn repo_relative_path(path: &Path) -> Result<String, String> {
+    let ws = process_workspace_root();
+    path.strip_prefix(&ws)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .map_err(|_| {
+            format!(
+                "repo_relative_path: path {} is not under process workspace root {} \
+                 (compiled-in root was {})",
+                path.display(),
+                ws.display(),
+                workspace_root().display()
+            )
+        })
+}
+
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
 ///
 /// `workspace_root()` above was HISTORICALLY baked from `env!("CARGO_MANIFEST_DIR")` at
@@ -353,6 +419,32 @@ mod cli_path_arg_resolution_tests {
     }
 }
 
+#[cfg(test)]
+mod process_workspace_root_tests {
+    use super::{
+        process_workspace_root, repo_relative_path, workspace_relative_repo_path,
+    };
+
+    #[test]
+    fn process_workspace_root_locates_cargo_and_dag() {
+        let root = process_workspace_root();
+        assert!(root.join("Cargo.toml").is_file());
+        assert!(root.join("dag").is_dir());
+    }
+
+    #[test]
+    fn repo_relative_path_normalizes_under_process_root() {
+        let root = process_workspace_root();
+        let abs = root.join("dag/gunbc/ci_layer_roots.dag");
+        let rel = repo_relative_path(&abs).expect("under process root");
+        assert_eq!(rel, "dag/gunbc/ci_layer_roots.dag");
+        assert_eq!(
+            workspace_relative_repo_path(&abs.to_string_lossy()),
+            "dag/gunbc/ci_layer_roots.dag"
+        );
+    }
+}
+
 /// Empty ingest-manifest placeholder excluded from the module index when a later
 /// source root carries the host-emitted manifest (source-root ingest / closure gates).
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
@@ -388,7 +480,6 @@ fn module_path_collision_panic_message(
 }
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
-    let ws = workspace_root();
     let mut index: HashMap<String, String> = HashMap::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let root_path = Path::new(root);
@@ -402,14 +493,9 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                 panic!("build_module_path_index: failed to read {:?}: {}", path, e)
             });
             if let Some(module_path) = extract_module_path(&content) {
-                let rel = match path.strip_prefix(&ws) {
-                    Ok(p) => p.to_string_lossy().replace('\\', "/"),
-                    Err(_) => std::env::current_dir()
-                        .ok()
-                        .and_then(|cwd| path.strip_prefix(&cwd).ok())
-                        .map(|p| p.to_string_lossy().replace('\\', "/"))
-                        .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/")),
-                };
+                let rel = repo_relative_path(&path).unwrap_or_else(|e| {
+                    panic!("build_module_path_index: {e}")
+                });
                 if is_source_root_ingest_manifest_stub_rel(&rel)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
                 {
@@ -441,7 +527,7 @@ fn resolve_virtual_source_with_imports(
     entry_content: &str,
     module_index: &HashMap<String, String>,
 ) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
-    let ws = workspace_root();
+    let ws = process_workspace_root();
     let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut queue: Vec<String> = vec![entry_content.to_string()];
     while let Some(content) = queue.pop() {
@@ -520,7 +606,7 @@ fn ci_layer_roots_authority_content() -> &'static str {
     static CONTENT: OnceLock<String> = OnceLock::new();
     CONTENT
         .get_or_init(|| {
-            let path = workspace_root().join(CI_LAYER_ROOTS_AUTHORITY_REL);
+            let path = process_workspace_root().join(CI_LAYER_ROOTS_AUTHORITY_REL);
             std::fs::read_to_string(&path).unwrap_or_else(|e| {
                 panic!(
                     "ci_layer_roots authority: failed to read {}: {e}",
@@ -1499,10 +1585,7 @@ fn workspace_relative_repo_path(path: &str) -> String {
     let norm = path.strip_prefix("./").unwrap_or(path).replace('\\', "/");
     let p = Path::new(&norm);
     if p.is_absolute() {
-        let ws = workspace_root();
-        p.strip_prefix(&ws)
-            .map(|rp| rp.to_string_lossy().replace('\\', "/"))
-            .unwrap_or(norm)
+        repo_relative_path(p).unwrap_or_else(|e| panic!("workspace_relative_repo_path: {e}"))
     } else {
         norm
     }
@@ -1511,7 +1594,7 @@ fn workspace_relative_repo_path(path: &str) -> String {
 /// Normalize `source_roots` to the workspace-relative form `import_resolution_facts` /
 /// `module_declaration_facts` expect when invoked from `.dag` (`witness_layer_roots` style).
 fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
-    let ws = workspace_root();
+    let ws = process_workspace_root();
     source_roots
         .iter()
         .map(|r| {
@@ -1519,7 +1602,14 @@ fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
             if p.is_absolute() {
                 p.strip_prefix(&ws)
                     .map(|rp| rp.to_string_lossy().replace('\\', "/"))
-                    .unwrap_or_else(|_| r.replace('\\', "/"))
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "pool_roots_for_module_graph_closure: source root {} is not under \
+                             process workspace root {}",
+                            r,
+                            ws.display()
+                        )
+                    })
             } else {
                 r.replace('\\', "/")
             }
@@ -9599,14 +9689,12 @@ const LAYER_STD: &str = "LayerPrefixStd";
 const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 
 fn rel_path_for_layer_import(path: &Path) -> String {
-    let ws = workspace_root();
-    path.strip_prefix(&ws)
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"))
+    repo_relative_path(path)
+        .unwrap_or_else(|e| panic!("rel_path_for_layer_import: {e}"))
 }
 
 fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
-    let ws = workspace_root();
+    let ws = process_workspace_root();
     pool_roots
         .iter()
         .map(|r| {
