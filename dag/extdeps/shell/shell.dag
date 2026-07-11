@@ -158,6 +158,21 @@ service shell.Copy {
   }
 }
 
+service shell.Write {
+  operation File {
+    input { path: FilePath, content: String }
+    output { success: Bool from "exit_success" }
+    transport shell {
+      argv: ["tee", "{path}"]
+      stdin: content
+    }
+    exit {
+      0 => Unit
+      nonzero => String "tee write failed"
+    }
+  }
+}
+
 service shell.Exec {
   operation Run {
     input { script: String }

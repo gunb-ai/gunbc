@@ -1,13 +1,11 @@
 module tools.emit_host_transport
 
 import extdeps.shell
+import extdeps.cargo_build
+import extdeps.python
+import extdeps.gunbc
 import std.measure { byte_size_count }
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt, ShellWord,
-  Command, Assign, Heredoc, EnvPrefixed, Pipe,
-  Lit, VarRef, Concat, CmdSubst,
-  lit, var_ref, command, assign, serialize_bash
-}
+import std.render_repeat_string_bootstrap { repeat_string }
 import tools.emit_host_fixtures {
   rust_stdout_fixture_source,
   python_stdout_fixture_source,
@@ -21,66 +19,37 @@ import tools.host_prelude { toolchain_provision_shell_exec }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 
-fn byte_count_assign(producer: ShellStmt) -> ShellStmt {
-  assign(name: "BYTES", value: CmdSubst { body: Pipe {
-    left: Pipe {
-      left: producer,
-      right: command(words: [lit(text: "wc"), lit(text: "-c")])
-    },
-    right: command(words: [lit(text: "tr"), lit(text: "-d"), lit(text: " ")])
-  } })
-}
+data typed_smoke_doc: String = "run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each step, so per the shell-emission-model rule they are typed argv service operations (shell.Mktemp/Mkdir/Write/Remove, cargo.Build.BuildManifest, python.Interpreter.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable output could pass a count check with wrong content; the expected string is built in-substrate from the same stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked the tempdir on mid-script failure)."
 
-fn assert_bytes_eq(expected: Int) -> ShellStmt {
-  command(words: [lit(text: "test"), var_ref(name: "BYTES"), lit(text: "-eq"), lit(text: to_string(expected))])
-}
-
-fn rust_program() -> ShellProgram {
-  let workdir = var_ref(name: "WORKDIR")
-  ShellProgram {
-    set_e: true,
-    statements: [
-      assign(name: "WORKDIR", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      command(words: [lit(text: "mkdir"), lit(text: "-p"), Concat { parts: [workdir, lit(text: "/src")] }]),
-      Heredoc { path: Concat { parts: [workdir, lit(text: "/Cargo.toml")] }, delimiter: "EOF", body: fixture_cargo_toml },
-      Heredoc { path: Concat { parts: [workdir, lit(text: "/src/main.rs")] }, delimiter: "EOF", body: rust_stdout_fixture_source },
-      EnvPrefixed {
-        name: "CARGO_TARGET_DIR",
-        value: Concat { parts: [workdir, lit(text: "/target")] },
-        command: command(words: [
-          lit(text: "cargo"), lit(text: "build"), lit(text: "--quiet"),
-          lit(text: "--manifest-path"), Concat { parts: [workdir, lit(text: "/Cargo.toml")] }
-        ])
-      },
-      byte_count_assign(producer: command(words: [Concat { parts: [workdir, lit(text: "/target/debug/fixture")] }])),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), workdir]),
-      assert_bytes_eq(expected: byte_size_count(stdout_byte_count))
-    ]
-  }
+fn expected_stdout_nul_run() -> String {
+  repeat_string(s: from_code_point(0), n: byte_size_count(stdout_byte_count))
 }
 
 fn run_rust_smoke() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: rust_program()))
-  result.success
-}
-
-fn python_program() -> ShellProgram {
-  let workdir = var_ref(name: "WORKDIR")
-  ShellProgram {
-    set_e: true,
-    statements: [
-      assign(name: "WORKDIR", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      Heredoc { path: Concat { parts: [workdir, lit(text: "/fixture.py")] }, delimiter: "EOF", body: python_stdout_fixture_source },
-      byte_count_assign(producer: command(words: [lit(text: "python3"), Concat { parts: [workdir, lit(text: "/fixture.py")] }])),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), workdir]),
-      assert_bytes_eq(expected: byte_size_count(stdout_byte_count))
-    ]
-  }
+  let dir = shell.Mktemp.Dir()
+  let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
+  let manifest = shell.Write.File(path: concat(dir.path, "/Cargo.toml"), content: fixture_cargo_toml)
+  let main_rs = shell.Write.File(path: concat(dir.path, "/src/main.rs"), content: rust_stdout_fixture_source)
+  let build = cargo.Build.BuildManifest(
+    workdir: dir.path,
+    manifest_path: concat(dir.path, "/Cargo.toml"),
+    target_dir: concat(dir.path, "/target"),
+    extra_args: ["--quiet"]
+  )
+  let run = gunbc.WitnessBin.Run(workdir: dir.path, bin_path: concat(dir.path, "/target/debug/fixture"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && src_dir.success && manifest.success && main_rs.success
+    && build.success && run.success && cleanup.success
+    && (run.stdout == expected_stdout_nul_run())
 }
 
 fn run_python_smoke() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: python_program()))
-  result.success
+  let dir = shell.Mktemp.Dir()
+  let script = shell.Write.File(path: concat(dir.path, "/fixture.py"), content: python_stdout_fixture_source)
+  let run = python.Interpreter.RunFile(workdir: dir.path, script_path: concat(dir.path, "/fixture.py"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && script.success && run.success && cleanup.success
+    && (run.stdout == expected_stdout_nul_run())
 }
 
 fn run_go_smoke() -> Bool {
