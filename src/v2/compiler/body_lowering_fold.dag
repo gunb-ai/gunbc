@@ -71,6 +71,24 @@ fn body_lower_wrapper_retained_diagnostic(n: Node) -> Diagnostic {
   body_lower_diagnostic(reason: ^body_lowering_reason_wrapper_retained_emitted, n: n)
 }
 
+type BodyLoweringDiagnosticClass
+  = KnownBodyLoweringReason
+  | UnclassifiedBodyLoweringReason { reason: Symbol }
+
+fn body_lower_is_known_diagnostic_reason(reason: Symbol) -> Bool {
+  reason == ^body_lowering_reason_wrapper_retained_emitted
+    || reason == ^body_lowering_reason_unsupported_form
+    || reason == ^body_lowering_reason_postfix_field_access_refused
+}
+
+fn body_lower_classify_diagnostic_reason(reason: Symbol) -> BodyLoweringDiagnosticClass {
+  if body_lower_is_known_diagnostic_reason(reason: reason) {
+    KnownBodyLoweringReason
+  } else {
+    UnclassifiedBodyLoweringReason { reason: reason }
+  }
+}
+
 fn body_lower_canonical_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
   if sym == dag_int_type_binding() {
     optional_present(value: sym)

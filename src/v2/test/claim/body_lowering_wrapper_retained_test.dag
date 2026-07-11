@@ -1,6 +1,10 @@
 module v2.test.claim.body_lowering_wrapper_retained
 
-import v2.compiler.body_lowering_fold { body_lower_wrapper_retained_shell }
+import v2.compiler.body_lowering_fold {
+  UnclassifiedBodyLoweringReason,
+  body_lower_classify_diagnostic_reason,
+  body_lower_wrapper_retained_shell
+}
 import v2.std.diagnostic { Accepted, Rejected, Some }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, TypeNode, node_synthetic }
@@ -19,4 +23,12 @@ fn witness_wrapper_retained_diagnostics_inhabit_coproduct() -> Bool {
 
 test fn body_lowering_wrapper_retained_diagnostics_holds() -> Bool {
   witness_wrapper_retained_diagnostics_inhabit_coproduct()
+}
+
+test fn body_lowering_unlisted_reason_not_classified_red_witness() -> Bool {
+  match body_lower_classify_diagnostic_reason(reason: ^body_lowering_unlisted_reason_red_control) {
+    UnclassifiedBodyLoweringReason { reason: reason } =>
+      reason == ^body_lowering_unlisted_reason_red_control
+    _ => false
+  }
 }
