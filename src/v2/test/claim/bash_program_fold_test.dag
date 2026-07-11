@@ -200,3 +200,15 @@ fn bash_program_probe_subshell_exit_bytes() -> Outcome<String> {
     Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }
   ] })
 }
+
+fn bash_program_probe_subshell_exit_first_bytes() -> Outcome<String> {
+  bash_program_serialize(p: ShellProgram { set_e: false, statements: [
+    Subshell { body: [Exit { code: 1 }, Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }] }
+  ] })
+}
+
+fn bash_program_probe_subshell_only_exit_bytes() -> Outcome<String> {
+  bash_program_serialize(p: ShellProgram { set_e: false, statements: [
+    Subshell { body: [Exit { code: 1 }] }
+  ] })
+}
