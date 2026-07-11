@@ -1,14 +1,27 @@
 module v2.test.module_graph.reference_closure_equivalence
 
 import gunbc.ci_layer_roots { witness_layer_roots }
+import extdeps.communication.fidelity_carriers { Lossless }
+import extdeps.communication.medium { Medium }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.program_assembly { program_assembly_read_to_normalized_root }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.module_graph { import_closure_live, no_paths }
 import v2.lens.reference_deps { reference_closure_ingest_refusal_witness, reference_closure_live }
 import std.algebra { FreeMonoid }
 import v2.std.algebra { contains, for_all, list_snoc_item, fold_list }
+import v2.std.artifact { Artifact, SourceFile }
 import v2.std.collection { List }
+import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 import v2.std.text { String }
+
+data conformance_entry_compilation_unit: Symbol = ^conformance_entry_compilation_unit
 
 data expected_conformance_closure: FreeMonoid<String> = [
   "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
@@ -51,6 +64,125 @@ fn reference_conformance_closure_accepted() -> FreeMonoid<String> {
     Accepted { value: closure, diagnostics: _ } => closure
     Rejected { diagnostics: _ } => no_paths
   }
+}
+
+fn conformance_entry_source_text() -> String {
+  filesystem_read(path: conformance_entry).content
+}
+
+fn conformance_entry_tokenize_accepts() -> Bool {
+  match tokenize(
+    text: conformance_entry_source_text(),
+    file: conformance_entry_compilation_unit,
+    rules: dag_language_model().lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+fn conformance_entry_parse_accepts() -> Bool {
+  match tokenize(
+    text: conformance_entry_source_text(),
+    file: conformance_entry_compilation_unit,
+    rules: dag_language_model().lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: dag_language_model().grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+fn conformance_entry_normalize_accepts() -> Bool {
+  match tokenize(
+    text: conformance_entry_source_text(),
+    file: conformance_entry_compilation_unit,
+    rules: dag_language_model().lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: dag_language_model().grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+          }
+      }
+  }
+}
+
+fn conformance_entry_ingest_accepts() -> Bool {
+  match program_assembly_read_to_normalized_root(
+    read: DagSourceReadWitness {
+      source: Medium {
+        carried: filesystem_read(path: conformance_entry).content,
+        fidelity: Lossless
+      },
+      artifact: Artifact {
+        kind: SourceFile,
+        id: conformance_entry_compilation_unit,
+        file_path: conformance_entry
+      },
+      compilation_unit: conformance_entry_compilation_unit,
+      source_root: DagTree
+    },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn conformance_entry_tokenize_accepts_holds() -> Bool {
+  conformance_entry_tokenize_accepts()
+}
+
+test fn conformance_entry_parse_accepts_holds() -> Bool {
+  conformance_entry_parse_accepts()
+}
+
+test fn conformance_entry_normalize_accepts_holds() -> Bool {
+  conformance_entry_normalize_accepts()
+}
+
+test fn conformance_imports_only_parse_accepts_holds() -> Bool {
+  let path = "src/v2/test/claim/module_graph/conformance_imports_only.dag"
+  match tokenize(
+    text: filesystem_read(path: path).content,
+    file: conformance_entry_compilation_unit,
+    rules: dag_language_model().lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: dag_language_model().grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+test fn dag_std_algebra_parse_accepts_holds() -> Bool {
+  let path = "dag/std/algebra.dag"
+  match tokenize(
+    text: filesystem_read(path: path).content,
+    file: conformance_entry_compilation_unit,
+    rules: dag_language_model().lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: dag_language_model().grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+test fn conformance_entry_pipeline_ingest_accepts_holds() -> Bool {
+  conformance_entry_ingest_accepts()
 }
 
 test fn reference_closure_live_accepted_on_conformance_holds() -> Bool {
