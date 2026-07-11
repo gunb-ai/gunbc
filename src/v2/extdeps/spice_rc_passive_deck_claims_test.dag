@@ -18,6 +18,7 @@ import v2.extdeps.formats.spice {
 import v2.std.algebra { length }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 
 fn spice_rc_passive_deck_named_node_holds(node: NodeRef, expected: Symbol) -> Bool {
   match node {
