@@ -2086,7 +2086,6 @@ fn bash_test_str_eq_target_model(lhs: String, rhs: String) -> TargetModel {
 fn bash_test_str_empty_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_test_lbracket },
-    FixedToken { token_class: ^bash_token_test_z },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_empty_operand },
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
@@ -2135,7 +2134,6 @@ fn bash_test_str_empty_target_model(operand: String) -> TargetModel {
 fn bash_test_str_nonempty_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_test_lbracket },
-    FixedToken { token_class: ^bash_token_test_n },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_nonempty_operand },
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
@@ -2184,7 +2182,6 @@ fn bash_test_str_nonempty_target_model(operand: String) -> TargetModel {
 fn bash_test_is_dir_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_test_lbracket },
-    FixedToken { token_class: ^bash_token_test_d },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_is_dir_path },
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
@@ -2233,7 +2230,6 @@ fn bash_test_is_dir_target_model(path: String) -> TargetModel {
 fn bash_test_is_executable_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_test_lbracket },
-    FixedToken { token_class: ^bash_token_test_x },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_is_executable_path },
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
@@ -2283,6 +2279,7 @@ fn bash_log_matches_grep_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_grep_kw },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_log_matches_pattern },
+    FixedToken { token_class: ^bash_token_grep_sp },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_log_matches_source }
   ]
 }
@@ -2297,7 +2294,8 @@ fn bash_log_matches_grep_source_text(pattern: String, source: String) -> String 
 
 fn bash_log_matches_grep_lex() -> LexRules {
   phrase_to_lex_rules(p: phrase([
-    span(text: "grep -qiE ", class: ^bash_token_grep_kw)
+    span(text: "grep -qiE ", class: ^bash_token_grep_kw),
+    span(text: " ", class: ^bash_token_grep_sp)
   ]))
 }
 
@@ -2332,8 +2330,7 @@ fn bash_log_matches_grep_target_model(pattern: String, source: String) -> Target
 fn bash_stmt_or_ignore_fail_tokens() -> List<ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_or_ignore_fail_stmt },
-    FixedToken { token_class: ^bash_token_or_ignore_fail_sep },
-    FixedToken { token_class: ^bash_token_or_ignore_fail_true }
+    FixedToken { token_class: ^bash_token_or_ignore_fail_sep }
   ]
 }
 

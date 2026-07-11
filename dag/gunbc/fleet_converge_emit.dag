@@ -7,6 +7,9 @@ import std.layout {
   doc_concat, doc_line_of,
   render
 }
+import v2.std.orchestration_emit { ConstructNotYetEmittableRow }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_converge {
   ConvergePolicy,
   ConvergePolicyDerived,
@@ -445,4 +448,32 @@ fn expected_fleet_converge_sh() -> String {
 
 fn fleet_converge_drifted(committed: String) -> Bool {
   !(committed == expected_fleet_converge_sh())
+}
+
+data fleet_converge_steady_state_doc_projection_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_emit",
+    decl_name: "project_fleet_converge_to_doc",
+    field: WholeDeclaration
+  }
+}
+
+data fleet_converge_fresh_standup_bootstrap_emit_frontier: List<ConstructNotYetEmittableRow> = [
+  ConstructNotYetEmittableRow {
+    construct: ^orch_emit_construct_procedure,
+    site: "converge_gunbc_pinned_tree fresh_standup: decide_verdict/converge_read_gunbc_host_pin shell function calls"
+  },
+  ConstructNotYetEmittableRow {
+    construct: ^orch_emit_construct_cmdsubst_assign,
+    site: "converge_gunbc_pinned_tree fresh_standup: dag_pin=$(converge_read_gunbc_host_pin ...) cmdsubst assignment"
+  },
+  ConstructNotYetEmittableRow {
+    construct: ^orch_emit_construct_let_assign,
+    site: "converge_gunbc_pinned_tree fresh_standup: verdict=/effective=/export shell assignments"
+  }
+]
+
+fn fleet_converge_fresh_standup_bootstrap_emit_frontier_count() -> Int {
+  length(xs: fleet_converge_fresh_standup_bootstrap_emit_frontier)
 }

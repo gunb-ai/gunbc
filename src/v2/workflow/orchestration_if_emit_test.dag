@@ -141,7 +141,7 @@ fn orch_if_exit_zero_negated_intent() -> PipelineStep {
 }
 
 fn orch_if_run_redirect_ignore_fail_golden() -> String {
-  "if (cd \"$checkout\" && git fetch --prune origin >/dev/null 2>&1) || true; then echo ok; fi"
+  "if (cd \"$checkout\" && git fetch --prune origin) >/dev/null 2>&1 || true; then echo ok; fi"
 }
 
 fn orch_if_run_redirect_ignore_fail_intent() -> PipelineStep {
@@ -205,11 +205,8 @@ fn orch_if_and_tests_golden() -> String {
 fn orch_if_and_tests_intent() -> PipelineStep {
   If {
     cond: And {
-      lhs: StrEq { lhs: "", rhs: "\"$ctrl_pin\"" },
-      rhs: And {
-        lhs: StrEq { lhs: "", rhs: "\"$dag_pin\"" },
-        rhs: StrEq { lhs: "\"$1\"", rhs: "\"$1\"" }
-      }
+      lhs: StrEq { lhs: "\"$ctrl_pin\"", rhs: "" },
+      rhs: StrEq { lhs: "\"$dag_pin\"", rhs: "" }
     },
     then_: Pipeline {
       steps: [
