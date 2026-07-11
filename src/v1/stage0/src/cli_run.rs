@@ -7059,33 +7059,6 @@ fn run_discovery_rows(
                 current_entry = Some(row.entry.clone());
             }
         }
-        if ctx.is_none()
-            && skip_enabled
-            && witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function)
-        {
-            let resolved = resolve_discovery_entry_for_corpus_row(
-                index,
-                &row.entry,
-                execution_mode,
-                whole_tree_published_keys.clone(),
-                skip_enabled,
-                diff_edits,
-                &touched_entry_paths,
-                &module_graph_declared_paths,
-                &mut closure_modules,
-            )?;
-            summary.total_resolve_nanos += resolved.resolve_nanos;
-            summary.entry_resolve_receipts.push(EntryResolveReceipt {
-                entry: row.entry.clone(),
-                closure_subject: resolved.closure_subject.clone(),
-                resolve_nanos: resolved.resolve_nanos,
-            });
-            current_closure_subject = Some(resolved.closure_subject);
-            current_entry_frontier_nodes = resolved.frontier_nodes;
-            current_entry_touches = resolved.touches_frontier;
-            current_entry_file_touched = resolved.entry_file_touched;
-            ctx = Some(resolved.ctx);
-        }
         let function_edited = skip_enabled
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
                 diff_file_matches_entry(file, &row.entry) && func == &row.function
@@ -7155,6 +7128,30 @@ fn run_discovery_rows(
                 // would_skip is only computed when selection is enabled.
                 NodeFrontierSelectionMode::Off => {}
             }
+        }
+        if ctx.is_none() {
+            let resolved = resolve_discovery_entry_for_corpus_row(
+                index,
+                &row.entry,
+                execution_mode,
+                whole_tree_published_keys.clone(),
+                skip_enabled,
+                diff_edits,
+                &touched_entry_paths,
+                &module_graph_declared_paths,
+                &mut closure_modules,
+            )?;
+            summary.total_resolve_nanos += resolved.resolve_nanos;
+            summary.entry_resolve_receipts.push(EntryResolveReceipt {
+                entry: row.entry.clone(),
+                closure_subject: resolved.closure_subject.clone(),
+                resolve_nanos: resolved.resolve_nanos,
+            });
+            current_closure_subject = Some(resolved.closure_subject);
+            current_entry_frontier_nodes = resolved.frontier_nodes;
+            current_entry_touches = resolved.touches_frontier;
+            current_entry_file_touched = resolved.entry_file_touched;
+            ctx = Some(resolved.ctx);
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
         let closure_subject = current_closure_subject
