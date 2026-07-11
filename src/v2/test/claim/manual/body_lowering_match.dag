@@ -298,6 +298,32 @@ fn body_lowering_match_first_arm_subtree_witness() -> Bool {
   }
 }
 
+fn body_lowering_match_first_arm_unwrap_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: captured } =>
+              match parse_subtree_find_production_captured(
+                root: captured,
+                emitted: ^dag_surface_match_arm
+              ) {
+                ParseSubtreeFound { captured: arm } =>
+                  match body_lower_unwrap_captured(shell: arm) {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
+                ParseSubtreeAbsent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
 fn body_lowering_match_first_arm_pattern_witness() -> Bool {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
     Absent => false
@@ -324,13 +350,21 @@ fn body_lowering_match_first_arm_pattern_witness() -> Bool {
                             Absent => false
                           }
                         ParseSubtreeAbsent =>
-                          match sugar_sequence_pair_optional(node: inner) {
-                            Present { value: pair } =>
-                              match body_lower_pattern_atom_optional(pattern_capture: pair.left) {
+                          match body_lower_match_spine_left(spine: inner) {
+                            Present { value: left } =>
+                              match body_lower_pattern_atom_optional(pattern_capture: left) {
                                 Present { value: _ } => true
                                 Absent => false
                               }
-                            Absent => false
+                            Absent =>
+                              match sugar_sequence_pair_optional(node: inner) {
+                                Present { value: pair } =>
+                                  match body_lower_pattern_atom_optional(pattern_capture: pair.left) {
+                                    Present { value: _ } => true
+                                    Absent => false
+                                  }
+                                Absent => false
+                              }
                           }
                       }
                     Absent => false
