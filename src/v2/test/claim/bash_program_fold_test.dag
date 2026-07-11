@@ -127,6 +127,51 @@ fn bash_program_fold_real_claims_program() -> ShellProgram {
   )
 }
 
+fn bash_program_serialize_probe_sample_set_e() -> Outcome<String> {
+  bash_program_serialize(p: bash_program_fold_sample())
+}
+
+fn bash_program_serialize_probe_sample_no_set_e() -> Outcome<String> {
+  bash_program_serialize(p: bash_program_fold_sample_no_set_e())
+}
+
+fn bash_program_serialize_probe_cmdsubst() -> Outcome<String> {
+  bash_program_serialize(p: bash_program_depth2_cmdsubst_sample())
+}
+
+fn bash_program_serialize_probe_redir() -> Outcome<String> {
+  bash_program_serialize(p: bash_program_depth2_redir_sample())
+}
+
+fn bash_program_serialize_probe_concat() -> Outcome<String> {
+  bash_program_serialize(p: bash_program_depth2_concat_sample())
+}
+
+fn bash_program_serialize_probe_exit_subshell() -> Outcome<String> {
+  bash_program_serialize(p: ShellProgram { set_e: false, statements: [
+    Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }
+  ] })
+}
+
+fn bash_program_serialize_probe_exit_if() -> Outcome<String> {
+  bash_program_serialize(p: ShellProgram { set_e: false, statements: [
+    If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }]
+    }
+  ] })
+}
+
+fn bash_program_serialize_probe_andor_exit() -> Outcome<String> {
+  bash_program_serialize(p: ShellProgram { set_e: false, statements: [
+    AndOr { left: Command { words: [Lit { text: "true" }] }, op: OrElse, right: Exit { code: 1 } }
+  ] })
+}
+
+fn bash_program_serialize_real_claims_probe() -> Outcome<String> {
+  bash_program_serialize(p: bash_program_fold_real_claims_program())
+}
+
 fn bash_program_serialize_real_witness_probe() -> Outcome<String> {
   bash_program_serialize(p: bash_program_fold_real_witness_program())
 }
