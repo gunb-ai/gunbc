@@ -631,6 +631,18 @@ fn gunbc_ci_regen_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_regen_spec).schedule
 }
 
+data gunbc_ci_plan_artifact_batches_note: String = "The docs-only / plan-artifact-only CI shortcut (ci_spec.ci_plan_artifact_compile_clean_invoke): batch 1 of the floor schedule IS the compile-clean anchor (the plan's one structural fact - compile-clean gates the rest), so the shortcut plan is that single batch through the SAME executor path, never a parallel gate runner. The gate must run inside claim_executor because it consumes the executor's in-run whole-tree --target dag compile receipt (standalone gunbc-run invocation refuses, by execution 2026-07-11); the pre-fix invoke passed gunbc-run-style --entry/--function flags claim_executor does not parse, so the shortcut arm died with exit 2 on the first plan-artifact-only diff to reach it."
+
+fn gunbc_ci_plan_artifact_batches() -> List<List<Runnable>> {
+  fold(gunbc_ci_floor_batches(), init: [], f: fn(acc, batch) {
+    if length(xs: acc) == 0 { [batch] } else { acc }
+  })
+}
+
+fn gunbc_ci_plan_artifact_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
+  gunbc_ci_plan_spawn_width(memory_budget_bytes: memory_budget_bytes)
+}
+
 fn gunbc_ci_emit_determinism_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_emit_determinism_spec).schedule
 }
