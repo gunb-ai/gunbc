@@ -103,6 +103,10 @@ data reference_deps_closure_entry_excluded: Symbol = ^reference_deps_closure_ent
 
 data reference_deps_closure_ingest_refused: Symbol = ^reference_deps_closure_ingest_refused
 
+data reference_deps_ingest_refusal_probe_source: String = "module probe\nfn broken( -> Int { x }"
+
+data reference_deps_ingest_refusal_probe_path: String = "witness/ingest_refusal_probe.dag"
+
 data empty_reference_facts: List<ReferenceResolutionFact> = []
 
 data empty_reference_refusals: List<ReferenceIngestRefusal> = []
@@ -452,11 +456,11 @@ fn reference_file_census_refused(
   }
 }
 
-fn reference_file_census(
+fn reference_file_census_from_source(
   rel_path: String,
+  source_text: String,
   declared: List<ModuleDeclarationFact>
 ) -> ReferenceResolutionCensus {
-  let source_text = filesystem_read(path: rel_path).content
   match reference_deps_ingest_source_text(
     source_text: source_text,
     file: reference_deps_file_anchor
@@ -474,6 +478,17 @@ fn reference_file_census(
         declared: declared
       )
   }
+}
+
+fn reference_file_census(
+  rel_path: String,
+  declared: List<ModuleDeclarationFact>
+) -> ReferenceResolutionCensus {
+  reference_file_census_from_source(
+    rel_path: rel_path,
+    source_text: filesystem_read(path: rel_path).content,
+    declared: declared
+  )
 }
 
 fn reference_merge_census(
@@ -739,6 +754,22 @@ fn reference_closure_live(
     pool_roots: pool_roots,
     exclude_substrings: module_graph_exclude_substrings
   )
+}
+
+fn reference_closure_ingest_refusal_witness(
+  pool_roots: List<String>
+) -> Outcome<FreeMonoid<String>> {
+  let declared = module_declaration_facts_live(pool_roots: pool_roots)
+  let census = reference_file_census_from_source(
+    rel_path: reference_deps_ingest_refusal_probe_path,
+    source_text: reference_deps_ingest_refusal_probe_source,
+    declared: declared
+  )
+  if is_empty(xs: census.refusals) {
+    outcome_accepted(value: no_paths)
+  } else {
+    outcome_rejected(d: reference_first_refusal_diagnostic(refusals: census.refusals))
+  }
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

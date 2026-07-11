@@ -2,7 +2,7 @@ module v2.test.module_graph.reference_closure_equivalence
 
 import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.lens.module_graph { import_closure_live, no_paths }
-import v2.lens.reference_deps { reference_closure_live }
+import v2.lens.reference_deps { reference_closure_ingest_refusal_witness, reference_closure_live }
 import std.algebra { FreeMonoid }
 import v2.std.algebra { contains, for_all, list_snoc_item, fold_list }
 import v2.std.collection { List }
@@ -28,9 +28,7 @@ data conformance_entry: String = "src/v2/test/claim/manual/coproduct_reflection_
 
 data bogus_never_referenced: String = "src/v2/std/__bogus_never_referenced__.dag"
 
-data ingest_refusal_fixture_entry: String = "src/v2/test/claim/module_graph/reference_closure_ingest_refusal_fixture.dag"
-
-data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current corpus every cross-module edge is still an import, so reference-closure must equal import-closure on the conformance witness — equal module sets imply the same resolve inputs. Any ingest refusal poisons reference-closure (fail-closed) as Outcome Rejected, never as an empty FreeMonoid; a strict superset without equality would be a located deficit before any import deletion. RED ingest control uses reference_closure_ingest_refusal_fixture.dag (committed unparseable source, green-by-execution)."
+data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current corpus every cross-module edge is still an import, so reference-closure must equal import-closure on the conformance witness — equal module sets imply the same resolve inputs. Any ingest refusal poisons reference-closure (fail-closed) as Outcome Rejected, never as an empty FreeMonoid; a strict superset without equality would be a located deficit before any import deletion. RED ingest control uses reference_closure_ingest_refusal_witness (inline unparseable source via reference_file_census_from_source — same refusal→Rejected arm as BFS, green-by-execution without a broken .dag in the compile graph)."
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
@@ -98,7 +96,7 @@ test fn import_reference_closure_mismatch_discriminates_red_holds() -> Bool {
 }
 
 test fn reference_closure_ingest_refusal_is_rejected_not_empty_red_holds() -> Bool {
-  match reference_closure_live(entry_path: ingest_refusal_fixture_entry, pool_roots: witness_layer_roots) {
+  match reference_closure_ingest_refusal_witness(pool_roots: witness_layer_roots) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }

@@ -1,3 +1,0 @@
-module v2.test.module_graph.reference_closure_ingest_refusal_fixture
-
-fn broken( -> Int { x }
