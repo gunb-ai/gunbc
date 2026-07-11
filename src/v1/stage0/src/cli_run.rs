@@ -5852,6 +5852,15 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
         let Some(rest) = trimmed.strip_prefix("data live_tree_disposition") else {
             continue;
         };
+        // Word boundary: a sibling row like `data live_tree_disposition_note: String`
+        // is a different declaration, not a malformed disposition row.
+        if rest
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        {
+            continue;
+        }
         let malformed = |detail: &str| {
             format!(
                 "entry {entry} declares a malformed `live_tree_disposition` row ({detail}); \
