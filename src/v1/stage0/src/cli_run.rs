@@ -267,6 +267,27 @@ fn repo_relative_path(path: &Path) -> Result<String, String> {
         })
 }
 
+/// Canonical repo-relative path for module-graph keys and index storage.
+/// Tries [`process_workspace_root`] first, then compile-time [`workspace_root`] when
+/// sccache embedded the latter in absolute spellings from another runner checkout.
+fn repo_relative_path_normalized(path: &Path) -> String {
+    if let Ok(rel) = repo_relative_path(path) {
+        return rel;
+    }
+    let baked = workspace_root();
+    path.strip_prefix(&baked)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|_| {
+            panic!(
+                "repo_relative_path_normalized: path {} is not under process workspace \
+                 root {} or compiled-in root {}",
+                path.display(),
+                process_workspace_root().display(),
+                baked.display()
+            )
+        })
+}
+
 /// Resolve a source/pool-root spelling to an absolute directory under
 /// [`process_workspace_root`]. Absolute paths baked from the compile-time
 /// [`workspace_root`] (sccache cross-runner) are re-anchored when missing on disk.
@@ -558,9 +579,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                 panic!("build_module_path_index: failed to read {:?}: {}", path, e)
             });
             if let Some(module_path) = extract_module_path(&content) {
-                let rel = repo_relative_path(&path).unwrap_or_else(|e| {
-                    panic!("build_module_path_index: {e}")
-                });
+                let rel = repo_relative_path_normalized(&path);
                 if is_source_root_ingest_manifest_stub_rel(&rel)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
                 {
@@ -1008,8 +1027,8 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             if let Some(module_path) = extract_module_path(&content) {
-                let rel_path = path.to_string_lossy().to_string();
-                let rel_forward = workspace_relative_repo_path(&rel_path);
+                let rel_path = repo_relative_path_normalized(&path);
+                let rel_forward = rel_path.clone();
                 if is_source_root_ingest_manifest_stub_rel(&rel_forward)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
                 {
@@ -1650,7 +1669,7 @@ fn workspace_relative_repo_path(path: &str) -> String {
     let norm = path.strip_prefix("./").unwrap_or(path).replace('\\', "/");
     let p = Path::new(&norm);
     if p.is_absolute() {
-        repo_relative_path(p).unwrap_or_else(|e| panic!("workspace_relative_repo_path: {e}"))
+        repo_relative_path_normalized(p)
     } else {
         norm
     }
@@ -9754,8 +9773,7 @@ const LAYER_STD: &str = "LayerPrefixStd";
 const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 
 fn rel_path_for_layer_import(path: &Path) -> String {
-    repo_relative_path(path)
-        .unwrap_or_else(|e| panic!("rel_path_for_layer_import: {e}"))
+    repo_relative_path_normalized(path)
 }
 
 fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
