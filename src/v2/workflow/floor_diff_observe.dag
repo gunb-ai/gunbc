@@ -209,6 +209,8 @@ fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
   floor_observe_git_diff_unified(policy: gunbc_ci_spec.diff_policy)
 }
 
+data floor_name_status_injection_encoding_note: String = "INJECTION TRANSPORT ENCODING (proven by execution, 2026-07-10): the name-status wire format is NUL-separated (git diff --name-status -z; git.dag splits on from_code_point(0)), but the injection transport — a POSIX environment variable — is a C string and can NEVER carry a NUL byte (Rust set_var refuses it; a shell variable would truncate it). So the injected value at rest is the SAME record structure with each NUL written as the octal escape \\000, and this arm decodes it at the boundary with printf %b (POSIX: \\0ddd emits the byte), yielding the identical byte stream the real-git arm produces. One wire format, one parser; only the at-rest encoding differs, and it is decoded before any consumer sees it. Constraint on injectors (this channel is probe-only): paths containing backslashes would need their backslashes doubled for %b — fixture repo paths contain none. The unified-diff arm stays %s: unified text is NUL-free."
+
 fn floor_name_status_diff_injection_stmts() -> List<ShellStmt> {
   [
     If {
@@ -216,7 +218,7 @@ fn floor_name_status_diff_injection_stmts() -> List<ShellStmt> {
       then: [
         command(words: [
           lit(text: "printf"),
-          lit(text: "%s"),
+          lit(text: "%b"),
           var_ref(name: "GUNBC_CI_DIFF_NAME_STATUS")
         ]),
         Exit { code: 0 }

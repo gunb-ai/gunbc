@@ -1686,6 +1686,79 @@ pub fn import_closure_live_paths_with_facts(
     import_closure_from_adjacency(entry_path, &facts.adjacency)
 }
 
+impl ModuleGraphFactsLive {
+    /// Repo-relative paths of every declared module in the facts scan — the existence
+    /// set for refuse-vs-answer decisions (a module can be absent from `adjacency`
+    /// legitimately by importing nothing; absence from `nodes` means the facts do not
+    /// cover it and a selection question about it must refuse, never narrow).
+    pub fn declared_repo_paths(&self) -> HashSet<String> {
+        self.nodes
+            .iter()
+            .map(|n| workspace_relative_repo_path(&n.path))
+            .collect()
+    }
+}
+
+/// Mirror of `v2.lens.module_graph.path_matches_touched` (strip a leading `./`, then
+/// equality or suffix-containment either way) — the two sides must agree because the
+/// module-grain receipt harness proves the dag-vs-Rust file-grain DECISION equal on
+/// real diffs, and a matching-rule fork would surface there as a divergence.
+fn repo_paths_match_touched(closure_path: &str, touched_path: &str) -> bool {
+    let file = closure_path.strip_prefix("./").unwrap_or(closure_path);
+    let target = touched_path.strip_prefix("./").unwrap_or(touched_path);
+    file == target || file.ends_with(target) || target.ends_with(file)
+}
+
+/// Production `entry_file_touched` decision for the discovery corpus: is any touched
+/// entry file inside this entry's transitive import closure?
+///
+/// GRAIN (declared interim, operator fork (c) 2026-07-10): the module-graph
+/// import-closure relation — the same host-realized facts
+/// (`import_resolution_facts`/`module_declaration_facts` → `facts.adjacency`) that the
+/// `.dag` authority `v2.lens.module_graph.entry_affected_by_touched_paths` reads through
+/// its `_live` builtins. The `.dag` lens stays the modeled authority; THIS realization is
+/// certified against it by execution on real merged diffs by the module-grain receipt
+/// harness (`affected_decision_module_grain` section below). This consciously unwinds
+/// one piece of #6335 ("reground selection on DependencyView") for this channel only:
+/// the fn-arrow output-grain chain both silently widened (substrate-not-whole-tree →
+/// touched=true for every row; probe receipt 2026-07-10) and conflates decl identity
+/// with output type (a touched file's test fns put the shared `Bool` node in the edit
+/// locus set). The fn-arrow machinery remains in tree as the decl-level candidate.
+/// Dissolve-on: the namespace-only resolution terminal step replaces import edges with
+/// `container.member` reference edges — the closure query above the edge source is
+/// grain-stable and survives; the grain itself re-decides then (see
+/// `entry_file_touched_grain_interim` in `v2.lens.affected_set.entry_selection`).
+///
+/// Refusal, never widen: an entry absent from the facts' declared-module set is a
+/// provenance gap — the relation cannot answer for it — and returns a typed error that
+/// fails the batch (the §5 fail-closed arm lives HERE, on an actual refusal; the old
+/// arm that called its widen "fail-closed" is deleted).
+fn entry_file_touched_via_import_closure(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    declared_paths: &HashSet<String>,
+    touched_paths: &[String],
+) -> Result<bool, String> {
+    if touched_paths.is_empty() {
+        return Ok(false);
+    }
+    let entry_rel = workspace_relative_repo_path(entry_path);
+    if !declared_paths.contains(&entry_rel) {
+        return Err(format!(
+            "AFFECTED-SET REFUSAL cause=EntryOutsideModuleGraphFacts entry={entry_rel} — \
+             the module-graph facts scan does not declare this entry, so the import-closure \
+             relation cannot answer entry_file_touched for it; refusing the batch rather \
+             than widening to run-all or narrowing to skip"
+        ));
+    }
+    let closure = import_closure_from_adjacency(entry_path, &facts.adjacency);
+    Ok(touched_paths.iter().any(|touched| {
+        closure
+            .iter()
+            .any(|member| repo_paths_match_touched(member, touched))
+    }))
+}
+
 /// The closure-node definition SHARED by the falsifier/floor calibration emission and
 /// the space-lens memory predictor (single authority is THIS function — the predictor
 /// binds to it, never a re-derivation; predictor design is in flight on PR #6442, and
@@ -5388,11 +5461,12 @@ fn collect_sorted_decl_lines_for_file(
 // (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) remain host
 // realization until provenance ingest lands. Skip/precompute **verdicts** read `.dag`
 // via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; the
-// `entry_file_touched` axis reads `.dag` via `entry_file_touched_via_dependency_view`
-// (`v2.lens.affected_set.entry_selection`, lever-a slice 2). Host guards partial-resolve
-// floor discovery: when `fn_arrow_decl_substrate_is_whole_tree` is false, returns must-run
-// (`true`) until #6239 — same interim as `rust_stage0_gates.unit_is_affected`. Per-PR live
-// DependencyView execution blocked-on-#6239 on-carrier (`corpus_dependency_view_per_pr_execution_gate`).
+// `entry_file_touched` axis is decided by `entry_file_touched_via_import_closure`
+// (module-graph import-closure grain over `facts.adjacency` — the `.dag` authority is
+// `v2.lens.module_graph.entry_affected_by_touched_paths` and the module-grain receipt
+// harness certifies the pair by execution; declared interim, dissolves at the
+// namespace-only terminal step where the grain re-decides — see
+// `entry_file_touched_grain_interim` in `v2.lens.affected_set.entry_selection`).
 // Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
 // `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
@@ -5415,27 +5489,14 @@ const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // Keep in sync with `floor_host_scaffold_witness_marker` in affected_set_floor_runner.dag.
 const FLOOR_HOST_SCAFFOLD_WITNESS_MARKER: &str = "floor:host_scaffold";
 
-/// Floor `entry_file_touched` via DependencyView when whole-tree substrate is ready;
-/// interim must-run (`true`) when blocked-on-#6239 (mirrors `rust_stage0_gates.unit_is_affected`).
-fn entry_file_touched_via_dependency_view(
-    es_ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    pool_roots: &[String],
-    touched_paths: &[String],
-) -> Result<bool, String> {
-    match crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree(es_ctx, &[]) {
-        Ok(v1_interpreter::Value::Bool(true)) => {}
-        Ok(v1_interpreter::Value::Bool(false)) => return Ok(true),
-        Ok(other) => {
-            return Err(format!(
-                "fn_arrow_decl_substrate_is_whole_tree returned `{}`, expected Bool",
-                es_ctx.format_value(&other)
-            ));
-        }
-        Err(e) => return Err(format!("fn_arrow_decl_substrate_is_whole_tree: {e}")),
-    }
-    call_entry_affected_by_dependency_view(es_ctx, entry_path, pool_roots, touched_paths)
-}
+// `entry_file_touched_via_dependency_view` (the fn-arrow DependencyView wrapper) was
+// deleted here 2026-07-10 (operator fork (c)): its substrate-not-whole-tree arm returned
+// `Ok(true)` — a silent widen that marked every row entry-file-touched whenever any entry
+// file was touched, while its comment called that arm fail-closed. The channel's decision
+// now lives in `entry_file_touched_via_import_closure` (module-graph import-closure grain,
+// typed refusal on a facts gap). `call_entry_affected_by_dependency_view` remains below for
+// its other consumer (compile-clean scoping, gated on #6239) and as the decl-level
+// candidate when the namespace-only terminal step re-decides the grain.
 
 fn call_entry_affected_by_dependency_view(
     ctx: &v1_interpreter::InterpContext,
@@ -5745,6 +5806,7 @@ fn entry_text_indicates_live_host_scan(text: &str) -> bool {
         || text.contains("layer_import_facts")
         || text.contains("_live(")
         || text.contains("_facts_live(")
+        || text.contains("filesystem_read")
 }
 
 fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> bool {
@@ -5765,6 +5827,24 @@ fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> b
     false
 }
 
+// DECLARED DEFICIT — cross-file live-scan classification (eager-ram-612's finding,
+// 2026-07-10): the scan above reads only the ENTRY file's text, so a live read behind
+// an import (entry → helper module whose fn calls `filesystem_read`) is invisible and
+// the witness stays selection-eligible. Closing it at text grade was TRIED and refuted
+// by execution (2026-07-10): scanning the entry's import closure for the same signal
+// substrings classifies essentially the whole corpus host-scaffold, because
+// `dag/std/primitives.dag` — in virtually every closure — DECLARES the live intrinsics,
+// and plan-doc prose mentions them; that zeroed every predict-skip (0 skips on an empty
+// diff), which is the §5 corpus-denominated absorbing fallback this channel just had
+// removed, and it broke the pinned empty-diff-skips ruling (2026-07-05). The sound fix
+// is decl-grain call reachability — "does THIS test fn transitively CALL a live
+// intrinsic" — which is the fn-arrow DependencyView machinery (see
+// `entry_file_touched_grain_interim_note` in entry_selection.dag); text cannot separate
+// a call from a declaration or prose. Until then the exposure is bounded the same way
+// every selection deficit is: an undeclared host-scaffold witness that wrongly
+// predict-skips surfaces in the nightly affected-set falsifier as a COUNTED divergence
+// within one cadence window, and authors can classify a witness explicitly with the
+// `floor:host_scaffold` marker at the entry.
 fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
     std::fs::read_to_string(entry).map_err(|e| {
         format!(
@@ -6201,7 +6281,7 @@ pub fn run_discovery_corpus_with_options(
     // selected subset or it overcounts the resident set.
     let pre_resolve_closure_nodes = {
         let prefix_entries: &[&str] = if selection_enabled {
-            &[FLOOR_RUNNER_ENTRY, ENTRY_SELECTION_ENTRY]
+            &[FLOOR_RUNNER_ENTRY]
         } else {
             &[]
         };
@@ -6254,22 +6334,6 @@ pub fn run_discovery_corpus_with_options(
                     "floor runner resolve failed ({msg}) — a non-Off node_frontier_selection \
                      declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
                      must resolve; no silent full-corpus fallback"
-                ));
-            }
-        }
-    } else {
-        None
-    };
-    let entry_selection_ctx = if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
-        match resolve_entry_with_index(&index, ENTRY_SELECTION_ENTRY) {
-            Ok((graph, source_indices)) => {
-                Some(make_eval_context(&graph, source_indices, execution_mode))
-            }
-            Err(msg) => {
-                return Err(format!(
-                    "entry_selection resolve failed ({msg}) — a non-Off node_frontier_selection \
-                     declares the DependencyView entry selector ({ENTRY_SELECTION_ENTRY}) \
-                     and it must resolve; no silent full-corpus fallback"
                 ));
             }
         }
@@ -6343,7 +6407,6 @@ pub fn run_discovery_corpus_with_options(
             &changed_paths,
             &diff_edits,
             floor_runner_ctx.as_ref(),
-            entry_selection_ctx.as_ref(),
             whole_tree_published_keys.clone(),
         )?;
         // Definition-drift oracle (single-authority reconciliation, executable): on a
@@ -6412,22 +6475,6 @@ pub fn run_discovery_corpus_with_options(
             } else {
                 None
             };
-            let entry_selection = if selection_for_shards != NodeFrontierSelectionMode::Off {
-                match resolve_entry_with_index(&index, ENTRY_SELECTION_ENTRY) {
-                    Ok((graph, source_indices)) => {
-                        Some(make_eval_context(&graph, source_indices, execution_mode))
-                    }
-                    Err(msg) => {
-                        return Err(format!(
-                            "entry_selection resolve failed in shard ({msg}) — declared \
-                             DependencyView entry selector must resolve; no silent \
-                             run-everything fallback"
-                        ));
-                    }
-                }
-            } else {
-                None
-            };
             run_discovery_rows(
                 &shard_rows,
                 &index,
@@ -6436,7 +6483,6 @@ pub fn run_discovery_corpus_with_options(
                 &paths,
                 &seeds,
                 runner.as_ref(),
-                entry_selection.as_ref(),
                 keys,
             )
         }));
@@ -6528,7 +6574,6 @@ fn run_discovery_rows(
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
-    entry_selection_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
@@ -6547,20 +6592,21 @@ fn run_discovery_rows(
     };
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     // This shard's union closure, accumulated from the graphs it resolves. Seeded with the prefix
-    // contexts: the floor runner and entry-selection closures are resolved once per shard and their
-    // modules are resident for the shard's lifetime, so they are part of the memory this count is
-    // paired against. Row closures fold in below as each entry resolves.
+    // context: the floor runner closure is resolved once per shard and its modules are resident
+    // for the shard's lifetime, so they are part of the memory this count is paired against
+    // (the entry-selection prefix context was retired with the import-closure reground — the
+    // entry_file_touched decision now reads the module-graph facts, no interpreter context).
+    // Row closures fold in below as each entry resolves.
     let mut closure_modules: HashSet<String> = HashSet::new();
-    for prefix_ctx in [floor_runner_ctx, entry_selection_ctx]
-        .into_iter()
-        .flatten()
-    {
+    for prefix_ctx in [floor_runner_ctx].into_iter().flatten() {
         collect_typed_module_names(
             prefix_ctx.modules.iter().cloned(),
             &prefix_ctx.source_indices,
             &mut closure_modules,
         );
     }
+    // Existence set for the entry_file_touched refuse-vs-answer decision, built once per shard.
+    let module_graph_declared_paths = index.module_graph_facts.declared_repo_paths();
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
@@ -6619,23 +6665,12 @@ fn run_discovery_rows(
                 current_entry_file_touched = if touched_entry_paths.is_empty() {
                     false
                 } else {
-                    match entry_selection_ctx {
-                        Some(es_ctx) => entry_file_touched_via_dependency_view(
-                            es_ctx,
-                            &workspace_relative_repo_path(&row.entry),
-                            &pool_roots,
-                            &touched_entry_paths,
-                        )?,
-                        None => {
-                            return Err(format!(
-                                "entry_selection context missing for entry {} — \
-                                 a non-Off node_frontier_selection declares the DependencyView \
-                                 entry selector and it must resolve; no silent \
-                                 run-everything fallback",
-                                row.entry
-                            ));
-                        }
-                    }
+                    entry_file_touched_via_import_closure(
+                        &row.entry,
+                        &index.module_graph_facts,
+                        &module_graph_declared_paths,
+                        &touched_entry_paths,
+                    )?
                 };
             } else {
                 current_entry_frontier_nodes.clear();
@@ -7582,16 +7617,16 @@ mod floor_witness_a_prove {
 // BLOCKED (unaffordable resolve); this receipt is re-scoped to MODULE grain, using the landed
 // `import_closure_live` authority (#6210/#6231).
 //
-// ORPHAN #6274 SCAFFOLD (lever-a slice 2 — NOT production): Live floor discovery
-// (`run_discovery_rows`, cli_run.rs:5923) exercises `entry_file_touched_via_dependency_view`
-// over `ENTRY_SELECTION_ENTRY` (`entry_affected_by_dependency_view`, DependencyView).
-// This harness intentionally keeps the superseded import-closure pair —
-// `entry_affected_by_touched_paths` (MODULE_GRAPH_ENTRY) vs Rust `import_closure_files_from_graph`
-// oracle — to prove #6274 decision-level agreement only. It does NOT certify production
-// selection after slice 2; a divergence in `entry_affected_by_dependency_view` would not
-// surface here (§5 specification-without-execution if mislabeled as production receipt).
-// DISSOLVES WHEN deliverable-3 DependencyView differential receipt lands (≥5 merged PR diffs,
-// `entry_affected_by_dependency_view` vs import-closure oracle); then retire this harness.
+// RE-PROMOTED TO PRODUCTION CERTIFICATION (2026-07-10, operator fork (c) — the #6335
+// partial unwind): live floor discovery's `entry_file_touched` is decided by
+// `entry_file_touched_via_import_closure` (module-graph import-closure grain over
+// `facts.adjacency`), so the pair this harness proves — the `.dag` authority
+// `entry_affected_by_touched_paths` (MODULE_GRAPH_ENTRY) vs the independent Rust oracle
+// (`touched_file_in_import_closure` over `import_closure_files_from_graph`) — is the
+// LIVE decision pair again. Between #6274 and the unwind this block was honestly labeled
+// an orphan scaffold ("does NOT certify production selection after slice 2"); that
+// framing dissolved with the unwind receipt (`entry_file_touched_grain_interim_note`,
+// v2.lens.affected_set.entry_selection). A divergence here is a production selection bug.
 //
 // SCAFFOLD: dissolves into a .dag execution witness when the discovery/diff seed plumbing
 // migrates off the v1 host layer (same trigger as `node_frontier_plumbing_controls` below,
@@ -7697,7 +7732,8 @@ mod module_grain_affected_equivalence_tests {
     }
 
     /// #6274 orphan scaffold only — superseded import-closure query (`module_graph.dag`).
-    /// Production floor uses `entry_affected_by_dependency_view` via `ENTRY_SELECTION_ENTRY`.
+    /// The `.dag` authority side of the live decision pair (production floor realizes it
+    /// via `entry_file_touched_via_import_closure`; this harness certifies the pair).
     fn dag_entry_affected(
         ctx: &v1_interpreter::InterpContext,
         entry_rel: &str,
