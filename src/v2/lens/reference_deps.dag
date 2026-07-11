@@ -1,9 +1,22 @@
 module v2.lens.reference_deps
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.module_graph {
+  ImportClosureBfsState,
+  ModuleDeclarationFact,
+  build_module_to_path,
+  import_closure_bfs_walk,
+  map_lookup_where_rejected_unreachable,
+  module_declaration_facts_live,
+  module_graph_exclude_substrings,
+  no_paths,
+  snoc_unseen_list
+}
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.collection { List }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_insert }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -33,6 +46,88 @@ fn reference_resolution_facts_live(
     pool_roots: pool_roots,
     importer_roots: importer_roots,
     exclude_substrings: exclude_substrings
+  )
+}
+
+fn extend_adjacency_for_reference_edge(
+  acc: Map<String, List<String>>,
+  edge: ReferenceResolutionFact,
+  module_to_path: Map<String, String>
+) -> Map<String, List<String>> {
+  match map_lookup_where_rejected_unreachable(m: module_to_path, key: edge.reference_module) {
+    Present { value: referenced_path } =>
+      match map_lookup_where_rejected_unreachable(m: acc, key: edge.path) {
+        Present { value: existing } =>
+          map_insert(
+            m: acc,
+            key: edge.path,
+            value: snoc_unseen_list(acc: existing, item: referenced_path)
+          )
+        Absent =>
+          map_insert(
+            m: acc,
+            key: edge.path,
+            value: list_snoc_item(xs: no_paths, item: referenced_path)
+          )
+      }
+    Absent => acc
+  }
+}
+
+fn build_reference_adjacency(
+  edges: List<ReferenceResolutionFact>,
+  nodes: List<ModuleDeclarationFact>
+) -> Map<String, List<String>> {
+  let module_to_path = build_module_to_path(nodes: nodes)
+  fold_list(
+    xs: edges,
+    empty: empty_map(),
+    cons: fn(acc, edge) {
+      extend_adjacency_for_reference_edge(
+        acc: acc,
+        edge: edge,
+        module_to_path: module_to_path
+      )
+    }
+  )
+}
+
+fn reference_closure(
+  entry_path: String,
+  edges: List<ReferenceResolutionFact>,
+  nodes: List<ModuleDeclarationFact>
+) -> FreeMonoid<String> {
+  let adjacency = build_reference_adjacency(edges: edges, nodes: nodes)
+  import_closure_bfs_walk(
+    state: ImportClosureBfsState {
+      reached: list_snoc_item(xs: no_paths, item: entry_path),
+      queue: list_snoc_item(xs: no_paths, item: entry_path)
+    },
+    adjacency: adjacency
+  )
+}
+
+fn reference_closure_live_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> FreeMonoid<String> {
+  reference_closure(
+    entry_path: entry_path,
+    edges: reference_resolution_facts_live(
+      pool_roots: pool_roots,
+      importer_roots: pool_roots,
+      exclude_substrings: exclude_substrings
+    ),
+    nodes: module_declaration_facts_live(pool_roots: pool_roots)
+  )
+}
+
+fn reference_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {
+  reference_closure_live_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    exclude_substrings: module_graph_exclude_substrings
   )
 }
 

@@ -186,6 +186,40 @@ fn is_module_path_reference_prefix(content: &str, start: usize) -> bool {
     !(b.is_ascii_alphanumeric() || b == b'_' || b == b'.')
 }
 
+fn is_ident_start_byte(b: u8) -> bool {
+    b.is_ascii_lowercase() || b == b'_'
+}
+
+fn is_ident_continue_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'.'
+}
+
+fn try_insert_declared_dotted_prefixes(
+    refs: &mut BTreeSet<String>,
+    declared: &HashSet<String>,
+    content: &str,
+    token_start: usize,
+    token: &str,
+) {
+    if !token.contains('.') {
+        return;
+    }
+    let mut end = token.len();
+    while end > 0 {
+        let prefix = &token[..end];
+        if declared.contains(prefix)
+            && is_module_path_reference_prefix(content, token_start)
+            && is_module_path_reference_boundary(content, token_start + end)
+        {
+            refs.insert(prefix.to_string());
+        }
+        match token[..end].rfind('.') {
+            Some(dot) => end = dot,
+            None => break,
+        }
+    }
+}
+
 /// Qualified `container` references in a `.dag` file — import targets plus dotted
 /// module paths that appear in expressions (the namespace-only dependency edge).
 pub(crate) fn extract_reference_module_paths(
@@ -201,23 +235,25 @@ pub(crate) fn extract_reference_module_paths(
         .map(|line| line.split("//").next().unwrap_or(line))
         .collect::<Vec<_>>()
         .join("\n");
-    for module in declared {
-        let module_str = module.as_str();
-        let module_len = module.len();
-        let mut search_start = 0;
-        while search_start < stripped.len() {
-            let Some(rel_pos) = stripped[search_start..].find(module_str) else {
-                break;
-            };
-            let pos = search_start + rel_pos;
-            if is_module_path_reference_prefix(&stripped, pos)
-                && is_module_path_reference_boundary(&stripped, pos + module_len)
-            {
-                refs.insert(module.clone());
-                break;
-            }
-            search_start = pos + 1;
+    let bytes = stripped.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !is_ident_start_byte(bytes[i]) {
+            i += 1;
+            continue;
         }
+        let start = i;
+        i += 1;
+        while i < bytes.len() && is_ident_continue_byte(bytes[i]) {
+            i += 1;
+        }
+        try_insert_declared_dotted_prefixes(
+            &mut refs,
+            declared,
+            &stripped,
+            start,
+            &stripped[start..i],
+        );
     }
     refs.into_iter().collect()
 }
