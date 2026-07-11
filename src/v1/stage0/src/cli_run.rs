@@ -284,9 +284,21 @@ fn repo_relative_path(path: &Path) -> Result<String, String> {
 }
 
 /// Canonical repo-relative path for module-graph keys and index storage.
-/// Tries [`process_workspace_root`] first, then compile-time [`workspace_root`] when
-/// sccache embedded the latter in absolute spellings from another runner checkout.
+/// Relative inputs (produced by walks over repo-root-relative scan roots) are anchored
+/// at the process cwd first — they are already inside the tree, not a mixed-tree case.
+/// Absolute inputs try [`process_workspace_root`] first, then compile-time
+/// [`workspace_root`] when sccache embedded the latter in absolute spellings from
+/// another runner checkout.
 fn repo_relative_path_normalized(path: &Path) -> String {
+    let anchored;
+    let path: &Path = if path.is_relative() {
+        anchored = std::env::current_dir()
+            .expect("repo_relative_path_normalized: process working directory unavailable")
+            .join(path);
+        &anchored
+    } else {
+        path
+    };
     if let Ok(rel) = repo_relative_path(path) {
         return rel;
     }
