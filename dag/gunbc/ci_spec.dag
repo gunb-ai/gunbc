@@ -26,7 +26,6 @@ import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_floor_stamp_merge_admission_script,
   ci_floor_disposition_marker_path,
-  merge_admission_stamp_invoke,
   merge_admission_floor_disposition_documentation_only_skipped,
   ci_documentation_only_merge_admission_stamp_script,
 }

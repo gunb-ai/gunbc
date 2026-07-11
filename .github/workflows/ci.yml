@@ -198,7 +198,24 @@ jobs:
               mkdir -p target
               echo documentation_only_skipped > target/ci-floor-disposition.txt
               echo "claim_executor: plan-artifact-only diff — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=documentation_only_skipped)"
-              CI_FLOOR_DISPOSITION=documentation_only_skipped "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/merge_admission_stamp.dag --function main
+              # CI_FLOOR_DISPOSITION=documentation_only_skipped stamps merge-admission conclusion Skipped (not Success) — floor-not-run ≠ floor-green per §5; distinct from CI_FLOOR_EXIT=0 laundering
+              # 🟡 dissolve-on: ci_documentation_only_merge_admission_stamp_script — concat-built bash receipt wire for docs-only floor skip (interim until gunbc run resolves v1 merge_admission_stamp import closure from CI floor context, or bash-emit realizes stamp through orchestration emit); DISSOLVES WHEN merge_admission_stamp runs green from the docs-only shortcut without this shell scaffold
+              _ma_base=$(git show -s --format=%T origin/main)
+              if [ -z "$_ma_base" ]; then echo "merge_admission_stamp: merge-target tree hash unavailable"; exit 1; fi
+              _ma_head=$(git rev-parse HEAD)
+              if [ -z "$_ma_head" ]; then echo "merge_admission_stamp: git rev-parse HEAD failed"; exit 1; fi
+              _ma_pr=""
+              if [ -n "$GITHUB_EVENT_PATH" ] && [ -f "$GITHUB_EVENT_PATH" ]; then
+                _ma_pr=$(jq -r 'if (.pull_request.number | type) == "number" then .pull_request.number else empty end' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+              fi
+              mkdir -p "$ROOT/.gunbc" || { echo "merge_admission_stamp: mkdir .gunbc failed"; exit 1; }
+              {
+                printf '%s\n' "$_ma_base"
+                printf '%s\n' "381853b04b24c0c7"
+                printf '%s\n' "skipped"
+                printf '%s\n' "$_ma_head"
+                if [ -n "$_ma_pr" ]; then printf '%s\n' "$_ma_pr"; fi
+              } > "$ROOT/.gunbc/merge-admission-receipt.wire"
               exit $?
             fi
           fi
@@ -253,6 +270,8 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main
+          if test -f target/ci-floor-disposition.txt; then _disp=$(cat target/ci-floor-disposition.txt)
+          if test "$_disp" = "documentation_only_skipped"; then echo "merge-admission gate: skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; receipt stamped via docs-only shell scaffold)"; exit 0; fi; fi
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/merge_admission_gate.dag --function main
         timeout-minutes: 5
       - name: gunbc ci regen (self-host fixed-point — required; folded into ci job 2026-07-11)

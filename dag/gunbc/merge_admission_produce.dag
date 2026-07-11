@@ -198,7 +198,7 @@ fn ci_documentation_only_merge_admission_stamp_script() -> String {
         "_ma_pr=\"\"\n"
       ),
       concat(
-        "if [ -n \"${GITHUB_EVENT_PATH:-}\" ] && [ -f \"$GITHUB_EVENT_PATH\" ]; then\n",
+        "if [ -n \"$GITHUB_EVENT_PATH\" ] && [ -f \"$GITHUB_EVENT_PATH\" ]; then\n",
         concat(
           "  _ma_pr=$(jq -r 'if (.pull_request.number | type) == \"number\" then .pull_request.number else empty end' \"$GITHUB_EVENT_PATH\" 2>/dev/null || true)\n",
           "fi\n"
