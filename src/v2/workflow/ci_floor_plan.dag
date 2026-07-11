@@ -2,7 +2,7 @@ module v2.workflow.ci_floor_plan
 
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
-  gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
+  gunbc_ci_spec, gunbc_ci_regen_spec, gunbc_ci_emit_determinism_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
   Gate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
@@ -555,10 +555,6 @@ fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
   floor_schedule_for(spec: gunbc_ci_spec, serialize_heavy: true)
 }
 
-fn gunbc_ci_floor_schedule_without_serialization() -> List<List<Runnable>> {
-  floor_schedule_for(spec: gunbc_ci_spec, serialize_heavy: false)
-}
-
 fn gunbc_ci_floor_realization_plan_for(spec: CiSpec) -> RealizationPlan {
   RealizationPlan {
     target: ci_floor_target_digest
@@ -665,6 +661,10 @@ fn witness_regen_spec_carries_no_witness_corpus() -> Bool {
 
 fn gunbc_ci_regen_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_regen_spec).schedule
+}
+
+fn gunbc_ci_emit_determinism_batches() -> List<List<Runnable>> {
+  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_emit_determinism_spec).schedule
 }
 
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
@@ -824,12 +824,6 @@ fn floor_plan_co_runs_heavy_without_serialization_for(spec: CiSpec) -> Bool {
 
 fn gunbc_ci_floor_plan_serializes_heavy_resolves() -> Bool {
   floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: gunbc_ci_floor_batches())
-}
-
-fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
-  floor_plan_at_most_one_heavy_gate_resolve_per_batch(
-    batches: gunbc_ci_floor_schedule_without_serialization()
-  ) == false
 }
 
 fn witness_floor_corpus_exclusion_edges_exist(spec: CiSpec) -> Bool {
