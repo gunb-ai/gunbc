@@ -1,9 +1,10 @@
 module v2.workflow.realization_runner
 
-import v2.std.algebra { contains, list_snoc_item, non_empty }
+import v2.std.algebra { contains, list_append, list_snoc_item, non_empty }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView }
-import std.types { Int }
+import std.measure { ByteSize, byte_size, measure_add }
+import std.types { ContentHash, Int }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.workflow.executor {
@@ -52,6 +53,148 @@ fn node_keyed_store_put<V>(store: NodeKeyedStore<V>, node: Node, value: V) -> No
 
 fn node_keyed_store_node_count<V>(store: NodeKeyedStore<V>) -> Int {
   fold(store.entries, init: 0, f: fn(count, _) { count + 1 })
+}
+
+data node_keyed_graph_artifact_note: String = "NodeKeyedGraphArtifact is the persistent/streamed form of NodeKeyedStore (the S2b store shape, landed early as the settled encoding authority — inherited from the S2a lane, bound 2026-07-10). CODEC RULING (settled): a tree codec over the Rc-shared graph un-shares every shared subtree — the resolved-graph cache write measured a ~3.4GiB working set expanding to 17GiB under serde_json::to_vec; serde-streaming and packed-binary-tree keep the unsharing, so both are WRONG. The artifact form is an interned content-keyed node table: each node encoded exactly ONCE, keyed by its content hash, children referenced BY HASH and never inline; a decode rebuilds the structural sharing (the sharing witnesses in the runner witness suite pin decode-rebuilds-sharing and reencode-byte-identity, with a RED control on a deliberately unshared decode). ROWS CARRY ROW-LOCAL FACTS ONLY (encoded body length): a stored transitive size would be a dual representation of the child_refs topology, so transitive footprint is DERIVED, never stored. The reachable-set fold node_keyed_graph_transitive_bytes IS the single value-size authority — the eval-memo byte-cap admission (extdeps.realization.eval_memo) and the space-lens predictor both bind to it, and no parallel size walk may exist anywhere. Content hashes ground on the fnv1a64 authority surfaced by std.content_hash / the v1 intrinsics (DESIGN section 3 convergence thread) — this schema must not mint a third hash surface; ContentHash here is the std.types carrier. Failure arms REFUSE, never widen: a child ref with no row refuses with the missing hash; a frontier that cannot settle within row-count fuel (a cycle — corrupt artifact bytes; the substrate itself is acyclic) refuses with the pending frontier; no arm fabricates a size."
+
+type NodeKeyedGraphRow {
+  content_hash: ContentHash
+  encoded_length: ByteSize
+  child_refs: List<ContentHash>
+}
+
+type NodeKeyedGraphArtifactEntry {
+  store_node: ContentHash
+  value_root: ContentHash
+}
+
+type NodeKeyedGraphArtifact {
+  rows: List<NodeKeyedGraphRow>
+  entries: List<NodeKeyedGraphArtifactEntry>
+}
+
+fn node_keyed_graph_contains_hash(hashes: List<ContentHash>, content_hash: ContentHash) -> Bool {
+  contains(xs: hashes, item: content_hash, eq: fn(left, right) { left == right })
+}
+
+type NodeKeyedGraphInternCheck {
+  seen: List<ContentHash>
+  interned: Bool
+}
+
+fn node_keyed_graph_rows_interned(rows: List<NodeKeyedGraphRow>) -> Bool {
+  let checked = fold(rows, init: NodeKeyedGraphInternCheck { seen: [], interned: true }, f: fn(check, row) {
+    if node_keyed_graph_contains_hash(hashes: check.seen, content_hash: row.content_hash) {
+      NodeKeyedGraphInternCheck { seen: check.seen, interned: false }
+    } else {
+      NodeKeyedGraphInternCheck {
+        seen: list_snoc_item(xs: check.seen, item: row.content_hash),
+        interned: check.interned
+      }
+    }
+  })
+  checked.interned
+}
+
+fn node_keyed_graph_artifact_total_bytes(artifact: NodeKeyedGraphArtifact) -> ByteSize {
+  fold(artifact.rows, init: byte_size(count: 0), f: fn(total, row) {
+    measure_add(a: total, b: row.encoded_length)
+  })
+}
+
+type NodeKeyedGraphRowLookup
+  = NodeKeyedGraphRowFound { row: NodeKeyedGraphRow }
+  | NodeKeyedGraphRowMissing { content_hash: ContentHash }
+
+fn node_keyed_graph_row_lookup(rows: List<NodeKeyedGraphRow>, content_hash: ContentHash) -> NodeKeyedGraphRowLookup {
+  fold(rows, init: NodeKeyedGraphRowMissing { content_hash: content_hash }, f: fn(found, row) {
+    match found {
+      NodeKeyedGraphRowFound { row: _ } => found
+      NodeKeyedGraphRowMissing { content_hash: wanted } =>
+        if row.content_hash == wanted {
+          NodeKeyedGraphRowFound { row: row }
+        } else {
+          found
+        }
+    }
+  })
+}
+
+type NodeKeyedGraphReachState
+  = NodeKeyedGraphReachActive {
+      visited: List<ContentHash>,
+      frontier: List<ContentHash>,
+      bytes: ByteSize
+    }
+  | NodeKeyedGraphReachMissingRow { missing: ContentHash }
+
+fn node_keyed_graph_reach_step(
+  rows: List<NodeKeyedGraphRow>,
+  state: NodeKeyedGraphReachState
+) -> NodeKeyedGraphReachState {
+  match state {
+    NodeKeyedGraphReachMissingRow { missing: _ } => state
+    NodeKeyedGraphReachActive { visited: visited, frontier: frontier, bytes: bytes } =>
+      fold(frontier, init: NodeKeyedGraphReachActive { visited: visited, frontier: [], bytes: bytes }, f: fn(step_state, content_hash) {
+        match step_state {
+          NodeKeyedGraphReachMissingRow { missing: _ } => step_state
+          NodeKeyedGraphReachActive { visited: seen, frontier: next, bytes: acc } =>
+            if node_keyed_graph_contains_hash(hashes: seen, content_hash: content_hash) {
+              step_state
+            } else {
+              match node_keyed_graph_row_lookup(rows: rows, content_hash: content_hash) {
+                NodeKeyedGraphRowMissing { content_hash: missing } =>
+                  NodeKeyedGraphReachMissingRow { missing: missing }
+                NodeKeyedGraphRowFound { row: row } =>
+                  NodeKeyedGraphReachActive {
+                    visited: list_snoc_item(xs: seen, item: content_hash),
+                    frontier: list_append(left: next, right: row.child_refs),
+                    bytes: measure_add(a: acc, b: row.encoded_length)
+                  }
+              }
+            }
+        }
+      })
+  }
+}
+
+type NodeKeyedGraphTransitiveBytes
+  = NodeKeyedGraphTransitiveBytesSettled { bytes: ByteSize }
+  | NodeKeyedGraphTransitiveBytesMissingRow { missing: ContentHash }
+  | NodeKeyedGraphTransitiveBytesUnsettled { pending: List<ContentHash> }
+
+fn node_keyed_graph_transitive_bytes(
+  artifact: NodeKeyedGraphArtifact,
+  root: ContentHash
+) -> NodeKeyedGraphTransitiveBytes {
+  let seeded = node_keyed_graph_reach_step(
+    rows: artifact.rows,
+    state: NodeKeyedGraphReachActive {
+      visited: [],
+      frontier: [root],
+      bytes: byte_size(count: 0)
+    }
+  )
+  let walked = fold(artifact.rows, init: seeded, f: fn(state, _) {
+    node_keyed_graph_reach_step(rows: artifact.rows, state: state)
+  })
+  match walked {
+    NodeKeyedGraphReachMissingRow { missing: missing } =>
+      NodeKeyedGraphTransitiveBytesMissingRow { missing: missing }
+    NodeKeyedGraphReachActive { visited: _, frontier: frontier, bytes: bytes } =>
+      if non_empty(xs: frontier) {
+        NodeKeyedGraphTransitiveBytesUnsettled { pending: frontier }
+      } else {
+        NodeKeyedGraphTransitiveBytesSettled { bytes: bytes }
+      }
+  }
+}
+
+fn node_keyed_graph_entry_value_bytes(
+  artifact: NodeKeyedGraphArtifact,
+  entry: NodeKeyedGraphArtifactEntry
+) -> NodeKeyedGraphTransitiveBytes {
+  node_keyed_graph_transitive_bytes(artifact: artifact, root: entry.value_root)
 }
 
 fn runner_execution_dependencies(dependencies: List<DependencyView>) -> List<DependencyView> {
