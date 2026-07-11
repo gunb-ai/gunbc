@@ -20,12 +20,12 @@ import v2.lens.module_graph {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.compiler.source_authority {
-  normalize_dag_source_ast,
-  parse_dag_source_ast_with_model
-}
+import v2.compiler.program_assembly { program_assembly_read_to_normalized_root }
+import v2.compiler.source_authority { DagSourceReadWitness }
 import extdeps.communication.fidelity_carriers { Lossless }
 import extdeps.communication.medium { Medium }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
 import v2.extdeps.languages.dag {
   dag_language_model,
   parse_production_captured_child_optional,
@@ -96,7 +96,7 @@ data reference_deps_parsed_tree_disposition: Disposition = Scaffold {
   }
 }
 
-data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). reference_closure_live parses on-demand along the closure BFS only; reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census. Dissolves when symbol_index_fill projects the same edges from the filled containment tree as the single authority."
+data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). reference_closure_live ingests via program_assembly_read_to_normalized_root (tokenize ∘ parse_module ∘ normalize — same pipeline path as compile assembly) and parses on-demand along the closure BFS only; reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census. Dissolves when symbol_index_fill projects the same edges from the filled containment tree as the single authority."
 
 data reference_deps_file_anchor: Symbol = ^reference_deps_file_anchor
 
@@ -169,21 +169,19 @@ fn reference_deps_ingest_source_text(
   source_text: String,
   file: Symbol
 ) -> Outcome<Node> {
-  let source = Medium { carried: source_text, fidelity: Lossless }
-  let lm = dag_language_model()
-  match parse_dag_source_ast_with_model(
-    source: source,
-    compilation_unit: file,
-    lm: lm
-  ) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: ast, diagnostics: _ } =>
-      match normalize_dag_source_ast(ast: ast) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: normalized, diagnostics: _ } =>
-          outcome_accepted(value: normalized.tree)
-      }
-  }
+  program_assembly_read_to_normalized_root(
+    read: DagSourceReadWitness {
+      source: Medium { carried: source_text, fidelity: Lossless },
+      artifact: Artifact {
+        kind: SourceFile,
+        id: reference_deps_file_anchor,
+        file_path: ""
+      },
+      compilation_unit: file,
+      source_root: DagTree
+    },
+    lm: dag_language_model()
+  )
 }
 
 fn reference_qn_from_qualified_name_production_strict(
