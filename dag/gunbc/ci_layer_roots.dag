@@ -20,8 +20,12 @@ data witness_exclusion_substrings: List<String> = [
   "unified_test_claim_substrate_equivalence.dag",
   "ci_exclusion_proof_test.dag",
   "test/claim/execution/",
-  "claim/complexity/accumulator_copy_roster_gate"
+  "claim/complexity/accumulator_copy_roster_gate",
+  "fixture/floor_skip/falsifier_divergence_control_test.dag",
+  "fixture/floor_skip/live_tree_declared_test.dag"
 ]
+
+data floor_skip_control_fixture_exclusion_note: String = "The two floor_skip CONTROL fixtures are excluded from tree-wide discovery because they exist to be driven by floor_skip_discovery_witness's explicit rosters, not as corpus witnesses: falsifier_divergence_control_test.dag carries a BY-DESIGN red row (falsifier_red_control_holds returns false to prove the divergence attribution channel), so any completed full-corpus run - the nightly falsifier, or a PR whose diff touches its import closure - would red on a row whose red is the control's specification, and a permanent by-design divergence would also make the falsifier's 8-clean-window retirement criterion unsatisfiable; live_tree_declared_test.dag declares ReadsLiveTree as a control, so as a corpus row it would be a permanent never-skip cost with no enforcement value. Explicit-roster runs (the floor_skip bin) are unaffected: witness exclusions apply to discovery only."
 
 data accumulator_copy_roster_gate_exclusion_note: String = "The three accumulator_copy_roster_gate*_test.dag witnesses are operator-ruled OFFLINE (2026-07-10: the gate is ~15m of serial interpreted resolve; run it via the claim_batch recipe in v2.lens.complexity_accumulator_copy.roster_gate). Excluded from discovery because the flip's selection cannot see them honestly either way: file_gate reads its roster targets via filesystem_read at runtime — a data dependency invisible to resolve-closure attribution — and the live-scan classifier reads only entry-file text, so the rows would be intermittently selected by lens/std-closure PRs (cost, against the ruling) while never firing on roster-target-only PRs (no enforcement). Dissolve-on: resolved-graph memoization receipts land AND the live-read classification walks the import closure; then re-enroll consciously through the floor owner's lane."
 
