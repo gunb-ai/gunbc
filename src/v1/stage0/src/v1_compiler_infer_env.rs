@@ -145,6 +145,7 @@ pub struct TypeEnvCacheMergeConflict {
     pub existing_site: String,
     pub incoming_site: String,
     pub span: Rc<SourceSpan>,
+    pub same_tree: bool,
 }
 
 pub fn source_tree_partition_note() -> String {
@@ -258,6 +259,11 @@ pub fn guarded_union_str_bindings(
                                         .file
                                         .clone(),
                                     span: incoming.resolved.clone().span.clone(),
+                                    same_tree: (source_tree_of(
+                                        existing.resolved.clone().span.clone().file.clone(),
+                                    ) == source_tree_of(
+                                        incoming.resolved.clone().span.clone().file.clone(),
+                                    )),
                                 })]),
                             ),
                         })
