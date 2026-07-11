@@ -25,13 +25,10 @@ import extdeps.languages.bash.program {
 }
 import tools.build_step { BuildArtifact, emit_verifications }
 import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
-<<<<<<< HEAD
-import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-=======
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
 
 data bash_program_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_bash and of the grammar rows/segment spellings. Each test compares bash_program_serialize (row-emit) against its golden only, so a row/emitter regression cannot go green by perturbing both sides at once (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
 
@@ -57,7 +54,6 @@ fn bash_program_serialize_matches_golden(p: ShellProgram, golden: String) -> Boo
     Rejected { diagnostics: _ } => false
   }
 }
->>>>>>> origin/main
 
 fn bash_program_fold_sample() -> ShellProgram {
   ShellProgram {

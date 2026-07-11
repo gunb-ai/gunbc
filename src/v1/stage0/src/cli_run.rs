@@ -2189,7 +2189,7 @@ fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &s
 /// `v2.workflow.affected_set_floor_runner` is the general per-entry authority.
 fn entry_eligible_for_discovery_skip_before_resolve(
     skip_enabled: bool,
-    entry_content: &str,
+    reads_live_tree: bool,
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
@@ -2199,7 +2199,12 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if !skip_enabled {
         return Ok(false);
     }
-    if entry_text_indicates_live_host_scan(entry_content) {
+    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
+    // `ReadsLiveTree` entry reads state outside its resolved closure, so the diff
+    // cannot bound its inputs — it never predict-skips. Replaces the deleted
+    // entry-text classifier (`entry_text_indicates_live_host_scan`); the disposition
+    // is entry-grain, parsed onto every DiscoveryRow of the entry.
+    if reads_live_tree {
         return Ok(false);
     }
     if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
@@ -6609,19 +6614,19 @@ fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
     parse_entry_live_tree_disposition(entry, &content)
 }
 
-<<<<<<< HEAD
 fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
     rows.iter().filter(|r| r.reads_live_tree).count()
-=======
+}
+
 /// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
 /// when import-closure `entry_file_touched` is false and no declaration-level edit
 /// targets this entry, every kernel witness in the entry would skip — receipt:
 /// `green_skip_for_file_outside_import_closure` (diff outside import closure → empty
-/// frontier / no touch). Host-scaffold entries are excluded (changed_paths can select
-/// them without import-closure overlap). Data-item edits land in `overlapping_data_items`
-/// (not `touched_entry_files`); any edited data-item file in the entry import closure
-/// must resolve so `rerun_frontier_nodes_for_entry` can discriminate referenced nodes
-/// (`red_node_frontier_fires_for_referenced_data_item`).
+/// frontier / no touch). Live-tree entries are excluded (`reads_live_tree`: their inputs
+/// are outside the resolved closure, so the diff cannot bound them). Data-item edits land
+/// in `overlapping_data_items` (not `touched_entry_files`); any edited data-item file in
+/// the entry import closure must resolve so `rerun_frontier_nodes_for_entry` can
+/// discriminate referenced nodes (`red_node_frontier_fires_for_referenced_data_item`).
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): pre-resolve skip for rows
 // provably outside all three skip axes without loading the resolved graph. Dissolves at
 // Step 5 (`docs/plans/affected-set-precompute-pruning.md`) when the Rust parallel
@@ -6629,12 +6634,19 @@ fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
 // `floor_witness_run_disposition` query owns the same predicate end-to-end.
 fn entry_qualifies_for_skip_without_resolve(
     entry_path: &str,
-    row_functions: &[&str],
+    reads_live_tree: bool,
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<bool, String> {
+    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
+    // `ReadsLiveTree` entry never predict-skips. Replaces the deleted entry-text
+    // classifier's per-function `witness_test_fn_uses_live_host_scan` scan; the
+    // disposition is entry-grain, so one flag decides the whole entry.
+    if reads_live_tree {
+        return Ok(false);
+    }
     if diff_edits
         .edited_test_fns
         .iter()
@@ -6674,16 +6686,6 @@ fn entry_qualifies_for_skip_without_resolve(
             return Ok(false);
         }
     }
-    let content = read_entry_content_for_host_scaffold(entry_path)?;
-    if entry_text_indicates_live_host_scan(&content) {
-        return Ok(false);
-    }
-    if row_functions
-        .iter()
-        .any(|func| witness_test_fn_uses_live_host_scan(&content, func))
-    {
-        return Ok(false);
-    }
     Ok(true)
 }
 
@@ -6694,18 +6696,18 @@ fn discovery_entry_fast_skip_without_resolve(
     touched_entry_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<HashSet<String>, String> {
-    let mut by_entry: HashMap<String, Vec<&str>> = HashMap::new();
+    // Entry-grain disposition: OR the rows' `reads_live_tree` per entry (they agree by
+    // construction — one declaration per entry file — but OR fails closed if they ever diverge).
+    let mut by_entry: HashMap<String, bool> = HashMap::new();
     for row in rows {
-        by_entry
-            .entry(row.entry.clone())
-            .or_default()
-            .push(row.function.as_str());
+        let live = by_entry.entry(row.entry.clone()).or_insert(false);
+        *live = *live || row.reads_live_tree;
     }
     let mut fast = HashSet::new();
-    for (entry, funcs) in by_entry {
+    for (entry, reads_live_tree) in by_entry {
         if entry_qualifies_for_skip_without_resolve(
             &entry,
-            &funcs,
+            reads_live_tree,
             facts,
             declared_paths,
             touched_entry_paths,
@@ -6735,17 +6737,6 @@ fn augment_closure_modules_from_import_facts(
             out.insert(node.module.clone());
         }
     }
-}
-
-fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> Result<bool, String> {
-    for row in rows {
-        let content = read_entry_content_for_host_scaffold(&row.entry)?;
-        if witness_test_fn_uses_live_host_scan(&content, &row.function) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
->>>>>>> origin/main
 }
 
 fn parse_unified_diff_departed_paths(diff_text: &str) -> HashSet<String> {
@@ -7532,10 +7523,6 @@ fn run_discovery_rows(
                 current_closure_subject = None;
                 ctx = None;
             }
-<<<<<<< HEAD
-            ctx = Some(entry_ctx);
-            current_entry = Some(row.entry.clone());
-=======
             summary.skipped += 1;
             eprintln!(
                 "SKIP [assumed-green node-frontier] {} ({})",
@@ -7544,10 +7531,9 @@ fn run_discovery_rows(
             continue;
         }
         if current_entry.as_deref() != Some(row.entry.as_str()) {
-            current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
             if entry_eligible_for_discovery_skip_before_resolve(
                 skip_enabled,
-                &current_entry_content,
+                row.reads_live_tree,
                 &row.entry,
                 &index.module_graph_facts,
                 &module_graph_declared_paths,
@@ -7594,7 +7580,6 @@ fn run_discovery_rows(
                 ctx = Some(resolved.ctx);
                 current_entry = Some(row.entry.clone());
             }
->>>>>>> origin/main
         }
         let function_edited = skip_enabled
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {

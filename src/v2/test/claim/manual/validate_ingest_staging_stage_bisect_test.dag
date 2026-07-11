@@ -35,14 +35,10 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot }
 import v2.std.logic { Bool }
-<<<<<<< HEAD
-import v2.std.node { Node }
+import v2.std.node { Node, well_formed }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-=======
-import v2.std.node { Node, well_formed }
->>>>>>> origin/main
 
 data bisect_empty_source: Medium<String> = Medium { carried: "module stage0.bisect.empty\n", fidelity: Lossless }
 data bisect_add_module_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
