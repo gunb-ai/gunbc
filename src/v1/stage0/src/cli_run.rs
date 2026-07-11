@@ -167,6 +167,31 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
+// receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// 🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust
+// (landed on main as #6484 .git-ancestor walk); DISSOLVES WHEN cli_run.rs Chunk F lands
+// (cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP
+// 5-dissolve-patches cli_run.rs shrink retires HAND path-dependent root entirely.
+// Discriminating receipt: workspace_root_discovery_tests (same kernel as workspace_root()).
+/// Single authority for workspace-root discovery (.git ancestor walk).
+/// `workspace_root()` memoizes from the process cwd; tests pass an explicit start path.
+pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
+    for dir in start_cwd.ancestors() {
+        if dir.join(".git").exists() {
+            return dir.to_path_buf();
+        }
+    }
+    panic!(
+        "workspace_root: {} is not inside a git checkout; run from \
+         the workspace (the compile-time CARGO_MANIFEST_DIR fallback was removed: \
+         binaries are shared across runner workspaces and the compiling checkout's \
+         path is not a runtime fact)",
+        start_cwd.display()
+    )
+}
+
 /// The workspace root is a property of where the process RUNS, never of where the
 /// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
 /// the release binaries across jobs via artifacts, and the build job and the consuming

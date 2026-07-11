@@ -50,6 +50,22 @@ Each phase: seed LOC moved HAND→GENERATED in `cli_run.rs` · `regen_stage0 --v
 
 `cli_run.rs` is also touched by the CI-repair wave (`run_walk`, M1 memo — deep-hawk-756). This lane owns the resolve/reconcile/discovery cluster named in §0's table (the 6 brief functions plus their listed plumbing); no edits outside that set — and in particular not `run_walk` — without an ordering note posted first.
 
+## Interim workspace-root scaffold (PR #6474 — HAND-RUST receipt)
+
+**Problem:** `workspace_root()` was compile-time baked from `CARGO_MANIFEST_DIR`. After the CI job-split (build job packs `release-bins.tgz`, ci job unpacks on a potentially different self-hosted runner), `claim_executor`/`gunbc` read `ci_layer_roots.dag` and source roots from a path that does not exist on the execution checkout — fail-closed panic, zero diagnostic until runtime.
+
+**Interim fix (seed-retained, +~45 LOC net in `cli_run.rs`):** `discover_workspace_root_at(start_cwd)` — `git rev-parse --show-toplevel` with `current_dir(start_cwd)`, then Cargo.toml+dag/ cwd ascent, then compile-time fallback. Cached via `OnceLock` in `workspace_root()`.
+
+| receipt row | authority |
+| --- | --- |
+| Scaffold disposition | `gunbc.cli_run_workspace_root_scaffold.cli_run_workspace_root_discovery_scaffold` |
+| Dissolve-on trigger | `cli_run_workspace_root_discovery_dissolve_trigger` (mirrored in `cli_run.rs` comment) |
+| Discriminating tests | `cli_run::workspace_root_discovery_tests::{discover_from_subdirectory_matches_git_toplevel, discover_cwd_ascent_without_git_init}` |
+| Floor witness | `dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag` |
+| Deferral lane | Chunk F here + `ROADMAP` `5-dissolve-patches` → `cli_run.rs` GENERATED (not a permanent HAND expansion) |
+
+**Not a census shrink:** seed-shrink Chunk F baseline (~4,165 LOC) is unchanged in direction — this is counted interim debt until Chunk F dissolution, not new permanent surface. **Deleted-scaffold path:** entire `discover_workspace_root_at`/`OnceLock` block deletes when Chunk F retires HAND path-dependent root discovery.
+
 ## Dissolution trigger (DESIGN §6)
 
 Delete this doc when all three phases land and `cli_run.rs`'s resolve/reconcile/discovery functions are GENERATED, not HAND_MAINTAINED.
