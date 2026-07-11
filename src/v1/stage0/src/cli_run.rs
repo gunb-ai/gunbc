@@ -9086,16 +9086,11 @@ mod node_frontier_plumbing_controls {
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-        let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
-        let funcs: Vec<String> = scan_test_decl_lines(&content)
-            .into_iter()
-            .map(|(name, _)| name)
-            .collect();
-        let func_refs: Vec<&str> = funcs.iter().map(|s| s.as_str()).collect();
+        // Substrate-only fixture (reads_live_tree=false) → eligible when unaffected.
         assert!(
             super::entry_qualifies_for_skip_without_resolve(
                 &fixture_abs,
-                &func_refs,
+                false,
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
@@ -9103,6 +9098,38 @@ mod node_frontier_plumbing_controls {
             )
             .expect("qualify"),
             "unaffected entry must qualify for skip-before-resolve when diff is outside import closure"
+        );
+    }
+
+    // Discriminating RED control (§5 never-skip tooth): a `ReadsLiveTree` entry must NEVER
+    // qualify for skip-before-resolve, even in the exact unaffected-diff case that WOULD skip
+    // a substrate-only entry. If the `reads_live_tree` guard in
+    // `entry_qualifies_for_skip_without_resolve` is removed/bypassed, this goes red — the
+    // fail-open (a live-tree witness predicted-skipped → never runs → false green) is caught.
+    #[test]
+    fn live_tree_entry_never_qualifies_for_skip_without_resolve() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = abs(&ws, FIXTURE);
+        // Same unaffected diff as the eligible test above (outside the import closure).
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        assert!(
+            !super::entry_qualifies_for_skip_without_resolve(
+                &fixture_abs,
+                true,
+                &index.module_graph_facts,
+                &declared,
+                &touched_paths,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "a ReadsLiveTree entry must NOT qualify for skip-before-resolve even when the diff is outside its import closure (never predict-skip)"
         );
     }
 
@@ -9130,16 +9157,10 @@ mod node_frontier_plumbing_controls {
         );
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-        let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
-        let funcs: Vec<String> = scan_test_decl_lines(&content)
-            .into_iter()
-            .map(|(name, _)| name)
-            .collect();
-        let func_refs: Vec<&str> = funcs.iter().map(|s| s.as_str()).collect();
         assert!(
             !super::entry_qualifies_for_skip_without_resolve(
                 &fixture_abs,
-                &func_refs,
+                false,
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
