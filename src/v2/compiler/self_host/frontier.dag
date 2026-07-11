@@ -514,8 +514,7 @@ fn compiler_frontier_blocker_class_distribution_knowledge_attributed_holds() -> 
       blocker_class_distribution: blocker_class_distribution,
       gap_clustering: _
     } =>
-      blocker_class_distribution.dissolution_trigger
-        == ^migrate_when_frontier_per_module_probe_receipt_binds
+      blocker_class_distribution.dissolution_trigger == ^migrate_when_frontier_per_module_probe_receipt_binds
     KnowledgeAttributed { dissolution_trigger: _ } => false
   }
 }
