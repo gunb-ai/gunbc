@@ -85,54 +85,6 @@ fn run_bisect_witness_bool(function: &str) -> v1_interpreter::InterpResult<Value
 }
 
 #[test]
-fn debug_bisect_add_resolve_steps() {
-    let entry = "src/v2/test/claim/manual/body_lowering_normalize_add.dag";
-    let entry_content = std::fs::read_to_string(workspace_root().join(entry))
-        .unwrap_or_else(|e| panic!("read {entry}: {e}"));
-    let sources: Vec<_> = resolve_imports_transitively_with_source_roots(
-        entry,
-        &entry_content,
-        &v2_source_roots(),
-    )
-    .iter()
-    .map(|s| {
-        Rc::new(SourceFile {
-            path: s.path.clone(),
-            content: s.content.clone(),
-        })
-    })
-    .collect();
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
-    assert_resolved_ok(&resolved);
-    let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = v1_interpreter::InterpContext::new(
-        graph,
-        resolved.source_indices.clone(),
-        v1_interpreter::ExecutionMode::Wet,
-    );
-    for name in [
-        "body_lowering_param_comma_spine_holds",
-        "body_lowering_normalized_domain_param_count",
-        "body_lowering_resolve_rejects",
-        "body_lowering_normalized_resolves",
-        "body_lowering_normalize_yields_arrow",
-    ] {
-        let result = v1_interpreter::run_in_context(&ctx, name, false);
-        eprintln!("{name} => {result:?}");
-    }
-    let steps = [
-        "bisect_parse_module_add_parse_accepts",
-        "bisect_parse_module_add_normalize_accepts",
-        "bisect_parse_module_add_well_formed_after_normalize",
-        "bisect_parse_module_add_resolve_accepts",
-    ];
-    for step in steps {
-        let result = run_bisect_witness_bool(step);
-        eprintln!("{step} => {result:?}");
-    }
-}
-
-#[test]
 fn interpreted_parse_bisect_add_correctness_holds() {
     assert!(
         matches!(

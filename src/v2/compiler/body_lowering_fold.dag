@@ -524,18 +524,32 @@ fn body_lower_typed_param_edge(param_capture: Node) -> Optional<Edge> {
   }
 }
 
-fn body_lower_collect_param_edges(param_capture: Node) -> List<Edge> {
-  match body_lower_typed_param_edge(param_capture: param_capture) {
-    Present { value: edge } =>
-      match body_lower_comma_list_suffix(param_capture: param_capture) {
-        Present { value: next } =>
-          list_append(left: [edge], right: body_lower_collect_param_edges(param_capture: next))
-        Absent => [edge]
-      }
-    Absent =>
-      match body_lower_comma_list_suffix(param_capture: param_capture) {
-        Present { value: next } => body_lower_collect_param_edges(param_capture: next)
-        Absent => Empty
+fn body_lower_comma_list_head_optional(node: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: node) {
+    Present { value: pair } => optional_present(value: pair.left)
+    Absent => optional_absent()
+  }
+}
+
+fn body_lower_collect_param_edges(comma_list_capture: Node) -> List<Edge> {
+  match body_lower_comma_list_head_optional(node: comma_list_capture) {
+    Absent => Empty
+    Present { value: head } =>
+      match body_lower_typed_param_edge(param_capture: head) {
+        Present { value: edge } =>
+          match body_lower_comma_list_suffix(param_capture: comma_list_capture) {
+            Present { value: next } =>
+              list_append(
+                left: [edge],
+                right: body_lower_collect_param_edges(comma_list_capture: next)
+              )
+            Absent => [edge]
+          }
+        Absent =>
+          match body_lower_comma_list_suffix(param_capture: comma_list_capture) {
+            Present { value: next } => body_lower_collect_param_edges(comma_list_capture: next)
+            Absent => Empty
+          }
       }
   }
 }
@@ -641,7 +655,7 @@ fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => Absent
     Present { value: comma_spine } =>
-      let edges = body_lower_collect_param_edges(param_capture: comma_spine)
+      let edges = body_lower_collect_param_edges(comma_list_capture: comma_spine)
       if count(edges) == 0 {
         Present {
           value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
@@ -906,21 +920,25 @@ fn body_lower_call_arg_edge_optional(arg_capture: Node) -> Optional<Node> {
   body_lower_arg_operand_optional(arg_capture: arg_capture)
 }
 
-fn body_lower_collect_call_arg_operands(arg_capture: Node) -> List<Node> {
-  match body_lower_call_arg_edge_optional(arg_capture: arg_capture) {
-    Present { value: operand } =>
-      match body_lower_comma_list_suffix(param_capture: arg_capture) {
-        Present { value: next } =>
-          list_append(
-            left: [operand],
-            right: body_lower_collect_call_arg_operands(arg_capture: next)
-          )
-        Absent => [operand]
-      }
-    Absent =>
-      match body_lower_comma_list_suffix(param_capture: arg_capture) {
-        Present { value: next } => body_lower_collect_call_arg_operands(arg_capture: next)
-        Absent => Empty
+fn body_lower_collect_call_arg_operands(comma_list_capture: Node) -> List<Node> {
+  match body_lower_comma_list_head_optional(node: comma_list_capture) {
+    Absent => Empty
+    Present { value: head } =>
+      match body_lower_call_arg_edge_optional(arg_capture: head) {
+        Present { value: operand } =>
+          match body_lower_comma_list_suffix(param_capture: comma_list_capture) {
+            Present { value: next } =>
+              list_append(
+                left: [operand],
+                right: body_lower_collect_call_arg_operands(comma_list_capture: next)
+              )
+            Absent => [operand]
+          }
+        Absent =>
+          match body_lower_comma_list_suffix(param_capture: comma_list_capture) {
+            Present { value: next } => body_lower_collect_call_arg_operands(comma_list_capture: next)
+            Absent => Empty
+          }
       }
   }
 }
@@ -928,7 +946,7 @@ fn body_lower_collect_call_arg_operands(arg_capture: Node) -> List<Node> {
 fn body_lower_call_args_from_capture(args_capture: Node) -> List<Node> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: args_capture) {
     Absent => Empty
-    Present { value: comma_spine } => body_lower_collect_call_arg_operands(arg_capture: comma_spine)
+    Present { value: comma_spine } => body_lower_collect_call_arg_operands(comma_list_capture: comma_spine)
   }
 }
 
