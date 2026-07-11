@@ -1169,20 +1169,23 @@ fn bare_import_wildcard_survives_pipeline() {
 }
 
 #[test]
-fn discovery_corpus_advisory_demotes_typecheck_not_parse_or_resolve() {
+fn discovery_corpus_blocks_typecheck_like_strict() {
     use std::rc::Rc;
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic, no_span,
         CompilerDiagnostic,
     };
 
+    // The advisory demotion is narrowed to UnlistedImportUse only: a hard
+    // typecheck error blocks discovery-corpus resolve exactly as it blocks
+    // Strict resolve (an advisory-carrying witness must not be vouched green).
     let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
         variant: "Empty".to_string(),
         type_name: "FreeMonoid<T>".to_string(),
         span: no_span(),
     });
     assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
-    assert!(!is_discovery_corpus_blocking_diagnostic(typecheck));
+    assert!(is_discovery_corpus_blocking_diagnostic(typecheck));
 
     let parse = Rc::new(CompilerDiagnostic::ParseError {
         message: "expected module".to_string(),
@@ -1192,23 +1195,35 @@ fn discovery_corpus_advisory_demotes_typecheck_not_parse_or_resolve() {
 }
 
 #[test]
-fn resolve_typecheck_gate_strict_blocks_advisory_demoted_typecheck() {
+fn discovery_corpus_advisory_set_is_exactly_unlisted_import_use() {
     use std::rc::Rc;
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
         is_interpreter_blocking_diagnostic, no_span, CompilerDiagnostic,
     };
 
+    // UnlistedImportUse is the sole surviving advisory class (non-blocking
+    // under every gate; the class dissolves with namespace-only resolution).
+    let unlisted = Rc::new(CompilerDiagnostic::UnlistedImportUse {
+        name: "NormalizedTree".to_string(),
+        span: no_span(),
+    });
+    assert!(!is_interpreter_blocking_diagnostic(unlisted.clone()));
+    assert!(is_discovery_corpus_advisory_typecheck_diagnostic(
+        unlisted.clone()
+    ));
+    assert!(!is_discovery_corpus_blocking_diagnostic(unlisted));
+
+    // A hard typecheck class is no longer advisory-demoted.
     let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
         variant: "Empty".to_string(),
         type_name: "FreeMonoid<T>".to_string(),
         span: no_span(),
     });
-    assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
-    assert!(is_discovery_corpus_advisory_typecheck_diagnostic(
+    assert!(!is_discovery_corpus_advisory_typecheck_diagnostic(
         typecheck.clone()
     ));
-    assert!(!is_discovery_corpus_blocking_diagnostic(typecheck.clone()));
+    assert!(is_discovery_corpus_blocking_diagnostic(typecheck.clone()));
     assert!(is_interpreter_blocking_diagnostic(typecheck));
 }
 
