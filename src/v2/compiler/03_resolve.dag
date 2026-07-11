@@ -1,7 +1,7 @@
 module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalize { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {

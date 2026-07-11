@@ -34,11 +34,10 @@ import v2.std.compilers.sugar {
   sugar_rule_for_key
 }
 import v2.compiler.body_lowering_fold { body_lower_finish }
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
-
-type NormalizedTree = Node
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
