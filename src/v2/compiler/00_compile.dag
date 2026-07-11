@@ -10,7 +10,8 @@ import v2.compiler.name_resolve {
 }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { SourceRootIngest }
-import v2.compiler.normalize { normalize, NormalizedTree }
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }

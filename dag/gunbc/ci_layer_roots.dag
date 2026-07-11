@@ -20,10 +20,17 @@ data witness_exclusion_substrings: List<String> = [
   "unified_test_claim_substrate_equivalence.dag",
   "ci_exclusion_proof_test.dag",
   "test/claim/execution/",
-  "claim/complexity/accumulator_copy_roster_gate"
+  "claim/complexity/accumulator_copy_roster_gate",
+  "test/claim/enforcement/",
+  "enforcement_live_witness_test.dag",
+  "lever_a_local_receipt_witness"
 ]
 
+data enforcement_coverage_exclusion_note: String = "The three enforcement coverage witnesses (enforcement/cost_coverage_witness_test.dag, enforcement/grammar_coverage_witness_test.dag, enforcement_live_witness_test.dag) are operator-ruled OFFLINE (2026-07-11). Receipt: their *_live fns read the corpus as data (live-tree rosters), so the PR-A never-predict-skip rule for live-tree rows made them run on EVERY wide PR regardless of diff; the block cost 22.0 min (main run 29137081535, busy fleet) and 21.0 min (PR run 29142398465, quiet fleet) of the 60-minute floor budget - about 35 percent - and their allocation ramp feeds the ~15GiB slot memory.high throttle that turns the floor tail into swap-speed work. Their input is corpus-denominated (the InputEnvelope axis, not layer span): per-PR admission wants a declared bounded envelope, which these rows cannot declare today. Offlining required TWO edits (cursor review catch, same PR): the discovery exclusion rows here AND removing the explicit CommitCheckEnrollment for enforcement_live_witness_test.dag in gunbc.commit_workflow - explicit roster rows merge after discovery with no exclusion filter (cli_run.rs explicit_entries dedup), and that is correct: an explicitly declared row should run, so offlining one means deleting its declaration, never teaching exclusions to veto the roster (a second authority). Run them via the local recipe: claim_batch --source-root dag --source-root src/v2 --entry <entry> per fn (all pure reads, no --wet needed). Dissolve-on: witness rows declare InputEnvelope/CostEnvelope and the scheduled (nightly) lane admits corpus-input rows under its own budget - then re-enroll consciously through the floor owner's lane; the affected-set-falsifier cadence covers interim drift."
+
 data accumulator_copy_roster_gate_exclusion_note: String = "The three accumulator_copy_roster_gate*_test.dag witnesses are operator-ruled OFFLINE (2026-07-10: the gate is ~15m of serial interpreted resolve; run it via the claim_batch recipe in v2.lens.complexity_accumulator_copy.roster_gate). Excluded from discovery because the flip's selection cannot see them honestly either way: file_gate reads its roster targets via filesystem_read at runtime — a data dependency invisible to resolve-closure attribution — and the live-scan classifier reads only entry-file text, so the rows would be intermittently selected by lens/std-closure PRs (cost, against the ruling) while never firing on roster-target-only PRs (no enforcement). Dissolve-on: resolved-graph memoization receipts land AND the live-read classification walks the import closure; then re-enroll consciously through the floor owner's lane."
+
+data lever_a_local_receipt_witness_exclusion_note: String = "dag/test/claim/lever_a_local_receipt_witness_test.dag is operator-ruled OFFLINE (2026-07-11: witness_touched_path_dispositions_hold cold-scans compile_clean_shard_entry_paths via module_declaration_facts once per scoped disposition row — O(rows) full dag entry-tree walks, 85m+ CI timeout / OOM when selection runs it after lens_verdict on cli_run.dag PRs; run via scripts/lever_a_local_verify.sh). Excluded from discovery for the same structural reason as accumulator_copy_roster_gate: the scoped rows read the shard roster at runtime — invisible to import-closure attribution — so skip-before-resolve cannot honestly bound cost. Dissolve-on: single-roster memo in tools.dag_compile_clean_scope lands AND live-read classification walks import closure for module_declaration_facts consumers; then re-enroll through the floor owner's lane."
 
 data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
   "test/fixture/",
@@ -37,8 +44,23 @@ fn whole_tree_resolve_exclusion_substrings() -> List<String> {
   concat(witness_exclusion_substrings, whole_tree_strict_resolve_exclusion_substrings)
 }
 
+fn witness_layer_source_flag_for_root(root: String, shell_path_prefix: String) -> String {
+  match shell_path_prefix {
+    "" => concat(" --source-root ", root)
+    p => concat(" --source-root ", concat(p, concat(root, "\"")))
+  }
+}
+
+fn witness_layer_source_flags_with_shell_path_prefix(roots: List<String>, shell_path_prefix: String) -> String {
+  fold(roots, init: "", f: (acc, r) => concat(acc, witness_layer_source_flag_for_root(root: r, shell_path_prefix: shell_path_prefix)))
+}
+
 fn witness_layer_source_flags(roots: List<String>) -> String {
-  fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --source-root ", r)))
+  witness_layer_source_flags_with_shell_path_prefix(roots, shell_path_prefix: "")
+}
+
+fn witness_layer_source_flags_rooted(roots: List<String>) -> String {
+  witness_layer_source_flags_with_shell_path_prefix(roots, shell_path_prefix: "\"$ROOT/")
 }
 
 fn witness_layer_scan_flags() -> String {

@@ -1,0 +1,77 @@
+module v2.compiler.self_host.frontier_probe_types
+
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+type FrontierBlockerClass
+  = SelfEmitReady
+  | NameResolutionGap
+  | EmitSurfaceGap
+  | RealizationGap
+  | UnclassifiedProbeReason { reason: Symbol }
+
+type FrontierProbeStage
+  = ProbeStageAssemble
+  | ProbeStageEmit
+
+type FrontierProbeReceipt {
+  module_path: String
+  blocker_class: FrontierBlockerClass
+  located_stage: FrontierProbeStage
+  located_reason: Symbol
+}
+
+fn frontier_blocker_is_name_resolution_reason(reason: Symbol) -> Bool {
+  reason == ^resolve_reason_unbound_symbol
+    || reason == ^resolve_ambiguous_export
+    || reason == ^resolve_reason_malformed_imported_root
+    || reason == ^resolve_duplicate_module_name
+    || reason == ^resolve_module_not_found
+    || reason == ^resolve_import_not_visible
+    || reason == ^resolve_cross_tree_import_denied
+    || reason == ^resolve_cross_tree_import_ambiguous
+    || reason == ^parse_g0_tokens_remain
+    || reason == ^normalize_rejected
+}
+
+fn frontier_blocker_is_emit_surface_reason(reason: Symbol) -> Bool {
+  reason == ^translate_target_bundle_malformed
+    || reason == ^translate_target_bundle_duplicate_edge
+    || reason == ^translate_grammar_relation_row_not_found
+    || reason == ^translate_grammar_inverse_not_realized
+    || reason == ^translate_conj_invalid_edge
+    || reason == ^translate_conj_named_child_missing
+    || reason == ^translate_concrete_token_class_missing
+    || reason == ^translate_binding_spelling_not_found
+    || reason == ^target_use_site_ownership_lookup_miss
+    || reason == ^target_use_site_ownership_lookup_ambiguous
+}
+
+fn frontier_blocker_is_realization_reason(reason: Symbol) -> Bool {
+  reason == ^compiler_import_closure_cyclic
+    || reason == ^self_host_runner_not_realized
+    || reason == ^emit_host_run_transport_unrealized
+}
+
+fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
+  if frontier_blocker_is_name_resolution_reason(reason: reason) {
+    NameResolutionGap
+  } else if frontier_blocker_is_emit_surface_reason(reason: reason) {
+    EmitSurfaceGap
+  } else if frontier_blocker_is_realization_reason(reason: reason) {
+    RealizationGap
+  } else {
+    UnclassifiedProbeReason { reason: reason }
+  }
+}
+
+fn frontier_probe_blocker_rank(blocker: FrontierBlockerClass) -> Int {
+  match blocker {
+    SelfEmitReady => 0
+    EmitSurfaceGap => 1
+    NameResolutionGap => 2
+    RealizationGap => 3
+    UnclassifiedProbeReason { reason: _ } => 4
+  }
+}
