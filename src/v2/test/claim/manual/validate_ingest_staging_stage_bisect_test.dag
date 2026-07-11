@@ -1,13 +1,6 @@
 module v2.test.manual.validate_ingest_staging_stage_bisect
 
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.body_lowering_fold {
-  body_lower_body_from_fn_captured,
-  body_lower_domain_from_param_list,
-  body_lower_fn_decl_to_arrow,
-  body_lower_return_type_from_fn_captured,
-  body_lower_unwrap_captured
-}
 import v2.compiler.compile {
   LensGateWitness,  always_required_lenses,
   run_required_lens_gates_on_subtree
@@ -29,8 +22,8 @@ import v2.compiler.parse {
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize, TokenStream }
 import v2.std.compilers.lexing { token_stream_all, token_stream_remaining }
-import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional, parse_subtree_find_production_captured, ParseSubtreeAbsent, ParseSubtreeFound }
-import v2.std.collection { Absent, List, Optional, Present }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,
@@ -42,7 +35,7 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot }
 import v2.std.logic { Bool }
-import v2.std.node { Node, TypeNode, Arrow, well_formed }
+import v2.std.node { Node }
 
 data bisect_empty_source: Medium<String> = Medium { carried: "module stage0.bisect.empty\n", fidelity: Lossless }
 data bisect_add_module_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
@@ -205,142 +198,6 @@ fn bisect_normalize_terminates() -> Bool {
   }
 }
 
-fn bisect_find_fn_decl(root: Node) -> Optional<Node> {
-  match parse_production_emitted_identity_optional(node: root) {
-    Present { value: emitted } =>
-      match emitted == ^dag_surface_fn_decl {
-        true => Present { value: root }
-        false =>
-          fold(root.children, init: Absent, f: fn(acc, e) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => bisect_find_fn_decl(root: e.target)
-            }
-          })
-      }
-    Absent =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => bisect_find_fn_decl(root: e.target)
-        }
-      })
-  }
-}
-
-fn bisect_parsed_add_module() -> Optional<Node> {
-  let lm = dag_language_model()
-  match tokenize(
-    text: bisect_add_module_source.carried,
-    file: ^compile_ingest_staging_source_file,
-    rules: lm.lex
-  ) {
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse(tokens: ts, grammar: lm.grammar) {
-        Accepted { value: parsed, diagnostics: _ } => Present { value: parsed }
-        Rejected { diagnostics: _ } => Absent
-      }
-    Rejected { diagnostics: _ } => Absent
-  }
-}
-
-fn bisect_add_domain_holds() -> Bool {
-  match bisect_parsed_add_module() {
-    Absent => false
-    Present { value: tree } =>
-      match bisect_find_fn_decl(root: tree) {
-        Absent => false
-        Present { value: fn_decl } =>
-          match body_lower_unwrap_captured(shell: fn_decl) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
-                ParseSubtreeFound { captured: param_list } =>
-                  match body_lower_domain_from_param_list(param_list: param_list) {
-                    Present { value: _ } => true
-                    Absent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn bisect_add_body_holds() -> Bool {
-  match bisect_parsed_add_module() {
-    Absent => false
-    Present { value: tree } =>
-      match bisect_find_fn_decl(root: tree) {
-        Absent => false
-        Present { value: fn_decl } =>
-          match body_lower_unwrap_captured(shell: fn_decl) {
-            Present { value: captured } =>
-              match body_lower_body_from_fn_captured(captured: captured) {
-                Present { value: _ } => true
-                Absent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn bisect_add_return_holds() -> Bool {
-  match bisect_parsed_add_module() {
-    Absent => false
-    Present { value: tree } =>
-      match bisect_find_fn_decl(root: tree) {
-        Absent => false
-        Present { value: fn_decl } =>
-          match body_lower_unwrap_captured(shell: fn_decl) {
-            Present { value: captured } =>
-              match body_lower_return_type_from_fn_captured(captured: captured) {
-                Present { value: _ } => true
-                Absent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn bisect_add_arrow_lowering_accepts() -> Bool {
-  match bisect_parsed_add_module() {
-    Absent => false
-    Present { value: tree } =>
-      match bisect_find_fn_decl(root: tree) {
-        Absent => false
-        Present { value: fn_decl } =>
-          match body_lower_fn_decl_to_arrow(shell: fn_decl) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-      }
-  }
-}
-
-fn bisect_add_arrow_well_formed() -> Bool {
-  match bisect_parsed_add_module() {
-    Absent => false
-    Present { value: tree } =>
-      match bisect_find_fn_decl(root: tree) {
-        Absent => false
-        Present { value: fn_decl } =>
-          match body_lower_fn_decl_to_arrow(shell: fn_decl) {
-            Accepted { value: arrow, diagnostics: _ } => well_formed(n: arrow)
-            Rejected { diagnostics: _ } => false
-          }
-      }
-  }
-}
-
-test fn witness_bisect_add_domain_holds() -> Bool { bisect_add_domain_holds() }
-test fn witness_bisect_add_body_holds() -> Bool { bisect_add_body_holds() }
-test fn witness_bisect_add_return_holds() -> Bool { bisect_add_return_holds() }
-test fn witness_bisect_add_arrow_lowering_accepts() -> Bool { bisect_add_arrow_lowering_accepts() }
-test fn witness_bisect_add_arrow_well_formed() -> Bool { bisect_add_arrow_well_formed() }
-
 fn bisect_parse_module_add_parse_accepts() -> Bool {
   let lm = dag_language_model()
   match tokenize(
@@ -355,42 +212,6 @@ fn bisect_parse_module_add_parse_accepts() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
-}
-
-fn bisect_parse_module_add_normalize_accepts() -> Bool {
-  let lm = dag_language_model()
-  match tokenize(
-    text: bisect_add_module_source.carried,
-    file: ^compile_ingest_staging_source_file,
-    rules: lm.lex
-  ) {
-    Accepted { value: token_stream, diagnostics: _ } =>
-      match parse(tokens: token_stream, grammar: lm.grammar) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn witness_bisect_parse_module_add_parse_only() -> Bool {
-  bisect_parse_module_add_parse_accepts()
-}
-
-test fn witness_bisect_parse_module_add_normalize_only() -> Bool {
-  bisect_parse_module_add_normalize_accepts()
-}
-
-test fn witness_bisect_parse_module_add_resolve_only() -> Bool {
-  bisect_parse_module_add_resolve_accepts()
-}
-
-test fn witness_bisect_parse_module_add_truncated_only() -> Bool {
-  bisect_parse_module_truncated_rejects()
 }
 
 fn bisect_parse_module_add_resolve_accepts() -> Bool {

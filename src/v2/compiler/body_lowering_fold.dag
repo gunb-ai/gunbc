@@ -675,13 +675,21 @@ fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
 fn body_lower_body_from_fn_captured(captured: Node) -> Optional<Node> {
   match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } =>
-      let stripped = body_lower_unwrap_surface_shell(node: body)
-      match body_lower_try_infix_transform(node: stripped) {
+      match body_lower_try_infix_transform(node: body) {
         Present { value: transform } => Present { value: transform }
         Absent =>
-          match body_lower_try_fold_loop(node: stripped) {
+          match body_lower_try_fold_loop(node: body) {
             Present { value: loop_node } => Present { value: loop_node }
-            Absent => Absent
+            Absent =>
+              let stripped = body_lower_unwrap_surface_shell(node: body)
+              match body_lower_try_infix_transform(node: stripped) {
+                Present { value: transform } => Present { value: transform }
+                Absent =>
+                  match body_lower_try_fold_loop(node: stripped) {
+                    Present { value: loop_node } => Present { value: loop_node }
+                    Absent => Absent
+                  }
+              }
           }
       }
     ParseSubtreeAbsent => Absent
