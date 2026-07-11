@@ -23,7 +23,7 @@ import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize, TokenStream }
 import v2.std.compilers.lexing { token_stream_all, token_stream_remaining }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { List }
+import v2.std.collection { List, list_at_optional }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,
@@ -35,7 +35,7 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot }
 import v2.std.logic { Bool }
-import v2.std.node { Node, well_formed }
+import v2.std.node { Arrow, Conj, Named, Node, Positional, TypeNode, well_formed }
 
 data bisect_empty_source: Medium<String> = Medium { carried: "module stage0.bisect.empty\n", fidelity: Lossless }
 data bisect_add_module_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
@@ -195,6 +195,60 @@ fn bisect_normalize_terminates() -> Bool {
   match bisect_through_normalize() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => true
+  }
+}
+
+fn bisect_parse_module_add_arrow_domain_has_two_params() -> Bool {
+  bisect_parse_module_add_arrow_domain_named_edge_count() == 2
+}
+
+fn bisect_parse_module_add_arrow_domain_named_edge_count() -> Int {
+  let lm = dag_language_model()
+  match tokenize(
+    text: bisect_add_module_source.carried,
+    file: ^compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match parse(tokens: token_stream, grammar: lm.grammar) {
+        Accepted { value: parsed, diagnostics: _ } =>
+          match normalize(parse_tree: parsed) {
+            Accepted { value: normalized, diagnostics: _ } =>
+              bisect_count_arrow_domain_named_edges(root: normalized)
+            Rejected { diagnostics: _ } => 0
+          }
+        Rejected { diagnostics: _ } => 0
+      }
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn bisect_count_arrow_domain_named_edges(root: Node) -> Int {
+  match root.kind {
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: root.children, index: 0) {
+        Present { value: domain_edge } =>
+          match domain_edge.target.kind {
+            TypeNode { connective: Conj } =>
+              fold(domain_edge.target.children, init: 0, f: fn(n, e) {
+                match e.label {
+                  Named { name: _ } => n + 1
+                  Positional => n
+                }
+              })
+            _ => 0
+          }
+        Absent => 0
+      }
+    _ =>
+      fold(root.children, init: 0, f: fn(acc, e) {
+        let here = bisect_count_arrow_domain_named_edges(root: e.target)
+        if here > 0 {
+          here
+        } else {
+          acc
+        }
+      })
   }
 }
 
