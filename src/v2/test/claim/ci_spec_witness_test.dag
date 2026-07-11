@@ -24,6 +24,7 @@ import gunbc.ci_materialization {
   ci_floor_resolve_receipt_gate_script,
   ci_floor_materialization_receipt_gate_script,
 }
+import gunbc.ci_workflow { ci_selection_control_script }
 import gunbc.merge_admission_produce {
   ci_floor_disposition_marker_path,
   merge_admission_floor_disposition_documentation_only_skipped,
@@ -226,6 +227,14 @@ fn witness_documentation_only_gate_skip_prefix_dissolve_on_named() -> Bool {
   )
 }
 
+fn witness_documentation_only_gate_skip_emits_dissolve_on_in_runners() -> Bool {
+  let marker = concat("# ", ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger)
+  string_contains(s: ci_floor_resolve_receipt_gate_script(), pattern: marker)
+    && string_contains(s: ci_floor_materialization_receipt_gate_script(), pattern: marker)
+    && string_contains(s: ci_selection_control_script(), pattern: marker)
+    && string_contains(s: ci_merge_admission_gate_script(), pattern: marker)
+}
+
 fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
   gunbc_ci_run_script(spec: gunbc_ci_spec) == concat(
     concat(ci_release_build_script(), "\n"),
@@ -250,6 +259,7 @@ test fn ci_spec_witnesses() -> Bool {
     witness_documentation_only_shortcut_in_floor_script() &&
     witness_merge_base_ref_single_authority() &&
     witness_documentation_only_gate_skip_prefix_dissolve_on_named() &&
+    witness_documentation_only_gate_skip_emits_dissolve_on_in_runners() &&
     witness_collapsed_run_script_is_build_plus_floor() &&
     witness_gate_roster_matches_coproduct_arms()
 }

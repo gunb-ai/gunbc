@@ -425,20 +425,24 @@ fn ci_merge_admission_gate_step() -> Step {
   }
 }
 
+fn ci_selection_control_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      ci_documentation_only_gate_skip_prefix(
+        gate_name: "Affected-set selection control",
+        skip_reason: "floor not run; hermetic selection suite requires full floor context"
+      ),
+      "\"$ROOT/target/release/floor_skip_discovery_witness\""
+    )
+  )
+}
+
 fn ci_selection_control_step() -> Step {
   RunStep {
     name: Present { value: "Affected-set selection control (floor_skip_discovery_witness)" },
     id: none,
-    run: concat(
-      concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-      concat(
-        ci_documentation_only_gate_skip_prefix(
-          gate_name: "Affected-set selection control",
-          skip_reason: "floor not run; hermetic selection suite requires full floor context"
-        ),
-        "\"$ROOT/target/release/floor_skip_discovery_witness\""
-      )
-    ),
+    run: ci_selection_control_script(),
     shell: none,
     env: none,
     working_directory: none,
