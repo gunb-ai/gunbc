@@ -481,6 +481,144 @@ fn body_lower_arrow_operand_identity(arrow: Node, index: Int) -> Optional<Symbol
   }
 }
 
+fn body_lowering_domain_named_count(arrow: Node) -> Int {
+  if count(arrow.children) >= 1 {
+    match first(arrow.children) {
+      Present { value: e0 } =>
+        fold(e0.target.children, init: 0, f: fn(n, e) {
+          match e.label {
+            Named { name: _ } => n + 1
+            _ => n
+          }
+        })
+      Absent => 0
+    }
+  } else {
+    0
+  }
+}
+
+fn body_lowering_normalized_domain_has_two_params() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          body_lowering_domain_named_count(arrow: arrow) == 2
+      }
+  }
+}
+
+fn body_lowering_normalized_operand2_lexeme_is_y() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          match body_lower_arrow_operand_identity(arrow: arrow, index: 2) {
+            Present { value: id } => symbol_lexeme(sym: id) == "y"
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_normalized_operands_swapped() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
+            Present { value: left } =>
+              match body_lower_arrow_operand_identity(arrow: arrow, index: 2) {
+                Present { value: right } =>
+                  if count(arrow.children) >= 1 {
+                    match first(arrow.children) {
+                      Present { value: e0 } =>
+                        match list_at_optional(xs: e0.target.children, index: 0) {
+                          Present { value: de0 } =>
+                            match list_at_optional(xs: e0.target.children, index: 1) {
+                              Present { value: de1 } =>
+                                match de0.label {
+                                  Named { name: bind0 } =>
+                                    match de1.label {
+                                      Named { name: bind1 } =>
+                                        (left == bind1) && (right == bind0)
+                                      _ => false
+                                    }
+                                  _ => false
+                                }
+                              Absent => false
+                            }
+                          Absent => false
+                        }
+                      Absent => false
+                    }
+                  } else {
+                    false
+                  }
+                Absent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_transform_child_count(arrow: Node) -> Int {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } => count(body.children)
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn body_lowering_normalized_transform_has_three_children() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          body_lowering_transform_child_count(arrow: arrow) == 3
+      }
+  }
+}
+
+fn body_lowering_domain_operand2_match() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          if count(arrow.children) >= 1 {
+            match first(arrow.children) {
+              Present { value: e0 } =>
+                match list_at_optional(xs: e0.target.children, index: 1) {
+                  Present { value: de1 } =>
+                    match de1.label {
+                      Named { name: domain_binding } =>
+                        match body_lower_arrow_operand_identity(arrow: arrow, index: 2) {
+                          Present { value: operand } => domain_binding == operand
+                          Absent => false
+                        }
+                      _ => false
+                    }
+                  Absent => false
+                }
+              Absent => false
+            }
+          } else {
+            false
+          }
+      }
+  }
+}
+
 fn body_lower_arrow_domain_first_binding(arrow: Node) -> Optional<Symbol> {
   if count(arrow.children) >= 1 {
     match first(arrow.children) {
