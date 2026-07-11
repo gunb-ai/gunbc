@@ -328,6 +328,39 @@ fn body_lowering_arrow_direct_well_formed() -> Bool {
   }
 }
 
+fn body_lowering_arrow_domain_named_count(arrow: Node) -> Int {
+  if count(arrow.children) >= 1 {
+    match first(arrow.children) {
+      Present { value: e0 } =>
+        match e0.target.kind {
+          TypeNode { connective: Conj } =>
+            fold(e0.target.children, init: 0, f: fn(n, e) {
+              match e.label {
+                Named { name: _ } => n + 1
+                _ => n
+              }
+            })
+          _ => 0
+        }
+      Absent => 0
+    }
+  } else {
+    0
+  }
+}
+
+fn body_lowering_direct_arrow_domain_param_count() -> Int {
+  match body_lowering_parsed_fn_decl() {
+    Absent => 0
+    Present { value: fn_decl } =>
+      match body_lower_fn_decl_to_arrow(shell: fn_decl) {
+        Accepted { value: arrow, diagnostics: _ } =>
+          body_lowering_arrow_domain_named_count(arrow: arrow)
+        Rejected { diagnostics: _ } => 0
+      }
+  }
+}
+
 fn body_lowering_normalized_resolves() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
