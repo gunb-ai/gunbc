@@ -330,6 +330,27 @@ pub enum Runnable {
     },
 }
 
+pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {
+    match sel.clone() {
+        NodeFrontierSelection::SelectionApplied => true,
+        NodeFrontierSelection::SelectionOff => false,
+        NodeFrontierSelection::SelectionPredictOnly => false,
+    }
+}
+
+pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
+    match (*r.clone()).clone() {
+        Runnable::RunnableDiscoveryBatch {
+            node_frontier_selection: sel,
+            ..
+        } => node_frontier_selection_applied(sel.clone()),
+        Runnable::RunnableSingleClaim { .. } => false,
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => false,
+    }
+}
+
 pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
