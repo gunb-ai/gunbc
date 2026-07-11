@@ -704,15 +704,6 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 
 pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
-        CompilerDiagnostic::UnresolvedType { .. } => true,
-        CompilerDiagnostic::TypeMismatch { .. } => true,
-        CompilerDiagnostic::ArityMismatch { .. } => true,
-        CompilerDiagnostic::VariantNotFound { .. } => true,
-        CompilerDiagnostic::FieldNotFound { .. } => true,
-        CompilerDiagnostic::NonExhaustiveMatch { .. } => true,
-        CompilerDiagnostic::MissingAnnotation { .. } => true,
-        CompilerDiagnostic::VariantCollision { .. } => true,
-        CompilerDiagnostic::SoleConstructorViolation { .. } => true,
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
         _ => false,
     }
