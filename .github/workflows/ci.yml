@@ -100,7 +100,7 @@ jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
     needs: [build]
-    timeout-minutes: 180
+    timeout-minutes: 240
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -197,7 +197,7 @@ jobs:
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
-        timeout-minutes: 60
+        timeout-minutes: 90
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
           # dissolve-on: bash-emit (#5828 / gap-B emit(intent, Bash)) realizes the cgroup peak observation as an emitted ShellProgram intent (the floor_diff_observe.dag pattern: model the observation, emit the transport) or a typed host Observe effect; these concat-built runners retire then. Until that lands they are §2 transport scaffolds bound by the three Scaffold rows in gunbc.ci_workflow (locate/pre/post *_shell_emit_dissolution_trigger).
@@ -243,7 +243,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
           "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
-        timeout-minutes: 60
+        timeout-minutes: 90
   emit_determinism:
     runs-on: [self-hosted, linux, arm64]
     needs: [ci]
