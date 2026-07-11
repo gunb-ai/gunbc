@@ -638,8 +638,8 @@ fn resolve_child_edge(
   }
 }
 
-// Interim-for-FLAG-D: bare sym→sym merge until fn_decl→Arrow lowering dissolves
-// dag_fn_decl_param_binding_atoms; dissolve this hunk when FLAG D lands (eager-ram-612 Track 5).
+data scope_with_fn_decl_params_interim_note: String = "Interim-for-FLAG-D: bare sym→sym merge of dag_fn_decl_param_binding_atoms + add_arrow_domain_named_params until fn_decl→Arrow lowering dissolves the fn_decl reader; dissolve this hunk when FLAG D lands (eager-ram-612 Track 5)."
+
 fn scope_with_fn_decl_params(n: Node, scope: Scope) -> Scope {
   let params = dag_fn_decl_param_binding_atoms(node: n)
   let merged = fold(
