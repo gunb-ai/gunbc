@@ -83,8 +83,8 @@ fn witness_gate_roster_matches_coproduct_arms() -> Bool {
 
 fn witness_roots_fold_into_scheduler() -> Bool {
   let script = scheduler_invoke(spec: gunbc_ci_spec)
-  string_contains(s: script, pattern: " --source-root src/v2") &&
-    string_contains(s: script, pattern: " --source-root dag")
+  string_contains(s: script, pattern: " --source-root \"$ROOT/src/v2\"") &&
+    string_contains(s: script, pattern: " --source-root \"$ROOT/dag\"")
 }
 
 fn witness_layer_authority_drives_source_flags() -> Bool {
@@ -97,7 +97,7 @@ fn witness_layer_authority_drives_source_flags() -> Bool {
 fn witness_scan_subtree_not_in_scheduler_argv() -> Bool {
   let script = scheduler_invoke(spec: gunbc_ci_spec)
   !string_contains(s: script, pattern: " --scan-dir") &&
-    string_contains(s: script, pattern: " --source-root src/v2")
+    string_contains(s: script, pattern: " --source-root \"$ROOT/src/v2\"")
 }
 
 fn witness_diff_policy_drives_fetch() -> Bool {
