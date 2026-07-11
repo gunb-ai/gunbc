@@ -20,12 +20,17 @@ import gunbc.ci_spec {
   ci_documentation_only_floor_shortcut_shell_emit_dissolution_trigger,
 }
 import gunbc.ci_diff_defaults { ci_merge_base_ref }
+import gunbc.ci_materialization {
+  ci_floor_resolve_receipt_gate_script,
+  ci_floor_materialization_receipt_gate_script,
+}
 import gunbc.merge_admission_produce {
   ci_floor_disposition_marker_path,
   merge_admission_floor_disposition_documentation_only_skipped,
   merge_admission_stamp_invoke,
   merge_admission_merge_base_ref,
   ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger,
+  ci_merge_admission_gate_script,
 }
 
 data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\" \"$ROOT/target/release/floor_skip_discovery_witness\" \"$ROOT/target/release/discover_source_root_ingest\" \"$ROOT/target/release/claim_batch\" \"$ROOT/target/release/regen_stage0\" \"$ROOT/target/release/interp_recorded_fixture_witness\" \"$ROOT/target/release/v1_src_dag_parse\" \"$ROOT/target/release/auth_declared_but_unwired_witness\" \"$ROOT/target/release/bootstrap_witness\" \"$ROOT/target/release/dag_collect_fingerprint_witness\" \"$ROOT/target/release/diagnostics_witness\" \"$ROOT/target/release/effects_rest_transport_witness\" \"$ROOT/target/release/infer_semantics_witness\" \"$ROOT/target/release/parse_witness\"\n"

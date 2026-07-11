@@ -173,17 +173,20 @@ fn ci_merge_admission_gate_script() -> String {
 
 fn ci_documentation_only_gate_skip_prefix(gate_name: String, skip_reason: String) -> String {
   concat(
+    concat("# ", concat(ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger, "\n")),
     concat(
-      concat("if test -f ", ci_floor_disposition_marker_path),
-      concat("; then _disp=$(cat ", ci_floor_disposition_marker_path)
-    ),
-    concat(
-      concat(")\nif test \"$_disp\" = \"", merge_admission_floor_disposition_documentation_only_skipped),
       concat(
-        "\"; then echo \"",
+        concat("if test -f ", ci_floor_disposition_marker_path),
+        concat("; then _disp=$(cat ", ci_floor_disposition_marker_path)
+      ),
+      concat(
+        concat(")\nif test \"$_disp\" = \"", merge_admission_floor_disposition_documentation_only_skipped),
         concat(
-          gate_name,
-          concat(": skipped — CI_FLOOR_DISPOSITION=$_disp (", concat(skip_reason, ")\"; exit 0; fi; fi\n"))
+          "\"; then echo \"",
+          concat(
+            gate_name,
+            concat(": skipped — CI_FLOOR_DISPOSITION=$_disp (", concat(skip_reason, ")\"; exit 0; fi; fi\n"))
+          )
         )
       )
     )
