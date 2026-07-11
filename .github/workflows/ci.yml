@@ -173,5 +173,5 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
-          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — non-required"
+          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
         timeout-minutes: 60
