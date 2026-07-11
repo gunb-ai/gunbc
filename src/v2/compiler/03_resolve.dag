@@ -52,6 +52,7 @@ import v2.std.symbol_index {
   symbol_index_lexical_lookup
 }
 import v2.std.node {
+  Ambiguous,
   Arrow,
   Atom,
   Bind,
@@ -59,6 +60,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
+  Found,
   Named,
   Node,
   NodeFold,
@@ -68,6 +70,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  arrow_body_target_lookup,
   fold_node,
   node_with_occurrence_id,
   well_formed
@@ -197,10 +200,14 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
       if count(n.children) >= 1 {
         match first(n.children) {
           Present { value: e0 } =>
-            harvest_direct_atom_binding(
-              root: e0.target,
-              acc: harvest_conj_named_bindings(root: e0.target, acc: acc)
-            )
+            let acc1 = harvest_conj_named_bindings(root: e0.target, acc: acc)
+            let acc2 = harvest_direct_atom_binding(root: e0.target, acc: acc1)
+            match arrow_body_target_lookup(children: n.children) {
+              Found { target: body } =>
+                harvest_direct_atom_binding(root: body, acc: acc2)
+              Ambiguous => acc2
+              _ => acc2
+            }
           Absent => acc
         }
       } else {
