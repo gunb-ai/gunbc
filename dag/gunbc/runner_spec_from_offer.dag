@@ -47,12 +47,6 @@ fn runner_spec_from_offer(offer: ComputeOffer) -> RunnerSpec {
   }
 }
 
-data ubicloud_iteration_routing_note: String = "ITERATION-ONLY (operator call 2026-07-11, this stack): CI routed to the Ubicloud managed runner pool (label ubicloud-standard-16-arm, the shape the workload-class admission model generalizes) because self-hosted slots are saturated and this lane needs CI turnaround; the 64GiB shape also removes the ~15GiB slot memory.high throttle receipted on the timed-out floors. Ubicloud runners register as label-routed runners, so the SelfHosted carrier emits the correct runs-on list; the fleet-offer derivation below is the durable authority. REVERT this override before merge to main (the #6107 trial -> #6111 revert precedent: no standing Ubicloud routing without an operator ruling on the fleet model)."
-
-fn gunbc_ci_runner_spec_fleet_derived() -> RunnerSpec {
-  runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
-}
-
 fn gunbc_ci_runner_spec() -> RunnerSpec {
-  SelfHosted { labels: ["ubicloud-standard-16-arm"] }
+  runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
 }

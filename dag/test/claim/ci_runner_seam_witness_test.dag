@@ -1,19 +1,26 @@
 module test.claim.ci_runner_seam_witness
 
 import gunbc.ci_fleet { gunbc_ci_fleet_offer }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer, gunbc_ci_runner_spec, gunbc_ci_runner_spec_fleet_derived }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer, gunbc_ci_runner_spec }
 import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import extdeps.github.actions { SelfHosted }
 
-data ci_runner_seam_iteration_note: String = "ITERATION-ONLY reconciliation (2026-07-11, reverts together with the ubicloud routing commit in gunbc.runner_spec_from_offer): while gunbc_ci_runner_spec() is the ubicloud override, the fleet-derivation witnesses pin gunbc_ci_runner_spec_fleet_derived() (the derivation authority stays proven and un-drifted) and the live-spec witnesses pin the override label exactly (so any drift of the override itself is caught). The workflow==live-spec seam witness is unchanged - that seam holds under any spec. On revert this file returns to pinning the live spec to the fleet derivation."
-
-fn witness_fleet_derivation_matches_offer() -> Bool {
-  gunbc_ci_runner_spec_fleet_derived() == runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
+fn witness_ci_runner_spec_derives_from_fleet_offer() -> Bool {
+  gunbc_ci_runner_spec() == runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
 }
 
-fn witness_fleet_derivation_is_self_hosted_arm64_linux() -> Bool {
-  match gunbc_ci_runner_spec_fleet_derived() {
+fn witness_ci_workflow_runner_matches_fleet_offer() -> Bool {
+  ci_workflow.jobs.first().runner == gunbc_ci_runner_spec()
+}
+
+fn witness_ci_yaml_runs_on_projects_fleet_labels() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(s: yaml, pattern: "    runs-on: [self-hosted, linux, arm64]")
+}
+
+fn witness_ci_runner_spec_is_self_hosted_arm64_linux() -> Bool {
+  match gunbc_ci_runner_spec() {
     SelfHosted { labels: ls } =>
       ls.length() == 3
         && ls.first() == "self-hosted"
@@ -23,27 +30,9 @@ fn witness_fleet_derivation_is_self_hosted_arm64_linux() -> Bool {
   }
 }
 
-fn witness_ci_workflow_runner_matches_live_spec() -> Bool {
-  ci_workflow.jobs.first().runner == gunbc_ci_runner_spec()
-}
-
-fn witness_ci_yaml_runs_on_projects_live_spec_labels() -> Bool {
-  let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "    runs-on: [ubicloud-standard-16-arm]")
-}
-
-fn witness_live_spec_is_ubicloud_iteration_override() -> Bool {
-  match gunbc_ci_runner_spec() {
-    SelfHosted { labels: ls } =>
-      ls.length() == 1 && ls.first() == "ubicloud-standard-16-arm"
-    _ => false
-  }
-}
-
 test fn ci_runner_seam_holds() -> Bool {
-  witness_fleet_derivation_matches_offer()
-    && witness_fleet_derivation_is_self_hosted_arm64_linux()
-    && witness_ci_workflow_runner_matches_live_spec()
-    && witness_ci_yaml_runs_on_projects_live_spec_labels()
-    && witness_live_spec_is_ubicloud_iteration_override()
+  witness_ci_runner_spec_derives_from_fleet_offer()
+    && witness_ci_workflow_runner_matches_fleet_offer()
+    && witness_ci_yaml_runs_on_projects_fleet_labels()
+    && witness_ci_runner_spec_is_self_hosted_arm64_linux()
 }
