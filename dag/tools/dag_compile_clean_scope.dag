@@ -48,12 +48,13 @@ fn compile_clean_entry_root() -> String {
   compile_clean_partition_boundary().entry_root
 }
 
-fn compile_clean_affected_entry_paths(
+fn compile_clean_affected_entry_paths_from_roster(
   pool_roots: List<String>,
-  touched_paths: List<String>
+  touched_paths: List<String>,
+  roster: List<String>
 ) -> List<String> {
   fold(
-    compile_clean_shard_entry_paths(),
+    roster,
     init: [],
     f: fn(acc, entry_path) {
       if entry_affected_by_dependency_view(
@@ -69,8 +70,20 @@ fn compile_clean_affected_entry_paths(
   )
 }
 
-fn compile_clean_scope_disposition_from_touched(
+fn compile_clean_affected_entry_paths(
+  pool_roots: List<String>,
   touched_paths: List<String>
+) -> List<String> {
+  compile_clean_affected_entry_paths_from_roster(
+    pool_roots: pool_roots,
+    touched_paths: touched_paths,
+    roster: compile_clean_shard_entry_paths()
+  )
+}
+
+fn compile_clean_scope_disposition_from_touched_with_roster(
+  touched_paths: List<String>,
+  roster: List<String>
 ) -> CompileCleanScopeDisposition {
   if compile_clean_touches_allow_skip(touched_paths: touched_paths) {
     if list_length(items: touched_paths) == 0 {
@@ -88,9 +101,10 @@ fn compile_clean_scope_disposition_from_touched(
     }
   } else {
     let pool_roots = compile_clean_pool_roots()
-    let affected = compile_clean_affected_entry_paths(
+    let affected = compile_clean_affected_entry_paths_from_roster(
       pool_roots: pool_roots,
-      touched_paths: touched_paths
+      touched_paths: touched_paths,
+      roster: roster
     )
     if list_length(items: affected) > 0 {
       ScopedRun { entry_paths: affected }
@@ -100,6 +114,15 @@ fn compile_clean_scope_disposition_from_touched(
       }
     }
   }
+}
+
+fn compile_clean_scope_disposition_from_touched(
+  touched_paths: List<String>
+) -> CompileCleanScopeDisposition {
+  compile_clean_scope_disposition_from_touched_with_roster(
+    touched_paths: touched_paths,
+    roster: compile_clean_shard_entry_paths()
+  )
 }
 
 fn witness_pool_roots_match_witness_layer_roots() -> Bool {
@@ -141,8 +164,14 @@ data scope_disposition_rows: List<ScopeDispositionRow> = [
   ScopeDispositionRow { touched: "src/v2/std/logic.dag", expect: ExpectScopedContaining { required_entry: "dag/test/claim/parse_test.dag" } }
 ]
 
-fn touched_path_disposition_matches(row: ScopeDispositionRow) -> Bool {
-  match compile_clean_scope_disposition_from_touched(touched_paths: [row.touched]) {
+fn touched_path_disposition_matches_with_roster(
+  row: ScopeDispositionRow,
+  roster: List<String>
+) -> Bool {
+  match compile_clean_scope_disposition_from_touched_with_roster(
+    touched_paths: [row.touched],
+    roster: roster
+  ) {
     SkipNoAffectedEntries { reason: _ } =>
       match row.expect {
         ExpectSkip => true
@@ -166,9 +195,17 @@ fn touched_path_disposition_matches(row: ScopeDispositionRow) -> Bool {
   }
 }
 
+fn touched_path_disposition_matches(row: ScopeDispositionRow) -> Bool {
+  touched_path_disposition_matches_with_roster(
+    row: row,
+    roster: compile_clean_shard_entry_paths()
+  )
+}
+
 fn witness_touched_path_dispositions_hold() -> Bool {
+  let roster = compile_clean_shard_entry_paths()
   fold(scope_disposition_rows, init: true, f: fn(acc, row) {
-    acc && touched_path_disposition_matches(row: row)
+    acc && touched_path_disposition_matches_with_roster(row: row, roster: roster)
   })
 }
 

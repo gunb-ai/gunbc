@@ -72,8 +72,55 @@ fn interpreted_parse_bisect_parse_terminates() {
     assert_witness_terminates("bisect_parse_terminates", Duration::from_secs(60));
 }
 
+fn run_bisect_witness_bool(function: &str) -> v1_interpreter::InterpResult<Value> {
+    let resolved = compile_to_resolved(Rc::new(bisect_sources().into()));
+    assert_resolved_ok(&resolved);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    v1_interpreter::run_in_context(&ctx, function, false)
+}
+
 #[test]
 fn interpreted_parse_bisect_add_correctness_holds() {
+    assert!(
+        matches!(
+            run_bisect_witness_bool("bisect_parse_module_add_parse_accepts"),
+            Ok(Value::Bool(true))
+        ),
+        "parse should accept add module"
+    );
+    assert!(
+        matches!(
+            run_bisect_witness_bool("bisect_parse_module_add_normalize_accepts"),
+            Ok(Value::Bool(true))
+        ),
+        "normalize should accept add module"
+    );
+    assert!(
+        matches!(
+            run_bisect_witness_bool("bisect_parse_module_add_well_formed_after_normalize"),
+            Ok(Value::Bool(true))
+        ),
+        "normalized add module should be well_formed"
+    );
+    assert!(
+        matches!(
+            run_bisect_witness_bool("bisect_parse_module_add_resolve_accepts"),
+            Ok(Value::Bool(true))
+        ),
+        "resolve should accept add module"
+    );
+    assert!(
+        matches!(
+            run_bisect_witness_bool("bisect_parse_module_truncated_rejects"),
+            Ok(Value::Bool(true))
+        ),
+        "truncated add module should reject parse"
+    );
     assert_witness_terminates(
         "witness_bisect_parse_module_add_correctness_holds",
         Duration::from_secs(90),
