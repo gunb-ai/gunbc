@@ -1671,22 +1671,12 @@ fn workspace_relative_repo_path(path: &str) -> String {
 /// Normalize `source_roots` to the workspace-relative form `import_resolution_facts` /
 /// `module_declaration_facts` expect when invoked from `.dag` (`witness_layer_roots` style).
 fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
-    let ws = process_workspace_root();
     source_roots
         .iter()
         .map(|r| {
             let p = Path::new(r);
             if p.is_absolute() {
-                p.strip_prefix(&ws)
-                    .map(|rp| rp.to_string_lossy().replace('\\', "/"))
-                    .unwrap_or_else(|_| {
-                        panic!(
-                            "pool_roots_for_module_graph_closure: source root {} is not under \
-                             process workspace root {}",
-                            r,
-                            ws.display()
-                        )
-                    })
+                repo_relative_path_normalized(p)
             } else {
                 r.replace('\\', "/")
             }
