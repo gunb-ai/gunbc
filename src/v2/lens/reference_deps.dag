@@ -20,9 +20,12 @@ import v2.lens.module_graph {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.source_authority {
+  normalize_dag_source_ast,
+  parse_dag_source_ast_with_model
+}
+import extdeps.communication.fidelity_carriers { Lossless }
+import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.dag {
   dag_language_model,
   parse_production_captured_child_optional,
@@ -166,18 +169,19 @@ fn reference_deps_ingest_source_text(
   source_text: String,
   file: Symbol
 ) -> Outcome<Node> {
+  let source = Medium { carried: source_text, fidelity: Lossless }
   let lm = dag_language_model()
-  match tokenize(text: source_text, file: file, rules: lm.lex) {
+  match parse_dag_source_ast_with_model(
+    source: source,
+    compilation_unit: file,
+    lm: lm
+  ) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
+    Accepted { value: ast, diagnostics: _ } =>
+      match normalize_dag_source_ast(ast: ast) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: d } => Rejected { diagnostics: d }
-            Accepted { value: module_root, diagnostics: _ } =>
-              outcome_accepted(value: module_root)
-          }
+        Accepted { value: normalized, diagnostics: _ } =>
+          outcome_accepted(value: normalized.tree)
       }
   }
 }
