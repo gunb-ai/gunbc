@@ -36,11 +36,7 @@ fn transitive_type_structure_reaches_dependent_through_direct_import_signature()
     let entry = "module fixture.a\n\
         import fixture.b { make_payload }\n\
         fn read_amount() -> Int { make_payload().amount }\n";
-    let result = compile_multi(&[
-        ("c.dag", LIB_C),
-        ("b.dag", LIB_B),
-        ("a.dag", entry),
-    ]);
+    let result = compile_multi(&[("c.dag", LIB_C), ("b.dag", LIB_B), ("a.dag", entry)]);
     let errors = error_messages(&result);
     assert!(
         errors.is_empty(),
@@ -61,11 +57,7 @@ fn bogus_field_on_transitive_record_is_a_typed_error() {
     let entry = "module fixture.a\n\
         import fixture.b { make_payload }\n\
         fn read_bogus() -> Int { make_payload().no_such_field }\n";
-    let result = compile_multi(&[
-        ("c.dag", LIB_C),
-        ("b.dag", LIB_B),
-        ("a.dag", entry),
-    ]);
+    let result = compile_multi(&[("c.dag", LIB_C), ("b.dag", LIB_B), ("a.dag", entry)]);
     let errors = error_messages(&result);
     assert!(
         !errors.is_empty(),

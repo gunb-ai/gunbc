@@ -12077,6 +12077,33 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
     }
 }
 
+pub fn interface_env_for_import_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Interface-grain scope parent (S2a move 2 increment B, resolver-graph-major-design.md 7): a dependent's typecheck may read exactly its direct import's exported surface - str_bindings, the flattened ancestry maps, the MERGED inductive_fields/recursive sets (each inductively carries the parent's own ancestry, so one level suffices) - and never the parent's parent-chain env OBJECTS. parents: [] cuts the whole-ancestry retention (the measured ~16.3MiB/module residency class) while every chain consumer stays satisfied: phantom-variant and paramless-generic retries read direct parents' str_bindings (carried), inductive_fields_for reads the merged fields (carried), and the kernel stays the dependent's own last scope parent. Discriminating receipt: transitive_interface_binding_test (green arm = a C-declared record projected through B's exported signature still typechecks in A; red control = a bogus field on the same transitive record still errors).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<TypeEnv> {
+    {
+        let filtered = type_env_for_import(module_path.clone(), parent_env.clone());
+        Rc::new(TypeEnv {
+            bindings: filtered.bindings.clone(),
+            str_bindings: filtered.str_bindings.clone(),
+            ancestry_str_bindings: filtered.ancestry_str_bindings.clone(),
+            parents: Rc::new(vec![]),
+            recursive_types: filtered.recursive_types.clone(),
+            recursive_type_set: filtered.recursive_type_set.clone(),
+            inductive_fields: filtered.inductive_fields.clone(),
+            source_indices: filtered.source_indices.clone(),
+            intern_table: filtered.intern_table.clone(),
+            source_visible_names: filtered.source_visible_names.clone(),
+        })
+    }
+}
+
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -12335,7 +12362,7 @@ pub fn build_type_env(
             for imp in module.resolved_imports.clone().iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                        Some(typed_parent) => Rc::new(vec![type_env_for_import(
+                        Some(typed_parent) => Rc::new(vec![interface_env_for_import(
                             imp.module_path.clone(),
                             typed_parent.type_env.clone(),
                         )]),
@@ -12984,7 +13011,7 @@ pub fn build_type_env_unresolved(
             for imp in module.resolved_imports.clone().iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                        Some(typed_parent) => Rc::new(vec![type_env_for_import(
+                        Some(typed_parent) => Rc::new(vec![interface_env_for_import(
                             imp.module_path.clone(),
                             typed_parent.type_env.clone(),
                         )]),
@@ -15445,7 +15472,7 @@ pub fn rewire_type_env_parent_links(
                                     let path =
                                         import_module_path_at(imp.clone(), source_indices.clone());
                                     match v1_rt::map_get(&index, path.clone()) {
-                                        Some(parent) => Rc::new(vec![type_env_for_import(
+                                        Some(parent) => Rc::new(vec![interface_env_for_import(
                                             path.clone(),
                                             parent.type_env.clone(),
                                         )]),

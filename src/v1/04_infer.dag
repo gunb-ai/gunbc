@@ -5593,6 +5593,24 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
   } else { parent_env }
 }
 
+data interface_env_for_import_note: String = "Interface-grain scope parent (S2a move 2 increment B, resolver-graph-major-design.md 7): a dependent's typecheck may read exactly its direct import's exported surface - str_bindings, the flattened ancestry maps, the MERGED inductive_fields/recursive sets (each inductively carries the parent's own ancestry, so one level suffices) - and never the parent's parent-chain env OBJECTS. parents: [] cuts the whole-ancestry retention (the measured ~16.3MiB/module residency class) while every chain consumer stays satisfied: phantom-variant and paramless-generic retries read direct parents' str_bindings (carried), inductive_fields_for reads the merged fields (carried), and the kernel stays the dependent's own last scope parent. Discriminating receipt: transitive_interface_binding_test (green arm = a C-declared record projected through B's exported signature still typechecks in A; red control = a bogus field on the same transitive record still errors)."
+
+fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
+  let filtered = type_env_for_import(module_path: module_path, parent_env: parent_env)
+  TypeEnv {
+    bindings: filtered.bindings,
+    str_bindings: filtered.str_bindings,
+    ancestry_str_bindings: filtered.ancestry_str_bindings,
+    parents: [],
+    recursive_types: filtered.recursive_types,
+    recursive_type_set: filtered.recursive_type_set,
+    inductive_fields: filtered.inductive_fields,
+    source_indices: filtered.source_indices,
+    intern_table: filtered.intern_table,
+    source_visible_names: filtered.source_visible_names
+  }
+}
+
 
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
@@ -5631,7 +5649,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } => [type_env_for_import(module_path: imp.module_path, parent_env: typed_parent.type_env)]
+      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.type_env)]
       Absent => []
     }
   )
@@ -5797,7 +5815,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } => [type_env_for_import(module_path: imp.module_path, parent_env: typed_parent.type_env)]
+      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.type_env)]
       Absent => []
     }
   )
@@ -6823,7 +6841,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     let import_parents = flat_map(module_imports(n: m.module), imp =>
       let path = import_module_path_at(imp: imp, source_indices: source_indices)
       match map_get(index, path) {
-        Present { value: parent } => [type_env_for_import(module_path: path, parent_env: parent.type_env)]
+        Present { value: parent } => [interface_env_for_import(module_path: path, parent_env: parent.type_env)]
         Absent => []
       }
     )
