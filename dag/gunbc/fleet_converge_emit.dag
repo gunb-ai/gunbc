@@ -461,19 +461,19 @@ data fleet_converge_steady_state_doc_projection_dissolution_trigger: Disposition
 
 data fleet_converge_fresh_standup_bootstrap_emit_frontier: List<ConstructNotYetEmittableRow> = [
   ConstructNotYetEmittableRow {
-    construct: ^orch_emit_construct_procedure,
+    construct: ^orch_construct_procedure,
     site: "converge_gunbc_pinned_tree fresh_standup: decide_verdict/converge_read_gunbc_host_pin shell function calls"
   },
   ConstructNotYetEmittableRow {
-    construct: ^orch_emit_construct_cmdsubst_assign,
+    construct: ^orch_construct_cmdsubst_assign,
     site: "converge_gunbc_pinned_tree fresh_standup: dag_pin=$(converge_read_gunbc_host_pin ...) cmdsubst assignment"
   },
   ConstructNotYetEmittableRow {
-    construct: ^orch_emit_construct_let_assign,
+    construct: ^orch_construct_let_assign,
     site: "converge_gunbc_pinned_tree fresh_standup: verdict=/effective=/export shell assignments"
   }
 ]
 
 fn fleet_converge_fresh_standup_bootstrap_emit_frontier_count() -> Int {
-  length(xs: fleet_converge_fresh_standup_bootstrap_emit_frontier)
+  list_length(items: fleet_converge_fresh_standup_bootstrap_emit_frontier)
 }
