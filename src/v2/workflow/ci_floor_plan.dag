@@ -64,16 +64,10 @@ import std.realization_schedule {
   runnable_forbids_corpus_co_residence,
   cost_account_predicted_zero,
   schedule_lens_verdict_for_ci_floor,
-  schedule_eq,
   runnable_selection_applied
 }
 import v2.workflow.executor {
-  ExecutorBatch,
-  ExecutorJob,
-  ExecutorRunBlocked,
-  ExecutorRunComplete,
-  ExecutorRunRunnable,
-  parallel_executor_plan_from_dependencies
+  ExecutorBatch
 }
 import v2.workflow.realization_runner {
   RunnerScheduleBlocked,
@@ -505,21 +499,6 @@ fn runnables_for_executor_batches(batches: List<ExecutorBatch>, spec: CiSpec) ->
   })
 }
 
-data floor_schedule_direct_for_dissolve_on_note: String = "Parallel representation (§2/§3): floor_schedule_direct_for is the legacy scheduler-only projection retained for the move-1 byte-identical receipt (witness_floor_runner_schedule_byte_identical{,_for}). Production scheduling flows through floor_schedule_via_runner_for. Dissolve-on: S2a move 2 lands (compile_to_resolved / module resolution on the runner store) and the receipt witness is deleted — floor_schedule_direct_for goes with it."
-
-fn floor_schedule_direct_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
-  match parallel_executor_plan_from_dependencies(
-    nodes: floor_nodes(spec: spec),
-    dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy),
-    scheduled: []
-  ) {
-    ExecutorRunComplete { batches: batches, scheduled: _ } =>
-      runnables_for_executor_batches(batches: batches, spec: spec)
-    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
-    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
-  }
-}
-
 fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
   match runner_schedule_plan_from_dependencies(
     nodes: floor_nodes(spec: spec),
@@ -538,18 +517,6 @@ fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool) -> List<Li
 
 fn floor_schedule_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
   floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
-}
-
-fn witness_floor_runner_schedule_byte_identical_for(spec: CiSpec, serialize_heavy: Bool) -> Bool {
-  schedule_eq(
-    left: floor_schedule_direct_for(spec: spec, serialize_heavy: serialize_heavy),
-    right: floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
-  )
-}
-
-fn witness_floor_runner_schedule_byte_identical() -> Bool {
-  witness_floor_runner_schedule_byte_identical_for(spec: gunbc_ci_spec, serialize_heavy: true)
-    && witness_floor_runner_schedule_byte_identical_for(spec: gunbc_ci_spec, serialize_heavy: false)
 }
 
 fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
