@@ -818,23 +818,6 @@ fn import_edge_to_reference_fact(edge: ImportResolutionFact) -> ReferenceResolut
   }
 }
 
-fn reference_resolution_facts_from_import_resolution(
-  pool_roots: List<String>,
-  exclude_substrings: List<String>
-) -> List<ReferenceResolutionFact> {
-  fold_list(
-    xs: import_resolution_facts_live(
-      pool_roots: pool_roots,
-      importer_roots: pool_roots,
-      exclude_substrings: exclude_substrings
-    ),
-    empty: empty_reference_facts,
-    cons: fn(acc, edge) {
-      reference_snoc_fact_unique(acc: acc, fact: import_edge_to_reference_fact(edge: edge))
-    }
-  )
-}
-
 fn reference_import_facts_at_path(
   rel_path: String,
   import_edges: List<ImportResolutionFact>,
