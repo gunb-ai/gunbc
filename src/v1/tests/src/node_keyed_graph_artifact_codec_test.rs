@@ -4,6 +4,12 @@
 //! decode rebuilds structural sharing (Rc pointer-equal at both parents, with
 //! a deliberately unshared tree-decode as the RED control), and reencode is
 //! byte-identical. Plus the interning, refusal, and row-facts/size receipts.
+//!
+//! SEED-RETAINED with its kernel (DESIGN §7): counted by the disposition row
+//! `node_keyed_graph_codec_seed_disposition` in `v2.workflow.realization_runner`.
+//! These witnesses observe Rc pointer identity — a host-realization fact — so
+//! they live in the seed test surface; they migrate with the kernel when its
+//! dissolve-on (binary-medium emission rows) fires.
 
 use std::rc::Rc;
 

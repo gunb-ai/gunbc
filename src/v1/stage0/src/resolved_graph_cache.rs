@@ -552,6 +552,15 @@ pub fn validate_fixture_intern_table_for_test(cached: &CachedResolvedGraph) -> R
 
 /// NodeKeyedGraphArtifact codec kernel — the interned content-keyed node table.
 ///
+/// SEED-RETAINED (DESIGN §7): declared by the disposition row
+/// `node_keyed_graph_codec_seed_disposition` + `node_keyed_graph_codec_seed_note`
+/// in `v2.workflow.realization_runner` — hand-Rust because byte-level IO and Rc
+/// pointer identity are realization facts the substrate cannot express today.
+/// dissolve-on: §4 one-grammar-both-directions emission rows extended to a
+/// binary medium (bytes carrier + row table for this format) — the kernel then
+/// becomes row-derived emission dispatched from the modeled schema and retires
+/// with the seed.
+///
 /// Modeled authority: `NodeKeyedGraphRow` / `NodeKeyedGraphArtifact` beside
 /// `NodeKeyedStore` in `v2.workflow.realization_runner` (the S2b store form).
 /// Codec ruling (settled 2026-07-10): a tree codec over the Rc-shared graph
