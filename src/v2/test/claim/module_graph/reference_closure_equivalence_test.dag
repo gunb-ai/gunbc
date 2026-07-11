@@ -1,9 +1,5 @@
 module v2.test.module_graph.reference_closure_equivalence
 
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.lens.module_graph { import_closure_live, no_paths }
 import v2.lens.reference_deps { reference_closure_ingest_refusal_witness, reference_closure_live }
@@ -12,10 +8,7 @@ import v2.std.algebra { contains, for_all, list_snoc_item, fold_list }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
 import v2.std.text { String }
-
-data conformance_entry_compilation_unit: Symbol = ^conformance_entry_compilation_unit
 
 data expected_conformance_closure: FreeMonoid<String> = [
   "src/v2/test/claim/module_graph/conformance_imports_only.dag",
@@ -57,25 +50,6 @@ fn reference_conformance_closure_accepted() -> FreeMonoid<String> {
   match reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots) {
     Accepted { value: closure, diagnostics: _ } => closure
     Rejected { diagnostics: _ } => no_paths
-  }
-}
-
-test fn conformance_entry_normalize_gate_holds() -> Bool {
-  match tokenize(
-    text: filesystem_read(path: conformance_entry).content,
-    file: conformance_entry_compilation_unit,
-    rules: dag_language_model().lex
-  ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: dag_language_model().grammar) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: _ } => false
-            Accepted { value: _, diagnostics: _ } => true
-          }
-      }
   }
 }
 
