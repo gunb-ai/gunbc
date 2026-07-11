@@ -1,0 +1,6 @@
+=== build ===
+ctrl-build: dispatching remote build via BuildBuddy
+ctrl-build: remote image: docker://ghcr.io/gunb-ai/ctrl-session:latest
+ctrl-build: command: cargo build --release --bin regen_stage0
+
+Waiting for available remote runner...
