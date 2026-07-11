@@ -35,6 +35,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_floor_width_usable_fraction_den,
   gunbc_ci_runner_cgroup_memory_cap,
   gunbc_ci_runner_slot_memory_max_live,
+  gunbc_ci_runner_slot_ram_speed_ceiling,
   gunbc_ci_execution_corpus_available_width,
   gunbc_ci_floor_execution_corpus_per_witness_rss,
   gunbc_ci_floor_executor_base_overhead_bytes,
@@ -582,7 +583,7 @@ fn gunbc_falsifier_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareTh
 }
 
 fn gunbc_falsifier_spawn_width_from_live_cap() -> HardwareThreadCount {
-  gunbc_falsifier_spawn_width_for_budget(memory_budget: gunbc_ci_runner_slot_memory_max_live)
+  gunbc_falsifier_spawn_width_for_budget(memory_budget: gunbc_ci_runner_slot_ram_speed_ceiling())
 }
 
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
@@ -718,11 +719,15 @@ fn gunbc_falsifier_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadC
 }
 
 fn witness_falsifier_plan_spawn_width_backs_off_at_live_cap() -> Bool {
-  let live = byte_size_count(b: gunbc_ci_runner_slot_memory_max_live)
-  let falsifier_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: live))
-  let ci_width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: live))
+  let ceiling = byte_size_count(b: gunbc_ci_runner_slot_ram_speed_ceiling())
+  let falsifier_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: ceiling))
+  let ci_width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: ceiling))
   let fallback_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: 0))
-  falsifier_width < ci_width && falsifier_width > 0 && fallback_width == 1
+  let reference = 25769803776
+  let falsifier_ref = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: reference))
+  let ci_ref = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: reference))
+  falsifier_width <= ci_width && falsifier_width > 0 && fallback_width == 1
+    && falsifier_ref < ci_ref
 }
 
 fn witness_falsifier_envelope_fits_live_cap() -> Bool {
