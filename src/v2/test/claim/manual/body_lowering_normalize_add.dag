@@ -9,6 +9,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_unwrap_captured
 }
 import v2.compiler.normalize { normalize }
+import v2.compiler.resolve { resolve }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
@@ -327,6 +328,17 @@ fn body_lowering_arrow_direct_well_formed() -> Bool {
   }
 }
 
+fn body_lowering_normalized_resolves() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match resolve(tree: tree, lm: dag_language_model()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
 fn body_lowering_normalize_accepts() -> Bool {
   match body_lowering_normalized_module() {
     Present { value: _ } => true
@@ -352,6 +364,14 @@ fn body_lowering_normalize_yields_arrow() -> Bool {
             }
       }
   }
+}
+
+data claim_body_lowering_normalize_add_resolves: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-normalize: census add module normalizes then resolves",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_bool_node(pass: body_lowering_normalized_resolves()),
+  rhs: body_lowering_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 data claim_body_lowering_normalize_add_yields_arrow: TestClaim = EqualsClaim {

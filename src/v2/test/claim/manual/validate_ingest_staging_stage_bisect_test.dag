@@ -23,7 +23,7 @@ import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize, TokenStream }
 import v2.std.compilers.lexing { token_stream_all, token_stream_remaining }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,
@@ -35,7 +35,7 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Conj, Named, Node, Positional, TypeNode, well_formed }
+import v2.std.node { Node, well_formed }
 
 data bisect_empty_source: Medium<String> = Medium { carried: "module stage0.bisect.empty\n", fidelity: Lossless }
 data bisect_add_module_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
@@ -198,108 +198,6 @@ fn bisect_normalize_terminates() -> Bool {
   }
 }
 
-fn bisect_parse_module_add_arrow_domain_has_two_params() -> Bool {
-  bisect_parse_module_add_arrow_domain_named_edge_count() == 2
-}
-
-fn bisect_parse_module_add_arrow_domain_named_edge_count() -> Int {
-  let lm = dag_language_model()
-  match tokenize(
-    text: bisect_add_module_source.carried,
-    file: ^compile_ingest_staging_source_file,
-    rules: lm.lex
-  ) {
-    Accepted { value: token_stream, diagnostics: _ } =>
-      match parse(tokens: token_stream, grammar: lm.grammar) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: normalized, diagnostics: _ } =>
-              bisect_count_arrow_domain_named_edges(root: normalized)
-            Rejected { diagnostics: _ } => 0
-          }
-        Rejected { diagnostics: _ } => 0
-      }
-    Rejected { diagnostics: _ } => 0
-  }
-}
-
-fn bisect_count_arrow_domain_named_edges(root: Node) -> Int {
-  match root.kind {
-    TypeNode { connective: Arrow } =>
-      match list_at_optional(xs: root.children, index: 0) {
-        Present { value: domain_edge } =>
-          match domain_edge.target.kind {
-            TypeNode { connective: Conj } =>
-              fold(domain_edge.target.children, init: 0, f: fn(n, e) {
-                match e.label {
-                  Named { name: _ } => n + 1
-                  Positional => n
-                }
-              })
-            _ => 0
-          }
-        Absent => 0
-      }
-    _ =>
-      fold(root.children, init: 0, f: fn(acc, e) {
-        let here = bisect_count_arrow_domain_named_edges(root: e.target)
-        if here > 0 {
-          here
-        } else {
-          acc
-        }
-      })
-  }
-}
-
-fn bisect_parse_module_add_resolve_reject_is_unbound() -> Bool {
-  let lm = dag_language_model()
-  match tokenize(
-    text: bisect_add_module_source.carried,
-    file: ^compile_ingest_staging_source_file,
-    rules: lm.lex
-  ) {
-    Accepted { value: token_stream, diagnostics: _ } =>
-      match parse(tokens: token_stream, grammar: lm.grammar) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
-                Rejected { diagnostics: d } => d.head.reason == ^resolve_reason_unbound_symbol
-                Accepted { value: _, diagnostics: _ } => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn bisect_parse_module_add_resolve_reject_is_malformed() -> Bool {
-  let lm = dag_language_model()
-  match tokenize(
-    text: bisect_add_module_source.carried,
-    file: ^compile_ingest_staging_source_file,
-    rules: lm.lex
-  ) {
-    Accepted { value: token_stream, diagnostics: _ } =>
-      match parse(tokens: token_stream, grammar: lm.grammar) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
-                Rejected { diagnostics: d } => d.head.reason == ^resolve_reason_malformed_tree
-                Accepted { value: _, diagnostics: _ } => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn bisect_parse_module_add_parse_accepts() -> Bool {
   let lm = dag_language_model()
   match tokenize(
@@ -398,6 +296,8 @@ fn bisect_parse_module_add_normalize_accepts() -> Bool {
 
 test fn witness_bisect_parse_module_add_correctness_holds() -> Bool {
   bisect_parse_module_add_parse_accepts()
+    && bisect_parse_module_add_normalize_accepts()
+    && bisect_parse_module_add_well_formed_after_normalize()
     && bisect_parse_module_add_resolve_accepts()
     && bisect_parse_module_truncated_rejects()
     && ((bisect_parse_module_add_parse_accepts() == false) == false)

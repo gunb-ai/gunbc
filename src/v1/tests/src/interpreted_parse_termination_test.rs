@@ -85,17 +85,6 @@ fn run_bisect_witness_bool(function: &str) -> v1_interpreter::InterpResult<Value
 }
 
 #[test]
-fn debug_bisect_arrow_domain_named_count() {
-    assert!(
-        matches!(
-            run_bisect_witness_bool("bisect_parse_module_add_arrow_domain_has_two_params"),
-            Ok(Value::Bool(true))
-        ),
-        "expected arrow domain to carry two named param bindings"
-    );
-}
-
-#[test]
 fn interpreted_parse_bisect_add_correctness_holds() {
     assert!(
         matches!(

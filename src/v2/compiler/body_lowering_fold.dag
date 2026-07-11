@@ -465,16 +465,16 @@ fn body_lower_comma_list_suffix(param_capture: Node) -> Optional<Node> {
 }
 
 fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
-  match node_atom_identity_optional(node: node) {
-    Present { value: sym } =>
-      if dag_lex_token_symbol(sym: sym) {
-        optional_absent()
-      } else {
-        optional_present(value: sym)
-      }
+  match dag_binding_branded_atom_identity(node: node) {
+    Present { value: binding } => Present { value: binding }
     Absent =>
-      match dag_binding_branded_atom_identity(node: node) {
-        Present { value: binding } => Present { value: binding }
+      match node_atom_identity_optional(node: node) {
+        Present { value: sym } =>
+          if dag_lex_token_symbol(sym: sym) {
+            optional_absent()
+          } else {
+            optional_present(value: sym)
+          }
         Absent =>
           match body_lower_operand_ref_optional(node: node) {
             Present { value: ref_node } =>
