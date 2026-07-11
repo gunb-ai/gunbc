@@ -801,6 +801,82 @@ fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
   }
 }
 
+fn body_lower_reify_operand_node(node: Node) -> Optional<Node> {
+  match body_lower_operand_ref_optional(node: node) {
+    Present { value: ref_node } => Present { value: ref_node }
+    Absent =>
+      match node.kind {
+        TypeNode { connective: Atom { identity: _ } } => Present { value: node }
+        _ => Absent
+      }
+  }
+}
+
+fn body_lower_reify_transform_edge(
+  done: List<Edge>,
+  e: Edge
+) -> Outcome<List<Edge>> {
+  if length(xs: done) == 0 {
+    outcome_accepted(
+      value: list_snoc_item(
+        xs: done,
+        item: Edge { label: e.label, target: e.target }
+      )
+    )
+  } else {
+    match body_lower_reify_operand_node(node: e.target) {
+      Present { value: reified } =>
+        outcome_accepted(
+          value: list_snoc_item(
+            xs: done,
+            item: Edge { label: e.label, target: reified }
+          )
+        )
+      Absent =>
+        outcome_rejected(
+          d: body_lower_diagnostic(
+            reason: ^body_lowering_reason_unsupported_form,
+            n: e.target
+          )
+        )
+    }
+  }
+}
+
+fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      match fold(body.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: done, diagnostics: d } =>
+            match body_lower_reify_transform_edge(done: done, e: e) {
+              Rejected { diagnostics: r } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: d, rejected: r)
+                }
+              Accepted { value: next, diagnostics: ed } =>
+                Accepted {
+                  value: next,
+                  diagnostics: diagnostics_merge(outer: d, inner: ed)
+                }
+            }
+        }
+      }) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: children, diagnostics: d } =>
+          outcome_accepted(
+            value: node_synthetic(
+              kind: ComputationNode { behavior: Transform },
+              children: children
+            ),
+            diagnostics: d
+          )
+      }
+    _ => outcome_accepted(value: body)
+  }
+}
+
 fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
@@ -829,23 +905,28 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
                         d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
                       )
                     Present { value: body } =>
-                      match body_lower_return_type_from_fn_captured(captured: captured) {
-                        Absent =>
-                          outcome_rejected(
-                            d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-                          )
-                        Present { value: return_type } =>
-                          outcome_accepted(
-                            value: node_synthetic(
-                              kind: TypeNode { connective: Arrow },
-                              children: [
-                                Edge { label: Positional, target: domain },
-                                Edge { label: Positional, target: return_type },
-                                Edge { label: Positional, target: return_type },
-                                Edge { label: Named { name: ^arrow_body_edge }, target: body }
-                              ]
-                            )
-                          )
+                      match body_lower_reify_transform_body(body: body) {
+                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                        Accepted { value: reified_body, diagnostics: bd } =>
+                          match body_lower_return_type_from_fn_captured(captured: captured) {
+                            Absent =>
+                              outcome_rejected(
+                                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+                              )
+                            Present { value: return_type } =>
+                              outcome_accepted(
+                                value: node_synthetic(
+                                  kind: TypeNode { connective: Arrow },
+                                  children: [
+                                    Edge { label: Positional, target: domain },
+                                    Edge { label: Positional, target: return_type },
+                                    Edge { label: Positional, target: return_type },
+                                    Edge { label: Named { name: ^arrow_body_edge }, target: reified_body }
+                                  ]
+                                ),
+                                diagnostics: bd
+                              )
+                          }
                       }
                   }
               }

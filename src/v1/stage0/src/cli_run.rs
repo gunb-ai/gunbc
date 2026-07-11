@@ -402,17 +402,14 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                 panic!("build_module_path_index: failed to read {:?}: {}", path, e)
             });
             if let Some(module_path) = extract_module_path(&content) {
-                let rel = path
-                    .strip_prefix(&ws)
-                    .unwrap_or_else(|_| {
-                        panic!(
-                            "build_module_path_index: path {} is not under workspace {}",
-                            path.display(),
-                            ws.display()
-                        )
-                    })
-                    .to_string_lossy()
-                    .replace('\\', "/");
+                let rel = match path.strip_prefix(&ws) {
+                    Ok(p) => p.to_string_lossy().replace('\\', "/"),
+                    Err(_) => std::env::current_dir()
+                        .ok()
+                        .and_then(|cwd| path.strip_prefix(&cwd).ok())
+                        .map(|p| p.to_string_lossy().replace('\\', "/"))
+                        .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/")),
+                };
                 if is_source_root_ingest_manifest_stub_rel(&rel)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
                 {

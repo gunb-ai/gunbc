@@ -16,14 +16,12 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
   dag_add_arrow_with_body_fixture,
-  dag_binding_param_x,
-  dag_binding_param_y,
   dag_language_model,
   parse_production_emitted_identity_optional,
   parse_subtree_find_production_captured
 }
 import std.algebra { Cons, Empty }
-import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.grammar { node_atom_identity_optional }
@@ -386,6 +384,145 @@ fn body_lowering_normalize_accepts() -> Bool {
   match body_lowering_normalized_module() {
     Present { value: _ } => true
     Absent => false
+  }
+}
+
+fn body_lowering_tree_contains_atom(root: Node, wanted: Symbol) -> Bool {
+  match node_atom_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == wanted {
+        true
+      } else {
+        false
+      }
+    Absent =>
+      fold(root.children, init: false, f: fn(found, e) {
+        if found {
+          true
+        } else {
+          body_lowering_tree_contains_atom(root: e.target, wanted: wanted)
+        }
+      })
+  }
+}
+
+fn body_lowering_fixture_resolves() -> Bool {
+  let lm = dag_language_model()
+  match resolve(tree: dag_add_arrow_with_body_fixture, lm: lm) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn body_lowering_transform_operand_identities(arrow: Node) -> List<Symbol> {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match body.kind {
+        ComputationNode { behavior: Transform } =>
+          fold(body.children, init: Empty, f: fn(acc, e) {
+            match e.label {
+              Positional =>
+                match list_at_optional(xs: acc, index: 0) {
+                  Present { value: _ } => acc
+                  Absent =>
+                    match node_atom_identity_optional(node: e.target) {
+                      Present { value: id } => [id]
+                      Absent => acc
+                    }
+                }
+              _ => acc
+            }
+          })
+        _ => Empty
+      }
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn body_lowering_normalized_operator_is_plus() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          match find_arrow_body_child(root: arrow) {
+            Accepted { value: body, diagnostics: _ } =>
+              match body.kind {
+                ComputationNode { behavior: Transform } =>
+                  if count(body.children) >= 1 {
+                    match first(body.children) {
+                      Present { value: e0 } =>
+                        match node_atom_identity_optional(node: e0.target) {
+                          Present { value: id } => id == ^dag_token_plus
+                          Absent => false
+                        }
+                      Absent => false
+                    }
+                  } else {
+                    false
+                  }
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+fn body_lowering_normalized_left_operand_is_atom() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          match find_arrow_body_child(root: arrow) {
+            Accepted { value: body, diagnostics: _ } =>
+              match body.kind {
+                ComputationNode { behavior: Transform } =>
+                  if count(body.children) >= 2 {
+                    match list_at_optional(xs: body.children, index: 1) {
+                      Present { value: e1 } =>
+                        match e1.target.kind {
+                          TypeNode { connective: Atom { identity: _ } } => true
+                          _ => false
+                        }
+                      Absent => false
+                    }
+                  } else {
+                    false
+                  }
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+fn body_lowering_left_operand_is_param_x() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      body_lowering_tree_contains_atom(root: tree, wanted: ^dag_binding_param_x)
+        && body_lowering_tree_contains_atom(root: tree, wanted: ^dag_binding_param_y)
+  }
+}
+
+fn body_lowering_normalized_arrow_root_resolves() -> Bool {
+  let lm = dag_language_model()
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } =>
+          match resolve(tree: arrow, lm: lm) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+      }
   }
 }
 
