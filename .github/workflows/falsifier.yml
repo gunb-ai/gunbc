@@ -72,7 +72,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/floor_skip_discovery_witness"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse"
           sccache --show-stats 2>/dev/null || true
         timeout-minutes: 45
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)

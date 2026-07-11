@@ -2,7 +2,7 @@ module v2.workflow.ci_floor_plan
 
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
-  gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
+  gunbc_ci_spec, gunbc_ci_regen_spec, gunbc_ci_emit_determinism_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
   Gate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
@@ -665,6 +665,10 @@ fn witness_regen_spec_carries_no_witness_corpus() -> Bool {
 
 fn gunbc_ci_regen_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_regen_spec).schedule
+}
+
+fn gunbc_ci_emit_determinism_batches() -> List<List<Runnable>> {
+  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_emit_determinism_spec).schedule
 }
 
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
