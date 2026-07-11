@@ -12,7 +12,6 @@ import v2.workflow.ci_floor_plan {
   witness_entries_kind_path_all_agree,
   floor_corpus_exclusion_resource_edges,
   gunbc_ci_floor_plan_serializes_heavy_resolves,
-  gunbc_ci_floor_plan_co_runs_heavy_without_serialization,
   floor_plan_serializes_heavy_resolves_for,
   floor_plan_co_runs_heavy_without_serialization_for,
   gate_runnable,
@@ -38,7 +37,7 @@ import v2.workflow.ci_floor_plan {
   witness_floor_derived_width_leaves_headroom_at_cap,
 }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, EmitDeterminismGate }
 import std.realization_schedule {
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_forbids_corpus_co_residence, ScheduleWitnessEntry, schedule_witness_entry_eq,
@@ -92,6 +91,21 @@ data corpus_only_spec: CiSpec = ci_spec_with_witness_entries(
   spec: discovery_free_base_spec,
   entries: [synthetic_corpus_row]
 )
+
+data heavy_pair_spec_note: String = "The 2026-07-11 serial job split moved EmitDeterminismGate off the ci-floor surface (GithubActionsEmitDeterminismJob), leaving DagCompileCleanGate the floor's only heavy-whole-tree-resolve runnable — so the production spec can no longer exhibit the two-heavies-co-batch violation the serialize-heavy red control discriminates on. heavy_pair_spec restores the discriminating pair synthetically (optin_spec + EmitDeterminismGate as a second heavy row): the property under witness is the SCHEDULER's serialize-heavy behavior, which must stay pinned green-and-red regardless of which gates the production roster currently routes through the floor."
+
+fn ci_spec_with_extra_heavy_gate(spec: CiSpec) -> CiSpec {
+  CiSpec {
+    gates: concat(spec.gates, [EmitDeterminismGate]),
+    witness_entries: spec.witness_entries,
+    discovery_scan_dirs: spec.discovery_scan_dirs,
+    diff_policy: spec.diff_policy,
+    notice_title: spec.notice_title,
+    deploy_stages: spec.deploy_stages,
+  }
+}
+
+data heavy_pair_spec: CiSpec = ci_spec_with_extra_heavy_gate(spec: optin_spec)
 
 data zero_roster_spec: CiSpec = ci_spec_with_witness_entries(
   spec: discovery_free_base_spec,
@@ -184,7 +198,7 @@ fn witness_floor_discovery_flip_gates_isolated_from_corpus() -> Bool {
 
 fn witness_plan_serializes_heavy_resolves() -> Bool {
   gunbc_ci_floor_plan_serializes_heavy_resolves() &&
-    gunbc_ci_floor_plan_co_runs_heavy_without_serialization()
+    floor_plan_co_runs_heavy_without_serialization_for(spec: heavy_pair_spec)
 }
 
 fn discovery_carries_exactly(r: Runnable, expected: ScheduleWitnessEntry) -> Bool {
@@ -251,8 +265,8 @@ fn witness_optin_exclusion_edges_track_roster() -> Bool {
 }
 
 fn witness_optin_plan_serializes_heavy_resolves() -> Bool {
-  floor_plan_serializes_heavy_resolves_for(spec: optin_spec) &&
-    floor_plan_co_runs_heavy_without_serialization_for(spec: optin_spec)
+  floor_plan_serializes_heavy_resolves_for(spec: heavy_pair_spec) &&
+    floor_plan_co_runs_heavy_without_serialization_for(spec: heavy_pair_spec)
 }
 
 fn batch_has_both_emit_and_corpus(b: List<Runnable>) -> Bool {
