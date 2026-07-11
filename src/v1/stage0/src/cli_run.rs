@@ -541,6 +541,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn discovery_skip_before_resolve_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER,
+            "cli_run_discovery_skip_before_resolve"
+        );
+    }
+
+    #[test]
     fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();
         let baked = workspace_root();
@@ -1964,9 +1972,28 @@ fn entry_file_touched_via_import_closure(
     }))
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
+// ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
+// docs/plans/affected-set-precompute-pruning.md Step 4 migrate floor) — host-side
+// per-entry cold-resolve elision under SelectionApplied before `floor_kernel_would_skip`.
+// Unblock: modeled `floor_kernel_precompute_would_skip` / skip-before-resolve arm on
+// `v2.workflow.affected_set_floor_runner` realizes the same decision in `.dag` (N→1 with
+// the Rust `NodeFrontierSeeds` parallel deleted per the de-fork plan).
+// DELETE WHEN dissolved: `entry_eligible_for_discovery_skip_before_resolve`,
+// `collect_import_closure_module_names_from_facts`, `resolve_discovery_entry_for_corpus_row`
+// lazy-resolve arm, and the `SKIP-RESOLVE` / `ctx.is_none()` loop in `run_discovery_rows`
+// (~120 LOC).
+// Receipt: `rg cli_run_discovery_skip_before_resolve src/v1/stage0/src/cli_run.rs` == 1 until
+// deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
+pub(crate) const CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER: &str =
+    "cli_run_discovery_skip_before_resolve";
+
 /// Import-closure module names from the module-graph facts scan — the same grain as
 /// `roster_import_closure_nodes_pre_resolve`, used when skip-before-resolve elides a cold
 /// entry resolve so the post-resolve calibration union stays aligned with the pre-resolve walk.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` / §7):
+/// dissolves under ROADMAP `2-provenance-ingest` when the floor runner `.dag` owns the decision.
 fn collect_import_closure_module_names_from_facts(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -1998,8 +2025,11 @@ fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &s
 /// Skip-before-resolve (discovery corpus, SelectionApplied): when the diff cannot possibly
 /// affect any witness in this entry — outside import-closure, no edited test fn, not a
 /// host-scaffold entry file — elide the cold entry resolve and treat every kernel witness
-/// row as assumed-green. Dissolve-on: the modeled `floor_kernel_precompute_would_skip` arm
-/// when skip-before-resolve is the general per-entry form.
+/// row as assumed-green.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` / §7):
+/// dissolves under ROADMAP `2-provenance-ingest` when `floor_kernel_precompute_would_skip` in
+/// `v2.workflow.affected_set_floor_runner` is the general per-entry authority.
 fn entry_eligible_for_discovery_skip_before_resolve(
     skip_enabled: bool,
     entry_content: &str,
@@ -7009,6 +7039,7 @@ fn run_discovery_rows(
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
+            // `CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` — §7 HAND-RUST loop arm.
             if entry_eligible_for_discovery_skip_before_resolve(
                 skip_enabled,
                 &current_entry_content,
@@ -7129,6 +7160,7 @@ fn run_discovery_rows(
                 NodeFrontierSelectionMode::Off => {}
             }
         }
+        // `CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` — lazy-resolve after skip decision.
         if ctx.is_none() {
             let resolved = resolve_discovery_entry_for_corpus_row(
                 index,
