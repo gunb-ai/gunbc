@@ -28,6 +28,7 @@ import v2.std.diagnostic {
   Diagnostics,
   ExternalContractUnknown,
   Outcome,
+  Some,
   Unavailable,
   diagnostics_singleton,
   node_locus,
@@ -97,7 +98,9 @@ fn body_lower_type_atom_node(sym: Symbol) -> Node {
 fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<Node> {
   Accepted {
     value: shell,
-    diagnostics: diagnostics_singleton(d: body_lower_wrapper_retained_diagnostic(n: shell))
+    diagnostics: Some {
+      diagnostics: diagnostics_singleton(d: body_lower_wrapper_retained_diagnostic(n: shell))
+    }
   }
 }
 
