@@ -22,7 +22,7 @@ Three live failure modes motivate the model:
 | --- | --- | --- |
 | **Runtime-present shell** | `live_deploy`, srv3 install tails, fleet-converge srv1/srv2 arms, former `dag/tools` `ShellProgram` witnesses | A roster entry permits the leak but does not say *what should replace it*; migration lanes re-litigate the same axis each time |
 | **Foreign-executor confusion** | GHA `RunStep { run: String }`, cron entry lines, githooks | These **are** legitimate shell sites — but only because the executor capability is `ShellPayloadRequired`, not because "it's CI" |
-| **Bootstrap vs steady-state drift** | `.github/fleet-converge.sh` steady-state arms vs fresh-standup bootstrap fragment | Without a typed window, slice-2 thin-run cannot prove the golden shrank for the right *reason* |
+| **Bootstrap vs steady-state drift** | `.github/fleet-converge.sh` steady-state arms vs fresh-standup bootstrap fragment | Without a typed window + lane E ruling, slice 2 cannot distinguish *interim authorized* steady-state shell (Doc + golden, dissolution-trigger-bound) from fresh-standup cutover (gated on slice 1) |
 
 The 2026-07-03 **pre-runtime census** ([shell-emission-model.md](shell-emission-model.md)) already classified sites. This design **lifts that census into typed rows** so slice sequencing, host-effect migration, and lens enforcement share one authority.
 
@@ -48,7 +48,7 @@ The brief names `ProvisioningWindow` and `ExecutorCapability`. DFS against the c
 
 | part | layer | why |
 | --- | --- | --- |
-| `ExecutorCapability`, `RuntimeAvailability`, `ShellEmissionJustification` shape | **std** (`std.execution_surface` — ⚠ FLAG 2a: module home) | universal framework; no fleet knowledge |
+| `ExecutorCapability`, `RuntimeAvailability`, `ShellEmissionJustification` shape | **std** (`v2.std.execution_surface` — parent-endorsed home; ⚠ FLAG 2a: operator sign at merge) | universal framework; no fleet knowledge. **Not** `std.effects` (effect shape ≠ executor payload demand — fusing them is the shape/transport fusion §3 warns about). **Not** product-only — M2 lens (`src/v2/lens`) and census rows (`dag/gunbc`) both consume the shape; dag-tree may import `v2.std` per the slice-0 `ci_spec` cutover precedent, so one `v2.std` home serves both trees. Distinct from `v2.std.host_transport` (how gunbc *reaches* a host, not what the outer executor accepts). |
 | `ForeignExecutorKind` (GHA `run:`, CronLine, GitHook, AutoinstallLateCommand) | **extdeps** | cite real upstream specs (`actions.dag`, cron model, …) |
 | `HostLifecyclePhase`, per-host window rows, census site table | **product** (`gunbc.fleet_intent` / shell-emission census module) | references `ComputeHost`, install milestones |
 | dispatch selecting realization from `(justification, effect)` | **peripheral** (realization edge + `host_effect_realize`) | §3: dispatch is realization, not central shape |
@@ -110,7 +110,7 @@ type AvailabilityFact = Absent | Present | Unknown { cause: String }   # Unknown
 | `OsInstalled`, gunbc on PATH, witness transports live | `SteadyState` | srv3 install tail, live_deploy, dag/tools — **runtime-present** census class |
 | GHA runner (no gunbc on runner until bootstrap build step) | per-step: bootstrap fragment → `BootstrapBeforeRuntime`; post-build steps with `claim_executor` | CI three-tier boundary ([emission-ingestion-inverse.md](emission-ingestion-inverse.md) gap C) |
 
-**⚠ FLAG 3b — CI split-step window.** A single GHA job can contain both bootstrap shell steps and runtime-present typed steps. Window is **per emission site**, not per file or per job. The census row carries the site id + step boundary.
+**Window granularity (parent-endorsed; ⚠ FLAG 3b: operator sign at merge):** **per emission site**, not per file or per job. A single GHA job mixes bootstrap shell steps and post-build runtime-present steps; coarser grain would be state-space conflation — silently authorizing steady-state shell where `TypedArgv` is required. Each census row carries `site id` + step boundary.
 
 ### 3.3 ShellEmissionJustification — authorization witness
 
@@ -151,10 +151,10 @@ Authoritative until re-census. Each row is one `ShellEmissionSiteId` with `(capa
 
 | site | capability | window | migration target |
 | --- | --- | --- | --- |
-| `ci_spec.ci_cargo_eagain_retry_core` | `ShellPayloadRequired GHA` | `BootstrapBeforeRuntime` (pre-`claim_executor` build) | `emit(Retry, Bash)` slice 0 — **keystone** |
+| `ci_spec.ci_cargo_eagain_retry_core` | `ShellPayloadRequired GHA` | `BootstrapBeforeRuntime` (pre-`claim_executor` build) | **LANDED** #6467 — slice 0 `emit(Retry, Bash)` production cutover |
 | `ci_workflow` inline `RunStep`s (8) | `ShellPayloadRequired GHA` | mixed per step | slice 4 — `TargetArchitecture` dispatch |
-| `fleet_converge` fresh-standup arm | `ShellPayloadRequired GHA` | `BootstrapBeforeRuntime` | stays emitted bash post slice 2 |
-| `fleet_converge` srv1/srv2 steady-state arms | `TypedPlanInterpretation` | `SteadyState` | slice 2 thin-run — **must not** stay shell |
+| `fleet_converge` fresh-standup arm | `ShellPayloadRequired GHA` | `BootstrapBeforeRuntime` | **Lane E** (witty-lark-895): cutover gated on tier-1 `If` emit band (slice 1); stays emitted bash until then |
+| `fleet_converge` srv1/srv2 steady-state arms | `ShellPayloadRequired GHA` *(interim)* / target `TypedPlanInterpretation` | `SteadyState` | **Lane E ruling (parent, 2026-07-11):** **untouched** — Doc projection + committed golden (`.github/fleet-converge.sh`); ONE dissolution-trigger row binding → `EmitArtifactThenThinRun` (slice 2). Do not rewrite steady-state bash until thin-run lands |
 | `githooks` pre-push shim | `ShellPayloadRequired GitHook` | `BootstrapBeforeRuntime` | slice 4 thin shim + typed stdin parse in binary |
 | `bmc_token_federation` smoke | `ShellPayloadRequired GHA` | `BootstrapBeforeRuntime` | slice 4 (slice 0 machinery) |
 | cron entry lines | `ShellPayloadRequired Cron` | `SteadyState` | foreign executor — permanent shell **framing** (§7) |
@@ -163,6 +163,8 @@ Authoritative until re-census. Each row is one `ShellEmissionSiteId` with `(capa
 | `dag/tools` witness transports | `TypedArgv` | `SteadyState` | **LANDED** Phase 3a — proof the axis works |
 
 Construct scope for **pre-runtime justified bash** (unchanged from census): Run seq · If/else · pipes · cmdsubst · `$?` · AndOr · redirects · env · Retry · `TargetArchitecture` dispatch. **Not justified** at any pre-runtime site: For, While, trap, background, functions, arrays, arithmetic, process substitution.
+
+**Lane E cross-link (witty-lark-895, parent ruling 2026-07-11):** slice 2 has one story across this census and the fleet-converge emit lane — (i) steady-state srv1/srv2 arms **stay** as Doc projection + committed golden with a single `EmitArtifactThenThinRun` dissolution trigger (no premature rewrite); (ii) fresh-standup bootstrap cutover waits on the tier-1 `If` emit band (slice 1). Authorization model: steady-state arms are **interim** `ShellPayloadRequired` via the foreign GHA executor path until `TypedPlanInterpretation` is modeled; the lens must not RED them today — only refuse *new* steady-state shell after slice 2 closes the window.
 
 ---
 
@@ -181,7 +183,7 @@ Phased, same pattern as §5 containment guard ([emission-ingestion-inverse.md](e
 | --- | --- |
 | `realization_vocabulary_containment` | orthogonal — catches `program.dag` AST imports; this model catches **whether shell should exist at all** |
 | `medium_structure_containment` | complementary — catches stringly medium leaks; authorized shell still must route through `emit(intent, Bash)` / grammar rows at the edge |
-| `medium_structure_exception_roster` | **shrinking residue** for M1–M2 only; each entry must carry `dissolve_trigger` pointing at a census migration row. Roster growth ratchet stays fail-closed |
+| `medium_structure_exception_roster` | **shrinking residue** for M1–M2 only; each entry must carry `dissolve_trigger` pointing at a census migration row. Roster growth ratchet stays fail-closed — **frozen at current 58 baseline** (parent-endorsed; ⚠ FLAG 4: operator sign at merge); new shell admits only via `ForeignExecutorMandated` / `BootstrapProvisioned` or explicit operator sign-off row |
 
 **Discriminating RED witnesses (§5):**
 
@@ -208,7 +210,7 @@ Split roster entries per shell-emission-model §7(c):
 
 | class | fate | example |
 | --- | --- | --- |
-| **Migratable control-flow shell** | dissolves via orchestration intent + thin-run | fleet-converge steady-state, live_deploy verbs |
+| **Migratable control-flow shell** | dissolves via orchestration intent + thin-run (after lane E interim period) | fleet-converge steady-state (interim: Doc + golden until `EmitArtifactThenThinRun`), live_deploy verbs |
 | **Permanent foreign-media framing** | stays `ShellPayloadRequired` forever | GHA `run:` block wrapper, cron line, git hook file envelope |
 
 Permanent rows **never** claim `BootstrapBeforeRuntime` in steady state — they use `ForeignExecutorMandated` only. The lens checks this distinction by model walk, not grep.
@@ -223,17 +225,17 @@ Permanent rows **never** claim `BootstrapBeforeRuntime` in steady state — they
 4. M2 lens + RED witnesses before slice 2 (converge thin-run) — slice 2 **requires** the lens to prove steady-state arms are not authorized shell.
 5. M3 construction wall when emit path accepts justification parameter.
 
-**Dependency:** gap B orchestration vocabulary ([orchestration-as-intent-design.md](orchestration-as-intent-design.md)) is **parallel**, not upstream — authorization governs *whether* shell may be emitted; orchestration governs *what* intent emits when authorized. Slice 0 needs both: authorized bootstrap shell + `Retry` intent.
+**Dependency:** gap B orchestration vocabulary ([orchestration-as-intent-design.md](orchestration-as-intent-design.md)) is **parallel**, not upstream — authorization governs *whether* shell may be emitted; orchestration governs *what* intent emits when authorized. Slice 0 **landed** (#6467): authorized bootstrap shell + `Retry` intent.
 
 ---
 
 ## 9. Open questions (sign-blocking vs follow-on)
 
-**Sign-blocking:**
+**Sign-blocking (parent-endorsed 2026-07-11; final sign = operator at merge per project convention — strike ⚠ FLAG markers when signed):**
 
-1. **⚠ FLAG 2a — std module home.** Proposed `std.execution_surface` vs extending `std.effects` vs product-only. I lean **`std.execution_surface`** (executor payload class is universal; fleet lifecycle stays product-injected). Operator/parent pick before mint.
-2. **⚠ FLAG 3b — per-site vs per-job CI window.** Confirm window granularity = **emission site** (recommended) not whole workflow file.
-3. **⚠ FLAG 4 — roster exception admissibility.** Should M1 allow *new* `RosterException` rows at all, or only grandfather existing 58 (`medium_structure_exception_roster_size_baseline`)? Recommendation: **freeze at current baseline**; new shell requires typed justification or explicit operator sign-off row (fail-closed).
+1. **⚠ FLAG 2a — module home.** **Parent-endorsed:** new module **`v2.std.execution_surface`**. Do **not** extend `std.effects.dag` (effect shape and executor payload demand are different axes). Do **not** go product-only (M2 lens + census rows in `dag/gunbc` both consume the shape). Genuinely net-new — distinct from `v2.std.host_transport`.
+2. **⚠ FLAG 3b — window granularity.** **Parent-endorsed:** **per emission site** (not per job or per file — coarser grain is state-space conflation in mixed bootstrap/runtime GHA jobs).
+3. **⚠ FLAG 4 — roster exception admissibility.** **Parent-endorsed:** **freeze `RosterException` at current 58 baseline** (`medium_structure_exception_roster_size_baseline`). New shell admits only via `ForeignExecutorMandated` / `BootstrapProvisioned` or explicit operator sign-off row — never self-service roster add. Ratchet is downstream of migration, not a path to it.
 
 **Follow-on (does not block M0 mint):**
 
