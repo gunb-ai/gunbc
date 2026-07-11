@@ -6275,6 +6275,104 @@ fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
     })
 }
 
+/// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
+/// when import-closure `entry_file_touched` is false and no declaration-level edit
+/// targets this entry, every kernel witness in the entry would skip — receipt:
+/// `green_skip_for_file_outside_import_closure` (diff outside import closure → empty
+/// frontier / no touch). Host-scaffold entries are excluded (changed_paths can select
+/// them without import-closure overlap).
+fn entry_qualifies_for_skip_without_resolve(
+    entry_path: &str,
+    row_functions: &[&str],
+    facts: &ModuleGraphFactsLive,
+    declared_paths: &HashSet<String>,
+    touched_entry_paths: &[String],
+    diff_edits: &FloorDiffEdits,
+) -> Result<bool, String> {
+    if diff_edits
+        .edited_test_fns
+        .iter()
+        .any(|(file, _)| diff_file_matches_entry(file, entry_path))
+    {
+        return Ok(false);
+    }
+    if diff_edits
+        .touched_entry_files
+        .iter()
+        .any(|file| diff_file_matches_entry(file, entry_path))
+    {
+        return Ok(false);
+    }
+    if entry_file_touched_via_import_closure(
+        entry_path,
+        facts,
+        declared_paths,
+        touched_entry_paths,
+    )? {
+        return Ok(false);
+    }
+    let content = read_entry_content_for_host_scaffold(entry_path)?;
+    if entry_text_indicates_live_host_scan(&content) {
+        return Ok(false);
+    }
+    if row_functions
+        .iter()
+        .any(|func| witness_test_fn_uses_live_host_scan(&content, func))
+    {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+fn discovery_entry_fast_skip_without_resolve(
+    rows: &[DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+    declared_paths: &HashSet<String>,
+    touched_entry_paths: &[String],
+    diff_edits: &FloorDiffEdits,
+) -> Result<HashSet<String>, String> {
+    let mut by_entry: HashMap<String, Vec<&str>> = HashMap::new();
+    for row in rows {
+        by_entry
+            .entry(row.entry.clone())
+            .or_default()
+            .push(row.function.as_str());
+    }
+    let mut fast = HashSet::new();
+    for (entry, funcs) in by_entry {
+        if entry_qualifies_for_skip_without_resolve(
+            &entry,
+            &funcs,
+            facts,
+            declared_paths,
+            touched_entry_paths,
+            diff_edits,
+        )? {
+            fast.insert(entry);
+        }
+    }
+    Ok(fast)
+}
+
+/// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
+/// same import-closure modules the pre-resolve walk uses (`roster_import_closure_nodes_pre_resolve`).
+fn augment_closure_modules_from_import_facts(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    out: &mut HashSet<String>,
+) {
+    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .map(|p| workspace_relative_repo_path(&p))
+        .collect();
+    for node in &facts.nodes {
+        let rel = workspace_relative_repo_path(&node.path);
+        if closure_paths.contains(&rel) {
+            out.insert(node.module.clone());
+        }
+    }
+}
+
 fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> Result<bool, String> {
     for row in rows {
         let content = read_entry_content_for_host_scaffold(&row.entry)?;
@@ -7044,7 +7142,45 @@ fn run_discovery_rows(
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
+    let entry_fast_skip = if skip_enabled {
+        discovery_entry_fast_skip_without_resolve(
+            rows,
+            &index.module_graph_facts,
+            &module_graph_declared_paths,
+            &touched_entry_paths,
+            diff_edits,
+        )?
+    } else {
+        HashSet::new()
+    };
+    if !entry_fast_skip.is_empty() {
+        eprintln!(
+            "run_discovery_corpus: skip-before-resolve fast path for {} entr(y/ies) (import-closure unaffected, no declaration edits, no host-scaffold)",
+            entry_fast_skip.len()
+        );
+    }
     for row in rows {
+        if skip_enabled && entry_fast_skip.contains(&row.entry) {
+            if current_entry.as_deref() != Some(row.entry.as_str()) {
+                augment_closure_modules_from_import_facts(
+                    &row.entry,
+                    &index.module_graph_facts,
+                    &mut closure_modules,
+                );
+                current_entry = Some(row.entry.clone());
+                current_entry_touches = false;
+                current_entry_file_touched = false;
+                current_entry_frontier_nodes.clear();
+                current_closure_subject = None;
+                ctx = None;
+            }
+            summary.skipped += 1;
+            eprintln!(
+                "SKIP [assumed-green node-frontier] {} ({})",
+                row.function, row.entry
+            );
+            continue;
+        }
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
             if entry_eligible_for_discovery_skip_before_resolve(
@@ -8582,6 +8718,43 @@ mod node_frontier_plumbing_controls {
                 || !entry_touches_rerun_frontier(&ctx, &list_value_from_vec(nodes))
                     .expect("touch check"),
             "entry must NOT touch frontier when diff is on a file outside its import closure"
+        );
+    }
+
+    #[test]
+    fn skip_without_resolve_fast_path_eligible_outside_import_closure() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = abs(&ws, FIXTURE);
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
+        let func_refs: Vec<&str> = scan_test_decl_lines(&content)
+            .into_iter()
+            .map(|(name, _)| {
+                // leak-free: use function names from scan on stack — map to owned for refs
+                name
+            })
+            .collect::<Vec<_>>()
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        assert!(
+            super::entry_qualifies_for_skip_without_resolve(
+                &fixture_abs,
+                &func_refs,
+                &index.module_graph_facts,
+                &declared,
+                &touched_paths,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "unaffected entry must qualify for skip-before-resolve when diff is outside import closure"
         );
     }
 
