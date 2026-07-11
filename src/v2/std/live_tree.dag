@@ -1,0 +1,16 @@
+module v2.std.live_tree
+
+import v2.std.logic { Bool }
+
+data live_tree_disposition_note: String = "Declared witness input-domain disposition (ROADMAP 2-host-scaffold-classifier-defork): a witness entry declares whether its evaluation reads the live host tree (filesystem/corpus state outside its resolved substrate closure). The single authority is a `data live_tree_disposition: LiveTreeDisposition = ...` row in the WITNESS ENTRY FILE itself - entry grain, so the fact holds no matter where the read hides behind imports. Undeclared = ReadsLiveTree (fail-closed): a row must declare SubstrateInputsOnly to become affected-set selection-eligible. A row that declares SubstrateInputsOnly while actually reading live state is NOT re-checked by any text scan; the nightly affected-set falsifier (predict-only cold run) is the enforcement - a lying row surfaces as a counted divergence within one cadence window. This dissolves the interim floor:host_scaffold marker and the Rust text classifier witness_test_fn_uses_live_host_scan (deleted with this model)."
+
+type LiveTreeDisposition
+  = ReadsLiveTree
+  | SubstrateInputsOnly
+
+fn live_tree_disposition_is_live(d: LiveTreeDisposition) -> Bool {
+  match d {
+    ReadsLiveTree => true
+    SubstrateInputsOnly => false
+  }
+}
