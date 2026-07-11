@@ -375,9 +375,9 @@ data compiler_frontier_sweep_order: List<String> = [
   "src/v2/compiler/emit_host.dag",
   "src/v2/compiler/emit_produced.dag",
   "src/v2/compiler/02_parse.dag",
-  "src/v2/compiler/03_ingest.dag",
   "src/v2/compiler/source_authority.dag",
   "src/v2/compiler/program_assembly.dag",
+  "src/v2/compiler/03_ingest.dag",
   "src/v2/compiler/01_tokenize.dag",
   "src/v2/compiler/03_body_producer.dag",
   "src/v2/compiler/00_compile.dag"
