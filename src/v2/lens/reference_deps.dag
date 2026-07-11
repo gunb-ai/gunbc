@@ -32,6 +32,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_segment_list
 }
 import v2.std.algebra {
+  any,
   contains,
   fold_list,
   is_empty,
@@ -60,7 +61,7 @@ import v2.std.qualified_name {
   qualified_name_from_dotted_string,
   qualified_name_from_node
 }
-import v2.std.text { String }
+import v2.std.text { String, string_contains }
 
 type ReferenceResolutionFact {
   path: String
@@ -601,9 +602,14 @@ fn reference_closure(
   )
 }
 
+fn reference_path_excluded(path: String, exclude_substrings: List<String>) -> Bool {
+  any(xs: exclude_substrings, predicate: fn(sub) { string_contains(s: path, pattern: sub) })
+}
+
 fn reference_neighbor_paths_from_facts(
   facts: List<ReferenceResolutionFact>,
   module_to_path: Map<String, String>,
+  exclude_substrings: List<String>,
   acc: List<String>
 ) -> List<String> {
   fold_list(
@@ -612,7 +618,11 @@ fn reference_neighbor_paths_from_facts(
     cons: fn(a, fact) {
       match map_lookup_where_rejected_unreachable(m: module_to_path, key: fact.reference_module) {
         Present { value: referenced_path } =>
-          dedupe_snoc(acc: a, item: referenced_path, eq: string_eq)
+          if reference_path_excluded(path: referenced_path, exclude_substrings: exclude_substrings) {
+            a
+          } else {
+            dedupe_snoc(acc: a, item: referenced_path, eq: string_eq)
+          }
         Absent => a
       }
     }
@@ -622,7 +632,8 @@ fn reference_neighbor_paths_from_facts(
 fn reference_closure_bfs_parsed_walk(
   state: ImportClosureBfsState,
   declared: List<ModuleDeclarationFact>,
-  module_to_path: Map<String, String>
+  module_to_path: Map<String, String>,
+  exclude_substrings: List<String>
 ) -> FreeMonoid<String> {
   match state.queue |> first {
     Absent => state.reached
@@ -632,7 +643,15 @@ fn reference_closure_bfs_parsed_walk(
         reference_closure_bfs_parsed_walk(
           state: ImportClosureBfsState { reached: state.reached, queue: rest },
           declared: declared,
-          module_to_path: module_to_path
+          module_to_path: module_to_path,
+          exclude_substrings: exclude_substrings
+        )
+      } else if reference_path_excluded(path: path, exclude_substrings: exclude_substrings) {
+        reference_closure_bfs_parsed_walk(
+          state: ImportClosureBfsState { reached: state.reached, queue: rest },
+          declared: declared,
+          module_to_path: module_to_path,
+          exclude_substrings: exclude_substrings
         )
       } else {
         let census = reference_file_census(rel_path: path, declared: declared)
@@ -640,6 +659,7 @@ fn reference_closure_bfs_parsed_walk(
           let neighbors = reference_neighbor_paths_from_facts(
             facts: census.facts,
             module_to_path: module_to_path,
+            exclude_substrings: exclude_substrings,
             acc: Empty
           )
           let next = bfs_absorb_neighbors(
@@ -652,7 +672,8 @@ fn reference_closure_bfs_parsed_walk(
           reference_closure_bfs_parsed_walk(
             state: next,
             declared: declared,
-            module_to_path: module_to_path
+            module_to_path: module_to_path,
+            exclude_substrings: exclude_substrings
           )
         } else {
           no_paths
@@ -666,15 +687,20 @@ fn reference_closure_live_excluding(
   pool_roots: List<String>,
   exclude_substrings: List<String>
 ) -> FreeMonoid<String> {
-  let declared = module_declaration_facts_live(pool_roots: pool_roots)
-  reference_closure_bfs_parsed_walk(
-    state: ImportClosureBfsState {
-      reached: no_paths,
-      queue: list_snoc_item(xs: no_paths, item: entry_path)
-    },
-    declared: declared,
-    module_to_path: build_module_to_path(nodes: declared)
-  )
+  if reference_path_excluded(path: entry_path, exclude_substrings: exclude_substrings) {
+    no_paths
+  } else {
+    let declared = module_declaration_facts_live(pool_roots: pool_roots)
+    reference_closure_bfs_parsed_walk(
+      state: ImportClosureBfsState {
+        reached: no_paths,
+        queue: list_snoc_item(xs: no_paths, item: entry_path)
+      },
+      declared: declared,
+      module_to_path: build_module_to_path(nodes: declared),
+      exclude_substrings: exclude_substrings
+    )
+  }
 }
 
 fn reference_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {
