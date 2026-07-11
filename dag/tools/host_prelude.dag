@@ -5,14 +5,12 @@ import extdeps.cargo_build
 import extdeps.git
 import extdeps.gunbc
 import std.logic { Bool }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
   Command, If, Subshell, AndOr, WithRedir, Exit,
   Lit, VarRef, Concat, CmdSubst,
   AndThen, OrElse, StderrToNull,
-  lit, var_ref, command, assign, test_not_executable, serialize_bash
+  lit, var_ref, command, assign, test_not_executable
 }
 import tools.build_step { BuildArtifact, emit_verifications }
 
@@ -96,16 +94,12 @@ fn ensure_gunbc_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "GUNBC", bin_name: "gunbc")
 }
 
-fn ensure_discover_source_root_ingest_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
-}
-
 fn toolchain_provision_shell_exec(script: String) -> Bool {
   let result = shell.Exec.Run(script: script)
   result.success
 }
 
-data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Core.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The ShellProgram builders below (witness_bin_program, gunbc_claims_program) remain as the canonical real-program fixtures for the bash row-emit byte-identity oracles in v2.test.claim.bash_program_fold; they dissolve with the sidecar once the pre-runtime windows migrate."
+data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Core.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) dissolved with the oracle flip to emitter-independent goldens in v2.test.claim.bash_program_fold; ensure_gunbc_built remains as a scaffold for emit_determinism_transport (lane C)."
 
 type WitnessBin {
   var_name: String
@@ -115,34 +109,6 @@ type WitnessBin {
 
 fn witness_bin(var_name: String, bin_name: String) -> WitnessBin {
   WitnessBin { var_name: var_name, bin_name: bin_name, features: "" }
-}
-
-fn witness_bin_ensure_stmts(bin: WitnessBin) -> List<ShellStmt> {
-  ensure_bin_built_and_verified_with_features(
-    var_name: bin.var_name,
-    bin_name: bin.bin_name,
-    features: bin.features
-  )
-}
-
-fn witness_bin_invoke_words(invoke: WitnessBin, args: List<String>) -> List<ShellWord> {
-  concat([var_ref(name: invoke.var_name)], map(args, a => lit(text: a)))
-}
-
-fn witness_bin_program(invoke: WitnessBin, prereqs: List<WitnessBin>, args: List<String>) -> ShellProgram {
-  ShellProgram {
-    set_e: true,
-    statements: concat(
-      concat(
-        fold(prereqs, init: [], f: (acc, b) => concat(acc, witness_bin_ensure_stmts(bin: b))),
-        witness_bin_ensure_stmts(bin: invoke)
-      ),
-      [
-        command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
-        command(words: witness_bin_invoke_words(invoke: invoke, args: args))
-      ]
-    )
-  }
 }
 
 fn witness_bin_release_path(root: String, bin_name: String) -> String {
@@ -212,30 +178,6 @@ type ClaimRun {
   function: String
 }
 
-fn gunbc_claim_run_stmt(source_roots: List<String>, claim: ClaimRun) -> ShellStmt {
-  command(words: concat(
-    concat(
-      [var_ref(name: "GUNBC"), lit(text: "run")],
-      fold(source_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
-    ),
-    [
-      lit(text: "--entry"), lit(text: claim.entry),
-      lit(text: "--function"), lit(text: claim.function),
-      lit(text: "--claim-run")
-    ]
-  ))
-}
-
-fn gunbc_claims_program(source_roots: List<String>, claims: List<ClaimRun>) -> ShellProgram {
-  ShellProgram {
-    set_e: true,
-    statements: concat(
-      ensure_gunbc_built(),
-      map(claims, c => gunbc_claim_run_stmt(source_roots: source_roots, claim: c))
-    )
-  }
-}
-
 fn gunbc_claim_run_args(source_roots: List<String>, claim: ClaimRun) -> List<String> {
   concat(
     concat(
@@ -259,14 +201,5 @@ fn run_gunbc_claims(source_roots: List<String>, claims: List<ClaimRun>) -> Bool 
     })
   } else {
     false
-  }
-}
-
-data witness_invocation_serialize_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "extdeps.languages.bash.program",
-    decl_name: "serialize_bash",
-    field: WholeDeclaration
   }
 }

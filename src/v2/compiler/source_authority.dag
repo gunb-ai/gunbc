@@ -1,7 +1,8 @@
 module v2.compiler.source_authority
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalize { normalize, NormalizedTree }
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse {
   ParseArtifact,
   grammar_validate_for_parse,
