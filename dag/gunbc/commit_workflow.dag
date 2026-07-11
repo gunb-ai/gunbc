@@ -2,7 +2,7 @@ module gunbc.commit_workflow
 
 import gunbc.ci_gate {
   Gate,
-  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
@@ -28,7 +28,6 @@ type LocalTidyCheck
 type CommitWorkflowSurface
   = GithubActionsCiJob
   | GithubActionsCiRegenJob
-  | GithubActionsRustTestsJob
   | GitPrePushHook
 
 type CommitCheckKind
@@ -373,11 +372,6 @@ data commit_workflow_realization_bindings: List<CommitWorkflowRealizationBinding
     artifact: CiYamlArtifact
   },
   CommitWorkflowRealizationBinding {
-    surface: GithubActionsRustTestsJob,
-    handler: CiYamlHandler,
-    artifact: CiYamlArtifact
-  },
-  CommitWorkflowRealizationBinding {
     surface: GitPrePushHook,
     handler: GitPrePushScriptHandler,
     artifact: GithooksPrePushArtifact
@@ -390,8 +384,6 @@ fn commit_workflow_surface_eq(a: CommitWorkflowSurface, b: CommitWorkflowSurface
       match b { GithubActionsCiJob => true  _ => false }
     GithubActionsCiRegenJob =>
       match b { GithubActionsCiRegenJob => true  _ => false }
-    GithubActionsRustTestsJob =>
-      match b { GithubActionsRustTestsJob => true  _ => false }
     GitPrePushHook =>
       match b { GitPrePushHook => true  _ => false }
   }
@@ -407,7 +399,6 @@ fn enrollment_has_surface(e: CommitCheckEnrollment, surface: CommitWorkflowSurfa
 
 fn gate_eq(a: Gate, b: Gate) -> Bool {
   match a {
-    RustMonolithGate => match b { RustMonolithGate => true  _ => false }
     EmitHostGate => match b { EmitHostGate => true  _ => false }
     LayeringImportsGate => match b { LayeringImportsGate => true  _ => false }
     ExtdepsExternalAuthorityGate => match b { ExtdepsExternalAuthorityGate => true  _ => false }
@@ -600,7 +591,6 @@ fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   match surface {
     GithubActionsCiJob => artifact_path(a: CiYamlArtifact)
     GithubActionsCiRegenJob => artifact_path(a: CiYamlArtifact)
-    GithubActionsRustTestsJob => artifact_path(a: CiYamlArtifact)
     GitPrePushHook => artifact_path(a: GithooksPrePushArtifact)
   }
 }
@@ -609,7 +599,6 @@ fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWork
   match surface {
     GithubActionsCiJob => CiYamlHandler
     GithubActionsCiRegenJob => CiYamlHandler
-    GithubActionsRustTestsJob => CiYamlHandler
     GitPrePushHook => GitPrePushScriptHandler
   }
 }
@@ -618,7 +607,6 @@ fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> Generated
   match surface {
     GithubActionsCiJob => CiYamlArtifact
     GithubActionsCiRegenJob => CiYamlArtifact
-    GithubActionsRustTestsJob => CiYamlArtifact
     GitPrePushHook => GithooksPrePushArtifact
   }
 }

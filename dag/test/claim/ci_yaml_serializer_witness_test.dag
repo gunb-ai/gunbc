@@ -18,7 +18,7 @@ import extdeps.github.expressions {
   ContextAccess, Env, Runner,
   any_template_accesses_runner_var_via_env, template_uses_context
 }
-import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_run, ci_release_build_script, gunbc_ci_rust_gate_only_script }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_run, ci_release_build_script }
 
 fn witness_fetch_depth_is_int_not_string() -> Bool {
   let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])

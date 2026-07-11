@@ -5,7 +5,7 @@ import gunbc.commit_workflow {
   commit_workflow_realization_bindings,
   commit_workflow_ci_floor_gates,
   commit_workflow_local_tidy_checks,
-  CommitWorkflowSurface, GithubActionsCiJob, GithubActionsRustTestsJob, GitPrePushHook,
+  CommitWorkflowSurface, GithubActionsCiJob, GitPrePushHook,
   CiYamlHandler, GitPrePushScriptHandler,
   gate_lists_eq, local_tidy_lists_eq,
   realization_artifact_path,
@@ -35,9 +35,7 @@ fn witness_local_tidy_spec_projects_from_roster() -> Bool {
 
 fn witness_ci_jobs_share_yaml_handler() -> Bool {
   realization_handler_for_surface(surface: GithubActionsCiJob) == CiYamlHandler
-    && realization_handler_for_surface(surface: GithubActionsRustTestsJob) == CiYamlHandler
     && realization_artifact_for_surface(surface: GithubActionsCiJob) == CiYamlArtifact
-    && realization_artifact_for_surface(surface: GithubActionsRustTestsJob) == CiYamlArtifact
 }
 
 fn witness_pre_push_handler_binding() -> Bool {
