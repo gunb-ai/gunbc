@@ -7172,7 +7172,7 @@ fn run_discovery_rows(
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
-    let entry_fast_skip = if skip_enabled {
+    let entry_fast_skip = if selection == NodeFrontierSelectionMode::Applied {
         discovery_entry_fast_skip_without_resolve(
             rows,
             &index.module_graph_facts,
@@ -7190,7 +7190,11 @@ fn run_discovery_rows(
         );
     }
     for row in rows {
-        if skip_enabled && entry_fast_skip.contains(&row.entry) {
+        // Applied only: PredictOnly must resolve + run cold and record via the post-resolve
+        // would_skip path (falsifier semantics — docs/plans/affected-set-differential-falsifier.md).
+        if selection == NodeFrontierSelectionMode::Applied
+            && entry_fast_skip.contains(&row.entry)
+        {
             if current_entry.as_deref() != Some(row.entry.as_str()) {
                 augment_closure_modules_from_import_facts(
                     &row.entry,
