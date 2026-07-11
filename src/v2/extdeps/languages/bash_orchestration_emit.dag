@@ -9,11 +9,13 @@ import v2.extdeps.languages.bash {
   bash_stmt_env_unset_emitted,
   bash_stmt_env_unset_target_model,
   bash_stmt_if_emitted,
-  bash_stmt_if_else_emitted,
   orch_seq2_emitted_command,
   orch_seq2_target_model,
   orch_retry_emitted_command,
-  orch_retry_target_model,
+  orch_retry_target_model
+}
+import v2.extdeps.languages.bash_orch_if {
+  bash_stmt_if_else_emitted,
   orch_if_target_model,
   orch_if_else_target_model
 }
