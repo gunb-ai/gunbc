@@ -41,7 +41,7 @@ test fn compiler_frontier_initial_census_all_seed_retained() -> Bool {
     && compiler_frontier_seed_retained_count() == compiler_frontier_module_count_expected
 }
 
-test fn compiler_frontier_execution_measured_attribution_holds() -> Bool {
+test fn compiler_frontier_execution_measured_attribution_test() -> Bool {
   compiler_frontier_execution_measured_attribution_holds()
     && compiler_frontier_blocker_class_distribution_knowledge_attributed_holds()
     && compiler_frontier_gap_clustering_knowledge_attributed_holds()
@@ -50,7 +50,7 @@ test fn compiler_frontier_execution_measured_attribution_holds() -> Bool {
     && compiler_frontier_roster_probe_paths_match_holds()
 }
 
-test fn compiler_frontier_census_composite_holds() -> Bool {
+test fn compiler_frontier_census_composite_test() -> Bool {
   compiler_frontier_census_holds()
     && compiler_frontier_initial_census_all_seed_retained()
     && compiler_frontier_execution_measured_attribution_holds()
