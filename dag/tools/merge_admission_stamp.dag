@@ -7,6 +7,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
+  merge_admission_merge_base_ref,
   stamp_floor_receipt_with_conclusion,
   render_receipt_wire,
   ci_repo_root_shell,
@@ -14,7 +15,6 @@ import gunbc.merge_admission_produce {
   floor_exit_to_check_conclusion,
   floor_disposition_to_check_conclusion,
 }
-import gunbc.ci_spec { gunbc_ci_spec }
 import extdeps.github.checks { CheckConclusion }
 
 data merge_admission_stamp_missing_floor_exit_is_failure: String = "CI_FLOOR_EXIT unset stamps floor_exit_code as Failure (non-zero) — fail-closed per §5; only the ci.yml floor tail sets CI_FLOOR_EXIT from claim_executor"
@@ -50,9 +50,8 @@ fn pr_number_from_event() -> Int? {
 }
 
 fn merge_target_tree_hash() -> String {
-  let policy = gunbc_ci_spec.diff_policy
   let result = shell.Exec.Run(
-    script: concat("git show -s --format=%T ", policy.base)
+    script: concat("git show -s --format=%T ", merge_admission_merge_base_ref)
   )
   shell_stdout_line(raw: result.stdout)
 }

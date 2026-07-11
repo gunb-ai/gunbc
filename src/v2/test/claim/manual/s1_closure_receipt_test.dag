@@ -1,17 +1,9 @@
 module v2.test.manual.s1_closure_receipt
 
-import extdeps.filesystem.filesystem_io
-import std.algebra { Cons, Empty }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
-import v2.compiler.normalize { normalize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { fold_list, is_empty }
-import v2.std.collection { List }
-import v2.std.compilers.lexing { LexRules, token_stream_remaining }
-import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.grammar { ModeledGrammar, ParseGrammar, VoidGrammar }
+import v2.test.manual.s1_closure_receipt_support { s1_closure_failures }
+import v2.std.algebra { is_empty }
 import v2.std.logic { Bool }
+<<<<<<< HEAD
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -102,6 +94,8 @@ fn s1_closure_failures() -> List<String> {
       }
   }
 }
+=======
+>>>>>>> origin/main
 
 test fn s1_closure_parses_holds() -> Bool {
   is_empty(xs: s1_closure_failures())

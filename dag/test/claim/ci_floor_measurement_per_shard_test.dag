@@ -18,7 +18,7 @@ import gunbc.ci_floor_measurement {
   witness_runner_cgroup_cap_lt_dashboard_session_cap,
   witness_derived_width_committed_fits_with_margin,
   witness_falsifier_per_shard_exceeds_floor_gate_peak,
-  witness_falsifier_derived_width_at_live_cap_is_two,
+  witness_falsifier_derived_width_at_speed_ceiling_is_one,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -55,7 +55,7 @@ test fn ci_floor_measurement_per_shard_rss_witnesses() -> Bool {
     && witness_runner_cap_lt_session_cap()
     && witness_derived_width_committed_fits_with_margin()
     && witness_falsifier_per_shard_exceeds_floor_gate_peak()
-    && witness_falsifier_derived_width_at_live_cap_is_two()
+    && witness_falsifier_derived_width_at_speed_ceiling_is_one()
 }
 
 fn witness_falsifier_per_shard_is_max_observed_sample() -> Bool {

@@ -9,10 +9,13 @@ import v2.lens.duplicate_computation {
   ComputationDemandFact,
   UnguardedDemand, GuardedFallbackDemand,
   ReplicationIntent, SingleRun, ReplicatedOracle,
+  TypedArgvInvocation,
   shell_program_computation_demands,
+  typed_argv_computation_demands,
   duplicate_computation_violation_count,
   duplicate_computation_clean_holds
 }
+import v2.std.algebra { list_append, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -154,4 +157,47 @@ test fn projected_guarded_ensure_built_is_clean() -> Bool {
     program: synthetic_guarded_build_program(),
     replication: SingleRun
   ))
+}
+
+fn synthetic_typed_compile_invocation(site: String, out_dir: String) -> TypedArgvInvocation {
+  TypedArgvInvocation {
+    site: site,
+    tool: "gunbc",
+    args: ["compile", "--source-root", "dag", "--target", "rust", "--output-dir", out_dir]
+  }
+}
+
+fn synthetic_typed_pair_facts(replication: ReplicationIntent) -> List<ComputationDemandFact> {
+  list_append(
+    left: typed_argv_computation_demands(
+      invocation: synthetic_typed_compile_invocation(site: "synthetic.typed_run_1", out_dir: "/tmp/typed-out-1"),
+      guard: UnguardedDemand,
+      replication: replication
+    ),
+    right: typed_argv_computation_demands(
+      invocation: synthetic_typed_compile_invocation(site: "synthetic.typed_run_2", out_dir: "/tmp/typed-out-2"),
+      guard: UnguardedDemand,
+      replication: replication
+    )
+  )
+}
+
+test fn typed_argv_compile_pair_without_declaration_reds() -> Bool {
+  duplicate_computation_violation_count(facts: synthetic_typed_pair_facts(replication: SingleRun)) == 1
+}
+
+test fn typed_argv_compile_pair_declared_oracle_is_admissible() -> Bool {
+  duplicate_computation_clean_holds(facts: synthetic_typed_pair_facts(replication: ReplicatedOracle { runs: 2 }))
+}
+
+test fn typed_argv_non_compile_invocation_projects_no_demand() -> Bool {
+  length(xs: typed_argv_computation_demands(
+    invocation: TypedArgvInvocation {
+      site: "synthetic.typed_version_probe",
+      tool: "gunbc",
+      args: ["--version"]
+    },
+    guard: UnguardedDemand,
+    replication: SingleRun
+  )) == 0
 }

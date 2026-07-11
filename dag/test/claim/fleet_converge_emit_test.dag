@@ -60,10 +60,13 @@ import gunbc.host_converge {
 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match }
 import gunbc.fleet_intent_network { operator_host_srv3 }
+import std.disposition { Scaffold, Terminal }
 import gunbc.fleet_converge_emit {
   expected_fleet_converge_sh,
   fleet_converge_sh_for,
   fleet_converge_drifted,
+  fleet_converge_steady_state_doc_projection_dissolution_trigger,
+  fleet_converge_fresh_standup_bootstrap_emit_frontier_count,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -326,4 +329,9 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_gunbc_apply_mode_srv3_fresh_standup()
     && witness_gunbc_pinned_tree_runs_first()
     && witness_sessions_membership_line_emitted()
+    && fleet_converge_fresh_standup_bootstrap_emit_frontier_count() == 3
+    && match fleet_converge_steady_state_doc_projection_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
+      Terminal { reason: _ } => false
+    }
 }

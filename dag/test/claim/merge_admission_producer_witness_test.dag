@@ -18,6 +18,7 @@ import gunbc.merge_admission_produce {
   merge_admission_floor_disposition_documentation_only_skipped,
   merge_admission_stamp_documentation_only_skip_policy,
   ci_floor_stamp_merge_admission_script,
+  merge_admission_stamp_invoke,
   shell_stdout_line,
 }
 import tools.merge_admission_stamp {
@@ -74,6 +75,13 @@ test fn floor_exit_zero_maps_to_success() -> Bool {
 
 test fn floor_exit_nonzero_maps_to_failure() -> Bool {
   floor_exit_to_check_conclusion(exit_code: 1) == Failure
+}
+
+test fn merge_admission_stamp_invoke_uses_v1_tool_source_root() -> Bool {
+  let invoke = merge_admission_stamp_invoke()
+  string_contains(s: invoke, pattern: "--source-root dag")
+    && string_contains(s: invoke, pattern: "dag/tools/merge_admission_stamp.dag")
+    && !string_contains(s: invoke, pattern: "--source-root src/v2")
 }
 
 test fn documentation_only_disposition_maps_to_skipped() -> Bool {

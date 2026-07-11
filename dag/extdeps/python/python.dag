@@ -1,0 +1,29 @@
+module extdeps.python
+
+import std.types { FilePath }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.python.org/3/using/cmdline.html"
+  }
+}
+
+service python.Interpreter {
+  operation RunFile {
+    input { workdir: FilePath, script_path: FilePath, args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "python3", "{script_path}", args] }
+    exit {
+      0 => Unit
+      nonzero => String "python3 script exited nonzero"
+    }
+  }
+}
