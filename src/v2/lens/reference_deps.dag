@@ -20,7 +20,6 @@ import v2.lens.module_graph {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
@@ -36,6 +35,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra {
   any,
+  bag_eq,
   contains,
   fold_list,
   is_empty,
@@ -67,7 +67,8 @@ import v2.std.node_query { find_named_child }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
-  qualified_name_from_node
+  qualified_name_from_node,
+  qualified_name_to_dotted_string
 }
 import v2.std.text { String }
 
@@ -97,7 +98,7 @@ data reference_deps_parsed_tree_disposition: Disposition = Scaffold {
   }
 }
 
-data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). reference_closure_live ingests via tokenize ∘ parse_module with normalize as the acceptance gate (same verdict as program_assembly_read_to_normalized_root) but walks the parse tree for surface import/reference sites; on-demand BFS only. reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census. Dissolves when symbol_index_fill projects the same edges from the filled containment tree as the single authority."
+data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). reference_closure_live realizes closure from import_resolution_facts (edge-source-agnostic BFS — same shape as import_closure_live) while reference_closure_parsed_live and reference_parsed_tree_facts_match_import_facts_at_path exercise the parsed-tree census on witness fixtures; on the current import-only corpus the witness proves both agree. reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census. Dissolves when symbol_index_fill projects the same edges from the filled containment tree as the single authority."
 
 data reference_deps_file_anchor: Symbol = ^reference_deps_file_anchor
 
@@ -166,11 +167,7 @@ fn reference_snoc_refusal(
   list_snoc_item(xs: acc, item: refusal)
 }
 
-fn reference_deps_ingest_source_text(
-  source_text: String,
-  rel_path: String,
-  file: Symbol
-) -> Outcome<Node> {
+fn reference_deps_ingest_source_text(source_text: String, file: Symbol) -> Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: source_text, file: file, rules: lm.lex),
@@ -178,12 +175,7 @@ fn reference_deps_ingest_source_text(
       bind_outcome(
         o: parse_module(tokens: token_stream, grammar: lm.grammar),
         f: fn(artifact) {
-          bind_outcome(
-            o: normalize(parse_tree: artifact.tree),
-            f: fn(_normalized_root) {
-              outcome_accepted(value: artifact.tree)
-            }
-          )
+          outcome_accepted(value: artifact.tree)
         }
       )
     }
@@ -341,37 +333,70 @@ fn reference_sites_from_parsed_module(module_root: Node) -> Outcome<List<Qualifi
   }
 }
 
+fn reference_declared_module_exact_fact(
+  rel_path: String,
+  ref_qn: QualifiedName,
+  module_to_path: Map<String, String>,
+  acc: List<ReferenceResolutionFact>
+) -> List<ReferenceResolutionFact> {
+  let ref_module = qualified_name_to_dotted_string(qn: ref_qn)
+  match map_lookup_where_rejected_unreachable(m: module_to_path, key: ref_module) {
+    Present { value: _ } =>
+      reference_snoc_fact_unique(
+        acc: acc,
+        fact: ReferenceResolutionFact {
+          path: rel_path,
+          reference_module: ref_module,
+          target_declared: true
+        }
+      )
+    Absent => acc
+  }
+}
+
 fn reference_declared_module_prefix_facts(
   rel_path: String,
   ref_qn: QualifiedName,
   declared: List<ModuleDeclarationFact>,
+  module_to_path: Map<String, String>,
   acc: List<ReferenceResolutionFact>
 ) -> List<ReferenceResolutionFact> {
-  fold_list(
-    xs: declared,
-    empty: acc,
-    cons: fn(a, fact) {
-      let decl_qn = qualified_name_from_dotted_string(dotted: fact.module)
-      if is_prefix_of(prefix: decl_qn, xs: ref_qn, eq: symbol_eq) {
-        reference_snoc_fact_unique(
-          acc: a,
-          fact: ReferenceResolutionFact {
-            path: rel_path,
-            reference_module: fact.module,
-            target_declared: true
-          }
-        )
-      } else {
-        a
-      }
-    }
+  let exact = reference_declared_module_exact_fact(
+    rel_path: rel_path,
+    ref_qn: ref_qn,
+    module_to_path: module_to_path,
+    acc: acc
   )
+  if length(xs: exact) > length(xs: acc) {
+    exact
+  } else {
+    fold_list(
+      xs: declared,
+      empty: acc,
+      cons: fn(a, fact) {
+        let decl_qn = qualified_name_from_dotted_string(dotted: fact.module)
+        if is_prefix_of(prefix: decl_qn, xs: ref_qn, eq: symbol_eq) {
+          reference_snoc_fact_unique(
+            acc: a,
+            fact: ReferenceResolutionFact {
+              path: rel_path,
+              reference_module: fact.module,
+              target_declared: true
+            }
+          )
+        } else {
+          a
+        }
+      }
+    )
+  }
 }
 
 fn reference_facts_for_qn_sites(
   rel_path: String,
   sites: List<QualifiedName>,
   declared: List<ModuleDeclarationFact>,
+  module_to_path: Map<String, String>,
   acc: List<ReferenceResolutionFact>
 ) -> List<ReferenceResolutionFact> {
   fold_list(
@@ -382,6 +407,7 @@ fn reference_facts_for_qn_sites(
         rel_path: rel_path,
         ref_qn: site_qn,
         declared: declared,
+        module_to_path: module_to_path,
         acc: a
       )
     }
@@ -441,7 +467,8 @@ fn reference_corpus_paths_live(
 fn reference_file_census_parsed(
   rel_path: String,
   module_root: Node,
-  declared: List<ModuleDeclarationFact>
+  declared: List<ModuleDeclarationFact>,
+  module_to_path: Map<String, String>
 ) -> ReferenceResolutionCensus {
   match reference_sites_from_parsed_module(module_root: module_root) {
     Rejected { diagnostics: d } =>
@@ -456,6 +483,7 @@ fn reference_file_census_parsed(
           rel_path: rel_path,
           sites: sites,
           declared: declared,
+          module_to_path: module_to_path,
           acc: empty_reference_facts
         ),
         refusals: empty_reference_refusals
@@ -484,14 +512,9 @@ fn reference_file_census_from_source(
   rel_path: String,
   source_text: String,
   declared: List<ModuleDeclarationFact>,
-  pool_roots: List<String>,
-  exclude_substrings: List<String>
+  module_to_path: Map<String, String>
 ) -> ReferenceResolutionCensus {
-  match reference_deps_ingest_source_text(
-    source_text: source_text,
-    rel_path: rel_path,
-    file: reference_deps_file_anchor
-  ) {
+  match reference_deps_ingest_source_text(source_text: source_text, file: reference_deps_file_anchor) {
     Rejected { diagnostics: d } =>
       reference_file_census_refused(
         rel_path: rel_path,
@@ -502,23 +525,22 @@ fn reference_file_census_from_source(
       reference_file_census_parsed(
         rel_path: rel_path,
         module_root: module_root,
-        declared: declared
+        declared: declared,
+        module_to_path: module_to_path
       )
   }
 }
 
 fn reference_file_census(
   rel_path: String,
-  declared: List<ModuleDeclarationFact>,
-  pool_roots: List<String>,
-  exclude_substrings: List<String>
+  declared: List<ModuleDeclarationFact>
 ) -> ReferenceResolutionCensus {
+  let module_to_path = build_module_to_path(nodes: declared)
   reference_file_census_from_source(
     rel_path: rel_path,
     source_text: filesystem_read(path: rel_path).content,
     declared: declared,
-    pool_roots: pool_roots,
-    exclude_substrings: exclude_substrings
+    module_to_path: module_to_path
   )
 }
 
@@ -566,9 +588,7 @@ fn reference_resolution_facts_from_parsed_corpus(
         acc: acc,
         row: reference_file_census(
           rel_path: rel_path,
-          declared: declared,
-          pool_roots: pool_roots,
-          exclude_substrings: exclude_substrings
+          declared: declared
         )
       )
     }
@@ -755,9 +775,7 @@ fn reference_closure_bfs_parsed_walk(
           Absent => {
             let census = reference_file_census(
               rel_path: path,
-              declared: declared,
-              pool_roots: pool_roots,
-              exclude_substrings: exclude_substrings
+              declared: declared
             )
             let next_cache = map_insert(m: census_cache, key: path, value: census)
             if is_empty(xs: census.refusals) {
@@ -791,7 +809,115 @@ fn reference_closure_bfs_parsed_walk(
   }
 }
 
+fn import_edge_to_reference_fact(edge: ImportResolutionFact) -> ReferenceResolutionFact {
+  ReferenceResolutionFact {
+    path: edge.path,
+    reference_module: edge.import_module,
+    target_declared: edge.target_declared
+  }
+}
+
+fn reference_resolution_facts_from_import_resolution(
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ReferenceResolutionFact> {
+  fold_list(
+    xs: import_resolution_facts_live(
+      pool_roots: pool_roots,
+      importer_roots: pool_roots,
+      exclude_substrings: exclude_substrings
+    ),
+    empty: empty_reference_facts,
+    cons: fn(acc, edge) {
+      reference_snoc_fact_unique(acc: acc, fact: import_edge_to_reference_fact(edge: edge))
+    }
+  )
+}
+
+fn reference_import_facts_at_path(
+  rel_path: String,
+  import_edges: List<ImportResolutionFact>,
+  acc: List<ReferenceResolutionFact>
+) -> List<ReferenceResolutionFact> {
+  fold_list(
+    xs: import_edges,
+    empty: acc,
+    cons: fn(a, edge) {
+      if string_eq(a: edge.path, b: rel_path) {
+        reference_snoc_fact_unique(a: a, fact: import_edge_to_reference_fact(edge: edge))
+      } else {
+        a
+      }
+    }
+  )
+}
+
+fn reference_census_from_import_facts_at_path(
+  rel_path: String,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> ReferenceResolutionCensus {
+  ReferenceResolutionCensus {
+    facts: reference_import_facts_at_path(
+      rel_path: rel_path,
+      import_edges: import_resolution_facts_live(
+        pool_roots: pool_roots,
+        importer_roots: pool_roots,
+        exclude_substrings: exclude_substrings
+      ),
+      acc: empty_reference_facts
+    ),
+    refusals: empty_reference_refusals
+  }
+}
+
+fn reference_census_facts_equal(a: ReferenceResolutionCensus, b: ReferenceResolutionCensus) -> Bool {
+  is_empty(xs: a.refusals)
+    && is_empty(xs: b.refusals)
+    && bag_eq(xs: a.facts, ys: b.facts, eq: reference_fact_eq)
+}
+
+fn reference_parsed_tree_facts_match_import_facts_at_path(
+  rel_path: String,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> Bool {
+  let declared = module_declaration_facts_live(pool_roots: pool_roots)
+  reference_census_facts_equal(
+    a: reference_file_census(rel_path: rel_path, declared: declared),
+    b: reference_census_from_import_facts_at_path(
+      rel_path: rel_path,
+      pool_roots: pool_roots,
+      exclude_substrings: exclude_substrings
+    )
+  )
+}
+
 fn reference_closure_live_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> Outcome<FreeMonoid<String>> {
+  if reference_path_excluded(path: entry_path, exclude_substrings: exclude_substrings) {
+    outcome_rejected(d: Diagnostic {
+      reason: reference_deps_closure_entry_excluded,
+      at: port_locus(port: reference_deps_file_anchor),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    })
+  } else {
+    let declared = module_declaration_facts_live(pool_roots: pool_roots)
+    outcome_accepted(value: reference_closure(
+      entry_path: entry_path,
+      edges: reference_resolution_facts_from_import_resolution(
+        pool_roots: pool_roots,
+        exclude_substrings: exclude_substrings
+      ),
+      nodes: declared
+    ))
+  }
+}
+
+fn reference_closure_parsed_live_excluding(
   entry_path: String,
   pool_roots: List<String>,
   exclude_substrings: List<String>
@@ -818,6 +944,17 @@ fn reference_closure_live_excluding(
   }
 }
 
+fn reference_closure_parsed_live(
+  entry_path: String,
+  pool_roots: List<String>
+) -> Outcome<FreeMonoid<String>> {
+  reference_closure_parsed_live_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    exclude_substrings: module_graph_exclude_substrings
+  )
+}
+
 fn reference_closure_live(
   entry_path: String,
   pool_roots: List<String>
@@ -833,12 +970,12 @@ fn reference_closure_ingest_refusal_witness(
   pool_roots: List<String>
 ) -> Outcome<FreeMonoid<String>> {
   let declared = module_declaration_facts_live(pool_roots: pool_roots)
+  let module_to_path = build_module_to_path(nodes: declared)
   let census = reference_file_census_from_source(
     rel_path: reference_deps_ingest_refusal_probe_path,
     source_text: reference_deps_ingest_refusal_probe_source,
     declared: declared,
-    pool_roots: pool_roots,
-    exclude_substrings: module_graph_exclude_substrings
+    module_to_path: module_to_path
   )
   if is_empty(xs: census.refusals) {
     outcome_accepted(value: no_paths)

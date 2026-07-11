@@ -2,7 +2,12 @@ module v2.test.module_graph.reference_closure_equivalence
 
 import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.lens.module_graph { import_closure_live, no_paths }
-import v2.lens.reference_deps { reference_closure_ingest_refusal_witness, reference_closure_live }
+import v2.lens.reference_deps {
+  reference_closure_ingest_refusal_witness,
+  reference_closure_live,
+  reference_parsed_tree_facts_match_import_facts_at_path
+}
+import v2.lens.module_graph { module_graph_exclude_substrings }
 import std.algebra { FreeMonoid }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -43,7 +48,7 @@ data workspace_root_cross_runner_hand_rust_receipt: String = "Cross-runner CI un
 
 data bogus_never_referenced: String = "src/v2/std/__bogus_never_referenced__.dag"
 
-data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current corpus every cross-module edge is still an import, so reference-closure must equal import-closure on the conformance witness — equal module sets imply the same resolve inputs. Witness entry is conformance_imports_only.dag (same import envelope as coproduct_reflection_conformance_test.dag, pipeline-parseable — v2 parse_module rejects test fn bodies). Scaffold marker for the parallel envelope lives on this witness module (conformance_import_envelope_disposition), not on the stub, so the stub's import closure matches the golden. Any ingest refusal poisons reference-closure (fail-closed) as Outcome Rejected, never as an empty FreeMonoid; a strict superset without equality would be a located deficit before any import deletion. RED ingest control uses reference_closure_ingest_refusal_witness (inline unparseable source via reference_file_census_from_source — same refusal→Rejected arm as BFS, green-by-execution without a broken .dag in the compile graph)."
+data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current corpus every cross-module edge is still an import, so reference-closure must equal import-closure on the conformance witness — equal module sets imply the same resolve inputs. Witness entry is conformance_imports_only.dag (same import envelope as coproduct_reflection_conformance_test.dag, pipeline-parseable — v2 parse_module rejects test fn bodies). Scaffold marker for the parallel envelope lives on this witness module (conformance_import_envelope_disposition), not on the stub, so the stub's import closure matches the golden. reference_closure_live uses import_resolution_facts (same BFS shape as import_closure_live); reference_parsed_tree_matches_import_facts_on_conformance_closure_holds exercises the parsed-tree census per golden path. Any ingest refusal poisons the parsed census (fail-closed) as Outcome Rejected, never as an empty FreeMonoid. RED ingest control uses reference_closure_ingest_refusal_witness (inline unparseable source via reference_file_census_from_source — same refusal→Rejected arm as parsed BFS, green-by-execution without a broken .dag in the compile graph)."
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
@@ -70,6 +75,19 @@ fn reference_conformance_closure_accepted() -> FreeMonoid<String> {
     Accepted { value: closure, diagnostics: _ } => closure
     Rejected { diagnostics: _ } => no_paths
   }
+}
+
+test fn reference_parsed_tree_matches_import_facts_on_conformance_closure_holds() -> Bool {
+  for_all(
+    xs: expected_conformance_closure,
+    predicate: fn(path) {
+      reference_parsed_tree_facts_match_import_facts_at_path(
+        rel_path: path,
+        pool_roots: witness_layer_roots,
+        exclude_substrings: module_graph_exclude_substrings
+      )
+    }
+  )
 }
 
 test fn reference_closure_conformance_equivalence_holds() -> Bool {
