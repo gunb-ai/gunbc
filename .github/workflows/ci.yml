@@ -167,6 +167,8 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
+          mkdir -p target
+          echo floor_running > target/ci-floor-disposition.txt
           _ci_changed=$(git diff --name-only origin/main...HEAD 2>/dev/null || true)
           if [ -n "$_ci_changed" ]; then
           # Interim plan-artifact scoping: merge-base diffs whose only changed paths are under docs/ or dag/gunbc/plans/ run compile-clean then skip the witness corpus. Path-prefix matching is an interim heuristic — dissolve-on: affected-set-scoped compile-clean (Ruling 1 path grain) replaces it. Empty _ci_changed (git fetch/diff failure) short-circuits this block and falls through to the full floor (fail-closed, not widening). Merge-admission stamps Skipped (not Success) via CI_FLOOR_DISPOSITION=documentation_only_skipped so floor-not-run ≠ floor-green. Generated-artifact carriers (.gitignore, README.md/CLAUDE.md/DESIGN.md symlinks) are excluded from the allowlist — their only drift guard is floor-resident; whitelisting them would self-shortcut that gate (#6236 class). CI substrate (.github/workflows/ci.yml, dag/gunbc/ci_spec.dag, ci_spec witnesses) is likewise excluded.
