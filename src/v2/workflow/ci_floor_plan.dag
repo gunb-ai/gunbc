@@ -3,12 +3,8 @@ module v2.workflow.ci_floor_plan
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
-<<<<<<< HEAD
   ci_spec_with_discovery_scan_dirs,
-  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
-=======
   Gate, EmitHostGate, LayeringImportsGate,
->>>>>>> origin/main
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
