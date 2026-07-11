@@ -70,13 +70,6 @@ fn reference_conformance_closure_outcome() -> Outcome<FreeMonoid<String>> {
   reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
 }
 
-fn reference_conformance_closure_accepted() -> FreeMonoid<String> {
-  match reference_conformance_closure_outcome() {
-    Accepted { value: closure, diagnostics: _ } => closure
-    Rejected { diagnostics: _ } => no_paths
-  }
-}
-
 test fn reference_parsed_tree_matches_import_facts_on_conformance_entry_holds() -> Bool {
   reference_parsed_tree_facts_match_import_facts_at_path(
     rel_path: conformance_entry,
@@ -88,14 +81,11 @@ test fn reference_parsed_tree_matches_import_facts_on_conformance_entry_holds() 
 test fn reference_closure_conformance_equivalence_holds() -> Bool {
   match reference_conformance_closure_outcome() {
     Accepted { value: reference_closure, diagnostics: _ } =>
+      let with_bogus = list_snoc_item(xs: expected_conformance_closure, item: bogus_never_referenced)
       set_equal(xs: reference_closure, ys: expected_conformance_closure)
+        && set_equal(xs: reference_closure, ys: with_bogus) == false
     Rejected { diagnostics: _ } => false
   }
-}
-
-test fn reference_closure_drift_discriminates_over_declaration_red_holds() -> Bool {
-  let with_bogus = list_snoc_item(xs: expected_conformance_closure, item: bogus_never_referenced)
-  set_equal(xs: reference_conformance_closure_accepted(), ys: with_bogus) == false
 }
 
 test fn import_reference_closure_mismatch_discriminates_red_holds() -> Bool {
