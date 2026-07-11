@@ -15,6 +15,9 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
+  dag_add_arrow_with_body_fixture,
+  dag_binding_param_x,
+  dag_binding_param_y,
   dag_language_model,
   parse_production_emitted_identity_optional,
   parse_subtree_find_production_captured
