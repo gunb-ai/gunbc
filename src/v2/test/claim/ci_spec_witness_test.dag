@@ -11,6 +11,7 @@ import gunbc.ci_spec {
   CiSpec, DiffPolicy, DiffMergeBase, Gate,
   gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates,
   gunbc_ci_regen_floor_gates,
+  gunbc_ci_emit_determinism_floor_gates,
   ci_release_features,
   scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
   ci_release_build_script, ci_floor_build_verify_script,
@@ -20,7 +21,7 @@ import gunbc.ci_spec {
 }
 import gunbc.merge_admission_produce { merge_admission_floor_disposition_documentation_only_skipped }
 
-data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\" \"$ROOT/target/release/floor_skip_discovery_witness\"\n"
+data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\" \"$ROOT/target/release/floor_skip_discovery_witness\" \"$ROOT/target/release/claim_batch\" \"$ROOT/target/release/regen_stage0\" \"$ROOT/target/release/interp_recorded_fixture_witness\" \"$ROOT/target/release/v1_src_dag_parse\"\n"
 
 data reflect_gate_type: Symbol = ^Gate
 
@@ -68,7 +69,7 @@ fn witness_gate_roster_matches_coproduct_arms() -> Bool {
   match coproduct_nullary_inhabitants(type_name: reflect_gate_type) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       bag_eq(
-        xs: gate_arm_symbols(gates: concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates)),
+        xs: gate_arm_symbols(gates: concat(concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates), gunbc_ci_emit_determinism_floor_gates)),
         ys: arm_keys,
         eq: symbol_eq
       ) && bag_eq(

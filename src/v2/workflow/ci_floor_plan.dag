@@ -555,10 +555,6 @@ fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
   floor_schedule_for(spec: gunbc_ci_spec, serialize_heavy: true)
 }
 
-fn gunbc_ci_floor_schedule_without_serialization() -> List<List<Runnable>> {
-  floor_schedule_for(spec: gunbc_ci_spec, serialize_heavy: false)
-}
-
 fn gunbc_ci_floor_realization_plan_for(spec: CiSpec) -> RealizationPlan {
   RealizationPlan {
     target: ci_floor_target_digest
@@ -828,12 +824,6 @@ fn floor_plan_co_runs_heavy_without_serialization_for(spec: CiSpec) -> Bool {
 
 fn gunbc_ci_floor_plan_serializes_heavy_resolves() -> Bool {
   floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: gunbc_ci_floor_batches())
-}
-
-fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
-  floor_plan_at_most_one_heavy_gate_resolve_per_batch(
-    batches: gunbc_ci_floor_schedule_without_serialization()
-  ) == false
 }
 
 fn witness_floor_corpus_exclusion_edges_exist(spec: CiSpec) -> Bool {
