@@ -69,7 +69,7 @@ data synthetic_exec_kind_nonexec_path_row: ScheduleWitnessEntry = ScheduleWitnes
   kind: ExecutionWitnessKind
 }
 
-data synthetic_specs_discovery_free_note: String = "The live gunbc_ci_spec parks discovery_scan_dirs enrollment until skip-before-resolve + memory receipt (ci_spec_discovery_flip_enrollment_parked_note). Synthetic specs below exercise pure opt-in ROSTER machinery (partition, gating, exact-row carriage) with discovery dirs zeroed. Flip machinery is witnessed via discovery_flip_enrolled_spec (ci_corpus_discovery_flip_witnesses)."
+data synthetic_specs_discovery_free_note: String = "Synthetic specs below exercise pure opt-in ROSTER machinery (partition, gating, exact-row carriage) with discovery dirs zeroed via discovery_free_base_spec. Live gunbc_ci_spec enrolls witness_discovery_scan_dirs (#6438); flip isolation edges are witnessed on gunbc_ci_spec and discovery_flip_enrolled_spec."
 
 data discovery_flip_enrolled_spec: CiSpec = ci_spec_with_discovery_scan_dirs(
   spec: gunbc_ci_spec,
@@ -352,11 +352,11 @@ test fn falsifier_plan_spawn_width_witnesses() -> Bool {
 }
 
 test fn ci_corpus_discovery_flip_witnesses() -> Bool {
-  witness_ci_corpus_discovery_flip_parked_on_live_spec()
+  witness_ci_corpus_discovery_is_live()
     && witness_ci_corpus_discovery_flip_authored()
     && witness_ci_corpus_discovery_serializes_at_width_one()
-    && witness_floor_discovery_flip_serializes_gates_after_corpus(spec: discovery_flip_enrolled_spec)
-    && witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: discovery_flip_enrolled_spec)
+    && witness_floor_discovery_flip_serializes_gates_after_corpus(spec: gunbc_ci_spec)
+    && witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: gunbc_ci_spec)
     && witness_floor_discovery_flip_gates_isolated_from_corpus()
     && witness_regen_spec_carries_no_witness_corpus()
     && schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0
