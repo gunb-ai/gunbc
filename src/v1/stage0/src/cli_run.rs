@@ -2895,25 +2895,6 @@ mod module_schedule_batches_tests {
     }
 }
 
-// Tree partition for the binding-fork ledger count line (mirrors `source_tree_of` in
-// dag/std/... / src/v1/04_env.dag). This is a diagnostic receipt partition only — a fork
-// is same-tree when both decl sites classify to the same tree, cross-tree otherwise. The
-// authority for the classification is the `.dag` `source_tree_of`; this Rust copy exists
-// solely so the floor's aggregated count line can partition without a per-fork `.dag` field.
-fn binding_fork_source_tree(file: &str) -> &'static str {
-    if file.contains("<kernel:") {
-        "kernel"
-    } else if file.contains("src/v2") {
-        "src/v2"
-    } else if file.contains("src/v1") {
-        "src/v1"
-    } else if file.contains("dag/") {
-        "dag"
-    } else {
-        "other"
-    }
-}
-
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3052,9 +3033,10 @@ fn reconcile_with_typed_cache(
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
         for fork in tc_result.binding_forks.iter() {
-            if binding_fork_source_tree(&fork.existing_site)
-                == binding_fork_source_tree(&fork.incoming_site)
-            {
+            // `same_tree` is computed on the `.dag` side (04_env `source_tree_of`, the single
+            // classification authority) and carried on the conflict — no parallel Rust
+            // classifier to drift (§3).
+            if fork.same_tree {
                 same_tree_fork_count += 1;
             } else {
                 cross_tree_fork_count += 1;
