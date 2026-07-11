@@ -439,12 +439,6 @@ pub enum CompilerDiagnostic {
         import_path: String,
         span: Rc<SourceSpan>,
     },
-    CrossTreeBindingForkLedger {
-        name: String,
-        site_a: String,
-        site_b: String,
-        span: Rc<SourceSpan>,
-    },
 }
 impl CompilerDiagnostic {
     pub fn span(&self) -> Rc<SourceSpan> {
@@ -468,7 +462,6 @@ impl CompilerDiagnostic {
             CompilerDiagnostic::SoleConstructorViolation { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::UnlistedImportUse { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::CrossParentBindingConflict { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::CrossTreeBindingForkLedger { span: __val, .. } => __val.clone(),
         }
     }
 }
@@ -505,7 +498,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::CrossParentBindingConflict { span: s, .. } => s.clone(),
-        CompilerDiagnostic::CrossTreeBindingForkLedger { span: s, .. } => s.clone(),
     }
 }
 
@@ -530,14 +522,12 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::CrossParentBindingConflict { name: n, import_path: p, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cross-parent binding conflict: name '".to_string(), n.clone()), "' reaches this module from import '".to_string()), p.clone()), "' with a DIFFERENT binding than an earlier import - one name, one authority (DESIGN 3); a silent overlay-wins here is the shadowing fail-open class, so this refuses instead".to_string()),
-    CompilerDiagnostic::CrossTreeBindingForkLedger { name: n, site_a: a, site_b: b, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cross-tree binding fork (LEDGERED, declared interim): name '".to_string(), n.clone()), "' is declared in both trees ('".to_string()), a.clone()), "' and '".to_string()), b.clone()), "') - the known dag-vs-src/v2 fork debt; resolution keeps the pre-guard import-order winner unchanged; counted per run. Dissolve-on: std consolidation / namespace Rule-1 terminal - when the trees merge this arm deletes and the cross-parent guard refuses unconditionally".to_string()),
 }
 }
 
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
-        CompilerDiagnostic::CrossTreeBindingForkLedger { .. } => false,
         _ => true,
     }
 }
@@ -546,7 +536,6 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::ComplexityUnknown { .. } => false,
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
-        CompilerDiagnostic::CrossTreeBindingForkLedger { .. } => false,
         _ => true,
     }
 }

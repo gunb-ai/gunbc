@@ -2630,6 +2630,13 @@ fn reconcile_with_typed_cache(
         }
     }
 
+    // Ledger receipt (declared interim, lane ruling 2026-07-11): cross-tree binding forks
+    // ride the typed out-of-band channel (TypecheckModuleResult.cross_tree_forks), never
+    // diagnostics — consumers rightly read diagnostics as compile cleanliness. Counted per
+    // run on the receipt surface the floor prints; the std-consolidation lane's priority
+    // signal. Dissolve-on: std consolidation / namespace Rule-1 terminal (the ledger arm
+    // deletes and the cross-parent guard refuses unconditionally).
+    let mut cross_tree_fork_count: usize = 0;
     // Assembled view (original resolver order): dispatch order above is the schedule's
     // concern; the graph handed to consumers — module list, registry merge order, and
     // diagnostic order — is assembled in the exact order the serial fold produced, so the
@@ -2647,6 +2654,7 @@ fn reconcile_with_typed_cache(
         item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
+        cross_tree_fork_count += tc_result.cross_tree_forks.len();
     }
 
     let expanded_registry =
@@ -2658,20 +2666,6 @@ fn reconcile_with_typed_cache(
         }
         acc
     });
-    // Ledger receipt (declared interim, lane ruling 2026-07-11): cross-tree binding forks
-    // are counted per run on the receipt surface the floor prints — observable, never only
-    // a scrolling diagnostic. This count is the std-consolidation lane's priority signal.
-    // Dissolve-on: std consolidation / namespace Rule-1 terminal (the ledger arm deletes
-    // and the cross-parent guard refuses unconditionally).
-    let cross_tree_fork_count = diagnostics
-        .iter()
-        .filter(|d| {
-            matches!(
-                &*d.diagnostic,
-                CompilerDiagnostic::CrossTreeBindingForkLedger { .. }
-            )
-        })
-        .count();
     if cross_tree_fork_count > 0 {
         eprintln!("[cross-tree-binding-fork-ledger] count={cross_tree_fork_count}");
     }

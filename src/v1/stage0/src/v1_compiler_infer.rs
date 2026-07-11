@@ -112,8 +112,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    CrossParentBindingConflict, CrossTreeBindingForkLedger, FieldNotFound, InternalError,
-    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
+    CrossParentBindingConflict, FieldNotFound, InternalError, SoleConstructorViolation,
+    TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -339,6 +339,16 @@ pub struct BuildTypeEnvResult {
     pub env: Rc<TypeEnv>,
     pub cache: Rc<TypeEnvCache>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub cross_tree_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+}
+
+pub fn cross_tree_forks_channel_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Out-of-band ledger channel (S2a move 2 increment B cut 2; lane ruling 2026-07-11): a cross-TREE binding fork (dag/ vs src/v2/ vs kernel-synthetic - the known v1-seed-vs-v2 fork debt) is a fact about the CORPUS, not an error in this module compile, so it must never ride the diagnostics channel (consumers rightly read diagnostics as compile cleanliness). Rows keep name + both decl sites; the consumer module is the carrying TypecheckModuleResult; resolution keeps the pre-guard import-order winner. The floor realization aggregates and prints the cross-tree-binding-fork-ledger count line per run (cli_run reconcile_with_typed_cache). Same-tree conflicts stay ERRORS on the diagnostics channel (no grace). Dissolve-on: std consolidation / namespace Rule-1 terminal - this channel deletes and the cross-parent guard refuses unconditionally.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -12657,29 +12667,34 @@ pub fn build_type_env(
         let import_union =
             union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
         let import_cache = import_union.cache.clone();
+        let cross_tree_forks = Rc::new({
+            let mut __result = Vec::new();
+            for c in import_union.conflicts.clone().iter().cloned() {
+                if conflict_is_cross_tree(c.clone()) {
+                    __result.push(c);
+                }
+            }
+            __result
+        });
         let cross_parent_conflict_diags = Rc::new({
             let mut __result = Vec::new();
             for c in import_union.conflicts.clone().iter().cloned() {
-                __result.push(if conflict_is_cross_tree(c.clone()) {
-                    make_error_node(
-                        Rc::new(CompilerDiagnostic::CrossTreeBindingForkLedger {
-                            name: c.name.clone(),
-                            site_a: c.existing_site.clone(),
-                            site_b: c.incoming_site.clone(),
-                            span: c.span.clone(),
-                        }),
-                        module_name_str.clone(),
-                    )
-                } else {
-                    make_error_node(
-                        Rc::new(CompilerDiagnostic::CrossParentBindingConflict {
-                            name: c.name.clone(),
-                            import_path: c.import_path.clone(),
-                            span: c.span.clone(),
-                        }),
-                        module_name_str.clone(),
-                    )
-                });
+                __result.extend(
+                    (*if conflict_is_cross_tree(c.clone()) {
+                        Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![make_error_node(
+                            Rc::new(CompilerDiagnostic::CrossParentBindingConflict {
+                                name: c.name.clone(),
+                                import_path: c.import_path.clone(),
+                                span: c.span.clone(),
+                            }),
+                            module_name_str.clone(),
+                        )])
+                    })
+                    .iter()
+                    .cloned(),
+                );
             }
             __result
         });
@@ -12893,6 +12908,7 @@ pub fn build_type_env(
                 v1_rt::concat(import_diags.clone(), cross_parent_conflict_diags.clone()),
                 resolved_diags.clone(),
             ),
+            cross_tree_forks: cross_tree_forks.clone(),
         })
     }
 }
@@ -13336,6 +13352,7 @@ pub fn build_type_env_unresolved(
             env: unresolved_env.clone(),
             cache: type_env_cache.clone(),
             diagnostics: Rc::new(vec![]),
+            cross_tree_forks: Rc::new(vec![]),
         })
     }
 }
@@ -14033,6 +14050,7 @@ pub fn build_module_context(
 pub struct TypecheckModuleResult {
     pub typed: Rc<TypedModule>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub cross_tree_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
 pub fn typecheck_module(
@@ -14076,6 +14094,7 @@ pub fn typecheck_module(
                     item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
                 }),
                 diagnostics: v1_rt::concat(env_diags.clone(), seed_diags.clone()),
+                cross_tree_forks: env_result.cross_tree_forks.clone(),
             });
         }
         let resolved_module_name =
@@ -14221,6 +14240,7 @@ pub fn typecheck_module(
                 ),
                 seed_diags.clone(),
             ),
+            cross_tree_forks: env_result.cross_tree_forks.clone(),
         })
     }
 }

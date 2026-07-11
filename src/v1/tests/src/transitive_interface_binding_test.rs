@@ -9,8 +9,17 @@
 //! checker genuinely reads the transitive structure rather than waving projections
 //! through, so a fail-open flatten cannot pass both arms.
 
+use std::rc::Rc;
+
 use crate::helpers::{compile_multi, diagnostic_messages};
-use v1_compiler::v1_compiler_infer::is_error_diagnostic;
+use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
+use v1_compiler::v1_compiler_infer::{
+    build_variant_export_surface, is_error_diagnostic, typecheck_module, TypecheckModuleResult,
+    VariantExportSurface,
+};
+use v1_compiler::v1_compiler_infer_items::TypedModule;
+use v1_compiler::v1_rt;
+use v1_compiler::v1_std_core::{authored_name_at, InternTable, NewlineIndex};
 
 const LIB_C: &str = "module fixture.c\n\
     type CPayload { amount: Int }\n";
@@ -87,6 +96,59 @@ fn same_tree_cross_parent_conflict_refuses() {
     );
 }
 
+// Direct-typecheck plumbing for the ledger-channel assertion: the ledger rides the
+// typed out-of-band channel (TypecheckModuleResult.cross_tree_forks), never diagnostics
+// (consumers rightly read diagnostics as compile cleanliness), so observing it means
+// reading the per-module result the floor's receipt line aggregates — the same shape
+// variant_export_surface_witness_test uses.
+fn typecheck_fixture_incremental(files: &[(&str, &str)]) -> Vec<Rc<TypecheckModuleResult>> {
+    let sources: im_rc::Vector<Rc<SourceFile>> = files
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        })
+        .collect();
+    let frontend = front_end_sources(Rc::new(sources));
+    let graph = frontend.graph.clone().expect("resolved module graph");
+    let source_indices = frontend.newline_indices.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        |acc, si| v1_rt::rc_map_insert(acc, si.file.clone(), si),
+    );
+    let norm = normalize_graph(graph, source_indices.clone());
+    let intern_table: Rc<InternTable> = frontend.intern_table.clone();
+
+    let mut module_index: Rc<im_rc::HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
+    let mut variant_surfaces: Rc<im_rc::HashMap<String, Rc<VariantExportSurface>>> =
+        v1_rt::rc_empty_map();
+    let mut results = Vec::new();
+    for resolved in norm.graph.modules.iter() {
+        let tc = typecheck_module(
+            resolved.clone(),
+            module_index.clone(),
+            variant_surfaces.clone(),
+            source_indices.clone(),
+            intern_table.clone(),
+        );
+        let typed = tc.typed.clone();
+        let path = authored_name_at(source_indices.clone(), typed.module.clone());
+        variant_surfaces = v1_rt::rc_map_insert(
+            variant_surfaces.clone(),
+            path.clone(),
+            build_variant_export_surface(
+                typed.clone(),
+                variant_surfaces.clone(),
+                source_indices.clone(),
+            ),
+        );
+        module_index = v1_rt::rc_map_insert(module_index, path, typed);
+        results.push(tc);
+    }
+    results
+}
+
 #[test]
 fn cross_tree_conflict_is_ledgered_and_keeps_import_order_winner() {
     // One chain homed under dag/, the other under src/v2/ → the known two-tree
@@ -99,13 +161,14 @@ fn cross_tree_conflict_is_ledgered_and_keeps_import_order_winner() {
         import forka.v2mid { mk_v2 }\n\
         fn read_dag_side() -> Int { mk_dag().x }\n\
         fn read_v2_side() -> Int { mk_v2().y }\n";
-    let result = compile_multi(&[
+    let files: &[(&str, &str)] = &[
         ("dag/forka/dagleaf.dag", FORK_DAG_LEAF),
         ("dag/forka/dagmid.dag", FORK_DAG_MID),
         ("src/v2/forka/v2leaf.dag", FORK_V2_LEAF),
         ("src/v2/forka/v2mid.dag", FORK_V2_MID),
         ("consumer.dag", entry),
-    ]);
+    ];
+    let result = compile_multi(files);
     let errors = error_messages(&result);
     let msgs = diagnostic_messages(&result).join("\n");
     assert!(
@@ -115,8 +178,30 @@ fn cross_tree_conflict_is_ledgered_and_keeps_import_order_winner() {
         errors.join("\n")
     );
     assert!(
-        msgs.contains("cross-tree binding fork") && msgs.contains("'Payload'"),
-        "the ledger row must be present and name the fork, got:\n{msgs}"
+        !msgs.contains("cross-tree"),
+        "the ledger must NOT ride the diagnostics channel (out-of-band typed field \
+         only — diagnostics are a compile-cleanliness signal), got:\n{msgs}"
+    );
+
+    // Ledger observability on the typed channel: the consumer's per-module result
+    // carries the counted, located rows the floor receipt aggregates.
+    let results = typecheck_fixture_incremental(files);
+    let forks: Vec<String> = results
+        .iter()
+        .flat_map(|tc| tc.cross_tree_forks.iter().map(|c| format!("{c:?}")))
+        .collect();
+    assert!(
+        forks.iter().any(|c| c.contains("Payload")),
+        "the cross-tree fork must be ledgered as a typed cross_tree_forks row naming \
+         'Payload', got rows:\n{}",
+        forks.join("\n")
+    );
+    assert!(
+        forks
+            .iter()
+            .all(|c| c.contains("dag/") && c.contains("src/v2/")),
+        "every ledger row must locate BOTH decl sites (one per tree), got rows:\n{}",
+        forks.join("\n")
     );
 }
 
