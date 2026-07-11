@@ -2414,18 +2414,36 @@ fn module_schedule_batches(
         .enumerate()
         .map(|(i, name)| (name.as_str(), i))
         .collect();
-    let n = modules.len();
+    let edges: Vec<(usize, usize)> = modules
+        .iter()
+        .enumerate()
+        .flat_map(|(i, resolved)| {
+            let position = &position;
+            resolved
+                .resolved_imports
+                .iter()
+                .filter_map(move |imp| {
+                    position
+                        .get(imp.module_path.as_str())
+                        .map(|&src| (src, i))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    schedule_batches_from_edges(modules.len(), &edges)
+}
+
+/// The pure batching core of `module_schedule_batches`: nodes are `0..n` in dependency-view
+/// order, `edges` are `(source, dependent)` pairs (duplicates and self-edges tolerated —
+/// deduped and skipped respectively, matching repeated `import` rows of one module).
+fn schedule_batches_from_edges(n: usize, edges: &[(usize, usize)]) -> Vec<Vec<usize>> {
     let mut indegree: Vec<usize> = vec![0; n];
     let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for (i, resolved) in modules.iter().enumerate() {
-        let mut seen_deps: HashSet<usize> = HashSet::new();
-        for imp in resolved.resolved_imports.iter() {
-            if let Some(&src) = position.get(imp.module_path.as_str()) {
-                if src != i && seen_deps.insert(src) {
-                    dependents[src].push(i);
-                    indegree[i] += 1;
-                }
-            }
+    let mut seen_edges: HashSet<(usize, usize)> = HashSet::new();
+    for &(src, dependent) in edges {
+        if src != dependent && seen_edges.insert((src, dependent)) {
+            dependents[src].push(dependent);
+            indegree[dependent] += 1;
         }
     }
     let mut batches: Vec<Vec<usize>> = Vec::new();
@@ -2453,6 +2471,61 @@ fn module_schedule_batches(
         batches.push((0..n).filter(|&i| !scheduled[i]).collect());
     }
     batches
+}
+
+#[cfg(test)]
+mod module_schedule_batches_tests {
+    use super::schedule_batches_from_edges;
+
+    fn flat(batches: &[Vec<usize>]) -> Vec<usize> {
+        batches.iter().flatten().copied().collect()
+    }
+
+    // Once-per-node by construction (§5): every node appears in the schedule exactly once,
+    // and a dependent is never batched before its source.
+    #[test]
+    fn diamond_schedules_antichain_levels() {
+        // 0 -> {1, 2} -> 3 (diamond): 1 and 2 are the same level (the parallel frontier).
+        let batches = schedule_batches_from_edges(4, &[(0, 1), (0, 2), (1, 3), (2, 3)]);
+        assert_eq!(batches, vec![vec![0], vec![1, 2], vec![3]]);
+    }
+
+    #[test]
+    fn chain_is_one_node_per_batch_and_covers_every_node_once() {
+        let batches = schedule_batches_from_edges(3, &[(0, 1), (1, 2)]);
+        assert_eq!(batches, vec![vec![0], vec![1], vec![2]]);
+        assert_eq!(flat(&batches), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn duplicate_and_self_edges_do_not_deadlock() {
+        // A module importing the same module twice (two import rows) and a self-import
+        // must not inflate indegree — both were representable in resolved_imports.
+        let batches = schedule_batches_from_edges(2, &[(0, 1), (0, 1), (1, 1)]);
+        assert_eq!(batches, vec![vec![0], vec![1]]);
+    }
+
+    // RED-control shape: a cycle is unschedulable by the forward walk; the residue is
+    // appended as a final batch in original order — never silently dropped (coverage
+    // stays total), and never interleaved ahead of schedulable nodes.
+    #[test]
+    fn cycle_residue_is_final_batch_in_original_order() {
+        // 0 standalone; 1 <-> 2 cycle; 3 depends on the cycle (also residue: its
+        // prerequisite never completes the forward walk).
+        let batches = schedule_batches_from_edges(4, &[(1, 2), (2, 1), (2, 3)]);
+        assert_eq!(batches, vec![vec![0], vec![1, 2, 3]]);
+        let mut all = flat(&batches);
+        all.sort_unstable();
+        assert_eq!(all, vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn within_level_order_is_original_relative_order() {
+        // Independent nodes keep dependency-view order inside their level — the
+        // determinism the byte-identical assembled-view receipt rides on.
+        let batches = schedule_batches_from_edges(3, &[]);
+        assert_eq!(batches, vec![vec![0, 1, 2]]);
+    }
 }
 
 fn reconcile_with_typed_cache(
