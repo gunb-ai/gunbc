@@ -23,13 +23,24 @@ import v2.std.text { String }
 
 type CompilerFrontierCensusAttribution
   = KnowledgeAttributed { dissolution_trigger: Symbol }
-  | ExecutionMeasured { probe_receipt: Symbol, wave_label: Symbol }
+  | ExecutionMeasured {
+      probe_receipt: Symbol,
+      wave_label: Symbol,
+      gap_clustering: KnowledgeAttributed { dissolution_trigger: Symbol }
+    }
+
+data compiler_frontier_located_reason_survey_dissolution_trigger: String = "🟡 dissolve-on: measured_probe.located_reason is a blocker-class projection (^measured_probe_emit_surface_gap etc.), NOT execution-located d.head.reason from frontier_probe_emit_from_ingest. Blocker CLASS is wave-2 execution-measured; gap WHY / clustering remains KnowledgeAttributed (migration_trigger on each row) until per-module ingest-manifest survey binds live located_reason + located_stage per row. DISSOLVES WHEN execution_measured_seed_retained_row preserves probe receipt located_reason without class projection."
+
+data compiler_frontier_gap_clustering_attribution: KnowledgeAttributed = KnowledgeAttributed {
+  dissolution_trigger: ^migrate_when_frontier_located_reason_survey_binds
+}
 
 data compiler_frontier_per_module_ingest_manifest_scaffold_dissolution_trigger: String = "🟡 dissolve-on: per-module frontier emit probe survey — each roster row's measured_probe must be refreshed by executing frontier_probe_emit_from_ingest against that module's import-closure ingest manifest (discover_source_root_ingest today). DISSOLVES WHEN a .dag-native survey workflow enumerates compiler_frontier_roster and binds each row's measured_probe from a live probe receipt in one authority, retiring hand-refreshed census rows."
 
 data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = ExecutionMeasured {
   probe_receipt: ^compiler_frontier_emit_probe_survey_holds,
-  wave_label: ^wave2_post_resolver_6451_body_stage_a_6443
+  wave_label: ^wave2_post_resolver_6451_body_stage_a_6443,
+  gap_clustering: compiler_frontier_gap_clustering_attribution
 }
 
 type SelfHostFrontierDisposition
@@ -47,7 +58,7 @@ data compiler_frontier_module_count_expected: Int = 27
 
 data compiler_frontier_self_emitted_baseline: Int = 0
 
-fn measured_reason_for_blocker(blocker: FrontierBlockerClass) -> Symbol {
+fn blocker_class_projection_reason(blocker: FrontierBlockerClass) -> Symbol {
   match blocker {
     SelfEmitReady => ^measured_probe_self_emit_ready
     NameResolutionGap => ^measured_probe_name_resolution_gap
@@ -78,17 +89,18 @@ fn execution_measured_seed_retained_row(
   measured_blocker: FrontierBlockerClass,
   migration_trigger: Symbol
 ) -> CompilerModuleFrontierRow {
+  let class_projected_located_reason = blocker_class_projection_reason(blocker: measured_blocker)
   CompilerModuleFrontierRow {
     module_path: module_path,
     disposition: SeedRetained {
-      reason: measured_reason_for_blocker(blocker: measured_blocker),
+      reason: class_projected_located_reason,
       migration_trigger: migration_trigger
     },
     measured_probe: FrontierProbeReceipt {
       module_path: module_path,
       blocker_class: measured_blocker,
       located_stage: measured_stage_for_blocker(blocker: measured_blocker),
-      located_reason: measured_reason_for_blocker(blocker: measured_blocker)
+      located_reason: class_projected_located_reason
     },
     tractability_rank: tractability_rank_for(closure_reads: closure_reads, blocker: measured_blocker)
   }
@@ -449,14 +461,32 @@ fn compiler_frontier_roster_probe_paths_match_holds() -> Bool {
   )
 }
 
+fn compiler_frontier_gap_clustering_knowledge_attributed_holds() -> Bool {
+  match compiler_frontier_census_attribution {
+    ExecutionMeasured {
+      probe_receipt: _,
+      wave_label: _,
+      gap_clustering: gap_clustering
+    } =>
+      match gap_clustering {
+        KnowledgeAttributed { dissolution_trigger: trigger } =>
+          trigger == ^migrate_when_frontier_located_reason_survey_binds
+        _ => false
+      }
+    KnowledgeAttributed { dissolution_trigger: _ } => false
+  }
+}
+
 fn compiler_frontier_execution_measured_attribution_holds() -> Bool {
   match compiler_frontier_census_attribution {
     ExecutionMeasured {
       probe_receipt: probe_receipt,
-      wave_label: wave_label
+      wave_label: wave_label,
+      gap_clustering: _
     } =>
       probe_receipt == ^compiler_frontier_emit_probe_survey_holds
         && wave_label == ^wave2_post_resolver_6451_body_stage_a_6443
+        && compiler_frontier_gap_clustering_knowledge_attributed_holds()
         && compiler_frontier_roster_all_classified_holds()
         && compiler_frontier_roster_probe_paths_match_holds()
     KnowledgeAttributed { dissolution_trigger: _ } => false
@@ -529,6 +559,7 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_roster_paths_unique_holds()
     && compiler_frontier_self_emitted_baseline_holds()
     && compiler_frontier_execution_measured_attribution_holds()
+    && compiler_frontier_gap_clustering_knowledge_attributed_holds()
     && compiler_frontier_sweep_order_complete_holds()
     && compiler_frontier_sweep_order_matches_tractability_rank_holds()
     && compiler_frontier_roster_all_classified_holds()
