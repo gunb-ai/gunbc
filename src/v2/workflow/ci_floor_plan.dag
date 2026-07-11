@@ -856,7 +856,7 @@ fn witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: CiSpec) -> Bool
 }
 
 fn witness_corpus_effective_widths_fit_runner_cap() -> Bool {
-  let cap = byte_size_count(b: gunbc_ci_runner_slot_memory_max_live)
+  let cap = byte_size_count(b: ci_runner_target_ram_speed_budget(target: selected_ci_runner_target()))
   let base = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes())
   let floor_cap_w = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree())
   let floor_committed = base + floor_cap_w * byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
