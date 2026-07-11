@@ -25,6 +25,9 @@ import std.cache_interface {
 }
 import std.lens_verdict { Holds, Violation }
 import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_module: String = "test.claim.cache_key_completeness"
 

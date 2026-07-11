@@ -9,6 +9,9 @@ import v2.extdeps.languages.dag {
 import v2.extdeps.languages.fidelity { FailClosed }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn slash_slash_in_string() -> String {
   "https://example.com"

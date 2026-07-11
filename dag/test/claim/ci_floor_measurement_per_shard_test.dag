@@ -20,6 +20,9 @@ import gunbc.ci_floor_measurement {
   witness_falsifier_per_shard_exceeds_floor_gate_peak,
   witness_falsifier_derived_width_at_live_cap_is_two,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_per_shard_is_max_observed_sample() -> Bool {
   byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) == 4556861440

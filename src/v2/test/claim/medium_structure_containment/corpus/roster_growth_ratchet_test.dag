@@ -9,6 +9,9 @@ import v2.lens.medium_structure_containment {
 import v2.std.algebra { list_append, length }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data planted_roster_growth_entry: String = "dag/gunbc/_perturb_fresh_medium_structure_roster_entry.dag"
 

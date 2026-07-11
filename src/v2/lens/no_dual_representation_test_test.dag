@@ -5,6 +5,9 @@ import v2.lens.no_dual_representation_test {
   no_dual_representation_test_live_file_count,
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn no_dual_representation_test_has_no_violations() -> Bool {
   return no_dual_representation_test_clean_holds()

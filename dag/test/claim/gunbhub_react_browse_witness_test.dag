@@ -6,6 +6,9 @@ import extdeps.languages.html {
   EmitRejected,
   try_serialize_html_source,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn browse_page_html() -> String {
   match try_serialize_html_source(node: gunbhub_browse_page()) {

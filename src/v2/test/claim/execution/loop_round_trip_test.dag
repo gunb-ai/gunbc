@@ -47,6 +47,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data loop_emitted_root: Node = dag_fixture_emitted_loop_fn
 data loop_target_model: TargetModel = dag_loop_target_model()

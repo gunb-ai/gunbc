@@ -34,6 +34,9 @@ import v2.workflow.gha_expression_fidelity {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn path_y_core_expr() -> Expression {
   LogicalOr {

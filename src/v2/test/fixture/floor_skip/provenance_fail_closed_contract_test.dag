@@ -30,6 +30,9 @@ import v2.workflow.affected_set_floor_runner {
   floor_precompute_would_skip,
   floor_witness_run_disposition
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data scout_manifest_provenance_live: Bool = host_source_root_ingest_coverage_receipt.coverage_complete && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0) && (length(xs: host_source_root_ingest) > 0)
 

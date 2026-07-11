@@ -36,6 +36,9 @@ import gunbc.ci_floor_measurement {
 import extdeps.os.systemd { Active, Inactive }
 import extdeps.os.systemctl { UnitEnabled, UnitDisabled }
 import extdeps.os.oomd { ManagedOomKill, ManagedOomAuto }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn test_thresholds() -> OomdGroundingThresholds {
   OomdGroundingThresholds {

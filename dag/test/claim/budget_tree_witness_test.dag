@@ -13,6 +13,9 @@ import product.budget_tree {
   node_conserves, node_conserves_local, node_balance, reconcile,
   claim_items, budget_tree_method
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn claim(name: String, amount: Nat, p: BudgetPriority) -> BudgetClaim {
   BudgetClaim { item: LineItem { purpose: name, amount: byte_size(count: amount) }, priority: p }

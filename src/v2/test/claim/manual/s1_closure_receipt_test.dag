@@ -13,6 +13,9 @@ import v2.std.diagnostic { Accepted, Rejected, port_locus }
 import v2.std.grammar { ModeledGrammar, ParseGrammar, VoidGrammar }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data s1_closure_paths: List<String> = [
   "dag/std/algebra.dag",

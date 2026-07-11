@@ -24,6 +24,9 @@ import v2.std.runtime {
   ValueRuntimeInterpreter
 }
 import v2.std.witness { Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
   let node = Node {

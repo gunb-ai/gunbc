@@ -26,6 +26,9 @@ import tools.merge_admission_stamp {
 }
 import extdeps.github.checks { check_conclusion_wire_label, Skipped }
 import std.types { ContentHash }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data scenario_base: ContentHash = "merge-admission-producer-base"
 data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"

@@ -34,6 +34,9 @@ import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.fleet_intent { srv1_host }
 import gunbc.host_effect { LocalShell }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn ci_deploy_runner_principal_name() -> String {
   grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) as String

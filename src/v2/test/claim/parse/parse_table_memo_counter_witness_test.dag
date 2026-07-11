@@ -11,6 +11,9 @@ import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Rejected, port_locus }
 import v2.std.grammar { ModeledGrammar, ParseGrammar }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data parse_memo_counter_fixture_source: String = "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }"
 

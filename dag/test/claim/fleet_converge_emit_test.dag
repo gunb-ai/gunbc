@@ -65,6 +65,9 @@ import gunbc.fleet_converge_emit {
   fleet_converge_sh_for,
   fleet_converge_drifted,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_runner_host() -> RunnerHostDeployment {
   RunnerHostDeployment {

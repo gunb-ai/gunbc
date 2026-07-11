@@ -8,6 +8,9 @@ import v2.lens.extdeps_shape_transport_policy {
 import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_gcp_module }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data transport_fusion_gcp_oauth_argv_facts: List<ExtdepsTransportArgvFact> = []
 

@@ -9,6 +9,9 @@ import std.markdown_markup {
 }
 import std.markdown { ImageInline }
 import std.markup { ElementNode, TextNode, MarkupAttr, MarkupNode }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn parse_and_render(text: String) -> List<MarkupNode> {
   markdown_inlines_to_markup_nodes(

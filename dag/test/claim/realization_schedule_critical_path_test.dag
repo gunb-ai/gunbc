@@ -10,6 +10,9 @@ import std.realization_measurement {
 import std.realization_schedule { CostBasis, cost_account_time_count }
 import std.nat { nat_compare, nat_max }
 import std.algebra { Greater, Equal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_parallel_batch_takes_max_not_sum() -> Bool {
   let batch = [

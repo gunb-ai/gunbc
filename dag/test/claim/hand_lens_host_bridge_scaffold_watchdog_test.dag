@@ -7,6 +7,9 @@ import gunbc.hand_lens_host_bridge_scaffold_watchdog {
   scaffold_dissolution_trigger_nonempty,
 }
 import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn hand_lens_host_bridge_scaffold_roster_tracks_5364_dissolution() -> Bool {
   hand_lens_host_bridge_scaffold_roster_tracked()

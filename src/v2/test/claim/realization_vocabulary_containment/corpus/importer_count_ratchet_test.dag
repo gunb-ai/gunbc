@@ -11,6 +11,9 @@ import v2.lens.realization_vocabulary_containment {
 import v2.std.collection { List }
 import v2.std.layer { LayerPrefixStd }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn corpus_bash_program_importer_count_ratchet_holds() -> Bool {
   bash_program_importer_count_ratchet_holds()

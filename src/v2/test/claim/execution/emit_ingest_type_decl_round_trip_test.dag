@@ -49,6 +49,9 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.node_query { find_named_child }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data type_decl_round_trip_foreign_binding: Symbol = ^type_decl_round_trip_foreign_binding
 data type_decl_round_trip_source_file: Symbol = ^type_decl_round_trip_source_file

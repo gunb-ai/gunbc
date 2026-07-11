@@ -7,6 +7,9 @@ import v2.lens.extdeps_external_authority.module_refs {
   extdeps_fixture_file_anchor_module
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn file_anchor_fixture_is_red_holds() -> Bool {
   extdeps_external_authority_has_non_external_scheme(

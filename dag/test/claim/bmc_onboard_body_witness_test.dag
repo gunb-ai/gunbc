@@ -8,6 +8,9 @@ import gunbc.tools.bmc_onboard {
   reset_body,
   gcp_secret_full_name,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn netrc_content_shape_holds() -> Bool {
   let got = netrc_content(host: "192.168.1.192", account: "root", password: "s3cr3t")

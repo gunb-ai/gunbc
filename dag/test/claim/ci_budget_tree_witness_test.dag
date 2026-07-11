@@ -27,6 +27,9 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_dashboard_session_container_cap,
   witness_runner_cgroup_cap_lt_dashboard_session_cap,
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn fitting_slice() -> Int {
   53687091200

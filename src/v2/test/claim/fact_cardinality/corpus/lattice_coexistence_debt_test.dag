@@ -2,6 +2,9 @@ module v2.test.fact_cardinality.corpus.lattice_coexistence_debt
 
 import v2.lens.fact_cardinality { fact_cardinality_live_cross_tree_is_coexistence }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data lattice_key: String = "std/algebra.dag:Lattice"
 

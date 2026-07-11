@@ -22,6 +22,9 @@ import gunbc.tools.card_intake {
   classify_catalog_match,
   assess_intake,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_zero_results_classifies_no_match() -> Bool {
   match classify_catalog_match(total_items: 0, first_product_id: 0) {

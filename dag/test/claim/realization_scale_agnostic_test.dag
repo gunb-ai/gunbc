@@ -11,6 +11,9 @@ import std.realization_measurement {
   cost_account_measured_from_schedule_critical_path,
   witness_measured_rollup_differs_from_predicted_zero,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn milli(count: Nat) -> Measure<Time, Milli, Nat> {
   time_measure(count: count)

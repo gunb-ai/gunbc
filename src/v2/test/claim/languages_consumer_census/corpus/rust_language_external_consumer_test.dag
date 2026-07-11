@@ -6,6 +6,9 @@ import v2.lens.languages_consumer_census {
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_language_decl: String = "rust_language"
 

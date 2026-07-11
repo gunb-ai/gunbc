@@ -19,6 +19,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data ivp_witness_type_node: Node = claim_atom_node(s: ^ivp_witness_type_symbol)
 data ivp_witness_module: String = "v2.lens.identical_variant_payload"
 

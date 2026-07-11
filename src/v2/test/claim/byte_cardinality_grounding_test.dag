@@ -6,6 +6,9 @@ import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.diagnostic { Locus, Outcome, Accepted, Rejected, port_locus }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type Byte = Refined<List<Int>>
 

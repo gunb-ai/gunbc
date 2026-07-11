@@ -23,6 +23,9 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
 import std.disposition { Scaffold, Terminal }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_seeded_autoinstall_user_data_is_cloud_config() -> Bool {
   let ud = srv3_autoinstall_user_data_body as String

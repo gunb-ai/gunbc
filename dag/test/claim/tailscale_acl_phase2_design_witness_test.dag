@@ -46,6 +46,9 @@ import extdeps.cloud.gcp.iam { role_secretmanager_secret_accessor }
 import std.disposition { Scaffold, SingleAuthority }
 import std.measure { second, second_count }
 import std.types { Secret }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_secret_homed_in_gunbai_secrets() -> Bool {
   operator_tailscale_acl_secret_bindings.first().project == bmc_secrets_project_id

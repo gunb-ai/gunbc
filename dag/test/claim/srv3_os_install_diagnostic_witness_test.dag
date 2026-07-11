@@ -60,6 +60,9 @@ import extdeps.bmc.types {
   On,
 }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn base_observations(
   serve_process: NbdServeProcessObservation,

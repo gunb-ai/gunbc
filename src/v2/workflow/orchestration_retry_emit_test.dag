@@ -39,6 +39,9 @@ import v2.std.diagnostic {
 }
 import gunbc.ci_spec { ci_cargo_eagain_retry_core }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data orch_retry_golden_note: String = "ci_cargo_eagain_retry_core_golden below is the HAND-AUTHORED spelling of the CI EAGAIN-retry construct, moved here verbatim when production gunbc.ci_spec cut over to emit(Retry, Bash). It is deliberately independent of the grammar rows and segment spellings: the byte tests compare the emitter (and the production seam) against this golden, so a row/segment/emitter regression cannot go green by perturbing both sides at once. The committed .github/workflows/ci.yml drift gate is the corpus-level twin of this oracle."
 

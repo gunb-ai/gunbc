@@ -13,6 +13,9 @@ import extdeps.tools.curl { curl_cli_tool }
 import extdeps.tools.websocat { websocat_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_actuator_toolchain_grant_declares_four_tools() -> Bool {
   list_length(items: srv3_os_install_actuator_toolchain_grant.required_tools) == 4

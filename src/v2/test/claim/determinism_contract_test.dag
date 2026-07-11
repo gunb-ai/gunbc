@@ -20,6 +20,9 @@ import v2.std.determinism {
   witness_unknown_primitive_absent_from_roster
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rostered_classification_eq(sig: Symbol, expected: DeterminismClass) -> Bool {
   match determinism_primitive_lookup(sig: sig) {

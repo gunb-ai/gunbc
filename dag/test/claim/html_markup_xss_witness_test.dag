@@ -22,6 +22,9 @@ import extdeps.languages.html {
   EmitOk,
   EmitRejected,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_javascript_href_rejects() -> Bool {
   match validate_href(url: "javascript:alert(1)") {

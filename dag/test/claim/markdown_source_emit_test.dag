@@ -31,6 +31,9 @@ import extdeps.languages.markdown {
   serialize_markdown_source,
   serialize_markdown_source_with,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_doc() -> MarkdownDocument {
   MarkdownDocument {

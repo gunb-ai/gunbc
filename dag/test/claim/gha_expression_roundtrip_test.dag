@@ -28,6 +28,9 @@ import extdeps.github.expressions {
 }
 import extdeps.communication.fidelity_carriers { source_medium_carried }
 import extdeps.communication.medium { Lossless }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn core_expr() -> Expression {
   LogicalOr {

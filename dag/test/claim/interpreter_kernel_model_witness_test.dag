@@ -14,6 +14,9 @@ import gunbc.interpreter_kernel_model {
   seam_class_for_pinned_basename,
   hybrid_seed_file_is_seam_unclassified
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_pure_eval_authority_modules() -> Bool {
   is_pure_eval_authority_module(path: "src/v2/compiler/05_eval.dag") &&

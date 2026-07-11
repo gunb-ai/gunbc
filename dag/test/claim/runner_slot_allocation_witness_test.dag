@@ -9,6 +9,9 @@ import gunbc.runner_slot_allocation {
   gunbc_committed_runner_slot_allocations,
 }
 import std.measure { byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn runner_slot_allocation_wall_holds() -> Bool {
   gunbc_runner_slot_allocation_wall_holds()

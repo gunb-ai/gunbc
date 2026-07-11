@@ -60,6 +60,9 @@ import std.serialize { serialize_record_doc }
 import std.layout { render }
 import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
 import std.types { Bool, Int, List, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn live_plan() -> RunnerDeploymentPlan {
   runner_deployment_plan()

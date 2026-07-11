@@ -16,6 +16,9 @@ import extdeps.languages.typescript.program {
   ts_block,
   ts_arrow,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn minimal_add_program() -> TsProgram {
   TsProgram {

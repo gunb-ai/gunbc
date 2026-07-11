@@ -19,6 +19,9 @@ import extdeps.git {
   git_diff_status_entries_departed_paths,
   git_diff_status_entries_any_unknown
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn append_name_status_token(acc: String, token: String) -> String {
   if acc == "" { token } else { concat(acc, concat(git_diff_name_status_field_separator, token)) }

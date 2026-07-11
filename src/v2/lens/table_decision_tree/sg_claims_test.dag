@@ -14,6 +14,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v2.test.lens_common.infer_fixture { claim_atom_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data tdt_witness_fn_node: Node = claim_atom_node(s: ^tdt_witness_fn_node_symbol)
 data tdt_witness_module: String = "v2.lens.table_decision_tree"

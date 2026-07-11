@@ -6,6 +6,9 @@ import extdeps.languages.bash.program {
   ShellProgram,
   lit, var_ref, command, assign, single_quote, serialize_bash
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn prog_mktemp_rm() -> ShellProgram {
   ShellProgram {

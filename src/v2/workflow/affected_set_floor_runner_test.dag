@@ -48,6 +48,8 @@ import v2.workflow.affected_set_floor_runner {
 }
 import gunbc.ci_spec { DiffMergeBase }
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
 data floor_test_untouched_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^floor_test_untouched_symbol } },
   children: [],

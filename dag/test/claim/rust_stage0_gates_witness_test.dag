@@ -8,6 +8,9 @@ import tools.rust_stage0_gates {
   witness_empty_paths_gates_when_substrate_ready,
   witness_declared_unit_unaffected_by_other_dag_when_substrate_ready
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_rs_selects() -> Bool { path_is_rust_monolith(path: "src/v1/stage0/src/lib.rs") }
 fn w_cargo_toml_selects() -> Bool { path_is_rust_monolith(path: "src/v1/stage0/Cargo.toml") }

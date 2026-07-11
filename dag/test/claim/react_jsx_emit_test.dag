@@ -9,6 +9,9 @@ import extdeps.languages.react_jsx {
   JsxRejected,
 }
 import std.markup { ElementNode, TextNode, MarkupAttr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn browse_page_jsx() -> String {
   serialize_jsx_component(fn_name: "GunbhubBrowsePage", node: gunbhub_browse_page())

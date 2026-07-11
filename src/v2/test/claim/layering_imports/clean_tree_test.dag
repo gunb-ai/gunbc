@@ -4,6 +4,9 @@ import v2.lens.layering_imports { layering_imports_clean_holds, layer_import_fac
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data layering_std_roots: List<String> = ["src/v2/std", "dag/std"]
 data layering_extdeps_roots: List<String> = ["src/v2/extdeps", "dag/extdeps"]

@@ -35,6 +35,9 @@ import gunbc.roadmap_static_site {
   served_static_route_literal_path,
 }
 import extdeps.apt { package_tailscale, package_nodejs }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_spec_targets_srv1() -> Bool {
   deployment_plan_host_identity(spec: deployment_spec_srv1()) == "srv1"

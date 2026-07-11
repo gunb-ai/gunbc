@@ -12,6 +12,9 @@ import std.reducible {
   verdict_eq,
 }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn classify_leaf_empty_is_unknown() -> Bool {
   verdict_eq(

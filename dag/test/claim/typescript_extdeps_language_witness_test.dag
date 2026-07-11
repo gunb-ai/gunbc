@@ -24,6 +24,9 @@ import extdeps.languages.typescript.types {
   ts_type_checkpoints,
   ts_algebra_inhabitants
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 
 test fn ts_func_keyword_is_function() -> Bool {

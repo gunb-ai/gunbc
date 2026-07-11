@@ -11,6 +11,9 @@ import v2.lens.duplicate_computation {
   shell_program_computation_demands
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn emit_determinism_oracle_pair_is_declared_and_admissible() -> Bool {
   return duplicate_computation_clean_holds(facts: shell_program_computation_demands(

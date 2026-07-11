@@ -8,6 +8,9 @@ import v2.lens.extdeps_shape_transport_policy.module_refs {
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data nicknamed_policy_leak_witness_entry: String = "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag"
 

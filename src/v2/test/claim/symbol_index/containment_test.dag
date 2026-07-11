@@ -30,6 +30,9 @@ import v2.std.symbol_index {
   symbol_index_lexical_lookup,
   symbol_index_lookup
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn si_qn_node(seg: Symbol) -> Node {
   fold_list_node(

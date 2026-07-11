@@ -7,6 +7,9 @@ import gunbc.roadmap_authority {
   expected_roadmap_md, roadmap_drifted,
   derivable, sign, signed,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn mini_doc(node: RoadmapNode) -> RoadmapDocument {
   RoadmapDocument {

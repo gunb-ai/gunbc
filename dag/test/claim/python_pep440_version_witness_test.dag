@@ -20,6 +20,9 @@ import extdeps.version.pep440 {
   pep440_spec_label,
   min_python_interpreter,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn release_1() -> Pep440ReleaseSegments {
   Pep440ReleaseSegments { first: 1, rest: [] }

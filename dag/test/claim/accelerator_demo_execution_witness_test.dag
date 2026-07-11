@@ -39,6 +39,9 @@ import extdeps.languages.simd.kernel {
   witness_relu_mul_add_wire_op_codes_are_locked_triplet,
 }
 import gunbc.accelerator_demo_plan { Recognized, Refused }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
   match project_outcome_view(

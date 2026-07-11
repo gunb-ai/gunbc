@@ -22,6 +22,9 @@ import extdeps.languages.bash.program {
 import tools.host_prelude { ClaimRun, assign_root_stmt, gunbc_claims_program, witness_bin, witness_bin_program }
 import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn bash_program_fold_sample() -> ShellProgram {
   ShellProgram {

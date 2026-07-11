@@ -26,6 +26,9 @@ import v2.workflow.realization_runner {
   runner_schedule_store_covers_nodes,
   runner_walk_batches
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data runner_test_a_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^runner_test_a } },

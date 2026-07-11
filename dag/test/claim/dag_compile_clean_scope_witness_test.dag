@@ -12,6 +12,9 @@ import tools.dag_compile_clean_scope {
   witness_entry_root_is_first_witness_layer_root,
   witness_pool_roots_match_witness_layer_roots
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn dag_compile_clean_scope_empty_touched_skips_holds() -> Bool {
   witness_empty_touched_skips()

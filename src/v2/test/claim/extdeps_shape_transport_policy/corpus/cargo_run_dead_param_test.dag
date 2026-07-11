@@ -5,6 +5,9 @@ import v2.lens.extdeps_shape_transport_policy {
 }
 import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_cargo_build_module }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data cargo_run_service: String = "cargo.Build"
 data cargo_run_operation: String = "Run"

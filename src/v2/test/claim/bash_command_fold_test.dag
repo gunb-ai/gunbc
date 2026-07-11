@@ -71,6 +71,9 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn bash_fold_emit_stmt_with_target(stmt: ShellStmt, target: TargetModel) -> Outcome<String> {
   match stmt {

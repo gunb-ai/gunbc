@@ -76,6 +76,9 @@ import extdeps.llm.anthropic_errors {
   anthropic_error_type_label,
   anthropic_error_envelope_type_label,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_openai_tool_call_type_known() -> Bool {
   let row = ToolCall {

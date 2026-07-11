@@ -19,6 +19,9 @@ import v2.std.compilers.target_model {
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ts_enum_union_canonical_source_text: String = "X | Y"
 data ts_enum_union_emit_rejected_text: String = "TS_ENUM_UNION_EMIT_REJECTED"

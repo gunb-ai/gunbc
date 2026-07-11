@@ -16,6 +16,9 @@ import v2.workflow.floor_diff_observe {
   floor_observe_git_diff_name_status_for_ci,
   floor_diff_script_serializes_git_diff_name_status
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_ci_policy_observation_succeeds() -> Bool {
   match floor_observe_git_diff_unified_for_ci() {

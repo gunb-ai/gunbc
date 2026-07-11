@@ -3,6 +3,9 @@ module test.claim.v1_dag_parse_witness
 import extdeps.languages.bash.program { serialize_bash }
 import tools.host_prelude { witness_bin, witness_bin_program }
 import tools.v1_dag_parse_transport { run_v1_dag_parse }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data v1_dag_parse_quoted_var_command_line: String = "\"$V1_SRC_DAG_PARSE\"\n"
 

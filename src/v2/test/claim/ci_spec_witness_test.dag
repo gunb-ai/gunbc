@@ -19,6 +19,9 @@ import gunbc.ci_spec {
   ci_documentation_only_floor_shortcut_shell_emit_dissolution_trigger,
 }
 import gunbc.merge_admission_produce { merge_admission_floor_disposition_documentation_only_skipped }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\" \"$ROOT/target/release/floor_skip_discovery_witness\"\n"
 

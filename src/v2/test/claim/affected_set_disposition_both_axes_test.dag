@@ -11,6 +11,9 @@ import v2.workflow.affected_set_floor_runner {
   floor_witness_run_disposition
 }
 import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data disposition_fixture_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^disposition_fixture_symbol } },

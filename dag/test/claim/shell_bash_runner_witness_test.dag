@@ -6,6 +6,9 @@ import gunbc.shell_bash_runner {
   shell_printf_line,
   gunbc_bash_heredoc_delimiter,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn shell_bash_runner_carries_dissolution_trigger() -> Bool {
   string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "dissolve-on:")

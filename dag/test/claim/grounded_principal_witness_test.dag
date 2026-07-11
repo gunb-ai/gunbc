@@ -40,6 +40,9 @@ import gunbc.tailscale_acl_phase2_credential {
   operator_tailscale_acl_secret_bindings,
 }
 import extdeps.github.expressions { context_name, Runner }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_runner_fiction_not_in_roster() -> Bool {
   !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
