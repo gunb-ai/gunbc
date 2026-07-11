@@ -1,4 +1,4 @@
-module v2.test.module_graph.conformance_imports_only
+module test.claim.module_graph.conformance_imports_only
 
 import std.algebra { Empty }
 import v2.std.algebra { bag_eq, fold_list, list_snoc_item }

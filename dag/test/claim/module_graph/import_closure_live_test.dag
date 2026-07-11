@@ -1,4 +1,4 @@
-module v2.test.module_graph.import_closure_live
+module test.claim.module_graph.import_closure_live
 
 import v2.lens.module_graph { import_closure_live }
 import gunbc.ci_layer_roots { witness_layer_roots }
@@ -9,7 +9,7 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data expected_conformance_closure: FreeMonoid<String> = [
-  "src/v2/test/claim/module_graph/conformance_imports_only.dag",
+  "dag/test/claim/module_graph/conformance_imports_only.dag",
   "dag/std/algebra.dag",
   "dag/std/error_primitives.dag",
   "dag/std/primitives.dag",
@@ -22,7 +22,7 @@ data expected_conformance_closure: FreeMonoid<String> = [
   "src/v2/std/witness.dag"
 ]
 
-data conformance_entry: String = "src/v2/test/claim/module_graph/conformance_imports_only.dag"
+data conformance_entry: String = "dag/test/claim/module_graph/conformance_imports_only.dag"
 
 data bogus_never_imported: String = "src/v2/std/__bogus_never_imported__.dag"
 
@@ -66,14 +66,9 @@ fn derived_conformance_closure() -> FreeMonoid<String> {
   import_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
 }
 
-test fn dag_import_closure_equals_declared_conformance_closure() -> Bool {
-  set_equal(xs: derived_conformance_closure(), ys: declared_paths())
-}
-
-test fn dag_import_closure_drift_discriminates_under_declaration() -> Bool {
-  set_equal(xs: derived_conformance_closure(), ys: declared_without_entry()) == false
-}
-
-test fn dag_import_closure_drift_discriminates_over_declaration() -> Bool {
-  set_equal(xs: derived_conformance_closure(), ys: declared_with_bogus()) == false
+test fn dag_import_closure_live_witness_bundle_holds() -> Bool {
+  let derived = derived_conformance_closure()
+  set_equal(xs: derived, ys: declared_paths())
+    && set_equal(xs: derived, ys: declared_without_entry()) == false
+    && set_equal(xs: derived, ys: declared_with_bogus()) == false
 }

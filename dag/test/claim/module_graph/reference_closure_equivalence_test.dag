@@ -1,4 +1,4 @@
-module v2.test.module_graph.reference_closure_equivalence
+module test.claim.module_graph.reference_closure_equivalence
 
 import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.lens.module_graph { import_closure_live, no_paths }
@@ -18,7 +18,7 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data expected_conformance_closure: FreeMonoid<String> = [
-  "src/v2/test/claim/module_graph/conformance_imports_only.dag",
+  "dag/test/claim/module_graph/conformance_imports_only.dag",
   "dag/std/algebra.dag",
   "dag/std/error_primitives.dag",
   "dag/std/primitives.dag",
@@ -31,7 +31,7 @@ data expected_conformance_closure: FreeMonoid<String> = [
   "src/v2/std/witness.dag"
 ]
 
-data conformance_entry: String = "src/v2/test/claim/module_graph/conformance_imports_only.dag"
+data conformance_entry: String = "dag/test/claim/module_graph/conformance_imports_only.dag"
 
 data conformance_import_envelope_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -48,7 +48,7 @@ data workspace_root_cross_runner_hand_rust_receipt: String = "Cross-runner CI un
 
 data bogus_never_referenced: String = "src/v2/std/__bogus_never_referenced__.dag"
 
-data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current import-only corpus, reference_closure_live delegates to import_closure_live_excluding (no fact re-materialization); must match the declared golden (witnessed here) and import_closure_live (witnessed in import_closure_live_test.dag on the same golden). reference_parsed_tree_matches_import_facts_on_conformance_entry_holds proves parsed-tree census agrees with import facts on the entry file. Drift control (bogus path ∉ closure) is folded into reference_closure_conformance_equivalence_holds. Transitivity: reference == expected && import == expected && parsed≡import on entry ⇒ reference == import on the conformance fixture."
+data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current import-only corpus, reference_closure_live delegates to import_closure_live_excluding (no fact re-materialization); must match the declared golden (witnessed here) and import_closure_live (witnessed in import_closure_live_test.dag on the same golden). Parsed-tree census agrees with import facts on the conformance entry. Drift control (bogus path not in closure) and import/reference mismatch RED controls are folded into reference_closure_b2_safety_wall_holds. Transitivity: reference == expected && import == expected && parsed≡import on entry ⇒ reference == import on the conformance fixture."
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
@@ -70,25 +70,16 @@ fn reference_conformance_closure_outcome() -> Outcome<FreeMonoid<String>> {
   reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
 }
 
-test fn reference_parsed_tree_matches_import_facts_on_conformance_entry_holds() -> Bool {
-  reference_parsed_tree_facts_match_import_facts_at_path(
+test fn reference_closure_b2_safety_wall_holds() -> Bool {
+  let parsed_ok = reference_parsed_tree_facts_match_import_facts_at_path(
     rel_path: conformance_entry,
     pool_roots: witness_layer_roots,
     exclude_substrings: module_graph_exclude_substrings
   )
-}
-
-test fn reference_closure_conformance_equivalence_holds() -> Bool {
-  match reference_conformance_closure_outcome() {
-    Accepted { value: reference_closure, diagnostics: _ } =>
-      let with_bogus = list_snoc_item(xs: expected_conformance_closure, item: bogus_never_referenced)
-      set_equal(xs: reference_closure, ys: expected_conformance_closure)
-        && set_equal(xs: reference_closure, ys: with_bogus) == false
-    Rejected { diagnostics: _ } => false
+  let ingest_red = match reference_closure_ingest_refusal_witness(pool_roots: witness_layer_roots) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
-}
-
-test fn import_reference_closure_mismatch_discriminates_red_holds() -> Bool {
   let declared_without_entry = fold_list(
     xs: expected_conformance_closure,
     empty: no_paths,
@@ -100,12 +91,16 @@ test fn import_reference_closure_mismatch_discriminates_red_holds() -> Bool {
       }
     }
   )
-  set_equal(xs: import_conformance_closure(), ys: declared_without_entry) == false
-}
-
-test fn reference_closure_ingest_refusal_is_rejected_not_empty_red_holds() -> Bool {
-  match reference_closure_ingest_refusal_witness(pool_roots: witness_layer_roots) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+  let import_mismatch_red =
+    set_equal(xs: import_conformance_closure(), ys: declared_without_entry) == false
+  match reference_conformance_closure_outcome() {
+    Accepted { value: reference_closure, diagnostics: _ } =>
+      let with_bogus = list_snoc_item(xs: expected_conformance_closure, item: bogus_never_referenced)
+      parsed_ok
+        && ingest_red
+        && import_mismatch_red
+        && set_equal(xs: reference_closure, ys: expected_conformance_closure)
+        && set_equal(xs: reference_closure, ys: with_bogus) == false
+    Rejected { diagnostics: _ } => false
   }
 }
