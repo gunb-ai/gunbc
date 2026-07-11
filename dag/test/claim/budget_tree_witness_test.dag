@@ -9,7 +9,7 @@ import extdeps.accounting.budget {
 }
 import product.budget_tree {
   BudgetNode, BudgetClaim, BudgetPriority, Guaranteed, BestEffort,
-  Reconciliation, AllSatisfied, Evicted, GuaranteedShortfall,
+  BudgetReconciliation, AllSatisfied, Evicted, GuaranteedShortfall,
   node_conserves, node_conserves_local, node_balance, reconcile,
   claim_items, budget_tree_method
 }
@@ -42,15 +42,15 @@ fn root_with(child: BudgetNode) -> BudgetNode {
   BudgetNode { name: "root", appropriation: appr(n: 200), claims: [], children: [child] }
 }
 
-fn is_all_satisfied(r: Reconciliation) -> Bool {
+fn is_all_satisfied(r: BudgetReconciliation) -> Bool {
   match r { AllSatisfied { realized: x } => true  _ => false }
 }
 
-fn is_evicted(r: Reconciliation) -> Bool {
+fn is_evicted(r: BudgetReconciliation) -> Bool {
   match r { Evicted { kept: k, evicted: e } => true  _ => false }
 }
 
-fn is_guaranteed_shortfall(r: Reconciliation) -> Bool {
+fn is_guaranteed_shortfall(r: BudgetReconciliation) -> Bool {
   match r { GuaranteedShortfall { shortfall: s } => true  _ => false }
 }
 
