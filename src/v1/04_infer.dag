@@ -22,7 +22,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision, CrossParentBindingConflict, CrossTreeBindingForkLedger, SoleConstructorViolation, UnresolvedType, FieldNotFound,
+  InternalError, TypeMismatch, VariantCollision, CrossParentBindingConflict, SoleConstructorViolation, UnresolvedType, FieldNotFound,
   resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -277,7 +277,10 @@ type BuildTypeEnvResult {
   env: TypeEnv
   cache: TypeEnvCache
   diagnostics: List<ErrorNode>
+  cross_tree_forks: List<TypeEnvCacheMergeConflict>
 }
+
+data cross_tree_forks_channel_note: String = "Out-of-band ledger channel (S2a move 2 increment B cut 2; lane ruling 2026-07-11): a cross-TREE binding fork (dag/ vs src/v2/ vs kernel-synthetic - the known v1-seed-vs-v2 fork debt) is a fact about the CORPUS, not an error in this module compile, so it must never ride the diagnostics channel (consumers rightly read diagnostics as compile cleanliness). Rows keep name + both decl sites; the consumer module is the carrying TypecheckModuleResult; resolution keeps the pre-guard import-order winner. The floor realization aggregates and prints the cross-tree-binding-fork-ledger count line per run (cli_run reconcile_with_typed_cache). Same-tree conflicts stay ERRORS on the diagnostics channel (no grace). Dissolve-on: std consolidation / namespace Rule-1 terminal - this channel deletes and the cross-parent guard refuses unconditionally."
 
 type ParentModulesResult {
   modules: List<TypedModule>
@@ -5722,11 +5725,12 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   )
   let import_union = union_parent_type_env_caches(resolved_imports: module.resolved_imports, parent_index: parent_index)
   let import_cache = import_union.cache
-  let cross_parent_conflict_diags = map(import_union.conflicts, c =>
+  let cross_tree_forks = filter(import_union.conflicts, c => conflict_is_cross_tree(c: c))
+  let cross_parent_conflict_diags = flat_map(import_union.conflicts, c =>
     if conflict_is_cross_tree(c: c) {
-      make_error_node(diagnostic: CrossTreeBindingForkLedger { name: c.name, site_a: c.existing_site, site_b: c.incoming_site, span: c.span }, module_name: module_name_str)
+      []
     } else {
-      make_error_node(diagnostic: CrossParentBindingConflict { name: c.name, import_path: c.import_path, span: c.span }, module_name: module_name_str)
+      [make_error_node(diagnostic: CrossParentBindingConflict { name: c.name, import_path: c.import_path, span: c.span }, module_name: module_name_str)]
     }
   )
   let ancestry_cache = if module.resolved_imports |> count == 1 {
@@ -5806,7 +5810,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   BuildTypeEnvResult {
     env: final_env,
     cache: type_env_cache,
-    diagnostics: concat(import_diags, cross_parent_conflict_diags, resolved_diags)
+    diagnostics: concat(import_diags, cross_parent_conflict_diags, resolved_diags),
+    cross_tree_forks: cross_tree_forks
   }
 }
 
@@ -5903,7 +5908,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     cycle_set_str: cycle_set_str,
     variant_locals: empty_map()
   }
-  BuildTypeEnvResult { env: unresolved_env, cache: type_env_cache, diagnostics: [] }
+  BuildTypeEnvResult { env: unresolved_env, cache: type_env_cache, diagnostics: [], cross_tree_forks: [] }
 }
 
 fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module_name: String) -> ItemInfo {
@@ -6258,6 +6263,7 @@ fn build_module_context(contributions: List<ItemContribution>,
 type TypecheckModuleResult {
   typed: TypedModule
   diagnostics: List<ErrorNode>
+  cross_tree_forks: List<TypeEnvCacheMergeConflict>
 }
 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckModuleResult {

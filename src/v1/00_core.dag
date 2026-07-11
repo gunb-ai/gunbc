@@ -155,7 +155,6 @@ type CompilerDiagnostic
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | CrossParentBindingConflict { name: String, import_path: String, span: SourceSpan }
-  | CrossTreeBindingForkLedger { name: String, site_a: String, site_b: String, span: SourceSpan }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -187,7 +186,6 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     SoleConstructorViolation { type_name: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     CrossParentBindingConflict { name: _, import_path: _, span: s } => s
-    CrossTreeBindingForkLedger { name: _, site_a: _, site_b: _, span: s } => s
   }
 }
 
@@ -212,14 +210,12 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     CrossParentBindingConflict { name: n, import_path: p, span: _ } => concat("cross-parent binding conflict: name '", n, "' reaches this module from import '", p, "' with a DIFFERENT binding than an earlier import - one name, one authority (DESIGN 3); a silent overlay-wins here is the shadowing fail-open class, so this refuses instead")
-    CrossTreeBindingForkLedger { name: n, site_a: a, site_b: b, span: _ } => concat("cross-tree binding fork (LEDGERED, declared interim): name '", n, "' is declared in both trees ('", a, "' and '", b, "') - the known dag-vs-src/v2 fork debt; resolution keeps the pre-guard import-order winner unchanged; counted per run. Dissolve-on: std consolidation / namespace Rule-1 terminal - when the trees merge this arm deletes and the cross-parent guard refuses unconditionally")
   }
 }
 
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => false
-    CrossTreeBindingForkLedger { name: _, site_a: _, site_b: _, span: _ } => false
     _ => true
   }
 }
@@ -228,7 +224,6 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     ComplexityUnknown { func_name: _, reason: _, span: _ } => false
     UnlistedImportUse { name: _, span: _ } => false
-    CrossTreeBindingForkLedger { name: _, site_a: _, site_b: _, span: _ } => false
     _ => true
   }
 }
