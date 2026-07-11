@@ -1615,6 +1615,11 @@ pub struct ModuleGraphFactsLive {
     edges: Vec<ImportResolutionFactRaw>,
     nodes: Vec<ModuleDeclarationFactRaw>,
     adjacency: HashMap<String, Vec<String>>,
+    // Workspace-relative paths of `nodes`, precomputed once per facts build: the
+    // membership question is asked per ENTRY on the resolve path (see
+    // `resolve_transitively`), so deriving it per call would rebuild an O(corpus)
+    // set per entry (bare-minimum-cost, DESIGN §6).
+    declared_paths: HashSet<String>,
 }
 
 #[cfg(test)]
@@ -1680,10 +1685,15 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
     let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
     let nodes = module_declaration_facts(&roots);
     let adjacency = build_import_adjacency(&edges, &nodes);
+    let declared_paths = nodes
+        .iter()
+        .map(|n| workspace_relative_repo_path(&n.path))
+        .collect();
     ModuleGraphFactsLive {
         edges,
         nodes,
         adjacency,
+        declared_paths,
     }
 }
 
@@ -1721,10 +1731,14 @@ impl ModuleGraphFactsLive {
     /// legitimately by importing nothing; absence from `nodes` means the facts do not
     /// cover it and a selection question about it must refuse, never narrow).
     pub fn declared_repo_paths(&self) -> HashSet<String> {
-        self.nodes
-            .iter()
-            .map(|n| workspace_relative_repo_path(&n.path))
-            .collect()
+        self.declared_paths.clone()
+    }
+
+    /// Does the facts pool declare this workspace-relative path as a module? The
+    /// refuse-vs-answer membership test at entry grain — one hash lookup against
+    /// the set precomputed at facts build.
+    pub(crate) fn declares_repo_path(&self, rel: &str) -> bool {
+        self.declared_paths.contains(rel)
     }
 }
 
@@ -1858,6 +1872,21 @@ fn resolve_transitively(
     let mut all_paths: BTreeSet<String> = BTreeSet::new();
     for entry in &entry_sources {
         let entry_rel = workspace_relative_repo_path(&entry.path);
+        // An entry the facts pool does not declare has NO import edges in the
+        // adjacency — not because it imports nothing, but because the scan never
+        // saw it. Answering with the entry-only closure would silently drop its
+        // imports and surface downstream as `unresolved import` on modules that
+        // exist (the interp_recorded fixture-witness dark red, masked since the
+        // facts repoint in #6210). Refuse, never narrow (DESIGN §5).
+        if !facts.declares_repo_path(&entry_rel) {
+            return Err(format!(
+                "import_closure_live: entry '{entry_rel}' has no provenance in the \
+                 module-graph facts pool (outside every source root, or missing a \
+                 module declaration), so its import closure cannot be derived \
+                 (fail-closed); pass a --source-root that covers the entry — the \
+                 module universe is workspace-anchored"
+            ));
+        }
         for path in import_closure_live_paths_with_facts(&entry_rel, facts) {
             all_paths.insert(workspace_relative_repo_path(&path));
         }
@@ -14274,6 +14303,39 @@ mod import_closure_equivalence_tests {
             module_graph_facts_build_count_for_test(),
             1,
             "multi-entry resolve_transitively must not re-scan when facts are threaded"
+        );
+    }
+
+    // RED control for the out-of-pool entry refusal (the green control is
+    // `resolve_transitively_threads_prebuilt_facts_without_rescan` above: in-pool
+    // entries resolve). An entry outside every source root has no adjacency row,
+    // so pre-refusal the closure silently truncated to the entry alone and its
+    // imports surfaced downstream as `unresolved import` on modules that exist —
+    // the interp_recorded fixture-witness dark red (6 checks, masked since #6210).
+    #[test]
+    fn resolve_transitively_refuses_entry_outside_facts_pool() {
+        let roots = default_source_roots();
+        let index = build_module_index(&roots);
+        let facts = build_module_graph_facts_live(&roots);
+        let scratch = std::env::temp_dir().join(format!(
+            "gunbc-out-of-pool-entry-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&scratch).expect("scratch dir");
+        let entry_path = scratch.join("out_of_pool_entry.dag");
+        let content = "module test.claim.out_of_pool_entry\n\nimport extdeps.filesystem.filesystem_io\n\nfunc out_of_pool_probe() -> Bool {\n  true\n}\n";
+        std::fs::write(&entry_path, content).expect("write entry");
+        let entry = Rc::new(crate::v1_compiler_compile::SourceFile {
+            path: entry_path.to_string_lossy().into_owned(),
+            content: content.to_string(),
+        });
+        let err = resolve_transitively(vec![entry], &index, &facts)
+            .expect_err("an entry outside every source root must refuse, not truncate");
+        std::fs::remove_dir_all(&scratch).ok();
+        assert!(
+            err.contains("no provenance in the module-graph facts pool")
+                && err.contains("out_of_pool_entry.dag"),
+            "refusal must name the cause and the entry: {err}"
         );
     }
 
