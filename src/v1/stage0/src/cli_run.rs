@@ -8633,7 +8633,7 @@ mod node_frontier_plumbing_controls {
     use super::{
         build_multi_entry_index, call_floor_kernel_would_skip, entry_touches_rerun_frontier,
         floor_diff_edits_from_diff_text, list_value_from_vec, parse_unified_diff_line_ranges,
-        rerun_frontier_nodes_for_entry,
+        rerun_frontier_nodes_for_entry, scan_test_decl_lines,
     };
     use crate::v1_interpreter::ExecutionMode;
     use std::path::PathBuf;
