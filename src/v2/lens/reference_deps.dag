@@ -844,7 +844,7 @@ fn reference_import_facts_at_path(
     empty: acc,
     cons: fn(a, edge) {
       if string_eq(a: edge.path, b: rel_path) {
-        reference_snoc_fact_unique(a: a, fact: import_edge_to_reference_fact(edge: edge))
+        reference_snoc_fact_unique(acc: a, fact: import_edge_to_reference_fact(edge: edge))
       } else {
         a
       }
