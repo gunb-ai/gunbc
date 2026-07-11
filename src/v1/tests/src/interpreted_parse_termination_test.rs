@@ -85,6 +85,22 @@ fn run_bisect_witness_bool(function: &str) -> v1_interpreter::InterpResult<Value
 }
 
 #[test]
+fn debug_bisect_resolve_reject_cause() {
+    let unbound = matches!(
+        run_bisect_witness_bool("bisect_parse_module_add_resolve_reject_is_unbound"),
+        Ok(Value::Bool(true))
+    );
+    let malformed = matches!(
+        run_bisect_witness_bool("bisect_parse_module_add_resolve_reject_is_malformed"),
+        Ok(Value::Bool(true))
+    );
+    assert!(
+        unbound || malformed,
+        "expected resolve reject to be unbound ({unbound}) or malformed ({malformed})"
+    );
+}
+
+#[test]
 fn interpreted_parse_bisect_add_correctness_holds() {
     assert!(
         matches!(

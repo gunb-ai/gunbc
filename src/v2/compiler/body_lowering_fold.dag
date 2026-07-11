@@ -21,11 +21,13 @@ import v2.std.collection { Absent, List, Optional, Present, list_at_optional, op
 import v2.std.compilers.body_lowering { lower_binary_infix }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic {
+  Accepted,
   Diagnostic,
   Diagnostics,
   ExternalContractUnknown,
   Outcome,
   Unavailable,
+  diagnostics_singleton,
   node_locus,
   diagnostics_merge,
   outcome_accepted,
@@ -49,13 +51,24 @@ import v2.std.node {
 }
 import v2.std.node_query { find_named_child }
 
-data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into FLAG E one SugarKey table (general-body-producer-design §9) once Slices 0–1 receipts land; no permanent sibling hand-inlined arm. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities accept shell pending wrapper-retained cause carrier (§6 Stage A frontier, counted follow-on)."
+data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into FLAG E one SugarKey table (general-body-producer-design §9) once Slices 0–1 receipts land; no permanent sibling hand-inlined arm. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained with typed diagnostic ^body_lowering_reason_wrapper_retained_emitted (general-body-producer-design Stage A frontier: lowered | wrapper-retained cause, counted — never silent shell accept)."
 
 fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn body_lower_wrapper_retained_diagnostic(n: Node) -> Diagnostic {
+  body_lower_diagnostic(reason: ^body_lowering_reason_wrapper_retained_emitted, n: n)
+}
+
+fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<Node> {
+  Accepted {
+    value: shell,
+    diagnostics: diagnostics_singleton(d: body_lower_wrapper_retained_diagnostic(n: shell))
   }
 }
 
@@ -1076,7 +1089,7 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol) -> Outcome<Node> 
   } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
     outcome_accepted(value: shell)
   } else {
-    outcome_accepted(value: shell)
+    body_lower_wrapper_retained_shell(shell: shell)
   }
 }
 
