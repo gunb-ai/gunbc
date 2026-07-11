@@ -7,17 +7,17 @@ data cli_run_workspace_root_discovery_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "v1_compiler.cli_run",
-    decl_name: "discover_workspace_root_at",
+    decl_name: "workspace_root_from",
     field: WholeDeclaration
   }
 }
 
-data cli_run_workspace_root_discovery_dissolve_trigger: String = "🟡 dissolve-on: discover_workspace_root_at — compile-time CARGO_MANIFEST_DIR workspace_root breaks cross-job GHA artifact handoff (build job ≠ ci job on self-hosted fleet); DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP 5-dissolve-patches cli_run.rs shrink retires HAND path-dependent root entirely"
+data cli_run_workspace_root_discovery_dissolve_trigger: String = "🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust (#6484 .git-ancestor kernel); DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP 5-dissolve-patches cli_run.rs shrink retires HAND path-dependent root entirely"
 
 data cli_run_workspace_root_hand_rust_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
 
-data cli_run_workspace_root_discovery_loc_delta_net: Int = 45
+data cli_run_workspace_root_discovery_loc_delta_net: Int = 12
 
-data cli_run_workspace_root_discovery_test_discriminator_git_toplevel: String = "discover_from_subdirectory_matches_git_toplevel"
+data cli_run_workspace_root_discovery_test_discriminator_git_toplevel: String = "from_subdirectory_matches_git_toplevel"
 
-data cli_run_workspace_root_discovery_test_discriminator_cwd_ascent: String = "discover_cwd_ascent_without_git_init"
+data cli_run_workspace_root_discovery_test_discriminator_cwd_ascent: String = "refuses_path_outside_git_checkout"

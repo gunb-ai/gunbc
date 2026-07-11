@@ -20,7 +20,7 @@ test fn workspace_root_hand_rust_scaffold_is_seed_retained() -> Bool {
 test fn workspace_root_hand_rust_dissolve_trigger_names_site_and_lane() -> Bool {
   string_contains(
     s: cli_run_workspace_root_discovery_dissolve_trigger,
-    pattern: "discover_workspace_root_at"
+    pattern: "workspace_root_from"
   ) &&
     string_contains(
       s: cli_run_workspace_root_discovery_dissolve_trigger,
@@ -46,6 +46,6 @@ test fn workspace_root_hand_rust_discriminating_tests_named() -> Bool {
   ) &&
     string_contains(
       s: cli_run_workspace_root_discovery_test_discriminator_cwd_ascent,
-      pattern: "cwd_ascent"
+      pattern: "outside_git"
     )
 }

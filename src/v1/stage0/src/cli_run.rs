@@ -577,6 +577,50 @@ mod process_workspace_root_tests {
     }
 }
 
+#[cfg(test)]
+mod workspace_root_discovery_tests {
+    use super::workspace_root_from;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    fn fixture_root(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("gunbc-ws-root-{tag}-{}", std::process::id()))
+    }
+
+    fn canonical(p: &Path) -> PathBuf {
+        std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+    }
+
+    /// Cross-job / worktree: claim bins run from a checkout subdirectory must resolve
+    /// the same root as `git rev-parse --show-toplevel`, not the compile-time baked path.
+    #[test]
+    fn from_subdirectory_matches_git_toplevel() {
+        let top = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git rev-parse");
+        assert!(top.status.success(), "must run inside a git checkout");
+        let top = PathBuf::from(String::from_utf8(top.stdout).unwrap().trim());
+        let sub = top.join("dag");
+        assert!(sub.is_dir(), "dag/ must exist under checkout");
+        let got = workspace_root_from(&sub);
+        assert_eq!(canonical(&got), canonical(&top));
+    }
+
+    /// Fail-closed: Cargo.toml+dag/ without a `.git` ancestor is not a checkout root.
+    #[test]
+    fn refuses_path_outside_git_checkout() {
+        let root = fixture_root("no-git");
+        std::fs::create_dir_all(root.join("dag")).expect("dag dir");
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("Cargo.toml");
+        let nested = root.join("nested/deep");
+        std::fs::create_dir_all(&nested).expect("nested");
+        let result = std::panic::catch_unwind(|| workspace_root_from(&nested));
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(result.is_err(), "must panic outside a git checkout");
+    }
+}
+
 /// Empty ingest-manifest placeholder excluded from the module index when a later
 /// source root carries the host-emitted manifest (source-root ingest / closure gates).
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
