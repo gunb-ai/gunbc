@@ -137,8 +137,8 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<M
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_for_unsupported))
     While { cond: _, body: _, bound: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_while_unsupported))
-    Retry { body: b, escalations: e, on_exhausted: _ } =>
-      orch_emit_retry(body: b, escalations: e, medium: medium)
+    Retry { body: b, escalations: e, on_exhausted: x } =>
+      orch_emit_retry(body: b, escalations: e, on_exhausted: x, medium: medium)
   }
 }
 
@@ -178,6 +178,7 @@ fn orch_emit_retry_2level(
   warn2: String,
   env1: FreeMonoid<EnvBinding>,
   env2: FreeMonoid<EnvBinding>,
+  exhausted: String,
   medium: OrchestrationEmitMedium
 ) -> Outcome<Medium<String>> {
   bind_outcome(
@@ -199,7 +200,8 @@ fn orch_emit_retry_2level(
                   pattern1,
                   pattern2,
                   warn1,
-                  warn2
+                  warn2,
+                  exhausted
                 )
               )
             }
@@ -214,6 +216,7 @@ fn orch_emit_retry_levels(
   command: String,
   level1: EscalationLevel,
   level2: EscalationLevel,
+  exhausted: String,
   medium: OrchestrationEmitMedium
 ) -> Outcome<Medium<String>> {
   match level1.detect {
@@ -228,6 +231,7 @@ fn orch_emit_retry_levels(
             warn2: level2.warning.message,
             env1: level1.env,
             env2: level2.env,
+            exhausted: exhausted,
             medium: medium
           )
         _ => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
@@ -239,6 +243,7 @@ fn orch_emit_retry_levels(
 fn orch_emit_retry(
   body: Pipeline,
   escalations: FreeMonoid<EscalationLevel>,
+  on_exhausted: Pipeline,
   medium: OrchestrationEmitMedium
 ) -> Outcome<Medium<String>> {
   match orch_retry_body_command(body: body) {
@@ -249,11 +254,17 @@ fn orch_emit_retry(
             TailFound { tail: t } =>
               match list_head(xs: t) {
                 HeadFound { value: l2 } =>
-                  orch_emit_retry_levels(
-                    command: command,
-                    level1: l1,
-                    level2: l2,
-                    medium: medium
+                  bind_outcome(
+                    o: orch_emit_pipeline(p: on_exhausted, medium: medium),
+                    f: fn(exhausted_medium) {
+                      orch_emit_retry_levels(
+                        command: command,
+                        level1: l1,
+                        level2: l2,
+                        exhausted: exhausted_medium.carried,
+                        medium: medium
+                      )
+                    }
                   )
                 HeadAbsent =>
                   outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_needs_two_levels))

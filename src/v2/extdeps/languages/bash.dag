@@ -1115,8 +1115,20 @@ fn retry_eagain_seg_g() -> String {
   "\"\n        "
 }
 
-fn retry_eagain_seg_h() -> String {
-  " || exit 1\n      else\n        exit 1\n      fi\n    fi\n    rm -f \"$RETRY_LOG\"\n  else\n    exit 1\n  fi\nfi\nrm -f \"$BUILD_LOG\"\n"
+fn retry_eagain_seg_h1() -> String {
+  " || "
+}
+
+fn retry_eagain_seg_h2() -> String {
+  "\n      else\n        "
+}
+
+fn retry_eagain_seg_h3() -> String {
+  "\n      fi\n    fi\n    rm -f \"$RETRY_LOG\"\n  else\n    "
+}
+
+fn retry_eagain_seg_h4() -> String {
+  "\n  fi\nfi\nrm -f \"$BUILD_LOG\"\n"
 }
 
 fn bash_env_binding_spelling(b: EnvBinding) -> String {
@@ -1134,7 +1146,7 @@ fn bash_env_prefix(env: FreeMonoid<EnvBinding>) -> String {
   )
 }
 
-fn retry_eagain_bash_lex_for(tail_text: String, tail_class: Symbol) -> LexRules {
+fn retry_eagain_bash_lex() -> LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: retry_eagain_seg_a(), class: ^bash_token_retry_seg_a),
     span(text: retry_eagain_seg_b(), class: ^bash_token_retry_seg_b),
@@ -1143,7 +1155,10 @@ fn retry_eagain_bash_lex_for(tail_text: String, tail_class: Symbol) -> LexRules 
     span(text: retry_eagain_seg_e(), class: ^bash_token_retry_seg_e),
     span(text: retry_eagain_seg_f(), class: ^bash_token_retry_seg_f),
     span(text: retry_eagain_seg_g(), class: ^bash_token_retry_seg_g),
-    span(text: tail_text, class: tail_class)
+    span(text: retry_eagain_seg_h1(), class: ^bash_token_retry_seg_h1),
+    span(text: retry_eagain_seg_h2(), class: ^bash_token_retry_seg_h2),
+    span(text: retry_eagain_seg_h3(), class: ^bash_token_retry_seg_h3),
+    span(text: retry_eagain_seg_h4(), class: ^bash_token_retry_seg_h4)
   ]))
 }
 
@@ -1214,7 +1229,13 @@ fn orch_retry_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_warn2 },
     FixedToken { token_class: ^bash_token_retry_seg_g },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ3 },
-    FixedToken { token_class: ^bash_token_retry_seg_h }
+    FixedToken { token_class: ^bash_token_retry_seg_h1 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_exhausted },
+    FixedToken { token_class: ^bash_token_retry_seg_h2 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_exhausted },
+    FixedToken { token_class: ^bash_token_retry_seg_h3 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_exhausted },
+    FixedToken { token_class: ^bash_token_retry_seg_h4 }
   ]
 }
 
@@ -1229,7 +1250,8 @@ fn orch_retry_source_text(
   pattern1: String,
   pattern2: String,
   warn1: String,
-  warn2: String
+  warn2: String,
+  exhausted: String
 ) -> String {
   concat(retry_eagain_seg_a(),
   concat(occ1,
@@ -1245,7 +1267,13 @@ fn orch_retry_source_text(
   concat(warn2,
   concat(retry_eagain_seg_g(),
   concat(occ3,
-         retry_eagain_seg_h()))))))))))))))
+  concat(retry_eagain_seg_h1(),
+  concat(exhausted,
+  concat(retry_eagain_seg_h2(),
+  concat(exhausted,
+  concat(retry_eagain_seg_h3(),
+  concat(exhausted,
+         retry_eagain_seg_h4()))))))))))))))))))))
 }
 
 fn orch_retry_translation_rules_node() -> Node {
@@ -1264,8 +1292,10 @@ fn orch_retry_binding_spellings(
   pattern1: String,
   pattern2: String,
   warn1: String,
-  warn2: String
+  warn2: String,
+  exhausted: String
 ) -> Map<Symbol, String> {
+  map_insert(
   map_insert(
   map_insert(
   map_insert(
@@ -1278,7 +1308,8 @@ fn orch_retry_binding_spellings(
     ^orch_retry_pattern1, pattern1),
     ^orch_retry_pattern2, pattern2),
     ^orch_retry_warn1, warn1),
-    ^orch_retry_warn2, warn2)
+    ^orch_retry_warn2, warn2),
+    ^orch_retry_exhausted, exhausted)
 }
 
 fn orch_retry_target_model(
@@ -1288,7 +1319,8 @@ fn orch_retry_target_model(
   pattern1: String,
   pattern2: String,
   warn1: String,
-  warn2: String
+  warn2: String,
+  exhausted: String
 ) -> TargetModel {
   bash_make_bound_tokens_target_model(
     rules: orch_retry_translation_rules_node(),
@@ -1302,12 +1334,10 @@ fn orch_retry_target_model(
       pattern1: pattern1,
       pattern2: pattern2,
       warn1: warn1,
-      warn2: warn2
+      warn2: warn2,
+      exhausted: exhausted
     ),
-    lex: retry_eagain_bash_lex_for(
-      tail_text: retry_eagain_seg_h(),
-      tail_class: ^bash_token_retry_seg_h
-    ),
+    lex: retry_eagain_bash_lex(),
     binding_spellings: orch_retry_binding_spellings(
       occ1: occ1,
       occ2: occ2,
@@ -1315,7 +1345,8 @@ fn orch_retry_target_model(
       pattern1: pattern1,
       pattern2: pattern2,
       warn1: warn1,
-      warn2: warn2
+      warn2: warn2,
+      exhausted: exhausted
     )
   )
 }
