@@ -12,6 +12,8 @@ import v2.std.orchestration {
   Predicate,
   ExitZero,
   StrEq,
+  StrEmpty,
+  StrNonempty,
   Not,
   And,
   LogMatches,
@@ -31,7 +33,7 @@ fn orch_if_streq_empty_then_golden() -> String {
 
 fn orch_if_streq_empty_then_intent() -> PipelineStep {
   If {
-    cond: StrEq { lhs: "", rhs: "\"$1\"" },
+    cond: StrEmpty { operand: "\"$1\"" },
     then_: Pipeline {
       steps: [
         Do {
@@ -51,7 +53,7 @@ fn orch_if_streq_empty_then_intent() -> PipelineStep {
 
 fn orch_if_streq_empty_then_perturbed_intent() -> PipelineStep {
   If {
-    cond: StrEq { lhs: "", rhs: "\"$2\"" },
+    cond: StrEmpty { operand: "\"$2\"" },
     then_: Pipeline {
       steps: [
         Do {
@@ -205,8 +207,8 @@ fn orch_if_and_tests_golden() -> String {
 fn orch_if_and_tests_intent() -> PipelineStep {
   If {
     cond: And {
-      lhs: StrEq { lhs: "\"$ctrl_pin\"", rhs: "" },
-      rhs: StrEq { lhs: "\"$dag_pin\"", rhs: "" }
+      lhs: StrNonempty { operand: "\"$ctrl_pin\"" },
+      rhs: StrNonempty { operand: "\"$dag_pin\"" }
     },
     then_: Pipeline {
       steps: [

@@ -48,6 +48,8 @@ import v2.std.orchestration {
   ExitZero,
   LogMatches,
   StrEq,
+  StrEmpty,
+  StrNonempty,
   Not,
   And,
   Or,
@@ -249,24 +251,20 @@ fn orch_emit_predicate(p: Predicate, medium: OrchestrationEmitMedium) -> Outcome
     ExitZero { run: r } =>
       orch_emit_run_spelling(r: r, medium: medium)
     StrEq { lhs: lhs, rhs: rhs } =>
-      if lhs == "" {
-        orch_emit_node_spelling(
-          emitted_root: bash_test_str_empty_emitted,
-          target: bash_test_str_empty_target_model(operand: rhs)
-        )
-      } else {
-        if rhs == "" {
-          orch_emit_node_spelling(
-            emitted_root: bash_test_str_nonempty_emitted,
-            target: bash_test_str_nonempty_target_model(operand: lhs)
-          )
-        } else {
-          orch_emit_node_spelling(
-            emitted_root: bash_test_str_eq_emitted,
-            target: bash_test_str_eq_target_model(lhs: lhs, rhs: rhs)
-          )
-        }
-      }
+      orch_emit_node_spelling(
+        emitted_root: bash_test_str_eq_emitted,
+        target: bash_test_str_eq_target_model(lhs: lhs, rhs: rhs)
+      )
+    StrEmpty { operand: operand } =>
+      orch_emit_node_spelling(
+        emitted_root: bash_test_str_empty_emitted,
+        target: bash_test_str_empty_target_model(operand: operand)
+      )
+    StrNonempty { operand: operand } =>
+      orch_emit_node_spelling(
+        emitted_root: bash_test_str_nonempty_emitted,
+        target: bash_test_str_nonempty_target_model(operand: operand)
+      )
     LogMatches { source: source, pattern: pattern } =>
       orch_emit_node_spelling(
         emitted_root: bash_log_matches_grep_emitted,
