@@ -22,7 +22,6 @@ import extdeps.languages.bash.program {
   Subshell,
   VarRef,
   WithRedir,
-  serialize_stmt
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -71,6 +70,46 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
+
+data bash_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_stmt and of the grammar rows/segment spellings. Each fold test compares bash_program_serialize_stmt (row-emit) against its golden only (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
+data bash_fold_and_then_golden: String = "'true' && 'false'"
+data bash_fold_assign_foo_golden: String = "FOO='bar'"
+data bash_fold_assign_home_golden: String = "X=\"$HOME\""
+data bash_fold_assign_quote_golden: String = "VAR='a'\\''b'"
+data bash_fold_cmd_echo_hi_golden: String = "'echo' 'hi'"
+data bash_fold_cmd_grep_golden: String = "'grep' '-rn' 'foo_bar.baz'"
+data bash_fold_cmd_home_golden: String = "\"$HOME\""
+data bash_fold_cmd_quote_golden: String = "'a'\\''b'"
+data bash_fold_cmd_true_golden: String = "'true'"
+data bash_fold_cmd_var_x_golden: String = "\"$X\""
+data bash_fold_env_prefixed_golden: String = "TMPDIR='/t' 'true'"
+data bash_fold_exit_0_golden: String = "exit 0"
+data bash_fold_exit_42_golden: String = "exit 42"
+data bash_fold_heredoc_golden: String = "cat > 'out' <<'EOF'\nhello\nEOF"
+data bash_fold_if_echo_golden: String = "if 'true'; then 'echo' 'hi'; fi"
+data bash_fold_if_multi_golden: String = "if 'true'; then 'echo' 'hi'; 'false'; fi"
+data bash_fold_if_pipe_golden: String = "if 'true'; then 'echo' 'hi' | 'wc' '-c'; fi"
+data bash_fold_negation_golden: String = "! ('false')"
+data bash_fold_negation_raw_golden: String = "! (do_verify\nmore)"
+data bash_fold_or_else_golden: String = "'true' || 'false'"
+data bash_fold_pipe_golden: String = "'echo' 'hi' | 'wc' '-c'"
+data bash_fold_pipe_and_then_golden: String = "'true' && 'false' | 'wc' '-c'"
+data bash_fold_pipe_three_golden: String = "'echo' 'hi' | 'wc' '-c' | 'tr' '-d' ' '"
+data bash_fold_raw_cmdsubst_golden: String = "$(a)"
+data bash_fold_raw_mktemp_golden: String = "TMPDIR=$('mktemp' '-d')"
+data bash_fold_raw_nl_golden: String = "ab\n"
+data bash_fold_raw_orch_golden: String = "! ( foo )"
+data bash_fold_raw_paren_golden: String = "a)b"
+data bash_fold_raw_quoted_golden: String = "'q'"
+data bash_fold_raw_xeq_golden: String = "x=y"
+data bash_fold_redir_both_golden: String = "'true' >/dev/null 2>&1"
+data bash_fold_redir_file_golden: String = "'true' > \"$PROBE_BIN\""
+data bash_fold_redir_pipe_golden: String = "'echo' 'hi' | 'wc' '-c' 2>/dev/null"
+data bash_fold_redir_stderr_golden: String = "'true' 2>/dev/null"
+data bash_fold_redir_stdout_stderr_golden: String = "'true' >&2"
+data bash_fold_subshell_golden: String = "('true')"
+data bash_fold_subshell_multi_golden: String = "('true'; 'false')"
+data bash_fold_subshell_nested_golden: String = "('true' && 'false')"
 
 fn bash_fold_emit_stmt_with_target(stmt: ShellStmt, target: TargetModel) -> Outcome<String> {
   match stmt {
@@ -162,9 +201,9 @@ fn bash_fold_fold_serialize(stmt: ShellStmt, target: TargetModel) -> Outcome<Str
   }
 }
 
-fn bash_fold_fold_matches_oracle(stmt: ShellStmt) -> Bool {
+fn bash_fold_fold_matches_golden(stmt: ShellStmt, golden: String) -> Bool {
   match bash_program_serialize_stmt(stmt: stmt) {
-    Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
+    Accepted { value: folded, diagnostics: _ } => folded == golden
     Rejected { diagnostics: _ } => false
   }
 }
@@ -180,44 +219,50 @@ fn bash_fold_relation_row_true_witness_holds() -> Bool {
 }
 
 fn bash_fold_command_single_lit_true_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Command { words: [Lit { text: "true" }] }
+  bash_fold_fold_matches_golden(
+    stmt: Command { words: [Lit { text: "true" }] },
+    golden: bash_fold_cmd_true_golden
   )
 }
 
 fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
+  bash_fold_fold_matches_golden(
+    stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+    golden: bash_fold_cmd_echo_hi_golden
   )
 }
 
 fn bash_fold_command_var_ref_x_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Command { words: [VarRef { name: "X" }] }
+  bash_fold_fold_matches_golden(
+    stmt: Command { words: [VarRef { name: "X" }] },
+    golden: bash_fold_cmd_var_x_golden
   )
 }
 
 fn bash_fold_command_arbitrary_grep_triple_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: Command {
       words: [
         Lit { text: "grep" },
         Lit { text: "-rn" },
         Lit { text: "foo_bar.baz" }
       ]
-    }
+    },
+    golden: bash_fold_cmd_grep_golden
   )
 }
 
 fn bash_fold_command_arbitrary_var_home_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Command { words: [VarRef { name: "HOME" }] }
+  bash_fold_fold_matches_golden(
+    stmt: Command { words: [VarRef { name: "HOME" }] },
+    golden: bash_fold_cmd_home_golden
   )
 }
 
 fn bash_fold_command_arbitrary_lit_quote_escape_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Command { words: [Lit { text: "a'b" }] }
+  bash_fold_fold_matches_golden(
+    stmt: Command { words: [Lit { text: "a'b" }] },
+    golden: bash_fold_cmd_quote_golden
   )
 }
 
@@ -226,17 +271,17 @@ fn bash_fold_wrong_production_rejects_oracle_holds() -> Bool {
   match bash_fold_cmd_true_wrong_target_model_witness() {
     Holds { value: target } =>
       match bash_fold_fold_serialize(stmt: stmt, target: target) {
-        Accepted { value: folded, diagnostics: _ } => folded != serialize_stmt(s: stmt)
+        Accepted { value: folded, diagnostics: _ } => folded != bash_fold_cmd_true_golden
         Rejected { diagnostics: _ } => true
       }
     Violates { diagnostic: _ } => false
   }
 }
 
-fn bash_fold_direct_serialize_matches_oracle(emitted: Node, target: TargetModel, stmt: ShellStmt) -> Bool {
+fn bash_fold_direct_serialize_matches_golden(emitted: Node, target: TargetModel, golden: String) -> Bool {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == serialize_stmt(s: stmt)) && (d == None)
+      (source.carried == golden) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -245,10 +290,10 @@ fn bash_fold_direct_serialize_single_lit_true_holds() -> Bool {
   let stmt = Command { words: [Lit { text: "true" }] }
   match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
     Holds { value: target } =>
-      bash_fold_direct_serialize_matches_oracle(
+      bash_fold_direct_serialize_matches_golden(
         emitted: bash_fold_cmd_true_emitted,
         target: target,
-        stmt: stmt
+        golden: bash_fold_cmd_true_golden
       )
     Violates { diagnostic: _ } => false
   }
@@ -258,10 +303,10 @@ fn bash_fold_direct_serialize_multi_lit_echo_hi_holds() -> Bool {
   let stmt = Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
   match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
     Holds { value: target } =>
-      bash_fold_direct_serialize_matches_oracle(
+      bash_fold_direct_serialize_matches_golden(
         emitted: bash_fold_cmd_echo_hi_emitted,
         target: target,
-        stmt: stmt
+        golden: bash_fold_cmd_echo_hi_golden
       )
     Violates { diagnostic: _ } => false
   }
@@ -271,10 +316,10 @@ fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
   let stmt = Command { words: [VarRef { name: "X" }] }
   match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
     Holds { value: target } =>
-      bash_fold_direct_serialize_matches_oracle(
+      bash_fold_direct_serialize_matches_golden(
         emitted: bash_fold_cmd_var_x_emitted,
         target: target,
-        stmt: stmt
+        golden: bash_fold_cmd_var_x_golden
       )
     Violates { diagnostic: _ } => false
   }
@@ -286,12 +331,13 @@ fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> Bool {
 
 fn bash_fold_wrong_production_mismatch_holds(
   stmt: ShellStmt,
+  golden: String,
   wrong_target_witness: Witness<TargetModel>
 ) -> Bool {
   match wrong_target_witness {
     Holds { value: target } =>
       match bash_fold_emit_stmt_with_target(stmt: stmt, target: target) {
-        Accepted { value: folded, diagnostics: _ } => folded != serialize_stmt(s: stmt)
+        Accepted { value: folded, diagnostics: _ } => folded != golden
         Rejected { diagnostics: _ } => true
       }
     Violates { diagnostic: _ } => false
@@ -299,41 +345,46 @@ fn bash_fold_wrong_production_mismatch_holds(
 }
 
 fn bash_fold_exit_code_42_holds() -> Bool {
-  bash_fold_fold_matches_oracle(stmt: Exit { code: 42 })
+  bash_fold_fold_matches_golden(stmt: Exit { code: 42 }, golden: bash_fold_exit_42_golden)
 }
 
 fn bash_fold_exit_code_0_holds() -> Bool {
-  bash_fold_fold_matches_oracle(stmt: Exit { code: 0 })
+  bash_fold_fold_matches_golden(stmt: Exit { code: 0 }, golden: bash_fold_exit_0_golden)
 }
 
 fn bash_fold_exit_wrong_production_rejects_oracle_holds() -> Bool {
   bash_fold_wrong_production_mismatch_holds(
     stmt: Exit { code: 42 },
+    golden: bash_fold_exit_42_golden,
     wrong_target_witness: bash_fold_exit_wrong_target_model_witness()
   )
 }
 
 fn bash_fold_assign_lit_foo_bar_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Assign { name: "FOO", value: Lit { text: "bar" } }
+  bash_fold_fold_matches_golden(
+    stmt: Assign { name: "FOO", value: Lit { text: "bar" } },
+    golden: bash_fold_assign_foo_golden
   )
 }
 
 fn bash_fold_assign_var_x_home_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Assign { name: "X", value: VarRef { name: "HOME" } }
+  bash_fold_fold_matches_golden(
+    stmt: Assign { name: "X", value: VarRef { name: "HOME" } },
+    golden: bash_fold_assign_home_golden
   )
 }
 
 fn bash_fold_assign_lit_quote_escape_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Assign { name: "VAR", value: Lit { text: "a'b" } }
+  bash_fold_fold_matches_golden(
+    stmt: Assign { name: "VAR", value: Lit { text: "a'b" } },
+    golden: bash_fold_assign_quote_golden
   )
 }
 
 fn bash_fold_assign_wrong_production_rejects_oracle_holds() -> Bool {
   bash_fold_wrong_production_mismatch_holds(
     stmt: Assign { name: "FOO", value: Lit { text: "bar" } },
+    golden: bash_fold_assign_foo_golden,
     wrong_target_witness: bash_fold_assign_wrong_target_model_witness()
   )
 }
@@ -347,31 +398,34 @@ fn bash_fold_cmd_false_stmt() -> ShellStmt {
 }
 
 fn bash_fold_and_then_true_false_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: AndOr {
       left: bash_fold_cmd_true_stmt(),
       op: AndThen,
       right: bash_fold_cmd_false_stmt()
-    }
+    },
+    golden: bash_fold_and_then_golden
   )
 }
 
 fn bash_fold_or_else_true_false_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: AndOr {
       left: bash_fold_cmd_true_stmt(),
       op: OrElse,
       right: bash_fold_cmd_false_stmt()
-    }
+    },
+    golden: bash_fold_or_else_golden
   )
 }
 
 fn bash_fold_pipe_echo_hi_wc_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: Pipe {
       left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
       right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
-    }
+    },
+    golden: bash_fold_pipe_golden
   )
 }
 
@@ -396,7 +450,7 @@ fn bash_fold_pipe_wrong_production_rejects_oracle_holds() -> Bool {
 }
 
 fn bash_fold_pipe_and_then_left_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: Pipe {
       left: AndOr {
         left: bash_fold_cmd_true_stmt(),
@@ -404,41 +458,45 @@ fn bash_fold_pipe_and_then_left_holds() -> Bool {
         right: bash_fold_cmd_false_stmt()
       },
       right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
-    }
+    },
+    golden: bash_fold_pipe_and_then_golden
   )
 }
 
 fn bash_fold_pipe_three_stage_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: Pipe {
       left: Pipe {
         left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
         right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
       },
       right: Command { words: [Lit { text: "tr" }, Lit { text: "-d" }, Lit { text: " " }] }
-    }
+    },
+    golden: bash_fold_pipe_three_golden
   )
 }
 
 fn bash_fold_subshell_true_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] }
+  bash_fold_fold_matches_golden(
+    stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] },
+    golden: bash_fold_subshell_golden
   )
 }
 
 fn bash_fold_subshell_multi_stmt_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: Subshell {
       body: [
         Command { words: [Lit { text: "true" }] },
         Command { words: [Lit { text: "false" }] }
       ]
-    }
+    },
+    golden: bash_fold_subshell_multi_golden
   )
 }
 
 fn bash_fold_subshell_nested_and_then_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: Subshell {
       body: [
         AndOr {
@@ -447,33 +505,36 @@ fn bash_fold_subshell_nested_and_then_holds() -> Bool {
           right: Command { words: [Lit { text: "false" }] }
         }
       ]
-    }
+    },
+    golden: bash_fold_subshell_nested_golden
   )
 }
 
 fn bash_fold_if_true_then_echo_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: If {
       cond: Command { words: [Lit { text: "true" }] },
       then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }]
-    }
+    },
+    golden: bash_fold_if_echo_golden
   )
 }
 
 fn bash_fold_if_multi_then_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: If {
       cond: Command { words: [Lit { text: "true" }] },
       then: [
         Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
         Command { words: [Lit { text: "false" }] }
       ]
-    }
+    },
+    golden: bash_fold_if_multi_golden
   )
 }
 
 fn bash_fold_if_then_pipe_soundness_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: If {
       cond: Command { words: [Lit { text: "true" }] },
       then: [
@@ -482,7 +543,8 @@ fn bash_fold_if_then_pipe_soundness_holds() -> Bool {
           right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
         }
       ]
-    }
+    },
+    golden: bash_fold_if_pipe_golden
   )
 }
 
@@ -522,48 +584,53 @@ fn bash_fold_if_wrong_production_rejects_oracle_holds() -> Bool {
 }
 
 fn bash_fold_with_redir_stderr_null_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: WithRedir {
       stmt: Command { words: [Lit { text: "true" }] },
       redir: StderrToNull
-    }
+    },
+    golden: bash_fold_redir_stderr_golden
   )
 }
 
 fn bash_fold_with_redir_stdout_and_stderr_null_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: WithRedir {
       stmt: Command { words: [Lit { text: "true" }] },
       redir: StdoutAndStderrToNull
-    }
+    },
+    golden: bash_fold_redir_both_golden
   )
 }
 
 fn bash_fold_with_redir_stdout_to_stderr_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: WithRedir {
       stmt: Command { words: [Lit { text: "true" }] },
       redir: StdoutToStderr
-    }
+    },
+    golden: bash_fold_redir_stdout_stderr_golden
   )
 }
 
 fn bash_fold_with_redir_redir_to_file_var_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: WithRedir {
       stmt: Command { words: [Lit { text: "true" }] },
       redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } }
-    }
+    },
+    golden: bash_fold_redir_file_golden
   )
 }
 
 fn bash_fold_heredoc_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: Heredoc {
       path: Lit { text: "out" },
       delimiter: "EOF",
       body: "hello"
-    }
+    },
+    golden: bash_fold_heredoc_golden
   )
 }
 
@@ -573,6 +640,7 @@ fn bash_fold_with_redir_wrong_spellings_rejects_oracle_holds() -> Bool {
       stmt: Command { words: [Lit { text: "true" }] },
       redir: StderrToNull
     },
+    golden: bash_fold_redir_stderr_golden,
     wrong_target_witness: bash_fold_with_redir_wrong_target_model_witness()
   )
 }
@@ -584,6 +652,7 @@ fn bash_fold_heredoc_wrong_spellings_rejects_oracle_holds() -> Bool {
       delimiter: "EOF",
       body: "hello"
     },
+    golden: bash_fold_heredoc_golden,
     wrong_target_witness: bash_fold_heredoc_wrong_target_model_witness()
   )
 }
@@ -609,50 +678,53 @@ fn bash_fold_heredoc_wrong_production_rejects_oracle_holds() -> Bool {
 }
 
 fn bash_fold_with_redir_pipe_soundness_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: WithRedir {
       stmt: Pipe {
         left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
         right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
       },
       redir: StderrToNull
-    }
+    },
+    golden: bash_fold_redir_pipe_golden
   )
 }
 
 fn bash_fold_raw_line_orch_emit_holds() -> Bool {
-  bash_fold_fold_matches_oracle(stmt: RawLine { text: "! ( foo )" })
+  bash_fold_fold_matches_golden(stmt: RawLine { text: "! ( foo )" }, golden: bash_fold_raw_orch_golden)
 }
 
 fn bash_fold_raw_line_x_eq_holds() -> Bool {
-  bash_fold_fold_matches_oracle(stmt: RawLine { text: "x=y" })
+  bash_fold_fold_matches_golden(stmt: RawLine { text: "x=y" }, golden: bash_fold_raw_xeq_golden)
 }
 
 fn bash_fold_raw_line_cmdsubst_holds() -> Bool {
-  bash_fold_fold_matches_oracle(stmt: RawLine { text: "$(a)" })
+  bash_fold_fold_matches_golden(stmt: RawLine { text: "$(a)" }, golden: bash_fold_raw_cmdsubst_golden)
 }
 
 fn bash_fold_raw_line_paren_holds() -> Bool {
-  bash_fold_fold_matches_oracle(stmt: RawLine { text: "a)b" })
+  bash_fold_fold_matches_golden(stmt: RawLine { text: "a)b" }, golden: bash_fold_raw_paren_golden)
 }
 
 fn bash_fold_raw_line_quoted_holds() -> Bool {
-  bash_fold_fold_matches_oracle(stmt: RawLine { text: "'q'" })
+  bash_fold_fold_matches_golden(stmt: RawLine { text: "'q'" }, golden: bash_fold_raw_quoted_golden)
 }
 
 fn bash_fold_raw_line_mktemp_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: RawLine { text: "TMPDIR=$('mktemp' '-d')" }
+  bash_fold_fold_matches_golden(
+    stmt: RawLine { text: "TMPDIR=$('mktemp' '-d')" },
+    golden: bash_fold_raw_mktemp_golden
   )
 }
 
 fn bash_fold_raw_line_trailing_nl_holds() -> Bool {
-  bash_fold_fold_matches_oracle(stmt: RawLine { text: "ab\n" })
+  bash_fold_fold_matches_golden(stmt: RawLine { text: "ab\n" }, golden: bash_fold_raw_nl_golden)
 }
 
 fn bash_fold_raw_line_wrong_spellings_rejects_oracle_holds() -> Bool {
   bash_fold_wrong_production_mismatch_holds(
     stmt: RawLine { text: "! ( foo )" },
+    golden: bash_fold_raw_orch_golden,
     wrong_target_witness: bash_fold_raw_line_wrong_target_model_witness()
   )
 }
@@ -668,18 +740,20 @@ fn bash_fold_raw_line_wrong_production_rejects_oracle_holds() -> Bool {
 }
 
 fn bash_fold_negation_subshell_false_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: Negation {
       stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] }
-    }
+    },
+    golden: bash_fold_negation_golden
   )
 }
 
 fn bash_fold_negation_subshell_rawline_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: Negation {
       stmt: Subshell { body: [RawLine { text: "do_verify\nmore" }] }
-    }
+    },
+    golden: bash_fold_negation_raw_golden
   )
 }
 
@@ -688,6 +762,7 @@ fn bash_fold_negation_wrong_spellings_rejects_oracle_holds() -> Bool {
     stmt: Negation {
       stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] }
     },
+    golden: bash_fold_negation_golden,
     wrong_target_witness: bash_fold_negation_wrong_target_model_witness()
   )
 }
@@ -703,12 +778,13 @@ fn bash_fold_negation_wrong_production_rejects_oracle_holds() -> Bool {
 }
 
 fn bash_fold_env_prefixed_lit_t_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
+  bash_fold_fold_matches_golden(
     stmt: EnvPrefixed {
       name: "TMPDIR",
       value: Lit { text: "/t" },
       command: Command { words: [Lit { text: "true" }] }
-    }
+    },
+    golden: bash_fold_env_prefixed_golden
   )
 }
 
@@ -719,6 +795,7 @@ fn bash_fold_env_prefixed_wrong_spellings_rejects_oracle_holds() -> Bool {
       value: Lit { text: "/t" },
       command: Command { words: [Lit { text: "true" }] }
     },
+    golden: bash_fold_env_prefixed_golden,
     wrong_target_witness: bash_fold_env_prefixed_wrong_target_model_witness()
   )
 }
@@ -744,200 +821,6 @@ fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
   }
-}
-
-fn bash_fold_golden_probe(stmt: ShellStmt) -> Outcome<String> {
-  bash_program_serialize_stmt(stmt: stmt)
-}
-
-fn bash_fold_golden_probe_cmd_true() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Command { words: [Lit { text: "true" }] })
-}
-
-fn bash_fold_golden_probe_cmd_echo_hi() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] })
-}
-
-fn bash_fold_golden_probe_cmd_var_x() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Command { words: [VarRef { name: "X" }] })
-}
-
-fn bash_fold_golden_probe_cmd_grep() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Command { words: [Lit { text: "grep" }, Lit { text: "-rn" }, Lit { text: "foo_bar.baz" }] })
-}
-
-fn bash_fold_golden_probe_cmd_home() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Command { words: [VarRef { name: "HOME" }] })
-}
-
-fn bash_fold_golden_probe_cmd_quote() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Command { words: [Lit { text: "a'b" }] })
-}
-
-fn bash_fold_golden_probe_exit_42() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Exit { code: 42 })
-}
-
-fn bash_fold_golden_probe_exit_0() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Exit { code: 0 })
-}
-
-fn bash_fold_golden_probe_assign_foo() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Assign { name: "FOO", value: Lit { text: "bar" } })
-}
-
-fn bash_fold_golden_probe_assign_home() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Assign { name: "X", value: VarRef { name: "HOME" } })
-}
-
-fn bash_fold_golden_probe_assign_quote() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Assign { name: "VAR", value: Lit { text: "a'b" } })
-}
-
-fn bash_fold_golden_probe_and_then() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: AndOr { left: bash_fold_cmd_true_stmt(), op: AndThen, right: bash_fold_cmd_false_stmt() })
-}
-
-fn bash_fold_golden_probe_or_else() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: AndOr { left: bash_fold_cmd_true_stmt(), op: OrElse, right: bash_fold_cmd_false_stmt() })
-}
-
-fn bash_fold_golden_probe_pipe() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Pipe {
-    left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
-    right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
-  })
-}
-
-fn bash_fold_golden_probe_pipe_and_then() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Pipe {
-    left: AndOr { left: bash_fold_cmd_true_stmt(), op: AndThen, right: bash_fold_cmd_false_stmt() },
-    right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
-  })
-}
-
-fn bash_fold_golden_probe_pipe_three() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Pipe {
-    left: Pipe {
-      left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
-      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
-    },
-    right: Command { words: [Lit { text: "tr" }, Lit { text: "-d" }, Lit { text: " " }] }
-  })
-}
-
-fn bash_fold_golden_probe_subshell() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] })
-}
-
-fn bash_fold_golden_probe_subshell_multi() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Subshell { body: [
-    Command { words: [Lit { text: "true" }] },
-    Command { words: [Lit { text: "false" }] }
-  ] })
-}
-
-fn bash_fold_golden_probe_subshell_nested() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Subshell { body: [
-    AndOr { left: Command { words: [Lit { text: "true" }] }, op: AndThen, right: Command { words: [Lit { text: "false" }] } }
-  ] })
-}
-
-fn bash_fold_golden_probe_if_echo() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: If {
-    cond: Command { words: [Lit { text: "true" }] },
-    then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }]
-  })
-}
-
-fn bash_fold_golden_probe_if_multi() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: If {
-    cond: Command { words: [Lit { text: "true" }] },
-    then: [
-      Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
-      Command { words: [Lit { text: "false" }] }
-    ]
-  })
-}
-
-fn bash_fold_golden_probe_if_pipe() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: If {
-    cond: Command { words: [Lit { text: "true" }] },
-    then: [Pipe {
-      left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
-      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
-    }]
-  })
-}
-
-fn bash_fold_golden_probe_redir_stderr() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: StderrToNull })
-}
-
-fn bash_fold_golden_probe_redir_both() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: StdoutAndStderrToNull })
-}
-
-fn bash_fold_golden_probe_redir_stdout_stderr() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: StdoutToStderr })
-}
-
-fn bash_fold_golden_probe_redir_file() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } } })
-}
-
-fn bash_fold_golden_probe_redir_pipe() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: WithRedir {
-    stmt: Pipe {
-      left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
-      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
-    },
-    redir: StderrToNull
-  })
-}
-
-fn bash_fold_golden_probe_heredoc() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Heredoc { path: Lit { text: "out" }, delimiter: "EOF", body: "hello" })
-}
-
-fn bash_fold_golden_probe_raw_orch() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: RawLine { text: "! ( foo )" })
-}
-
-fn bash_fold_golden_probe_raw_xeq() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: RawLine { text: "x=y" })
-}
-
-fn bash_fold_golden_probe_raw_cmdsubst() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: RawLine { text: "$(a)" })
-}
-
-fn bash_fold_golden_probe_raw_paren() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: RawLine { text: "a)b" })
-}
-
-fn bash_fold_golden_probe_raw_quoted() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: RawLine { text: "'q'" })
-}
-
-fn bash_fold_golden_probe_raw_mktemp() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: RawLine { text: "TMPDIR=$('mktemp' '-d')" })
-}
-
-fn bash_fold_golden_probe_raw_nl() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: RawLine { text: "ab\n" })
-}
-
-fn bash_fold_golden_probe_negation() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Negation { stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] } })
-}
-
-fn bash_fold_golden_probe_negation_raw() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: Negation { stmt: Subshell { body: [RawLine { text: "do_verify\nmore" }] } })
-}
-
-fn bash_fold_golden_probe_env_prefixed() -> Outcome<String> {
-  bash_fold_golden_probe(stmt: EnvPrefixed { name: "TMPDIR", value: Lit { text: "/t" }, command: Command { words: [Lit { text: "true" }] } })
 }
 
 test fn bash_fold_structural_tier_holds() -> Bool {
