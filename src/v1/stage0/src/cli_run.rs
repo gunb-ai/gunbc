@@ -284,10 +284,57 @@ fn resolve_cli_path_arg_against(
 
 #[cfg(test)]
 mod cli_path_arg_resolution_tests {
-    use super::{resolve_cli_path_arg_against, workspace_root};
+    use super::{enclosing_repo_root, resolve_cli_path_arg_against, workspace_root};
 
     fn fixture_base(tag: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("gunbc-cli-path-arg-{tag}-{}", std::process::id()))
+    }
+
+    /// Runtime derivation walks up to the nearest `.git` DIRECTORY (primary checkout)
+    /// from any nested start, and refuses (None) when no repo encloses the start —
+    /// no chdir anywhere in these tests (parallel-test cwd races).
+    #[test]
+    fn enclosing_repo_root_finds_git_dir_from_nested_start() {
+        let base = fixture_base("repo-root-dir");
+        let nested = base.join("a/b/c");
+        std::fs::create_dir_all(base.join(".git")).expect("create .git dir");
+        std::fs::create_dir_all(&nested).expect("create nested dirs");
+        assert_eq!(enclosing_repo_root(&nested), Some(base.clone()));
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// A `.git` FILE (linked git worktree form) is an equally valid marker.
+    #[test]
+    fn enclosing_repo_root_accepts_git_file_worktree_form() {
+        let base = fixture_base("repo-root-file");
+        let nested = base.join("x/y");
+        std::fs::create_dir_all(&nested).expect("create nested dirs");
+        std::fs::write(base.join(".git"), "gitdir: /elsewhere\n").expect("write .git file");
+        assert_eq!(enclosing_repo_root(&nested), Some(base.clone()));
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// No `.git` anywhere up the chain: None — the caller's typed refusal fires,
+    /// never a baked-path fallback (the cross-slot poisoning class, 2026-07-11).
+    #[test]
+    fn enclosing_repo_root_refuses_outside_any_repo() {
+        let base = fixture_base("no-repo");
+        let nested = base.join("plain/dirs");
+        std::fs::create_dir_all(&nested).expect("create nested dirs");
+        assert_eq!(enclosing_repo_root(&nested), None);
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// The derived workspace root is a real repo root of the RUNNING process
+    /// (carries `.git`, contains this crate) — not a compile-time constant.
+    #[test]
+    fn workspace_root_derives_running_repo_root() {
+        let ws = workspace_root();
+        assert!(ws.join(".git").exists(), "derived root carries .git: {ws:?}");
+        assert!(
+            ws.join("src/v1/stage0/Cargo.toml").exists(),
+            "derived root encloses this crate: {ws:?}"
+        );
     }
 
     /// (a) Relative arg with base == workspace root: byte-identical pass-through —
