@@ -284,9 +284,20 @@ fn repo_relative_path(path: &Path) -> Result<String, String> {
 }
 
 /// Canonical repo-relative path for module-graph keys and index storage.
-/// Tries [`process_workspace_root`] first, then compile-time [`workspace_root`] when
-/// sccache embedded the latter in absolute spellings from another runner checkout.
+///
+/// An already-RELATIVE input is already in repo-relative form by construction (a corpus
+/// spelling, or a walk from a relative source root like `layer_import_facts`' `src/v2/std`)
+/// — return it normalized. Only an ABSOLUTE path needs re-anchoring: try
+/// [`process_workspace_root`] first, then compile-time [`workspace_root`] when sccache
+/// embedded the latter in absolute spellings from another runner checkout. This mirrors the
+/// relative-branch contract `workspace_relative_repo_path` already relies on; without it an
+/// absolute-only `strip_prefix` refuses every relative input and the fail-closed arm panics
+/// on a path that was never the cross-runner-skew case it guards (fleet main-red 2026-07-11:
+/// `src/v2/std/algebra.dag` under neither absolute root — because it is relative).
 fn repo_relative_path_normalized(path: &Path) -> String {
+    if path.is_relative() {
+        return path.to_string_lossy().replace('\\', "/");
+    }
     if let Ok(rel) = repo_relative_path(path) {
         return rel;
     }
@@ -295,8 +306,8 @@ fn repo_relative_path_normalized(path: &Path) -> String {
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| {
             panic!(
-                "repo_relative_path_normalized: path {} is not under process workspace \
-                 root {} or compiled-in root {}",
+                "repo_relative_path_normalized: absolute path {} is not under process \
+                 workspace root {} or compiled-in root {}",
                 path.display(),
                 process_workspace_root().display(),
                 baked.display()
@@ -529,7 +540,9 @@ mod process_workspace_root_tests {
     #[test]
     fn anchor_source_root_resolves_relative_dag() {
         let anchored = anchor_source_root("dag");
-        assert!(Path::new(&anchored).join("gunbc/ci_layer_roots.dag").is_file());
+        assert!(Path::new(&anchored)
+            .join("gunbc/ci_layer_roots.dag")
+            .is_file());
     }
 
     #[test]
@@ -560,6 +573,35 @@ mod process_workspace_root_tests {
         assert_eq!(rel, "dag/gunbc/ci_layer_roots.dag");
         assert_eq!(workspace_relative_repo_path(&abs.to_string_lossy()), rel);
         assert!(ws.join(&rel).is_file());
+    }
+
+    /// A RELATIVE path is already repo-relative (a corpus spelling, or the product of
+    /// `layer_import_facts` walking a relative source root such as `src/v2/std`). It must
+    /// pass through normalized — NOT strip_prefix an absolute root and panic. This is the
+    /// exact fleet main-red input from 2026-07-11 (`src/v2/std/algebra.dag`): pre-fix the
+    /// absolute-only body refused it against both roots and the fail-closed arm panicked.
+    #[test]
+    fn repo_relative_path_normalized_passes_through_relative_input() {
+        assert_eq!(
+            repo_relative_path_normalized(std::path::Path::new("src/v2/std/algebra.dag")),
+            "src/v2/std/algebra.dag"
+        );
+        // Backslash normalization still applies to relative input.
+        assert_eq!(
+            repo_relative_path_normalized(std::path::Path::new("dag\\gunbc\\ci_spec.dag")),
+            "dag/gunbc/ci_spec.dag"
+        );
+    }
+
+    /// The fail-closed panic is preserved for the case it actually guards: an ABSOLUTE path
+    /// under neither the process root nor the baked root (genuine cross-runner skew with no
+    /// re-anchor). The relative pass-through above must not have widened this away.
+    #[test]
+    #[should_panic(expected = "is not under process")]
+    fn repo_relative_path_normalized_still_refuses_absolute_under_no_root() {
+        let _ = repo_relative_path_normalized(std::path::Path::new(
+            "/nonexistent-runner-slot/gunbc/src/v2/std/algebra.dag",
+        ));
     }
 }
 
@@ -981,10 +1023,7 @@ pub(crate) fn is_test_dag(path: &str) -> bool {
 pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
     let mut paths = Vec::new();
     for root in witness_layer_roots() {
-        collect_dag_files_tolerant(
-            &Path::new(&anchor_source_root(&root)),
-            &mut paths,
-        );
+        collect_dag_files_tolerant(&Path::new(&anchor_source_root(&root)), &mut paths);
     }
     let mut out = Vec::new();
     for p in paths {
@@ -2085,9 +2124,8 @@ fn resolve_discovery_entry_for_corpus_row(
     let closure_subject = subject_digest_for_closure(&sources);
     let resolve_started = std::time::Instant::now();
     set_phase(FloorPhase::Resolve, entry_path);
-    let (graph, source_indices) =
-        resolve_entry_with_index_for_discovery_corpus(index, entry_path)
-            .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
+    let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)
+        .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
     let resolve_nanos = resolve_started.elapsed().as_nanos();
     collect_typed_module_names(
         graph.modules.iter().cloned(),
@@ -2102,15 +2140,11 @@ fn resolve_discovery_entry_for_corpus_row(
         whole_tree_published_keys,
     );
     let (frontier_nodes, touches_frontier, entry_file_touched) = if skip_enabled {
-        let frontier_nodes =
-            rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
+        let frontier_nodes = rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
         let touches_frontier = if frontier_nodes.is_empty() {
             false
         } else {
-            entry_touches_rerun_frontier(
-                &entry_ctx,
-                &list_value_from_vec(frontier_nodes.clone()),
-            )?
+            entry_touches_rerun_frontier(&entry_ctx, &list_value_from_vec(frontier_nodes.clone()))?
         };
         let entry_file_touched = if touched_entry_paths.is_empty() {
             false
