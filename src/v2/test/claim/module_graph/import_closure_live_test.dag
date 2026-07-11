@@ -9,7 +9,7 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data expected_conformance_closure: FreeMonoid<String> = [
-  "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+  "src/v2/test/claim/module_graph/conformance_imports_only.dag",
   "dag/std/algebra.dag",
   "dag/std/error_primitives.dag",
   "dag/std/primitives.dag",
@@ -22,7 +22,7 @@ data expected_conformance_closure: FreeMonoid<String> = [
   "src/v2/std/witness.dag"
 ]
 
-data conformance_entry: String = "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag"
+data conformance_entry: String = "src/v2/test/claim/module_graph/conformance_imports_only.dag"
 
 data bogus_never_imported: String = "src/v2/std/__bogus_never_imported__.dag"
 

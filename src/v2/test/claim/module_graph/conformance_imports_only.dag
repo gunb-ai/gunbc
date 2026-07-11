@@ -7,3 +7,10 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Behavior, Symbol }
 import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
+
+data reflect_connective_type: Symbol = ^Connective
+data reflect_behavior_type: Symbol = ^Behavior
+
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
