@@ -441,7 +441,7 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
       concat(
         concat(
           concat(
-            concat(concat("    ", concat(ci_plan_artifact_compile_clean_invoke(), " || exit $?\n")),
+            concat(concat("    ", concat(ci_plan_artifact_compile_clean_invoke(), " || exit $?\n"))),
             concat(
               "    echo \"claim_executor: plan-artifact-only diff — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=",
               merge_admission_floor_disposition_documentation_only_skipped
