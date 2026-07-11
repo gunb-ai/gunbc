@@ -110,11 +110,7 @@ fn merge_admission_v1_tool_source_flags() -> String {
 fn merge_admission_stamp_invoke() -> String {
   concat(
     concat(
-<<<<<<< HEAD
-      concat(gunbc_run_bin_shell(), witness_layer_source_flags_rooted(roots: witness_layer_roots)),
-=======
       concat(gunbc_run_bin_shell(), merge_admission_v1_tool_source_flags()),
->>>>>>> 98b0339761 (WIP: Lane D — provisioning window/executor-capability model draft (sign-off g)
       " --entry dag/tools/merge_admission_stamp.dag --function main"
     ),
     "\n"
@@ -124,11 +120,7 @@ fn merge_admission_stamp_invoke() -> String {
 fn merge_admission_gate_invoke() -> String {
   concat(
     concat(
-<<<<<<< HEAD
-      concat(gunbc_run_bin_shell(), witness_layer_source_flags_rooted(roots: witness_layer_roots)),
-=======
       concat(gunbc_run_bin_shell(), merge_admission_v1_tool_source_flags()),
->>>>>>> 98b0339761 (WIP: Lane D — provisioning window/executor-capability model draft (sign-off g)
       " --entry dag/tools/merge_admission_gate.dag --function main"
     ),
     "\n"

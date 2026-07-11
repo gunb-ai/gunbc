@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, resolve_entry_with_index, run_discovery_corpus_with_options,
-    workspace_root, DiscoveryCorpusOptions, DiscoverySummary, NodeFrontierSelectionMode,
+    DiscoveryCorpusOptions, DiscoverySummary, NodeFrontierSelectionMode,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -14,12 +14,27 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::from(1)
 }
 
+fn checkout_root() -> PathBuf {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .expect("spawn git rev-parse --show-toplevel");
+    if output.status.success() {
+        let root = String::from_utf8(output.stdout).expect("utf8 workspace root");
+        let trimmed = root.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    std::env::current_dir().expect("cwd fallback for workspace root")
+}
+
 fn chdir_workspace() {
-    std::env::set_current_dir(workspace_root()).expect("chdir to workspace root");
+    std::env::set_current_dir(checkout_root()).expect("chdir to workspace root");
 }
 
 fn floor_skip_source_roots() -> Vec<String> {
-    let ws = workspace_root();
+    let ws = checkout_root();
     vec![
         ws.join("src/v2").to_string_lossy().into_owned(),
         ws.join("dag").to_string_lossy().into_owned(),
@@ -27,7 +42,7 @@ fn floor_skip_source_roots() -> Vec<String> {
 }
 
 fn floor_skip_test_roster() -> (Vec<String>, Vec<(String, String)>) {
-    let ws = workspace_root();
+    let ws = checkout_root();
     let entry = ws
         .join("src/v2/workflow/affected_set_floor_runner_test.dag")
         .to_string_lossy()
@@ -157,7 +172,7 @@ const FALSIFIER_CONTROL_REL: &str =
     "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag";
 
 fn falsifier_control_roster(function: &str) -> Vec<(String, String)> {
-    let ws = workspace_root();
+    let ws = checkout_root();
     vec![(
         ws.join(FALSIFIER_CONTROL_REL)
             .to_string_lossy()
@@ -213,7 +228,7 @@ fn predict_only_red_predicted_affected_is_not_divergence() {
     chdir_workspace();
     // Diff edits the red control's own declaration line → predicted-AFFECTED → its red
     // is an ordinary failure. Divergence must discriminate, not count every red.
-    let ws = workspace_root();
+    let ws = checkout_root();
     let text = std::fs::read_to_string(ws.join(FALSIFIER_CONTROL_REL))
         .expect("falsifier control fixture readable");
     let line = fixture_line(&text, "test fn falsifier_red_control_holds");
@@ -251,7 +266,7 @@ fn budget_roster_resolves_after_frontier_warmup() {
     ] {
         let _ = resolve_entry_with_index(&index, path);
     }
-    let entry = budget_roster_completeness_entry(&workspace_root());
+    let entry = budget_roster_completeness_entry(&checkout_root());
     resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve");
 }
 
@@ -259,7 +274,7 @@ fn budget_roster_resolves_cold() {
     chdir_workspace();
     let roots = floor_skip_source_roots();
     let index = build_multi_entry_index(&roots);
-    let entry = budget_roster_completeness_entry(&workspace_root());
+    let entry = budget_roster_completeness_entry(&checkout_root());
     resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve cold");
 }
 
@@ -308,7 +323,7 @@ fn discovery_corpus_skip_enabled_git_observation_refuses() {
 
 fn node_precise_referenced_runs_orphan_skips_by_execution() {
     chdir_workspace();
-    let ws = workspace_root();
+    let ws = checkout_root();
     let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
     let abs = ws.join(rel);
     let text = std::fs::read_to_string(&abs).expect("discriminator fixture readable");
@@ -352,7 +367,7 @@ fn node_precise_referenced_runs_orphan_skips_by_execution() {
 
 fn node_precise_transitive_c_edit_runs_conj_witness() {
     chdir_workspace();
-    let ws = workspace_root();
+    let ws = checkout_root();
     let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
     let abs = ws.join(rel);
     let text = std::fs::read_to_string(&abs).expect("discriminator fixture readable");
@@ -382,7 +397,7 @@ fn node_precise_transitive_c_edit_runs_conj_witness() {
 
 fn node_precise_test_fn_body_edit_runs_only_that_witness() {
     chdir_workspace();
-    let ws = workspace_root();
+    let ws = checkout_root();
     let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
     let abs = ws.join(rel);
     let text = std::fs::read_to_string(&abs).expect("discriminator fixture readable");
@@ -426,7 +441,7 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
 
 fn entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only() {
     chdir_workspace();
-    let ws = workspace_root();
+    let ws = checkout_root();
     let disc_rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
     let disc_abs = ws.join(disc_rel);
     let text = std::fs::read_to_string(&disc_abs).expect("discriminator fixture readable");
@@ -466,7 +481,7 @@ fn entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only() {
 
 fn import_closure_helper_fn_edit_runs_importer_entry_only() {
     chdir_workspace();
-    let ws = workspace_root();
+    let ws = checkout_root();
     let helper_rel = "src/v2/test/fixture/floor_skip/floor_disc_shared_helper.dag";
     let helper_abs = ws.join(helper_rel);
     let text = std::fs::read_to_string(&helper_abs).expect("shared helper readable");
@@ -506,7 +521,7 @@ fn import_closure_helper_fn_edit_runs_importer_entry_only() {
 
 fn frontier_warmup_does_not_poison_corpus_resolution() {
     chdir_workspace();
-    let ws = workspace_root();
+    let ws = checkout_root();
     let poisoner_rel = "src/v2/workflow/ci_floor_plan.dag";
     let poisoner_abs = ws.join(poisoner_rel);
     let text = std::fs::read_to_string(&poisoner_abs).expect("ci_floor_plan readable");
@@ -531,7 +546,7 @@ fn frontier_warmup_does_not_poison_corpus_resolution() {
 }
 
 fn main() -> ExitCode {
-    let _workspace_marker: PathBuf = workspace_root();
+    let _workspace_marker: PathBuf = checkout_root();
 
     let tests: Vec<(&str, fn())> = vec![
         (

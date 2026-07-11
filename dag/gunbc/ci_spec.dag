@@ -27,7 +27,7 @@ import gunbc.merge_admission_produce {
   ci_floor_stamp_merge_admission_script,
   ci_floor_disposition_marker_path,
   merge_admission_floor_disposition_documentation_only_skipped,
-  ci_documentation_only_merge_admission_stamp_script,
+  merge_admission_stamp_invoke,
 }
 import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -365,18 +365,7 @@ data ci_documentation_only_floor_shortcut_scaffold: Disposition = Scaffold {
 
 data ci_documentation_only_floor_shortcut_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_documentation_only_floor_shortcut_script — concat-built bash path-prefix predicate + heredoc over git diff --name-only (interim path heuristic until affected-set-scoped compile-clean); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes floor scoping through orchestration emit and this shortcut retires"
 
-data ci_documentation_only_diff_note: String = "Interim plan-artifact scoping: merge-base diffs whose only changed paths are under docs/ or dag/gunbc/plans/ run compile-clean then skip the witness corpus. Path-prefix matching is an interim heuristic — dissolve-on: affected-set-scoped compile-clean (Ruling 1 path grain) replaces it. Empty _ci_changed (git fetch/diff failure) short-circuits this block and falls through to the full floor (fail-closed, not widening). Merge-admission stamps Skipped (not Success) via CI_FLOOR_DISPOSITION=documentation_only_skipped so floor-not-run ≠ floor-green. Generated-artifact carriers (.gitignore, README.md/CLAUDE.md/DESIGN.md symlinks) are excluded from the allowlist — their only drift guard is floor-resident; whitelisting them would self-shortcut that gate (#6236 class). CI substrate is excluded EXCEPT the closed companion bundle in ci_documentation_only_receipt_gate_companion_paths — the minimal rows that correlate docs-only floor skip with receipt-gate skip (marker write + gate scripts + ci.yml + witness); any other non-docs path still forces the full floor."
-
-data ci_documentation_only_receipt_gate_companion_paths_note: String = "Closed allowlist: docs-only PRs that fix the receipt-gate/docs-only-floor mismatch may touch ONLY these companion paths in addition to docs/. Dissolve-on: affected-set-scoped compile-clean replaces the path-prefix heuristic."
-
-data ci_documentation_only_receipt_gate_companion_paths: List<String> = [
-  ".github/workflows/ci.yml",
-  "dag/gunbc/ci_spec.dag",
-  "dag/gunbc/ci_materialization.dag",
-  "dag/gunbc/merge_admission_produce.dag",
-  "dag/test/claim/merge_admission_producer_witness_test.dag",
-  "src/v2/test/claim/ci_spec_witness_test.dag",
-]
+data ci_documentation_only_diff_note: String = "Interim plan-artifact scoping: merge-base diffs whose only changed paths are under docs/ or dag/gunbc/plans/ run compile-clean then skip the witness corpus. Path-prefix matching is an interim heuristic — dissolve-on: affected-set-scoped compile-clean (Ruling 1 path grain) replaces it. Empty _ci_changed (git fetch/diff failure) short-circuits this block and falls through to the full floor (fail-closed, not widening). Merge-admission stamps Skipped (not Success) via CI_FLOOR_DISPOSITION=documentation_only_skipped so floor-not-run ≠ floor-green. Generated-artifact carriers (.gitignore, README.md/CLAUDE.md/DESIGN.md symlinks) are excluded from the allowlist — their only drift guard is floor-resident; whitelisting them would self-shortcut that gate (#6236 class). CI substrate (.github/workflows/ci.yml, dag/gunbc/ci_spec.dag, ci_spec witnesses) is likewise excluded."
 
 fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
   match policy.mode {
@@ -428,52 +417,18 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
             "    if [[ \"$_ci_path\" == docs/* ]] || [[ \"$_ci_path\" == dag/gunbc/plans/* ]]; then\n",
             "      :\n"
           ),
-          concat(
-            "    elif [[ \"$_ci_path\" == .github/workflows/ci.yml ]]; then\n",
-            "      :\n"
-          )
+          "    else\n"
         ),
         concat(
           concat(
-            concat(
-              "    elif [[ \"$_ci_path\" == dag/gunbc/ci_spec.dag ]]; then\n",
-              "      :\n"
-            ),
-            concat(
-              "    elif [[ \"$_ci_path\" == dag/gunbc/ci_materialization.dag ]]; then\n",
-              "      :\n"
-            )
+            "      PLAN_ARTIFACT_ONLY=0\n",
+            "      break\n"
           ),
           concat(
+            "    fi\n",
             concat(
-              concat(
-                "    elif [[ \"$_ci_path\" == dag/gunbc/merge_admission_produce.dag ]]; then\n",
-                "      :\n"
-              ),
-              concat(
-                "    elif [[ \"$_ci_path\" == src/v2/test/claim/ci_spec_witness_test.dag ]]; then\n",
-                "      :\n"
-              )
-            ),
-            concat(
-              "    elif [[ \"$_ci_path\" == dag/test/claim/merge_admission_producer_witness_test.dag ]]; then\n",
-              "      :\n"
-            )
-          )
-        ),
-        concat(
-          concat(
-            "    else\n",
-            "      PLAN_ARTIFACT_ONLY=0\n"
-          ),
-          concat(
-            "      break\n",
-            concat(
-              "    fi\n",
-              concat(
-                "  done <<_ci_diff_eof_\n",
-                "$_ci_changed\n"
-              )
+              "  done <<_ci_diff_eof_\n",
+              "$_ci_changed\n"
             )
           )
         )
@@ -503,7 +458,13 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
           ),
           concat(
             ")\"\n",
-            concat("    ", ci_documentation_only_merge_admission_stamp_script())
+            concat(
+              "    CI_FLOOR_DISPOSITION=",
+              concat(
+                merge_admission_floor_disposition_documentation_only_skipped,
+                concat(" ", merge_admission_stamp_invoke())
+              )
+            )
           ),
           concat(
             "    exit $?\n",
