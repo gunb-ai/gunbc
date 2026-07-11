@@ -14,7 +14,7 @@ import v2.std.diagnostic {
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import v2.std.algebra { HeadAbsent, HeadFound, fold_list_right, is_empty, list_head, list_init, list_snoc_item }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list_right, is_empty, is_prefix_of, list_head, list_init, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.logic { Bool }
@@ -192,6 +192,15 @@ fn qualified_name_init(qn: QualifiedName) -> QualifiedName {
 
 fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
   list_snoc_item(xs: qn, item: segment)
+}
+
+fn qn_segment_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  is_prefix_of(prefix: a, xs: b, eq: qn_segment_eq)
+    && is_prefix_of(prefix: b, xs: a, eq: qn_segment_eq)
 }
 
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
