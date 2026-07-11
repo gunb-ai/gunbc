@@ -167,6 +167,7 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+<<<<<<< HEAD
 fn is_ident_boundary_byte(b: u8) -> bool {
     matches!(
         b,
@@ -328,6 +329,46 @@ pub fn workspace_root() -> PathBuf {
         )
     })
     .clone()
+=======
+pub fn baked_workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("workspace root")
+        .to_path_buf()
+>>>>>>> ea07a7b098 (WIP: Namespace import-deletion ladder B2->B4 (CONTINUATION — valiant-bat-761)
+}
+
+fn looks_like_workspace_root(path: &Path) -> bool {
+    path.join("dag").is_dir() && path.join("src/v2").is_dir()
+}
+
+/// Workspace root for module-path indexing and authority reads.
+///
+/// Compiled-in from `CARGO_MANIFEST_DIR` for the common case (local dev, same-runner
+/// CI). When release bins are handoff-built on one runner and executed on another,
+/// prefer `GITHUB_WORKSPACE` or the process cwd when they carry the checkout tree —
+/// otherwise relative source roots resolve against cwd while `strip_prefix` still uses
+/// the baked build path (cross-runner CI panic).
+pub fn workspace_root() -> PathBuf {
+    if let Ok(env_ws) = std::env::var("GITHUB_WORKSPACE") {
+        let path = PathBuf::from(env_ws);
+        if looks_like_workspace_root(&path) {
+            return path;
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        if looks_like_workspace_root(&cwd) {
+            let baked = baked_workspace_root();
+            if !same_canonical_file(
+                &cwd.to_string_lossy(),
+                &baked.to_string_lossy(),
+            ) {
+                return cwd;
+            }
+        }
+    }
+    baked_workspace_root()
 }
 
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
@@ -12742,6 +12783,21 @@ mod module_path_index_tests {
                 ws.join("dag").to_string_lossy().into_owned(),
                 ws.join("src/v2").to_string_lossy().into_owned(),
             ]
+        );
+    }
+
+    #[test]
+    fn build_module_path_index_accepts_relative_roots_at_process_cwd() {
+        let ws = workspace_root();
+        let rel_roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let index = build_module_path_index(&rel_roots);
+        let sample = index
+            .get("gunbc.ci_layer_roots")
+            .expect("gunbc.ci_layer_roots must be indexed from relative roots");
+        assert_eq!(sample, "dag/gunbc/ci_layer_roots.dag");
+        assert!(
+            ws.join(sample).is_file(),
+            "indexed rel path must resolve under workspace_root()"
         );
     }
 
