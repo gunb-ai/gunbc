@@ -17,7 +17,8 @@ import extdeps.languages.bash.program {
   assign,
   command,
   lit,
-  serialize_bash
+  serialize_bash,
+  serialize_stmt
 }
 import tools.host_prelude { ClaimRun, assign_root_stmt, gunbc_claims_program, witness_bin, witness_bin_program }
 import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
@@ -226,4 +227,19 @@ fn bash_program_probe_exit_spelling_eq() -> Bool {
     Accepted { value: part, diagnostics: d } => part == "exit 1"
     Rejected { diagnostics: r } => false
   }
+}
+
+fn bash_program_probe_to_string_bytes() -> Outcome<String> {
+  Accepted { value: concat("x", to_string(1)), diagnostics: None }
+}
+
+fn bash_program_probe_subshell_exit_eq_literal() -> Bool {
+  match bash_program_serialize_stmt(stmt: Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }) {
+    Accepted { value: s, diagnostics: d } => s == "('echo' 'hi'; exit 1)"
+    Rejected { diagnostics: r } => false
+  }
+}
+
+fn bash_program_probe_sidecar_subshell_exit_eq_literal() -> Bool {
+  serialize_stmt(s: Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }) == "('echo' 'hi'; exit 1)"
 }
