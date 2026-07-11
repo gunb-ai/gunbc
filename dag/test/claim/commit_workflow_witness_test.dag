@@ -58,7 +58,7 @@ fn witness_realization_artifact_paths() -> Bool {
 
 fn witness_roster_nonempty() -> Bool {
   length(commit_gate_roster) > 0
-    && length(commit_workflow_realization_bindings) == 3
+    && length(commit_workflow_realization_bindings) == 2
 }
 
 fn witness_roster_spans_wellformed() -> Bool {

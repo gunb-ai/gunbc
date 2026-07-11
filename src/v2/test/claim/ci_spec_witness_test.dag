@@ -20,7 +20,7 @@ import gunbc.ci_spec {
 }
 import gunbc.merge_admission_produce { merge_admission_floor_disposition_documentation_only_skipped }
 
-data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\"\n"
+data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\" \"$ROOT/target/release/floor_skip_discovery_witness\"\n"
 
 data reflect_gate_type: Symbol = ^Gate
 
