@@ -19,6 +19,7 @@ import v2.std.algebra { length }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -2,6 +2,7 @@ module v2.test.claim.determinism_contract_test
 
 import v2.std.collection { Absent, Present }
 import v2.std.determinism {
+  DeterminismClass,
   Deterministic,
   HashIteration,
   NonDeterministic,
@@ -21,6 +22,7 @@ import v2.std.determinism {
 }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
