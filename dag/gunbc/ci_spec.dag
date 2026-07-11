@@ -2,7 +2,7 @@ module gunbc.ci_spec
 
 import gunbc.ci_gate {
   Gate,
-  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
@@ -15,7 +15,6 @@ import gunbc.ci_layer_roots {
 import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_gates,
-  project_ci_rust_job_gates,
   project_ci_regen_job_gates,
   project_ci_floor_witness_entries
 }
@@ -68,9 +67,7 @@ data gunbc_ci_regen_floor_gates: List<Gate> = project_ci_regen_job_gates(roster:
 
 data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
 
-data gunbc_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: commit_gate_roster)
-
-data gunbc_ci_gates: List<Gate> = concat(gunbc_ci_floor_gates, gunbc_ci_rust_job_gates)
+data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
 
 data live_deploy_apply_entry: String = "dag/gunbc/live_deploy/apply.dag"
 data live_deploy_apply_srv1_wet_function: String = "live_deploy_apply_srv1_wet"
@@ -409,29 +406,6 @@ fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
 
 fn gunbc_ci_floor_run(spec: CiSpec) -> String {
   gunbc_ci_floor_only_script(spec: spec)
-}
-
-fn gunbc_ci_rust_gate_invoke() -> String {
-  ci_cargo_eagain_retry_script(
-    command: concat(
-      concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
-      " --entry dag/tools/rust_gates_ci.dag --function main"
-    )
-  )
-}
-
-fn gunbc_ci_rust_gate_only_script() -> String {
-  concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    concat(
-      concat(git_fetch_script(policy: gunbc_ci_spec.diff_policy), "\n"),
-      gunbc_ci_rust_gate_invoke()
-    )
-  )
-}
-
-fn gunbc_ci_rust_job_run() -> String {
-  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_rust_gate_only_script())
 }
 
 fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {

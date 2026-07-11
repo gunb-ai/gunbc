@@ -515,6 +515,9 @@ fn run_shared_entry_claims(
             set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
             let outcome = run_claim(&ctx, function);
+            // Witness frame exit: the memo must not retain values across
+            // witnesses sharing this ctx (byte-unbounded, 20GiB-class kills).
+            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
             let wall_nanos = claim_start.elapsed().as_nanos();
             let rn = if first {
                 first = false;
@@ -576,6 +579,9 @@ fn run_memo_shared_claims(
             set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
             let outcome = run_claim(ctx, function);
+            // Witness frame exit — this memoized ctx outlives whole entry
+            // groups, so per-witness release matters here most of all.
+            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(ctx);
             let wall_nanos = claim_start.elapsed().as_nanos();
             let rn = if first {
                 first = false;
@@ -1283,7 +1289,9 @@ struct BatchRecord {
 /// Discovery corpus resolve time is reported on its own key, never folded into the
 /// entry count (different grain; conflating them would mask either regression).
 /// Consumed by the ci.yml resolve-receipt gate emitted from dag/gunbc/ci_materialization.dag.
-fn write_resolve_receipt(batch_records: &[BatchRecord]) {
+/// Returns false on a write error — the walk fails closed at the point of
+/// failure rather than relying only on the downstream missing-file gate.
+fn write_resolve_receipt(batch_records: &[BatchRecord]) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
     let mut discovery_corpus_resolve_ms: u128 = 0;
@@ -1302,26 +1310,31 @@ fn write_resolve_receipt(batch_records: &[BatchRecord]) {
     let path = std::path::Path::new("target/floor-resolve-receipt.txt");
     if let Err(e) = std::fs::create_dir_all("target").and_then(|_| std::fs::write(path, &body)) {
         eprintln!(
-            "claim_executor: failed to write resolve receipt {}: {e} (gate downstream will fail closed on the missing file)",
+            "claim_executor: failed to write resolve receipt {}: {e} — walk fails closed here (and the gate downstream fails closed on the missing file)",
             path.display()
         );
-        return;
+        return false;
     }
     eprintln!(
         "[receipt] floor resolves: {resolves_total} entry resolve(s), {resolve_ms_total}ms (receipt: {})",
         path.display()
     );
+    true
 }
 
 /// The materialization demand receipt at the eval-frame grain: process-wide
 /// ledger totals accumulated by every InterpContext on Drop (threads included),
-/// written once at walk end. Key counts are deterministic for a fixed corpus +
-/// plan; wasted_ms lines are observational and must never gate. The derived
-/// ci.yml gate compares unkeyed_calls to the declared row (0 = every call
-/// carried a computable identity) and fails closed on a missing file or a
-/// zeroed keyed_calls (a floor that evaluated nothing is a lie, so disabling
-/// the trace cannot silently green the gate).
-fn write_materialization_receipt() {
+/// written once at walk end. Determinism, as measured (2026-07-10, 5 receipts):
+/// unkeyed_calls is corpus-deterministic (identical across schedules, machines,
+/// and debug/release); keyed/distinct/duplicated jitter a few counts because
+/// they sum PER-CTX numbers and witness→ctx grouping is a thread-pool accident
+/// — so counts disclose, they do not pin, until the frame grain is structural.
+/// wasted_ms lines are observational and must never gate. The derived ci.yml
+/// gate fails closed on a missing/malformed file or zeroed keyed_calls (a
+/// floor that evaluated nothing is a lie, so disabling the trace cannot
+/// silently green the gate). Returns false on a write error — the walk fails
+/// closed here, not only at the downstream missing-file gate.
+fn write_materialization_receipt() -> bool {
     let t = v1_compiler::v1_interpreter::take_process_eval_recompute_totals();
     let body = format!(
         "keyed_calls={}\nunkeyed_calls={}\noverflow_calls={}\ndistinct_keys={}\nduplicated_keys={}\nsingle_site_keys={}\nmulti_site_keys={}\nwasted_ms_total={}\nwasted_ms_single_site={}\nwasted_ms_multi_site={}\nmemo_hits={}\nmemo_misses={}\nmemo_overflow={}\n",
@@ -1342,10 +1355,10 @@ fn write_materialization_receipt() {
     let path = std::path::Path::new("target/floor-materialization-receipt.txt");
     if let Err(e) = std::fs::create_dir_all("target").and_then(|_| std::fs::write(path, &body)) {
         eprintln!(
-            "claim_executor: failed to write materialization receipt {}: {e} (gate downstream will fail closed on the missing file)",
+            "claim_executor: failed to write materialization receipt {}: {e} — walk fails closed here (and the gate downstream fails closed on the missing file)",
             path.display()
         );
-        return;
+        return false;
     }
     eprintln!(
         "[receipt] floor materialization: keyed_calls={} unkeyed_calls={} duplicated_keys={} (single_site={} multi_site={}) wasted_ms={} memo_hits={} memo_misses={} (receipt: {})",
@@ -1359,6 +1372,7 @@ fn write_materialization_receipt() {
         t.memo_misses,
         path.display()
     );
+    true
 }
 
 /// Emit a fractal Gantt tree to stderr when GUNBC_FLOOR_GANTT=1.
@@ -1576,13 +1590,13 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
     }
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
-    write_resolve_receipt(&batch_records);
+    let resolve_receipt_ok = write_resolve_receipt(&batch_records);
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
     drop(walk_memo);
-    write_materialization_receipt();
+    let materialization_receipt_ok = write_materialization_receipt();
     WalkOutcome {
-        any_failed,
+        any_failed: any_failed || !resolve_receipt_ok || !materialization_receipt_ok,
         batches_run,
     }
 }
