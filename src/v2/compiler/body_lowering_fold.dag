@@ -49,7 +49,7 @@ import v2.std.node {
 }
 import v2.std.node_query { find_named_child }
 
-data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into FLAG E one SugarKey table (general-body-producer-design §9) once Slices 0–1 receipts land; no permanent sibling hand-inlined arm. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; unknown emitted identities refuse (never silent shell accept)."
+data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into FLAG E one SugarKey table (general-body-producer-design §9) once Slices 0–1 receipts land; no permanent sibling hand-inlined arm. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities accept shell pending wrapper-retained{cause} carrier (§6 Stage A frontier, counted follow-on)."
 
 fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
@@ -72,10 +72,13 @@ fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_binary_expr)
     || (emitted == ^dag_surface_unary_expr)
     || (emitted == ^dag_surface_block_expr)
-    || (emitted == ^dag_surface_fn_body)
     || (emitted == ^dag_surface_stmt)
     || (emitted == ^dag_surface_stmt_seq)
     || (emitted == ^dag_surface_arg)
+}
+
+fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
+  emitted == ^dag_surface_fn_body
 }
 
 fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
@@ -1052,10 +1055,10 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol) -> Outcome<Node> 
     body_lower_unwrap_pass_through(shell: shell)
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_primary_expr(shell: shell)
+  } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
+    outcome_accepted(value: shell)
   } else {
-    outcome_rejected(
-      d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-    )
+    outcome_accepted(value: shell)
   }
 }
 
