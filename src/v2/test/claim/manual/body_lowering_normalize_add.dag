@@ -4,6 +4,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_body_from_fn_captured,
   body_lower_domain_from_param_list,
   body_lower_fn_decl_to_arrow,
+  body_lower_param_list_comma_spine_optional,
   body_lower_return_type_from_fn_captured,
   body_lower_try_infix_transform,
   body_lower_unwrap_captured
@@ -324,6 +325,68 @@ fn body_lowering_arrow_direct_well_formed() -> Bool {
       match body_lower_fn_decl_to_arrow(shell: fn_decl) {
         Accepted { value: arrow, diagnostics: _ } => well_formed(n: arrow)
         Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn body_lowering_param_comma_spine_holds() -> Bool {
+  match body_lowering_parsed_fn_decl() {
+    Absent => false
+    Present { value: fn_decl } =>
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } =>
+          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
+            ParseSubtreeFound { captured: param_list } =>
+              match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
+                Present { value: _ } => true
+                Absent => false
+              }
+            ParseSubtreeAbsent => false
+          }
+        Absent => false
+      }
+  }
+}
+
+fn body_lowering_arrow_domain_named_count(arrow: Node) -> Int {
+  if count(arrow.children) >= 1 {
+    match first(arrow.children) {
+      Present { value: e0 } =>
+        match e0.target.kind {
+          TypeNode { connective: Conj } =>
+            fold(e0.target.children, init: 0, f: fn(n, e) {
+              match e.label {
+                Named { name: _ } => n + 1
+                _ => n
+              }
+            })
+          _ => 0
+        }
+      Absent => 0
+    }
+  } else {
+    0
+  }
+}
+
+fn body_lowering_normalized_domain_param_count() -> Int {
+  match body_lowering_normalized_module() {
+    Absent => 0
+    Present { value: tree } =>
+      match body_lower_find_arrow_in_module(root: tree) {
+        Absent => 0
+        Present { value: arrow } => body_lowering_arrow_domain_named_count(arrow: arrow)
+      }
+  }
+}
+
+fn body_lowering_resolve_rejects() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } =>
+      match resolve(tree: tree, lm: dag_language_model()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
       }
   }
 }
