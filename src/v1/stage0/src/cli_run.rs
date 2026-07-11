@@ -7039,7 +7039,6 @@ fn run_discovery_rows(
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
-            // `CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` — §7 HAND-RUST loop arm.
             if entry_eligible_for_discovery_skip_before_resolve(
                 skip_enabled,
                 &current_entry_content,
@@ -7160,7 +7159,6 @@ fn run_discovery_rows(
                 NodeFrontierSelectionMode::Off => {}
             }
         }
-        // `CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` — lazy-resolve after skip decision.
         if ctx.is_none() {
             let resolved = resolve_discovery_entry_for_corpus_row(
                 index,
