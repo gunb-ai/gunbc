@@ -16,7 +16,7 @@ import gunbc.merge_admission {
   mint_merge_admission_receipt,
   current_gate_roster_hash,
 }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags, witness_layer_source_flags_rooted }
 
 data merge_admission_merge_base_ref: String = "origin/main"
 
@@ -106,7 +106,7 @@ fn gunbc_run_bin_shell() -> String {
 fn merge_admission_stamp_invoke() -> String {
   concat(
     concat(
-      concat(gunbc_run_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)),
+      concat(gunbc_run_bin_shell(), witness_layer_source_flags_rooted(roots: witness_layer_roots)),
       " --entry dag/tools/merge_admission_stamp.dag --function main"
     ),
     "\n"
@@ -116,7 +116,7 @@ fn merge_admission_stamp_invoke() -> String {
 fn merge_admission_gate_invoke() -> String {
   concat(
     concat(
-      concat(gunbc_run_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)),
+      concat(gunbc_run_bin_shell(), witness_layer_source_flags_rooted(roots: witness_layer_roots)),
       " --entry dag/tools/merge_admission_gate.dag --function main"
     ),
     "\n"

@@ -33,11 +33,11 @@ import v2.std.compilers.sugar {
   apply_sugar,
   sugar_rule_for_key
 }
+import v2.compiler.body_lowering_fold { body_lower_finish }
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
-
-type NormalizedTree = Node
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
@@ -119,7 +119,11 @@ fn normalize_node(n: Node) -> Outcome<Node> {
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: folded, diagnostics: cd } =>
-      normalize_sugar_finish(n: n, folded: folded, cd: cd)
+      match body_lower_finish(n: n, folded: folded, cd: cd) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: after_body, diagnostics: cd0 } =>
+          normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
+      }
   }
 }
 

@@ -83,8 +83,8 @@ fn witness_gate_roster_matches_coproduct_arms() -> Bool {
 
 fn witness_roots_fold_into_scheduler() -> Bool {
   let script = scheduler_invoke(spec: gunbc_ci_spec)
-  string_contains(s: script, pattern: " --source-root src/v2") &&
-    string_contains(s: script, pattern: " --source-root dag")
+  string_contains(s: script, pattern: " --source-root \"$ROOT/src/v2\"") &&
+    string_contains(s: script, pattern: " --source-root \"$ROOT/dag\"")
 }
 
 fn witness_layer_authority_drives_source_flags() -> Bool {
@@ -97,7 +97,7 @@ fn witness_layer_authority_drives_source_flags() -> Bool {
 fn witness_scan_subtree_not_in_scheduler_argv() -> Bool {
   let script = scheduler_invoke(spec: gunbc_ci_spec)
   !string_contains(s: script, pattern: " --scan-dir") &&
-    string_contains(s: script, pattern: " --source-root src/v2")
+    string_contains(s: script, pattern: " --source-root \"$ROOT/src/v2\"")
 }
 
 fn witness_diff_policy_drives_fetch() -> Bool {
@@ -184,6 +184,9 @@ fn witness_documentation_only_shortcut_in_floor_script() -> Bool {
   string_contains(s: script, pattern: "floor skipped (CI_FLOOR_DISPOSITION=") &&
     string_contains(s: script, pattern: merge_admission_floor_disposition_documentation_only_skipped) &&
     string_contains(s: script, pattern: "[[ \"$_ci_path\" == docs/* ]]") &&
+    string_contains(s: script, pattern: "[[ \"$_ci_path\" == dag/gunbc/plans/* ]]") &&
+    string_contains(s: script, pattern: "\"$ROOT/dag/tools/floor_effect_gate_witness.dag\"") &&
+    string_contains(s: script, pattern: "dag_compile_clean_gate_passes") &&
     string_contains(s: script, pattern: ci_documentation_only_diff_note) &&
     string_contains(s: script, pattern: ci_documentation_only_floor_shortcut_shell_emit_dissolution_trigger) &&
     !string_contains(s: script, pattern: "CI_FLOOR_EXIT=0") &&
