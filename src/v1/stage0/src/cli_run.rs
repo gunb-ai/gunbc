@@ -167,7 +167,7 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
-pub fn workspace_root() -> PathBuf {
+fn baked_workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
@@ -175,9 +175,25 @@ pub fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn cwd_looks_like_gunbc_workspace(cwd: &std::path::Path) -> bool {
+    cwd.join("dag").is_dir() && cwd.join("Cargo.toml").is_file()
+}
+
+pub fn workspace_root() -> PathBuf {
+    if let Ok(cwd) = std::env::current_dir() {
+        if cwd_looks_like_gunbc_workspace(&cwd) {
+            return cwd;
+        }
+    }
+    baked_workspace_root()
+}
+
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
 ///
-/// `workspace_root()` above is baked from `env!("CARGO_MANIFEST_DIR")` at COMPILE time,
+/// `workspace_root()` prefers the process cwd when it looks like a gunbc checkout
+/// (`dag/` + `Cargo.toml`), so cross-runner CI artifact handoff (build job on host A,
+/// floor job on host B) does not bake host A's absolute path into module indexing.
+/// Otherwise it falls back to `env!("CARGO_MANIFEST_DIR")` at compile time.
 /// and part of the shared resolution pipeline (`pool_roots_abs`) anchors RELATIVE source
 /// roots to that baked path while the module-content index reads them relative to the
 /// process cwd. For the claim bins that meant a run from any other cwd (e.g. a git
