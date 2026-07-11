@@ -81,6 +81,23 @@ fn interpreted_parse_bisect_add_correctness_holds() {
 }
 
 #[test]
+fn interpreted_parse_bisect_add_debug_clauses() {
+    for name in [
+        "witness_bisect_add_domain_holds",
+        "witness_bisect_add_body_holds",
+        "witness_bisect_add_return_holds",
+        "witness_bisect_add_arrow_lowering_accepts",
+        "witness_bisect_add_arrow_well_formed",
+        "witness_bisect_parse_module_add_parse_only",
+        "witness_bisect_parse_module_add_normalize_only",
+        "witness_bisect_parse_module_add_resolve_only",
+        "witness_bisect_parse_module_add_truncated_only",
+    ] {
+        assert_witness_terminates(name, Duration::from_secs(90));
+    }
+}
+
+#[test]
 fn interpreted_parse_bisect_unbound_reference_rejected() {
     assert_witness_terminates(
         "witness_bisect_unbound_reference_rejected",
