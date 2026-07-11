@@ -167,6 +167,7 @@ fn reference_snoc_refusal(
 
 fn reference_deps_ingest_source_text(
   source_text: String,
+  rel_path: String,
   file: Symbol
 ) -> Outcome<Node> {
   program_assembly_read_to_normalized_root(
@@ -174,8 +175,8 @@ fn reference_deps_ingest_source_text(
       source: Medium { carried: source_text, fidelity: Lossless },
       artifact: Artifact {
         kind: SourceFile,
-        id: reference_deps_file_anchor,
-        file_path: ""
+        id: file,
+        file_path: rel_path
       },
       compilation_unit: file,
       source_root: DagTree
@@ -264,7 +265,13 @@ fn reference_sites_collect_node(
           production_node: node,
           module_root: module_root
         ) {
-          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          Rejected { diagnostics: _ } =>
+            reference_sites_collect_edges(
+              edges: node.children,
+              module_root: module_root,
+              module_qn: module_qn,
+              acc: acc
+            )
           Accepted { value: site_qn, diagnostics: _ } =>
             reference_sites_collect_edges(
               edges: node.children,
@@ -469,6 +476,7 @@ fn reference_file_census_from_source(
 ) -> ReferenceResolutionCensus {
   match reference_deps_ingest_source_text(
     source_text: source_text,
+    rel_path: rel_path,
     file: reference_deps_file_anchor
   ) {
     Rejected { diagnostics: d } =>
