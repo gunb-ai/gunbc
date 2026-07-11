@@ -8734,16 +8734,11 @@ mod node_frontier_plumbing_controls {
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
         let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
-        let func_refs: Vec<&str> = scan_test_decl_lines(&content)
+        let funcs: Vec<String> = scan_test_decl_lines(&content)
             .into_iter()
-            .map(|(name, _)| {
-                // leak-free: use function names from scan on stack — map to owned for refs
-                name
-            })
-            .collect::<Vec<_>>()
-            .iter()
-            .map(|s| s.as_str())
+            .map(|(name, _)| name)
             .collect();
+        let func_refs: Vec<&str> = funcs.iter().map(|s| s.as_str()).collect();
         assert!(
             super::entry_qualifies_for_skip_without_resolve(
                 &fixture_abs,
