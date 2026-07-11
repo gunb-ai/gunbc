@@ -330,7 +330,10 @@ mod cli_path_arg_resolution_tests {
     #[test]
     fn workspace_root_derives_running_repo_root() {
         let ws = workspace_root();
-        assert!(ws.join(".git").exists(), "derived root carries .git: {ws:?}");
+        assert!(
+            ws.join(".git").exists(),
+            "derived root carries .git: {ws:?}"
+        );
         assert!(
             ws.join("src/v1/stage0/Cargo.toml").exists(),
             "derived root encloses this crate: {ws:?}"
