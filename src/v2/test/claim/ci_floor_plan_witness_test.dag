@@ -24,7 +24,7 @@ import v2.workflow.ci_floor_plan {
   witness_floor_width_derived_from_tree_is_positive,
   witness_floor_spawn_width_tight_budget_backs_off,
   witness_falsifier_plan_spawn_width_backs_off_at_live_cap,
-  witness_falsifier_envelope_fits_live_cap,
+  witness_falsifier_envelope_deficit_on_slot_is_pinned,
   witness_ci_corpus_discovery_is_live,
   witness_ci_corpus_discovery_flip_authored,
   witness_ci_corpus_discovery_serializes_at_width_one,
@@ -359,7 +359,7 @@ test fn ci_floor_spawn_width_live_budget_witnesses() -> Bool {
 
 test fn falsifier_plan_spawn_width_witnesses() -> Bool {
   witness_falsifier_plan_spawn_width_backs_off_at_live_cap()
-    && witness_falsifier_envelope_fits_live_cap()
+    && witness_falsifier_envelope_deficit_on_slot_is_pinned()
 }
 
 test fn ci_corpus_discovery_flip_witnesses() -> Bool {

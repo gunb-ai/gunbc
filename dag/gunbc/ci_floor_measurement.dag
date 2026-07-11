@@ -83,8 +83,8 @@ fn witness_falsifier_per_shard_exceeds_floor_gate_peak() -> Bool {
   byte_size_count(b: gunbc_falsifier_per_shard_peak_rss_bytes()) > byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
 }
 
-fn witness_falsifier_derived_width_at_live_cap_is_two() -> Bool {
-  gunbc_falsifier_memory_derived_width(cap: gunbc_ci_runner_slot_memory_max_live, cpu_bound: 128) == 2
+fn witness_falsifier_derived_width_at_speed_ceiling_is_one() -> Bool {
+  gunbc_falsifier_memory_derived_width(cap: gunbc_ci_runner_slot_ram_speed_ceiling(), cpu_bound: 128) == 1
 }
 
 data gunbc_ci_runner_cgroup_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
@@ -95,10 +95,24 @@ data gunbc_ci_cap_split_disposition: Disposition = Terminal {
   reason: "DESIGN §3 de-conflation (PR-A): gunbc_ci_runner_cgroup_memory_cap (declared per-slot MemoryMax from gunbc.runner_slot_allocation) vs gunbc_ci_dashboard_session_container_cap (31.27GiB, dashboard session pool, inter-run). Retired gunbc_ci_host_container_memory_cap nickname that fused both."
 }
 
-data gunbc_ci_runner_slot_memory_max_live: ByteSize = byte_size(25769803776)
+data gunbc_ci_runner_slot_memory_max_live: ByteSize = byte_size(17179869184)
+
+data gunbc_ci_runner_slot_memory_high_live: ByteSize = byte_size(16106127360)
+
+data gunbc_ci_runner_slot_memory_high_live_source: Disposition = Terminal {
+  reason: "Live readback 2026-07-11, four independent floor cgroup post-reads across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043 and the 29112-series wedge, srv1-01/srv1-03/srv2-01/srv2-02): floor_peak_post pinned within 0.65MiB ABOVE exactly 16106127360 with zero oom_kill events - the memory.high reclaim clamp's overshoot signature (allocations cross the line by one burst, forced direct reclaim drags usage back, memory.peak records the overshoot; sub-MiB overshoot = reclaim keeping up = the floor tail running at swap speed). This is the throttle line the 2026-07-11 MemoryHigh-emit ruling declared APPLIED (gunbc.runner_slot_allocation, max-1GiB relation). Width/budget consumers pack to THIS line, not memory.max: memory.max is the kill line (loud, attributable); memory.high is the speed line - between them the slot does not fail, it silently degrades into swap, which no budget should spend on purpose (DESIGN 5: the widening arm)."
+}
+
+fn gunbc_ci_runner_slot_ram_speed_ceiling() -> ByteSize {
+  if byte_size_count(b: gunbc_ci_runner_slot_memory_high_live) <= byte_size_count(b: gunbc_ci_runner_slot_memory_max_live) {
+    gunbc_ci_runner_slot_memory_high_live
+  } else {
+    gunbc_ci_runner_slot_memory_max_live
+  }
+}
 
 data gunbc_ci_runner_slot_memory_max_live_source: Disposition = Terminal {
-  reason: "Converge receipt 2026-07-05 (rust_tests cgroup-peak step, run 28731491727, srv1-03): memory.max=25769803776 (24 GiB) live on the actions-runner@ slot cgroup, host_ram=134314582016. DIVERGES from gunbc_ci_runner_cgroup_memory_cap (declared 16 GiB per gunbc.runner_slot_allocation, operator ruling 2026-07-10; 8 GiB at receipt time): the live MemoryMax is hand-set on the hosts until converge applies the model. Consumers sizing within-run compile parallelism read gunbc_ci_runner_slot_memory_max_live until gunbc_runner_slot_allocation_live_cap_dissolve_on closes. Dissolve-on: converge read-back proves live == declared (reachable now — the swap knob derives from the authority and converge_per_slot_cap readback-verifies), then collapse to gunbc.runner_slot_allocation single authority."
+  reason: "Refreshed 2026-07-11: the 2026-07-10/11 allocation ruling (gunbc.runner_slot_allocation: 16GiB MemoryMax, 15GiB MemoryHigh, 32GiB MemorySwapMax, all marked APPLIED) superseded the 2026-07-05 hand-set 24GiB regime (receipt run 28731491727; last 24GiB readbacks runs 29086228839/29112500694, 2026-07-10 - pre-apply). Post-apply direct evidence is the memory_high clamp (see gunbc_ci_runner_slot_memory_high_live_source: four floor_peak_post pins at 16106127360+overshoot); high is emitted as max-1GiB by the SAME converge unit that sets max, so live max == declared 16GiB. Residual: a direct post-apply memory.max readback is still owed - the executor prints it in its [measurement] cgroup line on any COMPLETED fleet floor (the wedged runs died before printing), so the next green fleet floor self-verifies this row. Dissolve-on unchanged: direct readback proves live == declared, then collapse to gunbc.runner_slot_allocation single authority."
 }
 
 type ExecutorBaseOverhead
@@ -163,7 +177,7 @@ fn witness_runner_cgroup_cap_lt_dashboard_session_cap() -> Bool {
 }
 
 fn witness_derived_width_committed_fits_with_margin() -> Bool {
-  let cap = gunbc_ci_runner_slot_memory_max_live
+  let cap = gunbc_ci_runner_slot_ram_speed_ceiling()
   let width = gunbc_ci_floor_memory_derived_width(cap: cap, cpu_bound: 128)
   let committed = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes()) + width * byte_size_count(b: gunbc_ci_floor_per_shard_peak_max())
   committed <= byte_size_count(b: measure_scale_fraction_floor(m: cap, num: gunbc_ci_floor_width_usable_fraction_num, den: gunbc_ci_floor_width_usable_fraction_den))

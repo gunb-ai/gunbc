@@ -26,7 +26,7 @@ import gunbc.ci_materialization {
   ci_floor_materialization_receipt_gate_script
 }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
-import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
+import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
@@ -57,7 +57,7 @@ fn ci_checkout_step() -> Step {
 
 fn ci_cargo_build_jobs_count() -> Int {
   compile_jobs_count_or_serial(jobs: ci_compile_jobs(
-    memory_budget: gunbc_ci_runner_slot_memory_max_live,
+    memory_budget: gunbc_ci_runner_slot_ram_speed_ceiling(),
     force_serial: false
   ))
 }
