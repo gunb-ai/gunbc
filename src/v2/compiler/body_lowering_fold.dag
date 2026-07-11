@@ -672,23 +672,40 @@ fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
   body_lower_return_type_after_arrow_walk(node: captured)
 }
 
+fn body_lower_try_body_lowered(node: Node) -> Optional<Node> {
+  match body_lower_try_infix_transform(node: node) {
+    Present { value: lowered } => Present { value: lowered }
+    Absent =>
+      match body_lower_try_fold_loop(node: node) {
+        Present { value: lowered } => Present { value: lowered }
+        Absent =>
+          let stripped = body_lower_unwrap_surface_shell(node: node)
+          match body_lower_try_infix_transform(node: stripped) {
+            Present { value: lowered } => Present { value: lowered }
+            Absent =>
+              match body_lower_try_fold_loop(node: stripped) {
+                Present { value: lowered } => Present { value: lowered }
+                Absent => Absent
+              }
+          }
+      }
+  }
+}
+
 fn body_lower_body_from_fn_captured(captured: Node) -> Optional<Node> {
   match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } =>
-      match body_lower_try_infix_transform(node: body) {
-        Present { value: transform } => Present { value: transform }
+      match body_lower_try_body_lowered(node: body) {
+        Present { value: lowered } => Present { value: lowered }
         Absent =>
-          match body_lower_try_fold_loop(node: body) {
-            Present { value: loop_node } => Present { value: loop_node }
-            Absent =>
-              let stripped = body_lower_unwrap_surface_shell(node: body)
-              match body_lower_try_infix_transform(node: stripped) {
-                Present { value: transform } => Present { value: transform }
-                Absent =>
-                  match body_lower_try_fold_loop(node: stripped) {
-                    Present { value: loop_node } => Present { value: loop_node }
-                    Absent => Absent
-                  }
+          match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_binary_expr) {
+            ParseSubtreeFound { captured: binary } =>
+              body_lower_try_body_lowered(node: binary)
+            ParseSubtreeAbsent =>
+              match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_expr) {
+                ParseSubtreeFound { captured: expr } =>
+                  body_lower_try_body_lowered(node: expr)
+                ParseSubtreeAbsent => Absent
               }
           }
       }
@@ -707,22 +724,13 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
         ParseSubtreeAbsent => outcome_accepted(value: shell)
         ParseSubtreeFound { captured: param_list } =>
           match body_lower_domain_from_param_list(param_list: param_list) {
-            Absent =>
-              outcome_rejected(
-                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-              )
+            Absent => outcome_accepted(value: shell)
             Present { value: domain } =>
               match body_lower_body_from_fn_captured(captured: captured) {
-                Absent =>
-                  outcome_rejected(
-                    d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-                  )
+                Absent => outcome_accepted(value: shell)
                 Present { value: body } =>
                   match body_lower_return_type_from_fn_captured(captured: captured) {
-                    Absent =>
-                      outcome_rejected(
-                        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-                      )
+                    Absent => outcome_accepted(value: shell)
                     Present { value: return_type } =>
                       outcome_accepted(
                         value: node_synthetic(
