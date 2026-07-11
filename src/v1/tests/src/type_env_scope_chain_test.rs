@@ -415,9 +415,14 @@ fn type_env_import_chain_scaling_not_quadratic() {
 }
 
 #[test]
-fn type_env_dual_import_later_overlay_wins() {
-    use v1_compiler::v1_compiler_infer_env::lookup_binding_by_name;
-
+fn type_env_dual_import_same_tree_collision_refuses() {
+    // Superseded contract (S2a move 2 increment B cut 2, lane ruling 2026-07-11): this
+    // test previously asserted merge_type_env_cache overlay-wins — the later import's
+    // 'Collider' silently shadowing the earlier one. Under the namespace no-ambiguity
+    // ruling a same-tree cross-parent collision is a refusal state, never a precedence
+    // pick; overlay-wins survives ONLY as the counted cross-tree debt ledger (see
+    // transitive_interface_binding_test for both arms at named-import grain — this arm
+    // keeps the is_all-import shape covered).
     let sources = vec![
         Rc::new(SourceFile {
             path: "dual_a.dag".to_string(),
@@ -432,55 +437,16 @@ fn type_env_dual_import_later_overlay_wins() {
             content: "module test.dual_import_consumer\nimport test.dual_import_a\nimport test.dual_import_b\nfn pick() -> Collider { 0 }\n".to_string(),
         }),
     ];
-    let resolved = compile_modules(sources);
-    let graph = resolved.graph.as_ref().expect("graph");
-    let mod_a = typed_module_by_name(
-        &graph.modules,
-        &resolved.source_indices,
-        "test.dual_import_a",
-    );
-    let mod_b = typed_module_by_name(
-        &graph.modules,
-        &resolved.source_indices,
-        "test.dual_import_b",
-    );
-    let consumer = typed_module_by_name(
-        &graph.modules,
-        &resolved.source_indices,
-        "test.dual_import_consumer",
-    );
-    let cache_a = mod_a
-        .type_env_cache
-        .str_bindings
-        .get("Collider")
-        .expect("dual_import_a exports Collider");
-    let cache_b = mod_b
-        .type_env_cache
-        .str_bindings
-        .get("Collider")
-        .expect("dual_import_b exports Collider");
-    let visible_cache = consumer
-        .type_env_cache
-        .str_bindings
-        .get("Collider")
-        .expect("consumer visible cache must export Collider");
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let msgs: Vec<String> = resolved
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect();
     assert!(
-        Rc::ptr_eq(visible_cache, cache_b),
-        "merge_type_env_cache overlay-wins: later import (dual_import_b) must win in type_env_cache.str_bindings"
-    );
-    assert!(
-        !Rc::ptr_eq(visible_cache, cache_a),
-        "earlier import (dual_import_a) must not win when same visible name is exported twice"
-    );
-    let visible_binding = lookup_binding_by_name(consumer.type_env.clone(), "Collider".to_string())
-        .expect("consumer Collider binding");
-    assert!(
-        Rc::ptr_eq(&visible_binding.resolved, &cache_b.resolved),
-        "visible Collider must share dual_import_b's resolved Int alias node"
-    );
-    assert!(
-        !Rc::ptr_eq(&visible_binding.resolved, &cache_a.resolved),
-        "visible Collider must not share dual_import_a's resolved String alias node"
+        msgs.iter()
+            .any(|m| m.contains("cross-parent binding conflict") && m.contains("'Collider'")),
+        "a same-tree dual import carrying different 'Collider' bindings must refuse with          the typed cross-parent diagnostic, got: {msgs:?}"
     );
 }
 

@@ -231,7 +231,6 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
 fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => true
-    CrossParentBindingConflict { name: _, import_path: _, span: _ } => true
     _ => false
   }
 }
