@@ -822,8 +822,12 @@ pub fn eval_recompute_trace_enabled() -> bool {
 // in the seed. Buckets by the ledger key (fn identity x argument identity) and
 // serves only after the stored call's argument names AND values verify equal —
 // a hash collision degrades to recompute, never to a wrong value. Eviction is
-// ScopeExit (the ctx's lifetime); admission stops at the entry cap with the
-// refusal COUNTED (overflow), never silent. Default ON everywhere;
+// ScopeExit at the WITNESS frame: batch surfaces share one ctx across an
+// entry's witnesses and call eval_call_memo_frame_exit after each claim fn
+// (ctx-lifetime retention of argument+result values across witnesses is
+// byte-unbounded — the 2026-07-10 20GiB-class regression). Admission stops at
+// the entry cap with the refusal COUNTED (overflow), never silent. Default ON
+// everywhere;
 // GUNBC_EVAL_MEMO=0 is a diagnostic realization switch (recompute instead of
 // serve — semantics identical), and the receipt discloses hits/misses so a
 // disabled memo is visible as memo_hits=0, never silently assumed working.
@@ -870,6 +874,22 @@ fn eval_call_memo_env_default() -> bool {
 /// keep discriminating. Values are identical either way.
 pub fn set_eval_call_memo_enabled(ctx: &InterpContext, enabled: bool) {
     ctx.eval_call_memo.borrow_mut().enabled = enabled;
+}
+
+/// Frame exit for the eval-call memo: the memo's eviction scope is the WITNESS
+/// frame, not the ctx. Batch surfaces (claim_batch, claim_executor) share one
+/// ctx across an entry's witnesses for the resolve-side ReferenceTier share —
+/// but the memo stores full argument+result VALUES, so ctx-lifetime retention
+/// across N witnesses is byte-unbounded by construction (measured 2026-07-10:
+/// single witness plateaus ~3.4GiB, six witnesses in one ctx climb past
+/// ~20GiB to SIGKILL). Callers invoke this after each claim function; the map
+/// and keepalives drain, counters stay CUMULATIVE so receipts remain honest.
+/// Cross-witness serving is an outer-frame promotion that must arrive as a
+/// conscious provider row with byte-bounded admission — never a default.
+pub fn eval_call_memo_frame_exit(ctx: &InterpContext) {
+    let mut m = ctx.eval_call_memo.borrow_mut();
+    m.map.clear();
+    m.keepalive_fns.clear();
 }
 
 #[derive(Default, Clone)]
@@ -3696,6 +3716,10 @@ fn eval_call_memo_put(
     value: Value,
 ) {
     let mut m = ctx.eval_call_memo.borrow_mut();
+    // Counter invariant: a miss means the call was NOT served (it evaluated),
+    // so a cap-refused store attempt is still a miss — overflow ⊆ misses, and
+    // hits + misses == keyed Ok-resulting calls through the memo path,
+    // including under overflow. `misses` is NOT "entries stored".
     m.misses += 1;
     if m.map.len() >= EVAL_CALL_MEMO_ENTRY_CAP && !m.map.contains_key(&key) {
         m.overflow += 1;
