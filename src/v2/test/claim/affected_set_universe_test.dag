@@ -14,7 +14,7 @@ import v2.lens.affected_set {
   repo_process_universe,
   repo_process_universe_from
 }
-import gunbc.ci_spec { Gate, gunbc_ci_gates }
+import gunbc.ci_spec { Gate, gunbc_ci_gates, gunbc_ci_regen_floor_gates, gunbc_ci_emit_determinism_floor_gates }
 
 fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
@@ -35,7 +35,7 @@ fn identity_in(ps: List<RepoProcess>, sym: Symbol) -> Bool {
 test fn affected_set_universe_gate_processes_match_declared_gates() -> Bool {
   bag_eq(
     xs: process_identities(ps: ci_gate_processes()),
-    ys: gate_discriminants(gates: gunbc_ci_gates),
+    ys: gate_discriminants(gates: concat(concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates), gunbc_ci_emit_determinism_floor_gates)),
     eq: symbol_eq
   )
 }

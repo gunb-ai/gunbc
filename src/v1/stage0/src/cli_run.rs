@@ -329,9 +329,55 @@ fn repo_relative_path_normalized(path: &Path) -> String {
         })
 }
 
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold
+// (cli_run_source_root_anchor_scaffold row);
+// receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// 🟡 dissolve-on: try_anchor_source_root — declared layer/pool roots come from the
+// v2.lens.medium_structure_containment roster while `dag/compiler` is modeled-before-implemented,
+// so absence is a legitimate state skipped LOUDLY (counted line per root); DISSOLVES WHEN
+// cli_run.rs Chunk F lands (roots walk GENERATED; absence becomes a typed, located, counted
+// diagnostic at the roster layer) OR ROADMAP 5-dissolve-patches retires HAND path handling.
+// Discriminating receipts: try_anchor_source_root_resolves_declared_present_root /
+// try_anchor_source_root_skips_declared_absent_root.
 /// Resolve a source/pool-root spelling to an absolute directory under
 /// [`process_workspace_root`]. Absolute paths baked from the compile-time
 /// [`workspace_root`] (sccache cross-runner) are re-anchored when missing on disk.
+/// Non-panicking sibling of [`anchor_source_root`] for DECLARED layer/pool roots whose absence is
+/// a legitimate state (a modeled-before-implemented location, e.g. `dag/compiler` in the
+/// medium-structure roster): `None` when the root does not exist under any anchoring, so the
+/// caller can skip it LOUDLY (counted line) instead of panicking mid-floor. CLI-provided roots
+/// keep the strict panicking contract - a typo'd argument must refuse, never skip.
+fn try_anchor_source_root(root: &str) -> Option<String> {
+    let p = Path::new(root);
+    let ws = process_workspace_root();
+    if p.is_absolute() {
+        if p.is_dir() {
+            return Some(root.to_string());
+        }
+        let baked = workspace_root();
+        if let Ok(rel) = p.strip_prefix(&baked) {
+            let reanchored = ws.join(rel);
+            if reanchored.is_dir() {
+                return Some(reanchored.to_string_lossy().into_owned());
+            }
+        }
+        if let Ok(rel) = repo_relative_path(p) {
+            let reanchored = ws.join(&rel);
+            if reanchored.is_dir() {
+                return Some(reanchored.to_string_lossy().into_owned());
+            }
+        }
+        return None;
+    }
+    let anchored = ws.join(p);
+    if anchored.is_dir() {
+        Some(anchored.to_string_lossy().into_owned())
+    } else {
+        None
+    }
+}
+
 fn anchor_source_root(root: &str) -> String {
     let p = Path::new(root);
     let ws = process_workspace_root();
@@ -528,7 +574,8 @@ mod cli_path_arg_resolution_tests {
 mod process_workspace_root_tests {
     use super::{
         anchor_source_root, process_workspace_root, repo_relative_path,
-        repo_relative_path_normalized, workspace_relative_repo_path, workspace_root,
+        repo_relative_path_normalized, try_anchor_source_root, workspace_relative_repo_path,
+        workspace_root,
     };
     use std::path::Path;
 
@@ -557,6 +604,22 @@ mod process_workspace_root_tests {
         assert!(Path::new(&anchored)
             .join("gunbc/ci_layer_roots.dag")
             .is_file());
+    }
+
+    #[test]
+    fn try_anchor_source_root_resolves_declared_present_root() {
+        let anchored = try_anchor_source_root("dag").expect("dag exists in every checkout");
+        assert!(Path::new(&anchored)
+            .join("gunbc/ci_layer_roots.dag")
+            .is_file());
+    }
+
+    #[test]
+    fn try_anchor_source_root_skips_declared_absent_root() {
+        assert_eq!(
+            try_anchor_source_root("dag/declared-but-not-yet-implemented-root"),
+            None
+        );
     }
 
     #[test]
@@ -7480,9 +7543,7 @@ fn run_discovery_rows(
     for row in rows {
         // Applied only: PredictOnly must resolve + run cold and record via the post-resolve
         // would_skip path (falsifier semantics — docs/plans/affected-set-differential-falsifier.md).
-        if selection == NodeFrontierSelectionMode::Applied
-            && entry_fast_skip.contains(&row.entry)
-        {
+        if selection == NodeFrontierSelectionMode::Applied && entry_fast_skip.contains(&row.entry) {
             if current_entry.as_deref() != Some(row.entry.as_str()) {
                 augment_closure_modules_from_import_facts(
                     &row.entry,
@@ -9091,8 +9152,8 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("floor_disc_node_a line");
         let diff = diff_at(&fixture_abs, data_line);
-        let diff_edits =
-            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from referenced-node diff");
+        let diff_edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("seeds from referenced-node diff");
         assert!(
             !diff_edits.overlapping_data_items.is_empty(),
             "data-item diff must populate overlapping_data_items"
@@ -10514,7 +10575,12 @@ fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
 }
 
 fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
-    let abs_root = anchor_source_root(root);
+    let Some(abs_root) = try_anchor_source_root(root) else {
+        eprintln!(
+            "[layer-import] declared root {root} absent on disk (layer={layer}) — skipped, no facts projected"
+        );
+        return;
+    };
     let root_path = Path::new(&abs_root);
     if !root_path.is_dir() {
         return;
