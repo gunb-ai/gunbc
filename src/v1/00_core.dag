@@ -228,6 +228,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     ComplexityUnknown { func_name: _, reason: _, span: _ } => false
     UnlistedImportUse { name: _, span: _ } => false
+    CrossTreeBindingForkLedger { name: _, site_a: _, site_b: _, span: _ } => false
     _ => true
   }
 }

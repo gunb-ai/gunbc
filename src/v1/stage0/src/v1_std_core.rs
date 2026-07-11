@@ -546,6 +546,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::ComplexityUnknown { .. } => false,
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        CompilerDiagnostic::CrossTreeBindingForkLedger { .. } => false,
         _ => true,
     }
 }
