@@ -1,10 +1,46 @@
 module v2.test.self_host.compiler_frontier_emit_probe
 
 import v2.compiler.self_host.frontier_probe {
+  EmitSurfaceGap,
+  FrontierBlockerClass,
+  FrontierProbeReceipt,
+  NameResolutionGap,
+  RealizationGap,
+  SelfEmitReady,
   UnclassifiedProbeReason,
-  frontier_classify_rejection_reason
+  frontier_classify_rejection_reason,
+  frontier_probe_emit_from_ingest
+}
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_compiler_closure_admission,
+  host_source_root_ingest
 }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+data frontier_probe_target_module_path: String = "src/v2/compiler/PROBE_ENTRY.dag"
+
+fn frontier_module_emit_probe_receipt() -> FrontierProbeReceipt {
+  frontier_probe_emit_from_ingest(
+    module_path: frontier_probe_target_module_path,
+    ingest: host_source_root_ingest,
+    admission: host_compiler_closure_admission
+  )
+}
+
+func frontier_module_emit_probe_located_reason_symbol() -> Symbol {
+  frontier_module_emit_probe_receipt().located_reason
+}
+
+func frontier_module_emit_probe_blocker_class_name() -> Symbol {
+  match frontier_module_emit_probe_receipt().blocker_class {
+    SelfEmitReady => ^SelfEmitReady
+    NameResolutionGap => ^NameResolutionGap
+    EmitSurfaceGap => ^EmitSurfaceGap
+    RealizationGap => ^RealizationGap
+    UnclassifiedProbeReason { reason: _ } => ^UnclassifiedProbeReason
+  }
+}
 
 test fn frontier_classify_unlisted_reason_refuses_holds() -> Bool {
   match frontier_classify_rejection_reason(reason: ^frontier_probe_unlisted_reason_red_control) {
