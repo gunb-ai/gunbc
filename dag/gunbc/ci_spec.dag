@@ -30,6 +30,24 @@ import gunbc.merge_admission_produce {
 import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.orchestration {
+  Do,
+  EnvSet,
+  EnvUnset,
+  EscalationLevel,
+  FailFast,
+  LogMatches,
+  Pipeline,
+  PipelineStep,
+  Retry,
+  Run,
+  StdoutAndStderr,
+  TeeTo
+}
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { EmitDirective, SeverityWarning }
+import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -148,45 +166,72 @@ fn ci_release_build_line() -> String {
   )
 }
 
+fn ci_retry_body_run(command: String) -> Run {
+  Run {
+    command: command,
+    env: [],
+    redirect: Present { value: StdoutAndStderr },
+    capture: Present { value: TeeTo { log: "BUILD_LOG" } }
+  }
+}
+
+fn ci_retry_exhausted_pipeline() -> Pipeline {
+  Pipeline {
+    steps: [Do { run: Run { command: "exit 1", env: [], redirect: Absent, capture: Absent } }],
+    on_failure: FailFast
+  }
+}
+
+fn ci_retry_escalation_level1() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "BUILD_LOG", pattern: infra_retry_grep_alternation() },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+    },
+    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }]
+  }
+}
+
+fn ci_retry_escalation_level2() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "RETRY_LOG", pattern: infra_retry_grep_alternation() },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "cargo/sccache still failing; retry without RUSTC_WRAPPER"
+    },
+    env: [
+      EnvUnset { name: "RUSTC_WRAPPER" },
+      EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
+    ]
+  }
+}
+
+fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
+  Retry {
+    body: Pipeline {
+      steps: [Do { run: ci_retry_body_run(command: command) }],
+      on_failure: FailFast
+    },
+    escalations: [ci_retry_escalation_level1(), ci_retry_escalation_level2()],
+    on_exhausted: ci_retry_exhausted_pipeline()
+  }
+}
+
+data ci_retry_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ retry-intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate and the yaml parse gate both go red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen - the String-typed seam cannot carry the diagnostics, so it carries a loud poison instead)\n"
+
 fn ci_cargo_eagain_retry_core(command: String) -> String {
-  concat(
-    concat(
-      concat("BUILD_LOG=$(mktemp)\n", "if ! ("),
-      concat(command, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
-    ),
-    concat(
-      concat(
-        concat(
-          concat(concat("  if grep -qiE '", infra_retry_grep_alternation()), "' \"$BUILD_LOG\"; then\n"),
-          "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
-        ),
-        concat(
-          concat("    RETRY_LOG=$(mktemp)\n", "    if ! ( CARGO_BUILD_JOBS=1 "),
-          concat(command, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")
-        )
-      ),
-      concat(
-        concat(
-          concat(
-            concat(concat("      if grep -qiE '", infra_retry_grep_alternation()), "' \"$RETRY_LOG\"; then\n"),
-            "        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n"
-          ),
-          concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(command, " || exit 1\n"))
-        ),
-        concat(
-          concat("      else\n", "        exit 1\n"),
-          concat("      fi\n", "    fi\n")
-        )
-      )
-    ),
-    concat(
-      concat(
-        concat("    rm -f \"$RETRY_LOG\"\n", "  else\n"),
-        concat("    exit 1\n", "  fi\n")
-      ),
-      concat("fi\n", "rm -f \"$BUILD_LOG\"\n")
-    )
-  )
+  match orch_emit_step(
+    s: ci_cargo_eagain_retry_intent(command: command),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried
+        Some { diagnostics: _ } => ci_retry_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => ci_retry_emit_refused_poison
+  }
 }
 
 fn ci_cargo_eagain_retry_script(command: String) -> String {
