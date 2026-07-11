@@ -216,6 +216,14 @@ data google_auth_action: ActionRef = ActionRef {
   owner: "google-github-actions", repo: "auth", ref: "v2"
 }
 
+data upload_artifact_action: ActionRef = ActionRef {
+  owner: "actions", repo: "upload-artifact", ref: "v4"
+}
+
+data download_artifact_action: ActionRef = ActionRef {
+  owner: "actions", repo: "download-artifact", ref: "v4"
+}
+
 data max_job_timeout_minutes: Int = 360
 
 data default_job_timeout_minutes: Int = 360

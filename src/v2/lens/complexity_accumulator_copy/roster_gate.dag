@@ -21,6 +21,8 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
+data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/complexity/accumulator_copy_roster_gate in gunbc.ci_layer_roots — owned by #6452, not duplicated on #6440). Serial wet claim_batch only — do not codify GUNBC_EVAL_MEMO=0 in CI; diagnostic local runs may set it. Std tranche (PR #6440): claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet && claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_render_repeat_string_bootstrap_within_ratchet --claim-run --wet. Prior roster carriers: accumulator_copy_roster_gate_test.dag, accumulator_copy_roster_gate_swift_test.dag, accumulator_copy_roster_gate_lean_bash_test.dag (same --claim-run --wet shape, per-test-fn entry/function)."
+
 type RosterVerdict
   = RosterClean
   | RosterIngestRegressed
@@ -85,6 +87,20 @@ fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
           RosterClean
         }
       }
+  }
+}
+
+fn file_suspect_count(path: String) -> Int {
+  match ingest_findings(path: path) {
+    Absent => -1
+    Present { value: fs } => count_matching(fs: fs, pred: finding_is_suspect)
+  }
+}
+
+fn file_refusal_count(path: String) -> Int {
+  match ingest_findings(path: path) {
+    Absent => -1
+    Present { value: fs } => count_matching(fs: fs, pred: finding_is_refusal)
   }
 }
 

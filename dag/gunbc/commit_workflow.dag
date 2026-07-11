@@ -28,6 +28,7 @@ type LocalTidyCheck
 type CommitWorkflowSurface
   = GithubActionsCiJob
   | GithubActionsCiRegenJob
+  | GithubActionsEmitDeterminismJob
   | GitPrePushHook
 
 type CommitCheckKind
@@ -93,7 +94,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: EmitDeterminismGate },
-    surfaces: [GithubActionsCiJob]
+    surfaces: [GithubActionsEmitDeterminismJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -142,13 +143,28 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "dag/test/claim/ci_materialization_witness_test.dag",
       check_fns: [
         "ci_ladder_holds_on_live_workflow",
-        "ci_release_build_is_plural_and_discharged_by_sccache",
-        "ci_ladder_reds_without_sccache_provider",
+        "ci_single_release_build_is_accepted_single_recompute",
+        "ci_ladder_holds_without_sccache_single_build",
         "ci_prelude_scripts_are_typed_cost_floor_acceptances",
         "ci_measurement_is_exempt_fresh_effect",
         "ci_catalog_projection_has_no_refusals",
         "ci_uses_steps_are_counted_not_silent",
         "ci_run_step_natures_are_claims_counted_not_silent"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/duplicate_computation/placement_grain_witness_test.dag",
+      check_fns: [
+        "ci_build_across_two_jobs_is_one_violation",
+        "shared_artifact_rewire_is_clean",
+        "single_producer_is_clean",
+        "declared_per_placement_is_admissible",
+        "per_placement_observed_exceeds_declared_is_violation"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -388,6 +404,8 @@ fn commit_workflow_surface_eq(a: CommitWorkflowSurface, b: CommitWorkflowSurface
       match b { GithubActionsCiJob => true  _ => false }
     GithubActionsCiRegenJob =>
       match b { GithubActionsCiRegenJob => true  _ => false }
+    GithubActionsEmitDeterminismJob =>
+      match b { GithubActionsEmitDeterminismJob => true  _ => false }
     GitPrePushHook =>
       match b { GitPrePushHook => true  _ => false }
   }
@@ -435,6 +453,12 @@ fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
 fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
   gates_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiRegenJob))
+  )
+}
+
+fn project_ci_emit_determinism_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
+  gates_from_enrollments(
+    rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsEmitDeterminismJob))
   )
 }
 
@@ -595,6 +619,7 @@ fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   match surface {
     GithubActionsCiJob => artifact_path(a: CiYamlArtifact)
     GithubActionsCiRegenJob => artifact_path(a: CiYamlArtifact)
+    GithubActionsEmitDeterminismJob => artifact_path(a: CiYamlArtifact)
     GitPrePushHook => artifact_path(a: GithooksPrePushArtifact)
   }
 }
@@ -603,6 +628,7 @@ fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWork
   match surface {
     GithubActionsCiJob => CiYamlHandler
     GithubActionsCiRegenJob => CiYamlHandler
+    GithubActionsEmitDeterminismJob => CiYamlHandler
     GitPrePushHook => GitPrePushScriptHandler
   }
 }
@@ -611,6 +637,7 @@ fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> Generated
   match surface {
     GithubActionsCiJob => CiYamlArtifact
     GithubActionsCiRegenJob => CiYamlArtifact
+    GithubActionsEmitDeterminismJob => CiYamlArtifact
     GitPrePushHook => GithooksPrePushArtifact
   }
 }
