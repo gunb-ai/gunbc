@@ -805,7 +805,7 @@ fn serialize_concrete_syntax_tokens_to_source_string(
 ) -> Outcome<String> {
   fold_list(
     xs: tokens,
-    empty: Accepted { value: Empty, diagnostics: None },
+    empty: Accepted { value: "", diagnostics: None },
     cons: fn(acc, token) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -816,7 +816,7 @@ fn serialize_concrete_syntax_tokens_to_source_string(
                 o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
                 f: fn(spelling) {
                   Accepted {
-                    value: list_append(left: partial, right: spelling),
+                    value: concat(partial, spelling),
                     diagnostics: ad
                   }
                 }
@@ -826,7 +826,7 @@ fn serialize_concrete_syntax_tokens_to_source_string(
                 o: target_binding_spelling_lookup(target: target, binding: binding),
                 f: fn(spelling) {
                   Accepted {
-                    value: list_append(left: partial, right: spelling),
+                    value: concat(partial, spelling),
                     diagnostics: ad
                   }
                 }
@@ -942,7 +942,7 @@ fn target_serialize_relation_row_from_model_bounded(
                   f: fn(tokens) {
                     fold_list(
                       xs: tokens,
-                      empty: Accepted { value: Empty, diagnostics: None },
+                      empty: Accepted { value: "", diagnostics: None },
                       cons: fn(acc, token_node) {
                         match acc {
                           Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -952,7 +952,7 @@ fn target_serialize_relation_row_from_model_bounded(
                                 match token_spelling_from_model(target: target, token: token_node) {
                                   Accepted { value: source, diagnostics: td } =>
                                     Accepted {
-                                      value: list_append(left: partial, right: source),
+                                      value: concat(partial, source),
                                       diagnostics: diagnostics_merge(
                                         outer: diagnostics_merge(outer: ad, inner: kd),
                                         inner: td
@@ -974,7 +974,7 @@ fn target_serialize_relation_row_from_model_bounded(
                                 ) {
                                   Accepted { value: source, diagnostics: td } =>
                                     Accepted {
-                                      value: list_append(left: partial, right: source),
+                                      value: concat(partial, source),
                                       diagnostics: diagnostics_merge(
                                         outer: diagnostics_merge(outer: ad, inner: kd),
                                         inner: td
@@ -1068,7 +1068,7 @@ fn token_sequence_to_source_bounded(
 ) -> Outcome<String> {
   fold_list(
     xs: tokens,
-    empty: Accepted { value: Empty, diagnostics: None },
+    empty: Accepted { value: "", diagnostics: None },
     cons: fn(acc, token_node) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1076,7 +1076,7 @@ fn token_sequence_to_source_bounded(
           match token_item_to_source_bounded(remaining - 1, token_node, target) {
             Accepted { value: source, diagnostics: td } =>
               Accepted {
-                value: list_append(left: partial, right: source),
+                value: concat(partial, source),
                 diagnostics: diagnostics_merge(outer: ad, inner: td)
               }
             Rejected { diagnostics: r } =>

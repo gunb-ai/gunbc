@@ -5,50 +5,46 @@ import tools.dag_compile_clean_partition {
   compose_compile_clean_shard_verdicts
 }
 import tools.dag_compile_clean_seam_transport {
+  CrossShardSeamProbeResult,
   run_cross_shard_seam_probe,
+  cross_shard_seam_class_marker,
   cross_shard_seam_importer_entry_path,
-  cross_shard_seam_importee_entry_path,
-  cross_shard_seam_result_marker
+  cross_shard_seam_importee_entry_path
 }
 import std.types { String, Bool }
 
 type CrossShardSeamReceipt {
-  raw: String
   probe_ran: Bool
+  y_reds: Bool
+  x_reds: Bool
+  m_reds: Bool
+  y_names_class: Bool
+  x_names_class: Bool
+  m_names_class: Bool
 }
 
-fn cross_shard_seam_receipt_from(probe_success: Bool, probe_stdout: String) -> CrossShardSeamReceipt {
+fn cross_shard_seam_receipt_from(probe: CrossShardSeamProbeResult) -> CrossShardSeamReceipt {
   CrossShardSeamReceipt {
-    raw: probe_stdout,
-    probe_ran: probe_success && string_contains(s: probe_stdout, pattern: cross_shard_seam_result_marker)
+    probe_ran: probe.probe_ran,
+    y_reds: !probe.y_exit_zero,
+    x_reds: !probe.x_exit_zero,
+    m_reds: !probe.m_exit_zero,
+    y_names_class: string_contains(s: probe.y_output, pattern: cross_shard_seam_class_marker),
+    x_names_class: string_contains(s: probe.x_output, pattern: cross_shard_seam_class_marker),
+    m_names_class: string_contains(s: probe.m_output, pattern: cross_shard_seam_class_marker)
   }
 }
 
-fn seam_exit_nonzero(receipt: CrossShardSeamReceipt, field: String) -> Bool {
-  !string_contains(s: receipt.raw, pattern: concat(field, "=0"))
-}
-
-fn seam_field_zero(receipt: CrossShardSeamReceipt, field: String) -> Bool {
-  string_contains(s: receipt.raw, pattern: concat(field, "=0"))
-}
-
-fn seam_field_nonzero(receipt: CrossShardSeamReceipt, field: String) -> Bool {
-  !seam_field_zero(receipt: receipt, field: field)
-}
-
 fn shard_y_reds(receipt: CrossShardSeamReceipt) -> Bool {
-  seam_exit_nonzero(receipt: receipt, field: "Y_EXIT")
-    && seam_field_nonzero(receipt: receipt, field: "Y_HAS")
+  receipt.y_reds && receipt.y_names_class
 }
 
 fn shard_x_reds_with_seam_attribution(receipt: CrossShardSeamReceipt) -> Bool {
-  seam_exit_nonzero(receipt: receipt, field: "X_EXIT")
-    && seam_field_nonzero(receipt: receipt, field: "X_HAS")
+  receipt.x_reds && receipt.x_names_class
 }
 
 fn monolith_control_reds_with_same_diagnostic_class(receipt: CrossShardSeamReceipt) -> Bool {
-  seam_exit_nonzero(receipt: receipt, field: "M_EXIT")
-    && seam_field_nonzero(receipt: receipt, field: "M_HAS")
+  receipt.m_reds && receipt.m_names_class
 }
 
 fn cross_shard_seam_composed_verdict(receipt: CrossShardSeamReceipt) -> CompileCleanShardVerdict {
@@ -81,32 +77,33 @@ fn witness_cross_shard_seam_preservation_holds_from(receipt: CrossShardSeamRecei
 }
 
 fn witness_cross_shard_seam_preservation_holds() -> Bool {
-  let probe = run_cross_shard_seam_probe()
-  let receipt = cross_shard_seam_receipt_from(probe_success: probe.success, probe_stdout: probe.stdout)
-  witness_cross_shard_seam_preservation_holds_from(receipt: receipt)
+  witness_cross_shard_seam_preservation_holds_from(
+    receipt: cross_shard_seam_receipt_from(probe: run_cross_shard_seam_probe())
+  )
 }
 
-fn synthetic_seam_receipt(raw: String) -> CrossShardSeamReceipt {
-  cross_shard_seam_receipt_from(probe_success: true, probe_stdout: raw)
+fn synthetic_seam_receipt(y_reds: Bool, x_reds: Bool, m_reds: Bool, y_names: Bool, x_names: Bool, m_names: Bool) -> CrossShardSeamReceipt {
+  CrossShardSeamReceipt {
+    probe_ran: true,
+    y_reds: y_reds, x_reds: x_reds, m_reds: m_reds,
+    y_names_class: y_names, x_names_class: x_names, m_names_class: m_names
+  }
 }
 
 fn witness_seam_algebra_reds_on_synthetic_break() -> Bool {
-  let receipt = synthetic_seam_receipt(
-    raw: "SEAM_RESULT Y_EXIT=1 X_EXIT=1 M_EXIT=1 Y_HAS=2 X_HAS=1 M_HAS=1"
+  witness_cross_shard_seam_preservation_holds_from(
+    receipt: synthetic_seam_receipt(y_reds: true, x_reds: true, m_reds: true, y_names: true, x_names: true, m_names: true)
   )
-  witness_cross_shard_seam_preservation_holds_from(receipt: receipt)
 }
 
 fn witness_seam_algebra_fails_closed_when_class_missing() -> Bool {
-  let receipt = synthetic_seam_receipt(
-    raw: "SEAM_RESULT Y_EXIT=1 X_EXIT=1 M_EXIT=1 Y_HAS=2 X_HAS=1 M_HAS=0"
+  !witness_cross_shard_seam_preservation_holds_from(
+    receipt: synthetic_seam_receipt(y_reds: true, x_reds: true, m_reds: true, y_names: true, x_names: true, m_names: false)
   )
-  !witness_cross_shard_seam_preservation_holds_from(receipt: receipt)
 }
 
 fn witness_seam_algebra_fails_closed_when_importer_silently_passes() -> Bool {
-  let receipt = synthetic_seam_receipt(
-    raw: "SEAM_RESULT Y_EXIT=1 X_EXIT=0 M_EXIT=1 Y_HAS=2 X_HAS=0 M_HAS=1"
+  !witness_cross_shard_seam_preservation_holds_from(
+    receipt: synthetic_seam_receipt(y_reds: true, x_reds: false, m_reds: true, y_names: true, x_names: false, m_names: true)
   )
-  !witness_cross_shard_seam_preservation_holds_from(receipt: receipt)
 }

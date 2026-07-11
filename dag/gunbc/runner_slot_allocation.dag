@@ -29,14 +29,14 @@ type HostRunnerSlotAllocation {
 }
 
 data gunbc_runner_slot_allocation_authority_disposition: Disposition = Terminal {
-  reason: "Single authority for srv1/srv2 runner-slot desired allocation (operator brief 2026-07-05): 8 cores · 8GiB MemoryMax · 32GiB MemorySwapMax · 10 slots/host · static oversubscription policy (Σ per-slot MemoryMax may exceed runner_slice_cap — expressed and checked, not silent). Downstream: gunbc.ci_floor_measurement (declared vs live cap fork), gunbc.ci_runner_placement, gunbc.host_converge, gunbc.runner_slot_enforcement, gunbc.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
+  reason: "Single authority for srv1/srv2 runner-slot desired allocation (operator ruling 2026-07-10, superseding the 2026-07-05 brief; MemoryHigh-emit + swap-provisioning follow-up ruled 2026-07-11): 8 cores · 16GiB MemoryMax · 32GiB MemorySwapMax APPLIED (the emitted converge previously hardcoded MemorySwapMax=0 against this row's 32GiB — the declared-vs-live fork this ruling resolves; the knob now derives from this row) · 15GiB MemoryHigh APPLIED (the authored max−1GiB relation, emitted as its own per-slot knob per the 2026-07-11 ruling — a hit at 16GiB spills to swap after throttling at 15) · 5 slots/host · GUARANTEED mode: Σ per-slot MemoryMax = 5 × 16GiB = 80GiB = runner_slice_cap exactly, no oversubscription (the ≤-check holds with equality). Σ per-slot MemorySwapMax = 160GiB/host is provisioned host-side by operator guarantee (2026-07-11); the Σ-swap ≤ declared host_swap_budget wall stays roadmap host-admission. The prior 8GiB × 10 shape is the AFTER-base-shrinking target (S2b prefix sharing), not the current one. Per-axis targets are operator-set; never reconcile this row toward live readback (live is not automatically truth — the 32-vs-0 swap fork existed precisely because the apply was assumed rather than readback-proven). Downstream: gunbc.ci_floor_measurement (declared vs live cap fork), gunbc.ci_runner_placement (declared_runner_count derives 80/16 = 5 from this row — coherent with slots_per_host by construction at these values), gunbc.host_converge, gunbc.runner_slot_enforcement, gunbc.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
 }
 
 fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
   RunnerSlotDesired {
-    memory_max: byte_size(8589934592),
+    memory_max: byte_size(17179869184),
     memory_swap_max: byte_size(34359738368),
-    memory_high: byte_size(7516192768),
+    memory_high: byte_size(16106127360),
     tasks_max: 512,
     cpu_weight: 100,
     labels: RunnerSlotLabels { github_labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"] }
@@ -44,7 +44,7 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 }
 
 fn gunbc_runner_slots_per_host() -> Int {
-  10
+  5
 }
 
 fn gunbc_runner_cores_per_slot() -> HardwareThreadCount {
@@ -94,8 +94,9 @@ fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let slice_cap = gunbc_runner_slice_cap_declared()
   gunbc_runner_slot_oversubscription_within_slice(slots: slots, per_slot: per_slot.memory_max, slice_cap: slice_cap)
     && (hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 8)
-    && (byte_size_count(b: per_slot.memory_max) == byte_size_count(b: byte_size(8589934592)))
+    && (byte_size_count(b: per_slot.memory_max) == byte_size_count(b: byte_size(17179869184)))
     && (byte_size_count(b: per_slot.memory_swap_max) == byte_size_count(b: byte_size(34359738368)))
+    && (byte_size_count(b: per_slot.memory_high) == byte_size_count(b: byte_size(16106127360)))
 }
 
 data gunbc_runner_slot_allocation_live_cap_dissolve_on: Disposition = Scaffold {
