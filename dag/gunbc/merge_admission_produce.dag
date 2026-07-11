@@ -3,6 +3,7 @@ module gunbc.merge_admission_produce
 import std.types { ContentHash, CommitSha, String, Int, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.ci_diff_defaults { ci_merge_base_ref }
 import extdeps.github.checks {
   CheckConclusion,
   check_conclusion_wire_label,
@@ -18,7 +19,7 @@ import gunbc.merge_admission {
 }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags, witness_layer_source_flags_rooted }
 
-data merge_admission_merge_base_ref: String = "origin/main"
+data merge_admission_merge_base_ref: String = ci_merge_base_ref
 
 data merge_admission_receipt_schema: String = "gunbc.merge_admission_receipt.v1"
 
@@ -135,6 +136,17 @@ data merge_admission_shell_emit_disposition: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
+
+data ci_documentation_only_gate_skip_prefix_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.merge_admission_produce",
+    decl_name: "ci_documentation_only_gate_skip_prefix",
+    field: WholeDeclaration
+  }
+}
+
+data ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_documentation_only_gate_skip_prefix — concat-built bash receipt-gate skip predicate over target/ci-floor-disposition.txt (documentation-only floor-not-run); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes documentation-only disposition through orchestration emit and receipt gates read CI_FLOOR_DISPOSITION without a transport scaffold"
 
 fn ci_merge_admission_stamp_script() -> String {
   concat(
