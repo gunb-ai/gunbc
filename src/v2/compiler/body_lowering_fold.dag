@@ -721,30 +721,48 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
-  match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
-    ParseSubtreeFound { captured: body } =>
-      match body_lower_try_body_lowered(node: body) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: found, diagnostics: _ } =>
-          match found {
-            Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
-            Absent =>
-              match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_binary_expr) {
-                ParseSubtreeFound { captured: binary } =>
-                  body_lower_try_body_lowered(node: binary)
+fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_try_body_lowered(node: captured) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: found, diagnostics: _ } =>
+      match found {
+        Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
+        Absent =>
+          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_binary_expr) {
+            ParseSubtreeFound { captured: binary } =>
+              body_lower_try_body_lowered(node: binary)
+            ParseSubtreeAbsent =>
+              match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_expr) {
+                ParseSubtreeFound { captured: expr } =>
+                  body_lower_try_body_lowered(node: expr)
                 ParseSubtreeAbsent =>
-                  match parse_subtree_find_production_captured(root: body, emitted: ^dag_surface_expr) {
-                    ParseSubtreeFound { captured: expr } =>
-                      body_lower_try_body_lowered(node: expr)
+                  match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_postfix_expr) {
+                    ParseSubtreeFound { captured: postfix } =>
+                      body_lower_try_body_lowered(node: postfix)
                     ParseSubtreeAbsent =>
-                      outcome_rejected(
-                        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: body)
-                      )
+                      match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_primary_expr) {
+                        ParseSubtreeFound { captured: primary } =>
+                          body_lower_try_body_lowered(node: primary)
+                        ParseSubtreeAbsent =>
+                          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_stmt) {
+                            ParseSubtreeFound { captured: stmt } =>
+                              body_lower_body_subtree_lower(captured: stmt)
+                            ParseSubtreeAbsent =>
+                              body_lower_try_body_lowered(
+                                node: body_lower_unwrap_surface_shell(node: captured)
+                              )
+                          }
+                      }
                   }
               }
           }
       }
+  }
+}
+
+fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
+  match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
+    ParseSubtreeFound { captured: body } => body_lower_body_subtree_lower(captured: body)
     ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
   }
 }
