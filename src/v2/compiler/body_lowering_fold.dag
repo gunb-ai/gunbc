@@ -1442,6 +1442,15 @@ fn body_lower_pattern_atom_optional(pattern_capture: Node) -> Optional<Node> {
   body_lower_pattern_leaf_atom_optional(node: pattern_capture)
 }
 
+fn body_lower_match_arm_navigation_reject(arm_capture: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: body_lower_diagnostic(
+      reason: ^body_lowering_reason_match_arm_navigation_refused,
+      n: arm_capture
+    )
+  )
+}
+
 fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
   match parse_subtree_find_production_captured(root: body_capture, emitted: ^dag_surface_expr) {
     ParseSubtreeFound { captured: expr } => body_lower_operand_ref_optional(node: expr)
@@ -1477,7 +1486,7 @@ fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Optional<Node> {
+fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
   match parse_subtree_find_production_captured(
     root: stripped,
     emitted: ^dag_surface_pattern
@@ -1492,21 +1501,21 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Optional<Node> {
             ParseSubtreeFound { captured: body_capture } =>
               match body_lower_match_arm_body_optional(body_capture: body_capture) {
                 Present { value: body } =>
-                  optional_present(
+                  outcome_accepted(
                     value: body_lower_match_arm_wire(pat_node: pat_node, body: body)
                   )
-                Absent => optional_absent()
+                Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
               }
             ParseSubtreeAbsent =>
               match body_lower_match_arm_body_optional(body_capture: stripped) {
                 Present { value: body } =>
-                  optional_present(
+                  outcome_accepted(
                     value: body_lower_match_arm_wire(pat_node: pat_node, body: body)
                   )
-                Absent => optional_absent()
+                Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
               }
           }
-        Absent => optional_absent()
+        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
       }
     ParseSubtreeAbsent =>
       match body_lower_match_spine_left(spine: stripped) {
@@ -1526,20 +1535,22 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Optional<Node> {
                                   body_capture: body_capture
                                 ) {
                                   Present { value: body } =>
-                                    optional_present(
+                                    outcome_accepted(
                                       value: body_lower_match_arm_wire(
                                         pat_node: pat_node,
                                         body: body
                                       )
                                     )
-                                  Absent => optional_absent()
+                                  Absent =>
+                                    body_lower_match_arm_navigation_reject(arm_capture: stripped)
                                 }
-                              Absent => optional_absent()
+                              Absent =>
+                                body_lower_match_arm_navigation_reject(arm_capture: stripped)
                             }
                           } else {
-                            optional_absent()
+                            body_lower_match_arm_navigation_reject(arm_capture: stripped)
                           }
-                        Absent => optional_absent()
+                        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
                       }
                     Absent =>
                       match sugar_sequence_pair_optional(node: right) {
@@ -1551,122 +1562,135 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Optional<Node> {
                                   body_capture: after_pattern.right
                                 ) {
                                   Present { value: body } =>
-                                    optional_present(
+                                    outcome_accepted(
                                       value: body_lower_match_arm_wire(
                                         pat_node: pat_node,
                                         body: body
                                       )
                                     )
-                                  Absent => optional_absent()
+                                  Absent =>
+                                    body_lower_match_arm_navigation_reject(arm_capture: stripped)
                                 }
                               } else {
-                                optional_absent()
+                                body_lower_match_arm_navigation_reject(arm_capture: stripped)
                               }
-                            Absent => optional_absent()
+                            Absent =>
+                              body_lower_match_arm_navigation_reject(arm_capture: stripped)
                           }
-                        Absent => optional_absent()
+                        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
                       }
                   }
-                Absent => optional_absent()
+                Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
               }
-            Absent => optional_absent()
+            Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
           }
-        Absent => optional_absent()
+        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
       }
   }
 }
 
-fn body_lower_match_arm_wire_optional(arm_capture: Node) -> Optional<Node> {
+fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: arm_capture)
   match parse_production_emitted_identity_optional(node: stripped) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_match_arm {
         match parse_production_captured_child_optional(node: stripped) {
           Present { value: captured } =>
-            body_lower_match_arm_wire_optional(arm_capture: captured)
-          Absent => optional_absent()
+            body_lower_wire_match_arm_capture(arm_capture: captured)
+          Absent => body_lower_match_arm_navigation_reject(arm_capture: arm_capture)
         }
       } else if body_lower_is_pass_through_emitted(emitted: emitted) {
         match parse_production_captured_child_optional(node: stripped) {
           Present { value: captured } =>
-            body_lower_match_arm_wire_optional(arm_capture: captured)
-          Absent => optional_absent()
+            body_lower_wire_match_arm_capture(arm_capture: captured)
+          Absent => body_lower_match_arm_navigation_reject(arm_capture: arm_capture)
         }
       } else {
-        optional_absent()
+        body_lower_match_arm_navigation_reject(arm_capture: arm_capture)
       }
     Absent => body_lower_match_arm_wire_from_sequence(stripped: stripped)
   }
 }
 
-fn body_lower_collect_match_arms_from_repeat_tail(repeat_capture: Node) -> List<Node> {
+fn body_lower_collect_match_arms_from_repeat_tail(repeat_capture: Node) -> Outcome<List<Node>> {
   if is_empty_conj_root(n: repeat_capture) {
-    Empty
+    outcome_accepted(value: Empty)
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: head, diagnostics: _ } =>
-        let arms = match body_lower_match_arm_wire_optional(arm_capture: head) {
-          Present { value: arm } => [arm]
-          Absent => Empty
+        match body_lower_wire_match_arm_capture(arm_capture: head) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: arm, diagnostics: d } =>
+            match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+              Accepted { value: tail, diagnostics: _ } =>
+                match body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: rest, diagnostics: rd } =>
+                    Accepted {
+                      value: list_append(left: [arm], right: rest),
+                      diagnostics: diagnostics_merge(outer: d, inner: rd)
+                    }
+                }
+              Rejected { diagnostics: _ } =>
+                Accepted { value: [arm], diagnostics: d }
+            }
         }
-        match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
-          Accepted { value: tail, diagnostics: _ } =>
-            list_append(
-              left: arms,
-              right: body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail)
-            )
-          Rejected { diagnostics: _ } => arms
-        }
-      Rejected { diagnostics: _ } => Empty
+      Rejected { diagnostics: _ } => outcome_accepted(value: Empty)
     }
   }
 }
 
-fn body_lower_collect_match_arms(sequence_capture: Node) -> List<Node> {
+fn body_lower_collect_match_arms(sequence_capture: Node) -> Outcome<List<Node>> {
   let unwrapped = body_lower_postfix_optional_unwrap(node: sequence_capture)
   match find_named_child(root: unwrapped, name: ^grammar_sequence_left_node_projection) {
     Accepted { value: first, diagnostics: _ } =>
-      let first_arms = match body_lower_match_arm_wire_optional(arm_capture: first) {
-        Present { value: arm } => [arm]
-        Absent => Empty
-      }
-      match find_named_child(root: unwrapped, name: ^grammar_sequence_right_node_projection) {
-        Accepted { value: tail, diagnostics: _ } =>
-          list_append(
-            left: first_arms,
-            right: body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail)
-          )
-        Rejected { diagnostics: _ } => first_arms
+      match body_lower_wire_match_arm_capture(arm_capture: first) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: arm, diagnostics: d } =>
+          match find_named_child(root: unwrapped, name: ^grammar_sequence_right_node_projection) {
+            Accepted { value: tail, diagnostics: _ } =>
+              match body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: rest, diagnostics: rd } =>
+                  Accepted {
+                    value: list_append(left: [arm], right: rest),
+                    diagnostics: diagnostics_merge(outer: d, inner: rd)
+                  }
+              }
+            Rejected { diagnostics: _ } =>
+              Accepted { value: [arm], diagnostics: d }
+          }
       }
     Rejected { diagnostics: _ } =>
       match sugar_sequence_pair_optional(node: unwrapped) {
         Present { value: pair } =>
-          match body_lower_match_arm_wire_optional(arm_capture: pair.left) {
-            Present { value: arm } =>
+          match body_lower_wire_match_arm_capture(arm_capture: pair.left) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: arm, diagnostics: d } =>
               match body_lower_after_comma_tail_optional(node: pair.right) {
                 Present { value: tail } =>
-                  list_append(
-                    left: [arm],
-                    right: body_lower_collect_match_arms(sequence_capture: tail)
-                  )
-                Absent => [arm]
-              }
-            Absent =>
-              match body_lower_after_comma_tail_optional(node: pair.right) {
-                Present { value: tail } => body_lower_collect_match_arms(sequence_capture: tail)
-                Absent => Empty
+                  match body_lower_collect_match_arms(sequence_capture: tail) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: rest, diagnostics: rd } =>
+                      Accepted {
+                        value: list_append(left: [arm], right: rest),
+                        diagnostics: diagnostics_merge(outer: d, inner: rd)
+                      }
+                  }
+                Absent => Accepted { value: [arm], diagnostics: d }
               }
           }
         Absent =>
-          match body_lower_match_arm_wire_optional(arm_capture: unwrapped) {
-            Present { value: arm } => [arm]
-            Absent => Empty
+          match body_lower_wire_match_arm_capture(arm_capture: unwrapped) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: arm, diagnostics: d } =>
+              Accepted { value: [arm], diagnostics: d }
           }
       }
   }
 }
 
-fn body_lower_match_arms_from_brace_interior(interior: Node) -> List<Node> {
+fn body_lower_match_arms_from_brace_interior(interior: Node) -> Outcome<List<Node>> {
   let unwrapped = body_lower_postfix_optional_unwrap(node: interior)
   match sugar_sequence_pair_optional(node: unwrapped) {
     Present { value: pair } =>
@@ -1755,19 +1779,33 @@ fn body_lower_match_scrutinee_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_arms_on_lbrace_token(id: Symbol, right: Node) -> Optional<List<Node>> {
+fn body_lower_match_arms_on_lbrace_token(id: Symbol, right: Node) -> Outcome<Optional<List<Node>>> {
   match id == ^dag_token_lbrace {
     true =>
-      Present {
-        value: body_lower_match_arms_from_brace_interior(interior: right)
+      match body_lower_match_arms_from_brace_interior(interior: right) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: arms, diagnostics: d } =>
+          if count(arms) > 0 {
+            Accepted {
+              value: optional_present(value: arms),
+              diagnostics: d
+            }
+          } else {
+            outcome_rejected(
+              d: body_lower_diagnostic(
+                reason: ^body_lowering_reason_match_arm_navigation_refused,
+                n: right
+              )
+            )
+          }
       }
     false => body_lower_match_arms_after_lbrace_optional(spine: right)
   }
 }
 
-fn body_lower_match_arms_after_lbrace_optional(spine: Node) -> Optional<List<Node>> {
+fn body_lower_match_arms_after_lbrace_optional(spine: Node) -> Outcome<Optional<List<Node>>> {
   if is_empty_conj_root(n: spine) {
-    Absent
+    outcome_accepted(value: optional_absent())
   } else {
     match body_lower_match_spine_left(spine: spine) {
       Present { value: left } =>
@@ -1776,34 +1814,59 @@ fn body_lower_match_arms_after_lbrace_optional(spine: Node) -> Optional<List<Nod
             match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
               Present { value: id } =>
                 body_lower_match_arms_on_lbrace_token(id: id, right: right)
-              Absent => body_lower_match_arms_after_lbrace_optional(spine: right)
+              Absent =>
+                body_lower_match_arms_after_lbrace_optional(spine: right)
             }
-          Absent => Absent
+          Absent => outcome_accepted(value: optional_absent())
         }
-      Absent => Absent
+      Absent => outcome_accepted(value: optional_absent())
     }
   }
 }
 
-fn body_lower_match_arms_optional(captured: Node) -> Optional<List<Node>> {
+fn body_lower_match_arms_optional(captured: Node) -> Outcome<Optional<List<Node>>> {
   body_lower_match_arms_after_lbrace_optional(
     spine: body_lower_unwrap_surface_shell(node: captured)
   )
 }
 
-fn body_lower_try_match_from_captured(captured: Node) -> Optional<Node> {
+fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_match_scrutinee_optional(captured: captured) {
     Present { value: scrutinee } =>
       match body_lower_match_arms_optional(captured: captured) {
-        Present { value: arms } =>
-          if count(arms) > 0 {
-            optional_present(value: lower_match(scrutinee: scrutinee, arms: arms))
-          } else {
-            optional_absent()
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: arms_opt, diagnostics: d } =>
+          match arms_opt {
+            Present { value: arms } =>
+              if count(arms) > 0 {
+                Accepted {
+                  value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
+                  diagnostics: d
+                }
+              } else {
+                outcome_rejected(
+                  d: body_lower_diagnostic(
+                    reason: ^body_lowering_reason_match_arm_navigation_refused,
+                    n: captured
+                  )
+                )
+              }
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(
+                  reason: ^body_lowering_reason_match_arm_navigation_refused,
+                  n: captured
+                )
+              )
           }
-        Absent => Absent
       }
-    Absent => Absent
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(
+          reason: ^body_lowering_reason_match_arm_navigation_refused,
+          n: captured
+        )
+      )
   }
 }
 
@@ -1813,22 +1876,13 @@ fn body_lower_try_match_from_node(node: Node) -> Outcome<Optional<Node>> {
       if emitted == ^dag_surface_match_expr {
         match body_lower_unwrap_captured(shell: node) {
           Present { value: captured } =>
-            match body_lower_try_match_from_captured(captured: captured) {
-              Present { value: lowered } =>
-                outcome_accepted(value: optional_present(value: lowered))
-              Absent => outcome_accepted(value: optional_absent())
-            }
+            body_lower_try_match_from_captured(captured: captured)
           Absent => outcome_accepted(value: optional_absent())
         }
       } else {
         outcome_accepted(value: optional_absent())
       }
-    Absent =>
-      match body_lower_try_match_from_captured(captured: node) {
-        Present { value: lowered } =>
-          outcome_accepted(value: optional_present(value: lowered))
-        Absent => outcome_accepted(value: optional_absent())
-      }
+    Absent => body_lower_try_match_from_captured(captured: node)
   }
 }
 
@@ -1840,11 +1894,16 @@ fn body_lower_match_expr(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match body_lower_try_match_from_captured(captured: captured) {
-        Present { value: lowered } => outcome_accepted(value: lowered)
-        Absent =>
-          outcome_rejected(
-            d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: lowered_opt, diagnostics: d } =>
+          match lowered_opt {
+            Present { value: lowered } =>
+              Accepted { value: lowered, diagnostics: d }
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+              )
+          }
       }
   }
 }

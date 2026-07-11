@@ -106,12 +106,16 @@ fn body_lowering_match_lowers_to_match() -> Bool {
           match body_lower_unwrap_captured(shell: shell) {
             Present { value: captured } =>
               match body_lower_try_match_from_captured(captured: captured) {
-                Present { value: lowered } =>
-                  match lowered.kind {
-                    ComputationNode { behavior: Match } => true
-                    _ => false
+                Rejected { diagnostics: _ } => false
+                Accepted { value: lowered_opt, diagnostics: _ } =>
+                  match lowered_opt {
+                    Present { value: lowered } =>
+                      match lowered.kind {
+                        ComputationNode { behavior: Match } => true
+                        _ => false
+                      }
+                    Absent => false
                   }
-                Absent => false
               }
             Absent => false
           }
@@ -263,8 +267,32 @@ fn body_lowering_match_arms_found_witness() -> Bool {
           match body_lower_unwrap_captured(shell: shell) {
             Present { value: captured } =>
               match body_lower_match_arms_optional(captured: captured) {
-                Present { value: arms } => length(xs: arms) > 0
-                Absent => false
+                Rejected { diagnostics: _ } => false
+                Accepted { value: arms_opt, diagnostics: _ } =>
+                  match arms_opt {
+                    Present { value: arms } => length(xs: arms) > 0
+                    Absent => false
+                  }
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_match_arm_navigation_refuses_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: captured } =>
+              match body_lower_try_match_from_captured(captured: captured) {
+                Rejected { diagnostics: ne } =>
+                  ne.head.reason == ^body_lowering_reason_match_arm_navigation_refused
+                Accepted { value: _, diagnostics: _ } => false
               }
             Absent => false
           }
