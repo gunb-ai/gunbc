@@ -4,6 +4,8 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.lens.module_graph { import_closure_live, no_paths }
 import v2.lens.reference_deps { reference_closure_ingest_refusal_witness, reference_closure_live }
 import std.algebra { FreeMonoid }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import v2.std.algebra { contains, for_all, list_snoc_item, fold_list }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -26,9 +28,22 @@ data expected_conformance_closure: FreeMonoid<String> = [
 
 data conformance_entry: String = "src/v2/test/claim/module_graph/conformance_imports_only.dag"
 
+data conformance_import_envelope_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.test.manual.coproduct_reflection_conformance",
+    decl_name: "reflect_connective_type",
+    field: WholeDeclaration
+  }
+}
+
+data conformance_import_envelope_dissolution_note: String = "conformance_imports_only.dag mirrors coproduct_reflection_conformance_test.dag import envelope only (no extra imports — closure goldens stay byte-identical). v2 parse_module rejects test fn bodies today, so equivalence gates use this pipeline-parseable stub. Dissolves when parse_module accepts fn bodies (repoint conformance_entry to src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag) or when a shared import-envelope fixture subsumes both."
+
+data workspace_root_cross_runner_hand_rust_receipt: String = "Cross-runner CI unblock for release-bins handoff (operator ruling 2026-07-11, gunbc.ci_spec ci_floor_required_artifact_names_note): claim_executor built on runner A bakes CARGO_MANIFEST_DIR to A's checkout; floor job on runner B must index module paths under B's tree. Hand-Rust: cli_run.rs workspace_root() prefers GITHUB_WORKSPACE then process cwd when dag/ and src/v2/ are present, else baked root. Executable backstop: build_module_path_index_accepts_relative_roots_at_process_cwd (#6462). Dissolves when workspace_root is a modeled std authority or release-bins carry a content-addressed checkout-root manifest binding the handoff."
+
 data bogus_never_referenced: String = "src/v2/std/__bogus_never_referenced__.dag"
 
-data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current corpus every cross-module edge is still an import, so reference-closure must equal import-closure on the conformance witness — equal module sets imply the same resolve inputs. Witness entry is conformance_imports_only.dag (same import envelope as coproduct_reflection_conformance_test.dag, pipeline-parseable — v2 parse_module rejects test fn bodies). Any ingest refusal poisons reference-closure (fail-closed) as Outcome Rejected, never as an empty FreeMonoid; a strict superset without equality would be a located deficit before any import deletion. RED ingest control uses reference_closure_ingest_refusal_witness (inline unparseable source via reference_file_census_from_source — same refusal→Rejected arm as BFS, green-by-execution without a broken .dag in the compile graph)."
+data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current corpus every cross-module edge is still an import, so reference-closure must equal import-closure on the conformance witness — equal module sets imply the same resolve inputs. Witness entry is conformance_imports_only.dag (same import envelope as coproduct_reflection_conformance_test.dag, pipeline-parseable — v2 parse_module rejects test fn bodies). Scaffold marker for the parallel envelope lives on this witness module (conformance_import_envelope_disposition), not on the stub, so the stub's import closure matches the golden. Any ingest refusal poisons reference-closure (fail-closed) as Outcome Rejected, never as an empty FreeMonoid; a strict superset without equality would be a located deficit before any import deletion. RED ingest control uses reference_closure_ingest_refusal_witness (inline unparseable source via reference_file_census_from_source — same refusal→Rejected arm as BFS, green-by-execution without a broken .dag in the compile graph)."
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b

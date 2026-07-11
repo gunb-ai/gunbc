@@ -1,7 +1,5 @@
 module v2.test.module_graph.conformance_imports_only
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.algebra { Empty }
 import v2.std.algebra { bag_eq, fold_list, list_snoc_item }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -9,17 +7,6 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Behavior, Symbol }
 import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
-
-data conformance_imports_only_envelope_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "v2.test.manual.coproduct_reflection_conformance",
-    decl_name: "reflect_connective_type",
-    field: WholeDeclaration
-  }
-}
-
-data conformance_imports_only_dissolution_note: String = "Parallel import envelope of coproduct_reflection_conformance_test.dag for B2 reference-closure witnesses: v2 parse_module rejects test fn bodies today, so equivalence gates use this pipeline-parseable stub. Dissolves when parse_module accepts fn bodies (repoint conformance_entry witnesses to src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag) or when a shared import-envelope fixture subsumes both."
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
