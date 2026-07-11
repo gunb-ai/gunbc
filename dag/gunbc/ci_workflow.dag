@@ -399,7 +399,7 @@ data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
@@ -432,7 +432,7 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(), ci_floor_resolve_receipt_gate_step(), ci_floor_materialization_receipt_gate_step(), ci_selection_control_step(), ci_merge_admission_gate_step()]),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(), ci_floor_resolve_receipt_gate_step(), ci_floor_materialization_receipt_gate_step(), ci_selection_control_step(), ci_merge_admission_gate_step(), ci_regen_floor_step()]),
     needs: [],
     env: none,
     outputs: none,
@@ -446,7 +446,7 @@ fn ci_job() -> Job {
 
 fn ci_regen_floor_step() -> Step {
   RunStep {
-    name: Present { value: "gunbc ci regen (self-host fixed-point — non-required)" },
+    name: Present { value: "gunbc ci regen (self-host fixed-point — required; folded into ci job 2026-07-11)" },
     id: none,
     run: gunbc_ci_regen_floor_run(spec: gunbc_ci_regen_spec),
     shell: none,
@@ -455,23 +455,6 @@ fn ci_regen_floor_step() -> Step {
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_floor_step_timeout_minutes }
-  }
-}
-
-fn ci_regen_job() -> Job {
-  Job {
-    id: "ci_regen",
-    name: none,
-    runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_regen_floor_step()]),
-    needs: [],
-    env: none,
-    outputs: none,
-    if_condition: none,
-    strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
-    continue_on_error: none,
-    concurrency: none
   }
 }
 
@@ -508,5 +491,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_job(), ci_regen_job()], ci_deploy_jobs())
+  jobs: concat([ci_job()], ci_deploy_jobs())
 }

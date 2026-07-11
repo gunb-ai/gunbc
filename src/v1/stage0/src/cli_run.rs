@@ -2047,6 +2047,23 @@ pub struct MultiEntryIndex {
     // — never silently serve one file's typecheck for the other's. Records
     // mod_name → declaring_file; a mismatch on a later co-resolve is a typed error.
     module_source_identity: RefCell<HashMap<String, String>>,
+    // Per-process subject-digest → resolved-graph share, the ReferenceTier in
+    // front of the cross-process store (materialization-ladder tier ordering:
+    // the share serves repeats, the store serves the process's FIRST touch of a
+    // subject, and a store hit is INSTALLED here so every later demand takes the
+    // reference). Without the install-back, N same-subject resolves under
+    // GUNBC_RESOLVED_GRAPH_CACHE_DIR each decoded+retained an independent graph
+    // — the ~1 GiB/5s eval-phase runaway receipt (eager-ram-612, 2026-07-10).
+    // Store fills share — never replaces it.
+    resolved_graph_memo: RefCell<
+        HashMap<
+            String,
+            (
+                Rc<v1_compiler_compile::ResolvedGraph>,
+                Rc<HashMap<String, Rc<NewlineIndex>>>,
+            ),
+        >,
+    >,
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
@@ -2109,6 +2126,7 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
         parse_cache: RefCell::new(HashMap::new()),
         typed_module_cache: RefCell::new(HashMap::new()),
         module_source_identity: RefCell::new(HashMap::new()),
+        resolved_graph_memo: RefCell::new(HashMap::new()),
     }
 }
 
@@ -2127,6 +2145,7 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         parse_cache: RefCell::new(HashMap::new()),
         typed_module_cache: RefCell::new(HashMap::new()),
         module_source_identity: RefCell::new(HashMap::new()),
+        resolved_graph_memo: RefCell::new(HashMap::new()),
     }
 }
 
@@ -2197,8 +2216,20 @@ fn resolve_entry_with_parse_cache(
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
+        // Share before store (ladder tier ordering): a subject this process has
+        // already decoded or built is served by reference — never re-decoded.
+        if let Some((graph, si)) = index.resolved_graph_memo.borrow().get(&subject) {
+            return Ok((graph.clone(), si.clone()));
+        }
         match cross_process_lookup(&cache_root, &subject) {
             CacheLookupResult::Hit(hit) => {
+                eprintln!(
+                    "[resolved-graph-cache] decode subject={subject} (installed into process share)"
+                );
+                index
+                    .resolved_graph_memo
+                    .borrow_mut()
+                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -2310,7 +2341,20 @@ fn resolve_entry_with_parse_cache(
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
-        let _ = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref());
+        // A failed store write is a disclosed refusal, never a silent shrug —
+        // the swallowed error hid that big closures never landed on disk (only
+        // the prelude artifact ever existed), which mis-shaped a whole OOM
+        // investigation (receipt: eager-ram-612 bisect, 2026-07-10).
+        if let Err(e) = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref())
+        {
+            eprintln!("[resolved-graph-cache] write refused subject={subject}: {e}");
+        }
+        // Build fills the share through the same seam as a store hit, so a
+        // same-subject re-resolve later in this process takes the reference.
+        index
+            .resolved_graph_memo
+            .borrow_mut()
+            .insert(subject, (typed.clone(), source_indices.clone()));
     }
 
     Ok((typed, source_indices))
