@@ -180,6 +180,10 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
 /// entry — a directory for clones, a file for worktrees). Computed once per process.
 /// A cwd outside any checkout refuses loudly — no fallback to a compile-time path
 /// (DESIGN §5: refuse, never widen).
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): runtime checkout-root
+// derivation (#6484 / #6472 job-split). Dissolves when release bins receive checkout-root
+// at spawn (env/argv) or Step 5 deletes this Rust parallel and the v2 floor workflow
+// owns path resolution.
 pub fn workspace_root() -> PathBuf {
     static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     ROOT.get_or_init(|| {
@@ -6284,6 +6288,11 @@ fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
 /// (not `touched_entry_files`); any edited data-item file in the entry import closure
 /// must resolve so `rerun_frontier_nodes_for_entry` can discriminate referenced nodes
 /// (`red_node_frontier_fires_for_referenced_data_item`).
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): pre-resolve skip for rows
+// provably outside all three skip axes without loading the resolved graph. Dissolves at
+// Step 5 (`docs/plans/affected-set-precompute-pruning.md`) when the Rust parallel
+// (`NodeFrontierSeeds`, `run_discovery_rows` selection) is deleted and the `.dag`
+// `floor_witness_run_disposition` query owns the same predicate end-to-end.
 fn entry_qualifies_for_skip_without_resolve(
     entry_path: &str,
     row_functions: &[&str],
@@ -6376,6 +6385,7 @@ fn discovery_entry_fast_skip_without_resolve(
 
 /// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
 /// same import-closure modules the pre-resolve walk uses (`roster_import_closure_nodes_pre_resolve`).
+// SCAFFOLD (§7): calibration-only companion to skip-before-resolve above; dissolves with it.
 fn augment_closure_modules_from_import_facts(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
