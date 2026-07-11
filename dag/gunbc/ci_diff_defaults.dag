@@ -1,6 +1,3 @@
 module gunbc.ci_diff_defaults
 
-// Single authority for CI merge-base diff refs (gunbc_ci_spec.diff_policy.base,
-// merge-admission gate/stamp git fetch + tree hash). Lives below ci_spec so
-// merge_admission_produce can import without the ci_spec ↔ produce cycle.
 data ci_merge_base_ref: String = "origin/main"
