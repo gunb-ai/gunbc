@@ -7277,9 +7277,7 @@ fn run_discovery_rows(
     for row in rows {
         // Applied only: PredictOnly must resolve + run cold and record via the post-resolve
         // would_skip path (falsifier semantics — docs/plans/affected-set-differential-falsifier.md).
-        if selection == NodeFrontierSelectionMode::Applied
-            && entry_fast_skip.contains(&row.entry)
-        {
+        if selection == NodeFrontierSelectionMode::Applied && entry_fast_skip.contains(&row.entry) {
             if current_entry.as_deref() != Some(row.entry.as_str()) {
                 augment_closure_modules_from_import_facts(
                     &row.entry,
@@ -8888,8 +8886,8 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("floor_disc_node_a line");
         let diff = diff_at(&fixture_abs, data_line);
-        let diff_edits =
-            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from referenced-node diff");
+        let diff_edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("seeds from referenced-node diff");
         assert!(
             !diff_edits.overlapping_data_items.is_empty(),
             "data-item diff must populate overlapping_data_items"
