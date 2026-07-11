@@ -1730,6 +1730,31 @@ fn workspace_relative_repo_path(path: &str) -> String {
     }
 }
 
+/// Entry-path variant of `workspace_relative_repo_path` that NEVER panics.
+///
+/// A user-supplied entry can legitimately sit outside every source root (an
+/// absolute path under `/tmp`, a stray file). That is definitionally out-of-pool
+/// and must reach the typed, located refusal in `resolve_transitively`, not abort
+/// via `repo_relative_path_normalized`'s panic arm — that panic is the correct
+/// fail-closed for a CORPUS path that should be under a root, but the wrong
+/// failure MODE for an entry the caller is about to reject. When the path cannot
+/// be made repo-relative, return it unchanged: `declares_repo_path` rejects it
+/// and the refusal fires (DESIGN §5: refuse, never abort-in-lieu).
+fn workspace_relative_entry_path(path: &str) -> String {
+    let norm = path.strip_prefix("./").unwrap_or(path).replace('\\', "/");
+    let p = Path::new(&norm);
+    if p.is_relative() {
+        return norm;
+    }
+    if let Ok(rel) = repo_relative_path(p) {
+        return rel;
+    }
+    if let Ok(stripped) = p.strip_prefix(workspace_root()) {
+        return stripped.to_string_lossy().replace('\\', "/");
+    }
+    norm
+}
+
 /// Normalize `source_roots` to the workspace-relative form `import_resolution_facts` /
 /// `module_declaration_facts` expect when invoked from `.dag` (`witness_layer_roots` style).
 fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
