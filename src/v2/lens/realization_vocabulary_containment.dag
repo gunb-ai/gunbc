@@ -64,7 +64,7 @@ data realization_vocab_consumer_scan_roots: List<String> = [
 ]
 
 data bash_program_module: String = "extdeps.languages.bash.program"
-data bash_program_importer_count_baseline: Int = 20
+data bash_program_importer_count_baseline: Int = 19
 
 data bash_program_importer_scan_roots: List<String> = [
   "src/v2",
