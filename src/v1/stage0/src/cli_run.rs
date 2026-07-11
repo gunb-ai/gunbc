@@ -2262,7 +2262,7 @@ fn resolve_transitively(
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let mut path_lookup = path_to_source_lookup(index);
     for entry in &entry_sources {
-        let rel = workspace_relative_repo_path(&entry.path);
+        let rel = workspace_relative_entry_path(&entry.path);
         path_lookup.entry(rel).or_insert_with(|| entry.clone());
         path_lookup
             .entry(entry.path.clone())
@@ -2271,7 +2271,7 @@ fn resolve_transitively(
 
     let mut all_paths: BTreeSet<String> = BTreeSet::new();
     for entry in &entry_sources {
-        let entry_rel = workspace_relative_repo_path(&entry.path);
+        let entry_rel = workspace_relative_entry_path(&entry.path);
         // An entry the facts pool does not declare has NO import edges in the
         // adjacency — not because it imports nothing, but because the scan never
         // saw it. Answering with the entry-only closure would silently drop its
