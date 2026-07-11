@@ -1,6 +1,7 @@
 module tools.emit_determinism_transport
 
 import extdeps.shell
+import extdeps.diffutils
 import extdeps.filesystem.filesystem_io
 import extdeps.git
 import extdeps.gunbc
