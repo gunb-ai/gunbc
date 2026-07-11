@@ -39,9 +39,34 @@ type ProductPricesResponse {
   results: List<ProductPriceRow>?
 }
 
+type SkuPriceRow {
+  skuId: Int
+  lowPrice: Float?
+  lowestShipping: Float?
+  lowestListingPrice: Float?
+  marketPrice: Float?
+  directLowPrice: Float?
+}
+
+data tcgplayer_sku_pricing_money_measure_grounding_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.tcgplayer.pricing",
+    decl_name: "SkuPriceRow",
+    field: WholeDeclaration
+  }
+}
+
+type SkuPricesResponse {
+  success: Bool
+  errors: List<String>?
+  results: List<SkuPriceRow>?
+}
+
 data structural_coverage_gap_pricing_operations_residual: List<String> = [
-  "sku-level pricing (GET /pricing/sku/ by sku id list) and market price by product condition id are",
-  "unmodeled; extend when the listing flow prices per-condition skus instead of products"
+  "sku-level pricing (GET /pricing/sku/ by sku id list) is now modeled as GetSkuPrices; the",
+  "remaining gap is market price by product condition id (the pricing/product-by-conditionId",
+  "path), unmodeled until a consumer needs the per-condition product price without a sku id"
 ]
 
 service tcgplayer.Pricing {
@@ -69,6 +94,29 @@ service tcgplayer.Pricing {
     }
     response {
       200 => ProductPricesResponse
+      401 => TcgplayerErrorEnvelope
+      404 => TcgplayerErrorEnvelope
+      5xx => TcgplayerErrorEnvelope
+    }
+  }
+
+  operation GetSkuPrices {
+    input {
+      bearer_token: Secret
+      sku_ids: NonEmptyStr
+    }
+    output {
+      market_price: Float? from "results/0/marketPrice"
+      low_price: Float? from "results/0/lowPrice"
+      sku_prices: List<SkuPriceRow> from "results"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/pricing/sku/\{sku_ids\}"
+    }
+    response {
+      200 => SkuPricesResponse
       401 => TcgplayerErrorEnvelope
       404 => TcgplayerErrorEnvelope
       5xx => TcgplayerErrorEnvelope

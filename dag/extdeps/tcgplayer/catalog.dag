@@ -79,6 +79,70 @@ fn parse_card_condition(raw: String) -> CardCondition? {
   else { none }
 }
 
+data condition_id_grounding_note: List<String> = [
+  "resolve_condition_id reads the conditionId from the live GetCategoryConditions",
+  "response (conditionIds are category-scoped upstream), matched on the name TCGplayer",
+  "prints — the same string card_condition_display_name emits — so both directions share",
+  "one authority; the id is never a minted per-condition constant"
+]
+
+fn resolve_condition_id(conditions: List<CategoryCondition>, condition: CardCondition) -> Int? {
+  let target = card_condition_display_name(c: condition)
+  let matches = conditions |> filter(c => c.name == target)
+  match matches.first() {
+    Present { value: cc } => Present { value: cc.conditionId }
+    Absent => none
+  }
+}
+
+data sku_selection_granularity_note: List<String> = [
+  "a listing is a SKU (product x condition x printing x language), never a product;",
+  "select_sku_for_condition is a total, fail-closed decision over the product's SKU rows",
+  "— zero matches refuses (SkuUnavailable), many refuses (SkuAmbiguous), never a fabricated pick"
+]
+
+type SkuSelection
+  = SkuMatched { sku_id: Int }
+  | SkuUnavailable
+  | SkuAmbiguous { candidate_count: Int }
+
+fn skus_matching(
+  skus: List<ProductSku>,
+  condition_id: Int,
+  printing_id: Int,
+  language_id: Int
+) -> List<ProductSku> {
+  skus |> filter(s =>
+    s.conditionId == condition_id
+      && s.printingId == printing_id
+      && s.languageId == language_id
+  )
+}
+
+fn select_sku_for_condition(
+  skus: List<ProductSku>,
+  condition_id: Int,
+  printing_id: Int,
+  language_id: Int
+) -> SkuSelection {
+  let matches = skus_matching(
+    skus: skus,
+    condition_id: condition_id,
+    printing_id: printing_id,
+    language_id: language_id
+  )
+  let n = count(matches)
+  if n == 0 { SkuUnavailable }
+  else if n == 1 {
+    match matches.first() {
+      Present { value: s } => SkuMatched { sku_id: s.skuId }
+      Absent => SkuUnavailable
+    }
+  } else {
+    SkuAmbiguous { candidate_count: n }
+  }
+}
+
 type CatalogProductsResponse {
   totalItems: Int?
   success: Bool
@@ -142,6 +206,7 @@ service tcgplayer.Catalog {
     }
     output {
       first_sku_id: Int from "results/0/skuId"
+      skus: List<ProductSku> from "results"
     }
     readonly
     transport rest {
@@ -163,6 +228,7 @@ service tcgplayer.Catalog {
     }
     output {
       first_condition_id: Int from "results/0/conditionId"
+      conditions: List<CategoryCondition> from "results"
     }
     readonly
     transport rest {

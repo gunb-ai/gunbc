@@ -3,8 +3,18 @@ module test.claim.card_intake_risk_witness
 import extdeps.tcgplayer.catalog {
   CardCondition,
   NearMint,
+  LightlyPlayed,
+  ModeratelyPlayed,
+  ProductSku,
+  CategoryCondition,
+  SkuSelection,
+  SkuMatched,
+  SkuUnavailable,
+  SkuAmbiguous,
   card_condition_display_name,
   parse_card_condition,
+  resolve_condition_id,
+  select_sku_for_condition,
 }
 import gunbc.tools.card_intake {
   CatalogMatch,
@@ -16,11 +26,19 @@ import gunbc.tools.card_intake {
   AmbiguousCatalogMatch,
   UnpricedCard,
   HighValue,
+  ConditionNotOffered,
+  SkuUnavailableForCondition,
+  AmbiguousSku,
   IntakeDisposition,
   ReadyToList,
   NeedsReview,
+  ConditionListingPlan,
+  ListingReady,
+  ListingBlocked,
   classify_catalog_match,
   assess_intake,
+  assess_sku_listing,
+  plan_condition_listing,
 }
 
 test fn witness_zero_results_classifies_no_match() -> Bool {
@@ -137,6 +155,113 @@ test fn witness_near_mint_display_name_roundtrip() -> Bool {
 test fn witness_uppercase_condition_does_not_decode() -> Bool {
   match parse_card_condition(raw: "NEAR MINT") {
     none => true
+    _ => false
+  }
+}
+
+fn sample_conditions() -> List<CategoryCondition> {
+  []
+    |> list_push(CategoryCondition { conditionId: 1, name: "Near Mint", abbreviation: none, displayOrder: none })
+    |> list_push(CategoryCondition { conditionId: 2, name: "Lightly Played", abbreviation: none, displayOrder: none })
+}
+
+fn sample_skus() -> List<ProductSku> {
+  []
+    |> list_push(ProductSku { skuId: 5001, productId: 100, languageId: 1, printingId: 1, conditionId: 1 })
+    |> list_push(ProductSku { skuId: 5002, productId: 100, languageId: 1, printingId: 1, conditionId: 2 })
+}
+
+test fn witness_resolve_condition_id_grounds_on_category_response() -> Bool {
+  match resolve_condition_id(conditions: sample_conditions(), condition: NearMint) {
+    Present { value: 1 } => true
+    _ => false
+  }
+}
+
+test fn witness_resolve_condition_id_absent_when_not_offered() -> Bool {
+  match resolve_condition_id(conditions: sample_conditions(), condition: ModeratelyPlayed) {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_select_sku_exact_condition_match() -> Bool {
+  match select_sku_for_condition(skus: sample_skus(), condition_id: 2, printing_id: 1, language_id: 1) {
+    SkuMatched { sku_id: 5002 } => true
+    _ => false
+  }
+}
+
+test fn witness_select_sku_unavailable_when_printing_absent() -> Bool {
+  match select_sku_for_condition(skus: sample_skus(), condition_id: 1, printing_id: 2, language_id: 1) {
+    SkuUnavailable => true
+    _ => false
+  }
+}
+
+test fn witness_select_sku_ambiguous_when_duplicate_rows() -> Bool {
+  let dupes = sample_skus()
+    |> list_push(ProductSku { skuId: 5003, productId: 100, languageId: 1, printingId: 1, conditionId: 1 })
+  match select_sku_for_condition(skus: dupes, condition_id: 1, printing_id: 1, language_id: 1) {
+    SkuAmbiguous { candidate_count: 2 } => true
+    _ => false
+  }
+}
+
+test fn witness_plan_condition_listing_ready_selects_sku() -> Bool {
+  match plan_condition_listing(
+    conditions: sample_conditions(),
+    skus: sample_skus(),
+    condition: NearMint,
+    printing_id: 1,
+    language_id: 1,
+    market_price: Present { value: 10.0 },
+    high_value_threshold: 50.0
+  ) {
+    ListingReady { sku_id: 5001, market_price: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_plan_condition_not_offered_is_blocked() -> Bool {
+  match plan_condition_listing(
+    conditions: sample_conditions(),
+    skus: sample_skus(),
+    condition: ModeratelyPlayed,
+    printing_id: 1,
+    language_id: 1,
+    market_price: Present { value: 10.0 },
+    high_value_threshold: 50.0
+  ) {
+    ListingBlocked { disposition: NeedsReview { reasons: rs }, selection: _ } =>
+      any(rs, r => r == ConditionNotOffered)
+    _ => false
+  }
+}
+
+test fn witness_plan_high_value_matched_sku_is_blocked() -> Bool {
+  match plan_condition_listing(
+    conditions: sample_conditions(),
+    skus: sample_skus(),
+    condition: NearMint,
+    printing_id: 1,
+    language_id: 1,
+    market_price: Present { value: 120.0 },
+    high_value_threshold: 50.0
+  ) {
+    ListingBlocked { disposition: NeedsReview { reasons: rs }, selection: SkuMatched { sku_id: 5001 } } =>
+      any(rs, r => r == HighValue)
+    _ => false
+  }
+}
+
+test fn witness_assess_sku_listing_ambiguous_flags_reason() -> Bool {
+  match assess_sku_listing(
+    selection: SkuAmbiguous { candidate_count: 3 },
+    market_price: Present { value: 5.0 },
+    high_value_threshold: 50.0
+  ) {
+    NeedsReview { reasons: rs } => count(rs) == 1 && any(rs, r => r == AmbiguousSku)
     _ => false
   }
 }

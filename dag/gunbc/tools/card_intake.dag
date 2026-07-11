@@ -20,6 +20,8 @@ import extdeps.tcgplayer.tcgplayer
 import extdeps.tcgplayer.catalog
 import extdeps.tcgplayer.pricing
 import extdeps.tcgplayer.store
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential }
 
 data tcgplayer_client_id_source: CredentialSource = EnvVar { name: "TCGPLAYER_CLIENT_ID" }
 
@@ -60,6 +62,9 @@ type RiskReason
   | AmbiguousCatalogMatch
   | UnpricedCard
   | HighValue
+  | ConditionNotOffered
+  | SkuUnavailableForCondition
+  | AmbiguousSku
 
 type IntakeDisposition
   = ReadyToList
@@ -106,6 +111,104 @@ fn assess_intake(
 
 fn count_true(flags: List<Bool>) -> Int {
   fold(flags, init: 0, f: (acc, b) => if b { acc + 1 } else { acc })
+}
+
+data structural_coverage_gap_intake_recognition_residual_resolved_note: List<String> = [
+  "per-condition sku selection and sku-level pricing now land via plan_condition_listing;",
+  "the remaining recognition-side residual is extracting set / collector number / finish from",
+  "the photo so printing_id and language_id need not be supplied by the caller"
+]
+
+fn sku_risk_reasons(selection: SkuSelection) -> List<RiskReason> {
+  match selection {
+    SkuUnavailable => [] |> list_push(SkuUnavailableForCondition)
+    SkuAmbiguous { candidate_count: _ } => [] |> list_push(AmbiguousSku)
+    SkuMatched { sku_id: _ } => []
+  }
+}
+
+fn assess_sku_listing(
+  selection: SkuSelection,
+  market_price: Float?,
+  high_value_threshold: Float
+) -> IntakeDisposition {
+  let reasons = price_risk_reasons(
+    base: sku_risk_reasons(selection: selection),
+    market_price: market_price,
+    high_value_threshold: high_value_threshold
+  )
+  if count(reasons) == 0 { ReadyToList } else { NeedsReview { reasons: reasons } }
+}
+
+type ConditionListingPlan
+  = ListingReady { sku_id: Int, market_price: Float? }
+  | ListingBlocked { disposition: IntakeDisposition, selection: SkuSelection }
+
+fn plan_from_matched(
+  sku_id: Int,
+  disposition: IntakeDisposition,
+  market_price: Float?
+) -> ConditionListingPlan {
+  match disposition {
+    ReadyToList => ListingReady { sku_id: sku_id, market_price: market_price }
+    NeedsReview { reasons: _ } =>
+      ListingBlocked { disposition: disposition, selection: SkuMatched { sku_id: sku_id } }
+  }
+}
+
+fn plan_for_condition_id(
+  skus: List<ProductSku>,
+  condition_id: Int,
+  printing_id: Int,
+  language_id: Int,
+  market_price: Float?,
+  high_value_threshold: Float
+) -> ConditionListingPlan {
+  let selection = select_sku_for_condition(
+    skus: skus,
+    condition_id: condition_id,
+    printing_id: printing_id,
+    language_id: language_id
+  )
+  let disposition = assess_sku_listing(
+    selection: selection,
+    market_price: market_price,
+    high_value_threshold: high_value_threshold
+  )
+  match selection {
+    SkuMatched { sku_id: sid } =>
+      plan_from_matched(sku_id: sid, disposition: disposition, market_price: market_price)
+    SkuUnavailable => ListingBlocked { disposition: disposition, selection: selection }
+    SkuAmbiguous { candidate_count: _ } =>
+      ListingBlocked { disposition: disposition, selection: selection }
+  }
+}
+
+fn plan_condition_listing(
+  conditions: List<CategoryCondition>,
+  skus: List<ProductSku>,
+  condition: CardCondition,
+  printing_id: Int,
+  language_id: Int,
+  market_price: Float?,
+  high_value_threshold: Float
+) -> ConditionListingPlan {
+  match resolve_condition_id(conditions: conditions, condition: condition) {
+    Absent =>
+      ListingBlocked {
+        disposition: NeedsReview { reasons: [] |> list_push(ConditionNotOffered) },
+        selection: SkuUnavailable
+      }
+    Present { value: cid } =>
+      plan_for_condition_id(
+        skus: skus,
+        condition_id: cid,
+        printing_id: printing_id,
+        language_id: language_id,
+        market_price: market_price,
+        high_value_threshold: high_value_threshold
+      )
+  }
 }
 
 
@@ -235,4 +338,146 @@ func list_card_sku(
   )
 
   return { price_updated: priced.success, quantity_updated: stocked.success }
+}
+
+fn selected_sku_id(
+  conditions: List<CategoryCondition>,
+  skus: List<ProductSku>,
+  condition: CardCondition,
+  printing_id: Int,
+  language_id: Int
+) -> Int? {
+  match resolve_condition_id(conditions: conditions, condition: condition) {
+    Absent => none
+    Present { value: cid } =>
+      match select_sku_for_condition(
+        skus: skus,
+        condition_id: cid,
+        printing_id: printing_id,
+        language_id: language_id
+      ) {
+        SkuMatched { sku_id: sid } => Present { value: sid }
+        SkuUnavailable => none
+        SkuAmbiguous { candidate_count: _ } => none
+      }
+  }
+}
+
+func sku_market_price(
+  bearer_token: Secret,
+  sku_id: Int
+) -> Float? {
+
+  prices = tcgplayer.Pricing.GetSkuPrices(
+    bearer_token: bearer_token,
+    sku_ids: "{sku_id}"
+  )
+
+  prices.market_price
+}
+
+func list_sku_ready(
+  bearer_token: Secret,
+  store_key: NonEmptyStr,
+  sku_id: Int,
+  price: Float,
+  quantity: Int
+) -> Bool {
+
+  priced = tcgplayer.Store.UpdateSkuPrice(
+    bearer_token: bearer_token,
+    store_key: store_key,
+    sku_id: sku_id,
+    price: price
+  )
+
+  stocked = tcgplayer.Store.IncrementSkuQuantity(
+    bearer_token: bearer_token,
+    store_key: store_key,
+    sku_id: sku_id,
+    quantity: quantity
+  )
+
+  priced.success && stocked.success
+}
+
+func list_card_by_condition(
+  bearer_token: Secret,
+  store_key: NonEmptyStr,
+  category_id: Int,
+  product_id: Int,
+  condition: CardCondition,
+  printing_id: Int,
+  language_id: Int,
+  price: Float,
+  quantity: Int,
+  high_value_threshold: Float = default_high_value_threshold_usd
+) -> { plan: ConditionListingPlan, listed: Bool } {
+
+  conds = tcgplayer.Catalog.GetCategoryConditions(
+    bearer_token: bearer_token,
+    category_id: category_id
+  )
+
+  skus = tcgplayer.Catalog.GetProductSkus(
+    bearer_token: bearer_token,
+    product_id: product_id
+  )
+
+  market_price = match selected_sku_id(
+    conditions: conds.conditions,
+    skus: skus.skus,
+    condition: condition,
+    printing_id: printing_id,
+    language_id: language_id
+  ) {
+    Absent => none
+    Present { value: sid } => sku_market_price(bearer_token: bearer_token, sku_id: sid)
+  }
+
+  plan = plan_condition_listing(
+    conditions: conds.conditions,
+    skus: skus.skus,
+    condition: condition,
+    printing_id: printing_id,
+    language_id: language_id,
+    market_price: market_price,
+    high_value_threshold: high_value_threshold
+  )
+
+  listed = match plan {
+    ListingReady { sku_id: sid, market_price: _ } =>
+      list_sku_ready(
+        bearer_token: bearer_token,
+        store_key: store_key,
+        sku_id: sid,
+        price: price,
+        quantity: quantity
+      )
+    ListingBlocked { disposition: _, selection: _ } => false
+  }
+
+  return { plan: plan, listed: listed }
+}
+
+data tcgplayer_secret_manager_credential_note: List<String> = [
+  "the TCGplayer client secret is sourced from GCP Secret Manager via the single",
+  "SecretRef authority (fetch_secret_ref_credential: GCloud WIF access token ->",
+  "SecretManager.AccessVersion -> utf8 payload); routing the store key the same way",
+  "is a residual pending a Secret -> NonEmptyStr grounding for the store_key path field"
+]
+
+func mint_token_from_secret_manager(
+  client_id: String,
+  client_secret_ref: SecretRef
+) -> { access_token: Secret } {
+
+  client_secret = fetch_secret_ref_credential(secret_ref: client_secret_ref)
+
+  token = tcgplayer.Auth.MintBearerToken(
+    client_id: client_id,
+    client_secret: client_secret
+  )
+
+  return { access_token: token.access_token }
 }
