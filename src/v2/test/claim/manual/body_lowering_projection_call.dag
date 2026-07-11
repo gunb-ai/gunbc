@@ -99,14 +99,48 @@ fn body_lowering_projection_lowers_to_transform() -> Bool {
           match body_lower_unwrap_captured(shell: postfix) {
             Present { value: captured } =>
               match body_lower_try_postfix_projection(node: captured) {
-                Present { value: lowered } =>
-                  match lowered.kind {
-                    ComputationNode { behavior: Transform } => true
-                    _ => false
+                Rejected { diagnostics: _ } => false
+                Accepted { value: found, diagnostics: _ } =>
+                  match found {
+                    Present { value: lowered } =>
+                      match lowered.kind {
+                        ComputationNode { behavior: Transform } => true
+                        _ => false
+                      }
+                    Absent => false
+                  }
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+data body_lowering_field_access_source: String = "module fa\n\nfn f(x: Int) -> Int { x.field }\n"
+
+fn body_lowering_field_access_postfix_rejects() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(
+    text: body_lowering_field_access_source,
+    file: ^body_lowering_proj_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match body_lowering_find_postfix_expr(root: artifact.tree) {
+            Absent => false
+            Present { value: postfix } =>
+              match body_lower_unwrap_captured(shell: postfix) {
+                Present { value: captured } =>
+                  match body_lower_try_postfix_projection(node: captured) {
+                    Rejected { diagnostics: _ } => true
+                    Accepted { value: _, diagnostics: _ } => false
                   }
                 Absent => false
               }
-            Absent => false
           }
       }
   }
@@ -144,6 +178,14 @@ data claim_body_lowering_projection_normalize_accepts: TestClaim = EqualsClaim {
   label: "manual/body-lowering-projection: projection module normalizes without refusal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_normalize_accepts_projection_module()),
+  rhs: body_lowering_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_body_lowering_field_access_postfix_rejects: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-projection: bare x.field refuses (general-body-producer-design §3 residue #2)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_bool_node(pass: body_lowering_field_access_postfix_rejects()),
   rhs: body_lowering_bool_node(pass: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

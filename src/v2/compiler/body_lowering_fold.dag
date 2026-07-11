@@ -993,31 +993,75 @@ fn body_lower_postfix_projection_args(repeat_elem: Node) -> List<Node> {
   }
 }
 
-fn body_lower_try_postfix_projection(node: Node) -> Optional<Node> {
+fn body_lower_postfix_projection_has_call_suffix(repeat_elem: Node) -> Bool {
+  match body_lower_postfix_call_suffix_args(
+    call_suffix: body_lower_postfix_projection_call_suffix_capture(repeat_elem: repeat_elem)
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn body_lower_postfix_projection_call_suffix_capture(repeat_elem: Node) -> Node {
+  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => repeat_elem
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: pair.left) {
+        Present { value: id } =>
+          if id == ^dag_token_dot {
+            match sugar_sequence_pair_optional(node: pair.right) {
+              Absent => repeat_elem
+              Present { value: after_dot } =>
+                match sugar_sequence_pair_optional(node: after_dot.right) {
+                  Absent => repeat_elem
+                  Present { value: suffix } => suffix.left
+                }
+            }
+          } else {
+            repeat_elem
+          }
+        Absent => repeat_elem
+      }
+  }
+}
+
+fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
   let stripped = body_lower_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
-    Absent => Absent
+    Absent => outcome_accepted(value: optional_absent())
     Present { value: pair } =>
       match body_lower_operand_ref_optional(node: pair.left) {
-        Absent => Absent
+        Absent => outcome_accepted(value: optional_absent())
         Present { value: receiver } =>
           match find_named_child(root: pair.right, name: ^grammar_repeat_element_node_projection) {
             Accepted { value: repeat_elem, diagnostics: _ } =>
               match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
-                Absent => Absent
+                Absent => outcome_accepted(value: optional_absent())
                 Present { value: method } =>
-                  let args = body_lower_postfix_projection_args(repeat_elem: repeat_elem)
-                  Present {
-                    value: body_lower_transform_call(
-                      operator: body_lower_method_operator_atom(sym: method),
-                      args: list_append(
-                        left: [receiver],
-                        right: args
+                  if body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
+                    let args = body_lower_postfix_projection_args(repeat_elem: repeat_elem)
+                    outcome_accepted(
+                      value: optional_present(
+                        value: body_lower_transform_call(
+                          operator: body_lower_method_operator_atom(sym: method),
+                          args: list_append(
+                            left: [receiver],
+                            right: args
+                          )
+                        )
+                      )
+                    )
+                  } else {
+                    outcome_rejected(
+                      d: body_lower_diagnostic(
+                        reason: ^body_lowering_reason_postfix_field_access_refused,
+                        n: node
                       )
                     )
                   }
               }
-            Rejected { diagnostics: _ } => Absent
+            Rejected { diagnostics: _ } => outcome_accepted(value: optional_absent())
           }
       }
   }
@@ -1031,17 +1075,22 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match body_lower_try_postfix_projection(node: captured) {
-        Present { value: transform } => outcome_accepted(value: transform)
-        Absent =>
-          match body_lower_try_infix_transform(node: captured) {
-            Present { value: transform } => outcome_accepted(value: transform)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: found, diagnostics: d } =>
+          match found {
+            Present { value: transform } =>
+              Accepted { value: transform, diagnostics: d }
             Absent =>
-              match body_lower_try_fold_loop(node: captured) {
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                Accepted { value: fold_result, diagnostics: _ } =>
-                  match fold_result {
-                    Present { value: loop_node } => outcome_accepted(value: loop_node)
-                    Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
+              match body_lower_try_infix_transform(node: captured) {
+                Present { value: transform } => outcome_accepted(value: transform)
+                Absent =>
+                  match body_lower_try_fold_loop(node: captured) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: fold_result, diagnostics: _ } =>
+                      match fold_result {
+                        Present { value: loop_node } => outcome_accepted(value: loop_node)
+                        Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                      }
                   }
               }
           }
@@ -1057,9 +1106,13 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match body_lower_try_postfix_projection(node: captured) {
-        Present { value: transform } => outcome_accepted(value: transform)
-        Absent =>
-          match body_lower_try_infix_transform(node: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: found, diagnostics: d } =>
+          match found {
+            Present { value: transform } =>
+              Accepted { value: transform, diagnostics: d }
+            Absent =>
+              match body_lower_try_infix_transform(node: captured) {
             Present { value: transform } => outcome_accepted(value: transform)
             Absent =>
               match body_lower_try_fold_loop(node: captured) {
