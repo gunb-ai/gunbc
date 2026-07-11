@@ -85,6 +85,20 @@ fn run_bisect_witness_bool(function: &str) -> v1_interpreter::InterpResult<Value
 }
 
 #[test]
+fn debug_bisect_add_resolve_steps() {
+    let steps = [
+        "bisect_parse_module_add_parse_accepts",
+        "bisect_parse_module_add_normalize_accepts",
+        "bisect_parse_module_add_well_formed_after_normalize",
+        "bisect_parse_module_add_resolve_accepts",
+    ];
+    for step in steps {
+        let result = run_bisect_witness_bool(step);
+        eprintln!("{step} => {result:?}");
+    }
+}
+
+#[test]
 fn interpreted_parse_bisect_add_correctness_holds() {
     assert!(
         matches!(
