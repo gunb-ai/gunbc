@@ -176,6 +176,16 @@ jobs:
               [ -z "$_ci_path" ] && continue
               if [[ "$_ci_path" == docs/* ]] || [[ "$_ci_path" == dag/gunbc/plans/* ]]; then
                 :
+              elif [[ "$_ci_path" == .github/workflows/ci.yml ]]; then
+                :
+              elif [[ "$_ci_path" == dag/gunbc/ci_spec.dag ]]; then
+                :
+              elif [[ "$_ci_path" == dag/gunbc/ci_materialization.dag ]]; then
+                :
+              elif [[ "$_ci_path" == dag/gunbc/merge_admission_produce.dag ]]; then
+                :
+              elif [[ "$_ci_path" == src/v2/test/claim/ci_spec_witness_test.dag ]]; then
+                :
               else
                 PLAN_ARTIFACT_ONLY=0
                 break

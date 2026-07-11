@@ -18,6 +18,7 @@ import gunbc.ci_spec {
   ci_repo_root_shell,
   ci_documentation_only_diff_note,
   ci_documentation_only_floor_shortcut_shell_emit_dissolution_trigger,
+  ci_documentation_only_receipt_gate_companion_paths_note,
 }
 import gunbc.merge_admission_produce {
   ci_floor_disposition_marker_path,
@@ -192,12 +193,12 @@ fn witness_documentation_only_shortcut_in_floor_script() -> Bool {
     string_contains(s: script, pattern: "[[ \"$_ci_path\" == dag/gunbc/plans/* ]]") &&
     string_contains(s: script, pattern: "\"$ROOT/dag/tools/floor_effect_gate_witness.dag\"") &&
     string_contains(s: script, pattern: "dag_compile_clean_gate_passes") &&
+    string_contains(s: script, pattern: "[[ \"$_ci_path\" == .github/workflows/ci.yml ]]") &&
+    string_contains(s: script, pattern: "[[ \"$_ci_path\" == dag/gunbc/ci_materialization.dag ]]") &&
+    string_contains(s: script, pattern: ci_documentation_only_receipt_gate_companion_paths_note) &&
     string_contains(s: script, pattern: ci_documentation_only_diff_note) &&
     string_contains(s: script, pattern: ci_documentation_only_floor_shortcut_shell_emit_dissolution_trigger) &&
     !string_contains(s: script, pattern: "CI_FLOOR_EXIT=0") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == .github/workflows/ci.yml ]]") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == dag/gunbc/ci_spec.dag ]]") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == src/v2/test/claim/ci_spec_witness_test.dag ]]") &&
     !string_contains(s: script, pattern: "[[ \"$_ci_path\" == README.md ]]") &&
     !string_contains(s: script, pattern: "[[ \"$_ci_path\" == CLAUDE.md ]]") &&
     !string_contains(s: script, pattern: "[[ \"$_ci_path\" == DESIGN.md ]]") &&
