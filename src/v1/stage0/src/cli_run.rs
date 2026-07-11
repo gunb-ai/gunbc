@@ -14317,10 +14317,8 @@ mod import_closure_equivalence_tests {
         let roots = default_source_roots();
         let index = build_module_index(&roots);
         let facts = build_module_graph_facts_live(&roots);
-        let scratch = std::env::temp_dir().join(format!(
-            "gunbc-out-of-pool-entry-{}",
-            std::process::id()
-        ));
+        let scratch =
+            std::env::temp_dir().join(format!("gunbc-out-of-pool-entry-{}", std::process::id()));
         std::fs::create_dir_all(&scratch).expect("scratch dir");
         let entry_path = scratch.join("out_of_pool_entry.dag");
         let content = "module test.claim.out_of_pool_entry\n\nimport extdeps.filesystem.filesystem_io\n\nfunc out_of_pool_probe() -> Bool {\n  true\n}\n";

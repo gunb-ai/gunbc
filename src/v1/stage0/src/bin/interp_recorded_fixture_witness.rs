@@ -70,16 +70,25 @@ fn claim_batch_exe() -> Result<PathBuf, String> {
     }
 }
 
+/// Per-check scratch dir (fixture store + any rewritten witness entry), homed
+/// INSIDE the workspace under `target/`: the module universe is workspace-anchored
+/// (`build_module_path_index` refuses paths outside `workspace_root()`), and
+/// `resolve_transitively` refuses entries the facts pool does not declare — so a
+/// rewritten entry must live somewhere a `--source-root` can cover. `target/` is
+/// realization output: sibling roots never descend into it (`is_cargo_target_output_dir`),
+/// so the unique dir is visible ONLY to the invocation that passes it as a root.
 fn fixture_store_dir(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "gunbc-recorded-fixture-{}-{}-{}",
-        name,
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos()
-    ))
+    workspace_root()
+        .join("target/interp-recorded-scratch")
+        .join(format!(
+            "{}-{}-{}",
+            name,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ))
 }
 
 fn unique_fs_witness_entry(ws: &Path, scratch: &Path) -> Result<PathBuf, String> {
@@ -88,6 +97,14 @@ fn unique_fs_witness_entry(ws: &Path, scratch: &Path) -> Result<PathBuf, String>
     let live = scratch.join("fs_witness");
     let absent = scratch.join("fs_witness_absent_should_not_exist_42");
     let rewritten = src
+        // The scratch copy is a SECOND declaring file for the same content; the
+        // in-tree template keeps its name (one module, one authority — the
+        // module-path collision wall refuses a same-name duplicate), so the copy
+        // declares itself as the scratch variant.
+        .replace(
+            "module test.claim.filesystem_write_witness\n",
+            "module test.claim.filesystem_write_witness_scratch\n",
+        )
         .replace(
             "/tmp/gunbc_fs_witness_absent_should_not_exist_42",
             absent.to_str().ok_or("utf8 scratch path")?,
@@ -107,10 +124,15 @@ fn closure_scale_witness_entry(ws: &Path, scratch: &Path) -> Result<PathBuf, Str
         fs::read_to_string(ws.join("dag/test/claim/filesystem_write_closure_scale_witness.dag"))
             .map_err(|e| format!("read closure-scale witness dag: {e}"))?;
     let live = scratch.join("fs_closure_scale_witness.txt");
-    let rewritten = src.replace(
-        "/tmp/gunbc_fs_closure_scale_witness.txt",
-        live.to_str().ok_or("utf8 scratch path")?,
-    );
+    let rewritten = src
+        .replace(
+            "module test.claim.filesystem_write_closure_scale_witness\n",
+            "module test.claim.filesystem_write_closure_scale_witness_scratch\n",
+        )
+        .replace(
+            "/tmp/gunbc_fs_closure_scale_witness.txt",
+            live.to_str().ok_or("utf8 scratch path")?,
+        );
     let entry = scratch.join("filesystem_write_closure_scale_witness.dag");
     fs::write(&entry, rewritten)
         .map_err(|e| format!("write rewritten closure-scale witness dag: {e}"))?;
@@ -224,6 +246,8 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() -> Result<(), St
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        store_dir.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
@@ -248,6 +272,8 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() -> Result<(), St
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        store_dir.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
@@ -276,6 +302,8 @@ fn filesystem_write_closure_scale_record_then_hermetic_replay_holds() -> Result<
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        store_dir.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
@@ -296,6 +324,8 @@ fn filesystem_write_closure_scale_record_then_hermetic_replay_holds() -> Result<
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        store_dir.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
@@ -324,6 +354,8 @@ fn hermetic_fixture_staleness_fails_closed() -> Result<(), String> {
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        store_dir.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
@@ -353,6 +385,8 @@ fn hermetic_fixture_staleness_fails_closed() -> Result<(), String> {
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        store_dir.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
@@ -540,6 +574,8 @@ fn hermetic_replay_rejects_corrupted_fixture_response() -> Result<(), String> {
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        store_dir.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
@@ -575,6 +611,8 @@ fn hermetic_replay_rejects_corrupted_fixture_response() -> Result<(), String> {
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        store_dir.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
@@ -609,6 +647,8 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() -> Result<(), Strin
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        store_dir.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
@@ -626,6 +666,8 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() -> Result<(), Strin
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        store_dir.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
@@ -653,6 +695,8 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() -> Result<(), String
         ws.to_str().unwrap(),
         "--source-root",
         ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        scratch.to_str().unwrap(),
         "--entry",
         entry.to_str().unwrap(),
         "--function",
