@@ -458,6 +458,63 @@ fn compiler_frontier_execution_measured_attribution_holds() -> Bool {
   }
 }
 
+fn compiler_frontier_tractability_rank_for_path(target: String) -> Int {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: -1,
+    cons: fn(rank, row) {
+      if row.module_path == target { row.tractability_rank } else { rank }
+    }
+  )
+}
+
+type CompilerFrontierSweepRankWalkState {
+  ok: Bool
+  prev_rank: Int
+}
+
+data compiler_frontier_sweep_rank_walk_initial: CompilerFrontierSweepRankWalkState = CompilerFrontierSweepRankWalkState {
+  ok: true,
+  prev_rank: -1
+}
+
+fn compiler_frontier_sweep_rank_walk_step(
+  state: CompilerFrontierSweepRankWalkState,
+  path: String
+) -> CompilerFrontierSweepRankWalkState {
+  let rank = compiler_frontier_tractability_rank_for_path(target: path)
+  CompilerFrontierSweepRankWalkState {
+    ok: state.ok && ((state.prev_rank < 0) || (rank >= state.prev_rank)),
+    prev_rank: rank
+  }
+}
+
+fn compiler_frontier_sweep_order_paths_in_roster_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_sweep_order,
+    empty: true,
+    cons: fn(ok, path) {
+      ok && (count_rows_with_module_path(xs: compiler_frontier_roster, target: path) == 1)
+    }
+  )
+}
+
+fn compiler_frontier_sweep_order_rank_nondecreasing_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_sweep_order,
+    empty: compiler_frontier_sweep_rank_walk_initial,
+    cons: fn(state, path) {
+      compiler_frontier_sweep_rank_walk_step(state: state, path: path)
+    }
+  ).ok
+}
+
+fn compiler_frontier_sweep_order_matches_tractability_rank_holds() -> Bool {
+  compiler_frontier_sweep_order_complete_holds()
+    && compiler_frontier_sweep_order_paths_in_roster_holds()
+    && compiler_frontier_sweep_order_rank_nondecreasing_holds()
+}
+
 fn compiler_frontier_sweep_order_complete_holds() -> Bool {
   length(xs: compiler_frontier_sweep_order) == compiler_frontier_module_count_expected
 }
@@ -468,6 +525,7 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_self_emitted_baseline_holds()
     && compiler_frontier_execution_measured_attribution_holds()
     && compiler_frontier_sweep_order_complete_holds()
+    && compiler_frontier_sweep_order_matches_tractability_rank_holds()
     && compiler_frontier_roster_all_classified_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
 }
