@@ -1113,14 +1113,15 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
               Accepted { value: transform, diagnostics: d }
             Absent =>
               match body_lower_try_infix_transform(node: captured) {
-            Present { value: transform } => outcome_accepted(value: transform)
-            Absent =>
-              match body_lower_try_fold_loop(node: captured) {
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                Accepted { value: fold_result, diagnostics: _ } =>
-                  match fold_result {
-                    Present { value: loop_node } => outcome_accepted(value: loop_node)
-                    Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                Present { value: transform } => outcome_accepted(value: transform)
+                Absent =>
+                  match body_lower_try_fold_loop(node: captured) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: fold_result, diagnostics: _ } =>
+                      match fold_result {
+                        Present { value: loop_node } => outcome_accepted(value: loop_node)
+                        Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                      }
                   }
               }
           }
