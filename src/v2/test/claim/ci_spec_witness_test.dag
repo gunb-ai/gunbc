@@ -6,7 +6,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Behavior, Symbol }
 import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags, witness_layer_source_flags_rooted }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
 import gunbc.ci_spec {
   CiSpec, DiffPolicy, DiffMergeBase, Gate,
   gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates,
@@ -83,7 +83,8 @@ fn witness_gate_roster_matches_coproduct_arms() -> Bool {
 
 fn witness_roots_fold_into_scheduler() -> Bool {
   let script = scheduler_invoke(spec: gunbc_ci_spec)
-  string_contains(s: script, pattern: witness_layer_source_flags_rooted(roots: witness_layer_roots))
+  string_contains(s: script, pattern: " --source-root \"$ROOT/src/v2\"") &&
+    string_contains(s: script, pattern: " --source-root \"$ROOT/dag\"")
 }
 
 fn witness_layer_authority_drives_source_flags() -> Bool {
@@ -96,7 +97,7 @@ fn witness_layer_authority_drives_source_flags() -> Bool {
 fn witness_scan_subtree_not_in_scheduler_argv() -> Bool {
   let script = scheduler_invoke(spec: gunbc_ci_spec)
   !string_contains(s: script, pattern: " --scan-dir") &&
-    string_contains(s: script, pattern: witness_layer_source_flags_rooted(roots: witness_layer_roots))
+    string_contains(s: script, pattern: " --source-root \"$ROOT/src/v2\"")
 }
 
 fn witness_diff_policy_drives_fetch() -> Bool {
