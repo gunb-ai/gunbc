@@ -48,6 +48,12 @@ fn witness_layer_source_flags(roots: List<String>) -> String {
   fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --source-root ", r)))
 }
 
+fn witness_layer_source_flags_rooted(roots: List<String>) -> String {
+  fold(roots, init: "", f: fn(acc, r) {
+    concat(acc, concat(" --source-root \"$ROOT/", concat(r, "\"")))
+  })
+}
+
 fn witness_layer_scan_flags() -> String {
   fold(witness_discovery_scan_dirs, init: "", f: (acc, d) => concat(acc, concat(" --scan-dir ", d)))
 }
