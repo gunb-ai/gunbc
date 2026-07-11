@@ -6,6 +6,8 @@ import v2.compiler.self_host.frontier_probe {
   NameResolutionGap,
   RealizationGap,
   SelfEmitReady,
+  UnclassifiedProbeReason,
+  frontier_classify_rejection_reason,
   frontier_probe_emit_from_ingest
 }
 import v2.test.workflow.host_source_root_ingest_manifest {
@@ -48,6 +50,20 @@ func frontier_module_emit_probe_emit_surface_holds() -> Bool {
 func frontier_module_emit_probe_realization_holds() -> Bool {
   match frontier_module_emit_probe_receipt().blocker_class {
     RealizationGap => true
+    _ => false
+  }
+}
+
+func frontier_module_emit_probe_unclassified_holds() -> Bool {
+  match frontier_module_emit_probe_receipt().blocker_class {
+    UnclassifiedProbeReason { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn frontier_classify_unlisted_reason_refuses_holds() -> Bool {
+  match frontier_classify_rejection_reason(reason: ^frontier_probe_unlisted_reason_red_control) {
+    UnclassifiedProbeReason { reason: reason } => reason == ^frontier_probe_unlisted_reason_red_control
     _ => false
   }
 }

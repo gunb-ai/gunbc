@@ -8,7 +8,10 @@ import v2.compiler.self_host.frontier_probe {
   NameResolutionGap,
   ProbeStageAssemble,
   ProbeStageEmit,
+  RealizationGap,
   SelfEmitReady,
+  UnclassifiedProbeReason,
+  frontier_blocker_class_is_classified,
   frontier_probe_blocker_rank
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -22,6 +25,8 @@ import v2.std.text { String }
 type CompilerFrontierCensusAttribution
   = KnowledgeAttributed { dissolution_trigger: Symbol }
   | ExecutionMeasured { probe_receipt: Symbol, wave_label: Symbol }
+
+data compiler_frontier_per_module_ingest_manifest_scaffold_dissolution_trigger: String = "🟡 dissolve-on: per-module frontier emit probe survey — each roster row's measured_probe must be refreshed by executing frontier_probe_emit_from_ingest against that module's import-closure ingest manifest (discover_source_root_ingest today). DISSOLVES WHEN a .dag-native survey workflow enumerates compiler_frontier_roster and binds each row's measured_probe from a live probe receipt in one authority, retiring hand-refreshed census rows."
 
 data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = ExecutionMeasured {
   probe_receipt: ^compiler_frontier_emit_probe_survey_holds,
@@ -49,12 +54,14 @@ fn measured_reason_for_blocker(blocker: FrontierBlockerClass) -> Symbol {
     NameResolutionGap => ^measured_probe_name_resolution_gap
     EmitSurfaceGap => ^measured_probe_emit_surface_gap
     RealizationGap => ^measured_probe_realization_gap
+    UnclassifiedProbeReason { reason: reason } => reason
   }
 }
 
 fn measured_stage_for_blocker(blocker: FrontierBlockerClass) -> FrontierProbeStage {
   match blocker {
     NameResolutionGap => ProbeStageAssemble
+    UnclassifiedProbeReason { reason: _ } => ProbeStageAssemble
     SelfEmitReady => ProbeStageEmit
     EmitSurfaceGap => ProbeStageEmit
     RealizationGap => ProbeStageEmit
@@ -417,9 +424,36 @@ fn compiler_frontier_self_emitted_baseline_holds() -> Bool {
   compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
 }
 
+fn compiler_frontier_roster_all_classified_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && frontier_blocker_class_is_classified(blocker: row.measured_probe.blocker_class)
+    }
+  )
+}
+
+fn compiler_frontier_roster_probe_paths_match_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && (row.module_path == row.measured_probe.module_path)
+    }
+  )
+}
+
 fn compiler_frontier_execution_measured_attribution_holds() -> Bool {
   match compiler_frontier_census_attribution {
-    ExecutionMeasured { probe_receipt: _, wave_label: _ } => true
+    ExecutionMeasured {
+      probe_receipt: probe_receipt,
+      wave_label: wave_label
+    } =>
+      probe_receipt == ^compiler_frontier_emit_probe_survey_holds
+        && wave_label == ^wave2_post_resolver_6451_body_stage_a_6443
+        && compiler_frontier_roster_all_classified_holds()
+        && compiler_frontier_roster_probe_paths_match_holds()
     KnowledgeAttributed { dissolution_trigger: _ } => false
   }
 }
@@ -434,6 +468,8 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_self_emitted_baseline_holds()
     && compiler_frontier_execution_measured_attribution_holds()
     && compiler_frontier_sweep_order_complete_holds()
+    && compiler_frontier_roster_all_classified_holds()
+    && compiler_frontier_roster_probe_paths_match_holds()
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
