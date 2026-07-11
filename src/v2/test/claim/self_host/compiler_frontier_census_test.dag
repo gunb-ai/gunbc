@@ -3,6 +3,7 @@ module v2.test.self_host.compiler_frontier_census
 import v2.compiler.self_host.frontier {
   compiler_frontier_census_holds,
   compiler_frontier_execution_measured_attribution_holds,
+  compiler_frontier_gap_clustering_knowledge_attributed_holds,
   compiler_frontier_known_module_path_exactly_once_holds,
   compiler_frontier_module_count_expected,
   compiler_frontier_phantom_module_path_absent_holds,
@@ -41,6 +42,7 @@ test fn compiler_frontier_initial_census_all_seed_retained() -> Bool {
 
 test fn compiler_frontier_execution_measured_attribution_holds() -> Bool {
   compiler_frontier_execution_measured_attribution_holds()
+    && compiler_frontier_gap_clustering_knowledge_attributed_holds()
     && compiler_frontier_sweep_order_complete_holds()
     && compiler_frontier_roster_all_classified_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
