@@ -1036,6 +1036,23 @@ fn peak_rss_bytes() -> Option<u64> {
 /// read at the SAME level the budget binds). `None` when `/proc/self/cgroup` is unreadable
 /// or no ancestor sets a numeric cap.
 fn binding_cap_cgroup_dir() -> Option<std::path::PathBuf> {
+    tightest_cgroup_dir_for("memory.max")
+}
+
+/// The cgroup directory whose `memory.high` is the TIGHTEST along the same walk — the
+/// reclaim-THROTTLE line, distinct from `memory.max` (the kill line): past it malloc keeps
+/// succeeding while the kernel forces direct reclaim + swap-out, so a floor that crosses it
+/// wedges to swap speed with zero log evidence instead of dying (the 2026-07-11 incident:
+/// four floors on three hosts pinned at `memory.peak == memory.high + <1MiB` through
+/// 30-49min silent tails). `None` when no ancestor sets a numeric high (the whole-machine
+/// regimes: ubicloud / hosted / pre-carve fleet).
+fn binding_high_cgroup_dir() -> Option<std::path::PathBuf> {
+    tightest_cgroup_dir_for("memory.high")
+}
+
+/// Leaf→root walk shared by [`binding_cap_cgroup_dir`] / [`binding_high_cgroup_dir`]: the
+/// directory carrying the smallest numeric value of `limit_file` (non-numeric `max` = unset).
+fn tightest_cgroup_dir_for(limit_file: &str) -> Option<std::path::PathBuf> {
     let self_cg = fs::read_to_string("/proc/self/cgroup").ok()?;
     let rel = self_cg
         .lines()
@@ -1045,7 +1062,7 @@ fn binding_cap_cgroup_dir() -> Option<std::path::PathBuf> {
     let mut dir = root.join(&rel);
     let mut best: Option<(u64, std::path::PathBuf)> = None;
     loop {
-        if let Ok(s) = fs::read_to_string(dir.join("memory.max")) {
+        if let Ok(s) = fs::read_to_string(dir.join(limit_file)) {
             let s = s.trim();
             if s != "max" {
                 if let Ok(v) = s.parse::<u64>() {
@@ -1076,6 +1093,108 @@ fn leaf_cgroup_dir() -> Option<std::path::PathBuf> {
         .find_map(|l| l.strip_prefix("0::"))
         .map(|p| p.trim().trim_start_matches('/').to_string())?;
     Some(Path::new("/sys/fs/cgroup").join(rel))
+}
+
+/// `memory.events`-style content: whitespace-separated `key value` lines. Pure over the file
+/// content so the parse carries its own unit tests.
+fn memory_events_field(content: &str, field: &str) -> Option<u64> {
+    content.lines().find_map(|l| {
+        let mut it = l.split_whitespace();
+        match (it.next(), it.next()) {
+            (Some(k), Some(v)) if k == field => v.parse().ok(),
+            _ => None,
+        }
+    })
+}
+
+/// PSI `memory.pressure` content: extract `avg10` from the `some` line
+/// (`some avg10=1.23 avg60=... total=...`).
+fn memory_pressure_some_avg10(content: &str) -> Option<String> {
+    let line = content
+        .lines()
+        .find(|l| l.split_whitespace().next() == Some("some"))?;
+    line.split_whitespace()
+        .find_map(|t| t.strip_prefix("avg10="))
+        .map(|v| v.to_string())
+}
+
+fn read_cgroup_u64(dir: &Path, file: &str) -> Option<u64> {
+    fs::read_to_string(dir.join(file))
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+}
+
+fn read_cgroup_raw(dir: &Path, file: &str) -> Option<String> {
+    fs::read_to_string(dir.join(file))
+        .ok()
+        .map(|s| s.trim().to_string())
+}
+
+fn heartbeat_field(v: Option<u64>) -> String {
+    v.map(|b| b.to_string())
+        .unwrap_or_else(|| "unreadable".into())
+}
+
+/// Floor memory heartbeat — FIDELITY ONLY (reads state, changes no behavior; §5 stopped-line
+/// analysis needs the line's memory story to exist in the log). The 2026-07-11 wedge was
+/// invisible precisely here: `memory.high` throttles instead of killing, so the only log
+/// evidence was a post-hoc `memory.peak` pinned at `high + <1MiB` after a 30-49min silent
+/// tail. One synchronous regime-disclosure line at floor start (which limits bind, where),
+/// then one line per minute from a detached thread (dies with the process): `memory.current`,
+/// `memory.swap.current`, `memory.events` high-throttle count, PSI `some avg10`. The wedge
+/// signature becomes: current pinned at high, swap climbing, high-events exploding, PSI avg10
+/// double digits — attributable to a 60s window instead of a forensic reconstruction.
+/// Sampling denominator = the binding-high dir when set (the slot slice that throttles), else
+/// the binding-cap dir, else the leaf (whole-machine regimes); absence of all three refuses
+/// loudly and the floor proceeds unmonitored — never a fabricated zero.
+fn spawn_floor_memory_heartbeat() {
+    let high_dir = binding_high_cgroup_dir();
+    let cap_dir = binding_cap_cgroup_dir();
+    let leaf = leaf_cgroup_dir();
+    let describe = |label: &str, d: &Option<std::path::PathBuf>, file: &str| match d {
+        Some(dir) => format!(
+            "{label}={} ({})",
+            read_cgroup_raw(dir, file).unwrap_or_else(|| "unreadable".into()),
+            dir.display()
+        ),
+        None => format!("{label}=none"),
+    };
+    eprintln!(
+        "[floor-memory] regime: {}; {}",
+        describe("memory.high", &high_dir, "memory.high"),
+        describe("memory.max", &cap_dir, "memory.max"),
+    );
+    let Some(dir) = high_dir.or(cap_dir).or(leaf) else {
+        eprintln!(
+            "[floor-memory] heartbeat unavailable: no readable cgroup (refusing to fabricate; floor proceeds unmonitored)"
+        );
+        return;
+    };
+    let spawned = std::thread::Builder::new()
+        .name("floor-memory-heartbeat".into())
+        .spawn(move || {
+            let mut minute: u64 = 0;
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+                minute += 1;
+                let psi = read_cgroup_raw(&dir, "memory.pressure")
+                    .and_then(|c| memory_pressure_some_avg10(&c))
+                    .unwrap_or_else(|| "unreadable".into());
+                let high_events = read_cgroup_raw(&dir, "memory.events")
+                    .and_then(|c| memory_events_field(&c, "high"));
+                eprintln!(
+                    "[floor-memory] t={minute}m current={} swap={} high_events={} psi_some_avg10={psi}",
+                    heartbeat_field(read_cgroup_u64(&dir, "memory.current")),
+                    heartbeat_field(read_cgroup_u64(&dir, "memory.swap.current")),
+                    heartbeat_field(high_events),
+                );
+            }
+        });
+    if let Err(e) = spawned {
+        eprintln!(
+            "[floor-memory] heartbeat thread failed to spawn: {e} (floor proceeds unmonitored)"
+        );
+    }
 }
 
 /// Total physical RAM in bytes (`/proc/meminfo` `MemTotal`, kB→bytes) — the EFFECTIVE memory budget
@@ -1978,6 +2097,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             .unwrap_or("<serial>")
     );
     phase_mark("spawn width evaluated; starting batch walk");
+    spawn_floor_memory_heartbeat();
 
     // Plans whose schedule carries the compile-clean gate node: the gate only CONSUMES the
     // in-run whole-tree compile receipt, so these plans must arm the lazy install.
@@ -2436,5 +2556,30 @@ mod tests {
             second[0].resolve_nanos, 0,
             "second call must cache-hit — resolve_entry_graph must NOT fire again"
         );
+    }
+
+    #[test]
+    fn memory_events_field_reads_the_named_counter() {
+        let content = "low 0\nhigh 4821\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n";
+        assert_eq!(memory_events_field(content, "high"), Some(4821));
+        assert_eq!(memory_events_field(content, "oom_kill"), Some(0));
+        assert_eq!(memory_events_field(content, "absent_key"), None);
+    }
+
+    #[test]
+    fn memory_events_field_does_not_prefix_match_keys() {
+        // `oom` must not read the `oom_kill` line (exact key, not prefix).
+        let content = "oom_kill 7\n";
+        assert_eq!(memory_events_field(content, "oom"), None);
+    }
+
+    #[test]
+    fn memory_pressure_some_avg10_extracts_from_psi_shape() {
+        let content = "some avg10=12.48 avg60=9.31 avg300=4.02 total=812345678\nfull avg10=8.11 avg60=6.02 avg300=2.44 total=51234567\n";
+        assert_eq!(
+            memory_pressure_some_avg10(content),
+            Some("12.48".to_string())
+        );
+        assert_eq!(memory_pressure_some_avg10("garbage\n"), None);
     }
 }
