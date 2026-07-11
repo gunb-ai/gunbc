@@ -2422,11 +2422,7 @@ fn module_schedule_batches(
             resolved
                 .resolved_imports
                 .iter()
-                .filter_map(move |imp| {
-                    position
-                        .get(imp.module_path.as_str())
-                        .map(|&src| (src, i))
-                })
+                .filter_map(move |imp| position.get(imp.module_path.as_str()).map(|&src| (src, i)))
                 .collect::<Vec<_>>()
         })
         .collect();
