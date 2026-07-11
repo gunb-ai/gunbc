@@ -17,6 +17,7 @@ import v2.std.verification {
   test_claim_evaluation_touches_rerun_frontier
 }
 import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import v2.workflow.affected_set_floor_runner {
   DiffObservationFailClosed,
   DiffPathsProduced,
@@ -33,8 +34,8 @@ import v2.workflow.affected_set_floor_runner {
   FrontierQueryRefusal,
   floor_any_claim_touches_rerun_frontier,
   floor_claim_touches_rerun_frontier,
-  floor_host_scaffold_would_skip,
-  floor_host_scaffold_precompute_would_skip,
+  floor_row_would_skip,
+  floor_row_precompute_would_skip,
   floor_kernel_would_skip,
   floor_kernel_precompute_would_skip,
   floor_precompute_would_skip,
@@ -103,13 +104,15 @@ data floor_test_claim_conj_wrapped: TestClaim = EqualsClaim {
 data floor_test_row_untouched: FloorWitnessRow = FloorWitnessRow {
   label: "floor_runner: untouched witness",
   entry: "src/v2/workflow/affected_set_floor_runner_test.dag",
-  function: "floor_test_untouched_witness_holds"
+  function: "floor_test_untouched_witness_holds",
+  reads_live_tree: SubstrateInputsOnly
 }
 
 data floor_test_row_touched: FloorWitnessRow = FloorWitnessRow {
   label: "floor_runner: touched witness",
   entry: "src/v2/workflow/affected_set_floor_runner_test.dag",
-  function: "floor_test_touched_witness_holds"
+  function: "floor_test_touched_witness_holds",
+  reads_live_tree: ReadsLiveTree
 }
 
 data floor_test_diff_nonempty: FloorDiffObservation = DiffPathsProduced {
@@ -262,15 +265,17 @@ test fn floor_test_inner_frontier_discriminates_holds() -> Bool {
     )
 }
 
-test fn floor_test_host_scaffold_never_skips_when_kernel_would_holds() -> Bool {
-  floor_kernel_would_skip(
+test fn floor_test_live_row_never_skips_when_kernel_would_holds() -> Bool {
+  floor_row_would_skip(
+    reads_live_tree: SubstrateInputsOnly,
     changed_paths: ["src/v2/lens/affected_set.dag"],
     frontier_nodes: [floor_test_touched_node],
     touches_frontier: false,
     function_edited: false,
     entry_file_touched: false
   )
-    && !floor_host_scaffold_would_skip(
+    && !floor_row_would_skip(
+      reads_live_tree: ReadsLiveTree,
       changed_paths: ["src/v2/lens/affected_set.dag"],
       frontier_nodes: [floor_test_touched_node],
       touches_frontier: false,
@@ -279,15 +284,17 @@ test fn floor_test_host_scaffold_never_skips_when_kernel_would_holds() -> Bool {
     )
 }
 
-test fn floor_test_host_scaffold_runs_when_kernel_runs_holds() -> Bool {
-  !floor_kernel_would_skip(
+test fn floor_test_live_row_runs_when_kernel_runs_holds() -> Bool {
+  !floor_row_would_skip(
+    reads_live_tree: SubstrateInputsOnly,
     changed_paths: ["src/v2/lens/affected_set.dag"],
     frontier_nodes: [floor_test_touched_node],
     touches_frontier: true,
     function_edited: false,
     entry_file_touched: false
   )
-    && !floor_host_scaffold_would_skip(
+    && !floor_row_would_skip(
+      reads_live_tree: ReadsLiveTree,
       changed_paths: ["src/v2/lens/affected_set.dag"],
       frontier_nodes: [floor_test_touched_node],
       touches_frontier: true,
@@ -329,20 +336,23 @@ test fn floor_test_precompute_skip_holds() -> Bool {
     )
 }
 
-test fn floor_test_precompute_host_scaffold_never_skips_holds() -> Bool {
-  floor_kernel_precompute_would_skip(
+test fn floor_test_precompute_live_corpus_never_skips_holds() -> Bool {
+  floor_row_precompute_would_skip(
+    live_row_count: 0,
     changed_paths: ["src/v2/lens/affected_set.dag"],
     frontier_node_count: 0,
     edited_test_fn_count: 0,
     touched_entry_file_count: 0
   )
-    && !floor_host_scaffold_precompute_would_skip(
+    && !floor_row_precompute_would_skip(
+      live_row_count: 1,
       changed_paths: ["src/v2/lens/affected_set.dag"],
       frontier_node_count: 0,
       edited_test_fn_count: 0,
       touched_entry_file_count: 0
     )
-    && !floor_host_scaffold_precompute_would_skip(
+    && !floor_row_precompute_would_skip(
+      live_row_count: 1,
       changed_paths: ["src/v2/lens/affected_set.dag"],
       frontier_node_count: 0,
       edited_test_fn_count: 0,
@@ -457,10 +467,10 @@ test fn floor_runner_node_frontier_policy_holds() -> Bool {
     && floor_test_frontier_fail_closed_refuses_holds()
     && floor_test_claim_touch_discriminates_holds()
     && floor_test_inner_frontier_discriminates_holds()
-    && floor_test_host_scaffold_never_skips_when_kernel_would_holds()
-    && floor_test_host_scaffold_runs_when_kernel_runs_holds()
+    && floor_test_live_row_never_skips_when_kernel_would_holds()
+    && floor_test_live_row_runs_when_kernel_runs_holds()
     && floor_test_precompute_skip_holds()
-    && floor_test_precompute_host_scaffold_never_skips_holds()
+    && floor_test_precompute_live_corpus_never_skips_holds()
     && floor_test_eval_nodes_from_claims_holds()
     && floor_test_any_claim_touch_holds()
     && floor_test_diff_policy_matches_ci_spec_holds()
