@@ -161,6 +161,8 @@ fn git_fetch_script_for_gate() -> String {
 
 data merge_admission_floor_disposition_documentation_only_skipped: String = "documentation_only_skipped"
 
+data ci_floor_disposition_marker_path: String = "target/ci-floor-disposition.txt"
+
 data merge_admission_stamp_documentation_only_skip_policy: String = "CI_FLOOR_DISPOSITION=documentation_only_skipped stamps merge-admission conclusion Skipped (not Success) — floor-not-run ≠ floor-green per §5; distinct from CI_FLOOR_EXIT=0 laundering"
 
 fn floor_exit_to_check_conclusion(exit_code: Int) -> CheckConclusion {
