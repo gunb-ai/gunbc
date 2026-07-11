@@ -1,0 +1,29 @@
+module v2.test.self_host.compiler_frontier_emit_probe
+
+import v2.compiler.self_host.frontier_probe {
+  FrontierProbeReceipt,
+  SelfEmitReady,
+  frontier_probe_emit_from_ingest
+}
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_compiler_closure_admission,
+  host_source_root_ingest
+}
+import v2.std.logic { Bool }
+
+data frontier_probe_target_module_path: String = "src/v2/compiler/PROBE_ENTRY.dag"
+
+fn frontier_module_emit_probe_receipt() -> FrontierProbeReceipt {
+  frontier_probe_emit_from_ingest(
+    module_path: frontier_probe_target_module_path,
+    ingest: host_source_root_ingest,
+    admission: host_compiler_closure_admission
+  )
+}
+
+func frontier_module_emit_probe_accepts_holds() -> Bool {
+  match frontier_module_emit_probe_receipt().blocker_class {
+    SelfEmitReady => true
+    _ => false
+  }
+}
