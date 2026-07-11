@@ -10045,34 +10045,6 @@ pub fn import_resolution_facts(
     out
 }
 
-/// Enumerate workspace-relative `.dag` file paths under `importer_roots` (no content scan).
-pub fn dag_file_paths_under_roots(
-    importer_roots: &[String],
-    exclude_substrings: &[String],
-) -> Vec<String> {
-    let abs_importer_roots = pool_roots_abs(importer_roots);
-    let mut out = Vec::new();
-    for root in &abs_importer_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
-        dag_files.sort();
-        for file in dag_files {
-            let rel = rel_path_for_layer_import(&file);
-            if is_excluded_import_path(&rel, exclude_substrings) {
-                continue;
-            }
-            out.push(rel);
-        }
-    }
-    out.sort();
-    out.dedup();
-    out
-}
-
 pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
     #[cfg(test)]
     MODULE_DECLARATION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

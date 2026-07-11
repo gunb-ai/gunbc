@@ -7096,22 +7096,6 @@ fn eval_builtin_inner(
             Ok(Some(list_value(items)))
         }
 
-        "dag_file_paths_under_roots" => {
-            let importer_roots =
-                expect_str_list(positional.first().copied(), "dag_file_paths_under_roots")?;
-            let exclude_substrings =
-                expect_str_list(positional.get(1).copied(), "dag_file_paths_under_roots")?;
-            let paths = crate::cli_run::dag_file_paths_under_roots(
-                &importer_roots,
-                &exclude_substrings,
-            );
-            let mut items: Vec<Value> = Vec::new();
-            for path in paths {
-                items.push(Value::Str(path));
-            }
-            Ok(Some(list_value(items)))
-        }
-
         "concept_decl_facts" => {
             let pool_roots = expect_str_list(positional.first().copied(), "concept_decl_facts")?;
             Ok(Some(crate::coproduct_reflection::eval_concept_decl_facts(

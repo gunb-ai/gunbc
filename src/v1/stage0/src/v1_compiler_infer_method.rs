@@ -401,11 +401,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "dag_file_paths_under_roots".to_string(),
-            list_of_type_variable("string".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
             "module_declaration_facts".to_string(),
             list_of_type_variable("module_declaration_fact_elem".to_string()),
         );
