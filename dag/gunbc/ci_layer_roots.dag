@@ -44,14 +44,23 @@ fn whole_tree_resolve_exclusion_substrings() -> List<String> {
   concat(witness_exclusion_substrings, whole_tree_strict_resolve_exclusion_substrings)
 }
 
+fn witness_layer_source_flag_for_root(root: String, shell_path_prefix: String) -> String {
+  match shell_path_prefix {
+    "" => concat(" --source-root ", root)
+    p => concat(" --source-root ", concat(p, concat(root, "\"")))
+  }
+}
+
+fn witness_layer_source_flags_with_shell_path_prefix(roots: List<String>, shell_path_prefix: String) -> String {
+  fold(roots, init: "", f: (acc, r) => concat(acc, witness_layer_source_flag_for_root(root: r, shell_path_prefix: shell_path_prefix)))
+}
+
 fn witness_layer_source_flags(roots: List<String>) -> String {
-  fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --source-root ", r)))
+  witness_layer_source_flags_with_shell_path_prefix(roots, shell_path_prefix: "")
 }
 
 fn witness_layer_source_flags_rooted(roots: List<String>) -> String {
-  fold(roots, init: "", f: fn(acc, r) {
-    concat(acc, concat(" --source-root \"$ROOT/", concat(r, "\"")))
-  })
+  witness_layer_source_flags_with_shell_path_prefix(roots, shell_path_prefix: "\"$ROOT/")
 }
 
 fn witness_layer_scan_flags() -> String {
