@@ -145,7 +145,92 @@ fn ci_merge_admission_gate_script() -> String {
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(git_fetch_script_for_gate(), "\n")
     ),
-    merge_admission_gate_invoke()
+    concat(
+      ci_documentation_only_gate_skip_prefix(
+        gate_name: "merge-admission gate",
+        skip_reason: "floor not run; receipt stamped via docs-only shell scaffold"
+      ),
+      merge_admission_gate_invoke()
+    )
+  )
+}
+
+data ci_documentation_only_merge_admission_stamp_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_documentation_only_merge_admission_stamp_script — concat-built bash receipt wire for docs-only floor skip (interim until gunbc run resolves v1 merge_admission_stamp import closure from CI floor context, or bash-emit realizes stamp through orchestration emit); DISSOLVES WHEN merge_admission_stamp runs green from the docs-only shortcut without this shell scaffold"
+
+fn ci_documentation_only_gate_skip_prefix(gate_name: String, skip_reason: String) -> String {
+  concat(
+    concat(
+      concat("if test -f ", ci_floor_disposition_marker_path),
+      concat("; then _disp=$(cat ", ci_floor_disposition_marker_path)
+    ),
+    concat(
+      concat(")\nif test \"$_disp\" = \"", merge_admission_floor_disposition_documentation_only_skipped),
+      concat(
+        "\"; then echo \"",
+        concat(
+          gate_name,
+          concat(": skipped — CI_FLOOR_DISPOSITION=$_disp (", concat(skip_reason, ")\"; exit 0; fi; fi\n"))
+        )
+      )
+    )
+  )
+}
+
+fn ci_documentation_only_merge_admission_stamp_script() -> String {
+  concat(
+    concat(
+      concat("# ", concat(merge_admission_stamp_documentation_only_skip_policy, "\n")),
+      concat("# ", concat(ci_documentation_only_merge_admission_stamp_shell_emit_dissolution_trigger, "\n"))
+    ),
+    concat(
+      concat(
+        concat("_ma_base=$(git show -s --format=%T ", merge_admission_merge_base_ref),
+        ")\n"
+      ),
+      concat(
+        "if [ -z \"$_ma_base\" ]; then echo \"merge_admission_stamp: merge-target tree hash unavailable\"; exit 1; fi\n",
+        "_ma_head=$(git rev-parse HEAD)\n"
+      )
+    ),
+    concat(
+      concat(
+        "if [ -z \"$_ma_head\" ]; then echo \"merge_admission_stamp: git rev-parse HEAD failed\"; exit 1; fi\n",
+        "_ma_pr=\"\"\n"
+      ),
+      concat(
+        "if [ -n \"${GITHUB_EVENT_PATH:-}\" ] && [ -f \"$GITHUB_EVENT_PATH\" ]; then\n",
+        concat(
+          "  _ma_pr=$(jq -r 'if (.pull_request.number | type) == \"number\" then .pull_request.number else empty end' \"$GITHUB_EVENT_PATH\" 2>/dev/null || true)\n",
+          "fi\n"
+        )
+      )
+    ),
+    concat(
+      concat(
+        concat("mkdir -p \"$ROOT/", split(s: merge_admission_receipt_rel_path, delimiter: "/").first()),
+        "\" || { echo \"merge_admission_stamp: mkdir .gunbc failed\"; exit 1; }\n"
+      ),
+      concat(
+        "{\n",
+        concat(
+          "  printf '%s\\n' \"$_ma_base\"\n",
+          concat(
+            concat("  printf '%s\\n' \"", current_gate_roster_hash),
+            concat("\"\n  printf '%s\\n' \"", concat(check_conclusion_wire_label(c: Skipped), "\"\n"))
+          )
+        )
+      )
+    ),
+    concat(
+      concat(
+        "  printf '%s\\n' \"$_ma_head\"\n",
+        "  if [ -n \"$_ma_pr\" ]; then printf '%s\\n' \"$_ma_pr\"; fi\n"
+      ),
+      concat(
+        concat("} > \"$ROOT/", merge_admission_receipt_rel_path),
+        "\"\n"
+      )
+    )
   )
 }
 

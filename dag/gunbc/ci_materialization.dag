@@ -20,6 +20,7 @@ import gunbc.ci_spec { ci_release_build_script }
 import gunbc.merge_admission_produce {
   ci_floor_disposition_marker_path,
   merge_admission_floor_disposition_documentation_only_skipped,
+  ci_documentation_only_gate_skip_prefix,
 }
 import extdeps.github.actions { Workflow, Job, Step, RunStep, UsesStep }
 
@@ -205,21 +206,9 @@ data ci_floor_materialization_receipt_gate_shell_emit_dissolution_trigger: Dispo
 }
 
 fn ci_floor_receipt_gate_documentation_only_skipped_prefix(gate_name: String) -> String {
-  concat(
-    concat(
-      concat("if test -f ", ci_floor_disposition_marker_path),
-      concat("; then _disp=$(cat ", ci_floor_disposition_marker_path)
-    ),
-    concat(
-      concat(")\nif test \"$_disp\" = \"", merge_admission_floor_disposition_documentation_only_skipped),
-      concat(
-        "\"; then echo \"",
-        concat(
-          gate_name,
-          concat(": skipped — CI_FLOOR_DISPOSITION=$_disp (floor not run; no receipt debt incurred)\"; exit 0; fi; fi\n")
-        )
-      )
-    )
+  ci_documentation_only_gate_skip_prefix(
+    gate_name: gate_name,
+    skip_reason: "floor not run; no receipt debt incurred"
   )
 }
 

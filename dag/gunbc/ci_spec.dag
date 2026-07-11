@@ -28,6 +28,7 @@ import gunbc.merge_admission_produce {
   ci_floor_disposition_marker_path,
   merge_admission_stamp_invoke,
   merge_admission_floor_disposition_documentation_only_skipped,
+  ci_documentation_only_merge_admission_stamp_script,
 }
 import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -496,13 +497,7 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
           ),
           concat(
             ")\"\n",
-            concat(
-              "    CI_FLOOR_DISPOSITION=",
-              concat(
-                merge_admission_floor_disposition_documentation_only_skipped,
-                concat(" ", merge_admission_stamp_invoke())
-              )
-            )
+            concat("    ", ci_documentation_only_merge_admission_stamp_script())
           ),
           concat(
             "    exit $?\n",
