@@ -35,7 +35,7 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Node, well_formed }
 
 data bisect_empty_source: Medium<String> = Medium { carried: "module stage0.bisect.empty\n", fidelity: Lossless }
 data bisect_add_module_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
@@ -254,8 +254,50 @@ fn bisect_parse_module_truncated_rejects() -> Bool {
   }
 }
 
+fn bisect_parse_module_add_well_formed_after_normalize() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(
+    text: bisect_add_module_source.carried,
+    file: ^compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match parse(tokens: token_stream, grammar: lm.grammar) {
+        Accepted { value: parsed, diagnostics: _ } =>
+          match normalize(parse_tree: parsed) {
+            Accepted { value: normalized, diagnostics: _ } => well_formed(n: normalized)
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bisect_parse_module_add_normalize_accepts() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(
+    text: bisect_add_module_source.carried,
+    file: ^compile_ingest_staging_source_file,
+    rules: lm.lex
+  ) {
+    Accepted { value: token_stream, diagnostics: _ } =>
+      match parse(tokens: token_stream, grammar: lm.grammar) {
+        Accepted { value: parsed, diagnostics: _ } =>
+          match normalize(parse_tree: parsed) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn witness_bisect_parse_module_add_correctness_holds() -> Bool {
   bisect_parse_module_add_parse_accepts()
+    && bisect_parse_module_add_normalize_accepts()
+    && bisect_parse_module_add_well_formed_after_normalize()
     && bisect_parse_module_add_resolve_accepts()
     && bisect_parse_module_truncated_rejects()
     && ((bisect_parse_module_add_parse_accepts() == false) == false)
