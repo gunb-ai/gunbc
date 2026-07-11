@@ -730,14 +730,22 @@ fn witness_falsifier_plan_spawn_width_backs_off_at_live_cap() -> Bool {
     && falsifier_ref < ci_ref
 }
 
-fn witness_falsifier_envelope_fits_live_cap() -> Bool {
+data falsifier_slot_capacity_deficit_note: String = "PINNED CAPACITY DEFICIT (2026-07-11, converged slot shape): the falsifier's minimum envelope - executor base overhead (8910036989) + one cold-corpus shard (gunbc_falsifier_per_shard_peak_rss_bytes) - EXCEEDS the usable fraction of the applied 16GiB/15GiB slot. It fit only the stale 24GiB hand-set regime, which is why the nightly has been dark (exit-137 series, 07-06..07-10) and why weakening this witness would enshrine the degradation (DESIGN 5). The deficit is the SLOT SHAPE, not the width formula: width already floors at 1 and the same envelope fits the 24GiB-class reference below. Dissolve-on: the falsifier is routed to a runner offer whose envelope fits (the runner-offer-rows lane; a 64GB-class shape holds it with 3x headroom - ubicloud receipt run 29162064482 peaked 13.5GiB uncapped) OR the executor base overhead shrinks below the slot's usable budget minus one shard; then this pin flips back to a fits-assert against the live ceiling."
+
+fn witness_falsifier_envelope_deficit_on_slot_is_pinned() -> Bool {
   let width = hardware_thread_count_value(t: gunbc_falsifier_spawn_width_from_live_cap())
   let committed = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes()) + width * byte_size_count(b: gunbc_falsifier_per_shard_peak_rss_bytes())
-  committed <= byte_size_count(b: measure_scale_fraction_floor(
-    m: gunbc_ci_runner_slot_memory_max_live,
+  let usable_at_ceiling = byte_size_count(b: measure_scale_fraction_floor(
+    m: gunbc_ci_runner_slot_ram_speed_ceiling(),
     num: gunbc_ci_floor_width_usable_fraction_num,
     den: gunbc_ci_floor_width_usable_fraction_den
   ))
+  let usable_at_reference = measure_scale_fraction_floor(
+    m: byte_size(25769803776),
+    num: gunbc_ci_floor_width_usable_fraction_num,
+    den: gunbc_ci_floor_width_usable_fraction_den
+  )
+  committed > usable_at_ceiling && committed <= byte_size_count(b: usable_at_reference)
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
