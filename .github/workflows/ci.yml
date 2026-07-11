@@ -167,6 +167,7 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
+          # Positive floor-running stamp at the start of every floor step clears stale documentation_only_skipped left in target/ on persistent self-hosted runners (review 37010 / operator ruling 2026-07-11). Receipt gates skip only on an exact documentation_only_skipped match — never on file presence alone.
           mkdir -p target
           echo floor_running > target/ci-floor-disposition.txt
           _ci_changed=$(git diff --name-only origin/main...HEAD 2>/dev/null || true)
