@@ -267,6 +267,49 @@ fn repo_relative_path(path: &Path) -> Result<String, String> {
         })
 }
 
+/// Resolve a source/pool-root spelling to an absolute directory under
+/// [`process_workspace_root`]. Absolute paths baked from the compile-time
+/// [`workspace_root`] (sccache cross-runner) are re-anchored when missing on disk.
+fn anchor_source_root(root: &str) -> String {
+    let p = Path::new(root);
+    let ws = process_workspace_root();
+    if p.is_absolute() {
+        if p.is_dir() {
+            return root.to_string();
+        }
+        let baked = workspace_root();
+        if let Ok(rel) = p.strip_prefix(&baked) {
+            let reanchored = ws.join(rel);
+            if reanchored.is_dir() {
+                return reanchored.to_string_lossy().into_owned();
+            }
+        }
+        if let Ok(rel) = repo_relative_path(p) {
+            let reanchored = ws.join(&rel);
+            if reanchored.is_dir() {
+                return reanchored.to_string_lossy().into_owned();
+            }
+        }
+        panic!(
+            "anchor_source_root: absolute source root {} does not exist and cannot be \
+             re-anchored under process workspace {} (compiled-in root was {})",
+            root,
+            ws.display(),
+            baked.display()
+        );
+    }
+    let anchored = ws.join(p);
+    if !anchored.is_dir() {
+        panic!(
+            "anchor_source_root: source root {root} resolved to {} which is not a directory \
+             (process workspace {})",
+            anchored.display(),
+            ws.display()
+        );
+    }
+    anchored.to_string_lossy().into_owned()
+}
+
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
 ///
 /// `workspace_root()` above was HISTORICALLY baked from `env!("CARGO_MANIFEST_DIR")` at
@@ -422,8 +465,10 @@ mod cli_path_arg_resolution_tests {
 #[cfg(test)]
 mod process_workspace_root_tests {
     use super::{
-        process_workspace_root, repo_relative_path, workspace_relative_repo_path,
+        anchor_source_root, process_workspace_root, repo_relative_path,
+        workspace_relative_repo_path, workspace_root,
     };
+    use std::path::Path;
 
     #[test]
     fn process_workspace_root_locates_cargo_and_dag() {
@@ -442,6 +487,28 @@ mod process_workspace_root_tests {
             workspace_relative_repo_path(&abs.to_string_lossy()),
             "dag/gunbc/ci_layer_roots.dag"
         );
+    }
+
+    #[test]
+    fn anchor_source_root_resolves_relative_dag() {
+        let anchored = anchor_source_root("dag");
+        assert!(Path::new(&anchored).join("gunbc/ci_layer_roots.dag").is_file());
+    }
+
+    #[test]
+    fn anchor_source_root_reanchors_baked_absolute_path() {
+        let ws = process_workspace_root();
+        let baked = workspace_root();
+        if ws == baked {
+            return;
+        }
+        let stale = baked.join("dag");
+        if !stale.is_dir() {
+            return;
+        }
+        let reanchored = anchor_source_root(&stale.to_string_lossy());
+        assert_eq!(reanchored, ws.join("dag").to_string_lossy());
+        assert!(Path::new(&reanchored).is_dir());
     }
 }
 
@@ -482,10 +549,8 @@ fn module_path_collision_panic_message(
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
     let mut index: HashMap<String, String> = HashMap::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
+        let anchored_root = anchor_source_root(root);
+        let root_path = Path::new(&anchored_root);
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
         for path in dag_files {
@@ -874,7 +939,10 @@ pub(crate) fn is_test_dag(path: &str) -> bool {
 pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
     let mut paths = Vec::new();
     for root in witness_layer_roots() {
-        collect_dag_files_tolerant(&workspace_root().join(&root), &mut paths);
+        collect_dag_files_tolerant(
+            &Path::new(&anchor_source_root(&root)),
+            &mut paths,
+        );
     }
     let mut out = Vec::new();
     for p in paths {
@@ -932,10 +1000,8 @@ type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
     let mut index = ModuleSourceIndex::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
-        let root_path = std::path::Path::new(root);
-        if !root_path.exists() {
-            panic!("source root does not exist: {}", root);
-        }
+        let anchored_root = anchor_source_root(root);
+        let root_path = std::path::Path::new(&anchored_root);
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
         for path in dag_files {
@@ -1234,8 +1300,7 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
         .first()
         .cloned()
         .unwrap_or_else(|| "dag".to_string());
-    let ws = workspace_root();
-    let abs_entry_root = ws.join(&entry_root).to_string_lossy().into_owned();
+    let abs_entry_root = anchor_source_root(&entry_root);
     let mut paths: Vec<String> = module_declaration_facts(&[abs_entry_root])
         .into_iter()
         .map(|decl| workspace_relative_repo_path(&decl.path))
@@ -9694,18 +9759,7 @@ fn rel_path_for_layer_import(path: &Path) -> String {
 }
 
 fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
-    let ws = process_workspace_root();
-    pool_roots
-        .iter()
-        .map(|r| {
-            let p = Path::new(r);
-            if p.is_absolute() {
-                r.clone()
-            } else {
-                ws.join(p).to_string_lossy().into_owned()
-            }
-        })
-        .collect()
+    pool_roots.iter().map(|r| anchor_source_root(r)).collect()
 }
 
 fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
