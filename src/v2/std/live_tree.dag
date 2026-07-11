@@ -9,10 +9,3 @@ data live_tree_disposition_stamp_provenance: String = "Migration stamp provenanc
 type LiveTreeDisposition
   = ReadsLiveTree
   | SubstrateInputsOnly
-
-fn live_tree_disposition_is_live(d: LiveTreeDisposition) -> Bool {
-  match d {
-    ReadsLiveTree => true
-    SubstrateInputsOnly => false
-  }
-}
