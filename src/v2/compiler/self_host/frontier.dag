@@ -21,15 +21,18 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
+type CompilerFrontierGapClusteringAttribution
+  = KnowledgeAttributed { dissolution_trigger: Symbol }
+
 type CompilerFrontierCensusAttribution
   = KnowledgeAttributed { dissolution_trigger: Symbol }
   | ExecutionMeasured {
       probe_receipt: Symbol,
       wave_label: Symbol,
-      gap_clustering: KnowledgeAttributed { dissolution_trigger: Symbol }
+      gap_clustering: CompilerFrontierGapClusteringAttribution
     }
 
-data compiler_frontier_gap_clustering_attribution: KnowledgeAttributed = KnowledgeAttributed {
+data compiler_frontier_gap_clustering_attribution: CompilerFrontierGapClusteringAttribution = KnowledgeAttributed {
   dissolution_trigger: ^migrate_when_frontier_located_reason_survey_binds
 }
 
