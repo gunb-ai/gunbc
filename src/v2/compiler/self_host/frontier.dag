@@ -1,5 +1,16 @@
 module v2.compiler.self_host.frontier
 
+import v2.compiler.self_host.frontier_probe {
+  EmitSurfaceGap,
+  FrontierBlockerClass,
+  FrontierProbeReceipt,
+  FrontierProbeStage,
+  NameResolutionGap,
+  ProbeStageAssemble,
+  ProbeStageEmit,
+  SelfEmitReady,
+  frontier_probe_blocker_rank
+}
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
 import v2.std.algebra { fold_list, length }
@@ -10,9 +21,11 @@ import v2.std.text { String }
 
 type CompilerFrontierCensusAttribution
   = KnowledgeAttributed { dissolution_trigger: Symbol }
+  | ExecutionMeasured { probe_receipt: Symbol, wave_label: Symbol }
 
-data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = KnowledgeAttributed {
-  dissolution_trigger: ^migrate_when_wave2_per_module_emit_probe_confirms_triggers
+data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = ExecutionMeasured {
+  probe_receipt: ^compiler_frontier_emit_probe_survey_holds,
+  wave_label: ^wave2_post_resolver_6451_body_stage_a_6443
 }
 
 type SelfHostFrontierDisposition
@@ -22,185 +35,245 @@ type SelfHostFrontierDisposition
 type CompilerModuleFrontierRow {
   module_path: String
   disposition: SelfHostFrontierDisposition
+  measured_probe: FrontierProbeReceipt
+  tractability_rank: Int
 }
 
 data compiler_frontier_module_count_expected: Int = 27
 
 data compiler_frontier_self_emitted_baseline: Int = 0
 
-fn seed_retained_compiler_frontier_row(
+fn measured_reason_for_blocker(blocker: FrontierBlockerClass) -> Symbol {
+  match blocker {
+    SelfEmitReady => ^measured_probe_self_emit_ready
+    NameResolutionGap => ^measured_probe_name_resolution_gap
+    EmitSurfaceGap => ^measured_probe_emit_surface_gap
+    RealizationGap => ^measured_probe_realization_gap
+  }
+}
+
+fn measured_stage_for_blocker(blocker: FrontierBlockerClass) -> FrontierProbeStage {
+  match blocker {
+    NameResolutionGap => ProbeStageAssemble
+    SelfEmitReady => ProbeStageEmit
+    EmitSurfaceGap => ProbeStageEmit
+    RealizationGap => ProbeStageEmit
+  }
+}
+
+fn tractability_rank_for(closure_reads: Int, blocker: FrontierBlockerClass) -> Int {
+  let base = frontier_probe_blocker_rank(blocker: blocker) * 1000
+  base + closure_reads
+}
+
+fn execution_measured_seed_retained_row(
   module_path: String,
-  reason: Symbol,
+  closure_reads: Int,
+  measured_blocker: FrontierBlockerClass,
   migration_trigger: Symbol
 ) -> CompilerModuleFrontierRow {
   CompilerModuleFrontierRow {
     module_path: module_path,
     disposition: SeedRetained {
-      reason: reason,
+      reason: measured_reason_for_blocker(blocker: measured_blocker),
       migration_trigger: migration_trigger
-    }
+    },
+    measured_probe: FrontierProbeReceipt {
+      module_path: module_path,
+      blocker_class: measured_blocker,
+      located_stage: measured_stage_for_blocker(blocker: measured_blocker),
+      located_reason: measured_reason_for_blocker(blocker: measured_blocker)
+    },
+    tractability_rank: tractability_rank_for(closure_reads: closure_reads, blocker: measured_blocker)
   }
 }
 
-data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/00_compile.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 102,
+  measured_blocker: NameResolutionGap,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/01_tokenize.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 17,
+  measured_blocker: NameResolutionGap,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/02_parse.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 65,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_parse_cursor_grounded
 )
 
-data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/03_body_producer.dag",
-  reason: ^reason_substrate_migration_pending,
+  closure_reads: 36,
+  measured_blocker: NameResolutionGap,
   migration_trigger: ^migrate_when_general_body_producer_lands
 )
 
-data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/03_ingest.dag",
-  reason: ^reason_substrate_migration_pending,
+  closure_reads: 104,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_reparse_lookahead_lands
 )
 
-data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/03_name_resolve.dag",
-  reason: ^reason_substrate_migration_pending,
+  closure_reads: 44,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_namespace_only_resolution_lands
 )
 
-data compiler_frontier_row_03_normalize: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_03_normalize: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/03_normalize.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 37,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_03_resolve: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_03_resolve: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/03_resolve.dag",
-  reason: ^reason_substrate_migration_pending,
+  closure_reads: 39,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_namespace_only_resolution_lands
 )
 
-data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/04_infer.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 44,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_05_emit: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_05_emit: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/05_emit.dag",
-  reason: ^reason_emit_surface_incomplete,
+  closure_reads: 52,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
 )
 
-data compiler_frontier_row_05_emit_orchestration: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_05_emit_orchestration: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/05_emit_orchestration.dag",
-  reason: ^reason_emit_surface_incomplete,
+  closure_reads: 55,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
 )
 
-data compiler_frontier_row_05_eval: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_05_eval: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/05_eval.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 51,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_v2_evaluator_host_effects_lands
 )
 
-data compiler_frontier_row_06_translate: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_06_translate: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/06_translate.dag",
-  reason: ^reason_emit_surface_incomplete,
+  closure_reads: 51,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_rust_value_expression_projection_wired
 )
 
-data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/07_target_carriers.dag",
-  reason: ^reason_emit_surface_incomplete,
+  closure_reads: 36,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
 )
 
-data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/discovery_enumeration.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 12,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_emit_host: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_emit_host: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/emit_host.dag",
-  reason: ^reason_emit_surface_incomplete,
+  closure_reads: 61,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_emit_host_modules_self_emit
 )
 
-data compiler_frontier_row_emit_module: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_emit_module: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/emit_module.dag",
-  reason: ^reason_emit_surface_incomplete,
+  closure_reads: 53,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
 )
 
-data compiler_frontier_row_emit_produced: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_emit_produced: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/emit_produced.dag",
-  reason: ^reason_emit_surface_incomplete,
+  closure_reads: 61,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
 )
 
-data compiler_frontier_row_emit_semantic_decl: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_emit_semantic_decl: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/emit_semantic_decl.dag",
-  reason: ^reason_emit_surface_incomplete,
+  closure_reads: 59,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_rust_decl_emit_track_a_completes
 )
 
-data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/fold_lowering.dag",
-  reason: ^reason_substrate_migration_pending,
+  closure_reads: 36,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_body_lowering_generalizes
 )
 
-data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/materialization_carriers.dag",
-  reason: ^reason_substrate_migration_pending,
+  closure_reads: 35,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_materialize_spine_lane_lands
 )
 
-data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/parse_engine_hooks.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 2,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_parse_cursor_grounded
 )
 
-data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/program_assembly.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 90,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/program_partition.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 58,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_self_host: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_self_host: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/self_host.dag",
-  reason: ^reason_substrate_migration_pending,
+  closure_reads: 28,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_frontier_harness_repurposed
 )
 
-data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/source_authority.dag",
-  reason: ^reason_v1_regen_stage0_authority,
+  closure_reads: 87,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = seed_retained_compiler_frontier_row(
+data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/use_site_verdict.dag",
-  reason: ^reason_substrate_migration_pending,
+  closure_reads: 9,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_ownership_defork_lands
 )
 
@@ -232,6 +305,36 @@ data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
   compiler_frontier_row_self_host,
   compiler_frontier_row_source_authority,
   compiler_frontier_row_use_site_verdict
+]
+
+data compiler_frontier_sweep_order: List<String> = [
+  "src/v2/compiler/parse_engine_hooks.dag",
+  "src/v2/compiler/use_site_verdict.dag",
+  "src/v2/compiler/discovery_enumeration.dag",
+  "src/v2/compiler/self_host.dag",
+  "src/v2/compiler/materialization_carriers.dag",
+  "src/v2/compiler/07_target_carriers.dag",
+  "src/v2/compiler/fold_lowering.dag",
+  "src/v2/compiler/03_normalize.dag",
+  "src/v2/compiler/03_resolve.dag",
+  "src/v2/compiler/03_name_resolve.dag",
+  "src/v2/compiler/04_infer.dag",
+  "src/v2/compiler/05_eval.dag",
+  "src/v2/compiler/06_translate.dag",
+  "src/v2/compiler/05_emit.dag",
+  "src/v2/compiler/emit_module.dag",
+  "src/v2/compiler/05_emit_orchestration.dag",
+  "src/v2/compiler/program_partition.dag",
+  "src/v2/compiler/emit_semantic_decl.dag",
+  "src/v2/compiler/emit_host.dag",
+  "src/v2/compiler/emit_produced.dag",
+  "src/v2/compiler/02_parse.dag",
+  "src/v2/compiler/03_ingest.dag",
+  "src/v2/compiler/source_authority.dag",
+  "src/v2/compiler/program_assembly.dag",
+  "src/v2/compiler/01_tokenize.dag",
+  "src/v2/compiler/03_body_producer.dag",
+  "src/v2/compiler/00_compile.dag"
 ]
 
 fn compiler_frontier_roster_count() -> Int {
@@ -309,14 +412,28 @@ fn compiler_frontier_phantom_module_path_absent_holds() -> Bool {
     target: "src/v2/compiler/not_a_real_module.dag"
   ) == 0
 }
+
 fn compiler_frontier_self_emitted_baseline_holds() -> Bool {
   compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
+}
+
+fn compiler_frontier_execution_measured_attribution_holds() -> Bool {
+  match compiler_frontier_census_attribution {
+    ExecutionMeasured { probe_receipt: _, wave_label: _ } => true
+    KnowledgeAttributed { dissolution_trigger: _ } => false
+  }
+}
+
+fn compiler_frontier_sweep_order_complete_holds() -> Bool {
+  length(xs: compiler_frontier_sweep_order) == compiler_frontier_module_count_expected
 }
 
 fn compiler_frontier_census_holds() -> Bool {
   compiler_frontier_roster_complete_holds()
     && compiler_frontier_roster_paths_unique_holds()
     && compiler_frontier_self_emitted_baseline_holds()
+    && compiler_frontier_execution_measured_attribution_holds()
+    && compiler_frontier_sweep_order_complete_holds()
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
