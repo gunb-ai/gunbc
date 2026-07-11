@@ -1,31 +1,51 @@
 module test.claim.computation_demand_duplication_witness
 
 import tools.emit_determinism_transport {
-  emit_corpus_x2_diff_zero_program,
+  ed_typed_compile_invocation,
   emit_determinism_replication_intent
 }
 import v2.lens.duplicate_computation {
+  ComputationDemandFact,
+  ReplicationIntent,
   SingleRun,
+  UnguardedDemand,
   duplicate_computation_clean_holds,
   duplicate_computation_violation_count,
-  shell_program_computation_demands
+  typed_argv_computation_demands
 }
 import v2.std.logic { Bool }
 
+fn emit_determinism_typed_demand_facts(replication: ReplicationIntent) -> List<ComputationDemandFact> {
+  concat(
+    typed_argv_computation_demands(
+      invocation: ed_typed_compile_invocation(
+        run_site: "tools.emit_determinism_transport.run_emit_corpus_x2_diff_zero#first",
+        out_dir: "/tmp/emit-determinism-out-first"
+      ),
+      guard: UnguardedDemand,
+      replication: replication
+    ),
+    typed_argv_computation_demands(
+      invocation: ed_typed_compile_invocation(
+        run_site: "tools.emit_determinism_transport.run_emit_corpus_x2_diff_zero#second",
+        out_dir: "/tmp/emit-determinism-out-second"
+      ),
+      guard: UnguardedDemand,
+      replication: replication
+    )
+  )
+}
+
 test fn emit_determinism_oracle_pair_is_declared_and_admissible() -> Bool {
-  return duplicate_computation_clean_holds(facts: shell_program_computation_demands(
-    site: "tools.emit_determinism_transport.emit_corpus_x2_diff_zero_program",
-    program: emit_corpus_x2_diff_zero_program(),
-    replication: emit_determinism_replication_intent
-  ))
+  return duplicate_computation_clean_holds(
+    facts: emit_determinism_typed_demand_facts(replication: emit_determinism_replication_intent)
+  )
 }
 
 test fn emit_determinism_pair_without_declaration_reds() -> Bool {
-  return duplicate_computation_violation_count(facts: shell_program_computation_demands(
-    site: "tools.emit_determinism_transport.emit_corpus_x2_diff_zero_program",
-    program: emit_corpus_x2_diff_zero_program(),
-    replication: SingleRun
-  )) == 1
+  return duplicate_computation_violation_count(
+    facts: emit_determinism_typed_demand_facts(replication: SingleRun)
+  ) == 1
 }
 
-data compile_clean_subject_dissolved_note: String = "The former compile-clean subject (tools.dag_compile_clean_transport.clean_tree_compile_program) dissolved when that transport went typed-argv: there is no ShellProgram to walk, and its single gunbc compile invocation is one typed WitnessBin.Run by construction. When tools.emit_determinism_transport converts, the duplicate_computation lens needs a typed-args demand projection or this ShellProgram walker dissolves with it."
+data typed_projection_subject_note: String = "The live subject is the typed-argv projection: both facts are projected from ed_typed_compile_invocation, the same construction whose args the run path passes to gunbc.WitnessBin.Run, and the two distinct --output-dir values above also prove the placement-flag stripping keeps the pair's computation_key equal. The lens's ShellProgram walker keeps its synthetic lens-unit subjects in v2.test.duplicate_computation and the not-yet-migrated bash-program transports as its domain; it dissolves with the sidecar."
