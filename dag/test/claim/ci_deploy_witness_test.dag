@@ -1,6 +1,5 @@
 module test.claim.ci_deploy_witness
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags_rooted }
 import gunbc.ci_spec {
   gunbc_ci_spec,
   gunbc_ci_deploy_stages,
@@ -113,7 +112,7 @@ fn witness_deploy_run_script_invokes_gunbc_wet() -> Bool {
   string_contains(s: script, pattern: live_deploy_apply_entry)
     && string_contains(s: script, pattern: live_deploy_apply_srv1_wet_function)
     && string_contains(s: script, pattern: "$ROOT/target/release/gunbc")
-    && string_contains(s: script, pattern: witness_layer_source_flags_rooted(roots: witness_layer_roots))
+    && string_contains(s: script, pattern: "--source-root dag")
 }
 
 fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
