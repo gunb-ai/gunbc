@@ -289,6 +289,38 @@ fn shell_program_computation_demands(
   shell_stmts_computation_demands(site: site, stmts: program.statements, guarded: false, replication: replication)
 }
 
+type TypedArgvInvocation {
+  site: String
+  tool: String
+  args: List<String>
+}
+
+fn typed_argv_computation_tokens(invocation: TypedArgvInvocation) -> List<String> {
+  fold_list(
+    xs: invocation.args,
+    empty: [invocation.tool],
+    cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) }
+  )
+}
+
+fn typed_argv_computation_demands(
+  invocation: TypedArgvInvocation,
+  guard: DemandGuard,
+  replication: ReplicationIntent
+) -> List<ComputationDemandFact> {
+  let tokens = typed_argv_computation_tokens(invocation: invocation)
+  if computation_command_is_compile_class(tokens: tokens) {
+    [ComputationDemandFact {
+      site: invocation.site,
+      computation_key: computation_join_tokens(tokens: computation_key_tokens(tokens: tokens)),
+      guard: guard,
+      replication: replication
+    }]
+  } else {
+    empty_computation_demand_facts
+  }
+}
+
 fn demand_guard_is_unguarded(g: DemandGuard) -> Bool {
   match g {
     UnguardedDemand => true

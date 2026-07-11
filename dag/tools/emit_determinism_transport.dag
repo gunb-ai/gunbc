@@ -1,69 +1,78 @@
 module tools.emit_determinism_transport
 
 import extdeps.shell
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt, ShellWord,
-  Command, Assign, If, WithRedir, Exit,
-  Lit, VarRef, Concat, CmdSubst,
-  StdoutAndStderrToNull,
-  lit, var_ref, command, assign, serialize_bash
-}
-import tools.host_prelude { ensure_gunbc_built }
-import v2.lens.duplicate_computation { ReplicationIntent, ReplicatedOracle }
+import extdeps.git
+import extdeps.gunbc
+import std.logic { Bool }
+import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
+import v2.lens.duplicate_computation { ReplicationIntent, ReplicatedOracle, TypedArgvInvocation }
+
+data ed_typed_transport_doc: String = "Emit-determinism transport, typed. The receipt is a composition of typed service operations (shell.Mktemp.Dir, gunbc.WitnessBin.Run twice on the gunbc binary, shell.Diff.Recursive on the two output trees, shell.Remove.RecursiveForce) - no bash is serialized or executed. The former ShellProgram builder and its RealizationDispatch scaffold row dissolved with the flip. The two compile runs are one declared ReplicatedOracle pair: the duplicate_computation lens projects both invocations from ed_typed_compile_invocation - the same construction the run path executes - so the declared-pair witness and the run path cannot drift."
 
 data emit_determinism_corpus_roots: List<String> = ["dag", "src/v2"]
 
 data emit_determinism_replication_intent: ReplicationIntent = ReplicatedOracle { runs: 2 }
 
-fn ed_source_root_flags() -> List<ShellWord> {
-  fold(emit_determinism_corpus_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+data ed_gunbc_bin_name: String = "gunbc"
+
+fn ed_source_root_args() -> List<String> {
+  fold(emit_determinism_corpus_roots, init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
 }
 
-fn ed_pool_index_flags() -> List<ShellWord> {
-  [lit(text: "--dependency-pool-index"), lit(text: "primary-precedence")]
+fn ed_compile_args(out_dir: String) -> List<String> {
+  concat(
+    concat(["compile"], ed_source_root_args()),
+    [
+      "--dependency-pool-index", "primary-precedence",
+      "--output-dir", out_dir,
+      "--target", "rust"
+    ]
+  )
 }
 
-fn compile_to_dir(gunbc: ShellWord, out: ShellWord) -> ShellStmt {
-  command(words: concat(
-    [gunbc, lit(text: "compile")],
-    concat(ed_source_root_flags(), concat(ed_pool_index_flags(), [
-      lit(text: "--output-dir"), out,
-      lit(text: "--target"), lit(text: "rust")
-    ]))
-  ))
-}
-
-fn emit_corpus_x2_diff_zero_program() -> ShellProgram {
-  let root = var_ref(name: "ROOT")
-  let gunbc = var_ref(name: "GUNBC")
-  let out1 = var_ref(name: "OUT1")
-  let out2 = var_ref(name: "OUT2")
-  ShellProgram {
-    set_e: true,
-    statements: concat(ensure_gunbc_built(), [
-      command(words: [lit(text: "cd"), root]),
-      assign(name: "OUT1", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      assign(name: "OUT2", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      compile_to_dir(gunbc: gunbc, out: out1),
-      compile_to_dir(gunbc: gunbc, out: out2),
-      command(words: [lit(text: "diff"), lit(text: "-r"), out1, out2]),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), out1, out2])
-    ])
+fn ed_typed_compile_invocation(run_site: String, out_dir: String) -> TypedArgvInvocation {
+  TypedArgvInvocation {
+    site: run_site,
+    tool: ed_gunbc_bin_name,
+    args: ed_compile_args(out_dir: out_dir)
   }
 }
 
-data emit_determinism_transport_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "extdeps.languages.bash.program",
-    decl_name: "serialize_bash",
-    field: WholeDeclaration
-  }
+fn ed_gunbc_ready(root: String) -> Bool {
+  witness_bin_ensure_built_typed(root: root, bin: witness_bin(var_name: "GUNBC", bin_name: ed_gunbc_bin_name))
+}
+
+fn ed_run_compile(root: String, invocation: TypedArgvInvocation) -> Bool {
+  let run = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: witness_bin_release_path(root: root, bin_name: ed_gunbc_bin_name),
+    args: invocation.args
+  )
+  run.success
 }
 
 fn run_emit_corpus_x2_diff_zero() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: emit_corpus_x2_diff_zero_program()))
-  result.success
+  let root = git.Core.Toplevel()
+  if ed_gunbc_ready(root: root.path) {
+    let out1 = shell.Mktemp.Dir()
+    let out2 = shell.Mktemp.Dir()
+    if out1.success && out2.success {
+      let first = ed_run_compile(
+        root: root.path,
+        invocation: ed_typed_compile_invocation(run_site: "tools.emit_determinism_transport.run_emit_corpus_x2_diff_zero#first", out_dir: out1.path)
+      )
+      let second = ed_run_compile(
+        root: root.path,
+        invocation: ed_typed_compile_invocation(run_site: "tools.emit_determinism_transport.run_emit_corpus_x2_diff_zero#second", out_dir: out2.path)
+      )
+      let compared = shell.Diff.Recursive(left: out1.path, right: out2.path)
+      let cleaned1 = shell.Remove.RecursiveForce(path: out1.path)
+      let cleaned2 = shell.Remove.RecursiveForce(path: out2.path)
+      first && second && compared.identical && cleaned1.success && cleaned2.success
+    } else {
+      false
+    }
+  } else {
+    false
+  }
 }

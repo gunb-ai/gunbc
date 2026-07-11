@@ -136,6 +136,20 @@ service shell.Remove {
   }
 }
 
+service shell.Diff {
+  operation Recursive {
+    input { left: FilePath, right: FilePath }
+    output { identical: Bool from "exit_success", exit_code: Int from "exit_code" }
+    readonly
+    transport shell { argv: ["diff", "-r", "{left}", "{right}"] }
+    exit {
+      0 => Unit "Trees are identical"
+      1 => Unit "Trees differ"
+      nonzero => String "diff -r failed to compare the trees"
+    }
+  }
+}
+
 service shell.Copy {
   operation File {
     input { source: FilePath, destination: FilePath }
