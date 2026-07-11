@@ -2393,6 +2393,68 @@ fn check_module_source_identity(
     Ok(())
 }
 
+/// Antichain batches (Kahn levels) over the closure's resolved import edges — the host
+/// realization of the modeled module-node schedule (resolver-graph-major-design.md §7 S2a
+/// move 2: module nodes ride the same scheduler/runner shape as the CI floor,
+/// `v2.workflow.module_resolution_plan` is the model authority). Nodes are the closure's
+/// modules at authored-name grain (the typed-store key); edges are `resolved_imports` rows
+/// restricted to the closure (a dangling import is not a schedule edge — the missing-parent
+/// diagnostic stays typecheck's own, unchanged). A cyclic residue is unschedulable by a
+/// forward walk; it is appended as a final batch in the resolver's original order — never
+/// silently dropped — so its missing-parent diagnostics are the same set the serial fold
+/// produced (original order is a DFS postorder, so acyclic imports always precede their
+/// importers; only within-cycle edges can be "missing", identically in both walks).
+/// Batches are deterministic: within a level, modules keep their original relative order.
+fn module_schedule_batches(
+    modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
+    module_names: &[String],
+) -> Vec<Vec<usize>> {
+    let position: HashMap<&str, usize> = module_names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.as_str(), i))
+        .collect();
+    let n = modules.len();
+    let mut indegree: Vec<usize> = vec![0; n];
+    let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for (i, resolved) in modules.iter().enumerate() {
+        let mut seen_deps: HashSet<usize> = HashSet::new();
+        for imp in resolved.resolved_imports.iter() {
+            if let Some(&src) = position.get(imp.module_path.as_str()) {
+                if src != i && seen_deps.insert(src) {
+                    dependents[src].push(i);
+                    indegree[i] += 1;
+                }
+            }
+        }
+    }
+    let mut batches: Vec<Vec<usize>> = Vec::new();
+    let mut scheduled = vec![false; n];
+    let mut frontier: Vec<usize> = (0..n).filter(|&i| indegree[i] == 0).collect();
+    let mut scheduled_count = 0;
+    while !frontier.is_empty() {
+        for &i in &frontier {
+            scheduled[i] = true;
+        }
+        scheduled_count += frontier.len();
+        let mut next: Vec<usize> = Vec::new();
+        for &i in &frontier {
+            for &dep in &dependents[i] {
+                indegree[dep] -= 1;
+                if indegree[dep] == 0 {
+                    next.push(dep);
+                }
+            }
+        }
+        next.sort_unstable();
+        batches.push(std::mem::replace(&mut frontier, next));
+    }
+    if scheduled_count < n {
+        batches.push((0..n).filter(|&i| !scheduled[i]).collect());
+    }
+    batches
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2407,72 +2469,114 @@ fn reconcile_with_typed_cache(
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
 
-    for resolved in graph.modules.iter().cloned() {
-        let parent_result = v1_compiler_infer::collect_parent_envs(
-            resolved.clone(),
-            module_index.clone(),
-            source_indices.clone(),
-        );
-        let mod_name = authored_name_at(source_indices.clone(), resolved.module.clone());
-        // Collision-honesty guard (union-resolve receipt §6.3): the typed cache is keyed by
-        // authored name and shared across every co-resident entry, so a name that resolves
-        // from two DIFFERENT declaring files in one process is a co-residence surprise — the
-        // shared store must fail loud here, never silently serve one file's typecheck for the
-        // other's (that would be a §5 fail-open: a divergent resolution passing as plausible).
-        // build_module_index already walls tree-wide module-path collisions at index build;
-        // this is the same wall at the cache seam the union widens (e.g. an on-disk entry whose
-        // module path shadows an indexed module reached via entry_source_from_index_or_disk).
-        // Normalize to the workspace-relative form so a module reached both index-loaded
-        // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
-        // authority — the guard must fire on genuinely different files, not path representations.
-        let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        check_module_source_identity(module_identity, &mod_name, &decl_file)?;
-        let cached = typed_cache.borrow().get(&mod_name).cloned();
-        let tc_result = match cached {
-            Some(hit) => hit,
-            None => {
-                // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
-                bump_typecheck_compute_count();
-                if phase_profile::phase_profile_enabled() {
-                    eprintln!("[typecheck-attribution] module={mod_name} start");
+    // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
+    // the module-node schedule's antichain-batch order, with the typed cache as the
+    // node-keyed store a dependent's handler reads its imports' results from — once-per-node
+    // holds by schedule (a node appears once), not merely by cache lookup. The ResolvedGraph
+    // stays an ASSEMBLED VIEW in the resolver's original module order (the loop below this
+    // one), so the output is byte-identical to the legacy serial fold; module-grain purity
+    // (a result is a function of the module and its import closure, not of dispatch order)
+    // is the same assumption the shared typed cache already ships on, held by the
+    // every-order equivalence oracles (§6.1).
+    let closure_modules: Vec<Rc<v1_compiler_resolve::ResolvedModule>> =
+        graph.modules.iter().cloned().collect();
+    let closure_names: Vec<String> = closure_modules
+        .iter()
+        .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
+        .collect();
+    let schedule = module_schedule_batches(&closure_modules, &closure_names);
+    let mut dispatched: Vec<
+        Option<(
+            Rc<im_rc::Vector<Rc<ErrorNode>>>,
+            Rc<v1_compiler_infer::TypecheckModuleResult>,
+        )>,
+    > = vec![None; closure_modules.len()];
+
+    for batch in &schedule {
+        for &slot in batch {
+            let resolved = closure_modules[slot].clone();
+            let parent_result = v1_compiler_infer::collect_parent_envs(
+                resolved.clone(),
+                module_index.clone(),
+                source_indices.clone(),
+            );
+            let mod_name = closure_names[slot].clone();
+            // Collision-honesty guard (union-resolve receipt §6.3): the typed cache is keyed by
+            // authored name and shared across every co-resident entry, so a name that resolves
+            // from two DIFFERENT declaring files in one process is a co-residence surprise — the
+            // shared store must fail loud here, never silently serve one file's typecheck for the
+            // other's (that would be a §5 fail-open: a divergent resolution passing as plausible).
+            // build_module_index already walls tree-wide module-path collisions at index build;
+            // this is the same wall at the cache seam the union widens (e.g. an on-disk entry whose
+            // module path shadows an indexed module reached via entry_source_from_index_or_disk).
+            // Normalize to the workspace-relative form so a module reached both index-loaded
+            // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
+            // authority — the guard must fire on genuinely different files, not path representations.
+            let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+            check_module_source_identity(module_identity, &mod_name, &decl_file)?;
+            let cached = typed_cache.borrow().get(&mod_name).cloned();
+            let tc_result = match cached {
+                Some(hit) => hit,
+                None => {
+                    // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
+                    bump_typecheck_compute_count();
+                    if phase_profile::phase_profile_enabled() {
+                        eprintln!("[typecheck-attribution] module={mod_name} start");
+                    }
+                    let module_tc_started = std::time::Instant::now();
+                    let computed = v1_compiler_infer::typecheck_module(
+                        resolved.clone(),
+                        module_index.clone(),
+                        variant_surfaces.clone(),
+                        source_indices.clone(),
+                        intern_table.clone(),
+                    );
+                    // Per-module attribution for the typecheck-dominant resolves measured
+                    // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
+                    // parse+resolve+normalize). Threshold keeps the floor log quiet;
+                    // anything over it is a pathology-lane candidate by name.
+                    let module_tc_ms = module_tc_started.elapsed().as_millis();
+                    if module_tc_ms >= 2_000 {
+                        eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
+                    }
+                    typed_cache
+                        .borrow_mut()
+                        .insert(mod_name.clone(), computed.clone());
+                    computed
                 }
-                let module_tc_started = std::time::Instant::now();
-                let computed = v1_compiler_infer::typecheck_module(
-                    resolved.clone(),
-                    module_index.clone(),
+            };
+            let typed = tc_result.typed.clone();
+            let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
+            variant_surfaces = v1_rt::rc_map_insert(
+                variant_surfaces.clone(),
+                typed_path.clone(),
+                v1_compiler_infer::build_variant_export_surface(
+                    typed.clone(),
                     variant_surfaces.clone(),
                     source_indices.clone(),
-                    intern_table.clone(),
-                );
-                // Per-module attribution for the typecheck-dominant resolves measured
-                // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
-                // parse+resolve+normalize). Threshold keeps the floor log quiet;
-                // anything over it is a pathology-lane candidate by name.
-                let module_tc_ms = module_tc_started.elapsed().as_millis();
-                if module_tc_ms >= 2_000 {
-                    eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
-                }
-                typed_cache
-                    .borrow_mut()
-                    .insert(mod_name.clone(), computed.clone());
-                computed
-            }
-        };
+                ),
+            );
+            module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
+            dispatched[slot] = Some((parent_result.diagnostics.clone(), tc_result));
+        }
+    }
+
+    // Assembled view (original resolver order): dispatch order above is the schedule's
+    // concern; the graph handed to consumers — module list, registry merge order, and
+    // diagnostic order — is assembled in the exact order the serial fold produced, so the
+    // result is byte-identical regardless of how the schedule batched the closure.
+    for (slot, entry) in dispatched.into_iter().enumerate() {
+        let (parent_diags, tc_result) = entry.unwrap_or_else(|| {
+            unreachable!(
+                "module '{}' missing from the dispatch store: module_schedule_batches must \
+                 cover every closure node exactly once",
+                closure_names[slot]
+            )
+        });
         let typed = tc_result.typed.clone();
         modules = v1_rt::rc_list_push(modules, typed.clone());
-        let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
-        variant_surfaces = v1_rt::rc_map_insert(
-            variant_surfaces.clone(),
-            typed_path.clone(),
-            v1_compiler_infer::build_variant_export_surface(
-                typed.clone(),
-                variant_surfaces.clone(),
-                source_indices.clone(),
-            ),
-        );
-        module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
         item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
-        diag_chunks.push(parent_result.diagnostics.clone());
+        diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
     }
 
