@@ -19,8 +19,11 @@ data witness_exclusion_substrings: List<String> = [
   "self_host/compiler_closure_emit_from_ingest_test.dag",
   "unified_test_claim_substrate_equivalence.dag",
   "ci_exclusion_proof_test.dag",
-  "test/claim/execution/"
+  "test/claim/execution/",
+  "claim/complexity/accumulator_copy_roster_gate"
 ]
+
+data accumulator_copy_roster_gate_exclusion_note: String = "The three accumulator_copy_roster_gate*_test.dag witnesses are operator-ruled OFFLINE (2026-07-10: the gate is ~15m of serial interpreted resolve; run it via the claim_batch recipe in v2.lens.complexity_accumulator_copy.roster_gate). Excluded from discovery because the flip's selection cannot see them honestly either way: file_gate reads its roster targets via filesystem_read at runtime — a data dependency invisible to resolve-closure attribution — and the live-scan classifier reads only entry-file text, so the rows would be intermittently selected by lens/std-closure PRs (cost, against the ruling) while never firing on roster-target-only PRs (no enforcement). Dissolve-on: resolved-graph memoization receipts land AND the live-read classification walks the import closure; then re-enroll consciously through the floor owner's lane."
 
 data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
   "test/fixture/",

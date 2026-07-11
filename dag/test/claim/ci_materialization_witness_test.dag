@@ -9,6 +9,7 @@ import gunbc.ci_materialization_gate {
   ci_release_build_demand_count,
   ci_discharged_verdict_count,
   ci_release_build_discharged_by_sccache_count,
+  ci_release_build_single_recompute_count,
   ci_below_cost_floor_verdict_count,
   ci_exempt_fresh_verdict_count,
   ci_release_build_refused_without_provider_count,
@@ -16,21 +17,22 @@ import gunbc.ci_materialization_gate {
   ci_run_step_natures_claimed_not_derived_count
 }
 
-data ci_materialization_witness_note: String = "The ladder run against the LIVE emitted workflow, enrolled on the CI surface — the see-it-working-up-front requirement (operator, 2026-07-08): shell -> binary with appropriate caching installed or a typed refusal, in the same pipeline the redundancy would otherwise be paid in. The RED control removes the sccache provider row and demands the refusal, so the gate discriminates: it is green because the obligation is DISCHARGED, not because nothing looked."
+data ci_materialization_witness_note: String = "The ladder run against the LIVE emitted workflow, enrolled on the CI surface — the see-it-working-up-front requirement (operator, 2026-07-08): shell -> binary in the same pipeline the redundancy would otherwise be paid in. Post-fold (ci_regen folded into ci 2026-07-11): the workflow is a SINGLE building job, so the release build is one demand -> AcceptedSingleRecompute and the ladder holds with OR without the sccache provider (state 5: a lone undeclared demand needs no provider). The demand==1 / discharged==0 / refused-without-provider==0 pins are the reintroduction guard: re-adding a second independently-building job flips demand to 2 and the refusal arm fires. The discriminating RED control for the duplication->refusal law now lives in the synthetic placement_grain witness (two building jobs -> AuthoredDuplication/RefusedNoProvider), enrolled alongside this one."
 
 test fn ci_ladder_holds_on_live_workflow() -> Bool {
   ci_materialization_ladder_holds_live()
 }
 
-test fn ci_release_build_is_plural_and_discharged_by_sccache() -> Bool {
-  ci_release_build_demand_count() >= 3
-    && ci_release_build_discharged_by_sccache_count() == 1
-    && ci_discharged_verdict_count() == 1
+test fn ci_single_release_build_is_accepted_single_recompute() -> Bool {
+  ci_release_build_demand_count() == 1
+    && ci_release_build_single_recompute_count() == 1
+    && ci_release_build_discharged_by_sccache_count() == 0
+    && ci_discharged_verdict_count() == 0
 }
 
-test fn ci_ladder_reds_without_sccache_provider() -> Bool {
-  !ci_materialization_holds_without_sccache()
-    && ci_release_build_refused_without_provider_count() == 1
+test fn ci_ladder_holds_without_sccache_single_build() -> Bool {
+  ci_materialization_holds_without_sccache()
+    && ci_release_build_refused_without_provider_count() == 0
 }
 
 test fn ci_prelude_scripts_are_typed_cost_floor_acceptances() -> Bool {
@@ -47,9 +49,9 @@ test fn ci_catalog_projection_has_no_refusals() -> Bool {
 }
 
 test fn ci_uses_steps_are_counted_not_silent() -> Bool {
-  ci_uses_steps_skipped_count() == 9
+  ci_uses_steps_skipped_count() == 3
 }
 
 test fn ci_run_step_natures_are_claims_counted_not_silent() -> Bool {
-  ci_run_step_natures_claimed_not_derived_count() == 19
+  ci_run_step_natures_claimed_not_derived_count() == 11
 }

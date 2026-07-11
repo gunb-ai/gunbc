@@ -9,7 +9,7 @@ import gunbc.ci_spec {
   gunbc_ci_regen_spec, gunbc_ci_regen_floor_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
   ci_release_build_script,
-  gunbc_ci_rust_gate_only_script,
+  ci_repo_root_shell,
 }
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
@@ -303,7 +303,7 @@ fn ci_floor_resolve_receipt_gate_step() -> Step {
 
 fn ci_floor_materialization_receipt_gate_step() -> Step {
   RunStep {
-    name: Present { value: "Floor materialization receipt gate (demand ledger; pins land from first counted receipt)" },
+    name: Present { value: "Floor materialization receipt gate (demand ledger; disclosure gate — count pins retracted, walls tracked in ci_materialization.dag)" },
     id: none,
     run: ci_floor_materialization_receipt_gate_script(),
     shell: none,
@@ -340,80 +340,20 @@ fn ci_merge_admission_gate_step() -> Step {
   }
 }
 
-fn ci_nextest_install_step() -> Step {
+fn ci_selection_control_step() -> Step {
   RunStep {
-    name: Present { value: "Install cargo-nextest" },
+    name: Present { value: "Affected-set selection control (floor_skip_discovery_witness)" },
     id: none,
     run: concat(
-      concat(
-        concat(
-          "echo \"$CARGO_HOME/bin\" >> \"$GITHUB_PATH\"\n",
-          "if ! \"$CARGO_HOME/bin/cargo-nextest\" nextest --version >/dev/null 2>&1; then\n"
-        ),
-        concat(
-          "  mkdir -p \"$CARGO_HOME/bin\"\n",
-          "  case \"$(uname -m)\" in aarch64|arm64) A=linux-arm ;; *) A=linux ;; esac\n"
-        )
-      ),
-      concat(
-        "  curl -LsSf --retry 3 \"https://get.nexte.st/0.9.138/$A\" | tar zxf - -C \"$CARGO_HOME/bin\"\n",
-        "fi"
-      )
+      concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+      "\"$ROOT/target/release/floor_skip_discovery_witness\""
     ),
     shell: none,
     env: none,
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
-fn ci_rust_sccache_warm_step() -> Step {
-  RunStep {
-    name: Present { value: "sccache warm (release bins + cache prime)" },
-    id: none,
-    run: ci_release_build_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_rust_sccache_warm_step_timeout_minutes }
-  }
-}
-
-fn ci_rust_gate_step() -> Step {
-  RunStep {
-    name: Present { value: "v1 rust gate (fmt + nextest)" },
-    id: none,
-    run: gunbc_ci_rust_gate_only_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_rust_gate_step_timeout_minutes }
-  }
-}
-
-fn ci_rust_cgroup_measurement_step() -> Step {
-  RunStep {
-    name: Present { value: "rust_tests cgroup peak (placement divisor)" },
-    id: none,
-    run: concat(
-      "BIN=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/claim_executor\"\n",
-      concat(
-        "if [ -x \"$BIN\" ]; then \"$BIN\" --measure-cgroup-peak; ",
-        "else echo \"[measurement] cgroup peak: unavailable (claim_executor not built)\"; fi"
-      )
-    ),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: "always()" },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_selection_control_step_timeout_minutes }
   }
 }
 
@@ -446,11 +386,11 @@ data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold
   }
 }
 
-data gunbc_ci_rust_gate_step_timeout_minutes: Int = 45
-
-data gunbc_ci_rust_sccache_warm_step_timeout_minutes: Int = 46
-
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
+
+data gunbc_ci_selection_control_step_timeout_minutes: Int = 15
+
+data gunbc_ci_selection_control_step_note: String = "The affected-set selection control suite as a per-PR gate (operator fork (c), 2026-07-10 — the acceptance's 'green AND wired' half): floor_skip_discovery_witness runs the hermetic skip/refuse/divergence controls, including predict_only_red_predicted_unaffected_is_divergence — the discriminating RED for the falsifier's divergence counting — and the empty-diff-skips pin (ruling 2026-07-05: a failure arm refuses, never widens). It rides the per-PR ci job, not only the nightly falsifier cadence, so a PR that reintroduces a widen (the cli_run.rs entry_file_touched class) reds BEFORE merge, not the morning after. Hermetic: both diff channels are injected (floor_diff_observe.dag floor_name_status_injection_encoding_note), so the suite measures fixtures, never this checkout's real diff. Budget: 80s measured local (2026-07-10, full suite, release build); 15m is the fleet-pressure envelope, a named term in the ci backstop sum."
 
 data gunbc_ci_prelude_allowance_minutes: Int = 5
 
@@ -459,15 +399,11 @@ data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
-}
-
-fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_rust_sccache_warm_step_timeout_minutes + gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI budget semantics (operator ruling 2026-07-06): floor step gunbc_ci_floor_step_timeout_minutes enforced at STEP level (RED-by-failure); ci job backstop gunbc_ci_job_backstop_timeout_minutes() = release build + floor + aux + prelude (100m at floor=45m after #6422 witness-cone receipt; was 85m at floor=30m after #6361 Lever A dissolve-on; was 65m at floor=10m) so cold release build is not killed by a job cap shorter than gunbc_ci_release_build_step_timeout_minutes (receipt run 28819559597 @ 201371c: 10m job kill aborted cargo mid-build). The accumulator-copy roster gate is OFFLINE, not CI-enrolled (operator ruling 2026-07-10): its three witness entries re-parse rostered files under the interpreter (~15m serial measured; receipt: run 29066265723 hit the then-30m step cap with the gate enrolled on a 27m40s baseline floor) — re-enroll when parse/resolve memoization or batch-1 shared-parse reuse shrinks the gate to seconds. rust_tests keeps step-sum job backstop gunbc_ci_rust_job_backstop_timeout_minutes() = warm + gate + aux + prelude (106m at current step carriers: 46+45+5+5+5; warm and gate are SEPARATE serializer-witnessed steps - cold-cache release-bin storms land in warm, never eat the gate budget; clippy was removed from the gate 2026-07-08 so the gate is fmt+nextest only, warm >= gate again) — job cap must cover step budgets so gates reach RED-by-step-failure, not job-cancelled silent-pass (#6323 starvation-kill scoped to ci/floor only on main). dissolve-on: compile-clean scoping/memoization shrinks batch-1; floor step raised when batch-1 completes inside measured envelope (receipt run 28902523405 @ e1a27e4286). #6422 receipt run 29065683045 @ a2bcd6f668: batches 1-3 ~20m (dag_collect_fingerprint_witness_keystone_holds 488s), batch 4 rust_monolith_gate still running at 30m step kill — raised floor to 45m (= rust gate step budget). 2026-07-10 step-budget completeness (review catch, #6438): the resolve-receipt gate step had NO step cap — a hang there could only die by job-cancel, the same starvation-kill class — so it now carries the aux cap (the script is a sub-second receipt read) and the ci backstop counts the aux steps exactly. Every ci-job step now has a declared step budget and the backstop is the exact step-sum + prelude. 2026-07-10 merge of #6441 into #6438: the incoming materialization receipt gate step landed uncapped (timeout none) — same class — so the merge resolution capped it aux too; the ci backstop counts FIVE aux terms: peak pre-read, peak post-read, resolve-receipt gate, materialization receipt gate, merge-admission gate."
+  reason: "gunbc CI budget semantics (operator ruling 2026-07-06): floor step gunbc_ci_floor_step_timeout_minutes enforced at STEP level (RED-by-failure); ci job backstop gunbc_ci_job_backstop_timeout_minutes() = release build + floor + aux + prelude (100m at floor=45m after #6422 witness-cone receipt; was 85m at floor=30m after #6361 Lever A dissolve-on; was 65m at floor=10m) so cold release build is not killed by a job cap shorter than gunbc_ci_release_build_step_timeout_minutes (receipt run 28819559597 @ 201371c: 10m job kill aborted cargo mid-build). The accumulator-copy roster gate is OFFLINE, not CI-enrolled (operator ruling 2026-07-10): its three witness entries re-parse rostered files under the interpreter (~15m serial measured; receipt: run 29066265723 hit the then-30m step cap with the gate enrolled on a 27m40s baseline floor) — re-enroll when parse/resolve memoization or batch-1 shared-parse reuse shrinks the gate to seconds. The job cap must cover step budgets so gates reach RED-by-step-failure, not job-cancelled silent-pass (#6323 starvation-kill scoped to ci/floor only on main; the rust_tests job and its warm/gate step-sum backstop were removed 2026-07-11 to free runner capacity). dissolve-on: compile-clean scoping/memoization shrinks batch-1; floor step raised when batch-1 completes inside measured envelope (receipt run 28902523405 @ e1a27e4286). #6422 receipt run 29065683045 @ a2bcd6f668: batches 1-3 ~20m (dag_collect_fingerprint_witness_keystone_holds 488s), batch 4 rust_monolith_gate still running at 30m step kill — raised floor to 45m (= rust gate step budget). 2026-07-10 step-budget completeness (review catch, #6438): the resolve-receipt gate step had NO step cap — a hang there could only die by job-cancel, the same starvation-kill class — so it now carries the aux cap (the script is a sub-second receipt read) and the ci backstop counts the aux steps exactly. Every ci-job step now has a declared step budget and the backstop is the exact step-sum + prelude. 2026-07-10 merge of #6441 into #6438: the incoming materialization receipt gate step landed uncapped (timeout none) — same class — so the merge resolution capped it aux too; the ci backstop counts FIVE aux terms: peak pre-read, peak post-read, resolve-receipt gate, materialization receipt gate, merge-admission gate. 2026-07-10 selection-control wiring (operator fork (c)): the affected-set selection control step (floor_skip_discovery_witness, see gunbc_ci_selection_control_step_note) joins the ci job with its OWN named budget gunbc_ci_selection_control_step_timeout_minutes (15m; 80s measured local) — a named term in the backstop sum, not a sixth aux term — so the backstop stays the exact step-sum + prelude."
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
@@ -496,7 +432,7 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(), ci_floor_resolve_receipt_gate_step(), ci_floor_materialization_receipt_gate_step(), ci_merge_admission_gate_step()]),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(), ci_floor_resolve_receipt_gate_step(), ci_floor_materialization_receipt_gate_step(), ci_selection_control_step(), ci_merge_admission_gate_step(), ci_regen_floor_step()]),
     needs: [],
     env: none,
     outputs: none,
@@ -510,7 +446,7 @@ fn ci_job() -> Job {
 
 fn ci_regen_floor_step() -> Step {
   RunStep {
-    name: Present { value: "gunbc ci regen (self-host fixed-point — non-required)" },
+    name: Present { value: "gunbc ci regen (self-host fixed-point — required; folded into ci job 2026-07-11)" },
     id: none,
     run: gunbc_ci_regen_floor_run(spec: gunbc_ci_regen_spec),
     shell: none,
@@ -519,43 +455,6 @@ fn ci_regen_floor_step() -> Step {
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_floor_step_timeout_minutes }
-  }
-}
-
-fn ci_regen_job() -> Job {
-  Job {
-    id: "ci_regen",
-    name: none,
-    runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_regen_floor_step()]),
-    needs: [],
-    env: none,
-    outputs: none,
-    if_condition: none,
-    strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
-    continue_on_error: none,
-    concurrency: none
-  }
-}
-
-fn rust_tests_job() -> Job {
-  Job {
-    id: "rust_tests",
-    name: none,
-    runner: gunbc_ci_runner_spec(),
-    steps: concat(
-      ci_prelude_steps(),
-      [ci_nextest_install_step(), ci_rust_sccache_warm_step(), ci_rust_gate_step(), ci_rust_cgroup_measurement_step()]
-    ),
-    needs: [],
-    env: none,
-    outputs: none,
-    if_condition: none,
-    strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_rust_job_backstop_timeout_minutes() },
-    continue_on_error: none,
-    concurrency: none
   }
 }
 
@@ -592,5 +491,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_job(), ci_regen_job(), rust_tests_job()], ci_deploy_jobs())
+  jobs: concat([ci_job()], ci_deploy_jobs())
 }

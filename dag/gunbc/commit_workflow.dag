@@ -2,7 +2,7 @@ module gunbc.commit_workflow
 
 import gunbc.ci_gate {
   Gate,
-  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
@@ -10,7 +10,7 @@ import gunbc.ci_gate {
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
@@ -28,7 +28,6 @@ type LocalTidyCheck
 type CommitWorkflowSurface
   = GithubActionsCiJob
   | GithubActionsCiRegenJob
-  | GithubActionsRustTestsJob
   | GitPrePushHook
 
 type CommitCheckKind
@@ -49,6 +48,10 @@ type CommitWorkflowRealizationBinding {
   surface: CommitWorkflowSurface
   handler: CommitWorkflowRealizationKind
   artifact: GeneratedArtifact
+}
+
+data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
+  reason: "The v1 Rust test suite (cargo fmt --all --check plus cargo nextest run -p v1-compiler-tests) was REMOVED from CI 2026-07-11 (operator ruling) — its RustMonolithGate enrollment, the rust_tests job, and rust_gates_ci.dag's CI consumers are all gone. This records the removal as intentional, not silent (the review-flagged concern). Rationale: rust_tests was NON-required (only the ci job is protection-required on the gunbc main ruleset; rust_tests and ci_regen were not) AND red on main (it exercises the v1 seed, which is being deleted under the §7 burn-down), so it delivered a permanent non-required red — the §5 tolerated-red anti-pattern — at ~37 GiB, the fleet's single largest CI memory job. Coverage after removal: cargo fmt stays enforced by the pre-push hook (CommitCargoFmtCheck on GitPrePushHook); cargo nextest run -p v1-compiler-tests runs LOCALLY, not in CI. Return trigger — NONE by design: this suite does not re-enroll. It is retired WITH the v1 seed and deleted at §7 terminal collapse. Re-enrolling RustMonolithGate onto the required ci floor is explicitly REJECTED — it would move the ~37 GiB red job into the required merge gate. Compile-level v1 seed breakage is still caught by the required floor's DagCompileCleanGate and RegenVerifyGate; only the seed's runtime test behavior moves local."
 }
 
 data commit_gate_roster: List<CommitCheckEnrollment> = [
@@ -91,10 +94,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: EmitDeterminismGate },
     surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitSpecGate { gate: RustMonolithGate },
-    surfaces: [GithubActionsRustTestsJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -143,13 +142,28 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "dag/test/claim/ci_materialization_witness_test.dag",
       check_fns: [
         "ci_ladder_holds_on_live_workflow",
-        "ci_release_build_is_plural_and_discharged_by_sccache",
-        "ci_ladder_reds_without_sccache_provider",
+        "ci_single_release_build_is_accepted_single_recompute",
+        "ci_ladder_holds_without_sccache_single_build",
         "ci_prelude_scripts_are_typed_cost_floor_acceptances",
         "ci_measurement_is_exempt_fresh_effect",
         "ci_catalog_projection_has_no_refusals",
         "ci_uses_steps_are_counted_not_silent",
         "ci_run_step_natures_are_claims_counted_not_silent"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/duplicate_computation/placement_grain_witness_test.dag",
+      check_fns: [
+        "ci_build_across_two_jobs_is_one_violation",
+        "shared_artifact_rewire_is_clean",
+        "single_producer_is_clean",
+        "declared_per_placement_is_admissible",
+        "per_placement_observed_exceeds_declared_is_violation"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -377,11 +391,6 @@ data commit_workflow_realization_bindings: List<CommitWorkflowRealizationBinding
     artifact: CiYamlArtifact
   },
   CommitWorkflowRealizationBinding {
-    surface: GithubActionsRustTestsJob,
-    handler: CiYamlHandler,
-    artifact: CiYamlArtifact
-  },
-  CommitWorkflowRealizationBinding {
     surface: GitPrePushHook,
     handler: GitPrePushScriptHandler,
     artifact: GithooksPrePushArtifact
@@ -394,8 +403,6 @@ fn commit_workflow_surface_eq(a: CommitWorkflowSurface, b: CommitWorkflowSurface
       match b { GithubActionsCiJob => true  _ => false }
     GithubActionsCiRegenJob =>
       match b { GithubActionsCiRegenJob => true  _ => false }
-    GithubActionsRustTestsJob =>
-      match b { GithubActionsRustTestsJob => true  _ => false }
     GitPrePushHook =>
       match b { GitPrePushHook => true  _ => false }
   }
@@ -411,7 +418,6 @@ fn enrollment_has_surface(e: CommitCheckEnrollment, surface: CommitWorkflowSurfa
 
 fn gate_eq(a: Gate, b: Gate) -> Bool {
   match a {
-    RustMonolithGate => match b { RustMonolithGate => true  _ => false }
     EmitHostGate => match b { EmitHostGate => true  _ => false }
     LayeringImportsGate => match b { LayeringImportsGate => true  _ => false }
     ExtdepsExternalAuthorityGate => match b { ExtdepsExternalAuthorityGate => true  _ => false }
@@ -438,12 +444,6 @@ fn gates_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<Gate> {
 fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
   gates_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiJob))
-  )
-}
-
-fn project_ci_rust_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
-  gates_from_enrollments(
-    rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsRustTestsJob))
   )
 }
 
@@ -604,15 +604,12 @@ fn local_tidy_lists_eq(left: List<LocalTidyCheck>, right: List<LocalTidyCheck>) 
 
 data commit_workflow_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
-data commit_workflow_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: commit_gate_roster)
-
 data commit_workflow_local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
 
 fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   match surface {
     GithubActionsCiJob => artifact_path(a: CiYamlArtifact)
     GithubActionsCiRegenJob => artifact_path(a: CiYamlArtifact)
-    GithubActionsRustTestsJob => artifact_path(a: CiYamlArtifact)
     GitPrePushHook => artifact_path(a: GithooksPrePushArtifact)
   }
 }
@@ -621,7 +618,6 @@ fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWork
   match surface {
     GithubActionsCiJob => CiYamlHandler
     GithubActionsCiRegenJob => CiYamlHandler
-    GithubActionsRustTestsJob => CiYamlHandler
     GitPrePushHook => GitPrePushScriptHandler
   }
 }
@@ -630,7 +626,6 @@ fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> Generated
   match surface {
     GithubActionsCiJob => CiYamlArtifact
     GithubActionsCiRegenJob => CiYamlArtifact
-    GithubActionsRustTestsJob => CiYamlArtifact
     GitPrePushHook => GithooksPrePushArtifact
   }
 }

@@ -436,6 +436,10 @@ fn run_witnesses(
     );
     for function in &group.functions {
         run_claim_timed(&ctx, &closure_subject, function, any_failed, timings);
+        // The eval-call memo's eviction scope is the witness frame, not this
+        // shared per-entry ctx — ctx-lifetime retention of argument+result
+        // values across witnesses is byte-unbounded (20GiB-class kills).
+        v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
     }
     Ok(())
 }
@@ -574,12 +578,20 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     if entry_groups.len() == 1 {
         let group = &entry_groups[0];
+        // Two lines so the log cannot lie about sequencing: the past-tense line
+        // printed BEFORE the resolve once mis-attributed a resolve-phase OOM to
+        // witness eval (eager-ram-612 bisect, 2026-07-10).
         eprintln!(
-            "claim_batch: resolved {} once; running {} witness(es)",
+            "claim_batch: resolving {} once ({} witness(es))",
             group.entry,
             group.functions.len()
         );
         let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
+        eprintln!(
+            "claim_batch: resolved {}; running {} witness(es)",
+            group.entry,
+            group.functions.len()
+        );
         let closure_subject = closure_subject_for_entry(&index, &group.entry).map_err(|e| {
             eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
             ExitCode::from(1)
@@ -599,6 +611,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                 &mut any_failed,
                 &mut timings,
             );
+            // Witness frame exit on the single-entry fast path too — this is
+            // the exact path the 6-witness 20GiB-kill recipe runs (the memo
+            // must not retain values across witnesses sharing this ctx).
+            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
         }
         if stats_requested {
             print_interp_stats(&ctx, flatten_baseline);

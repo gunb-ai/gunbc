@@ -15,11 +15,15 @@ import v2.std.orchestration {
   EscalationLevel,
   EnvSet,
   EnvUnset,
-  LogMatches
+  LogMatches,
+  Pipeline,
+  Do,
+  Run,
+  FailFast
 }
 import std.algebra { FreeMonoid }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
-import v2.std.collection { Map }
+import v2.std.collection { Absent, Map }
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
 import v2.std.diagnostic {
@@ -35,6 +39,49 @@ import v2.std.diagnostic {
 }
 import gunbc.ci_spec { ci_cargo_eagain_retry_core }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
+
+data orch_retry_golden_note: String = "ci_cargo_eagain_retry_core_golden below is the HAND-AUTHORED spelling of the CI EAGAIN-retry construct, moved here verbatim when production gunbc.ci_spec cut over to emit(Retry, Bash). It is deliberately independent of the grammar rows and segment spellings: the byte tests compare the emitter (and the production seam) against this golden, so a row/segment/emitter regression cannot go green by perturbing both sides at once. The committed .github/workflows/ci.yml drift gate is the corpus-level twin of this oracle."
+
+fn ci_cargo_eagain_retry_core_golden(command: String) -> String {
+  concat(
+    concat(
+      concat("BUILD_LOG=$(mktemp)\n", "if ! ("),
+      concat(command, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
+    ),
+    concat(
+      concat(
+        concat(
+          concat(concat("  if grep -qiE '", infra_retry_grep_alternation()), "' \"$BUILD_LOG\"; then\n"),
+          "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
+        ),
+        concat(
+          concat("    RETRY_LOG=$(mktemp)\n", "    if ! ( CARGO_BUILD_JOBS=1 "),
+          concat(command, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")
+        )
+      ),
+      concat(
+        concat(
+          concat(
+            concat(concat("      if grep -qiE '", infra_retry_grep_alternation()), "' \"$RETRY_LOG\"; then\n"),
+            "        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n"
+          ),
+          concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(command, " || exit 1\n"))
+        ),
+        concat(
+          concat("      else\n", "        exit 1\n"),
+          concat("      fi\n", "    fi\n")
+        )
+      )
+    ),
+    concat(
+      concat(
+        concat("    rm -f \"$RETRY_LOG\"\n", "  else\n"),
+        concat("    exit 1\n", "  fi\n")
+      ),
+      concat("fi\n", "rm -f \"$BUILD_LOG\"\n")
+    )
+  )
+}
 
 fn orch_retry_probe_facts(key: Node) -> Witness<InferredFacts> {
   Violates {
@@ -59,7 +106,8 @@ test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
       pattern1: "pat",
       pattern2: "pat",
       warn1: "w1",
-      warn2: "w2"
+      warn2: "w2",
+      exhausted: "exit 1"
     )
   ) {
     Accepted { value: _, diagnostics: _ } => true
@@ -106,16 +154,47 @@ fn orch_retry_perturbed_intent() -> PipelineStep {
 test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool {
   match orch_emit_step(s: retry_eagain_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == ci_cargo_eagain_retry_core(command: retry_eagain_example_command))
+      (source.carried == ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command))
         && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
+test fn orch_retry_production_seam_matches_golden_holds() -> Bool {
+  let produced = ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
+  produced == ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
+}
+
 test fn orch_retry_env_value_has_teeth_holds() -> Bool {
   match orch_emit_step(s: orch_retry_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
-      source.carried != ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
+      source.carried != ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn orch_retry_perturbed_exhausted_intent() -> PipelineStep {
+  match retry_eagain_intent() {
+    Retry { body: b, escalations: e, on_exhausted: _ } =>
+      Retry {
+        body: b,
+        escalations: e,
+        on_exhausted: Pipeline {
+          steps: [Do { run: Run { command: "exit 2", env: [], redirect: Absent, capture: Absent } }],
+          on_failure: FailFast
+        }
+      }
+    Do { run: _ } => retry_eagain_intent()
+    If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
+    For { binder: _, over: _, body: _ } => retry_eagain_intent()
+    While { cond: _, body: _, bound: _ } => retry_eagain_intent()
+  }
+}
+
+test fn orch_retry_exhausted_has_teeth_holds() -> Bool {
+  match orch_emit_step(s: orch_retry_perturbed_exhausted_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
     Rejected { diagnostics: _ } => false
   }
 }

@@ -3,7 +3,7 @@ module v2.test.manual.emit_directive_rust
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust_test {
   rust_emit_directive_emitted_call,
   rust_emit_directive_target_model
 }

@@ -1,8 +1,7 @@
 module gunbc.ci_gate
 
 type Gate
-  = RustMonolithGate
-  | EmitHostGate
+  = EmitHostGate
   | LayeringImportsGate
   | ExtdepsExternalAuthorityGate
   | DagCompileCleanGate

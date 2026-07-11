@@ -110,19 +110,31 @@ fn edge_skips_identifier_count(e: Edge) -> Bool {
   }
 }
 
-fn count_value_identifiers(n: Node) -> Int {
+fn symbol_list_prepend(item: Symbol, xs: List<Symbol>) -> List<Symbol> {
+  Cons { head: item, tail: xs }
+}
+
+fn symbol_list_length(xs: List<Symbol>) -> Int {
+  fold(xs, init: 0, f: fn(acc, s) { acc + 1 })
+}
+
+fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
   let here = match node_atom_identity_optional(node: n) {
     Present { value: id } =>
-      if dag_lex_token_symbol(sym: id) { 0 } else { 1 }
-    Absent => 0
+      if dag_lex_token_symbol(sym: id) { acc } else { symbol_list_prepend(item: id, xs: acc) }
+    Absent => acc
   }
-  fold(n.children, init: here, f: fn(acc, e) {
+  fold(n.children, init: here, f: fn(a, e) {
     if edge_skips_identifier_count(e: e) {
-      acc
+      a
     } else {
-      acc + count_value_identifiers(n: e.target)
+      collect_value_identifiers_into(n: e.target, acc: a)
     }
   })
+}
+
+fn collect_value_identifiers(n: Node) -> List<Symbol> {
+  collect_value_identifiers_into(n: n, acc: Empty)
 }
 
 fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
@@ -133,17 +145,18 @@ fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
 }
 
 fn port_reading(arg_capture: Node) -> PortReading {
-  let idents = count_value_identifiers(n: arg_capture)
+  let mentions = collect_value_identifiers(n: arg_capture)
+  let idents = symbol_list_length(xs: mentions)
   if idents == 0 {
     PortPureLiteral
   } else {
     if idents == 1 {
       match arg_value_symbol(arg_capture: arg_capture) {
         Present { value: sym } => PortBareName { name: sym }
-        Absent => PortComputedExpression
+        Absent => PortComputedExpression { mentions: mentions }
       }
     } else {
-      PortComputedExpression
+      PortComputedExpression { mentions: mentions }
     }
   }
 }
@@ -250,14 +263,20 @@ fn let_resolution(
       match let_rhs_node(let_capture: let_capture) {
         Absent => LetUndecided
         Present { value: rhs } =>
-          let idents = count_value_identifiers(n: rhs)
+          let mentions = collect_value_identifiers(n: rhs)
+          let idents = symbol_list_length(xs: mentions)
           if idents == 0 {
             LetBindsFact { binding: LetBinding { name: binder, fact: BindsFresh } }
           } else {
             if idents == 1 {
               match arg_value_symbol(arg_capture: rhs) {
                 Absent =>
-                  LetBindsFact { binding: LetBinding { name: binder, fact: BindsComputed } }
+                  LetBindsFact {
+                    binding: LetBinding {
+                      name: binder,
+                      fact: BindsComputed { mentions: mentions }
+                    }
+                  }
                 Present { value: s } =>
                   if symbol_in(needle: s, xs: carriers) {
                     LetJoinsCarriers { name: binder }
@@ -270,12 +289,19 @@ fn let_resolution(
                   }
               }
             } else {
-              LetBindsFact { binding: LetBinding { name: binder, fact: BindsComputed } }
+              LetBindsFact {
+                binding: LetBinding {
+                  name: binder,
+                  fact: BindsComputed { mentions: mentions }
+                }
+              }
             }
           }
       }
   }
 }
+
+data mentions_depth_note: String = "BindsComputed stores the RHS's RAW mentions (depth-1 closure): a computed let whose RHS names a carrier directly is caught at its unregistered use, but a chain through a SECOND computed let (b mentions a, a mentions the carrier) is not - bind-time substitution was priced and rejected here because every fold-literal splice it needs is itself an unregistered-carrier call site, trading one silent hole for four counted refusals. The chain case is a declared residue; it dissolves in Stage B, where callee/definition facts prove the substitution without accumulator threading."
 
 fn analyze_children(
   n: Node,
