@@ -5,6 +5,7 @@ import v2.lens.module_graph { import_closure_live, no_paths }
 import v2.lens.reference_deps {
   reference_closure_ingest_refusal_witness,
   reference_closure_live,
+  reference_closure_parsed_live,
   reference_parsed_tree_facts_match_import_facts_at_path
 }
 import v2.lens.module_graph { module_graph_exclude_substrings }
@@ -44,11 +45,9 @@ data conformance_import_envelope_disposition: Disposition = Scaffold {
 
 data conformance_import_envelope_dissolution_note: String = "conformance_imports_only.dag mirrors coproduct_reflection_conformance_test.dag import envelope only (no extra imports — closure goldens stay byte-identical). v2 parse_module rejects test fn bodies today, so equivalence gates use this pipeline-parseable stub. Dissolves when parse_module accepts fn bodies (repoint conformance_entry to src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag) or when a shared import-envelope fixture subsumes both."
 
-data workspace_root_cross_runner_hand_rust_receipt: String = "Cross-runner CI unblock for release-bins handoff (operator ruling 2026-07-11, gunbc.ci_spec ci_floor_required_artifact_names_note): claim_executor built on runner A bakes CARGO_MANIFEST_DIR to A's checkout; floor job on runner B must index module paths under B's tree. Hand-Rust: cli_run.rs workspace_root() prefers GITHUB_WORKSPACE then process cwd when dag/ and src/v2/ are present, else baked root. Executable backstop: build_module_path_index_accepts_relative_roots_at_process_cwd (#6462). Dissolves when workspace_root is a modeled std authority or release-bins carry a content-addressed checkout-root manifest binding the handoff."
-
 data bogus_never_referenced: String = "src/v2/std/__bogus_never_referenced__.dag"
 
-data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current import-only corpus, reference_closure_live delegates to import_closure_live_excluding (no fact re-materialization); must match the declared golden (witnessed here) and import_closure_live (witnessed in import_closure_live_test.dag on the same golden). Parsed-tree census agrees with import facts on the conformance entry. Drift control (bogus path not in closure) and import/reference mismatch RED controls are folded into reference_closure_b2_safety_wall_holds. Transitivity: reference == expected && import == expected && parsed≡import on entry ⇒ reference == import on the conformance fixture."
+data reference_closure_equivalence_note: String = "B2 safety wall (operator, sharp-bee-290): resolution RESULTS are preserved when the module graph is derived from parsed-tree qualified-name use sites instead of import declarations. On the current import-only corpus reference_closure_live delegates to import_closure_live_excluding (no fact re-materialization); must match the declared golden (witnessed here) and import_closure_live (witnessed in import_closure_live_test.dag on the same golden). reference_closure_parsed_live closure is exercised green-by-execution against import_closure_live on the conformance fixture; reference_parsed_tree_facts_match_import_facts_at_path is the per-entry census check. Drift control (bogus path not in closure) and import/reference mismatch RED controls are folded into reference_closure_b2_safety_wall_holds."
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
@@ -70,12 +69,24 @@ fn reference_conformance_closure_outcome() -> Outcome<FreeMonoid<String>> {
   reference_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
 }
 
+fn parsed_closure_matches_import_on_conformance_fixture() -> Bool {
+  match reference_closure_parsed_live(
+    entry_path: conformance_entry,
+    pool_roots: witness_layer_roots
+  ) {
+    Accepted { value: parsed_closure, diagnostics: _ } =>
+      set_equal(xs: parsed_closure, ys: import_conformance_closure())
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn reference_closure_b2_safety_wall_holds() -> Bool {
-  let parsed_ok = reference_parsed_tree_facts_match_import_facts_at_path(
+  let parsed_census_ok = reference_parsed_tree_facts_match_import_facts_at_path(
     rel_path: conformance_entry,
     pool_roots: witness_layer_roots,
     exclude_substrings: module_graph_exclude_substrings
   )
+  let parsed_closure_matches_import = parsed_closure_matches_import_on_conformance_fixture()
   match reference_closure_ingest_refusal_witness(pool_roots: witness_layer_roots) {
     Rejected { diagnostics: _ } =>
       match reference_conformance_closure_outcome() {
@@ -92,7 +103,8 @@ test fn reference_closure_b2_safety_wall_holds() -> Bool {
               }
             }
           )
-          parsed_ok
+          parsed_census_ok
+            && parsed_closure_matches_import
             && set_equal(xs: import_conformance_closure(), ys: declared_without_entry) == false
             && set_equal(xs: reference_closure, ys: expected_conformance_closure)
             && set_equal(xs: reference_closure, ys: with_bogus) == false
