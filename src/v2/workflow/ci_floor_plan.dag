@@ -3,7 +3,7 @@ module v2.workflow.ci_floor_plan
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
-  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  Gate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
@@ -132,7 +132,6 @@ fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
 
 fn gate_node(g: Gate) -> Node {
   match g {
-    RustMonolithGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_rust } }, children: [] }
     EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [] }
     LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
     ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [] }
@@ -200,7 +199,6 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
         spawns_host_compiler: true,
         memory: host_compiler
       )
-    RustMonolithGate => runnable_resource_profile_negligible()
     LayeringImportsGate => runnable_resource_profile_negligible()
     ExtdepsExternalAuthorityGate => runnable_resource_profile_negligible()
     GeneratedArtifactDriftGate => runnable_resource_profile_negligible()
@@ -210,7 +208,6 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
 fn gate_runnable(g: Gate) -> Runnable {
   let profile = gate_runnable_profile(g: g)
   match g {
-    RustMonolithGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "rust_monolith_gate_passes", profile: profile }
     EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes", profile: profile }
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes", profile: profile }
     ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes", profile: profile }

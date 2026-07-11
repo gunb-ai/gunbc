@@ -50,7 +50,7 @@ fn synthetic_plan() -> RealizationPlan<Nano> {
     schedule: [
       [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
       [
-        RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes", profile: runnable_resource_profile_negligible() }
+        RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
       ]
     ]
     total: synthetic_plan_total()
