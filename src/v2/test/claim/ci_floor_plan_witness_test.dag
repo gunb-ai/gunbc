@@ -27,12 +27,17 @@ import v2.workflow.ci_floor_plan {
   witness_falsifier_plan_spawn_width_backs_off_at_live_cap,
   witness_falsifier_envelope_fits_live_cap,
   witness_ci_corpus_discovery_is_live,
+  witness_ci_corpus_discovery_flip_authored,
   witness_ci_corpus_discovery_serializes_at_width_one,
+  witness_floor_discovery_flip_serializes_gates_after_corpus,
+  witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor,
   witness_regen_spec_carries_no_witness_corpus,
+  witness_floor_runner_schedule_byte_identical,
+  witness_floor_runner_schedule_byte_identical_for,
   witness_corpus_effective_widths_fit_runner_cap,
   witness_floor_derived_width_leaves_headroom_at_cap,
 }
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
 import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate }
 import std.realization_schedule {
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
@@ -63,7 +68,12 @@ data synthetic_exec_kind_nonexec_path_row: ScheduleWitnessEntry = ScheduleWitnes
   kind: ExecutionWitnessKind
 }
 
-data synthetic_specs_discovery_free_note: String = "Since the 2026-07-09 discovery flip (gunbc.ci_spec ci_spec_discovery_flip_note) the live gunbc_ci_spec carries non-empty discovery_scan_dirs. The synthetic specs below exercise pure opt-in ROSTER machinery (partition, gating, exact-row carriage), so they zero the discovery dirs — otherwise every roster assertion would be drowned by the discovery corpus node. The live discovery arm is witnessed separately (ci_corpus_discovery_flip_witnesses)."
+data synthetic_specs_discovery_free_note: String = "Synthetic specs below exercise pure opt-in ROSTER machinery (partition, gating, exact-row carriage) with discovery dirs zeroed via discovery_free_base_spec. Live gunbc_ci_spec enrolls witness_discovery_scan_dirs (#6438); flip isolation edges are witnessed on gunbc_ci_spec and discovery_flip_enrolled_spec."
+
+data discovery_flip_enrolled_spec: CiSpec = ci_spec_with_discovery_scan_dirs(
+  spec: gunbc_ci_spec,
+  dirs: witness_discovery_scan_dirs
+)
 
 data discovery_free_base_spec: CiSpec = ci_spec_with_discovery_scan_dirs(
   spec: gunbc_ci_spec,
@@ -141,7 +151,32 @@ fn witness_corpus_not_before_compile() -> Bool {
 }
 
 fn witness_independent_jobs_parallelize() -> Bool {
-  gunbc_ci_floor_batches().skip(n: 1).first().length() > 1
+  fold(gunbc_ci_floor_batches().skip(n: 1), init: false, f: fn(found_parallel, batch) {
+    found_parallel || (length(xs: batch) > 1)
+  })
+}
+
+fn batch_has_corpus_and_gate(b: List<Runnable>) -> Bool {
+  let fns = batch_functions(b: b)
+  let has_corpus = list_contains_str(xs: fns, target: corpus_sentinel)
+  let has_gate = fold(fns, init: false, f: fn(found, fn_name) {
+    found || ((fn_name != corpus_sentinel) && (fn_name != "__gunbc_ci_floor_unmapped__"))
+  })
+  has_corpus && has_gate
+}
+
+fn witness_floor_discovery_flip_gates_isolated_from_corpus_for(spec: CiSpec) -> Bool {
+  if length(xs: spec.discovery_scan_dirs) == 0 {
+    true
+  } else {
+    fold(floor_schedule_for(spec: spec, serialize_heavy: true), init: true, f: fn(ok, b) {
+      ok && !batch_has_corpus_and_gate(b: b)
+    })
+  }
+}
+
+fn witness_floor_discovery_flip_gates_isolated_from_corpus() -> Bool {
+  witness_floor_discovery_flip_gates_isolated_from_corpus_for(spec: discovery_flip_enrolled_spec)
 }
 
 fn witness_plan_serializes_heavy_resolves() -> Bool {
@@ -317,9 +352,19 @@ test fn falsifier_plan_spawn_width_witnesses() -> Bool {
 
 test fn ci_corpus_discovery_flip_witnesses() -> Bool {
   witness_ci_corpus_discovery_is_live()
+    && witness_ci_corpus_discovery_flip_authored()
     && witness_ci_corpus_discovery_serializes_at_width_one()
+    && witness_floor_discovery_flip_serializes_gates_after_corpus(spec: gunbc_ci_spec)
+    && witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: gunbc_ci_spec)
+    && witness_floor_discovery_flip_gates_isolated_from_corpus()
     && witness_regen_spec_carries_no_witness_corpus()
     && schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0
+}
+
+test fn ci_floor_runner_migration_witnesses() -> Bool {
+  witness_floor_runner_schedule_byte_identical()
+    && witness_floor_runner_schedule_byte_identical_for(spec: optin_spec, serialize_heavy: true)
+    && witness_floor_runner_schedule_byte_identical_for(spec: optin_spec, serialize_heavy: false)
 }
 
 test fn ci_floor_honest_width_fold_witnesses() -> Bool {

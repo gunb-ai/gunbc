@@ -1,15 +1,16 @@
 module v2.workflow.ci_floor_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
-  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  ci_spec_with_discovery_scan_dirs,
+  Gate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
 }
 import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
-import v2.std.collection { List }
+import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
@@ -61,7 +62,9 @@ import std.realization_schedule {
   runnable_heavy_whole_tree_resolve,
   runnable_forbids_corpus_co_residence,
   cost_account_predicted_zero,
-  schedule_lens_verdict_for_ci_floor
+  schedule_lens_verdict_for_ci_floor,
+  schedule_eq,
+  runnable_selection_applied
 }
 import v2.workflow.executor {
   ExecutorBatch,
@@ -70,6 +73,13 @@ import v2.workflow.executor {
   ExecutorRunComplete,
   ExecutorRunRunnable,
   parallel_executor_plan_from_dependencies
+}
+import v2.workflow.realization_runner {
+  RunnerScheduleBlocked,
+  RunnerScheduleComplete,
+  runner_ordering_only,
+  runner_schedule_plan_from_dependencies,
+  runner_schedule_store_covers_nodes
 }
 
 data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
@@ -132,7 +142,6 @@ fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
 
 fn gate_node(g: Gate) -> Node {
   match g {
-    RustMonolithGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_rust } }, children: [] }
     EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [] }
     LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
     ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [] }
@@ -200,7 +209,6 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
         spawns_host_compiler: true,
         memory: host_compiler
       )
-    RustMonolithGate => runnable_resource_profile_negligible()
     LayeringImportsGate => runnable_resource_profile_negligible()
     ExtdepsExternalAuthorityGate => runnable_resource_profile_negligible()
     GeneratedArtifactDriftGate => runnable_resource_profile_negligible()
@@ -210,7 +218,6 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
 fn gate_runnable(g: Gate) -> Runnable {
   let profile = gate_runnable_profile(g: g)
   match g {
-    RustMonolithGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "rust_monolith_gate_passes", profile: profile }
     EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes", profile: profile }
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes", profile: profile }
     ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes", profile: profile }
@@ -417,12 +424,41 @@ fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView
   }
 }
 
+data gunbc_ci_corpus_discovery_batch_isolation_note: String = "Discovery-flip batch isolation (run 29120615071 receipt): with SelectionApplied the discovery corpus resolves on the main thread (heavy_whole_tree_resolve memo path) while light gate units in the same antichain batch spawn at gunbc_ci_plan_spawn_width — two resolve-groups in one batch, so discovery's whole-tree index and gate shard threads stack even though spawn_width_cap pins the corpus shard count to 1. Resource edges from floor_corpus_node to every gate when discovery_scan_dirs is non-empty isolate the corpus to its own batch so gates start only after discovery completes and walk_memo holds the shared index. Dissolve-on: resolver graph-major shrinks discovery per-shard below the gate envelope so co-residence is safe again."
+
+fn floor_discovery_flip_corpus_serializes_before_gates_edges(spec: CiSpec) -> List<DependencyView> {
+  if length(xs: spec.discovery_scan_dirs) > 0 {
+    fold(spec.gates, init: [], f: fn(acc, g) {
+      let node = gate_node(g: g)
+      if floor_resource_anchor_node(node: node) {
+        acc
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: floor_resource_depends_on(source: floor_corpus_node, dependent: node)
+        )
+      }
+    })
+  } else {
+    []
+  }
+}
+
+fn floor_non_anchor_gate_count(spec: CiSpec) -> Int {
+  fold(spec.gates, init: 0, f: fn(count, g) {
+    if floor_resource_anchor_node(node: gate_node(g: g)) { count } else { count + 1 }
+  })
+}
+
 fn floor_resource_dependencies(spec: CiSpec) -> List<DependencyView> {
   concat(
-    floor_corpus_exclusion_resource_edges(spec: spec),
+    floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec),
     concat(
-      floor_heavy_resolve_chain_resource_edges(spec: spec),
-      floor_regen_emit_artifact_resource_edges(spec: spec)
+      floor_corpus_exclusion_resource_edges(spec: spec),
+      concat(
+        floor_heavy_resolve_chain_resource_edges(spec: spec),
+        floor_regen_emit_artifact_resource_edges(spec: spec)
+      )
     )
   )
 }
@@ -462,19 +498,57 @@ fn runnables_for_batch(batch: ExecutorBatch, spec: CiSpec) -> List<Runnable> {
   })
 }
 
-fn floor_schedule_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
+fn runnables_for_executor_batches(batches: List<ExecutorBatch>, spec: CiSpec) -> List<List<Runnable>> {
+  fold(batches, init: [], f: fn(acc, batch) {
+    list_snoc_item(xs: acc, item: runnables_for_batch(batch: batch, spec: spec))
+  })
+}
+
+data floor_schedule_direct_for_dissolve_on_note: String = "Parallel representation (§2/§3): floor_schedule_direct_for is the legacy scheduler-only projection retained for the move-1 byte-identical receipt (witness_floor_runner_schedule_byte_identical{,_for}). Production scheduling flows through floor_schedule_via_runner_for. Dissolve-on: S2a move 2 lands (compile_to_resolved / module resolution on the runner store) and the receipt witness is deleted — floor_schedule_direct_for goes with it."
+
+fn floor_schedule_direct_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
   match parallel_executor_plan_from_dependencies(
     nodes: floor_nodes(spec: spec),
     dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy),
     scheduled: []
   ) {
     ExecutorRunComplete { batches: batches, scheduled: _ } =>
-      fold(batches, init: [], f: fn(acc, batch) {
-        list_snoc_item(xs: acc, item: runnables_for_batch(batch: batch, spec: spec))
-      })
+      runnables_for_executor_batches(batches: batches, spec: spec)
     ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
   }
+}
+
+fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
+  match runner_schedule_plan_from_dependencies(
+    nodes: floor_nodes(spec: spec),
+    dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy),
+    value: runner_ordering_only
+  ) {
+    RunnerScheduleComplete { batches: batches, store: store } =>
+      if runner_schedule_store_covers_nodes(store: store, nodes: floor_nodes(spec: spec)) {
+        runnables_for_executor_batches(batches: batches, spec: spec)
+      } else {
+        [[floor_unrunnable_sentinel()]]
+      }
+    RunnerScheduleBlocked { evidence: _ } => [[floor_unrunnable_sentinel()]]
+  }
+}
+
+fn floor_schedule_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
+  floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
+}
+
+fn witness_floor_runner_schedule_byte_identical_for(spec: CiSpec, serialize_heavy: Bool) -> Bool {
+  schedule_eq(
+    left: floor_schedule_direct_for(spec: spec, serialize_heavy: serialize_heavy),
+    right: floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
+  )
+}
+
+fn witness_floor_runner_schedule_byte_identical() -> Bool {
+  witness_floor_runner_schedule_byte_identical_for(spec: gunbc_ci_spec, serialize_heavy: true)
+    && witness_floor_runner_schedule_byte_identical_for(spec: gunbc_ci_spec, serialize_heavy: false)
 }
 
 fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
@@ -543,25 +617,46 @@ fn runnable_scan_dir_count(r: Runnable) -> Int {
   }
 }
 
-fn runnable_selection_applied(r: Runnable) -> Bool {
-  match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
-      match sel { SelectionApplied => true  SelectionOff => false  SelectionPredictOnly => false }
-    _ => false
-  }
+fn gunbc_ci_spec_discovery_flip_enrolled() -> CiSpec {
+  ci_spec_with_discovery_scan_dirs(spec: gunbc_ci_spec, dirs: witness_discovery_scan_dirs)
+}
+
+fn witness_ci_corpus_discovery_flip_parked_on_live_spec() -> Bool {
+  (length(xs: gunbc_ci_spec.discovery_scan_dirs) == 0)
+    && (length(xs: witness_discovery_scan_dirs) > 0)
+}
+
+fn witness_ci_corpus_discovery_flip_authored() -> Bool {
+  length(xs: witness_discovery_scan_dirs) > 0
 }
 
 fn witness_ci_corpus_discovery_is_live() -> Bool {
-  runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) > 0
+  witness_ci_corpus_discovery_flip_authored()
+    && (length(xs: gunbc_ci_spec.discovery_scan_dirs) > 0)
+    && (runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) > 0)
     && runnable_selection_applied(r: corpus_runnable_for(spec: gunbc_ci_spec))
 }
 
 fn witness_ci_corpus_discovery_serializes_at_width_one() -> Bool {
-  match corpus_runnable_for(spec: gunbc_ci_spec) {
+  match corpus_runnable_for(spec: gunbc_ci_spec_discovery_flip_enrolled()) {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: cap, profile: _ } =>
       (length(xs: dirs) > 0) && (cap == 1)
     _ => false
   }
+}
+
+fn witness_floor_discovery_flip_serializes_gates_after_corpus(spec: CiSpec) -> Bool {
+  if length(xs: spec.discovery_scan_dirs) == 0 {
+    true
+  } else {
+    length(xs: floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec)) == floor_non_anchor_gate_count(spec: spec)
+  }
+}
+
+fn witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: CiSpec) -> Bool {
+  fold(floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec), init: true, f: fn(ok, edge) {
+    ok && (edge.dependent != floor_compile_root_node())
+  })
 }
 
 fn witness_regen_spec_carries_no_witness_corpus() -> Bool {

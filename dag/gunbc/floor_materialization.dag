@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String }
 import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci_gate {
   Gate,
-  RustMonolithGate, EmitHostGate, LayeringImportsGate, ExtdepsExternalAuthorityGate,
+  EmitHostGate, LayeringImportsGate, ExtdepsExternalAuthorityGate,
   DagCompileCleanGate, GeneratedArtifactDriftGate, SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
 }
@@ -44,7 +44,6 @@ data floor_index_build_share_tier_note: String = "ReferenceTier declared DIRECTL
 
 fn gate_consumer_site(g: Gate) -> String {
   match g {
-    RustMonolithGate => "gate:RustMonolithGate"
     EmitHostGate => "gate:EmitHostGate"
     LayeringImportsGate => "gate:LayeringImportsGate"
     ExtdepsExternalAuthorityGate => "gate:ExtdepsExternalAuthorityGate"
