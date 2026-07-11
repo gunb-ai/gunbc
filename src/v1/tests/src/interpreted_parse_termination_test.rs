@@ -102,6 +102,13 @@ fn interpreted_parse_bisect_add_correctness_holds() {
     );
     assert!(
         matches!(
+            run_bisect_witness_bool("bisect_parse_module_add_well_formed_after_normalize"),
+            Ok(Value::Bool(true))
+        ),
+        "normalized add module should be well_formed"
+    );
+    assert!(
+        matches!(
             run_bisect_witness_bool("bisect_parse_module_add_resolve_accepts"),
             Ok(Value::Bool(true))
         ),
