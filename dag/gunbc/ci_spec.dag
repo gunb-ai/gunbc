@@ -374,6 +374,7 @@ data ci_documentation_only_receipt_gate_companion_paths: List<String> = [
   "dag/gunbc/ci_spec.dag",
   "dag/gunbc/ci_materialization.dag",
   "dag/gunbc/merge_admission_produce.dag",
+  "dag/test/claim/merge_admission_producer_witness_test.dag",
   "src/v2/test/claim/ci_spec_witness_test.dag",
 ]
 
@@ -454,19 +455,25 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
                 "      :\n"
               )
             ),
-            "    else\n"
+            concat(
+              "    elif [[ \"$_ci_path\" == dag/test/claim/merge_admission_producer_witness_test.dag ]]; then\n",
+              "      :\n"
+            )
           )
         ),
         concat(
           concat(
-            "      PLAN_ARTIFACT_ONLY=0\n",
-            "      break\n"
+            "    else\n",
+            "      PLAN_ARTIFACT_ONLY=0\n"
           ),
           concat(
-            "    fi\n",
+            "      break\n",
             concat(
-              "  done <<_ci_diff_eof_\n",
-              "$_ci_changed\n"
+              "    fi\n",
+              concat(
+                "  done <<_ci_diff_eof_\n",
+                "$_ci_changed\n"
+              )
             )
           )
         )
