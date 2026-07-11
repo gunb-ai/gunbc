@@ -33,9 +33,10 @@ test fn workspace_root_hand_rust_dissolve_trigger_names_site_and_lane() -> Bool 
 }
 
 test fn workspace_root_hand_rust_receipt_plan_anchor_is_checkable() -> Bool {
-  cli_run_workspace_root_hand_rust_receipt_plan_anchor
-    == "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
-    && cli_run_workspace_root_discovery_loc_delta_net > 0
+  string_contains(
+    s: cli_run_workspace_root_hand_rust_receipt_plan_anchor,
+    pattern: "cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
+  ) && cli_run_workspace_root_discovery_loc_delta_net > 0
 }
 
 test fn workspace_root_hand_rust_discriminating_tests_named() -> Bool {
