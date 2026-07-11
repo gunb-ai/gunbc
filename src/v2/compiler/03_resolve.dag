@@ -640,17 +640,49 @@ fn resolve_child_edge(
 
 data scope_with_fn_decl_params_interim_note: String = "Interim-for-FLAG-D: bare sym→sym merge of dag_fn_decl_param_binding_atoms + add_arrow_domain_named_params until fn_decl→Arrow lowering dissolves the fn_decl reader; dissolve this hunk when FLAG D lands (eager-ram-612 Track 5)."
 
+fn domain_root_has_named_bindings(root: Node) -> Bool {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: false, f: fn(acc, e) {
+        if acc {
+          acc
+        } else {
+          match try_edge_declared_binding(e: e) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        }
+      })
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}
+
+fn arrow_domain_has_named_bindings(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      if count(n.children) >= 1 {
+        match first(n.children) {
+          Present { value: e0 } => domain_root_has_named_bindings(root: e0.target)
+          Absent => false
+        }
+      } else {
+        false
+      }
+    _ => false
+  }
+}
+
 fn scope_with_fn_decl_params(n: Node, scope: Scope) -> Scope {
   let params = dag_fn_decl_param_binding_atoms(node: n)
   if length(xs: params) == 0 {
-    let arrow_locals = add_arrow_domain_named_params(n: n, acc: empty_map())
-    if arrow_locals == empty_map() {
-      scope
-    } else {
+    if arrow_domain_has_named_bindings(n: n) {
       ScopeFrame {
-        locals: arrow_locals,
+        locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
         outer: scope
       }
+    } else {
+      scope
     }
   } else {
     let merged = fold(
