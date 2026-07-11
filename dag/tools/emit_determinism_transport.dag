@@ -1,6 +1,7 @@
 module tools.emit_determinism_transport
 
 import extdeps.shell
+import extdeps.filesystem.filesystem_io
 import extdeps.git
 import extdeps.gunbc
 import std.logic { Bool }
@@ -49,6 +50,25 @@ fn ed_run_compile(root: String, invocation: TypedArgvInvocation) -> Bool {
     args: invocation.args
   )
   run.success
+}
+
+fn run_diff_recursive_discrimination_receipt() -> Bool {
+  let a = shell.Mktemp.Dir()
+  let b = shell.Mktemp.Dir()
+  if a.success && b.success {
+    let wrote_a = Filesystem.Write(path: concat(a.path, "/probe.txt"), content: "left")
+    let wrote_b = Filesystem.Write(path: concat(b.path, "/probe.txt"), content: "right")
+    let differing = shell.Diff.Recursive(left: a.path, right: b.path)
+    let equal = shell.Diff.Recursive(left: a.path, right: a.path)
+    let cleaned_a = shell.Remove.RecursiveForce(path: a.path)
+    let cleaned_b = shell.Remove.RecursiveForce(path: b.path)
+    wrote_a.success && wrote_b.success
+      && (differing.identical == false) && (differing.exit_code == 1)
+      && equal.identical
+      && cleaned_a.success && cleaned_b.success
+  } else {
+    false
+  }
 }
 
 fn run_emit_corpus_x2_diff_zero() -> Bool {
