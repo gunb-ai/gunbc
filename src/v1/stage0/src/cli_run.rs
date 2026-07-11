@@ -1964,6 +1964,148 @@ fn entry_file_touched_via_import_closure(
     }))
 }
 
+/// Import-closure module names from the module-graph facts scan — the same grain as
+/// `roster_import_closure_nodes_pre_resolve`, used when skip-before-resolve elides a cold
+/// entry resolve so the post-resolve calibration union stays aligned with the pre-resolve walk.
+fn collect_import_closure_module_names_from_facts(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    out: &mut HashSet<String>,
+) {
+    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .map(|p| workspace_relative_repo_path(&p))
+        .collect();
+    for node in &facts.nodes {
+        let rel = workspace_relative_repo_path(&node.path);
+        if closure_paths.contains(&rel)
+            || closure_paths
+                .iter()
+                .any(|closure_path| repo_paths_match_touched(closure_path, &rel))
+        {
+            out.insert(node.module.clone());
+        }
+    }
+}
+
+fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &str) -> bool {
+    diff_edits
+        .edited_test_fns
+        .iter()
+        .any(|(file, _)| diff_file_matches_entry(file, entry_path))
+}
+
+/// Skip-before-resolve (discovery corpus, SelectionApplied): when the diff cannot possibly
+/// affect any witness in this entry — outside import-closure, no edited test fn, not a
+/// host-scaffold entry file — elide the cold entry resolve and treat every kernel witness
+/// row as assumed-green. Dissolve-on: the modeled `floor_kernel_precompute_would_skip` arm
+/// when skip-before-resolve is the general per-entry form.
+fn entry_eligible_for_discovery_skip_before_resolve(
+    skip_enabled: bool,
+    entry_content: &str,
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    declared_paths: &HashSet<String>,
+    touched_paths: &[String],
+    diff_edits: &FloorDiffEdits,
+) -> Result<bool, String> {
+    if !skip_enabled {
+        return Ok(false);
+    }
+    if entry_text_indicates_live_host_scan(entry_content) {
+        return Ok(false);
+    }
+    if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
+        return Ok(false);
+    }
+    Ok(!entry_file_touched_via_import_closure(
+        entry_path,
+        facts,
+        declared_paths,
+        touched_paths,
+    )?)
+}
+
+struct DiscoveryEntryResolve {
+    ctx: v1_interpreter::InterpContext,
+    closure_subject: String,
+    frontier_nodes: Vec<v1_interpreter::Value>,
+    touches_frontier: bool,
+    entry_file_touched: bool,
+    resolve_nanos: u128,
+}
+
+fn resolve_discovery_entry_for_corpus_row(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+    execution_mode: v1_interpreter::ExecutionMode,
+    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    skip_enabled: bool,
+    diff_edits: &FloorDiffEdits,
+    touched_entry_paths: &[String],
+    module_graph_declared_paths: &HashSet<String>,
+    closure_modules: &mut HashSet<String>,
+) -> Result<DiscoveryEntryResolve, String> {
+    let sources = load_sources_for_entry_with_index(
+        &index.source_files,
+        &index.module_graph_facts,
+        entry_path,
+    )
+    .map_err(|msg| format!("load sources failed for {entry_path}: {msg}"))?;
+    let closure_subject = subject_digest_for_closure(&sources);
+    let resolve_started = std::time::Instant::now();
+    set_phase(FloorPhase::Resolve, entry_path);
+    let (graph, source_indices) =
+        resolve_entry_with_index_for_discovery_corpus(index, entry_path)
+            .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
+    let resolve_nanos = resolve_started.elapsed().as_nanos();
+    collect_typed_module_names(
+        graph.modules.iter().cloned(),
+        &source_indices,
+        closure_modules,
+    );
+    let entry_ctx = make_eval_context_with_runtime_options(
+        &graph,
+        source_indices,
+        execution_mode,
+        None,
+        whole_tree_published_keys,
+    );
+    let (frontier_nodes, touches_frontier, entry_file_touched) = if skip_enabled {
+        let frontier_nodes =
+            rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
+        let touches_frontier = if frontier_nodes.is_empty() {
+            false
+        } else {
+            entry_touches_rerun_frontier(
+                &entry_ctx,
+                &list_value_from_vec(frontier_nodes.clone()),
+            )?
+        };
+        let entry_file_touched = if touched_entry_paths.is_empty() {
+            false
+        } else {
+            entry_file_touched_via_import_closure(
+                entry_path,
+                &index.module_graph_facts,
+                module_graph_declared_paths,
+                touched_entry_paths,
+            )?
+        };
+        (frontier_nodes, touches_frontier, entry_file_touched)
+    } else {
+        (Vec::new(), true, true)
+    };
+    Ok(DiscoveryEntryResolve {
+        ctx: entry_ctx,
+        closure_subject,
+        frontier_nodes,
+        touches_frontier,
+        entry_file_touched,
+        resolve_nanos,
+    })
+}
+
 /// The closure-node definition SHARED by the falsifier/floor calibration emission and
 /// the space-lens memory predictor (single authority is THIS function — the predictor
 /// binds to it, never a re-derivation; predictor design is in flight on PR #6442, and
@@ -6523,11 +6665,9 @@ pub fn run_discovery_corpus_with_options(
     // in flight on PR #6442; consumer binds to roster_import_closure_nodes_pre_resolve):
     // the transitive import-CLOSURE size — never the roster/entry count (pairing an
     // entry count against a whole-closure peak inflates bytes-per-node by the fan-in
-    // factor). Today every discovered row resolves even when selection skips it (the
-    // skip is execution-grain; skip-before-resolve is the de-fork plan's open step), so
-    // the all-rows walk IS the resident union for both the ci and falsifier jobs.
-    // Dissolve-on: when skip-before-resolve lands, this emission must switch to the
-    // selected subset or it overcounts the resident set.
+    // factor). Skip-before-resolve (run_discovery_rows) elides cold resolve for
+    // import-closure-unaffected entries while folding their module-graph closure into
+    // the post-resolve union so this pre-resolve count stays paired with calibration.
     let pre_resolve_closure_nodes = {
         let prefix_entries: &[&str] = if selection_enabled {
             &[FLOOR_RUNNER_ENTRY]
@@ -6868,67 +7008,83 @@ fn run_discovery_rows(
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
-            let sources = load_sources_for_entry_with_index(
-                &index.source_files,
-                &index.module_graph_facts,
+            current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
+            if entry_eligible_for_discovery_skip_before_resolve(
+                skip_enabled,
+                &current_entry_content,
                 &row.entry,
-            )
-            .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
-            let closure_subject = subject_digest_for_closure(&sources);
-            let resolve_started = std::time::Instant::now();
-            set_phase(FloorPhase::Resolve, &row.entry);
-            let (graph, source_indices) =
-                resolve_entry_with_index_for_discovery_corpus(index, &row.entry)
-                    .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
-            let resolve_nanos = resolve_started.elapsed().as_nanos();
-            collect_typed_module_names(
-                graph.modules.iter().cloned(),
-                &source_indices,
+                &index.module_graph_facts,
+                &module_graph_declared_paths,
+                changed_paths,
+                diff_edits,
+            )? {
+                eprintln!(
+                    "SKIP-RESOLVE [unaffected import-closure] {} (cold entry resolve elided)",
+                    row.entry
+                );
+                collect_import_closure_module_names_from_facts(
+                    &row.entry,
+                    &index.module_graph_facts,
+                    &mut closure_modules,
+                );
+                ctx = None;
+                current_closure_subject = None;
+                current_entry_frontier_nodes.clear();
+                current_entry_touches = false;
+                current_entry_file_touched = false;
+                current_entry = Some(row.entry.clone());
+            } else {
+                let resolved = resolve_discovery_entry_for_corpus_row(
+                    index,
+                    &row.entry,
+                    execution_mode,
+                    whole_tree_published_keys.clone(),
+                    skip_enabled,
+                    diff_edits,
+                    &touched_entry_paths,
+                    &module_graph_declared_paths,
+                    &mut closure_modules,
+                )?;
+                summary.total_resolve_nanos += resolved.resolve_nanos;
+                summary.entry_resolve_receipts.push(EntryResolveReceipt {
+                    entry: row.entry.clone(),
+                    closure_subject: resolved.closure_subject.clone(),
+                    resolve_nanos: resolved.resolve_nanos,
+                });
+                current_closure_subject = Some(resolved.closure_subject);
+                current_entry_frontier_nodes = resolved.frontier_nodes;
+                current_entry_touches = resolved.touches_frontier;
+                current_entry_file_touched = resolved.entry_file_touched;
+                ctx = Some(resolved.ctx);
+                current_entry = Some(row.entry.clone());
+            }
+        }
+        if ctx.is_none()
+            && skip_enabled
+            && witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function)
+        {
+            let resolved = resolve_discovery_entry_for_corpus_row(
+                index,
+                &row.entry,
+                execution_mode,
+                whole_tree_published_keys.clone(),
+                skip_enabled,
+                diff_edits,
+                &touched_entry_paths,
+                &module_graph_declared_paths,
                 &mut closure_modules,
-            );
-            summary.total_resolve_nanos += resolve_nanos;
+            )?;
+            summary.total_resolve_nanos += resolved.resolve_nanos;
             summary.entry_resolve_receipts.push(EntryResolveReceipt {
                 entry: row.entry.clone(),
-                closure_subject: closure_subject.clone(),
-                resolve_nanos,
+                closure_subject: resolved.closure_subject.clone(),
+                resolve_nanos: resolved.resolve_nanos,
             });
-            current_closure_subject = Some(closure_subject);
-            let entry_ctx = make_eval_context_with_runtime_options(
-                &graph,
-                source_indices,
-                execution_mode,
-                None,
-                whole_tree_published_keys.clone(),
-            );
-            if skip_enabled {
-                current_entry_frontier_nodes =
-                    rerun_frontier_nodes_for_entry(&entry_ctx, &row.entry, diff_edits)?;
-                current_entry_touches = if current_entry_frontier_nodes.is_empty() {
-                    false
-                } else {
-                    entry_touches_rerun_frontier(
-                        &entry_ctx,
-                        &list_value_from_vec(current_entry_frontier_nodes.clone()),
-                    )?
-                };
-                current_entry_file_touched = if touched_entry_paths.is_empty() {
-                    false
-                } else {
-                    entry_file_touched_via_import_closure(
-                        &row.entry,
-                        &index.module_graph_facts,
-                        &module_graph_declared_paths,
-                        &touched_entry_paths,
-                    )?
-                };
-            } else {
-                current_entry_frontier_nodes.clear();
-                current_entry_touches = true;
-                current_entry_file_touched = true;
-            }
-            ctx = Some(entry_ctx);
-            current_entry = Some(row.entry.clone());
-            current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
+            current_closure_subject = Some(resolved.closure_subject);
+            current_entry_frontier_nodes = resolved.frontier_nodes;
+            current_entry_touches = resolved.touches_frontier;
+            current_entry_file_touched = resolved.entry_file_touched;
+            ctx = Some(resolved.ctx);
         }
         let function_edited = skip_enabled
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
