@@ -561,6 +561,14 @@ mod process_workspace_root_tests {
         assert_eq!(workspace_relative_repo_path(&abs.to_string_lossy()), rel);
         assert!(ws.join(&rel).is_file());
     }
+
+    #[test]
+    fn layer_import_facts_relative_root_yields_repo_relative_paths() {
+        let ws = process_workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let facts = super::layer_import_facts(&["src/v2/std".to_string()], &[]);
+        assert!(facts.iter().any(|f| f.path == "src/v2/std/algebra.dag"));
+    }
 }
 
 /// Empty ingest-manifest placeholder excluded from the module index when a later
