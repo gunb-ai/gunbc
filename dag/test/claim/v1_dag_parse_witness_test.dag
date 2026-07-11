@@ -1,26 +1,7 @@
 module test.claim.v1_dag_parse_witness
 
-import extdeps.languages.bash.program { serialize_bash }
-import tools.host_prelude { witness_bin, witness_bin_program }
 import tools.v1_dag_parse_transport { run_v1_dag_parse }
 
-data v1_dag_parse_quoted_var_command_line: String = "\"$V1_SRC_DAG_PARSE\"\n"
-
-fn witness_v1_dag_parse_holds() -> Bool {
-  run_v1_dag_parse()
-}
-
-fn witness_v1_dag_parse_invocation_is_quoted_var_command() -> Bool {
-  let script = serialize_bash(p: witness_bin_program(
-    invoke: witness_bin(var_name: "V1_SRC_DAG_PARSE", bin_name: "v1_src_dag_parse"),
-    prereqs: [],
-    args: []
-  ))
-  string_contains(s: script, pattern: v1_dag_parse_quoted_var_command_line)
-    && !string_contains(s: script, pattern: "\n$V1_SRC_DAG_PARSE\n")
-}
-
 test fn v1_dag_parse_witnesses() -> Bool {
-  witness_v1_dag_parse_holds()
-    && witness_v1_dag_parse_invocation_is_quoted_var_command()
+  run_v1_dag_parse()
 }

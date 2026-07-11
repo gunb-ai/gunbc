@@ -167,6 +167,31 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
+// receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// 🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust
+// (landed on main as #6484 .git-ancestor walk); DISSOLVES WHEN cli_run.rs Chunk F lands
+// (cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP
+// 5-dissolve-patches cli_run.rs shrink retires HAND path-dependent root entirely.
+// Discriminating receipt: workspace_root_discovery_tests (same kernel as workspace_root()).
+/// Single authority for workspace-root discovery (.git ancestor walk).
+/// `workspace_root()` memoizes from the process cwd; tests pass an explicit start path.
+pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
+    for dir in start_cwd.ancestors() {
+        if dir.join(".git").exists() {
+            return dir.to_path_buf();
+        }
+    }
+    panic!(
+        "workspace_root: {} is not inside a git checkout; run from \
+         the workspace (the compile-time CARGO_MANIFEST_DIR fallback was removed: \
+         binaries are shared across runner workspaces and the compiling checkout's \
+         path is not a runtime fact)",
+        start_cwd.display()
+    )
+}
+
 /// The workspace root is a property of where the process RUNS, never of where the
 /// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
 /// the release binaries across jobs via artifacts, and the build job and the consuming
@@ -180,23 +205,16 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
 /// entry — a directory for clones, a file for worktrees). Computed once per process.
 /// A cwd outside any checkout refuses loudly — no fallback to a compile-time path
 /// (DESIGN §5: refuse, never widen).
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): runtime checkout-root
+// derivation (#6484 / #6472 job-split). Dissolves when release bins receive checkout-root
+// at spawn (env/argv) or Step 5 deletes this Rust parallel and the v2 floor workflow
+// owns path resolution.
 pub fn workspace_root() -> PathBuf {
     static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     ROOT.get_or_init(|| {
         let cwd =
             std::env::current_dir().expect("workspace_root: process working directory unavailable");
-        for dir in cwd.ancestors() {
-            if dir.join(".git").exists() {
-                return dir.to_path_buf();
-            }
-        }
-        panic!(
-            "workspace_root: process cwd {} is not inside a git checkout; run from \
-             the workspace (the compile-time CARGO_MANIFEST_DIR fallback was removed: \
-             binaries are shared across runner workspaces and the compiling checkout's \
-             path is not a runtime fact)",
-            cwd.display()
-        )
+        workspace_root_from(&cwd)
     })
     .clone()
 }
@@ -311,9 +329,55 @@ fn repo_relative_path_normalized(path: &Path) -> String {
         })
 }
 
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold
+// (cli_run_source_root_anchor_scaffold row);
+// receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// 🟡 dissolve-on: try_anchor_source_root — declared layer/pool roots come from the
+// v2.lens.medium_structure_containment roster while `dag/compiler` is modeled-before-implemented,
+// so absence is a legitimate state skipped LOUDLY (counted line per root); DISSOLVES WHEN
+// cli_run.rs Chunk F lands (roots walk GENERATED; absence becomes a typed, located, counted
+// diagnostic at the roster layer) OR ROADMAP 5-dissolve-patches retires HAND path handling.
+// Discriminating receipts: try_anchor_source_root_resolves_declared_present_root /
+// try_anchor_source_root_skips_declared_absent_root.
 /// Resolve a source/pool-root spelling to an absolute directory under
 /// [`process_workspace_root`]. Absolute paths baked from the compile-time
 /// [`workspace_root`] (sccache cross-runner) are re-anchored when missing on disk.
+/// Non-panicking sibling of [`anchor_source_root`] for DECLARED layer/pool roots whose absence is
+/// a legitimate state (a modeled-before-implemented location, e.g. `dag/compiler` in the
+/// medium-structure roster): `None` when the root does not exist under any anchoring, so the
+/// caller can skip it LOUDLY (counted line) instead of panicking mid-floor. CLI-provided roots
+/// keep the strict panicking contract - a typo'd argument must refuse, never skip.
+fn try_anchor_source_root(root: &str) -> Option<String> {
+    let p = Path::new(root);
+    let ws = process_workspace_root();
+    if p.is_absolute() {
+        if p.is_dir() {
+            return Some(root.to_string());
+        }
+        let baked = workspace_root();
+        if let Ok(rel) = p.strip_prefix(&baked) {
+            let reanchored = ws.join(rel);
+            if reanchored.is_dir() {
+                return Some(reanchored.to_string_lossy().into_owned());
+            }
+        }
+        if let Ok(rel) = repo_relative_path(p) {
+            let reanchored = ws.join(&rel);
+            if reanchored.is_dir() {
+                return Some(reanchored.to_string_lossy().into_owned());
+            }
+        }
+        return None;
+    }
+    let anchored = ws.join(p);
+    if anchored.is_dir() {
+        Some(anchored.to_string_lossy().into_owned())
+    } else {
+        None
+    }
+}
+
 fn anchor_source_root(root: &str) -> String {
     let p = Path::new(root);
     let ws = process_workspace_root();
@@ -510,7 +574,8 @@ mod cli_path_arg_resolution_tests {
 mod process_workspace_root_tests {
     use super::{
         anchor_source_root, process_workspace_root, repo_relative_path,
-        repo_relative_path_normalized, workspace_relative_repo_path, workspace_root,
+        repo_relative_path_normalized, try_anchor_source_root, workspace_relative_repo_path,
+        workspace_root,
     };
     use std::path::Path;
 
@@ -539,6 +604,22 @@ mod process_workspace_root_tests {
         assert!(Path::new(&anchored)
             .join("gunbc/ci_layer_roots.dag")
             .is_file());
+    }
+
+    #[test]
+    fn try_anchor_source_root_resolves_declared_present_root() {
+        let anchored = try_anchor_source_root("dag").expect("dag exists in every checkout");
+        assert!(Path::new(&anchored)
+            .join("gunbc/ci_layer_roots.dag")
+            .is_file());
+    }
+
+    #[test]
+    fn try_anchor_source_root_skips_declared_absent_root() {
+        assert_eq!(
+            try_anchor_source_root("dag/declared-but-not-yet-implemented-root"),
+            None
+        );
     }
 
     #[test]
@@ -595,6 +676,50 @@ mod process_workspace_root_tests {
         let _ = repo_relative_path_normalized(Path::new(
             "no-such-dir/no-such-file-gunbc-red-control.dag",
         ));
+    }
+}
+
+#[cfg(test)]
+mod workspace_root_discovery_tests {
+    use super::workspace_root_from;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    fn fixture_root(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("gunbc-ws-root-{tag}-{}", std::process::id()))
+    }
+
+    fn canonical(p: &Path) -> PathBuf {
+        std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+    }
+
+    /// Cross-job / worktree: claim bins run from a checkout subdirectory must resolve
+    /// the same root as `git rev-parse --show-toplevel`, not the compile-time baked path.
+    #[test]
+    fn from_subdirectory_matches_git_toplevel() {
+        let top = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git rev-parse");
+        assert!(top.status.success(), "must run inside a git checkout");
+        let top = PathBuf::from(String::from_utf8(top.stdout).unwrap().trim());
+        let sub = top.join("dag");
+        assert!(sub.is_dir(), "dag/ must exist under checkout");
+        let got = workspace_root_from(&sub);
+        assert_eq!(canonical(&got), canonical(&top));
+    }
+
+    /// Fail-closed: Cargo.toml+dag/ without a `.git` ancestor is not a checkout root.
+    #[test]
+    fn refuses_path_outside_git_checkout() {
+        let root = fixture_root("no-git");
+        std::fs::create_dir_all(root.join("dag")).expect("dag dir");
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("Cargo.toml");
+        let nested = root.join("nested/deep");
+        std::fs::create_dir_all(&nested).expect("nested");
+        let result = std::panic::catch_unwind(|| workspace_root_from(&nested));
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(result.is_err(), "must panic outside a git checkout");
     }
 }
 
@@ -2851,6 +2976,137 @@ fn check_module_source_identity(
     Ok(())
 }
 
+/// Antichain batches (Kahn levels) over the closure's resolved import edges — the host
+/// realization of the modeled module-node schedule (resolver-graph-major-design.md §7 S2a
+/// move 2: module nodes ride the same scheduler/runner shape as the CI floor,
+/// `v2.workflow.module_resolution_plan` is the model authority). Nodes are the closure's
+/// modules at authored-name grain (the typed-store key); edges are `resolved_imports` rows
+/// restricted to the closure (a dangling import is not a schedule edge — the missing-parent
+/// diagnostic stays typecheck's own, unchanged). A cyclic residue is unschedulable by a
+/// forward walk; it is appended as a final batch in the resolver's original order — never
+/// silently dropped — so its missing-parent diagnostics are the same set the serial fold
+/// produced (original order is a DFS postorder, so acyclic imports always precede their
+/// importers; only within-cycle edges can be "missing", identically in both walks).
+/// Batches are deterministic: within a level, modules keep their original relative order.
+fn module_schedule_batches(
+    modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
+    module_names: &[String],
+) -> Vec<Vec<usize>> {
+    let position: HashMap<&str, usize> = module_names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.as_str(), i))
+        .collect();
+    let edges: Vec<(usize, usize)> = modules
+        .iter()
+        .enumerate()
+        .flat_map(|(i, resolved)| {
+            let position = &position;
+            resolved
+                .resolved_imports
+                .iter()
+                .filter_map(move |imp| position.get(imp.module_path.as_str()).map(|&src| (src, i)))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    schedule_batches_from_edges(modules.len(), &edges)
+}
+
+/// The pure batching core of `module_schedule_batches`: nodes are `0..n` in dependency-view
+/// order, `edges` are `(source, dependent)` pairs (duplicates and self-edges tolerated —
+/// deduped and skipped respectively, matching repeated `import` rows of one module).
+fn schedule_batches_from_edges(n: usize, edges: &[(usize, usize)]) -> Vec<Vec<usize>> {
+    let mut indegree: Vec<usize> = vec![0; n];
+    let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut seen_edges: HashSet<(usize, usize)> = HashSet::new();
+    for &(src, dependent) in edges {
+        if src != dependent && seen_edges.insert((src, dependent)) {
+            dependents[src].push(dependent);
+            indegree[dependent] += 1;
+        }
+    }
+    let mut batches: Vec<Vec<usize>> = Vec::new();
+    let mut scheduled = vec![false; n];
+    let mut frontier: Vec<usize> = (0..n).filter(|&i| indegree[i] == 0).collect();
+    let mut scheduled_count = 0;
+    while !frontier.is_empty() {
+        for &i in &frontier {
+            scheduled[i] = true;
+        }
+        scheduled_count += frontier.len();
+        let mut next: Vec<usize> = Vec::new();
+        for &i in &frontier {
+            for &dep in &dependents[i] {
+                indegree[dep] -= 1;
+                if indegree[dep] == 0 {
+                    next.push(dep);
+                }
+            }
+        }
+        next.sort_unstable();
+        batches.push(std::mem::replace(&mut frontier, next));
+    }
+    if scheduled_count < n {
+        batches.push((0..n).filter(|&i| !scheduled[i]).collect());
+    }
+    batches
+}
+
+#[cfg(test)]
+mod module_schedule_batches_tests {
+    use super::schedule_batches_from_edges;
+
+    fn flat(batches: &[Vec<usize>]) -> Vec<usize> {
+        batches.iter().flatten().copied().collect()
+    }
+
+    // Once-per-node by construction (§5): every node appears in the schedule exactly once,
+    // and a dependent is never batched before its source.
+    #[test]
+    fn diamond_schedules_antichain_levels() {
+        // 0 -> {1, 2} -> 3 (diamond): 1 and 2 are the same level (the parallel frontier).
+        let batches = schedule_batches_from_edges(4, &[(0, 1), (0, 2), (1, 3), (2, 3)]);
+        assert_eq!(batches, vec![vec![0], vec![1, 2], vec![3]]);
+    }
+
+    #[test]
+    fn chain_is_one_node_per_batch_and_covers_every_node_once() {
+        let batches = schedule_batches_from_edges(3, &[(0, 1), (1, 2)]);
+        assert_eq!(batches, vec![vec![0], vec![1], vec![2]]);
+        assert_eq!(flat(&batches), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn duplicate_and_self_edges_do_not_deadlock() {
+        // A module importing the same module twice (two import rows) and a self-import
+        // must not inflate indegree — both were representable in resolved_imports.
+        let batches = schedule_batches_from_edges(2, &[(0, 1), (0, 1), (1, 1)]);
+        assert_eq!(batches, vec![vec![0], vec![1]]);
+    }
+
+    // RED-control shape: a cycle is unschedulable by the forward walk; the residue is
+    // appended as a final batch in original order — never silently dropped (coverage
+    // stays total), and never interleaved ahead of schedulable nodes.
+    #[test]
+    fn cycle_residue_is_final_batch_in_original_order() {
+        // 0 standalone; 1 <-> 2 cycle; 3 depends on the cycle (also residue: its
+        // prerequisite never completes the forward walk).
+        let batches = schedule_batches_from_edges(4, &[(1, 2), (2, 1), (2, 3)]);
+        assert_eq!(batches, vec![vec![0], vec![1, 2, 3]]);
+        let mut all = flat(&batches);
+        all.sort_unstable();
+        assert_eq!(all, vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn within_level_order_is_original_relative_order() {
+        // Independent nodes keep dependency-view order inside their level — the
+        // determinism the byte-identical assembled-view receipt rides on.
+        let batches = schedule_batches_from_edges(3, &[]);
+        assert_eq!(batches, vec![vec![0, 1, 2]]);
+    }
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2865,72 +3121,114 @@ fn reconcile_with_typed_cache(
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
 
-    for resolved in graph.modules.iter().cloned() {
-        let parent_result = v1_compiler_infer::collect_parent_envs(
-            resolved.clone(),
-            module_index.clone(),
-            source_indices.clone(),
-        );
-        let mod_name = authored_name_at(source_indices.clone(), resolved.module.clone());
-        // Collision-honesty guard (union-resolve receipt §6.3): the typed cache is keyed by
-        // authored name and shared across every co-resident entry, so a name that resolves
-        // from two DIFFERENT declaring files in one process is a co-residence surprise — the
-        // shared store must fail loud here, never silently serve one file's typecheck for the
-        // other's (that would be a §5 fail-open: a divergent resolution passing as plausible).
-        // build_module_index already walls tree-wide module-path collisions at index build;
-        // this is the same wall at the cache seam the union widens (e.g. an on-disk entry whose
-        // module path shadows an indexed module reached via entry_source_from_index_or_disk).
-        // Normalize to the workspace-relative form so a module reached both index-loaded
-        // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
-        // authority — the guard must fire on genuinely different files, not path representations.
-        let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        check_module_source_identity(module_identity, &mod_name, &decl_file)?;
-        let cached = typed_cache.borrow().get(&mod_name).cloned();
-        let tc_result = match cached {
-            Some(hit) => hit,
-            None => {
-                // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
-                bump_typecheck_compute_count();
-                if phase_profile::phase_profile_enabled() {
-                    eprintln!("[typecheck-attribution] module={mod_name} start");
+    // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
+    // the module-node schedule's antichain-batch order, with the typed cache as the
+    // node-keyed store a dependent's handler reads its imports' results from — once-per-node
+    // holds by schedule (a node appears once), not merely by cache lookup. The ResolvedGraph
+    // stays an ASSEMBLED VIEW in the resolver's original module order (the loop below this
+    // one), so the output is byte-identical to the legacy serial fold; module-grain purity
+    // (a result is a function of the module and its import closure, not of dispatch order)
+    // is the same assumption the shared typed cache already ships on, held by the
+    // every-order equivalence oracles (§6.1).
+    let closure_modules: Vec<Rc<v1_compiler_resolve::ResolvedModule>> =
+        graph.modules.iter().cloned().collect();
+    let closure_names: Vec<String> = closure_modules
+        .iter()
+        .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
+        .collect();
+    let schedule = module_schedule_batches(&closure_modules, &closure_names);
+    let mut dispatched: Vec<
+        Option<(
+            Rc<im_rc::Vector<Rc<ErrorNode>>>,
+            Rc<v1_compiler_infer::TypecheckModuleResult>,
+        )>,
+    > = vec![None; closure_modules.len()];
+
+    for batch in &schedule {
+        for &slot in batch {
+            let resolved = closure_modules[slot].clone();
+            let parent_result = v1_compiler_infer::collect_parent_envs(
+                resolved.clone(),
+                module_index.clone(),
+                source_indices.clone(),
+            );
+            let mod_name = closure_names[slot].clone();
+            // Collision-honesty guard (union-resolve receipt §6.3): the typed cache is keyed by
+            // authored name and shared across every co-resident entry, so a name that resolves
+            // from two DIFFERENT declaring files in one process is a co-residence surprise — the
+            // shared store must fail loud here, never silently serve one file's typecheck for the
+            // other's (that would be a §5 fail-open: a divergent resolution passing as plausible).
+            // build_module_index already walls tree-wide module-path collisions at index build;
+            // this is the same wall at the cache seam the union widens (e.g. an on-disk entry whose
+            // module path shadows an indexed module reached via entry_source_from_index_or_disk).
+            // Normalize to the workspace-relative form so a module reached both index-loaded
+            // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
+            // authority — the guard must fire on genuinely different files, not path representations.
+            let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+            check_module_source_identity(module_identity, &mod_name, &decl_file)?;
+            let cached = typed_cache.borrow().get(&mod_name).cloned();
+            let tc_result = match cached {
+                Some(hit) => hit,
+                None => {
+                    // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
+                    bump_typecheck_compute_count();
+                    if phase_profile::phase_profile_enabled() {
+                        eprintln!("[typecheck-attribution] module={mod_name} start");
+                    }
+                    let module_tc_started = std::time::Instant::now();
+                    let computed = v1_compiler_infer::typecheck_module(
+                        resolved.clone(),
+                        module_index.clone(),
+                        variant_surfaces.clone(),
+                        source_indices.clone(),
+                        intern_table.clone(),
+                    );
+                    // Per-module attribution for the typecheck-dominant resolves measured
+                    // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
+                    // parse+resolve+normalize). Threshold keeps the floor log quiet;
+                    // anything over it is a pathology-lane candidate by name.
+                    let module_tc_ms = module_tc_started.elapsed().as_millis();
+                    if module_tc_ms >= 2_000 {
+                        eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
+                    }
+                    typed_cache
+                        .borrow_mut()
+                        .insert(mod_name.clone(), computed.clone());
+                    computed
                 }
-                let module_tc_started = std::time::Instant::now();
-                let computed = v1_compiler_infer::typecheck_module(
-                    resolved.clone(),
-                    module_index.clone(),
+            };
+            let typed = tc_result.typed.clone();
+            let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
+            variant_surfaces = v1_rt::rc_map_insert(
+                variant_surfaces.clone(),
+                typed_path.clone(),
+                v1_compiler_infer::build_variant_export_surface(
+                    typed.clone(),
                     variant_surfaces.clone(),
                     source_indices.clone(),
-                    intern_table.clone(),
-                );
-                // Per-module attribution for the typecheck-dominant resolves measured
-                // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
-                // parse+resolve+normalize). Threshold keeps the floor log quiet;
-                // anything over it is a pathology-lane candidate by name.
-                let module_tc_ms = module_tc_started.elapsed().as_millis();
-                if module_tc_ms >= 2_000 {
-                    eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
-                }
-                typed_cache
-                    .borrow_mut()
-                    .insert(mod_name.clone(), computed.clone());
-                computed
-            }
-        };
+                ),
+            );
+            module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
+            dispatched[slot] = Some((parent_result.diagnostics.clone(), tc_result));
+        }
+    }
+
+    // Assembled view (original resolver order): dispatch order above is the schedule's
+    // concern; the graph handed to consumers — module list, registry merge order, and
+    // diagnostic order — is assembled in the exact order the serial fold produced, so the
+    // result is byte-identical regardless of how the schedule batched the closure.
+    for (slot, entry) in dispatched.into_iter().enumerate() {
+        let (parent_diags, tc_result) = entry.unwrap_or_else(|| {
+            unreachable!(
+                "module '{}' missing from the dispatch store: module_schedule_batches must \
+                 cover every closure node exactly once",
+                closure_names[slot]
+            )
+        });
         let typed = tc_result.typed.clone();
         modules = v1_rt::rc_list_push(modules, typed.clone());
-        let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
-        variant_surfaces = v1_rt::rc_map_insert(
-            variant_surfaces.clone(),
-            typed_path.clone(),
-            v1_compiler_infer::build_variant_export_surface(
-                typed.clone(),
-                variant_surfaces.clone(),
-                source_indices.clone(),
-            ),
-        );
-        module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
         item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
-        diag_chunks.push(parent_result.diagnostics.clone());
+        diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
     }
 
@@ -6356,6 +6654,130 @@ fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
     })
 }
 
+/// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
+/// when import-closure `entry_file_touched` is false and no declaration-level edit
+/// targets this entry, every kernel witness in the entry would skip — receipt:
+/// `green_skip_for_file_outside_import_closure` (diff outside import closure → empty
+/// frontier / no touch). Host-scaffold entries are excluded (changed_paths can select
+/// them without import-closure overlap). Data-item edits land in `overlapping_data_items`
+/// (not `touched_entry_files`); any edited data-item file in the entry import closure
+/// must resolve so `rerun_frontier_nodes_for_entry` can discriminate referenced nodes
+/// (`red_node_frontier_fires_for_referenced_data_item`).
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): pre-resolve skip for rows
+// provably outside all three skip axes without loading the resolved graph. Dissolves at
+// Step 5 (`docs/plans/affected-set-precompute-pruning.md`) when the Rust parallel
+// (`NodeFrontierSeeds`, `run_discovery_rows` selection) is deleted and the `.dag`
+// `floor_witness_run_disposition` query owns the same predicate end-to-end.
+fn entry_qualifies_for_skip_without_resolve(
+    entry_path: &str,
+    row_functions: &[&str],
+    facts: &ModuleGraphFactsLive,
+    declared_paths: &HashSet<String>,
+    touched_entry_paths: &[String],
+    diff_edits: &FloorDiffEdits,
+) -> Result<bool, String> {
+    if diff_edits
+        .edited_test_fns
+        .iter()
+        .any(|(file, _)| diff_file_matches_entry(file, entry_path))
+    {
+        return Ok(false);
+    }
+    if diff_edits
+        .touched_entry_files
+        .iter()
+        .any(|file| diff_file_matches_entry(file, entry_path))
+    {
+        return Ok(false);
+    }
+    if entry_file_touched_via_import_closure(
+        entry_path,
+        facts,
+        declared_paths,
+        touched_entry_paths,
+    )? {
+        return Ok(false);
+    }
+    if !diff_edits.overlapping_data_items.is_empty() {
+        let data_item_files: Vec<String> = diff_edits
+            .overlapping_data_items
+            .iter()
+            .map(|(file, _)| file.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        if entry_file_touched_via_import_closure(
+            entry_path,
+            facts,
+            declared_paths,
+            &data_item_files,
+        )? {
+            return Ok(false);
+        }
+    }
+    let content = read_entry_content_for_host_scaffold(entry_path)?;
+    if entry_text_indicates_live_host_scan(&content) {
+        return Ok(false);
+    }
+    if row_functions
+        .iter()
+        .any(|func| witness_test_fn_uses_live_host_scan(&content, func))
+    {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+fn discovery_entry_fast_skip_without_resolve(
+    rows: &[DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+    declared_paths: &HashSet<String>,
+    touched_entry_paths: &[String],
+    diff_edits: &FloorDiffEdits,
+) -> Result<HashSet<String>, String> {
+    let mut by_entry: HashMap<String, Vec<&str>> = HashMap::new();
+    for row in rows {
+        by_entry
+            .entry(row.entry.clone())
+            .or_default()
+            .push(row.function.as_str());
+    }
+    let mut fast = HashSet::new();
+    for (entry, funcs) in by_entry {
+        if entry_qualifies_for_skip_without_resolve(
+            &entry,
+            &funcs,
+            facts,
+            declared_paths,
+            touched_entry_paths,
+            diff_edits,
+        )? {
+            fast.insert(entry);
+        }
+    }
+    Ok(fast)
+}
+
+/// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
+/// same import-closure modules the pre-resolve walk uses (`roster_import_closure_nodes_pre_resolve`).
+// SCAFFOLD (§7): calibration-only companion to skip-before-resolve above; dissolves with it.
+fn augment_closure_modules_from_import_facts(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    out: &mut HashSet<String>,
+) {
+    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .map(|p| workspace_relative_repo_path(&p))
+        .collect();
+    for node in &facts.nodes {
+        let rel = workspace_relative_repo_path(&node.path);
+        if closure_paths.contains(&rel) {
+            out.insert(node.module.clone());
+        }
+    }
+}
+
 fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> Result<bool, String> {
     for row in rows {
         let content = read_entry_content_for_host_scaffold(&row.entry)?;
@@ -7125,7 +7547,47 @@ fn run_discovery_rows(
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
+    let entry_fast_skip = if selection == NodeFrontierSelectionMode::Applied {
+        discovery_entry_fast_skip_without_resolve(
+            rows,
+            &index.module_graph_facts,
+            &module_graph_declared_paths,
+            &touched_entry_paths,
+            diff_edits,
+        )?
+    } else {
+        HashSet::new()
+    };
+    if !entry_fast_skip.is_empty() {
+        eprintln!(
+            "run_discovery_corpus: skip-before-resolve fast path for {} entr(y/ies) (import-closure unaffected, no declaration edits, no data-item edits in closure, no host-scaffold)",
+            entry_fast_skip.len()
+        );
+    }
     for row in rows {
+        // Applied only: PredictOnly must resolve + run cold and record via the post-resolve
+        // would_skip path (falsifier semantics — docs/plans/affected-set-differential-falsifier.md).
+        if selection == NodeFrontierSelectionMode::Applied && entry_fast_skip.contains(&row.entry) {
+            if current_entry.as_deref() != Some(row.entry.as_str()) {
+                augment_closure_modules_from_import_facts(
+                    &row.entry,
+                    &index.module_graph_facts,
+                    &mut closure_modules,
+                );
+                current_entry = Some(row.entry.clone());
+                current_entry_touches = false;
+                current_entry_file_touched = false;
+                current_entry_frontier_nodes.clear();
+                current_closure_subject = None;
+                ctx = None;
+            }
+            summary.skipped += 1;
+            eprintln!(
+                "SKIP [assumed-green node-frontier] {} ({})",
+                row.function, row.entry
+            );
+            continue;
+        }
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
             if entry_eligible_for_discovery_skip_before_resolve(
@@ -8578,7 +9040,7 @@ mod node_frontier_plumbing_controls {
     use super::{
         build_multi_entry_index, call_floor_kernel_would_skip, entry_touches_rerun_frontier,
         floor_diff_edits_from_diff_text, list_value_from_vec, parse_unified_diff_line_ranges,
-        rerun_frontier_nodes_for_entry,
+        rerun_frontier_nodes_for_entry, scan_test_decl_lines,
     };
     use crate::v1_interpreter::ExecutionMode;
     use std::path::PathBuf;
@@ -8663,6 +9125,82 @@ mod node_frontier_plumbing_controls {
                 || !entry_touches_rerun_frontier(&ctx, &list_value_from_vec(nodes))
                     .expect("touch check"),
             "entry must NOT touch frontier when diff is on a file outside its import closure"
+        );
+    }
+
+    #[test]
+    fn skip_without_resolve_fast_path_eligible_outside_import_closure() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = abs(&ws, FIXTURE);
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
+        let funcs: Vec<String> = scan_test_decl_lines(&content)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        let func_refs: Vec<&str> = funcs.iter().map(|s| s.as_str()).collect();
+        assert!(
+            super::entry_qualifies_for_skip_without_resolve(
+                &fixture_abs,
+                &func_refs,
+                &index.module_graph_facts,
+                &declared,
+                &touched_paths,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "unaffected entry must qualify for skip-before-resolve when diff is outside import closure"
+        );
+    }
+
+    // RED guard: data-item edits in the entry import closure must not fast-skip — the
+    // node-frontier machinery needs resolve to discriminate referenced nodes.
+    #[test]
+    fn skip_without_resolve_fast_path_ineligible_for_referenced_data_item() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = abs(&ws, FIXTURE);
+        let text = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
+        let data_line = text
+            .lines()
+            .position(|l| l.contains("data floor_disc_node_a"))
+            .map(|i| (i + 1) as i64)
+            .expect("floor_disc_node_a line");
+        let diff = diff_at(&fixture_abs, data_line);
+        let diff_edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("seeds from referenced-node diff");
+        assert!(
+            !diff_edits.overlapping_data_items.is_empty(),
+            "data-item diff must populate overlapping_data_items"
+        );
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
+        let funcs: Vec<String> = scan_test_decl_lines(&content)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        let func_refs: Vec<&str> = funcs.iter().map(|s| s.as_str()).collect();
+        assert!(
+            !super::entry_qualifies_for_skip_without_resolve(
+                &fixture_abs,
+                &func_refs,
+                &index.module_graph_facts,
+                &declared,
+                &touched_paths,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "entry must NOT qualify for skip-before-resolve when diff edits a data item in its import closure"
         );
     }
 
@@ -10050,6 +10588,9 @@ const LAYER_STD: &str = "LayerPrefixStd";
 const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 
 fn rel_path_for_layer_import(path: &Path) -> String {
+    if path.is_relative() {
+        return path.to_string_lossy().replace('\\', "/");
+    }
     repo_relative_path_normalized(path)
 }
 
@@ -10058,7 +10599,13 @@ fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
 }
 
 fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
-    let root_path = Path::new(root);
+    let Some(abs_root) = try_anchor_source_root(root) else {
+        eprintln!(
+            "[layer-import] declared root {root} absent on disk (layer={layer}) — skipped, no facts projected"
+        );
+        return;
+    };
+    let root_path = Path::new(&abs_root);
     if !root_path.is_dir() {
         return;
     }
@@ -13039,8 +13586,10 @@ mod module_path_index_tests {
     }
 
     #[test]
-    fn default_source_roots_derive_from_authority() {
+    fn workspace_root_prefers_process_cwd_anchor() {
         let ws = workspace_root();
+        assert!(ws.join("Cargo.toml").is_file());
+        assert!(ws.join("dag").is_dir());
         assert_eq!(
             default_source_roots(),
             vec![
