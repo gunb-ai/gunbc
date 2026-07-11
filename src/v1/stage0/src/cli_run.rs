@@ -167,15 +167,6 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
-<<<<<<< HEAD
-/// The enclosing repo root of `start`: the nearest ancestor carrying a `.git`
-/// entry (a directory on a primary checkout, a file on a linked git worktree).
-fn enclosing_repo_root(start: &Path) -> Option<PathBuf> {
-    start
-        .ancestors()
-        .find(|a| a.join(".git").exists())
-        .map(Path::to_path_buf)
-=======
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
 // witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
@@ -199,7 +190,6 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
          path is not a runtime fact)",
         start_cwd.display()
     )
->>>>>>> origin/main
 }
 
 /// The workspace root is a property of where the process RUNS, never of where the
@@ -211,12 +201,9 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
 /// srv2-02 root after the #6472 job split). Same class as the mixed-tree hazard
 /// documented on `resolve_cli_path_arg` below, one level up.
 ///
-/// Derivation: enclosing repo root of the process cwd, else of the executable's
-/// own path — the exe probe keeps test processes that chdir into tempdirs anchored
-/// to the tree that built them (the test binary lives under `<workspace>/target`),
-/// and makes the once-per-process cache below order-independent under the parallel
-/// suite (both probes agree on one root for an in-tree binary). A process outside
-/// any checkout on BOTH probes refuses loudly — no fallback to a compile-time path
+/// Derivation: nearest ancestor of the process cwd that is a checkout root (`.git`
+/// entry — a directory for clones, a file for worktrees). Computed once per process.
+/// A cwd outside any checkout refuses loudly — no fallback to a compile-time path
 /// (DESIGN §5: refuse, never widen).
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): runtime checkout-root
 // derivation (#6484 / #6472 job-split). Dissolves when release bins receive checkout-root
@@ -225,32 +212,9 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
 pub fn workspace_root() -> PathBuf {
     static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     ROOT.get_or_init(|| {
-<<<<<<< HEAD
-        if let Some(root) = std::env::current_dir()
-            .ok()
-            .and_then(|d| enclosing_repo_root(&d))
-        {
-            return root;
-        }
-        if let Some(root) = std::env::current_exe()
-            .ok()
-            .and_then(|e| enclosing_repo_root(&e))
-        {
-            return root;
-        }
-        panic!(
-            "workspace_root: no .git entry encloses cwd {:?} or exe {:?}; run from \
-             within a repo checkout (the compile-time CARGO_MANIFEST_DIR fallback was \
-             removed: binaries are shared across runner workspaces and the compiling \
-             checkout's path is not a runtime fact)",
-            std::env::current_dir().ok(),
-            std::env::current_exe().ok()
-        )
-=======
         let cwd =
             std::env::current_dir().expect("workspace_root: process working directory unavailable");
         workspace_root_from(&cwd)
->>>>>>> origin/main
     })
     .clone()
 }
@@ -423,11 +387,12 @@ fn anchor_source_root(root: &str) -> String {
 /// The bins therefore resolve their path-valued arguments HERE, at the CLI boundary,
 /// with standard CLI semantics: a relative path resolves against the PROCESS CWD, and a
 /// resolved path that does not exist is a refusal naming the argument, the given value,
-/// and the resolution base — never a fallback to the workspace anchor, never a partial
-/// run. When the cwd IS the workspace root, the relative spelling and the absolutized
+/// and the resolution base — never a fallback to the baked root, never a partial run.
+/// When the cwd IS the baked workspace root, the relative spelling and the absolutized
 /// spelling denote the same file for every downstream consumer (cwd-anchored reads and
-/// root-anchored reads agree), so the given spelling passes through unchanged and the
-/// normal case (and CI) stays byte-identical.
+/// baked-root-anchored reads agree), so the given spelling passes through unchanged and
+/// the normal case (and CI) stays byte-identical. Any other cwd absolutizes, so the
+/// baked-root anchoring in the shared pipeline can never re-route the read.
 pub fn resolve_cli_path_arg(bin: &str, flag: &str, given: &str) -> Result<String, String> {
     if Path::new(given).is_absolute() {
         return resolve_cli_path_arg_against(bin, flag, given, Path::new("/"));
@@ -481,60 +446,10 @@ fn resolve_cli_path_arg_against(
 
 #[cfg(test)]
 mod cli_path_arg_resolution_tests {
-    use super::{enclosing_repo_root, resolve_cli_path_arg_against, workspace_root};
+    use super::{resolve_cli_path_arg_against, workspace_root};
 
     fn fixture_base(tag: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("gunbc-cli-path-arg-{tag}-{}", std::process::id()))
-    }
-
-    /// Runtime derivation walks up to the nearest `.git` DIRECTORY (primary checkout)
-    /// from any nested start, and refuses (None) when no repo encloses the start —
-    /// no chdir anywhere in these tests (parallel-test cwd races).
-    #[test]
-    fn enclosing_repo_root_finds_git_dir_from_nested_start() {
-        let base = fixture_base("repo-root-dir");
-        let nested = base.join("a/b/c");
-        std::fs::create_dir_all(base.join(".git")).expect("create .git dir");
-        std::fs::create_dir_all(&nested).expect("create nested dirs");
-        assert_eq!(enclosing_repo_root(&nested), Some(base.clone()));
-        std::fs::remove_dir_all(&base).ok();
-    }
-
-    /// A `.git` FILE (linked git worktree form) is an equally valid marker.
-    #[test]
-    fn enclosing_repo_root_accepts_git_file_worktree_form() {
-        let base = fixture_base("repo-root-file");
-        let nested = base.join("x/y");
-        std::fs::create_dir_all(&nested).expect("create nested dirs");
-        std::fs::write(base.join(".git"), "gitdir: /elsewhere\n").expect("write .git file");
-        assert_eq!(enclosing_repo_root(&nested), Some(base.clone()));
-        std::fs::remove_dir_all(&base).ok();
-    }
-
-    /// No `.git` anywhere up the chain: None — the caller's typed refusal fires,
-    /// never a baked-path fallback (the cross-slot poisoning class, 2026-07-11).
-    #[test]
-    fn enclosing_repo_root_refuses_outside_any_repo() {
-        let base = fixture_base("no-repo");
-        let nested = base.join("plain/dirs");
-        std::fs::create_dir_all(&nested).expect("create nested dirs");
-        assert_eq!(enclosing_repo_root(&nested), None);
-        std::fs::remove_dir_all(&base).ok();
-    }
-
-    /// The derived workspace root is a real repo root of the RUNNING process
-    /// (carries `.git`, contains this crate) — not a compile-time constant.
-    #[test]
-    fn workspace_root_derives_running_repo_root() {
-        let ws = workspace_root();
-        assert!(
-            ws.join(".git").exists(),
-            "derived root carries .git: {ws:?}"
-        );
-        assert!(
-            ws.join("src/v1/stage0/Cargo.toml").exists(),
-            "derived root encloses this crate: {ws:?}"
-        );
     }
 
     /// (a) Relative arg with base == workspace root: byte-identical pass-through —
