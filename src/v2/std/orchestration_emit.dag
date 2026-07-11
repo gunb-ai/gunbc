@@ -27,6 +27,8 @@ type OrchestrationEmitMedium {
     String,
     String,
     String,
+    String,
+    String,
     String
   ) -> TargetModel
 }

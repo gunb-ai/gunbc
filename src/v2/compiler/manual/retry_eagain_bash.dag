@@ -1,84 +1,12 @@
 module v2.test.manual.retry_eagain_bash
 
-import v2.std.orchestration {
-  PipelineStep,
-  Do,
-  Retry,
-  Run,
-  Pipeline,
-  EscalationLevel,
-  EnvSet,
-  EnvUnset,
-  StdoutAndStderr,
-  TeeTo,
-  LogMatches,
-  FailFast
-}
-import v2.std.collection { Present, Absent }
-import v2.std.diagnostic { EmitDirective, SeverityWarning }
-import gunbc.ci_failure_class { infra_retry_grep_alternation }
+import v2.std.orchestration { PipelineStep }
+import gunbc.ci_spec { ci_cargo_eagain_retry_intent }
 
 data retry_eagain_example_command: String = "cargo build -p v1-compiler --release --bins"
 
-fn retry_eagain_pattern() -> String {
-  infra_retry_grep_alternation()
-}
-
-fn retry_eagain_warn1() -> String {
-  "cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
-}
-
-fn retry_eagain_warn2() -> String {
-  "cargo/sccache still failing; retry without RUSTC_WRAPPER"
-}
-
-fn retry_eagain_example_run() -> Run {
-  Run {
-    command: retry_eagain_example_command,
-    env: [],
-    redirect: Present { value: StdoutAndStderr },
-    capture: Present { value: TeeTo { log: "BUILD_LOG" } }
-  }
-}
-
-fn retry_eagain_exhausted_run() -> Run {
-  Run {
-    command: "exit 1",
-    env: [],
-    redirect: Absent,
-    capture: Absent
-  }
-}
-
-fn retry_eagain_level1() -> EscalationLevel {
-  EscalationLevel {
-    detect: LogMatches { source: "BUILD_LOG", pattern: retry_eagain_pattern() },
-    warning: EmitDirective { severity: SeverityWarning, message: retry_eagain_warn1() },
-    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }]
-  }
-}
-
-fn retry_eagain_level2() -> EscalationLevel {
-  EscalationLevel {
-    detect: LogMatches { source: "RETRY_LOG", pattern: retry_eagain_pattern() },
-    warning: EmitDirective { severity: SeverityWarning, message: retry_eagain_warn2() },
-    env: [
-      EnvUnset { name: "RUSTC_WRAPPER" },
-      EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
-    ]
-  }
-}
+data retry_eagain_intent_home_note: String = "The CI EAGAIN-retry intent (Retry body/escalations/on_exhausted) lives at its production home, gunbc.ci_spec.ci_cargo_eagain_retry_intent - the module that owns the policy facts (command, infra patterns, warnings, escalation env). This fixture module keeps only the example command and the delegation, so the byte-identity tests in v2.workflow.orchestration_retry_emit_test exercise the SAME intent value production emits."
 
 fn retry_eagain_intent() -> PipelineStep {
-  Retry {
-    body: Pipeline {
-      steps: [Do { run: retry_eagain_example_run() }],
-      on_failure: FailFast
-    },
-    escalations: [retry_eagain_level1(), retry_eagain_level2()],
-    on_exhausted: Pipeline {
-      steps: [Do { run: retry_eagain_exhausted_run() }],
-      on_failure: FailFast
-    }
-  }
+  ci_cargo_eagain_retry_intent(command: retry_eagain_example_command)
 }
