@@ -439,10 +439,18 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
         "_ci_diff_eof_\n",
         "  if [ \"$PLAN_ARTIFACT_ONLY\" = \"1\" ]; then\n"
       ),
-      concat(
         concat(
           concat(
-            concat(concat("    ", concat(ci_plan_artifact_compile_clean_invoke(), " || exit $?\n"))),
+            concat(
+              concat(concat("    ", concat(ci_plan_artifact_compile_clean_invoke(), " || exit $?\n"))),
+              concat(
+                "    mkdir -p target\n",
+                concat(
+                  concat("    echo ", merge_admission_floor_disposition_documentation_only_skipped),
+                  concat(" > ", concat(ci_floor_disposition_marker_path, "\n"))
+                )
+              )
+            ),
             concat(
               "    echo \"claim_executor: plan-artifact-only diff — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=",
               merge_admission_floor_disposition_documentation_only_skipped
@@ -457,11 +465,11 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
                 concat(" ", merge_admission_stamp_invoke())
               )
             )
+          ),
+          concat(
+            "    exit $?\n",
+            "  fi\nfi\n"
           )
-        ),
-        concat(
-          "    exit $?\n",
-          "  fi\nfi\n"
         )
       )
     )
