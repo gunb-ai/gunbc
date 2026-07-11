@@ -131,6 +131,8 @@ mod sub_value_lattice_factor_test;
 #[cfg(test)]
 mod target_model_runtime_import_repro;
 #[cfg(test)]
+mod transitive_interface_binding_test;
+#[cfg(test)]
 mod type_alias_phantom_param_test;
 #[cfg(test)]
 mod type_env_scope_chain_test;
