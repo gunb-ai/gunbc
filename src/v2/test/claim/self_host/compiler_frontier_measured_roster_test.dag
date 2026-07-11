@@ -12,7 +12,7 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_sweep_order,
   compiler_frontier_sweep_order_matches_tractability_rank_holds
 }
-import v2.compiler.self_host.frontier_probe {
+import v2.compiler.self_host.frontier_probe_types {
   EmitSurfaceGap,
   NameResolutionGap
 }

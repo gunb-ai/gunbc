@@ -1,6 +1,6 @@
 module v2.compiler.self_host.frontier
 
-import v2.compiler.self_host.frontier_probe {
+import v2.compiler.self_host.frontier_probe_types {
   EmitSurfaceGap,
   FrontierBlockerClass,
   FrontierProbeReceipt,

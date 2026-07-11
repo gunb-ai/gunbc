@@ -1,26 +1,10 @@
 module v2.test.self_host.compiler_frontier_emit_probe
 
-import v2.compiler.self_host.frontier_probe {
-  FrontierProbeReceipt,
+import v2.compiler.self_host.frontier_probe_types {
   UnclassifiedProbeReason,
-  frontier_classify_rejection_reason,
-  frontier_probe_emit_from_ingest
-}
-import v2.test.workflow.host_source_root_ingest_manifest {
-  host_compiler_closure_admission,
-  host_source_root_ingest
+  frontier_classify_rejection_reason
 }
 import v2.std.logic { Bool }
-
-data frontier_probe_target_module_path: String = "src/v2/compiler/PROBE_ENTRY.dag"
-
-fn frontier_module_emit_probe_receipt() -> FrontierProbeReceipt {
-  frontier_probe_emit_from_ingest(
-    module_path: frontier_probe_target_module_path,
-    ingest: host_source_root_ingest,
-    admission: host_compiler_closure_admission
-  )
-}
 
 test fn frontier_classify_unlisted_reason_refuses_holds() -> Bool {
   match frontier_classify_rejection_reason(reason: ^frontier_probe_unlisted_reason_red_control) {
