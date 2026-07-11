@@ -42,8 +42,10 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
+  MintedOccurrence,
   Named,
   Node,
+  OccurrenceId,
   Positional,
   Symbol,
   Transform,
@@ -383,4 +385,76 @@ fn bind_eval_divergent_value_rejects_holds() -> Bool {
 
 test fn bind_demand_driven_eval_keystone_holds() -> Bool {
   bind_eval_counted_value_body_holds() && bind_eval_divergent_value_rejects_holds()
+}
+
+fn bind_eval_minted_atom(s: Symbol, id: Int) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: MintedOccurrence { id: OccurrenceId { value: id } },
+    children: []
+  }
+}
+
+fn bind_eval_bind_node_with_binder(binder: Node, value: Node, body: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: binder },
+      Edge { label: Positional, target: value },
+      Edge { label: Positional, target: body }
+    ]
+  }
+}
+
+fn bind_eval_bound_reference_reads_value_holds() -> Bool {
+  bind_eval_run_passes(
+    run: bind_eval_run(
+      body: bind_eval_bind_node_with_binder(
+        binder: bind_eval_atom(s: ^bind_eval_ref_slot_sym),
+        value: bind_eval_lit_one(),
+        body: bind_eval_atom(s: ^bind_eval_ref_slot_sym)
+      ),
+      expected: bind_eval_lit_one()
+    )
+  )
+}
+
+fn bind_eval_parse_shaped_occurrence_distinct_reference_rejects_holds() -> Bool {
+  match bind_eval_run(
+    body: bind_eval_bind_node_with_binder(
+      binder: bind_eval_minted_atom(s: ^bind_eval_parse_shaped_slot_sym, id: 1),
+      value: bind_eval_lit_one(),
+      body: bind_eval_minted_atom(s: ^bind_eval_parse_shaped_slot_sym, id: 2)
+    ),
+    expected: bind_eval_lit_one()
+  ) {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => false
+        _ => true
+      }
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+data bind_eval_occurrence_identity_defect_note: String = "The two reference-binding witnesses below pin the FLAG D protocol boundary (docs/plans/general-body-producer-design.md section 9, signed 2026-07-10). GREEN: a bound body reference reads its value through the environment when binder and reference atoms are occurrence-normalized structural equals (the conform-now protocol every producer-emitted body satisfies). DEFECT, documented by execution: the same well-scoped binding with parse-shaped occurrence-distinct atoms (binder MintedOccurrence 1, reference MintedOccurrence 2 — exactly what 02_parse stamp_terminal mints for source text) MISSES the environment lookup, falls through to allocate_literal, and rejects with a cause that names neither the binder nor the miss. This witness asserting rejection is the defect's executable form, not an endorsement: it FLIPS to asserting a bound read when the EnvironmentBindingKey identity re-grounding lands, and that flip is the re-grounding's acceptance control. Dissolve-on: FLAG D binding-key re-grounding merged."
+
+fn bind_eval_minted_occurrence_equal_reference_reads_holds() -> Bool {
+  bind_eval_run_passes(
+    run: bind_eval_run(
+      body: bind_eval_bind_node_with_binder(
+        binder: bind_eval_minted_atom(s: ^bind_eval_parse_shaped_slot_sym, id: 1),
+        value: bind_eval_lit_one(),
+        body: bind_eval_minted_atom(s: ^bind_eval_parse_shaped_slot_sym, id: 1)
+      ),
+      expected: bind_eval_lit_one()
+    )
+  )
+}
+
+test fn bind_reference_binding_protocol_witnesses_hold() -> Bool {
+  bind_eval_bound_reference_reads_value_holds()
+    && bind_eval_minted_occurrence_equal_reference_reads_holds()
+    && bind_eval_parse_shaped_occurrence_distinct_reference_rejects_holds()
 }

@@ -219,6 +219,152 @@ pub fn workspace_root() -> PathBuf {
     .clone()
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_runtime_workspace_root_plumbing`):
+// ROADMAP lane `5-dissolve-patches` (gunbc.roadmap_authority / ROADMAP.md) — `cli_run.rs`
+// HAND_MAINTAINED drain (~12.1k LOC absorption point; #6046 hard-gates net-new seed logic).
+// Unblock: #6106 orchestration emission → agnostic registry dispatch realizes claim-bin
+// pool-root anchoring from `.dag` (same exit as bash-emit #5828 for floor shell scaffolds).
+// DELETE WHEN dissolved: `process_workspace_root`, `resolve_process_workspace_root`,
+// `anchor_source_root`, `repo_relative_path`, `repo_relative_path_normalized`, and call-site
+// migration in `build_module_*` / `pool_roots_*` / `workspace_relative_repo_path` (~130 LOC).
+// Receipt: `rg cli_run_runtime_workspace_root_plumbing src/v1/stage0/src/cli_run.rs` == 1 until
+// deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
+pub(crate) const CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER: &str =
+    "cli_run_runtime_workspace_root_plumbing";
+
+/// Runtime workspace root for path normalization in the claim bins and module-graph pipeline.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER` / §7): dissolves
+/// under ROADMAP `5-dissolve-patches` when #6106 realizes claim-bin path resolution from `.dag`
+/// and this helper family deletes (~130 LOC). Unlike [`workspace_root`] (compile-time from
+/// `CARGO_MANIFEST_DIR`), this resolves against the process environment. sccache can ship a binary
+/// built on one runner checkout path to another; anchoring file reads to the compile-time root
+/// desyncs module-graph facts from module-content indices (DESIGN §5 — wrong answers with zero
+/// diagnostic).
+///
+/// Resolution order: `git rev-parse --show-toplevel` when it names a Cargo.toml+dag/ tree,
+/// else walk up from cwd. Fail-closed panic when neither locates the workspace — no silent
+/// fallback to cwd-relative or absolute spellings as index keys.
+fn process_workspace_root() -> PathBuf {
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(resolve_process_workspace_root).clone()
+}
+
+fn resolve_process_workspace_root() -> PathBuf {
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+    {
+        if output.status.success() {
+            let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !root.is_empty() {
+                let candidate = PathBuf::from(&root);
+                if candidate.join("Cargo.toml").is_file() && candidate.join("dag").is_dir() {
+                    return candidate;
+                }
+            }
+        }
+    }
+    let mut dir = std::env::current_dir().expect("process_workspace_root: cwd unavailable");
+    loop {
+        if dir.join("Cargo.toml").is_file() && dir.join("dag").is_dir() {
+            return dir;
+        }
+        if !dir.pop() {
+            let cwd = std::env::current_dir()
+                .map(|d| d.display().to_string())
+                .unwrap_or_else(|_| "<unavailable>".into());
+            panic!(
+                "process_workspace_root: cannot locate workspace — git rev-parse did not name \
+                 a Cargo.toml+dag/ tree and no such ancestor of cwd {cwd}; compiled-in root \
+                 was {}",
+                workspace_root().display()
+            );
+        }
+    }
+}
+
+/// Repo-relative path under [`process_workspace_root`]. Fail-closed: returns a typed refusal
+/// when `path` is not under the runtime root — never widens to cwd-relative or absolute keys.
+fn repo_relative_path(path: &Path) -> Result<String, String> {
+    let ws = process_workspace_root();
+    path.strip_prefix(&ws)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .map_err(|_| {
+            format!(
+                "repo_relative_path: path {} is not under process workspace root {} \
+                 (compiled-in root was {})",
+                path.display(),
+                ws.display(),
+                workspace_root().display()
+            )
+        })
+}
+
+/// Canonical repo-relative path for module-graph keys and index storage.
+/// Tries [`process_workspace_root`] first, then compile-time [`workspace_root`] when
+/// sccache embedded the latter in absolute spellings from another runner checkout.
+fn repo_relative_path_normalized(path: &Path) -> String {
+    if let Ok(rel) = repo_relative_path(path) {
+        return rel;
+    }
+    let baked = workspace_root();
+    path.strip_prefix(&baked)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|_| {
+            panic!(
+                "repo_relative_path_normalized: path {} is not under process workspace \
+                 root {} or compiled-in root {}",
+                path.display(),
+                process_workspace_root().display(),
+                baked.display()
+            )
+        })
+}
+
+/// Resolve a source/pool-root spelling to an absolute directory under
+/// [`process_workspace_root`]. Absolute paths baked from the compile-time
+/// [`workspace_root`] (sccache cross-runner) are re-anchored when missing on disk.
+fn anchor_source_root(root: &str) -> String {
+    let p = Path::new(root);
+    let ws = process_workspace_root();
+    if p.is_absolute() {
+        if p.is_dir() {
+            return root.to_string();
+        }
+        let baked = workspace_root();
+        if let Ok(rel) = p.strip_prefix(&baked) {
+            let reanchored = ws.join(rel);
+            if reanchored.is_dir() {
+                return reanchored.to_string_lossy().into_owned();
+            }
+        }
+        if let Ok(rel) = repo_relative_path(p) {
+            let reanchored = ws.join(&rel);
+            if reanchored.is_dir() {
+                return reanchored.to_string_lossy().into_owned();
+            }
+        }
+        panic!(
+            "anchor_source_root: absolute source root {} does not exist and cannot be \
+             re-anchored under process workspace {} (compiled-in root was {})",
+            root,
+            ws.display(),
+            baked.display()
+        );
+    }
+    let anchored = ws.join(p);
+    if !anchored.is_dir() {
+        panic!(
+            "anchor_source_root: source root {root} resolved to {} which is not a directory \
+             (process workspace {})",
+            anchored.display(),
+            ws.display()
+        );
+    }
+    anchored.to_string_lossy().into_owned()
+}
+
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
 ///
 /// `workspace_root()` above was HISTORICALLY baked from `env!("CARGO_MANIFEST_DIR")` at
@@ -420,6 +566,70 @@ mod cli_path_arg_resolution_tests {
     }
 }
 
+#[cfg(test)]
+mod process_workspace_root_tests {
+    use super::{
+        anchor_source_root, process_workspace_root, repo_relative_path,
+        repo_relative_path_normalized, workspace_relative_repo_path, workspace_root,
+    };
+    use std::path::Path;
+
+    #[test]
+    fn process_workspace_root_locates_cargo_and_dag() {
+        let root = process_workspace_root();
+        assert!(root.join("Cargo.toml").is_file());
+        assert!(root.join("dag").is_dir());
+    }
+
+    #[test]
+    fn repo_relative_path_normalizes_under_process_root() {
+        let root = process_workspace_root();
+        let abs = root.join("dag/gunbc/ci_layer_roots.dag");
+        let rel = repo_relative_path(&abs).expect("under process root");
+        assert_eq!(rel, "dag/gunbc/ci_layer_roots.dag");
+        assert_eq!(
+            workspace_relative_repo_path(&abs.to_string_lossy()),
+            "dag/gunbc/ci_layer_roots.dag"
+        );
+    }
+
+    #[test]
+    fn anchor_source_root_resolves_relative_dag() {
+        let anchored = anchor_source_root("dag");
+        assert!(Path::new(&anchored).join("gunbc/ci_layer_roots.dag").is_file());
+    }
+
+    #[test]
+    fn runtime_workspace_root_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER,
+            "cli_run_runtime_workspace_root_plumbing"
+        );
+    }
+
+    #[test]
+    fn discovery_skip_before_resolve_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER,
+            "cli_run_discovery_skip_before_resolve"
+        );
+    }
+
+    #[test]
+    fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
+        let ws = process_workspace_root();
+        let baked = workspace_root();
+        let abs = baked.join("dag/gunbc/ci_layer_roots.dag");
+        if !abs.is_file() {
+            return;
+        }
+        let rel = repo_relative_path_normalized(&abs);
+        assert_eq!(rel, "dag/gunbc/ci_layer_roots.dag");
+        assert_eq!(workspace_relative_repo_path(&abs.to_string_lossy()), rel);
+        assert!(ws.join(&rel).is_file());
+    }
+}
+
 /// Empty ingest-manifest placeholder excluded from the module index when a later
 /// source root carries the host-emitted manifest (source-root ingest / closure gates).
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
@@ -455,13 +665,10 @@ fn module_path_collision_panic_message(
 }
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
-    let ws = workspace_root();
     let mut index: HashMap<String, String> = HashMap::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
+        let anchored_root = anchor_source_root(root);
+        let root_path = Path::new(&anchored_root);
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
         for path in dag_files {
@@ -469,17 +676,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                 panic!("build_module_path_index: failed to read {:?}: {}", path, e)
             });
             if let Some(module_path) = extract_module_path(&content) {
-                let rel = path
-                    .strip_prefix(&ws)
-                    .unwrap_or_else(|_| {
-                        panic!(
-                            "build_module_path_index: path {} is not under workspace {}",
-                            path.display(),
-                            ws.display()
-                        )
-                    })
-                    .to_string_lossy()
-                    .replace('\\', "/");
+                let rel = repo_relative_path_normalized(&path);
                 if is_source_root_ingest_manifest_stub_rel(&rel)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
                 {
@@ -511,7 +708,7 @@ fn resolve_virtual_source_with_imports(
     entry_content: &str,
     module_index: &HashMap<String, String>,
 ) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
-    let ws = workspace_root();
+    let ws = process_workspace_root();
     let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut queue: Vec<String> = vec![entry_content.to_string()];
     while let Some(content) = queue.pop() {
@@ -590,7 +787,7 @@ fn ci_layer_roots_authority_content() -> &'static str {
     static CONTENT: OnceLock<String> = OnceLock::new();
     CONTENT
         .get_or_init(|| {
-            let path = workspace_root().join(CI_LAYER_ROOTS_AUTHORITY_REL);
+            let path = process_workspace_root().join(CI_LAYER_ROOTS_AUTHORITY_REL);
             std::fs::read_to_string(&path).unwrap_or_else(|e| {
                 panic!(
                     "ci_layer_roots authority: failed to read {}: {e}",
@@ -841,14 +1038,7 @@ pub fn free_monoid_symbol_value_from_dotted_string(
 }
 
 pub(crate) fn repo_rel(path: &Path) -> String {
-    let ws = workspace_root();
-    let s = path.to_string_lossy().replace('\\', "/");
-    let prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
-    s.strip_prefix(&prefix)
-        .map(|p| p.to_string())
-        .unwrap_or(s)
-        .trim_start_matches("./")
-        .to_string()
+    repo_relative_path_normalized(path)
 }
 
 pub(crate) fn is_test_dag(path: &str) -> bool {
@@ -858,7 +1048,10 @@ pub(crate) fn is_test_dag(path: &str) -> bool {
 pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
     let mut paths = Vec::new();
     for root in witness_layer_roots() {
-        collect_dag_files_tolerant(&workspace_root().join(&root), &mut paths);
+        collect_dag_files_tolerant(
+            &Path::new(&anchor_source_root(&root)),
+            &mut paths,
+        );
     }
     let mut out = Vec::new();
     for p in paths {
@@ -916,18 +1109,16 @@ type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
     let mut index = ModuleSourceIndex::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
-        let root_path = std::path::Path::new(root);
-        if !root_path.exists() {
-            panic!("source root does not exist: {}", root);
-        }
+        let anchored_root = anchor_source_root(root);
+        let root_path = std::path::Path::new(&anchored_root);
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
         for path in dag_files {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             if let Some(module_path) = extract_module_path(&content) {
-                let rel_path = path.to_string_lossy().to_string();
-                let rel_forward = workspace_relative_repo_path(&rel_path);
+                let rel_path = repo_relative_path_normalized(&path);
+                let rel_forward = rel_path.clone();
                 if is_source_root_ingest_manifest_stub_rel(&rel_forward)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
                 {
@@ -1218,8 +1409,7 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
         .first()
         .cloned()
         .unwrap_or_else(|| "dag".to_string());
-    let ws = workspace_root();
-    let abs_entry_root = ws.join(&entry_root).to_string_lossy().into_owned();
+    let abs_entry_root = anchor_source_root(&entry_root);
     let mut paths: Vec<String> = module_declaration_facts(&[abs_entry_root])
         .into_iter()
         .map(|decl| workspace_relative_repo_path(&decl.path))
@@ -1569,10 +1759,7 @@ fn workspace_relative_repo_path(path: &str) -> String {
     let norm = path.strip_prefix("./").unwrap_or(path).replace('\\', "/");
     let p = Path::new(&norm);
     if p.is_absolute() {
-        let ws = workspace_root();
-        p.strip_prefix(&ws)
-            .map(|rp| rp.to_string_lossy().replace('\\', "/"))
-            .unwrap_or(norm)
+        repo_relative_path_normalized(p)
     } else {
         norm
     }
@@ -1581,15 +1768,12 @@ fn workspace_relative_repo_path(path: &str) -> String {
 /// Normalize `source_roots` to the workspace-relative form `import_resolution_facts` /
 /// `module_declaration_facts` expect when invoked from `.dag` (`witness_layer_roots` style).
 fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
-    let ws = workspace_root();
     source_roots
         .iter()
         .map(|r| {
             let p = Path::new(r);
             if p.is_absolute() {
-                p.strip_prefix(&ws)
-                    .map(|rp| rp.to_string_lossy().replace('\\', "/"))
-                    .unwrap_or_else(|_| r.replace('\\', "/"))
+                repo_relative_path_normalized(p)
             } else {
                 r.replace('\\', "/")
             }
@@ -1853,6 +2037,170 @@ fn entry_file_touched_via_import_closure(
             .iter()
             .any(|member| repo_paths_match_touched(member, touched))
     }))
+}
+
+// SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
+// ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
+// docs/plans/affected-set-precompute-pruning.md Step 4 migrate floor) — host-side
+// per-entry cold-resolve elision under SelectionApplied before `floor_kernel_would_skip`.
+// Unblock: modeled `floor_kernel_precompute_would_skip` / skip-before-resolve arm on
+// `v2.workflow.affected_set_floor_runner` realizes the same decision in `.dag` (N→1 with
+// the Rust `NodeFrontierSeeds` parallel deleted per the de-fork plan).
+// DELETE WHEN dissolved: `entry_eligible_for_discovery_skip_before_resolve`,
+// `collect_import_closure_module_names_from_facts`, `resolve_discovery_entry_for_corpus_row`
+// lazy-resolve arm, and the `SKIP-RESOLVE` / `ctx.is_none()` loop in `run_discovery_rows`
+// (~120 LOC).
+// Receipt: `rg cli_run_discovery_skip_before_resolve src/v1/stage0/src/cli_run.rs` == 1 until
+// deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
+pub(crate) const CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER: &str =
+    "cli_run_discovery_skip_before_resolve";
+
+/// Import-closure module names from the module-graph facts scan — the same grain as
+/// `roster_import_closure_nodes_pre_resolve`, used when skip-before-resolve elides a cold
+/// entry resolve so the post-resolve calibration union stays aligned with the pre-resolve walk.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` / §7):
+/// dissolves under ROADMAP `2-provenance-ingest` when the floor runner `.dag` owns the decision.
+fn collect_import_closure_module_names_from_facts(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    out: &mut HashSet<String>,
+) {
+    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .map(|p| workspace_relative_repo_path(&p))
+        .collect();
+    for node in &facts.nodes {
+        let rel = workspace_relative_repo_path(&node.path);
+        if closure_paths.contains(&rel)
+            || closure_paths
+                .iter()
+                .any(|closure_path| repo_paths_match_touched(closure_path, &rel))
+        {
+            out.insert(node.module.clone());
+        }
+    }
+}
+
+fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &str) -> bool {
+    diff_edits
+        .edited_test_fns
+        .iter()
+        .any(|(file, _)| diff_file_matches_entry(file, entry_path))
+}
+
+/// Skip-before-resolve (discovery corpus, SelectionApplied): when the diff cannot possibly
+/// affect any witness in this entry — outside import-closure, no edited test fn, not a
+/// host-scaffold entry file — elide the cold entry resolve and treat every kernel witness
+/// row as assumed-green.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` / §7):
+/// dissolves under ROADMAP `2-provenance-ingest` when `floor_kernel_precompute_would_skip` in
+/// `v2.workflow.affected_set_floor_runner` is the general per-entry authority.
+fn entry_eligible_for_discovery_skip_before_resolve(
+    skip_enabled: bool,
+    entry_content: &str,
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    declared_paths: &HashSet<String>,
+    touched_paths: &[String],
+    diff_edits: &FloorDiffEdits,
+) -> Result<bool, String> {
+    if !skip_enabled {
+        return Ok(false);
+    }
+    if entry_text_indicates_live_host_scan(entry_content) {
+        return Ok(false);
+    }
+    if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
+        return Ok(false);
+    }
+    Ok(!entry_file_touched_via_import_closure(
+        entry_path,
+        facts,
+        declared_paths,
+        touched_paths,
+    )?)
+}
+
+struct DiscoveryEntryResolve {
+    ctx: v1_interpreter::InterpContext,
+    closure_subject: String,
+    frontier_nodes: Vec<v1_interpreter::Value>,
+    touches_frontier: bool,
+    entry_file_touched: bool,
+    resolve_nanos: u128,
+}
+
+fn resolve_discovery_entry_for_corpus_row(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+    execution_mode: v1_interpreter::ExecutionMode,
+    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    skip_enabled: bool,
+    diff_edits: &FloorDiffEdits,
+    touched_entry_paths: &[String],
+    module_graph_declared_paths: &HashSet<String>,
+    closure_modules: &mut HashSet<String>,
+) -> Result<DiscoveryEntryResolve, String> {
+    let sources = load_sources_for_entry_with_index(
+        &index.source_files,
+        &index.module_graph_facts,
+        entry_path,
+    )
+    .map_err(|msg| format!("load sources failed for {entry_path}: {msg}"))?;
+    let closure_subject = subject_digest_for_closure(&sources);
+    let resolve_started = std::time::Instant::now();
+    set_phase(FloorPhase::Resolve, entry_path);
+    let (graph, source_indices) =
+        resolve_entry_with_index_for_discovery_corpus(index, entry_path)
+            .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
+    let resolve_nanos = resolve_started.elapsed().as_nanos();
+    collect_typed_module_names(
+        graph.modules.iter().cloned(),
+        &source_indices,
+        closure_modules,
+    );
+    let entry_ctx = make_eval_context_with_runtime_options(
+        &graph,
+        source_indices,
+        execution_mode,
+        None,
+        whole_tree_published_keys,
+    );
+    let (frontier_nodes, touches_frontier, entry_file_touched) = if skip_enabled {
+        let frontier_nodes =
+            rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
+        let touches_frontier = if frontier_nodes.is_empty() {
+            false
+        } else {
+            entry_touches_rerun_frontier(
+                &entry_ctx,
+                &list_value_from_vec(frontier_nodes.clone()),
+            )?
+        };
+        let entry_file_touched = if touched_entry_paths.is_empty() {
+            false
+        } else {
+            entry_file_touched_via_import_closure(
+                entry_path,
+                &index.module_graph_facts,
+                module_graph_declared_paths,
+                touched_entry_paths,
+            )?
+        };
+        (frontier_nodes, touches_frontier, entry_file_touched)
+    } else {
+        (Vec::new(), true, true)
+    };
+    Ok(DiscoveryEntryResolve {
+        ctx: entry_ctx,
+        closure_subject,
+        frontier_nodes,
+        touches_frontier,
+        entry_file_touched,
+        resolve_nanos,
+    })
 }
 
 /// The closure-node definition SHARED by the falsifier/floor calibration emission and
@@ -6220,7 +6568,15 @@ fn rerun_frontier_nodes_for_entry(
 ) -> Result<Vec<v1_interpreter::Value>, String> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
-    for (_file, name) in &edits.overlapping_data_items {
+    let entry_norm = repo_relative_dag_path(entry_path);
+    for (file, name) in &edits.overlapping_data_items {
+        // Only same-entry-file overlapping data seeds this entry's rerun frontier.
+        // Cross-file `(file, name)` pairs must not re-eval homonymous data items in foreign
+        // entry contexts (e.g. `construction_justification` on every top-level lens) — that
+        // silently widens SelectionApplied to the whole corpus when a new lens lands.
+        if repo_relative_dag_path(file) != entry_norm {
+            continue;
+        }
         if !ctx.item_registry.contains_key(name) {
             continue;
         }
@@ -6414,11 +6770,9 @@ pub fn run_discovery_corpus_with_options(
     // in flight on PR #6442; consumer binds to roster_import_closure_nodes_pre_resolve):
     // the transitive import-CLOSURE size — never the roster/entry count (pairing an
     // entry count against a whole-closure peak inflates bytes-per-node by the fan-in
-    // factor). Today every discovered row resolves even when selection skips it (the
-    // skip is execution-grain; skip-before-resolve is the de-fork plan's open step), so
-    // the all-rows walk IS the resident union for both the ci and falsifier jobs.
-    // Dissolve-on: when skip-before-resolve lands, this emission must switch to the
-    // selected subset or it overcounts the resident set.
+    // factor). Skip-before-resolve (run_discovery_rows) elides cold resolve for
+    // import-closure-unaffected entries while folding their module-graph closure into
+    // the post-resolve union so this pre-resolve count stays paired with calibration.
     let pre_resolve_closure_nodes = {
         let prefix_entries: &[&str] = if selection_enabled {
             &[FLOOR_RUNNER_ENTRY]
@@ -6759,67 +7113,56 @@ fn run_discovery_rows(
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
-            let sources = load_sources_for_entry_with_index(
-                &index.source_files,
-                &index.module_graph_facts,
-                &row.entry,
-            )
-            .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
-            let closure_subject = subject_digest_for_closure(&sources);
-            let resolve_started = std::time::Instant::now();
-            set_phase(FloorPhase::Resolve, &row.entry);
-            let (graph, source_indices) =
-                resolve_entry_with_index_for_discovery_corpus(index, &row.entry)
-                    .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
-            let resolve_nanos = resolve_started.elapsed().as_nanos();
-            collect_typed_module_names(
-                graph.modules.iter().cloned(),
-                &source_indices,
-                &mut closure_modules,
-            );
-            summary.total_resolve_nanos += resolve_nanos;
-            summary.entry_resolve_receipts.push(EntryResolveReceipt {
-                entry: row.entry.clone(),
-                closure_subject: closure_subject.clone(),
-                resolve_nanos,
-            });
-            current_closure_subject = Some(closure_subject);
-            let entry_ctx = make_eval_context_with_runtime_options(
-                &graph,
-                source_indices,
-                execution_mode,
-                None,
-                whole_tree_published_keys.clone(),
-            );
-            if skip_enabled {
-                current_entry_frontier_nodes =
-                    rerun_frontier_nodes_for_entry(&entry_ctx, &row.entry, diff_edits)?;
-                current_entry_touches = if current_entry_frontier_nodes.is_empty() {
-                    false
-                } else {
-                    entry_touches_rerun_frontier(
-                        &entry_ctx,
-                        &list_value_from_vec(current_entry_frontier_nodes.clone()),
-                    )?
-                };
-                current_entry_file_touched = if touched_entry_paths.is_empty() {
-                    false
-                } else {
-                    entry_file_touched_via_import_closure(
-                        &row.entry,
-                        &index.module_graph_facts,
-                        &module_graph_declared_paths,
-                        &touched_entry_paths,
-                    )?
-                };
-            } else {
-                current_entry_frontier_nodes.clear();
-                current_entry_touches = true;
-                current_entry_file_touched = true;
-            }
-            ctx = Some(entry_ctx);
-            current_entry = Some(row.entry.clone());
             current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
+            if entry_eligible_for_discovery_skip_before_resolve(
+                skip_enabled,
+                &current_entry_content,
+                &row.entry,
+                &index.module_graph_facts,
+                &module_graph_declared_paths,
+                changed_paths,
+                diff_edits,
+            )? {
+                eprintln!(
+                    "SKIP-RESOLVE [unaffected import-closure] {} (cold entry resolve elided)",
+                    row.entry
+                );
+                collect_import_closure_module_names_from_facts(
+                    &row.entry,
+                    &index.module_graph_facts,
+                    &mut closure_modules,
+                );
+                ctx = None;
+                current_closure_subject = None;
+                current_entry_frontier_nodes.clear();
+                current_entry_touches = false;
+                current_entry_file_touched = false;
+                current_entry = Some(row.entry.clone());
+            } else {
+                let resolved = resolve_discovery_entry_for_corpus_row(
+                    index,
+                    &row.entry,
+                    execution_mode,
+                    whole_tree_published_keys.clone(),
+                    skip_enabled,
+                    diff_edits,
+                    &touched_entry_paths,
+                    &module_graph_declared_paths,
+                    &mut closure_modules,
+                )?;
+                summary.total_resolve_nanos += resolved.resolve_nanos;
+                summary.entry_resolve_receipts.push(EntryResolveReceipt {
+                    entry: row.entry.clone(),
+                    closure_subject: resolved.closure_subject.clone(),
+                    resolve_nanos: resolved.resolve_nanos,
+                });
+                current_closure_subject = Some(resolved.closure_subject);
+                current_entry_frontier_nodes = resolved.frontier_nodes;
+                current_entry_touches = resolved.touches_frontier;
+                current_entry_file_touched = resolved.entry_file_touched;
+                ctx = Some(resolved.ctx);
+                current_entry = Some(row.entry.clone());
+            }
         }
         let function_edited = skip_enabled
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
@@ -6890,6 +7233,30 @@ fn run_discovery_rows(
                 // would_skip is only computed when selection is enabled.
                 NodeFrontierSelectionMode::Off => {}
             }
+        }
+        if ctx.is_none() {
+            let resolved = resolve_discovery_entry_for_corpus_row(
+                index,
+                &row.entry,
+                execution_mode,
+                whole_tree_published_keys.clone(),
+                skip_enabled,
+                diff_edits,
+                &touched_entry_paths,
+                &module_graph_declared_paths,
+                &mut closure_modules,
+            )?;
+            summary.total_resolve_nanos += resolved.resolve_nanos;
+            summary.entry_resolve_receipts.push(EntryResolveReceipt {
+                entry: row.entry.clone(),
+                closure_subject: resolved.closure_subject.clone(),
+                resolve_nanos: resolved.resolve_nanos,
+            });
+            current_closure_subject = Some(resolved.closure_subject);
+            current_entry_frontier_nodes = resolved.frontier_nodes;
+            current_entry_touches = resolved.touches_frontier;
+            current_entry_file_touched = resolved.entry_file_touched;
+            ctx = Some(resolved.ctx);
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
         let closure_subject = current_closure_subject
@@ -8022,7 +8389,7 @@ mod module_grain_affected_equivalence_tests {
             "dag/gunbc/ci_layer_roots.dag",
             "src/v2/test/claim/bash_command_fold_test.dag",
             "src/v2/workflow/orchestration_emit_test.dag",
-            "src/v2/test/claim/module_graph/import_closure_live_test.dag",
+            "dag/test/claim/module_graph/import_closure_live_test.dag",
             "src/v2/test/claim/affected_set_universe_test.dag",
             "src/v2/lens/module_graph.dag",
         ]
@@ -8046,7 +8413,7 @@ mod module_grain_affected_equivalence_tests {
             "dag/test/claim/card_intake_risk_witness_test.dag",
             "dag/tools/host_prelude.dag",
             "src/v2/test/claim/affected_set_universe_test.dag",
-            "src/v2/test/claim/module_graph/import_closure_live_test.dag",
+            "dag/test/claim/module_graph/import_closure_live_test.dag",
         ]
     }
 
@@ -9669,25 +10036,11 @@ const LAYER_STD: &str = "LayerPrefixStd";
 const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 
 fn rel_path_for_layer_import(path: &Path) -> String {
-    let ws = workspace_root();
-    path.strip_prefix(&ws)
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"))
+    repo_relative_path_normalized(path)
 }
 
 fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
-    let ws = workspace_root();
-    pool_roots
-        .iter()
-        .map(|r| {
-            let p = Path::new(r);
-            if p.is_absolute() {
-                r.clone()
-            } else {
-                ws.join(p).to_string_lossy().into_owned()
-            }
-        })
-        .collect()
+    pool_roots.iter().map(|r| anchor_source_root(r)).collect()
 }
 
 fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
@@ -12680,6 +13033,21 @@ mod module_path_index_tests {
                 ws.join("dag").to_string_lossy().into_owned(),
                 ws.join("src/v2").to_string_lossy().into_owned(),
             ]
+        );
+    }
+
+    #[test]
+    fn build_module_path_index_accepts_relative_roots_at_process_cwd() {
+        let ws = workspace_root();
+        let rel_roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let index = build_module_path_index(&rel_roots);
+        let sample = index
+            .get("gunbc.ci_layer_roots")
+            .expect("gunbc.ci_layer_roots must be indexed from relative roots");
+        assert_eq!(sample, "dag/gunbc/ci_layer_roots.dag");
+        assert!(
+            ws.join(sample).is_file(),
+            "indexed rel path must resolve under workspace_root()"
         );
     }
 
