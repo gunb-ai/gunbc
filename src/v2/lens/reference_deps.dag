@@ -65,7 +65,7 @@ import v2.std.qualified_name {
   qualified_name_from_dotted_string,
   qualified_name_from_node
 }
-import v2.std.text { String, string_contains }
+import v2.std.text { String }
 
 type ReferenceResolutionFact {
   path: String
