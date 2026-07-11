@@ -161,8 +161,8 @@ test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool {
 }
 
 test fn orch_retry_production_seam_matches_golden_holds() -> Bool {
-  ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
-    == ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
+  let produced = ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
+  produced == ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
 }
 
 test fn orch_retry_env_value_has_teeth_holds() -> Bool {
