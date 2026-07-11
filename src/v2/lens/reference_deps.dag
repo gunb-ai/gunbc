@@ -7,6 +7,7 @@ import v2.lens.module_graph {
   ImportClosureBfsState,
   ImportResolutionFact,
   ModuleDeclarationFact,
+  bfs_absorb_neighbors,
   build_module_to_path,
   import_closure_bfs_walk,
   import_resolution_facts_live,
@@ -87,7 +88,7 @@ data reference_deps_parsed_tree_disposition: Disposition = Scaffold {
   }
 }
 
-data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). Dissolves when symbol_index_fill projects the same edges from the filled containment tree as the single authority."
+data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). reference_closure_live parses on-demand along the closure BFS only; reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census. Dissolves when symbol_index_fill projects the same edges from the filled containment tree as the single authority."
 
 data reference_deps_file_anchor: Symbol = ^reference_deps_file_anchor
 
@@ -600,25 +601,80 @@ fn reference_closure(
   )
 }
 
+fn reference_neighbor_paths_from_facts(
+  facts: List<ReferenceResolutionFact>,
+  module_to_path: Map<String, String>,
+  acc: List<String>
+) -> List<String> {
+  fold_list(
+    xs: facts,
+    empty: acc,
+    cons: fn(a, fact) {
+      match map_lookup_where_rejected_unreachable(m: module_to_path, key: fact.reference_module) {
+        Present { value: referenced_path } =>
+          dedupe_snoc(acc: a, item: referenced_path, eq: string_eq)
+        Absent => a
+      }
+    }
+  )
+}
+
+fn reference_closure_bfs_parsed_walk(
+  state: ImportClosureBfsState,
+  declared: List<ModuleDeclarationFact>,
+  module_to_path: Map<String, String>
+) -> FreeMonoid<String> {
+  match state.queue |> first {
+    Absent => state.reached
+    Present { value: path } =>
+      let rest = state.queue |> skip(1)
+      if contains(xs: state.reached, item: path, eq: string_eq) {
+        reference_closure_bfs_parsed_walk(
+          state: ImportClosureBfsState { reached: state.reached, queue: rest },
+          declared: declared,
+          module_to_path: module_to_path
+        )
+      } else {
+        let census = reference_file_census(rel_path: path, declared: declared)
+        if is_empty(xs: census.refusals) {
+          let neighbors = reference_neighbor_paths_from_facts(
+            facts: census.facts,
+            module_to_path: module_to_path,
+            acc: Empty
+          )
+          let next = bfs_absorb_neighbors(
+            state: ImportClosureBfsState {
+              reached: list_snoc_item(xs: state.reached, item: path),
+              queue: rest
+            },
+            neighbors: neighbors
+          )
+          reference_closure_bfs_parsed_walk(
+            state: next,
+            declared: declared,
+            module_to_path: module_to_path
+          )
+        } else {
+          no_paths
+        }
+      }
+  }
+}
+
 fn reference_closure_live_excluding(
   entry_path: String,
   pool_roots: List<String>,
   exclude_substrings: List<String>
 ) -> FreeMonoid<String> {
-  let census = reference_resolution_census_live(
-    pool_roots: pool_roots,
-    importer_roots: pool_roots,
-    exclude_substrings: exclude_substrings
+  let declared = module_declaration_facts_live(pool_roots: pool_roots)
+  reference_closure_bfs_parsed_walk(
+    state: ImportClosureBfsState {
+      reached: no_paths,
+      queue: list_snoc_item(xs: no_paths, item: entry_path)
+    },
+    declared: declared,
+    module_to_path: build_module_to_path(nodes: declared)
   )
-  if is_empty(xs: census.refusals) {
-    reference_closure(
-      entry_path: entry_path,
-      edges: census.facts,
-      nodes: module_declaration_facts_live(pool_roots: pool_roots)
-    )
-  } else {
-    no_paths
-  }
 }
 
 fn reference_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {
