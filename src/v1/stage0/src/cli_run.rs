@@ -332,6 +332,41 @@ fn repo_relative_path_normalized(path: &Path) -> String {
 /// Resolve a source/pool-root spelling to an absolute directory under
 /// [`process_workspace_root`]. Absolute paths baked from the compile-time
 /// [`workspace_root`] (sccache cross-runner) are re-anchored when missing on disk.
+/// Non-panicking sibling of [`anchor_source_root`] for DECLARED layer/pool roots whose absence is
+/// a legitimate state (a modeled-before-implemented location, e.g. `dag/compiler` in the
+/// medium-structure roster): `None` when the root does not exist under any anchoring, so the
+/// caller can skip it LOUDLY (counted line) instead of panicking mid-floor. CLI-provided roots
+/// keep the strict panicking contract - a typo'd argument must refuse, never skip.
+fn try_anchor_source_root(root: &str) -> Option<String> {
+    let p = Path::new(root);
+    let ws = process_workspace_root();
+    if p.is_absolute() {
+        if p.is_dir() {
+            return Some(root.to_string());
+        }
+        let baked = workspace_root();
+        if let Ok(rel) = p.strip_prefix(&baked) {
+            let reanchored = ws.join(rel);
+            if reanchored.is_dir() {
+                return Some(reanchored.to_string_lossy().into_owned());
+            }
+        }
+        if let Ok(rel) = repo_relative_path(p) {
+            let reanchored = ws.join(&rel);
+            if reanchored.is_dir() {
+                return Some(reanchored.to_string_lossy().into_owned());
+            }
+        }
+        return None;
+    }
+    let anchored = ws.join(p);
+    if anchored.is_dir() {
+        Some(anchored.to_string_lossy().into_owned())
+    } else {
+        None
+    }
+}
+
 fn anchor_source_root(root: &str) -> String {
     let p = Path::new(root);
     let ws = process_workspace_root();
@@ -10482,7 +10517,12 @@ fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
 }
 
 fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
-    let abs_root = anchor_source_root(root);
+    let Some(abs_root) = try_anchor_source_root(root) else {
+        eprintln!(
+            "[layer-import] declared root {root} absent on disk (layer={layer}) — skipped, no facts projected"
+        );
+        return;
+    };
     let root_path = Path::new(&abs_root);
     if !root_path.is_dir() {
         return;

@@ -259,7 +259,7 @@ fn witness_floor_disposition_marker_initialized_before_docs_only_branch() -> Boo
   string_contains(s: script, pattern: ci_floor_disposition_marker_init_note) &&
     string_contains(
       s: script,
-      pattern: concat(concat(stamp, "\n"), "_ci_changed=$(git diff")
+      pattern: concat(concat(stamp, "\n\n"), "_ci_changed=$(git diff")
     )
 }
 
