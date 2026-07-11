@@ -1,7 +1,10 @@
 module v2.test.self_host.compiler_frontier_emit_probe
 
 import v2.compiler.self_host.frontier_probe {
+  EmitSurfaceGap,
   FrontierProbeReceipt,
+  NameResolutionGap,
+  RealizationGap,
   SelfEmitReady,
   frontier_probe_emit_from_ingest
 }
@@ -24,6 +27,27 @@ fn frontier_module_emit_probe_receipt() -> FrontierProbeReceipt {
 func frontier_module_emit_probe_accepts_holds() -> Bool {
   match frontier_module_emit_probe_receipt().blocker_class {
     SelfEmitReady => true
+    _ => false
+  }
+}
+
+func frontier_module_emit_probe_name_resolution_holds() -> Bool {
+  match frontier_module_emit_probe_receipt().blocker_class {
+    NameResolutionGap => true
+    _ => false
+  }
+}
+
+func frontier_module_emit_probe_emit_surface_holds() -> Bool {
+  match frontier_module_emit_probe_receipt().blocker_class {
+    EmitSurfaceGap => true
+    _ => false
+  }
+}
+
+func frontier_module_emit_probe_realization_holds() -> Bool {
+  match frontier_module_emit_probe_receipt().blocker_class {
+    RealizationGap => true
     _ => false
   }
 }
