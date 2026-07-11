@@ -127,8 +127,17 @@ fn ci_prelude_steps() -> List<Step> {
       name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
       id: none,
       run: concat(
-        "rustup default \"$(rustup show active-toolchain | awk '",
-        concat(concat("{", "print $1; exit"), concat("}", "')\""))
+        concat(
+          "rustup default \"$(rustup show active-toolchain | awk '",
+          concat(concat("{", "print $1; exit"), concat("}", "')\""))
+        ),
+        concat(
+          concat(
+            "\nif [ -x \"$CARGO_HOME/bin/cargo\" ]; then CARGO_BIN=\"$CARGO_HOME/bin/cargo\"; else CARGO_BIN=\"$(command -v cargo || true)\"; fi\n",
+            "if [ -z \"$CARGO_BIN\" ]; then echo \"::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one\"; exit 1; fi\n"
+          ),
+          "echo \"CARGO_BIN=$CARGO_BIN\" >> \"$GITHUB_ENV\""
+        )
       ),
       shell: none,
       env: none,
