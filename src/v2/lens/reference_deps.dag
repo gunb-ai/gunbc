@@ -32,7 +32,6 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra {
   contains,
-  fold,
   fold_list,
   is_empty,
   is_prefix_of,
