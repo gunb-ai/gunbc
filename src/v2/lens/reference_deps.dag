@@ -1,5 +1,7 @@
 module v2.lens.reference_deps
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -20,4 +22,8 @@ fn reference_resolution_facts_live(
     importer_roots: importer_roots,
     exclude_substrings: exclude_substrings
   )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
