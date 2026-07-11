@@ -18,6 +18,8 @@ import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.text { String }
 
+data frontier_probe_emit_from_ingest_consumer_dissolution_trigger: String = "migrate_when_frontier_per_module_probe_receipt_binds — frontier_probe_emit_from_ingest is staged kernel with no substrate consumer yet; roster rows bind via execution_measured_seed_retained_row_from_probe_receipt when per-module survey lands."
+
 fn frontier_probe_emit_from_ingest(
   module_path: String,
   ingest: SourceRootIngest,

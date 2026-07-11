@@ -19,7 +19,7 @@ import v2.compiler.self_host.frontier_probe_types {
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
 
-test fn compiler_frontier_emit_probe_survey_holds() -> Bool {
+test fn compiler_frontier_structural_census_invariants_holds() -> Bool {
   compiler_frontier_census_holds()
     && compiler_frontier_roster_all_classified_holds()
     && compiler_frontier_roster_probe_paths_match_holds()

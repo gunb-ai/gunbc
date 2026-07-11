@@ -175,6 +175,13 @@ fn baked_workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+// SEED-SCAFFOLD (hand-Rust gate, DESIGN §7 Pure Bootstrap): cwd-preferring `workspace_root`.
+// dissolves_to: extdeps/os workspace-root dispatch OR claim_bin path-resolution authority row.
+// dissolution_trigger: migrate_when_claim_bin_workspace_root_lands
+// receipt: CI run 29145270700 (serial build@hostA -> ci@hostB) — baked `CARGO_MANIFEST_DIR`
+//   rooted pool_roots_abs module-index facts from hostA while module reads used hostB cwd;
+//   wrong answers with zero diagnostic (DESIGN §5 fail-open). cwd preference fixes cross-runner
+//   artifact handoff; nested-worktree precedence is intentional (documented below).
 fn cwd_looks_like_gunbc_workspace(cwd: &std::path::Path) -> bool {
     cwd.join("dag").is_dir() && cwd.join("Cargo.toml").is_file()
 }

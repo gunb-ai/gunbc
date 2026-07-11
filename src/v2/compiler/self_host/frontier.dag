@@ -43,11 +43,13 @@ data compiler_frontier_gap_clustering_attribution: CompilerFrontierAttributedDeb
 }
 
 data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = ExecutionMeasured {
-  probe_kernel_receipt: ^compiler_frontier_emit_probe_survey_holds,
+  probe_kernel_receipt: ^frontier_classify_unlisted_reason_refuses_holds,
   wave_label: ^wave2_post_resolver_6451_body_stage_a_6443,
   blocker_class_distribution: compiler_frontier_blocker_class_distribution_attribution,
   gap_clustering: compiler_frontier_gap_clustering_attribution
 }
+
+data compiler_frontier_probe_kernel_receipt_note: String = "probe_kernel_receipt binds the fail-closed classifier RED control (frontier_classify_unlisted_reason_refuses_holds), not per-module frontier_probe_emit_from_ingest execution. Structural census invariants are compiler_frontier_structural_census_invariants_holds; per-module receipts deferred via CompilerFrontierAttributedDebt dissolution triggers."
 
 type SelfHostFrontierDisposition
   = SelfEmitted
@@ -540,7 +542,7 @@ fn compiler_frontier_execution_measured_attribution_holds() -> Bool {
       blocker_class_distribution: _,
       gap_clustering: _
     } =>
-      probe_kernel_receipt == ^compiler_frontier_emit_probe_survey_holds
+      probe_kernel_receipt == ^frontier_classify_unlisted_reason_refuses_holds
         && wave_label == ^wave2_post_resolver_6451_body_stage_a_6443
         && compiler_frontier_blocker_class_distribution_knowledge_attributed_holds()
         && compiler_frontier_gap_clustering_knowledge_attributed_holds()
