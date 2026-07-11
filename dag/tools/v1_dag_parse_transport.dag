@@ -1,24 +1,11 @@
 module tools.v1_dag_parse_transport
 
-import extdeps.shell
-import extdeps.languages.bash.program {
-  ShellProgram,
-  lit, var_ref, command, serialize_bash
-}
-import tools.host_prelude { ensure_v1_src_dag_parse_built }
-
-fn v1_dag_parse_program() -> ShellProgram {
-  let root = var_ref(name: "ROOT")
-  ShellProgram {
-    set_e: true,
-    statements: concat(ensure_v1_src_dag_parse_built(), [
-      command(words: [lit(text: "cd"), root]),
-      command(words: [var_ref(name: "V1_SRC_DAG_PARSE")])
-    ])
-  }
-}
+import tools.host_prelude { run_witness_bin }
 
 fn run_v1_dag_parse() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: v1_dag_parse_program()))
-  result.success
+  run_witness_bin(
+    var_name: "V1_SRC_DAG_PARSE",
+    bin_name: "v1_src_dag_parse",
+    args: []
+  )
 }

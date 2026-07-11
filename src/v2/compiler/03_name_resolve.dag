@@ -1,7 +1,8 @@
 module v2.compiler.name_resolve
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalize { NormalizedTree }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.resolve {
   DeclaredBinding,
   Namespace,
@@ -470,7 +471,9 @@ fn admit_imports(
 fn admission_namespace_base(lm: LanguageModel) -> Namespace {
   Namespace {
     bindings: empty_map(),
-    canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
+    canonical_symbols: dag_language_model_canonical_symbols(lm: lm),
+    symbol_index: empty_symbol_index(),
+    module_qn: Empty
   }
 }
 
@@ -522,7 +525,12 @@ fn namespace_for_subject(
                         root: subject_module_root,
                         bindings: b
                       ),
-                      canonical_symbols: base.canonical_symbols
+                      canonical_symbols: base.canonical_symbols,
+                      symbol_index: symbol_index_fill_module_roots(
+                        index: empty_symbol_index(),
+                        roots: validated_roots
+                      ),
+                      module_qn: admission.subject.name
                     },
                     subject_root: subject_module_root
                   },

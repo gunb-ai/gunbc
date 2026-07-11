@@ -48,6 +48,10 @@ fn fold_call_head_symbol(fold_call: Node) -> Optional<Symbol> {
   }
 }
 
+fn fold_family_head(sym: Symbol) -> Bool {
+  (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_list_right) || (sym == ^fold_node)
+}
+
 fn fold_call_step_fn(fold_call: Node) -> Optional<Node> {
   match parse_subtree_find_production_captured(root: fold_call, emitted: ^dag_surface_fn_literal) {
     ParseSubtreeFound { captured: fn_literal } => Present { value: fn_literal }
@@ -55,16 +59,40 @@ fn fold_call_step_fn(fold_call: Node) -> Optional<Node> {
   }
 }
 
-fn fold_call_iteration_body(fold_call: Node) -> Optional<Node> {
-  match fold_call_step_fn(fold_call: fold_call) {
+fn step_fn_iteration_body(fn_literal: Node) -> Optional<Node> {
+  match parse_subtree_find_production_captured(
+    root: fn_literal,
+    emitted: ^dag_surface_fn_body
+  ) {
+    ParseSubtreeAbsent => Absent
+    ParseSubtreeFound { captured: body } => Present { value: body }
+  }
+}
+
+fn fold_seq_child(node: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: node, name: name) {
+    Accepted { value: child, diagnostics: _ } => Present { value: child }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+data step_fn_carrier_binder_note: String = "The step fn's FIRST param is the fold's accumulator binder (fn(acc, item) { .. }). fn_literal params are untyped lexeme-stamped idents (dag_grammar_untyped_params_helper = comma_list(terminal_lexeme(ident))), so the binder NAME is the captured atom's identity. Navigation follows the fn_literal grammar expression Seq(kw_fn, Seq(lparen, Seq(Optional(params), ..))): right, right, left lands on the params capture (Optional-absent = empty Conj -> Absent), whose comma_list capture is Conj[left -> first item]. A step fn with no readable first param cannot be a fold step: the caller refuses ^fold_lowering_shape_invalid, never fabricates a carrier."
+
+fn step_fn_carrier_binder_symbol(fn_literal: Node) -> Optional<Symbol> {
+  match fold_seq_child(node: fn_literal, name: ^grammar_sequence_right_node_projection) {
     Absent => Absent
-    Present { value: fn_literal } =>
-      match parse_subtree_find_production_captured(
-        root: fn_literal,
-        emitted: ^dag_surface_fn_body
-      ) {
-        ParseSubtreeAbsent => Absent
-        ParseSubtreeFound { captured: body } => Present { value: body }
+    Present { value: after_kw_fn } =>
+      match fold_seq_child(node: after_kw_fn, name: ^grammar_sequence_right_node_projection) {
+        Absent => Absent
+        Present { value: after_lparen } =>
+          match fold_seq_child(node: after_lparen, name: ^grammar_sequence_left_node_projection) {
+            Absent => Absent
+            Present { value: params } =>
+              match fold_seq_child(node: params, name: ^grammar_sequence_left_node_projection) {
+                Absent => Absent
+                Present { value: first_param } => node_atom_identity_optional(node: first_param)
+              }
+          }
       }
   }
 }
@@ -85,12 +113,20 @@ fn fold_lowering_shape_invalid_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-fn fold_call_seam_loop(body: Node) -> Node {
+fn fold_carrier_binder_atom(binder: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: binder } },
+    children: []
+  )
+}
+
+fn fold_call_seam_loop(body: Node, carrier: Symbol) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge { label: Positional, target: body },
-      Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() }
+      Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() },
+      Edge { label: Named { name: ^loop_carrier_edge }, target: fold_carrier_binder_atom(binder: carrier) }
     ]
   )
 }
@@ -100,12 +136,22 @@ fn fold_call_to_loop(fold_call: Node) -> Outcome<Node> {
     Absent =>
       outcome_rejected(d: fold_lowering_not_a_fold_call_diagnostic(n: fold_call))
     Present { value: head } =>
-      if head == ^fold {
-        match fold_call_iteration_body(fold_call: fold_call) {
+      if fold_family_head(sym: head) {
+        match fold_call_step_fn(fold_call: fold_call) {
           Absent =>
             outcome_rejected(d: fold_lowering_shape_invalid_diagnostic(n: fold_call))
-          Present { value: body } =>
-            outcome_accepted(value: fold_call_seam_loop(body: body))
+          Present { value: fn_literal } =>
+            match step_fn_iteration_body(fn_literal: fn_literal) {
+              Absent =>
+                outcome_rejected(d: fold_lowering_shape_invalid_diagnostic(n: fold_call))
+              Present { value: body } =>
+                match step_fn_carrier_binder_symbol(fn_literal: fn_literal) {
+                  Absent =>
+                    outcome_rejected(d: fold_lowering_shape_invalid_diagnostic(n: fold_call))
+                  Present { value: carrier } =>
+                    outcome_accepted(value: fold_call_seam_loop(body: body, carrier: carrier))
+                }
+            }
         }
       } else {
         outcome_rejected(d: fold_lowering_not_a_fold_call_diagnostic(n: fold_call))
