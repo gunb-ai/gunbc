@@ -284,21 +284,16 @@ fn repo_relative_path(path: &Path) -> Result<String, String> {
 }
 
 /// Canonical repo-relative path for module-graph keys and index storage.
-/// Relative inputs (produced by walks over repo-root-relative scan roots) are anchored
-/// at the process cwd first — they are already inside the tree, not a mixed-tree case.
-/// Absolute inputs try [`process_workspace_root`] first, then compile-time
-/// [`workspace_root`] when sccache embedded the latter in absolute spellings from
-/// another runner checkout.
+/// Tries [`process_workspace_root`] first, then compile-time [`workspace_root`] when
+/// sccache embedded the latter in absolute spellings from another runner checkout.
+/// A relative spelling is accepted as already being the key ONLY when it names a real
+/// file or directory under the process root (verified, not trusted): walks over
+/// relative source roots (`layer_import_facts`) emit exactly these spellings, while a
+/// relative path anchored anywhere else stays a refusal, never a fabricated key.
 fn repo_relative_path_normalized(path: &Path) -> String {
-    let anchored;
-    let path: &Path = if path.is_relative() {
-        anchored = std::env::current_dir()
-            .expect("repo_relative_path_normalized: process working directory unavailable")
-            .join(path);
-        &anchored
-    } else {
-        path
-    };
+    if path.is_relative() && process_workspace_root().join(path).exists() {
+        return path.to_string_lossy().replace('\\', "/");
+    }
     if let Ok(rel) = repo_relative_path(path) {
         return rel;
     }
@@ -563,19 +558,6 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn repo_relative_path_normalized_anchors_relative_walk_path_at_cwd() {
-        // Walks over relative scan roots ("dag", "src/v2") produce RELATIVE file
-        // paths — relative to the process cwd, since that is what the walk opened.
-        // Those must key identically to their cwd-anchored absolute spellings, not
-        // panic (regression: #6477 CI red — every witness consuming
-        // layer_import_facts_live panicked on `dag/std/abi.dag`).
-        let rel_input = Path::new("dag/gunbc/ci_layer_roots.dag");
-        let anchored = std::env::current_dir().expect("cwd").join(rel_input);
-        let expected = repo_relative_path_normalized(&anchored);
-        assert_eq!(repo_relative_path_normalized(rel_input), expected);
-    }
-
-    #[test]
     fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();
         let baked = workspace_root();
@@ -587,6 +569,32 @@ mod process_workspace_root_tests {
         assert_eq!(rel, "dag/gunbc/ci_layer_roots.dag");
         assert_eq!(workspace_relative_repo_path(&abs.to_string_lossy()), rel);
         assert!(ws.join(&rel).is_file());
+    }
+
+    /// The 2026-07-11 main-red regression (#6459 -> runs 29161502622/29161935015/29162102862):
+    /// `layer_import_facts` walks relative source roots ("dag", "src/v2") and feeds the
+    /// resulting relative spellings here; they ARE the repo-relative keys and must pass
+    /// through once verified against the process root, never strip-prefix-panic.
+    #[test]
+    fn repo_relative_path_normalized_accepts_relative_spelling_under_root() {
+        let rel_in = Path::new("dag/gunbc/ci_layer_roots.dag");
+        if !process_workspace_root().join(rel_in).is_file() {
+            return;
+        }
+        assert_eq!(
+            repo_relative_path_normalized(rel_in),
+            "dag/gunbc/ci_layer_roots.dag"
+        );
+    }
+
+    /// Red control: a relative spelling that does NOT exist under the process root is
+    /// unattributable input and must refuse — the relative arm verifies, it never trusts.
+    #[test]
+    #[should_panic(expected = "repo_relative_path_normalized")]
+    fn repo_relative_path_normalized_refuses_relative_spelling_not_under_root() {
+        let _ = repo_relative_path_normalized(Path::new(
+            "no-such-dir/no-such-file-gunbc-red-control.dag",
+        ));
     }
 }
 
