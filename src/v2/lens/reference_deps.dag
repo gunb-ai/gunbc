@@ -372,7 +372,7 @@ fn reference_declared_module_prefix_facts(
   } else {
     fold_list(
       xs: declared,
-      empty: acc,
+      empty: exact,
       cons: fn(a, fact) {
         let decl_qn = qualified_name_from_dotted_string(dotted: fact.module)
         if is_prefix_of(prefix: decl_qn, xs: ref_qn, eq: symbol_eq) {
