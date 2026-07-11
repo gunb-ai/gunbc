@@ -437,12 +437,6 @@ fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
   )
 }
 
-fn project_ci_rust_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
-  gates_from_enrollments(
-    rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsRustTestsJob))
-  )
-}
-
 fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
   gates_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiRegenJob))
@@ -599,8 +593,6 @@ fn local_tidy_lists_eq(left: List<LocalTidyCheck>, right: List<LocalTidyCheck>) 
 }
 
 data commit_workflow_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
-
-data commit_workflow_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: commit_gate_roster)
 
 data commit_workflow_local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
 
