@@ -1,16 +1,23 @@
 module tools.emit_determinism_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.emit_determinism_transport { run_emit_corpus_x2_diff_zero }
+import tools.emit_determinism_transport { run_diff_recursive_discrimination_receipt, run_emit_corpus_x2_diff_zero }
 
 func run_emit_determinism_gate_body() -> ProcessExit {
-  let det = run_emit_corpus_x2_diff_zero()
-  return if det {
-    ExitSuccess
-  } else {
+  let oracle_discriminates = run_diff_recursive_discrimination_receipt()
+  return if !oracle_discriminates {
     exit_failure(
-      reason: "emit-determinism gate failed: two sequential 'gunbc compile dag --target rust' runs produced non-identical output trees"
+      reason: "emit-determinism gate refused: shell.Diff.Recursive discrimination receipt failed - the tree-compare oracle did not distinguish differing trees from identical ones, so a determinism verdict from it would be fabricated"
     )
+  } else {
+    let det = run_emit_corpus_x2_diff_zero()
+    if det {
+      ExitSuccess
+    } else {
+      exit_failure(
+        reason: "emit-determinism gate failed: two sequential 'gunbc compile dag --target rust' runs produced non-identical output trees"
+      )
+    }
   }
 }
 

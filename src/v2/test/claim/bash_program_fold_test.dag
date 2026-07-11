@@ -3,6 +3,7 @@ module v2.test.claim.bash_program_fold
 import extdeps.languages.bash.program {
   CmdSubst,
   AndOr,
+  AndThen,
   Command,
   Exit,
   If,
@@ -11,17 +12,45 @@ import extdeps.languages.bash.program {
   Concat,
   Lit,
   ShellProgram,
+  ShellStmt,
+  ShellWord,
   StderrToNull,
   VarRef,
   WithRedir,
   assign,
   command,
   lit,
-  serialize_bash
+  var_ref,
+  test_not_executable
 }
-import tools.host_prelude { ClaimRun, assign_root_stmt, gunbc_claims_program, witness_bin, witness_bin_program }
+import tools.build_step { BuildArtifact, emit_verifications }
 import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
-import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+
+data bash_program_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_bash and of the grammar rows/segment spellings. Each test compares bash_program_serialize (row-emit) against its golden only, so a row/emitter regression cannot go green by perturbing both sides at once (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
+
+data bash_program_fold_sample_set_e_golden: String = "set -e\n'echo' 'hi'\nX='1'\n"
+data bash_program_fold_sample_no_set_e_golden: String = "'echo' 'hi'\nX='1'\n"
+data bash_program_depth2_cmdsubst_golden: String = "ROOT=$('pwd')\n"
+data bash_program_depth2_redir_golden: String = "'git' 'rev-parse' 2>/dev/null\n"
+data bash_program_depth2_concat_golden: String = "BIN=\"$ROOT\"'/target/release/gunbc'\n"
+data bash_program_assign_root_golden: String = "ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\n"
+data bash_program_exit_subshell_golden: String = "('echo' 'hi'; exit 1)\n"
+data bash_program_exit_if_golden: String = "if 'true'; then 'echo' 'hi'; exit 1; fi\n"
+data bash_program_andor_exit_golden: String = "'true' || exit 1\n"
+
+data bash_program_real_witness_golden: String = "set -e\nROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\nV1_DAG_PARSE=\"$ROOT\"'/target/release/v1srcdag_parse'\nif '[' '!' '-x' \"$V1_DAG_PARSE\" ']'; then ('cd' \"$ROOT\" && 'cargo' 'build' '-p' 'v1-compiler' '--release' '--bin' 'v1srcdag_parse') || exit 1; fi\nif '[' '!' '-x' \"$V1_DAG_PARSE\" ']'; then 'echo' '::error::build verification: declared artifact '\\''v1srcdag_parse'\\'' absent or not executable after a '\\''successful'\\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '\"$V1_DAG_PARSE\" >&2; exit 1; fi\nif '[' '!' '-s' \"$V1_DAG_PARSE\" ']'; then 'echo' '::error::build verification: declared artifact '\\''v1srcdag_parse'\\'' is zero-byte after a '\\''successful'\\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '\"$V1_DAG_PARSE\" >&2; exit 1; fi\n'cd' \"$ROOT\"\n\"$V1_DAG_PARSE\" '--entry' 'dag/std/algebra.dag'\n"
+
+data bash_program_real_claims_golden: String = "set -e\nROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\nGUNBC=\"$ROOT\"'/target/release/gunbc'\nif '[' '!' '-x' \"$GUNBC\" ']'; then ('cd' \"$ROOT\" && 'cargo' 'build' '-p' 'v1-compiler' '--release' '--bin' 'gunbc') || exit 1; fi\nif '[' '!' '-x' \"$GUNBC\" ']'; then 'echo' '::error::build verification: declared artifact '\\''gunbc'\\'' absent or not executable after a '\\''successful'\\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '\"$GUNBC\" >&2; exit 1; fi\nif '[' '!' '-s' \"$GUNBC\" ']'; then 'echo' '::error::build verification: declared artifact '\\''gunbc'\\'' is zero-byte after a '\\''successful'\\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '\"$GUNBC\" >&2; exit 1; fi\n\"$GUNBC\" 'run' '--source-root' 'src/v2' '--source-root' 'dag' '--entry' 'src/v2/test/claim/bash_program_fold_test.dag' '--function' 'bash_program_serialize_matches_golden_holds' '--claim-run'\n"
+
+data bash_program_exit_tail_regression_note: String = "The exit-in-joined-tail tests below are the discriminating controls for the improper-string class fixed in 06_translate (serialize joins once built modeled cons cells with the last spelling attached as an improper native tail; interp == NORMALIZES a top-level hybrid, so a matches-golden oracle alone can be fooled when both sides carry the same hybrid - which is why the literal-equality witness exists: it is normalization-independent). Red before the concat grounding of serialize_concrete_syntax_tokens_to_source_string / target_serialize_relation_row_from_model_bounded / token_sequence_to_source_bounded; green after. Declared residue of the same class (not yet grounded, no bash-row consumer today): the type-expression joins in 06_translate (serialize_type_expr_args/separated/record_fields) and the list_append string joins in emit_produced.dag / emit_module.dag - the follow-up sweep grounds them the same way (native concat accumulator), priced by the first oracle that reds on them."
+
+fn bash_program_serialize_matches_golden(p: ShellProgram, golden: String) -> Bool {
+  match bash_program_serialize(p: p) {
+    Accepted { value: folded, diagnostics: _ } => folded == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 fn bash_program_fold_sample() -> ShellProgram {
   ShellProgram {
@@ -40,25 +69,6 @@ fn bash_program_fold_sample_no_set_e() -> ShellProgram {
       command(words: [lit(text: "echo"), lit(text: "hi")]),
       assign(name: "X", value: lit(text: "1"))
     ]
-  }
-}
-
-fn bash_program_serialize_matches_sidecar(p: ShellProgram) -> Bool {
-  match bash_program_serialize(p: p) {
-    Accepted { value: folded, diagnostics: _ } => folded == serialize_bash(p: p)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn bash_program_serialize_matches_oracle_holds() -> Bool {
-  bash_program_serialize_matches_sidecar(p: bash_program_fold_sample())
-}
-
-test fn bash_program_serialize_set_e_has_teeth_holds() -> Bool {
-  match bash_program_serialize(p: bash_program_fold_sample()) {
-    Accepted { value: folded, diagnostics: _ } =>
-      folded != serialize_bash(p: bash_program_fold_sample_no_set_e())
-    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -96,70 +106,183 @@ fn bash_program_depth2_concat_sample() -> ShellProgram {
   }
 }
 
-test fn bash_program_serialize_cmdsubst_matches_oracle_holds() -> Bool {
-  bash_program_serialize_matches_sidecar(p: bash_program_depth2_cmdsubst_sample())
+type WitnessBinFixture {
+  var_name: String
+  bin_name: String
 }
 
-test fn bash_program_serialize_redir_matches_oracle_holds() -> Bool {
-  bash_program_serialize_matches_sidecar(p: bash_program_depth2_redir_sample())
+fn witness_bin_fixture(var_name: String, bin_name: String) -> WitnessBinFixture {
+  WitnessBinFixture { var_name: var_name, bin_name: bin_name }
 }
 
-test fn bash_program_serialize_concat_matches_oracle_holds() -> Bool {
-  bash_program_serialize_matches_sidecar(p: bash_program_depth2_concat_sample())
+fn bash_program_fixture_assign_root_stmt() -> ShellStmt {
+  assign(name: "ROOT", value: CmdSubst { body: AndOr {
+    left: WithRedir {
+      stmt: command(words: [lit(text: "git"), lit(text: "rev-parse"), lit(text: "--show-toplevel")]),
+      redir: StderrToNull
+    },
+    op: OrElse,
+    right: command(words: [lit(text: "pwd")])
+  } })
 }
 
-data bash_program_fold_real_program_probe_note: String = "The real-program builders below are MANUAL probes, deliberately not test fns. History: through the whole-tree fold path (backward row-selection superlinear in nesting depth, and depth includes the right-nested words-list encoding, so an N-word command is depth-N) the full witness program did not finish in 8min (measured 2026-07-10). Through the promoted compositional serializer (v2.workflow.bash_program_emit) the same program serializes byte-identically in ~28s wall (~17s after corpus load, measured 2026-07-11) - linear in node count, ~1s per interpreted row emit. They stay manual because the floor prices witnesses by wall-clock; they become enrollable when interpreter emit overhead drops (interpreter-speed lane), and they dissolve with the sidecar when the pre-runtime windows migrate off ShellProgram."
+fn bash_program_fixture_build_bin_if_absent(bin_path: ShellWord, root: ShellWord, bin_name: String) -> ShellStmt {
+  let cargo_build = command(words: [
+    lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
+    lit(text: "--release"), lit(text: "--bin"), lit(text: bin_name)
+  ])
+  If {
+    cond: test_not_executable(path: bin_path),
+    then: [
+      AndOr {
+        left: Subshell { body: [
+          AndOr {
+            left: command(words: [lit(text: "cd"), root]),
+            op: AndThen,
+            right: cargo_build
+          }
+        ] },
+        op: OrElse,
+        right: Exit { code: 1 }
+      }
+    ]
+  }
+}
 
-data bash_program_exit_tail_regression_note: String = "The exit-in-joined-tail tests below are the discriminating controls for the improper-string class fixed in 06_translate (serialize joins once built modeled cons cells with the last spelling attached as an improper native tail; interp == NORMALIZES a top-level hybrid, so a matches-sidecar oracle alone can be fooled when both sides carry the same hybrid - which is why the literal-equality witness exists: it is normalization-independent). Red before the concat grounding of serialize_concrete_syntax_tokens_to_source_string / target_serialize_relation_row_from_model_bounded / token_sequence_to_source_bounded; green after. Declared residue of the same class (not yet grounded, no bash-row consumer today): the type-expression joins in 06_translate (serialize_type_expr_args/separated/record_fields) and the list_append string joins in emit_produced.dag / emit_module.dag - the follow-up sweep grounds them the same way (native concat accumulator), priced by the first oracle that reds on them."
+fn bash_program_fixture_ensure_bin(var_name: String, bin_name: String) -> List<ShellStmt> {
+  let root = var_ref(name: "ROOT")
+  let bin = var_ref(name: var_name)
+  concat(
+    [
+      bash_program_fixture_assign_root_stmt(),
+      assign(name: var_name, value: Concat { parts: [root, lit(text: concat("/target/release/", bin_name))] }),
+      bash_program_fixture_build_bin_if_absent(bin_path: bin, root: root, bin_name: bin_name)
+    ],
+    emit_verifications(produces: [BuildArtifact { path: bin, name: bin_name }])
+  )
+}
+
+fn bash_program_fixture_witness_bin_program(invoke: WitnessBinFixture, args: List<String>) -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      bash_program_fixture_ensure_bin(var_name: invoke.var_name, bin_name: invoke.bin_name),
+      [
+        command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
+        command(words: concat([var_ref(name: invoke.var_name)], map(args, a => lit(text: a))))
+      ]
+    )
+  }
+}
+
+fn bash_program_fixture_gunbc_claims_program() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      bash_program_fixture_ensure_bin(var_name: "GUNBC", bin_name: "gunbc"),
+      [
+        command(words: [
+          var_ref(name: "GUNBC"), lit(text: "run"),
+          lit(text: "--source-root"), lit(text: "src/v2"),
+          lit(text: "--source-root"), lit(text: "dag"),
+          lit(text: "--entry"), lit(text: "src/v2/test/claim/bash_program_fold_test.dag"),
+          lit(text: "--function"), lit(text: "bash_program_serialize_matches_golden_holds"),
+          lit(text: "--claim-run")
+        ])
+      ]
+    )
+  }
+}
 
 fn bash_program_fold_real_witness_program() -> ShellProgram {
-  witness_bin_program(
-    invoke: witness_bin(var_name: "V1_DAG_PARSE", bin_name: "v1srcdag_parse"),
-    prereqs: [],
+  bash_program_fixture_witness_bin_program(
+    invoke: witness_bin_fixture(var_name: "V1_DAG_PARSE", bin_name: "v1srcdag_parse"),
     args: ["--entry", "dag/std/algebra.dag"]
   )
 }
 
 fn bash_program_fold_real_claims_program() -> ShellProgram {
-  gunbc_claims_program(
-    source_roots: ["src/v2", "dag"],
-    claims: [ClaimRun { entry: "src/v2/test/claim/bash_program_fold_test.dag", function: "bash_program_serialize_matches_oracle_holds" }]
+  bash_program_fixture_gunbc_claims_program()
+}
+
+test fn bash_program_serialize_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: bash_program_fold_sample(),
+    golden: bash_program_fold_sample_set_e_golden
   )
 }
 
-fn bash_program_serialize_real_witness_probe() -> Outcome<String> {
-  bash_program_serialize(p: bash_program_fold_real_witness_program())
+test fn bash_program_serialize_set_e_has_teeth_holds() -> Bool {
+  match bash_program_serialize(p: bash_program_fold_sample()) {
+    Accepted { value: folded, diagnostics: _ } =>
+      folded != bash_program_fold_sample_no_set_e_golden
+    Rejected { diagnostics: _ } => false
+  }
 }
 
-fn bash_program_serialize_depth_probe_assign_root() -> Outcome<String> {
-  bash_program_serialize(p: ShellProgram { set_e: false, statements: [assign_root_stmt()] })
+test fn bash_program_serialize_cmdsubst_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: bash_program_depth2_cmdsubst_sample(),
+    golden: bash_program_depth2_cmdsubst_golden
+  )
 }
 
-fn bash_program_real_witness_probe_matches_sidecar() -> Bool {
-  bash_program_serialize_matches_sidecar(p: bash_program_fold_real_witness_program())
+test fn bash_program_serialize_redir_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: bash_program_depth2_redir_sample(),
+    golden: bash_program_depth2_redir_golden
+  )
 }
 
-fn bash_program_real_claims_probe_matches_sidecar() -> Bool {
-  bash_program_serialize_matches_sidecar(p: bash_program_fold_real_claims_program())
+test fn bash_program_serialize_concat_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: bash_program_depth2_concat_sample(),
+    golden: bash_program_depth2_concat_golden
+  )
 }
 
-fn bash_program_assign_root_probe_matches_sidecar() -> Bool {
-  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [assign_root_stmt()] })
+data bash_program_real_program_probe_note: String = "Real-program golden probes (witness_bin + gunbc_claims shapes) stay manual fns, not enrolled test fns: depth-7 ShellPrograms are ~25–30s each through bash_program_serialize (bash_program_emit_cost_wall_note) and the floor prices witnesses by wall-clock. Goldens remain the oracle; run bash_program_real_witness_matches_golden_holds / bash_program_real_claims_matches_golden_holds locally or via gunbc run --claim-run."
+
+fn bash_program_real_witness_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: bash_program_fold_real_witness_program(),
+    golden: bash_program_real_witness_golden
+  )
 }
 
-test fn bash_program_exit_in_subshell_tail_matches_oracle_holds() -> Bool {
-  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
-    Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }
-  ] })
+fn bash_program_real_claims_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: bash_program_fold_real_claims_program(),
+    golden: bash_program_real_claims_golden
+  )
 }
 
-test fn bash_program_exit_in_if_body_matches_oracle_holds() -> Bool {
-  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
-    If {
-      cond: Command { words: [Lit { text: "true" }] },
-      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }]
-    }
-  ] })
+test fn bash_program_assign_root_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: ShellProgram { set_e: false, statements: [bash_program_fixture_assign_root_stmt()] },
+    golden: bash_program_assign_root_golden
+  )
+}
+
+test fn bash_program_exit_in_subshell_tail_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: ShellProgram { set_e: false, statements: [
+      Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }
+    ] },
+    golden: bash_program_exit_subshell_golden
+  )
+}
+
+test fn bash_program_exit_in_if_body_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: ShellProgram { set_e: false, statements: [
+      If {
+        cond: Command { words: [Lit { text: "true" }] },
+        then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }]
+      }
+    ] },
+    golden: bash_program_exit_if_golden
+  )
 }
 
 test fn bash_program_exit_spelling_literal_holds() -> Bool {
@@ -169,8 +292,11 @@ test fn bash_program_exit_spelling_literal_holds() -> Bool {
   }
 }
 
-test fn bash_program_andor_exit_matches_oracle_holds() -> Bool {
-  bash_program_serialize_matches_sidecar(p: ShellProgram { set_e: false, statements: [
-    AndOr { left: Command { words: [Lit { text: "true" }] }, op: OrElse, right: Exit { code: 1 } }
-  ] })
+test fn bash_program_andor_exit_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: ShellProgram { set_e: false, statements: [
+      AndOr { left: Command { words: [Lit { text: "true" }] }, op: OrElse, right: Exit { code: 1 } }
+    ] },
+    golden: bash_program_andor_exit_golden
+  )
 }

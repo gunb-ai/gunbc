@@ -35,6 +35,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_floor_width_usable_fraction_den,
   gunbc_ci_runner_cgroup_memory_cap,
   gunbc_ci_runner_slot_memory_max_live,
+  gunbc_ci_runner_slot_ram_speed_ceiling,
   gunbc_ci_execution_corpus_available_width,
   gunbc_ci_floor_execution_corpus_per_witness_rss,
   gunbc_ci_floor_executor_base_overhead_bytes,
@@ -63,16 +64,10 @@ import std.realization_schedule {
   runnable_forbids_corpus_co_residence,
   cost_account_predicted_zero,
   schedule_lens_verdict_for_ci_floor,
-  schedule_eq,
   runnable_selection_applied
 }
 import v2.workflow.executor {
-  ExecutorBatch,
-  ExecutorJob,
-  ExecutorRunBlocked,
-  ExecutorRunComplete,
-  ExecutorRunRunnable,
-  parallel_executor_plan_from_dependencies
+  ExecutorBatch
 }
 import v2.workflow.realization_runner {
   RunnerScheduleBlocked,
@@ -504,21 +499,6 @@ fn runnables_for_executor_batches(batches: List<ExecutorBatch>, spec: CiSpec) ->
   })
 }
 
-data floor_schedule_direct_for_dissolve_on_note: String = "Parallel representation (§2/§3): floor_schedule_direct_for is the legacy scheduler-only projection retained for the move-1 byte-identical receipt (witness_floor_runner_schedule_byte_identical{,_for}). Production scheduling flows through floor_schedule_via_runner_for. Dissolve-on: S2a move 2 lands (compile_to_resolved / module resolution on the runner store) and the receipt witness is deleted — floor_schedule_direct_for goes with it."
-
-fn floor_schedule_direct_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
-  match parallel_executor_plan_from_dependencies(
-    nodes: floor_nodes(spec: spec),
-    dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy),
-    scheduled: []
-  ) {
-    ExecutorRunComplete { batches: batches, scheduled: _ } =>
-      runnables_for_executor_batches(batches: batches, spec: spec)
-    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
-    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
-  }
-}
-
 fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
   match runner_schedule_plan_from_dependencies(
     nodes: floor_nodes(spec: spec),
@@ -537,18 +517,6 @@ fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool) -> List<Li
 
 fn floor_schedule_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
   floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
-}
-
-fn witness_floor_runner_schedule_byte_identical_for(spec: CiSpec, serialize_heavy: Bool) -> Bool {
-  schedule_eq(
-    left: floor_schedule_direct_for(spec: spec, serialize_heavy: serialize_heavy),
-    right: floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
-  )
-}
-
-fn witness_floor_runner_schedule_byte_identical() -> Bool {
-  witness_floor_runner_schedule_byte_identical_for(spec: gunbc_ci_spec, serialize_heavy: true)
-    && witness_floor_runner_schedule_byte_identical_for(spec: gunbc_ci_spec, serialize_heavy: false)
 }
 
 fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
@@ -582,7 +550,7 @@ fn gunbc_falsifier_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareTh
 }
 
 fn gunbc_falsifier_spawn_width_from_live_cap() -> HardwareThreadCount {
-  gunbc_falsifier_spawn_width_for_budget(memory_budget: gunbc_ci_runner_slot_memory_max_live)
+  gunbc_falsifier_spawn_width_for_budget(memory_budget: gunbc_ci_runner_slot_ram_speed_ceiling())
 }
 
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
@@ -718,21 +686,33 @@ fn gunbc_falsifier_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadC
 }
 
 fn witness_falsifier_plan_spawn_width_backs_off_at_live_cap() -> Bool {
-  let live = byte_size_count(b: gunbc_ci_runner_slot_memory_max_live)
-  let falsifier_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: live))
-  let ci_width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: live))
+  let ceiling = byte_size_count(b: gunbc_ci_runner_slot_ram_speed_ceiling())
+  let falsifier_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: ceiling))
+  let ci_width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: ceiling))
   let fallback_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: 0))
-  falsifier_width < ci_width && falsifier_width > 0 && fallback_width == 1
+  let reference = 25769803776
+  let falsifier_ref = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: reference))
+  let ci_ref = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: reference))
+  falsifier_width <= ci_width && falsifier_width > 0 && fallback_width == 1
+    && falsifier_ref < ci_ref
 }
 
-fn witness_falsifier_envelope_fits_live_cap() -> Bool {
+data falsifier_slot_capacity_deficit_note: String = "PINNED CAPACITY DEFICIT (2026-07-11, converged slot shape): the falsifier's minimum envelope - executor base overhead (8910036989) + one cold-corpus shard (gunbc_falsifier_per_shard_peak_rss_bytes) - EXCEEDS the usable fraction of the applied 16GiB/15GiB slot. It fit only the stale 24GiB hand-set regime, which is why the nightly has been dark (exit-137 series, 07-06..07-10) and why weakening this witness would enshrine the degradation (DESIGN 5). The deficit is the SLOT SHAPE, not the width formula: width already floors at 1 and the same envelope fits the 24GiB-class reference below. Dissolve-on: the falsifier is routed to a runner offer whose envelope fits (the runner-offer-rows lane; a 64GB-class shape holds it with 3x headroom - ubicloud receipt run 29162064482 peaked 13.5GiB uncapped) OR the executor base overhead shrinks below the slot's usable budget minus one shard; then this pin flips back to a fits-assert against the live ceiling."
+
+fn witness_falsifier_envelope_deficit_on_slot_is_pinned() -> Bool {
   let width = hardware_thread_count_value(t: gunbc_falsifier_spawn_width_from_live_cap())
   let committed = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes()) + width * byte_size_count(b: gunbc_falsifier_per_shard_peak_rss_bytes())
-  committed <= byte_size_count(b: measure_scale_fraction_floor(
-    m: gunbc_ci_runner_slot_memory_max_live,
+  let usable_at_ceiling = byte_size_count(b: measure_scale_fraction_floor(
+    m: gunbc_ci_runner_slot_ram_speed_ceiling(),
     num: gunbc_ci_floor_width_usable_fraction_num,
     den: gunbc_ci_floor_width_usable_fraction_den
   ))
+  let usable_at_reference = measure_scale_fraction_floor(
+    m: byte_size(25769803776),
+    num: gunbc_ci_floor_width_usable_fraction_num,
+    den: gunbc_ci_floor_width_usable_fraction_den
+  )
+  committed > usable_at_ceiling && committed <= byte_size_count(b: usable_at_reference)
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
