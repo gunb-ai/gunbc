@@ -1,8 +1,8 @@
-module v2.test.fixture.live_tree.live_tree_collision
+module v2.test.claim.live_tree.live_tree_collision
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly, live_tree_disposition_is_live }
 import v2.std.logic { Bool }
-import v2.test.fixture.live_tree.live_tree_import_peer { live_tree_peer_truth }
+import v2.test.claim.live_tree.live_tree_import_peer { live_tree_peer_truth }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
