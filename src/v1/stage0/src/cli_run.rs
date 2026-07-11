@@ -167,32 +167,70 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
-pub fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+/// The enclosing repo root of `start`: the nearest ancestor carrying a `.git`
+/// entry (a directory on a primary checkout, a file on a linked git worktree).
+fn enclosing_repo_root(start: &Path) -> Option<PathBuf> {
+    start
         .ancestors()
-        .nth(3)
-        .expect("workspace root")
-        .to_path_buf()
+        .find(|a| a.join(".git").exists())
+        .map(Path::to_path_buf)
+}
+
+/// The workspace root of the RUNNING process, derived at runtime: the enclosing
+/// repo root of the process cwd, else of the executable's own path (the second
+/// probe keeps test processes that chdir into tempdirs anchored to the tree that
+/// built them — the test binary lives under `<workspace>/target`).
+///
+/// Deliberately NOT `env!("CARGO_MANIFEST_DIR")`: that is a compile-time fact,
+/// and a binary (or a cache-served object) compiled in one runner slot and
+/// executed in another carries the WRONG baked path — under the #6472 build/ci
+/// job split plus instance-less cargo/sccache cache keys, every floor run drew a
+/// cross-instance binary and `build_module_path_index` refused the whole corpus
+/// (fleet red, 2026-07-11). Runtime derivation makes that class unwritable: there
+/// is no baked path to mismatch, so cross-slot binary and object reuse is sound.
+/// No baked fallback either — an underivable root is a loud typed panic, never a
+/// wrong-tree run.
+pub fn workspace_root() -> PathBuf {
+    if let Some(root) = std::env::current_dir()
+        .ok()
+        .and_then(|d| enclosing_repo_root(&d))
+    {
+        return root;
+    }
+    if let Some(root) = std::env::current_exe()
+        .ok()
+        .and_then(|e| enclosing_repo_root(&e))
+    {
+        return root;
+    }
+    panic!(
+        "workspace_root: no .git entry encloses cwd {:?} or exe {:?} — run from within a repo checkout",
+        std::env::current_dir().ok(),
+        std::env::current_exe().ok()
+    );
 }
 
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
 ///
-/// `workspace_root()` above is baked from `env!("CARGO_MANIFEST_DIR")` at COMPILE time,
-/// and part of the shared resolution pipeline (`pool_roots_abs`) anchors RELATIVE source
-/// roots to that baked path while the module-content index reads them relative to the
-/// process cwd. For the claim bins that meant a run from any other cwd (e.g. a git
-/// worktree) silently mixed two trees — module contents from the cwd, import-graph facts
-/// from the baked root — wrong answers with zero diagnostic (DESIGN §5 fail-open).
+/// `workspace_root()` above derives from the process cwd at runtime, and part of
+/// the shared resolution pipeline (`pool_roots_abs`) anchors RELATIVE source roots
+/// to it while the module-content index reads them relative to the process cwd.
+/// Before the runtime derivation, the root was baked from `env!("CARGO_MANIFEST_DIR")`
+/// at compile time, so a run from any other cwd (e.g. a git worktree) silently mixed
+/// two trees — module contents from the cwd, import-graph facts from the baked root —
+/// wrong answers with zero diagnostic (DESIGN §5 fail-open). Runtime derivation kills
+/// the mixed-tree class for any cwd INSIDE a repo; the CLI-boundary resolution below
+/// stays as the wall for the residue (cwd outside any repo, path args naming absent
+/// files).
 ///
 /// The bins therefore resolve their path-valued arguments HERE, at the CLI boundary,
 /// with standard CLI semantics: a relative path resolves against the PROCESS CWD, and a
 /// resolved path that does not exist is a refusal naming the argument, the given value,
-/// and the resolution base — never a fallback to the baked root, never a partial run.
-/// When the cwd IS the baked workspace root, the relative spelling and the absolutized
+/// and the resolution base — never a fallback to the workspace anchor, never a partial
+/// run. When the cwd IS the workspace root, the relative spelling and the absolutized
 /// spelling denote the same file for every downstream consumer (cwd-anchored reads and
-/// baked-root-anchored reads agree), so the given spelling passes through unchanged and
-/// the normal case (and CI) stays byte-identical. Any other cwd absolutizes, so the
-/// baked-root anchoring in the shared pipeline can never re-route the read.
+/// root-anchored reads agree), so the given spelling passes through unchanged and the
+/// normal case (and CI) stays byte-identical.
 pub fn resolve_cli_path_arg(bin: &str, flag: &str, given: &str) -> Result<String, String> {
     if Path::new(given).is_absolute() {
         return resolve_cli_path_arg_against(bin, flag, given, Path::new("/"));
