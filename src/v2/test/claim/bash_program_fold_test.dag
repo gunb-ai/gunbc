@@ -243,3 +243,19 @@ fn bash_program_probe_subshell_exit_eq_literal() -> Bool {
 fn bash_program_probe_sidecar_subshell_exit_eq_literal() -> Bool {
   serialize_stmt(s: Subshell { body: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }, Exit { code: 1 }] }) == "('echo' 'hi'; exit 1)"
 }
+
+fn bash_program_probe_concat_tostring_eq() -> Bool {
+  concat("x; ", concat("exit ", to_string(1))) == "x; exit 1"
+}
+
+fn bash_program_probe_concat_tostring_direct_eq() -> Bool {
+  concat("exit ", to_string(1)) == "exit 1"
+}
+
+fn bash_program_probe_concat_tostring_bytes() -> Outcome<String> {
+  Accepted { value: concat("x; ", concat("exit ", to_string(1))), diagnostics: None }
+}
+
+fn bash_program_probe_exit_row_bytes() -> Outcome<String> {
+  bash_program_serialize_stmt(stmt: Exit { code: 1 })
+}
