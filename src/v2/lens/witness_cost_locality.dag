@@ -1,5 +1,7 @@
 module v2.lens.witness_cost_locality
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 import v2.std.algebra { contains, filter, length }
 import v2.std.collection { List }
 import v2.std.integer { Int }
@@ -82,6 +84,10 @@ fn couples_on_data_breadth(verdict: WitnessCostLocality) -> Bool {
     Local => false
     CouplesToAmbient { data_breadth_carriers: db, layer_depth_stages: _ } => length(xs: db) > 0
   }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
 fn couples_on_layer_depth(verdict: WitnessCostLocality) -> Bool {
