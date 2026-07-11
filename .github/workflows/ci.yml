@@ -196,7 +196,7 @@ jobs:
           $_ci_changed
           _ci_diff_eof_
             if [ "$PLAN_ARTIFACT_ONLY" = "1" ]; then
-              "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry "$ROOT/dag/tools/floor_effect_gate_witness.dag" --function dag_compile_clean_gate_passes || exit $?
+              "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_plan_artifact_batches || exit $?
               mkdir -p target
               echo documentation_only_skipped > target/ci-floor-disposition.txt
               echo "claim_executor: plan-artifact-only diff — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=documentation_only_skipped)"
