@@ -438,13 +438,6 @@ fn reference_corpus_paths_live(
   )
 }
 
-fn reference_file_census_empty() -> ReferenceResolutionCensus {
-  ReferenceResolutionCensus {
-    facts: empty_reference_facts,
-    refusals: empty_reference_refusals
-  }
-}
-
 fn reference_file_census_parsed(
   rel_path: String,
   module_root: Node,
