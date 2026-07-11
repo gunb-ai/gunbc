@@ -361,6 +361,13 @@ fn body_lowering_direct_arrow_domain_param_count() -> Int {
   }
 }
 
+fn body_lowering_module_well_formed() -> Bool {
+  match body_lowering_normalized_module() {
+    Absent => false
+    Present { value: tree } => well_formed(n: tree)
+  }
+}
+
 fn body_lowering_normalized_resolves() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
