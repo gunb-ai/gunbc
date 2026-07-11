@@ -1979,7 +1979,13 @@ fn run() -> Result<ExitCode, ExitCode> {
     );
     phase_mark("spawn width evaluated; starting batch walk");
 
-    if plan_function == "gunbc_ci_floor_batches" {
+    // Plans whose schedule carries the compile-clean gate node: the gate only CONSUMES the
+    // in-run whole-tree compile receipt, so these plans must arm the lazy install.
+    // `gunbc_ci_plan_artifact_batches` is batch 1 of the floor schedule (the docs-only
+    // shortcut) — same gate node, same receipt dependency.
+    if plan_function == "gunbc_ci_floor_batches"
+        || plan_function == "gunbc_ci_plan_artifact_batches"
+    {
         enable_floor_compile_clean_lazy_install();
     }
 
