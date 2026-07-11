@@ -1,6 +1,6 @@
 module v2.test.claim.live_tree.live_tree_collision
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly, live_tree_disposition_is_live }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.test.claim.live_tree.live_tree_import_peer { live_tree_peer_truth }
 
@@ -10,5 +10,8 @@ data live_tree_collision_note: String = "Collision regression control for the en
 
 test fn live_tree_same_named_rows_resolve_cleanly_holds() -> Bool {
   live_tree_peer_truth()
-    && !live_tree_disposition_is_live(d: live_tree_disposition)
+    && match live_tree_disposition {
+      SubstrateInputsOnly => true
+      ReadsLiveTree => false
+    }
 }
