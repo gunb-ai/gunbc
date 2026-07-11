@@ -13,9 +13,6 @@ data orch_construct_seq2: Symbol = ^orch_construct_seq2
 data orch_construct_retry: Symbol = ^orch_construct_retry
 data orch_construct_if: Symbol = ^orch_construct_if
 data orch_construct_if_else: Symbol = ^orch_construct_if_else
-data orch_construct_procedure: Symbol = ^orch_construct_procedure
-data orch_construct_cmdsubst_assign: Symbol = ^orch_construct_cmdsubst_assign
-data orch_construct_let_assign: Symbol = ^orch_construct_let_assign
 
 type OrchRunEmitPlan {
   construct_tag: Symbol
