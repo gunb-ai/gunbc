@@ -10,7 +10,7 @@ import gunbc.ci_gate {
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
