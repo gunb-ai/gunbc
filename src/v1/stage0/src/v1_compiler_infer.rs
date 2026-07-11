@@ -45,11 +45,10 @@ pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, RustCorpusRepr, TypeRepr, TypeSummary,
 };
 pub use crate::v1_compiler_infer_env::{
-    conflict_is_cross_tree, empty_type_env_cache, inductive_fields_for,
-    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
-    lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
-    merge_type_env_cache_guarded, put_inductive_field, put_inductive_field_cross,
-    str_bindings_from_bindings,
+    empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
+    is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
+    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
+    put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
 };
 pub use crate::v1_compiler_infer_env::{
     GuardedTypeEnvCacheMerge, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
@@ -112,8 +111,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    CrossParentBindingConflict, FieldNotFound, InternalError, SoleConstructorViolation,
-    TypeMismatch, UnresolvedType, VariantCollision,
+    FieldNotFound, InternalError, SoleConstructorViolation, TypeMismatch, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -339,13 +338,13 @@ pub struct BuildTypeEnvResult {
     pub env: Rc<TypeEnv>,
     pub cache: Rc<TypeEnvCache>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub cross_tree_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+    pub binding_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
-pub fn cross_tree_forks_channel_note() -> String {
+pub fn binding_forks_channel_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Out-of-band ledger channel (S2a move 2 increment B cut 2; lane ruling 2026-07-11): a cross-TREE binding fork (dag/ vs src/v2/ vs kernel-synthetic - the known v1-seed-vs-v2 fork debt) is a fact about the CORPUS, not an error in this module compile, so it must never ride the diagnostics channel (consumers rightly read diagnostics as compile cleanliness). Rows keep name + both decl sites; the consumer module is the carrying TypecheckModuleResult; resolution keeps the pre-guard import-order winner. The floor realization aggregates and prints the cross-tree-binding-fork-ledger count line per run (cli_run reconcile_with_typed_cache). Same-tree conflicts stay ERRORS on the diagnostics channel (no grace). Dissolve-on: std consolidation / namespace Rule-1 terminal - this channel deletes and the cross-parent guard refuses unconditionally.".to_string()
+            "Out-of-band binding-fork ledger channel (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A binding fork is one name reaching a module from two peer imports with DIFFERENT bindings. A PRE-EXISTING fork (present on main) is already resolved there by import-order overlay-wins and every real consumer gets that winner, so refusing it retroactively is a REGRESSION (breaks working resolution, makes this PR pay pre-existing corpus debt), NOT a fail-open being closed. So ALL pre-existing forks - same-tree AND cross-tree - are LEDGERED here, keeping the pre-cut overlay-wins winner (behavior-preserving); NONE ride the diagnostics channel (consumers read diagnostics as compile cleanliness). This is the SANCTIONED declared-interim: loud + typed + counted (the floor prints a partitioned count line per run, cli_run reconcile_with_typed_cache) + dissolution-named (std consolidation / namespace Rule-1 terminal) = the std-consolidation worklist, strictly better than main's SILENT overlay-wins. TREE only labels the dissolution partition (same-tree = homonym/fork within one tree; cross-tree = v1-seed-vs-v2 migration debt). The actual WALL is novelty-refusal - hard-refuse a fork a PR NEWLY introduces - implemented as a separate per-PR gate comparing this ledger against a drift-gated baseline receipt (follow-up work item), NOT an in-run refusal (that would double floor cost by re-resolving main's ledger).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -12661,37 +12660,7 @@ pub fn build_type_env(
         let import_union =
             union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
         let import_cache = import_union.cache.clone();
-        let cross_tree_forks = Rc::new({
-            let mut __result = Vec::new();
-            for c in import_union.conflicts.clone().iter().cloned() {
-                if conflict_is_cross_tree(c.clone()) {
-                    __result.push(c);
-                }
-            }
-            __result
-        });
-        let cross_parent_conflict_diags = Rc::new({
-            let mut __result = Vec::new();
-            for c in import_union.conflicts.clone().iter().cloned() {
-                __result.extend(
-                    (*if conflict_is_cross_tree(c.clone()) {
-                        Rc::new(vec![])
-                    } else {
-                        Rc::new(vec![make_error_node(
-                            Rc::new(CompilerDiagnostic::CrossParentBindingConflict {
-                                name: c.name.clone(),
-                                import_path: c.import_path.clone(),
-                                span: c.span.clone(),
-                            }),
-                            module_name_str.clone(),
-                        )])
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
+        let binding_forks = import_union.conflicts.clone();
         let ancestry_cache = if ((module.resolved_imports.clone().len() as i64) == 1) {
             import_cache.clone()
         } else {
@@ -12898,11 +12867,8 @@ pub fn build_type_env(
         Rc::new(BuildTypeEnvResult {
             env: final_env.clone(),
             cache: type_env_cache.clone(),
-            diagnostics: v1_rt::concat(
-                v1_rt::concat(import_diags.clone(), cross_parent_conflict_diags.clone()),
-                resolved_diags.clone(),
-            ),
-            cross_tree_forks: cross_tree_forks.clone(),
+            diagnostics: v1_rt::concat(import_diags.clone(), resolved_diags.clone()),
+            binding_forks: binding_forks.clone(),
         })
     }
 }
@@ -13346,7 +13312,7 @@ pub fn build_type_env_unresolved(
             env: unresolved_env.clone(),
             cache: type_env_cache.clone(),
             diagnostics: Rc::new(vec![]),
-            cross_tree_forks: Rc::new(vec![]),
+            binding_forks: Rc::new(vec![]),
         })
     }
 }
@@ -14044,7 +14010,7 @@ pub fn build_module_context(
 pub struct TypecheckModuleResult {
     pub typed: Rc<TypedModule>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub cross_tree_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+    pub binding_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
 pub fn typecheck_module(
@@ -14088,7 +14054,7 @@ pub fn typecheck_module(
                     item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
                 }),
                 diagnostics: v1_rt::concat(env_diags.clone(), seed_diags.clone()),
-                cross_tree_forks: env_result.cross_tree_forks.clone(),
+                binding_forks: env_result.binding_forks.clone(),
             });
         }
         let resolved_module_name =
@@ -14234,7 +14200,7 @@ pub fn typecheck_module(
                 ),
                 seed_diags.clone(),
             ),
-            cross_tree_forks: env_result.cross_tree_forks.clone(),
+            binding_forks: env_result.binding_forks.clone(),
         })
     }
 }

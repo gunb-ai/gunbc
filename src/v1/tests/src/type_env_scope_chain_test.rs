@@ -8,7 +8,7 @@ use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_compiler_infer_env::{lookup_binding, lookup_type_by_name};
 use v1_compiler::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
-use v1_compiler::v1_std_core::{authored_name_at, intern_find, Connective};
+use v1_compiler::v1_std_core::{authored_name_at, intern_find, is_error_diagnostic, Connective};
 
 static CACHE_ENV_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -415,14 +415,14 @@ fn type_env_import_chain_scaling_not_quadratic() {
 }
 
 #[test]
-fn type_env_dual_import_same_tree_collision_refuses() {
-    // Superseded contract (S2a move 2 increment B cut 2, lane ruling 2026-07-11): this
-    // test previously asserted merge_type_env_cache overlay-wins — the later import's
-    // 'Collider' silently shadowing the earlier one. Under the namespace no-ambiguity
-    // ruling a same-tree cross-parent collision is a refusal state, never a precedence
-    // pick; overlay-wins survives ONLY as the counted cross-tree debt ledger (see
-    // transitive_interface_binding_test for both arms at named-import grain — this arm
-    // keeps the is_all-import shape covered).
+fn type_env_dual_import_same_tree_collision_is_ledgered_overlay_wins_preserved() {
+    // Revised contract (S2a move 2 increment B, lane ruling REVISED 2026-07-11: novelty, not
+    // tree, is the refusal axis). A PRE-EXISTING same-tree collision is LEDGERED, never refused
+    // — refusing it would regress main's working overlay-wins resolution. This arm covers the
+    // is_all-import shape and is DISCRIMINATING: the later import (dual_import_b, Collider=Int)
+    // must win, so `pick() -> Collider { 0 }` typechecks (0:Int against the Int winner). Had the
+    // earlier import (Collider=String) won, or had the collision been silently dropped to an
+    // error, this would fail — so "no error" proves the overlay-wins winner is the last import.
     let sources = vec![
         Rc::new(SourceFile {
             path: "dual_a.dag".to_string(),
@@ -438,15 +438,26 @@ fn type_env_dual_import_same_tree_collision_refuses() {
         }),
     ];
     let resolved = compile_to_resolved(Rc::new(sources.into()));
-    let msgs: Vec<String> = resolved
+    let hard_errors: Vec<String> = resolved
         .diagnostics
         .iter()
+        .filter(|d| is_error_diagnostic(d.diagnostic.clone()))
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
         .collect();
     assert!(
-        msgs.iter()
-            .any(|m| m.contains("cross-parent binding conflict") && m.contains("'Collider'")),
-        "a same-tree dual import carrying different 'Collider' bindings must refuse with          the typed cross-parent diagnostic, got: {msgs:?}"
+        hard_errors.is_empty() && resolved.graph.is_some(),
+        "a same-tree pre-existing collision is LEDGERED (overlay-wins winner = last import, \
+         Collider=Int), so `pick(){{0}}` typechecks with no hard error. Got: {hard_errors:?}"
+    );
+    let msgs = resolved
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !msgs.contains("cross-parent"),
+        "the ledger must not ride the diagnostics channel as a refusal, got:\n{msgs}"
     );
 }
 

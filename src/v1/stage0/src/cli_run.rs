@@ -2553,6 +2553,25 @@ mod module_schedule_batches_tests {
     }
 }
 
+// Tree partition for the binding-fork ledger count line (mirrors `source_tree_of` in
+// dag/std/... / src/v1/04_env.dag). This is a diagnostic receipt partition only — a fork
+// is same-tree when both decl sites classify to the same tree, cross-tree otherwise. The
+// authority for the classification is the `.dag` `source_tree_of`; this Rust copy exists
+// solely so the floor's aggregated count line can partition without a per-fork `.dag` field.
+fn binding_fork_source_tree(file: &str) -> &'static str {
+    if file.contains("<kernel:") {
+        "kernel"
+    } else if file.contains("src/v2") {
+        "src/v2"
+    } else if file.contains("src/v1") {
+        "src/v1"
+    } else if file.contains("dag/") {
+        "dag"
+    } else {
+        "other"
+    }
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2659,12 +2678,19 @@ fn reconcile_with_typed_cache(
         }
     }
 
-    // Ledger receipt (declared interim, lane ruling 2026-07-11): cross-tree binding forks
-    // ride the typed out-of-band channel (TypecheckModuleResult.cross_tree_forks), never
-    // diagnostics — consumers rightly read diagnostics as compile cleanliness. Counted per
-    // run on the receipt surface the floor prints; the std-consolidation lane's priority
-    // signal. Dissolve-on: std consolidation / namespace Rule-1 terminal (the ledger arm
-    // deletes and the cross-parent guard refuses unconditionally).
+    // Binding-fork ledger receipt (declared interim, lane ruling REVISED 2026-07-11: novelty,
+    // not tree, is the refusal axis). ALL pre-existing binding forks — same-tree AND cross-tree —
+    // ride the typed out-of-band channel (TypecheckModuleResult.binding_forks), never diagnostics
+    // (consumers read diagnostics as compile cleanliness), keeping the pre-cut overlay-wins winner
+    // (behavior-preserving: main already resolves these by overlay-wins, so refusing retroactively
+    // would be a regression, not a fail-open being closed). Counted per run, PARTITIONED by tree,
+    // on the receipt surface the floor prints — the std-consolidation worklist, and strictly better
+    // than main's SILENT overlay-wins. TREE only labels the dissolution partition (same-tree =
+    // homonym/fork within one tree; cross-tree = v1-seed-vs-v2 migration debt). The actual WALL is
+    // novelty-refusal (a separate per-PR gate diffing this ledger against a drift-gated baseline;
+    // follow-up work item), NOT an in-run refusal (that would double floor cost). Dissolve-on: std
+    // consolidation / namespace Rule-1 terminal.
+    let mut same_tree_fork_count: usize = 0;
     let mut cross_tree_fork_count: usize = 0;
     // Assembled view (original resolver order): dispatch order above is the schedule's
     // concern; the graph handed to consumers — module list, registry merge order, and
@@ -2683,7 +2709,15 @@ fn reconcile_with_typed_cache(
         item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
-        cross_tree_fork_count += tc_result.cross_tree_forks.len();
+        for fork in tc_result.binding_forks.iter() {
+            if binding_fork_source_tree(&fork.existing_site)
+                == binding_fork_source_tree(&fork.incoming_site)
+            {
+                same_tree_fork_count += 1;
+            } else {
+                cross_tree_fork_count += 1;
+            }
+        }
     }
 
     let expanded_registry =
@@ -2695,8 +2729,11 @@ fn reconcile_with_typed_cache(
         }
         acc
     });
-    if cross_tree_fork_count > 0 {
-        eprintln!("[cross-tree-binding-fork-ledger] count={cross_tree_fork_count}");
+    let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
+    if total_fork_count > 0 {
+        eprintln!(
+            "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
+        );
     }
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
