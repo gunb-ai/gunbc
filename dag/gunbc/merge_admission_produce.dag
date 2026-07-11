@@ -103,10 +103,18 @@ fn gunbc_run_bin_shell() -> String {
   "\"$ROOT/target/release/gunbc\" run"
 }
 
+fn merge_admission_v1_tool_source_flags() -> String {
+  " --source-root dag"
+}
+
 fn merge_admission_stamp_invoke() -> String {
   concat(
     concat(
+<<<<<<< HEAD
       concat(gunbc_run_bin_shell(), witness_layer_source_flags_rooted(roots: witness_layer_roots)),
+=======
+      concat(gunbc_run_bin_shell(), merge_admission_v1_tool_source_flags()),
+>>>>>>> 98b0339761 (WIP: Lane D — provisioning window/executor-capability model draft (sign-off g)
       " --entry dag/tools/merge_admission_stamp.dag --function main"
     ),
     "\n"
@@ -116,7 +124,11 @@ fn merge_admission_stamp_invoke() -> String {
 fn merge_admission_gate_invoke() -> String {
   concat(
     concat(
+<<<<<<< HEAD
       concat(gunbc_run_bin_shell(), witness_layer_source_flags_rooted(roots: witness_layer_roots)),
+=======
+      concat(gunbc_run_bin_shell(), merge_admission_v1_tool_source_flags()),
+>>>>>>> 98b0339761 (WIP: Lane D — provisioning window/executor-capability model draft (sign-off g)
       " --entry dag/tools/merge_admission_gate.dag --function main"
     ),
     "\n"
@@ -148,14 +160,12 @@ fn ci_merge_admission_gate_script() -> String {
     concat(
       ci_documentation_only_gate_skip_prefix(
         gate_name: "merge-admission gate",
-        skip_reason: "floor not run; receipt stamped via docs-only shell scaffold"
+        skip_reason: "floor not run; merge-admission stamp already recorded Skipped disposition"
       ),
       merge_admission_gate_invoke()
     )
   )
 }
-
-data ci_documentation_only_merge_admission_stamp_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_documentation_only_merge_admission_stamp_script — concat-built bash receipt wire for docs-only floor skip (interim until gunbc run resolves v1 merge_admission_stamp import closure from CI floor context, or bash-emit realizes stamp through orchestration emit); DISSOLVES WHEN merge_admission_stamp runs green from the docs-only shortcut without this shell scaffold"
 
 fn ci_documentation_only_gate_skip_prefix(gate_name: String, skip_reason: String) -> String {
   concat(
