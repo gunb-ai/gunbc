@@ -85,6 +85,118 @@ fn empty_type_env_cache() -> TypeEnvCache {
   }
 }
 
+type TypeEnvCacheMergeConflict {
+  name: String
+  import_path: String
+  span: SourceSpan
+}
+
+type GuardedTypeEnvCacheMerge {
+  cache: TypeEnvCache
+  conflicts: List<TypeEnvCacheMergeConflict>
+}
+
+data guarded_cache_union_note: String = "Cross-parent cache union (S2a move 2 increment B cut 2; operator/lane ruling 2026-07-11): a name reachable from two PEER imports with different bindings is a refusal state, never a precedence pick - overlay-wins across the parents union was a latent silent-shadowing fail-open (namespace-only ruling: no ambiguity at any layer). The union is therefore order-INDEPENDENT by construction: keys present in both sides must carry the SAME binding (declaration-site span fast path, structural fallback) or the merge records a typed, located conflict; equal entries are SKIPPED, not re-inserted, which is also the retained-bytes fix - the unguarded merge materialized a fresh O(|ancestry|) HAMT per module (rc_map_merge path-copies per key), the measured ~16.3MiB/module residency class. Positional layers keep overlay-wins: the kernel scope layer (merge_type_env_cache below) and locals-over-ancestry are lexical nearest-wins from the containment ruling, not peer-merge precedence."
+
+fn binding_same_authority(a: TypeBinding, b: TypeBinding) -> Bool {
+  if a.resolved.span == b.resolved.span {
+    true
+  } else {
+    a == b
+  }
+}
+
+fn guarded_union_str_bindings(
+  acc: Map<String, TypeBinding>,
+  overlay: Map<String, TypeBinding>,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedStrBindingsUnion {
+  fold(overlay |> map_keys, init: GuardedStrBindingsUnion { bindings: acc, conflicts: conflicts }, f: (state, name) =>
+    match map_get(overlay, name) {
+      Absent => state
+      Present { value: incoming } =>
+        match map_get(state.bindings, name) {
+          Absent => GuardedStrBindingsUnion {
+            bindings: map_insert(state.bindings, name, incoming),
+            conflicts: state.conflicts
+          }
+          Present { value: existing } =>
+            if binding_same_authority(a: existing, b: incoming) {
+              state
+            } else {
+              GuardedStrBindingsUnion {
+                bindings: map_insert(state.bindings, name, incoming),
+                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, span: incoming.resolved.span }])
+              }
+            }
+        }
+    }
+  )
+}
+
+type GuardedStrBindingsUnion {
+  bindings: Map<String, TypeBinding>
+  conflicts: List<TypeEnvCacheMergeConflict>
+}
+
+fn union_deps_map_skip_equal(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
+  fold(overlay |> map_keys, init: acc, f: (m, name) =>
+    match map_get(overlay, name) {
+      Absent => m
+      Present { value: incoming } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, incoming)
+          Present { value: existing } => if existing == incoming { m } else { map_insert(m, name, incoming) }
+        }
+    }
+  )
+}
+
+fn union_bool_set_skip_equal(acc: Map<String, Bool>, overlay: Map<String, Bool>) -> Map<String, Bool> {
+  fold(overlay |> map_keys, init: acc, f: (m, name) =>
+    match map_get(m, name) {
+      Present { value: _ } => m
+      Absent =>
+        match map_get(overlay, name) {
+          Present { value: v } => map_insert(m, name, v)
+          Absent => m
+        }
+    }
+  )
+}
+
+fn union_variant_locals_skip_equal(acc: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(overlay |> map_keys, init: acc, f: (m, name) =>
+    match map_get(overlay, name) {
+      Absent => m
+      Present { value: incoming } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, incoming)
+          Present { value: existing } => if binding_same_authority(a: existing, b: incoming) { m } else { map_insert(m, name, incoming) }
+        }
+    }
+  )
+}
+
+fn merge_type_env_cache_guarded(
+  base: TypeEnvCache,
+  overlay: TypeEnvCache,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedTypeEnvCacheMerge {
+  let str_union = guarded_union_str_bindings(acc: base.str_bindings, overlay: overlay.str_bindings, import_path: import_path, conflicts: conflicts)
+  GuardedTypeEnvCacheMerge {
+    cache: TypeEnvCache {
+      deps_map: union_deps_map_skip_equal(acc: base.deps_map, overlay: overlay.deps_map),
+      str_bindings: str_union.bindings,
+      cycle_set_str: union_bool_set_skip_equal(acc: base.cycle_set_str, overlay: overlay.cycle_set_str),
+      variant_locals: union_variant_locals_skip_equal(acc: base.variant_locals, overlay: overlay.variant_locals)
+    },
+    conflicts: str_union.conflicts
+  }
+}
+
 fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
   TypeEnvCache {
     deps_map: map_merge(base.deps_map, overlay.deps_map),

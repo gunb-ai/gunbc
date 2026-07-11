@@ -154,6 +154,7 @@ type CompilerDiagnostic
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
+  | CrossParentBindingConflict { name: String, import_path: String, span: SourceSpan }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -184,6 +185,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
+    CrossParentBindingConflict { name: _, import_path: _, span: s } => s
   }
 }
 
@@ -207,6 +209,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
+    CrossParentBindingConflict { name: n, import_path: p, span: _ } => concat("cross-parent binding conflict: name '", n, "' reaches this module from import '", p, "' with a DIFFERENT binding than an earlier import - one name, one authority (DESIGN 3); a silent overlay-wins here is the shadowing fail-open class, so this refuses instead")
   }
 }
 
@@ -237,6 +240,7 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
     VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => true
     SoleConstructorViolation { type_name: _, span: _ } => true
     UnlistedImportUse { name: _, span: _ } => true
+    CrossParentBindingConflict { name: _, import_path: _, span: _ } => true
     _ => false
   }
 }
