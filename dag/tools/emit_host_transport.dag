@@ -1,6 +1,7 @@
 module tools.emit_host_transport
 
 import extdeps.shell
+import extdeps.filesystem.filesystem_io
 import extdeps.cargo_build
 import extdeps.python
 import extdeps.gunbc
@@ -19,7 +20,7 @@ import tools.host_prelude { toolchain_provision_shell_exec }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 
-data typed_smoke_doc: String = "run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each step, so per the shell-emission-model rule they are typed argv service operations (shell.Mktemp/Mkdir/Write/Remove, cargo.Build.BuildManifest, python.Interpreter.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable output could pass a count check with wrong content; the expected string is built in-substrate from the same stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked the tempdir on mid-script failure)."
+data typed_smoke_doc: String = "run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each step, so per the shell-emission-model rule they are typed service operations (shell.Mktemp/Mkdir/Remove, Filesystem.Write for the heredoc bodies, cargo.Build.BuildManifest, python.Interpreter.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable output could pass a count check with wrong content; the expected string is built in-substrate from the same stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked the tempdir on mid-script failure)."
 
 fn expected_stdout_nul_run() -> String {
   repeat_string(s: from_code_point(0), n: byte_size_count(stdout_byte_count))
@@ -28,8 +29,8 @@ fn expected_stdout_nul_run() -> String {
 fn run_rust_smoke() -> Bool {
   let dir = shell.Mktemp.Dir()
   let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
-  let manifest = shell.Write.File(path: concat(dir.path, "/Cargo.toml"), content: fixture_cargo_toml)
-  let main_rs = shell.Write.File(path: concat(dir.path, "/src/main.rs"), content: rust_stdout_fixture_source)
+  let manifest = Filesystem.Write(path: concat(dir.path, "/Cargo.toml"), content: fixture_cargo_toml)
+  let main_rs = Filesystem.Write(path: concat(dir.path, "/src/main.rs"), content: rust_stdout_fixture_source)
   let build = cargo.Build.BuildManifest(
     workdir: dir.path,
     manifest_path: concat(dir.path, "/Cargo.toml"),
@@ -45,7 +46,7 @@ fn run_rust_smoke() -> Bool {
 
 fn run_python_smoke() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let script = shell.Write.File(path: concat(dir.path, "/fixture.py"), content: python_stdout_fixture_source)
+  let script = Filesystem.Write(path: concat(dir.path, "/fixture.py"), content: python_stdout_fixture_source)
   let run = python.Interpreter.RunFile(workdir: dir.path, script_path: concat(dir.path, "/fixture.py"))
   let cleanup = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && script.success && run.success && cleanup.success

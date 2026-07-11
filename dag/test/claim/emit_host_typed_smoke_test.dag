@@ -1,6 +1,7 @@
 module test.claim.emit_host_typed_smoke_test
 
 import extdeps.shell
+import extdeps.filesystem.filesystem_io
 import extdeps.python
 import tools.emit_host_transport { expected_stdout_nul_run }
 
@@ -18,7 +19,7 @@ test fn emit_host_golden_length_matches_declared_count_holds() -> Bool {
 
 test fn emit_host_content_equality_discriminates_count_identical_bytes_holds() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let script = shell.Write.File(path: concat(dir.path, "/fixture.py"), content: five_space_python_fixture)
+  let script = Filesystem.Write(path: concat(dir.path, "/fixture.py"), content: five_space_python_fixture)
   let run = python.Interpreter.RunFile(workdir: dir.path, script_path: concat(dir.path, "/fixture.py"))
   let cleanup = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && script.success && run.success && cleanup.success
