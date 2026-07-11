@@ -10242,6 +10242,9 @@ const LAYER_STD: &str = "LayerPrefixStd";
 const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 
 fn rel_path_for_layer_import(path: &Path) -> String {
+    if path.is_relative() {
+        return path.to_string_lossy().replace('\\', "/");
+    }
     repo_relative_path_normalized(path)
 }
 
@@ -10250,7 +10253,8 @@ fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
 }
 
 fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
-    let root_path = Path::new(root);
+    let abs_root = anchor_source_root(root);
+    let root_path = Path::new(&abs_root);
     if !root_path.is_dir() {
         return;
     }
