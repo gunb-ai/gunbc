@@ -201,14 +201,28 @@ pub fn workspace_root() -> PathBuf {
     .clone()
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_runtime_workspace_root_plumbing`):
+// ROADMAP lane `5-dissolve-patches` (gunbc.roadmap_authority / ROADMAP.md) — `cli_run.rs`
+// HAND_MAINTAINED drain (~12.1k LOC absorption point; #6046 hard-gates net-new seed logic).
+// Unblock: #6106 orchestration emission → agnostic registry dispatch realizes claim-bin
+// pool-root anchoring from `.dag` (same exit as bash-emit #5828 for floor shell scaffolds).
+// DELETE WHEN dissolved: `process_workspace_root`, `resolve_process_workspace_root`,
+// `anchor_source_root`, `repo_relative_path`, `repo_relative_path_normalized`, and call-site
+// migration in `build_module_*` / `pool_roots_*` / `workspace_relative_repo_path` (~130 LOC).
+// Receipt: `rg cli_run_runtime_workspace_root_plumbing src/v1/stage0/src/cli_run.rs` == 1 until
+// deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
+pub(crate) const CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER: &str =
+    "cli_run_runtime_workspace_root_plumbing";
+
 /// Runtime workspace root for path normalization in the claim bins and module-graph pipeline.
 ///
-/// INTERIM hand-Rust scaffold (§7): dissolves when claim-bin path resolution is emitted from
-/// `.dag` orchestration and the seed `cli_run.rs` runtime-root helpers shrink to zero.
-/// Unlike [`workspace_root`] (compile-time from `CARGO_MANIFEST_DIR`), this resolves against
-/// the process environment. sccache can ship a binary built on one runner checkout path to
-/// another; anchoring file reads to the compile-time root desyncs module-graph facts from
-/// module-content indices (DESIGN §5 — wrong answers with zero diagnostic).
+/// INTERIM hand-Rust scaffold (`CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER` / §7): dissolves
+/// under ROADMAP `5-dissolve-patches` when #6106 realizes claim-bin path resolution from `.dag`
+/// and this helper family deletes (~130 LOC). Unlike [`workspace_root`] (compile-time from
+/// `CARGO_MANIFEST_DIR`), this resolves against the process environment. sccache can ship a binary
+/// built on one runner checkout path to another; anchoring file reads to the compile-time root
+/// desyncs module-graph facts from module-content indices (DESIGN §5 — wrong answers with zero
+/// diagnostic).
 ///
 /// Resolution order: `git rev-parse --show-toplevel` when it names a Cargo.toml+dag/ tree,
 /// else walk up from cwd. Fail-closed panic when neither locates the workspace — no silent
@@ -516,6 +530,14 @@ mod process_workspace_root_tests {
     fn anchor_source_root_resolves_relative_dag() {
         let anchored = anchor_source_root("dag");
         assert!(Path::new(&anchored).join("gunbc/ci_layer_roots.dag").is_file());
+    }
+
+    #[test]
+    fn runtime_workspace_root_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER,
+            "cli_run_runtime_workspace_root_plumbing"
+        );
     }
 
     #[test]
