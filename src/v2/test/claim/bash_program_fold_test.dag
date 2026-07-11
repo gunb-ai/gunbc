@@ -20,8 +20,8 @@ import extdeps.languages.bash.program {
   serialize_bash
 }
 import tools.host_prelude { ClaimRun, assign_root_stmt, gunbc_claims_program, witness_bin, witness_bin_program }
-import v2.workflow.bash_program_emit { bash_program_serialize }
-import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
+import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
+import v2.std.diagnostic { Accepted, Diagnostic, None, Outcome, Rejected }
 
 fn bash_program_fold_sample() -> ShellProgram {
   ShellProgram {
@@ -211,4 +211,19 @@ fn bash_program_probe_subshell_only_exit_bytes() -> Outcome<String> {
   bash_program_serialize(p: ShellProgram { set_e: false, statements: [
     Subshell { body: [Exit { code: 1 }] }
   ] })
+}
+
+fn bash_program_probe_exit_spelling_join() -> Outcome<String> {
+  match bash_program_serialize_stmt(stmt: Exit { code: 1 }) {
+    Accepted { value: part, diagnostics: d } =>
+      Accepted { value: concat("x; ", part), diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn bash_program_probe_exit_spelling_eq() -> Bool {
+  match bash_program_serialize_stmt(stmt: Exit { code: 1 }) {
+    Accepted { value: part, diagnostics: d } => part == "exit 1"
+    Rejected { diagnostics: r } => false
+  }
 }
