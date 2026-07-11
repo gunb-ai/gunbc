@@ -26,11 +26,7 @@ import gunbc.ci_runner_placement {
 }
 import gunbc.fleet_host_budget { gunbc_fleet_oomd_evidence }
 
-<<<<<<< HEAD
-data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). srv1_floor_memory_budget returns gunbc_ci_runner_slot_memory_max_live (24 GiB converge receipt, within-run OOM authority; see srv1_floor_memory_budget_live_note - the declared 8 GiB gunbc_ci_runner_cgroup_memory_cap is the stale-diverged allocation row pending converge). gunbc_ci_dashboard_session_container_cap (31.27 GiB) is inter-run session pool only. Do NOT conflate. See gunbc_ci_footprint_granularity_disposition." }
-=======
 data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). srv1_floor_memory_budget returns gunbc_ci_runner_slot_memory_max_live (24 GiB converge receipt, within-run OOM authority; see srv1_floor_memory_budget_live_note - the declared 16 GiB gunbc_ci_runner_cgroup_memory_cap (operator ruling 2026-07-10; was 8 GiB) is the diverged allocation row pending converge). gunbc_ci_dashboard_session_container_cap (31.27 GiB) is inter-run session pool only. Do NOT conflate. See gunbc_ci_footprint_granularity_disposition." }
->>>>>>> origin/main
 
 fn host_overhead_bytes() -> ByteSize {
   match gunbc_ci_host_fixed_overhead {
@@ -133,11 +129,7 @@ fn srv1_fixed_overhead_bytes() -> ByteSize {
   host_overhead_bytes()
 }
 
-<<<<<<< HEAD
-data srv1_floor_memory_budget_live_note: String = "Floor width sizing reads the LIVE slot cap (gunbc_ci_runner_slot_memory_max_live, converge receipt 2026-07-05: 24GiB hand-set on the hosts), not the declared 8GiB gunbc_runner_slot_desired row - per the live row's own consumer guidance ('consumers sizing within-run compile parallelism read ..._live until the converge dissolve closes'). Forced by the 2026-07-09 discovery flip: the corpus batch's measured executor base overhead (~8.3GiB, gunbc_ci_floor_executor_base_overhead) structurally cannot fit the declared 8GiB slot at any width, so sizing against the declared row would floor the width fold at its saturation arm; the executor's runtime cgroup read (the actual OOM authority) is the live value anyway. Dissolve-on: same trigger as the live row - converge proves live == declared, collapse to the gunbc.runner_slot_allocation single authority."
-=======
 data srv1_floor_memory_budget_live_note: String = "Floor width sizing reads the LIVE slot cap (gunbc_ci_runner_slot_memory_max_live, converge receipt 2026-07-05: 24GiB hand-set on the hosts), not the declared gunbc_runner_slot_desired row (16GiB per the 2026-07-10 operator ruling; 8GiB when this note was authored) - per the live row's own consumer guidance ('consumers sizing within-run compile parallelism read ..._live until the converge dissolve closes'). Originally forced by the 2026-07-09 discovery flip: the corpus batch's measured executor base overhead (~8.3GiB, gunbc_ci_floor_executor_base_overhead) structurally could not fit the then-declared 8GiB slot at any width; at the 16GiB declaration width-1 fits (~14.7GiB = base + one shard), but the executor's runtime cgroup read (the actual OOM authority) remains the live value until converge applies the ruling. Dissolve-on: same trigger as the live row - converge proves live == declared, collapse to the gunbc.runner_slot_allocation single authority."
->>>>>>> origin/main
 
 fn srv1_floor_memory_budget() -> ByteSize {
   gunbc_ci_runner_slot_memory_max_live

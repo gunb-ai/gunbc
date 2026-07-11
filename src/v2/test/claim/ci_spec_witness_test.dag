@@ -8,13 +8,8 @@ import v2.std.node { Behavior, Symbol }
 import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
 import gunbc.ci_spec {
-<<<<<<< HEAD
-  CiSpec, DiffPolicy, DiffMergeBase, Gate, RustMonolithGate,
-  gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates, gunbc_ci_rust_job_gates,
-=======
   CiSpec, DiffPolicy, DiffMergeBase, Gate,
   gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates,
->>>>>>> origin/main
   gunbc_ci_regen_floor_gates,
   ci_release_features,
   scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
