@@ -6501,7 +6501,15 @@ fn rerun_frontier_nodes_for_entry(
 ) -> Result<Vec<v1_interpreter::Value>, String> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
-    for (_file, name) in &edits.overlapping_data_items {
+    let entry_norm = repo_relative_dag_path(entry_path);
+    for (file, name) in &edits.overlapping_data_items {
+        // Only same-entry-file overlapping data seeds this entry's rerun frontier.
+        // Cross-file `(file, name)` pairs must not re-eval homonymous data items in foreign
+        // entry contexts (e.g. `construction_justification` on every top-level lens) — that
+        // silently widens SelectionApplied to the whole corpus when a new lens lands.
+        if repo_relative_dag_path(file) != entry_norm {
+            continue;
+        }
         if !ctx.item_registry.contains_key(name) {
             continue;
         }
@@ -8314,7 +8322,7 @@ mod module_grain_affected_equivalence_tests {
             "dag/gunbc/ci_layer_roots.dag",
             "src/v2/test/claim/bash_command_fold_test.dag",
             "src/v2/workflow/orchestration_emit_test.dag",
-            "src/v2/test/claim/module_graph/import_closure_live_test.dag",
+            "dag/test/claim/module_graph/import_closure_live_test.dag",
             "src/v2/test/claim/affected_set_universe_test.dag",
             "src/v2/lens/module_graph.dag",
         ]
@@ -8338,7 +8346,7 @@ mod module_grain_affected_equivalence_tests {
             "dag/test/claim/card_intake_risk_witness_test.dag",
             "dag/tools/host_prelude.dag",
             "src/v2/test/claim/affected_set_universe_test.dag",
-            "src/v2/test/claim/module_graph/import_closure_live_test.dag",
+            "dag/test/claim/module_graph/import_closure_live_test.dag",
         ]
     }
 
@@ -12958,6 +12966,21 @@ mod module_path_index_tests {
                 ws.join("dag").to_string_lossy().into_owned(),
                 ws.join("src/v2").to_string_lossy().into_owned(),
             ]
+        );
+    }
+
+    #[test]
+    fn build_module_path_index_accepts_relative_roots_at_process_cwd() {
+        let ws = workspace_root();
+        let rel_roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let index = build_module_path_index(&rel_roots);
+        let sample = index
+            .get("gunbc.ci_layer_roots")
+            .expect("gunbc.ci_layer_roots must be indexed from relative roots");
+        assert_eq!(sample, "dag/gunbc/ci_layer_roots.dag");
+        assert!(
+            ws.join(sample).is_file(),
+            "indexed rel path must resolve under workspace_root()"
         );
     }
 
