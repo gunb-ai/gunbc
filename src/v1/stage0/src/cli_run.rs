@@ -12958,8 +12958,10 @@ mod module_path_index_tests {
     }
 
     #[test]
-    fn default_source_roots_derive_from_authority() {
+    fn workspace_root_prefers_process_cwd_anchor() {
         let ws = workspace_root();
+        assert!(ws.join("Cargo.toml").is_file());
+        assert!(ws.join("dag").is_dir());
         assert_eq!(
             default_source_roots(),
             vec![
