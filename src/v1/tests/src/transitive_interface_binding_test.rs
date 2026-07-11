@@ -48,6 +48,78 @@ fn transitive_type_structure_reaches_dependent_through_direct_import_signature()
     );
 }
 
+// Cross-parent guard red controls (S2a move 2 increment B cut 2, lane ruling
+// 2026-07-11). The guard partitions on TREE: a same-tree conflict is unknown debt
+// and refuses; a cross-tree conflict (dag/ vs src/v2/ — the known v1-seed-vs-v2
+// fork) is a counted ledger row that keeps the PRE-guard import-order winner, so
+// resolution is byte-stable across the cut.
+
+const FORK_DAG_LEAF: &str = "module forka.dagleaf\n\
+    type Payload { x: Int }\n";
+const FORK_DAG_MID: &str = "module forka.dagmid\n\
+    import forka.dagleaf { Payload }\n\
+    fn mk_dag() -> Payload { Payload { x: 1 } }\n";
+const FORK_V2_LEAF: &str = "module forka.v2leaf\n\
+    type Payload { y: Int }\n";
+const FORK_V2_MID: &str = "module forka.v2mid\n\
+    import forka.v2leaf { Payload }\n\
+    fn mk_v2() -> Payload { Payload { y: 2 } }\n";
+
+#[test]
+fn same_tree_cross_parent_conflict_refuses() {
+    // Both chains under plain paths → same tree → the conflict is NOT known debt
+    // and must refuse with the typed cross-parent diagnostic.
+    let entry = "module forka.consumer\n\
+        import forka.dagmid { mk_dag }\n\
+        import forka.v2mid { mk_v2 }\n\
+        fn use_both() -> Int { 0 }\n";
+    let result = compile_multi(&[
+        ("dagleaf.dag", FORK_DAG_LEAF),
+        ("dagmid.dag", FORK_DAG_MID),
+        ("v2leaf.dag", FORK_V2_LEAF),
+        ("v2mid.dag", FORK_V2_MID),
+        ("consumer.dag", entry),
+    ]);
+    let msgs = diagnostic_messages(&result).join("\n");
+    assert!(
+        msgs.contains("cross-parent binding conflict") && msgs.contains("'Payload'"),
+        "same-tree peers carrying different 'Payload' bindings must refuse loudly, got:\n{msgs}"
+    );
+}
+
+#[test]
+fn cross_tree_conflict_is_ledgered_and_keeps_import_order_winner() {
+    // One chain homed under dag/, the other under src/v2/ → the known two-tree
+    // fork debt: no refusal, a ledger row instead, and — the behavior-preservation
+    // invariant — each chain keeps its OWN meaning: the dag-side projection (.x)
+    // and the v2-side projection (.y) BOTH typecheck through their respective
+    // imports, so the cache-union winner never leaks into either chain's inference.
+    let entry = "module forka.consumer\n\
+        import forka.dagmid { mk_dag }\n\
+        import forka.v2mid { mk_v2 }\n\
+        fn read_dag_side() -> Int { mk_dag().x }\n\
+        fn read_v2_side() -> Int { mk_v2().y }\n";
+    let result = compile_multi(&[
+        ("dag/forka/dagleaf.dag", FORK_DAG_LEAF),
+        ("dag/forka/dagmid.dag", FORK_DAG_MID),
+        ("src/v2/forka/v2leaf.dag", FORK_V2_LEAF),
+        ("src/v2/forka/v2mid.dag", FORK_V2_MID),
+        ("consumer.dag", entry),
+    ]);
+    let errors = error_messages(&result);
+    let msgs = diagnostic_messages(&result).join("\n");
+    assert!(
+        errors.is_empty(),
+        "a cross-tree fork is LEDGERED, never refused (declared interim; dissolve-on \
+         std consolidation). Errors:\n{}\nAll:\n{msgs}",
+        errors.join("\n")
+    );
+    assert!(
+        msgs.contains("cross-tree binding fork") && msgs.contains("'Payload'"),
+        "the ledger row must be present and name the fork, got:\n{msgs}"
+    );
+}
+
 // RED control: a bogus field on the same transitive record MUST produce an error.
 // This is what makes the green arm discriminating — a parent-env flatten that is
 // blind to CPayload's structure would wave both projections through, and this arm

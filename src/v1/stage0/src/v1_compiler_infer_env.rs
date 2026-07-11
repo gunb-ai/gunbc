@@ -142,7 +142,42 @@ pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
 pub struct TypeEnvCacheMergeConflict {
     pub name: String,
     pub import_path: String,
+    pub existing_site: String,
+    pub incoming_site: String,
     pub span: Rc<SourceSpan>,
+}
+
+pub fn source_tree_partition_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Tree partition for the cross-parent guard (lane ruling 2026-07-11): the ledgered debt class is the TWO TREES - one declaration under dag/ and the other under src/v2/ (the v1-seed vs v2 whole-file duplication the namespace census named). Partition on tree, never dir: a cross-TREE conflict is a counted ledger row keeping the pre-guard import-order winner; a same-tree conflict (including dag-vs-dag across dirs) is unknown debt and REFUSES immediately. Kernel-synthetic sites (<kernel:...>) are their own tree - the kernel-shadow class is known debt, ledgered not refused.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn source_tree_of(file: String) -> String {
+    if v1_rt::contains(file.clone(), "<kernel:".to_string()) {
+        "kernel".to_string()
+    } else {
+        if v1_rt::contains(file.clone(), "src/v2".to_string()) {
+            "src/v2".to_string()
+        } else {
+            if v1_rt::contains(file.clone(), "src/v1".to_string()) {
+                "src/v1".to_string()
+            } else {
+                if v1_rt::contains(file.clone(), "dag/".to_string()) {
+                    "dag".to_string()
+                } else {
+                    "other".to_string()
+                }
+            }
+        }
+    }
+}
+
+pub fn conflict_is_cross_tree(c: Rc<TypeEnvCacheMergeConflict>) -> bool {
+    (source_tree_of(c.existing_site.clone()) != source_tree_of(c.incoming_site.clone()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -208,6 +243,20 @@ pub fn guarded_union_str_bindings(
                                 Rc::new(vec![Rc::new(TypeEnvCacheMergeConflict {
                                     name: name.clone(),
                                     import_path: import_path.clone(),
+                                    existing_site: existing
+                                        .resolved
+                                        .clone()
+                                        .span
+                                        .clone()
+                                        .file
+                                        .clone(),
+                                    incoming_site: incoming
+                                        .resolved
+                                        .clone()
+                                        .span
+                                        .clone()
+                                        .file
+                                        .clone(),
                                     span: incoming.resolved.clone().span.clone(),
                                 })]),
                             ),

@@ -45,10 +45,11 @@ pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, RustCorpusRepr, TypeRepr, TypeSummary,
 };
 pub use crate::v1_compiler_infer_env::{
-    empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
-    is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
-    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
+    conflict_is_cross_tree, empty_type_env_cache, inductive_fields_for,
+    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
+    lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
+    merge_type_env_cache_guarded, put_inductive_field, put_inductive_field_cross,
+    str_bindings_from_bindings,
 };
 pub use crate::v1_compiler_infer_env::{
     GuardedTypeEnvCacheMerge, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
@@ -111,8 +112,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    CrossParentBindingConflict, FieldNotFound, InternalError, SoleConstructorViolation,
-    TypeMismatch, UnresolvedType, VariantCollision,
+    CrossParentBindingConflict, CrossTreeBindingForkLedger, FieldNotFound, InternalError,
+    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -12659,14 +12660,26 @@ pub fn build_type_env(
         let cross_parent_conflict_diags = Rc::new({
             let mut __result = Vec::new();
             for c in import_union.conflicts.clone().iter().cloned() {
-                __result.push(make_error_node(
-                    Rc::new(CompilerDiagnostic::CrossParentBindingConflict {
-                        name: c.name.clone(),
-                        import_path: c.import_path.clone(),
-                        span: c.span.clone(),
-                    }),
-                    module_name_str.clone(),
-                ));
+                __result.push(if conflict_is_cross_tree(c.clone()) {
+                    make_error_node(
+                        Rc::new(CompilerDiagnostic::CrossTreeBindingForkLedger {
+                            name: c.name.clone(),
+                            site_a: c.existing_site.clone(),
+                            site_b: c.incoming_site.clone(),
+                            span: c.span.clone(),
+                        }),
+                        module_name_str.clone(),
+                    )
+                } else {
+                    make_error_node(
+                        Rc::new(CompilerDiagnostic::CrossParentBindingConflict {
+                            name: c.name.clone(),
+                            import_path: c.import_path.clone(),
+                            span: c.span.clone(),
+                        }),
+                        module_name_str.clone(),
+                    )
+                });
             }
             __result
         });
@@ -12876,7 +12889,10 @@ pub fn build_type_env(
         Rc::new(BuildTypeEnvResult {
             env: final_env.clone(),
             cache: type_env_cache.clone(),
-            diagnostics: v1_rt::concat(import_diags.clone(), resolved_diags.clone()),
+            diagnostics: v1_rt::concat(
+                v1_rt::concat(import_diags.clone(), cross_parent_conflict_diags.clone()),
+                resolved_diags.clone(),
+            ),
         })
     }
 }

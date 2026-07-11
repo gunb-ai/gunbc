@@ -2658,6 +2658,23 @@ fn reconcile_with_typed_cache(
         }
         acc
     });
+    // Ledger receipt (declared interim, lane ruling 2026-07-11): cross-tree binding forks
+    // are counted per run on the receipt surface the floor prints — observable, never only
+    // a scrolling diagnostic. This count is the std-consolidation lane's priority signal.
+    // Dissolve-on: std consolidation / namespace Rule-1 terminal (the ledger arm deletes
+    // and the cross-parent guard refuses unconditionally).
+    let cross_tree_fork_count = diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(
+                &*d.diagnostic,
+                CompilerDiagnostic::CrossTreeBindingForkLedger { .. }
+            )
+        })
+        .count();
+    if cross_tree_fork_count > 0 {
+        eprintln!("[cross-tree-binding-fork-ledger] count={cross_tree_fork_count}");
+    }
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(

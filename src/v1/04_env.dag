@@ -89,7 +89,29 @@ fn empty_type_env_cache() -> TypeEnvCache {
 type TypeEnvCacheMergeConflict {
   name: String
   import_path: String
+  existing_site: String
+  incoming_site: String
   span: SourceSpan
+}
+
+data source_tree_partition_note: String = "Tree partition for the cross-parent guard (lane ruling 2026-07-11): the ledgered debt class is the TWO TREES - one declaration under dag/ and the other under src/v2/ (the v1-seed vs v2 whole-file duplication the namespace census named). Partition on tree, never dir: a cross-TREE conflict is a counted ledger row keeping the pre-guard import-order winner; a same-tree conflict (including dag-vs-dag across dirs) is unknown debt and REFUSES immediately. Kernel-synthetic sites (<kernel:...>) are their own tree - the kernel-shadow class is known debt, ledgered not refused."
+
+fn source_tree_of(file: String) -> String {
+  if contains(file, "<kernel:") {
+    "kernel"
+  } else if contains(file, "src/v2") {
+    "src/v2"
+  } else if contains(file, "src/v1") {
+    "src/v1"
+  } else if contains(file, "dag/") {
+    "dag"
+  } else {
+    "other"
+  }
+}
+
+fn conflict_is_cross_tree(c: TypeEnvCacheMergeConflict) -> Bool {
+  source_tree_of(file: c.existing_site) != source_tree_of(file: c.incoming_site)
 }
 
 type GuardedTypeEnvCacheMerge {
@@ -128,7 +150,7 @@ fn guarded_union_str_bindings(
             } else {
               GuardedStrBindingsUnion {
                 bindings: map_insert(state.bindings, name, incoming),
-                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, span: incoming.resolved.span }])
+                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: existing.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span }])
               }
             }
         }

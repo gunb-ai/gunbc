@@ -22,7 +22,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision, CrossParentBindingConflict, SoleConstructorViolation, UnresolvedType, FieldNotFound,
+  InternalError, TypeMismatch, VariantCollision, CrossParentBindingConflict, CrossTreeBindingForkLedger, SoleConstructorViolation, UnresolvedType, FieldNotFound,
   resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -80,7 +80,7 @@ import v1.compiler.infer_method {
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
-  merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
+  merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict, conflict_is_cross_tree,
   str_bindings_from_bindings,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
@@ -5723,7 +5723,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_union = union_parent_type_env_caches(resolved_imports: module.resolved_imports, parent_index: parent_index)
   let import_cache = import_union.cache
   let cross_parent_conflict_diags = map(import_union.conflicts, c =>
-    make_error_node(diagnostic: CrossParentBindingConflict { name: c.name, import_path: c.import_path, span: c.span }, module_name: module_name_str)
+    if conflict_is_cross_tree(c: c) {
+      make_error_node(diagnostic: CrossTreeBindingForkLedger { name: c.name, site_a: c.existing_site, site_b: c.incoming_site, span: c.span }, module_name: module_name_str)
+    } else {
+      make_error_node(diagnostic: CrossParentBindingConflict { name: c.name, import_path: c.import_path, span: c.span }, module_name: module_name_str)
+    }
   )
   let ancestry_cache = if module.resolved_imports |> count == 1 {
     import_cache
