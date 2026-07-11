@@ -746,6 +746,200 @@ fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
   }
 }
 
+fn bash_fold_golden_probe(stmt: ShellStmt) -> Outcome<String> {
+  bash_program_serialize_stmt(stmt: stmt)
+}
+
+fn bash_fold_golden_probe_cmd_true() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Command { words: [Lit { text: "true" }] })
+}
+
+fn bash_fold_golden_probe_cmd_echo_hi() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] })
+}
+
+fn bash_fold_golden_probe_cmd_var_x() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Command { words: [VarRef { name: "X" }] })
+}
+
+fn bash_fold_golden_probe_cmd_grep() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Command { words: [Lit { text: "grep" }, Lit { text: "-rn" }, Lit { text: "foo_bar.baz" }] })
+}
+
+fn bash_fold_golden_probe_cmd_home() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Command { words: [VarRef { name: "HOME" }] })
+}
+
+fn bash_fold_golden_probe_cmd_quote() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Command { words: [Lit { text: "a'b" }] })
+}
+
+fn bash_fold_golden_probe_exit_42() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Exit { code: 42 })
+}
+
+fn bash_fold_golden_probe_exit_0() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Exit { code: 0 })
+}
+
+fn bash_fold_golden_probe_assign_foo() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Assign { name: "FOO", value: Lit { text: "bar" } })
+}
+
+fn bash_fold_golden_probe_assign_home() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Assign { name: "X", value: VarRef { name: "HOME" } })
+}
+
+fn bash_fold_golden_probe_assign_quote() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Assign { name: "VAR", value: Lit { text: "a'b" } })
+}
+
+fn bash_fold_golden_probe_and_then() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: AndOr { left: bash_fold_cmd_true_stmt(), op: AndThen, right: bash_fold_cmd_false_stmt() })
+}
+
+fn bash_fold_golden_probe_or_else() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: AndOr { left: bash_fold_cmd_true_stmt(), op: OrElse, right: bash_fold_cmd_false_stmt() })
+}
+
+fn bash_fold_golden_probe_pipe() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Pipe {
+    left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+    right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+  })
+}
+
+fn bash_fold_golden_probe_pipe_and_then() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Pipe {
+    left: AndOr { left: bash_fold_cmd_true_stmt(), op: AndThen, right: bash_fold_cmd_false_stmt() },
+    right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+  })
+}
+
+fn bash_fold_golden_probe_pipe_three() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Pipe {
+    left: Pipe {
+      left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+    },
+    right: Command { words: [Lit { text: "tr" }, Lit { text: "-d" }, Lit { text: " " }] }
+  })
+}
+
+fn bash_fold_golden_probe_subshell() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] })
+}
+
+fn bash_fold_golden_probe_subshell_multi() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Subshell { body: [
+    Command { words: [Lit { text: "true" }] },
+    Command { words: [Lit { text: "false" }] }
+  ] })
+}
+
+fn bash_fold_golden_probe_subshell_nested() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Subshell { body: [
+    AndOr { left: Command { words: [Lit { text: "true" }] }, op: AndThen, right: Command { words: [Lit { text: "false" }] } }
+  ] })
+}
+
+fn bash_fold_golden_probe_if_echo() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: If {
+    cond: Command { words: [Lit { text: "true" }] },
+    then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }]
+  })
+}
+
+fn bash_fold_golden_probe_if_multi() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: If {
+    cond: Command { words: [Lit { text: "true" }] },
+    then: [
+      Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+      Command { words: [Lit { text: "false" }] }
+    ]
+  })
+}
+
+fn bash_fold_golden_probe_if_pipe() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: If {
+    cond: Command { words: [Lit { text: "true" }] },
+    then: [Pipe {
+      left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+    }]
+  })
+}
+
+fn bash_fold_golden_probe_redir_stderr() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: StderrToNull })
+}
+
+fn bash_fold_golden_probe_redir_both() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: StdoutAndStderrToNull })
+}
+
+fn bash_fold_golden_probe_redir_stdout_stderr() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: StdoutToStderr })
+}
+
+fn bash_fold_golden_probe_redir_file() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } } })
+}
+
+fn bash_fold_golden_probe_redir_pipe() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: WithRedir {
+    stmt: Pipe {
+      left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+    },
+    redir: StderrToNull
+  })
+}
+
+fn bash_fold_golden_probe_heredoc() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Heredoc { path: Lit { text: "out" }, delimiter: "EOF", body: "hello" })
+}
+
+fn bash_fold_golden_probe_raw_orch() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: RawLine { text: "! ( foo )" })
+}
+
+fn bash_fold_golden_probe_raw_xeq() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: RawLine { text: "x=y" })
+}
+
+fn bash_fold_golden_probe_raw_cmdsubst() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: RawLine { text: "$(a)" })
+}
+
+fn bash_fold_golden_probe_raw_paren() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: RawLine { text: "a)b" })
+}
+
+fn bash_fold_golden_probe_raw_quoted() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: RawLine { text: "'q'" })
+}
+
+fn bash_fold_golden_probe_raw_mktemp() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: RawLine { text: "TMPDIR=$('mktemp' '-d')" })
+}
+
+fn bash_fold_golden_probe_raw_nl() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: RawLine { text: "ab\n" })
+}
+
+fn bash_fold_golden_probe_negation() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Negation { stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] } })
+}
+
+fn bash_fold_golden_probe_negation_raw() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: Negation { stmt: Subshell { body: [RawLine { text: "do_verify\nmore" }] } })
+}
+
+fn bash_fold_golden_probe_env_prefixed() -> Outcome<String> {
+  bash_fold_golden_probe(stmt: EnvPrefixed { name: "TMPDIR", value: Lit { text: "/t" }, command: Command { words: [Lit { text: "true" }] } })
+}
+
 test fn bash_fold_structural_tier_holds() -> Bool {
   bash_fold_relation_row_true_witness_holds()
   && bash_fold_emitted_tree_differs_on_wrong_fixture_holds()
