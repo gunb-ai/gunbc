@@ -167,7 +167,6 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
-<<<<<<< HEAD
 /// The workspace root is a property of where the process RUNS, never of where the
 /// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
 /// the release binaries across jobs via artifacts, and the build job and the consuming
@@ -200,55 +199,6 @@ pub fn workspace_root() -> PathBuf {
         )
     })
     .clone()
-=======
-fn compile_time_workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("workspace root")
-        .to_path_buf()
->>>>>>> b5d4f6d05d (WIP: Lane D — provisioning window/executor-capability model draft (sign-off g)
-}
-
-fn is_workspace_root(path: &Path) -> bool {
-    path.join("Cargo.toml").is_file() && path.join("dag").is_dir()
-}
-
-fn discover_workspace_root() -> PathBuf {
-    if let Ok(output) = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-    {
-        if output.status.success() {
-            let root = String::from_utf8(output.stdout).expect("utf8 workspace root");
-            let trimmed = root.trim();
-            if !trimmed.is_empty() {
-                let path = PathBuf::from(trimmed);
-                if is_workspace_root(&path) {
-                    return path;
-                }
-            }
-        }
-    }
-    if let Ok(mut dir) = std::env::current_dir() {
-        loop {
-            if is_workspace_root(&dir) {
-                return dir;
-            }
-            if !dir.pop() {
-                break;
-            }
-        }
-    }
-    compile_time_workspace_root()
-}
-
-static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
-
-pub fn workspace_root() -> PathBuf {
-    WORKSPACE_ROOT
-        .get_or_init(discover_workspace_root)
-        .clone()
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_runtime_workspace_root_plumbing`):
@@ -399,7 +349,6 @@ fn anchor_source_root(root: &str) -> String {
 
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
 ///
-<<<<<<< HEAD
 /// `workspace_root()` above was HISTORICALLY baked from `env!("CARGO_MANIFEST_DIR")` at
 /// COMPILE time (now cwd-derived at runtime, see its doc), and part of the shared
 /// resolution pipeline (`pool_roots_abs`) anchors RELATIVE source roots to that path
@@ -409,15 +358,6 @@ fn anchor_source_root(root: &str) -> String {
 /// answers with zero diagnostic (DESIGN §5 fail-open). The runtime derivation removes
 /// the cross-tree case; this boundary keeps the in-tree case exact (a cwd BELOW the
 /// checkout root still resolves CLI args against the cwd, not the root).
-=======
-/// `compile_time_workspace_root()` (the fallback inside `workspace_root()`) is baked from
-/// `env!("CARGO_MANIFEST_DIR")` at COMPILE time,
-/// and part of the shared resolution pipeline (`pool_roots_abs`) anchors RELATIVE source
-/// roots to that baked path while the module-content index reads them relative to the
-/// process cwd. For the claim bins that meant a run from any other cwd (e.g. a git
-/// worktree) silently mixed two trees — module contents from the cwd, import-graph facts
-/// from the baked root — wrong answers with zero diagnostic (DESIGN §5 fail-open).
->>>>>>> b5d4f6d05d (WIP: Lane D — provisioning window/executor-capability model draft (sign-off g)
 ///
 /// The bins therefore resolve their path-valued arguments HERE, at the CLI boundary,
 /// with standard CLI semantics: a relative path resolves against the PROCESS CWD, and a
