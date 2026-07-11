@@ -103,10 +103,6 @@ data reference_deps_file_anchor: Symbol = ^reference_deps_file_anchor
 
 data reference_deps_qualified_name_capture_missing: Symbol = ^reference_deps_qualified_name_capture_missing
 
-data reference_deps_parsed_sites_empty: Symbol = ^reference_deps_parsed_sites_empty
-
-data reference_deps_parsed_sites_unmatched: Symbol = ^reference_deps_parsed_sites_unmatched
-
 data reference_deps_closure_entry_excluded: Symbol = ^reference_deps_closure_entry_excluded
 
 data reference_deps_closure_ingest_refused: Symbol = ^reference_deps_closure_ingest_refused
@@ -442,6 +438,13 @@ fn reference_corpus_paths_live(
   )
 }
 
+fn reference_file_census_empty() -> ReferenceResolutionCensus {
+  ReferenceResolutionCensus {
+    facts: empty_reference_facts,
+    refusals: empty_reference_refusals
+  }
+}
+
 fn reference_file_census_parsed(
   rel_path: String,
   module_root: Node,
@@ -455,31 +458,14 @@ fn reference_file_census_parsed(
         reason: d.head.reason
       )
     Accepted { value: sites, diagnostics: _ } =>
-      if is_empty(xs: sites) {
-        reference_file_census_refused(
-          rel_path: rel_path,
-          stage: "reference_site",
-          reason: reference_deps_parsed_sites_empty
-        )
-      } else {
-        let parsed_facts = reference_facts_for_qn_sites(
+      ReferenceResolutionCensus {
+        facts: reference_facts_for_qn_sites(
           rel_path: rel_path,
           sites: sites,
           declared: declared,
           acc: empty_reference_facts
-        )
-        if is_empty(xs: parsed_facts) {
-          reference_file_census_refused(
-            rel_path: rel_path,
-            stage: "reference_site",
-            reason: reference_deps_parsed_sites_unmatched
-          )
-        } else {
-          ReferenceResolutionCensus {
-            facts: parsed_facts,
-            refusals: empty_reference_refusals
-          }
-        }
+        ),
+        refusals: empty_reference_refusals
       }
   }
 }
