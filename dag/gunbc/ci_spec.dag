@@ -382,9 +382,9 @@ fn ci_plan_artifact_compile_clean_invoke() -> String {
     concat(
       concat(
         concat(claim_executor_bin_shell(), witness_layer_source_flags_rooted(roots: witness_layer_roots)),
-        " --entry \"$ROOT/dag/tools/floor_effect_gate_witness.dag\""
+        " --plan-entry src/v2/workflow/ci_floor_plan.dag"
       ),
-      " --function dag_compile_clean_gate_passes"
+      " --plan-function gunbc_ci_plan_artifact_batches"
     ),
     ""
   )

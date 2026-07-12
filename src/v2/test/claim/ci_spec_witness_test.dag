@@ -202,8 +202,8 @@ fn witness_documentation_only_shortcut_in_floor_script() -> Bool {
     string_contains(s: script, pattern: ci_floor_disposition_marker_path) &&
     string_contains(s: script, pattern: "mkdir -p target") &&
     string_contains(s: script, pattern: "[[ \"$_ci_path\" == dag/gunbc/plans/* ]]") &&
-    string_contains(s: script, pattern: "\"$ROOT/dag/tools/floor_effect_gate_witness.dag\"") &&
-    string_contains(s: script, pattern: "dag_compile_clean_gate_passes") &&
+    string_contains(s: script, pattern: "--plan-entry src/v2/workflow/ci_floor_plan.dag") &&
+    string_contains(s: script, pattern: "--plan-function gunbc_ci_plan_artifact_batches") &&
     string_contains(s: script, pattern: merge_admission_stamp_invoke()) &&
     string_contains(s: script, pattern: "--source-root dag") &&
     string_contains(s: script, pattern: ci_documentation_only_diff_note) &&
