@@ -657,6 +657,7 @@ pub enum InterpError {
     Unimplemented { what: String },
     EarlyReturn { value: Value },
     AuthDeclaredButUnwired { service: String, reason: String },
+    EvalBudgetExceeded { elapsed_ms: u64, budget_ms: u64 },
 }
 
 impl fmt::Display for InterpError {
@@ -669,6 +670,16 @@ impl fmt::Display for InterpError {
                 write!(f, "no field '{}' on type '{}'", field, type_name)
             }
             InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
+            InterpError::EvalBudgetExceeded {
+                elapsed_ms,
+                budget_ms,
+            } => {
+                write!(
+                    f,
+                    "eval budget exceeded: {}ms elapsed > {}ms fast-lane budget (operator 5s rule 2026-07-12: a witness this slow lives in a long/ test dir and runs via its dedicated lane, not per-PR discovery)",
+                    elapsed_ms, budget_ms
+                )
+            }
             InterpError::CrossRepresentationEquality { detail } => {
                 write!(f, "cross-representation equality: {}", detail)
             }
@@ -1190,6 +1201,12 @@ pub struct InterpContext {
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
+    // Cooperative per-witness eval deadline (fast-lane 5s rule, operator 2026-07-12).
+    // The bound must unwind from INSIDE eval as a typed error: witness evals run on
+    // in-process worker threads with no kill authority, so a wall-clock bound imposed
+    // from outside cannot terminate them (the Phase A governor lesson).
+    eval_deadline: std::cell::Cell<Option<(std::time::Instant, u64)>>,
+    eval_deadline_stride: std::cell::Cell<u32>,
 }
 
 impl InterpContext {
@@ -1336,7 +1353,19 @@ impl InterpContext {
             published_mock_keys: RefCell::new(None),
             whole_tree_published_keys,
             governed_services: RefCell::new(None),
+            eval_deadline: std::cell::Cell::new(None),
+            eval_deadline_stride: std::cell::Cell::new(0),
         }
+    }
+
+    pub fn arm_eval_deadline(&self, budget_ms: u64) {
+        self.eval_deadline
+            .set(Some((std::time::Instant::now(), budget_ms)));
+        self.eval_deadline_stride.set(0);
+    }
+
+    pub fn clear_eval_deadline(&self) {
+        self.eval_deadline.set(None);
     }
 
     fn published_mock_keys(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {
@@ -1608,6 +1637,19 @@ fn call_function_inner(
 }
 
 fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+    if let Some((armed_at, budget_ms)) = ctx.eval_deadline.get() {
+        let stride = ctx.eval_deadline_stride.get().wrapping_add(1);
+        ctx.eval_deadline_stride.set(stride);
+        if stride % 4096 == 0 {
+            let elapsed_ms = armed_at.elapsed().as_millis() as u64;
+            if elapsed_ms > budget_ms {
+                return Err(InterpError::EvalBudgetExceeded {
+                    elapsed_ms,
+                    budget_ms,
+                });
+            }
+        }
+    }
     if !eval_profile_enabled() {
         return stacker::maybe_grow(64 * 1024, 2 * 1024 * 1024, || {
             eval_expr_inner(node, env, ctx)
