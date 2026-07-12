@@ -2562,8 +2562,12 @@ fn body_lower_extract_comma_list_arm_head(remaining: Int, node: Node) -> Outcome
   } else {
     let stripped = body_lower_deep_unwrap_optional(remaining: remaining - 1, node: node)
     match body_lower_wire_match_arm_capture(remaining: remaining - 1, arm_capture: stripped) {
-    Rejected { diagnostics: _ } =>
-      body_lower_match_arm_from_comma_repeat_elem(remaining: remaining - 1, repeat_elem: stripped)
+    Rejected { diagnostics: r } =>
+      if r.head.reason == ^body_lowering_reason_descent_not_proven {
+        Rejected { diagnostics: r }
+      } else {
+        body_lower_match_arm_from_comma_repeat_elem(remaining: remaining - 1, repeat_elem: stripped)
+      }
     Accepted { value: arm, diagnostics: d } =>
       Accepted { value: arm, diagnostics: d }
     }
@@ -2948,24 +2952,25 @@ fn body_lower_try_match_from_captured(remaining: Int, captured: Node) -> Outcome
 }
 }
 
-fn body_lower_match_capture_heads_spine(remaining: Int, spine: Node) -> Bool {
-  match remaining <= 0 {
-    true => false
-    false =>
-      match body_lower_match_spine_left(remaining: remaining - 1, spine: spine) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: left_opt, diagnostics: _ } =>
-          match left_opt {
-            Absent => false
-            Present { value: left } =>
-              match node_atom_identity_optional(
-                node: body_lower_deep_unwrap_optional(remaining: remaining - 1, node: left)
-              ) {
-                Present { value: id } => id == ^dag_token_kw_match
-                Absent => false
-              }
-          }
+fn body_lower_match_capture_heads_spine(remaining: Int, spine: Node) -> Outcome<Bool> {
+  if remaining <= 0 {
+    outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: spine))
+  } else {
+    bind_outcome(
+      o: body_lower_match_spine_left(remaining: remaining - 1, spine: spine),
+      f: fn(left_opt) {
+        match left_opt {
+          Absent => outcome_accepted(value: false)
+          Present { value: left } =>
+            match node_atom_identity_optional(
+              node: body_lower_deep_unwrap_optional(remaining: remaining - 1, node: left)
+            ) {
+              Present { value: id } => outcome_accepted(value: id == ^dag_token_kw_match)
+              Absent => outcome_accepted(value: false)
+            }
+        }
       }
+    )
   }
 }
 
@@ -2990,12 +2995,19 @@ fn body_lower_try_match_from_node(remaining: Int, node: Node) -> Outcome<Optiona
         outcome_accepted(value: optional_absent())
       }
     Absent =>
-      if body_lower_match_capture_heads_spine(remaining: remaining - 1, spine: body_lower_unwrap_surface_shell(remaining: remaining - 1, node: node)
-      ) {
-        body_lower_try_match_from_captured(remaining: remaining - 1, captured: node)
-      } else {
-        outcome_accepted(value: optional_absent())
-      }
+      bind_outcome(
+        o: body_lower_match_capture_heads_spine(
+          remaining: remaining - 1,
+          spine: body_lower_unwrap_surface_shell(remaining: remaining - 1, node: node)
+        ),
+        f: fn(heads) {
+          if heads {
+            body_lower_try_match_from_captured(remaining: remaining - 1, captured: node)
+          } else {
+            outcome_accepted(value: optional_absent())
+          }
+        }
+      )
     }
 }
 }
