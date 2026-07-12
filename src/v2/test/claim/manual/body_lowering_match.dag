@@ -5,6 +5,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_fn_decl_to_arrow,
   body_lower_match_expr,
   body_lower_match_arms_optional,
+  body_lower_primary_expr,
   body_lower_match_scrutinee_optional,
   body_lower_match_spine_left,
   body_lower_operand_ref_optional,
@@ -154,6 +155,105 @@ fn body_lowering_find_fn_decl(root: Node) -> Optional<Node> {
           Absent => body_lowering_find_fn_decl(root: e.target)
         }
       })
+  }
+}
+
+fn body_lowering_match_pattern_operand_ref_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: captured } =>
+              match parse_subtree_find_production_captured(
+                root: captured,
+                emitted: ^dag_surface_match_arm
+              ) {
+                ParseSubtreeFound { captured: arm } =>
+                  match parse_subtree_find_production_captured(
+                    root: arm,
+                    emitted: ^dag_surface_pattern
+                  ) {
+                    ParseSubtreeFound { captured: pat } =>
+                      match body_lower_operand_ref_optional(node: pat) {
+                        Present { value: _ } => true
+                        Absent => false
+                      }
+                    ParseSubtreeAbsent => false
+                  }
+                ParseSubtreeAbsent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_match_pattern_primary_lowers_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: captured } =>
+              match parse_subtree_find_production_captured(
+                root: captured,
+                emitted: ^dag_surface_match_arm
+              ) {
+                ParseSubtreeFound { captured: arm } =>
+                  match parse_subtree_find_production_captured(
+                    root: arm,
+                    emitted: ^dag_surface_pattern
+                  ) {
+                    ParseSubtreeFound { captured: pat } =>
+                      match parse_subtree_find_production_captured(
+                        root: pat,
+                        emitted: ^dag_surface_primary_expr
+                      ) {
+                        ParseSubtreeFound { captured: primary } =>
+                          match body_lower_primary_expr(shell: primary) {
+                            Accepted { value: _, diagnostics: _ } => true
+                            Rejected { diagnostics: _ } => false
+                          }
+                        ParseSubtreeAbsent => false
+                      }
+                    ParseSubtreeAbsent => false
+                  }
+                ParseSubtreeAbsent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_match_arm_body_primary_lowers_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: captured } =>
+              match parse_subtree_find_production_captured(
+                root: captured,
+                emitted: ^dag_surface_primary_expr
+              ) {
+                ParseSubtreeFound { captured: primary } =>
+                  match body_lower_primary_expr(shell: primary) {
+                    Accepted { value: _, diagnostics: _ } => true
+                    Rejected { diagnostics: _ } => false
+                  }
+                ParseSubtreeAbsent => false
+              }
+            Absent => false
+          }
+      }
   }
 }
 
