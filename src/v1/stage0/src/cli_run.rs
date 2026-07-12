@@ -3290,7 +3290,10 @@ fn reconcile_with_typed_cache(
         acc
     });
     let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
-    if total_fork_count > 0 {
+    // Per-resolve §3 fork census — opt-in. The floor resolves once per entry, so an
+    // unconditional print streams one census line per entry (hundreds per run). The count is
+    // recomputed from source on demand; gate the narration behind the floor verbose flag.
+    if total_fork_count > 0 && floor_verbose() {
         eprintln!(
             "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
         );
@@ -7368,6 +7371,14 @@ pub fn run_discovery_corpus_with_options(
             }
         }
     };
+    eprintln_affected_set_categorization(
+        options.node_frontier_selection,
+        &rows,
+        &index,
+        &diff_edits,
+    );
+    let floor_color = floor_color_enabled();
+    let floor_stream = floor_stream_enabled();
     let capped_width = if options.spawn_width_cap > 0 {
         parallel_width.min(options.spawn_width_cap)
     } else {
@@ -7384,6 +7395,12 @@ pub fn run_discovery_corpus_with_options(
             &diff_edits,
             floor_runner_ctx.as_ref(),
             whole_tree_published_keys.clone(),
+            ShardStyle {
+                shard_id: 0,
+                shard_count: 1,
+                color: floor_color,
+                stream: floor_stream,
+            },
         )?;
         // Definition-drift oracle (single-authority reconciliation, executable): on a
         // COMPLETED width-1 run the pre-resolve import walk and the post-resolve
@@ -7410,15 +7427,20 @@ pub fn run_discovery_corpus_with_options(
         return Ok(summary);
     }
     let shards = shard_row_indices_by_entry(&rows, width);
+    let active_shards = shards.iter().filter(|s| !s.is_empty()).count();
     eprintln!(
-        "run_discovery_corpus: parallel_width={} ({} entry-group shard(s))",
-        width,
-        shards.iter().filter(|s| !s.is_empty()).count()
+        "run_discovery_corpus: parallel_width={width} ({active_shards} entry-group shard(s))"
     );
+    if floor_stream && active_shards > 1 {
+        eprintln!(
+            "{} [affected-set] streaming run-witnesses live across {active_shards} concurrent shards (▎shard N, one color each)",
+            floor_ts()
+        );
+    }
     let source_roots_owned = source_roots.to_vec();
     let selection_for_shards = options.node_frontier_selection;
     let mut handles = Vec::new();
-    for shard in shards {
+    for (shard_id, shard) in shards.into_iter().enumerate() {
         if shard.is_empty() {
             continue;
         }
@@ -7427,6 +7449,12 @@ pub fn run_discovery_corpus_with_options(
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
+        let style = ShardStyle {
+            shard_id,
+            shard_count: active_shards,
+            color: floor_color,
+            stream: floor_stream,
+        };
         handles.push(std::thread::spawn(move || {
             // Each shard is its own thread (Rc<ResolvedGraph> is !Send, so the resolve store
             // cannot cross the shard boundary — that cross-shard share is the S2b/Arc frontier).
@@ -7460,6 +7488,7 @@ pub fn run_discovery_corpus_with_options(
                 &seeds,
                 runner.as_ref(),
                 keys,
+                style,
             )
         }));
     }
@@ -7542,6 +7571,199 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     merged
 }
 
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the floor-observability cluster
+// below — `floor_verbose` / `floor_ts` / `floor_stream_enabled` / `floor_color_enabled`,
+// `ShardStyle`, and `eprintln_affected_set_categorization` — is seed-side NARRATION wrapped
+// around the existing affected-set selection. It adds no selection authority: the fail-closed
+// skip/run decision, its refusals, and the `DiscoverySummary` counts are unchanged (see
+// `run_discovery_rows`); these helpers only choose how the already-decided run is printed. They
+// live in Rust because the v1 evaluator narrates its own floor walk (the same seed-side reason as
+// `phase_profile.rs` and `GUNBC_FLOOR_GANTT`). The *rendering* they emit is the same class of
+// output already migrating into `dag/gunbc/ci_render.dag` (the timing histogram + slowest-witness
+// rollup render there today). Full dissolution: when v2 emit-host owns floor observability — a
+// `.dag` floor-event carrier a witness consumes by execution, the retirement event shared with
+// `phase_profile.rs` (`docs/plans/realization-measurement-loop.md` Phase 0) and the fractal Gantt
+// (`docs/plans/ci-floor-fractal-gantt.md` § dissolution) — this narration collapses into that
+// carrier and is deleted. Until then it is counted seed Rust, not a new authority; do not accrete
+// further floor logic here — extend the `.dag` render/observability surface instead.
+
+/// Per-witness selection detail (the `SKIP`/`SKIP-RESOLVE`/`PREDICT` lines and the
+/// per-resolve `[binding-fork-ledger]` census) is opt-in. The default floor output is the
+/// upfront `[affected-set]` categorization plus the final `[measurement]` tally — a wide
+/// corpus otherwise streams one skip line per unaffected witness (~1.7k lines), drowning the
+/// signal. The counts survive on `DiscoverySummary`; only the per-row narration is gated.
+fn floor_verbose() -> bool {
+    std::env::var("GUNBC_FLOOR_VERBOSE")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+/// Wall-clock stamp `HH:MM:SS.mmm` (UTC) prefixed on the live floor lines so the stream reads as
+/// a timeline and correlates with CI's wall-clock log — dependency-free (no chrono): seconds
+/// since the epoch reduced to a 24h clock, plus millis.
+fn floor_ts() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    let millis = now.subsec_millis();
+    let h = (secs / 3600) % 24;
+    let m = (secs / 60) % 60;
+    let s = secs % 60;
+    format!("{h:02}:{m:02}:{s:02}.{millis:03}")
+}
+
+/// One upfront line categorizing the corpus before any witness runs — the operator-facing
+/// "N skipped, M impacted, running X" read of the affected-set selection. The skip count here
+/// is the cheap import-closure disposition (entry-grain, no resolve); the finer per-node
+/// frontier decision runs the affected closure down further, so `[measurement]` at the end
+/// reports the exact ran/skipped tally. Print-only: the authoritative decision (and its
+/// fail-closed refusal on a provenance gap) still happens per-shard in `run_discovery_rows`.
+fn eprintln_affected_set_categorization(
+    selection: NodeFrontierSelectionMode,
+    rows: &[DiscoveryRow],
+    index: &MultiEntryIndex,
+    diff_edits: &FloorDiffEdits,
+) {
+    let total = rows.len();
+    let entries = rows
+        .iter()
+        .map(|r| r.entry.as_str())
+        .collect::<HashSet<&str>>()
+        .len();
+    let ts = floor_ts();
+    match selection {
+        NodeFrontierSelectionMode::Off => {
+            eprintln!(
+                "{ts} [affected-set] selection off — running all {total} witness(es) across {entries} entr(y/ies)"
+            );
+        }
+        NodeFrontierSelectionMode::PredictOnly => {
+            eprintln!(
+                "{ts} [affected-set] predict-only — running all {total} witness(es) cold across {entries} entr(y/ies); node-frontier predictions recorded, divergences counted"
+            );
+        }
+        NodeFrontierSelectionMode::Applied => {
+            let declared_paths = index.module_graph_facts.declared_repo_paths();
+            let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+            match discovery_entry_fast_skip_without_resolve(
+                rows,
+                &index.module_graph_facts,
+                &declared_paths,
+                &touched,
+                diff_edits,
+            ) {
+                Ok(fast) => {
+                    let skipped = rows.iter().filter(|r| fast.contains(&r.entry)).count();
+                    let candidates = total - skipped;
+                    eprintln!(
+                        "{ts} [affected-set] {total} witness(es) across {entries} entr(y/ies) · {skipped} unaffected (import-closure, skipped without resolve) · {candidates} in the affected closure (resolving to decide node-frontier)"
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "{ts} [affected-set] {total} witness(es) across {entries} entr(y/ies) · upfront import-closure categorization unavailable ({e}); per-shard selection is authoritative"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Live realization view: stream affected witnesses to stderr as they finish, one colored
+/// line per shard, so a run reads as "the affected set unrolling in real time" rather than a
+/// silent wait then a summary. On by default (opt out with `GUNBC_FLOOR_QUIET=1`); color
+/// auto-detected (a terminal or GitHub Actions), `NO_COLOR` honored, `GUNBC_FLOOR_COLOR=1`
+/// forces it on. Only RUN witnesses reach the stream — skips are counted, not narrated.
+fn floor_stream_enabled() -> bool {
+    !std::env::var("GUNBC_FLOOR_QUIET")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+fn floor_color_enabled() -> bool {
+    if std::env::var("NO_COLOR").is_ok() {
+        return false;
+    }
+    if std::env::var("GUNBC_FLOOR_COLOR")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    use std::io::IsTerminal;
+    std::io::stderr().is_terminal()
+        || std::env::var("GITHUB_ACTIONS")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+}
+
+#[derive(Clone, Copy)]
+struct ShardStyle {
+    shard_id: usize,
+    /// Number of concurrent shards in this run. When it is 1 there is no parallelism to
+    /// distinguish, so the `s{id}` shard tag is dropped (it only reads as noise — the reason the
+    /// operator asked "what does s0 mean?"). The tag returns, colored, only when shards run wide.
+    shard_count: usize,
+    color: bool,
+    stream: bool,
+}
+
+impl ShardStyle {
+    /// Distinct hue per concurrent shard so the interleaved stream reads as parallelism. Green
+    /// and red are reserved for the pass/fail glyph, so the label palette avoids them.
+    fn shard_color_code(self) -> &'static str {
+        const PALETTE: [&str; 6] = [
+            "\x1b[96m", // bright cyan
+            "\x1b[94m", // bright blue
+            "\x1b[95m", // bright magenta
+            "\x1b[93m", // bright yellow
+            "\x1b[36m", // cyan
+            "\x1b[35m", // magenta
+        ];
+        PALETTE[self.shard_id % PALETTE.len()]
+    }
+
+    /// Colored `▎shard N` tag, or empty when the run is single-shard (nothing to disambiguate).
+    fn shard_tag(self) -> String {
+        if self.shard_count <= 1 {
+            return String::new();
+        }
+        if self.color {
+            format!(
+                "{}▎shard {}\x1b[0m ",
+                self.shard_color_code(),
+                self.shard_id
+            )
+        } else {
+            format!("[shard {}] ", self.shard_id)
+        }
+    }
+
+    fn stream_witness(self, function: &str, entry: &str, wall_nanos: u128, passed: bool) {
+        if !self.stream {
+            return;
+        }
+        let ms = wall_nanos as f64 / 1.0e6;
+        let ts = floor_ts();
+        let tag = self.shard_tag();
+        if self.color {
+            let glyph = if passed {
+                "\x1b[32m✓\x1b[0m"
+            } else {
+                "\x1b[31m✗\x1b[0m"
+            };
+            eprintln!(
+                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry})\x1b[0m {ms:.1}ms"
+            );
+        } else {
+            let glyph = if passed { "PASS" } else { "FAIL" };
+            eprintln!("{ts} {tag}{glyph} {function} ({entry}) {ms:.1}ms");
+        }
+    }
+}
+
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
@@ -7551,6 +7773,7 @@ fn run_discovery_rows(
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
+    style: ShardStyle,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
         total: rows.len(),
@@ -7603,7 +7826,7 @@ fn run_discovery_rows(
     } else {
         HashSet::new()
     };
-    if !entry_fast_skip.is_empty() {
+    if !entry_fast_skip.is_empty() && floor_verbose() {
         eprintln!(
             "run_discovery_corpus: skip-before-resolve fast path for {} entr(y/ies) (import-closure unaffected, no declaration edits, no data-item edits in closure, no host-scaffold)",
             entry_fast_skip.len()
@@ -7627,10 +7850,12 @@ fn run_discovery_rows(
                 ctx = None;
             }
             summary.skipped += 1;
-            eprintln!(
-                "SKIP [assumed-green node-frontier] {} ({})",
-                row.function, row.entry
-            );
+            if floor_verbose() {
+                eprintln!(
+                    "SKIP [assumed-green node-frontier] {} ({})",
+                    row.function, row.entry
+                );
+            }
             continue;
         }
         if current_entry.as_deref() != Some(row.entry.as_str()) {
@@ -7643,10 +7868,12 @@ fn run_discovery_rows(
                 changed_paths,
                 diff_edits,
             )? {
-                eprintln!(
-                    "SKIP-RESOLVE [unaffected import-closure] {} (cold entry resolve elided)",
-                    row.entry
-                );
+                if floor_verbose() {
+                    eprintln!(
+                        "SKIP-RESOLVE [unaffected import-closure] {} (cold entry resolve elided)",
+                        row.entry
+                    );
+                }
                 collect_import_closure_module_names_from_facts(
                     &row.entry,
                     &index.module_graph_facts,
@@ -7722,10 +7949,12 @@ fn run_discovery_rows(
             match selection {
                 NodeFrontierSelectionMode::Applied => {
                     summary.skipped += 1;
-                    eprintln!(
-                        "SKIP [assumed-green node-frontier] {} ({})",
-                        row.function, row.entry
-                    );
+                    if floor_verbose() {
+                        eprintln!(
+                            "SKIP [assumed-green node-frontier] {} ({})",
+                            row.function, row.entry
+                        );
+                    }
                     continue;
                 }
                 NodeFrontierSelectionMode::PredictOnly => {
@@ -7733,10 +7962,12 @@ fn run_discovery_rows(
                     summary
                         .predicted_unaffected
                         .push((row.entry.clone(), row.function.clone()));
-                    eprintln!(
-                        "PREDICT [unaffected node-frontier] {} ({})",
-                        row.function, row.entry
-                    );
+                    if floor_verbose() {
+                        eprintln!(
+                            "PREDICT [unaffected node-frontier] {} ({})",
+                            row.function, row.entry
+                        );
+                    }
                 }
                 // would_skip is only computed when selection is enabled.
                 NodeFrontierSelectionMode::Off => {}
@@ -7775,13 +8006,20 @@ fn run_discovery_rows(
             &format!("{}::{}", row.entry, row.function),
         );
         let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
-        summary.total_measured_nanos += receipt.wall_nanos;
+        let wall_nanos = receipt.wall_nanos;
+        summary.total_measured_nanos += wall_nanos;
         summary.performance_receipts.push(receipt);
         summary.witness_outcomes.push(DiscoveryWitnessOutcome {
             entry: row.entry.clone(),
             function: row.function.clone(),
             outcome: outcome.clone(),
         });
+        style.stream_witness(
+            &row.function,
+            &row.entry,
+            wall_nanos,
+            matches!(outcome, ClaimOutcome::Pass),
+        );
         if selection == NodeFrontierSelectionMode::PredictOnly
             && would_skip
             && !matches!(outcome, ClaimOutcome::Pass)
