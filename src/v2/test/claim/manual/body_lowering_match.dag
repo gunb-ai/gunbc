@@ -41,6 +41,8 @@ import v2.std.node {
   well_formed
 }
 
+data body_lowering_match_trivial_body_source: String = "module m\n\nfn f(a: Int) -> Int {\n  a\n}\n"
+
 data body_lowering_match_ident_arms_source: String = "module m\n\nfn f(a: Int) -> Int {\n  match a {\n    a => a\n  }\n}\n"
 
 data body_lowering_match_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => false,\n    false => true\n  }\n}\n"
@@ -58,6 +60,28 @@ fn body_lowering_tree_has_branded_atom(root: Node) -> Bool {
           body_lowering_tree_has_branded_atom(root: e.target)
         }
       })
+  }
+}
+
+fn body_lowering_match_trivial_body_normalize_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_trivial_body_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+fn body_lowering_match_ident_arms_normalize_accepts_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_ident_arms_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
   }
 }
 
