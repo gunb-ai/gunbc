@@ -3,11 +3,14 @@ module v2.test.manual.body_lowering_match
 import v2.compiler.body_lowering_fold {
   body_lower_match_arms_optional,
   body_lower_match_scrutinee_optional,
+  body_lower_match_spine_left,
   body_lower_operand_ref_optional,
+  body_lower_pattern_atom_optional,
   body_lower_try_match_from_captured,
   body_lower_unwrap_captured,
   body_lower_wire_match_arm_capture
 }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
@@ -272,6 +275,73 @@ fn body_lowering_match_first_arm_subtree_witness() -> Bool {
                 emitted: ^dag_surface_match_arm
               ) {
                 ParseSubtreeFound { captured: _ } => true
+                ParseSubtreeAbsent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_match_first_arm_spine_pattern_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: captured } =>
+              match parse_subtree_find_production_captured(
+                root: captured,
+                emitted: ^dag_surface_match_arm
+              ) {
+                ParseSubtreeFound { captured: arm } =>
+                  match body_lower_unwrap_captured(shell: arm) {
+                    Present { value: inner } =>
+                      match body_lower_match_spine_left(spine: inner) {
+                        Present { value: left } =>
+                          match body_lower_pattern_atom_optional(pattern_capture: left) {
+                            Present { value: _ } => true
+                            Absent => false
+                          }
+                        Absent => false
+                      }
+                    Absent => false
+                  }
+                ParseSubtreeAbsent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_match_first_arm_inner_pattern_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: captured } =>
+              match parse_subtree_find_production_captured(
+                root: captured,
+                emitted: ^dag_surface_match_arm
+              ) {
+                ParseSubtreeFound { captured: arm } =>
+                  match body_lower_unwrap_captured(shell: arm) {
+                    Present { value: inner } =>
+                      match parse_subtree_find_production_captured(
+                        root: inner,
+                        emitted: ^dag_surface_pattern
+                      ) {
+                        ParseSubtreeFound { captured: _ } => true
+                        ParseSubtreeAbsent => false
+                      }
+                    Absent => false
+                  }
                 ParseSubtreeAbsent => false
               }
             Absent => false
