@@ -167,6 +167,40 @@ test fn classical_not_int_match_arrow_real_infer_holds() -> Bool {
   }
 }
 
+fn classical_not_int_match_non_octet_arm_fixture() -> Node {
+  dag_arrow_with_body_node(
+    domain: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Named { name: ^dag_binding_param_x },
+          target: dag_type_atom_node(identity: ^dag_binding_type_int)
+        }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_match_body_from_arms(
+      scrutinee: dag_type_atom_node(identity: ^dag_binding_param_x),
+      true_arm: dag_match_arm_node(
+        pattern_lit: ^dag_token_kw_true,
+        body_lit: ^dag_pick_lit_one
+      ),
+      false_arm: dag_match_arm_node(
+        pattern_lit: ^dag_token_kw_false,
+        body_lit: ^dag_token_ident
+      )
+    )
+  )
+}
+
+test fn classical_not_int_match_non_octet_arm_rejects_holds() -> Bool {
+  match infer(tree: classical_not_int_match_non_octet_arm_fixture()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 test fn complement_arrow_real_infer_holds() -> Bool {
   match infer(tree: dag_complement_arrow_with_body_fixture) {
     Accepted { value: _, diagnostics: _ } => true
