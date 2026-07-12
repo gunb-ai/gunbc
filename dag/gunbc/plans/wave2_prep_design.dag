@@ -70,6 +70,8 @@ fn section_3() -> List<MarkdownBlock> {
     h2(text: "3. FLAG E — row-fold design (dissolve `body_lowering_fold.dag`)"),
     h3(text: "3.1 What landed vs what remains"),
     p(text: "**LANDED (#6443) — FLAG E one table for sugar:** `SugarKey = SurfaceAtomKey | ProductionIdentityKey` (`v2.std.compilers.sugar`); `type_alias_rhs` migrated as proof row; normalize pipeline child-fold → `body_lower_finish` → `normalize_sugar_finish` (`03_normalize.dag`)."),
+    p(text: "**LANDED (ingest reparse) — token-spine forward row selection:** `grammar_relation_row_forward_selection` in `v2.compiler.ingest` (`03_ingest.dag:202`) via `ForwardRowSelection` (`ForwardRowNone` / `ForwardRowOne` / `ForwardRowMany`) → `Outcome<Node>`; live round-trip consumers. Keys on token-spine frontier — **not** the body-producer seam; do not duplicate."),
+    p(text: "**LANDED (emit) — backward row selection:** `grammar_relation_row_reverse_parse_selection` in `v2.std.grammar`, consumed by `06_translate.dag`."),
     p(text: "**INTERIM — hand-walker (`v2.compiler.body_lowering_fold`, ~1.5k LOC):** production-identity dispatch in `body_lower_production_emitted` / `body_lower_finish`. Dissolution contract on carrier: **do NOT port arms into `SugarRule` rows** — dissolve into **GrammarRelationRow forward fold** (general-body-producer-design §3)."),
     p(text: "**Two layers (clarifies `body_lowering_fold_note` ambiguity):**"),
     TableBlock {
@@ -83,13 +85,14 @@ fn section_3() -> List<MarkdownBlock> {
     p(text: "The hand-walker dissolves into the **body-producer layer**, not into `SugarRule` extensions."),
     h3(text: "3.2 Target architecture"),
     ol(items: [
-      li(text: "**Select** exactly one `GrammarRelationRow` by emitted production identity (mirror `grammar_relation_row_reverse_parse_selection`: `None` / `One` / `Many` → typed refusals)."),
+      li(text: "**Select** exactly one `GrammarRelationRow` by **production emitted identity** on the parse-tree node (mirror the exactly-one discipline of `grammar_relation_row_reverse_parse_selection` and ingest's `ForwardRowSelection`, but keyed on `^grammar_production_identity_node_projection` — not token spine)."),
       li(text: "**Apply** row forward slot map: captured/bound slots → core `NodeKind` + edges."),
       li(text: "**Delegate** fold-family **calls** → `fold_lowering.dag` (`fold_call_to_loop`); pass-through expr wrappers unwrap; metadata wrappers preserve shell."),
     ]),
     p(text: "**Placement:** normalize, after child-fold, before sugar — same `body_lower_finish` seam; implementation replaces call target with forward row fold."),
-    h3(text: "3.3 Forward selection machinery (Slice 0)"),
-    p(text: "`GrammarInterpretationDirection` + `ObligationForwardDeterminism` exist (`grammar.dag`) with zero consumers. Slice 0 adds `grammar_relation_row_forward_selection` → `ForwardSelectionVerdict` (`None` / `One` / `Many` — typed selection verdict), consuming existing obligation carriers — no re-minted direction vocabulary."),
+    h3(text: "3.3 Production-identity forward fold at normalize (Slice 0 — REMAINS)"),
+    p(text: "Slice 0 does **not** add `grammar_relation_row_forward_selection` — that name is **already landed** in `03_ingest.dag` for reparse (token-spine keyed). `ObligationForwardDeterminism` / `ObligationSlotBijection` in `grammar.dag` remain unconsumed at the normalize/body-producer seam."),
+    p(text: "**Slice 0 remains:** production-identity-keyed forward row select + slot-map apply at `body_lower_finish`, reusing the `ForwardRowNone` / `ForwardRowOne` / `ForwardRowMany` exactly-one pattern (or a shared helper extracted from ingest/backward — never a third selection authority). Wire `ObligationForwardDeterminism` + `ObligationSlotBijection` as the body-producer's first consumer."),
     h3(text: "3.4 Row inventory (hand-walker arms → rows)"),
     TableBlock {
       header: row(cells: [cell(text: "slice"), cell(text: "productions"), cell(text: "core target"), cell(text: "dissolves")]),
@@ -110,7 +113,7 @@ fn section_3() -> List<MarkdownBlock> {
       header: row(cells: [cell(text: "slice"), cell(text: "PR scope"), cell(text: "accept")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "0"), cell(text: "forward selection in grammar.dag + witness"), cell(text: "None/Many refuse; One selects; key reorder invariant")]),
+        row(cells: [cell(text: "0"), cell(text: "production-identity forward select + apply at normalize (`03_normalize` / body-producer seam); reuse ingest ForwardRowSelection discipline — NOT duplicate `03_ingest.dag` token-spine selection"), cell(text: "None/Many refuse; One selects + slot map applies; obligation carriers consumed; RED on duplicate-row / missing-row")]),
         row(cells: [cell(text: "1"), cell(text: "fn_decl/fn_literal rows + normalize hook"), cell(text: "MVP produce_* parity; FLAG D conform param refs; RED wrapper-retained")]),
         row(cells: [cell(text: "2"), cell(text: "let/if/match rows"), cell(text: "branch/match witnesses; RED stmt-seq refuses")]),
         row(cells: [cell(text: "3"), cell(text: "call/infix/postfix rows"), cell(text: "binop + call witnesses; RED field access refuses")]),
