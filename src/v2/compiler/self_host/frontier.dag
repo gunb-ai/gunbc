@@ -1,5 +1,10 @@
 module v2.compiler.self_host.frontier
 
+import v2.compiler.self_host.frontier_band_a_emit_readiness {
+  BandAEmitReadinessRow,
+  compiler_frontier_band_a_emit_readiness_core_holds,
+  compiler_frontier_band_a_emit_readiness_roster
+}
 import v2.compiler.self_host.frontier_probe_types {
   EmitSurfaceGap,
   FrontierBlockerClass,
@@ -613,6 +618,64 @@ fn compiler_frontier_sweep_order_complete_holds() -> Bool {
   length(xs: compiler_frontier_sweep_order) == compiler_frontier_module_count_expected
 }
 
+fn band_a_emit_readiness_roster_row_trigger_matches(
+  module_path: String,
+  trigger: Symbol,
+  row: CompilerModuleFrontierRow
+) -> Bool {
+  if module_path == row.module_path {
+    match row.disposition {
+      SeedRetained { reason: _, migration_trigger: expected } => trigger == expected
+      SelfEmitted => false
+    }
+  } else {
+    false
+  }
+}
+
+fn band_a_emit_readiness_other_gate_matches_frontier_row(row: BandAEmitReadinessRow) -> Bool {
+  match row.gate {
+    FlippableNow => true
+    BodyProducerGated => false
+    OtherGate { migration_trigger: trigger } =>
+      band_a_emit_readiness_roster_row_trigger_matches(
+        module_path: row.module_path,
+        trigger: trigger,
+        row: compiler_frontier_row_use_site_verdict
+      )
+        || band_a_emit_readiness_roster_row_trigger_matches(
+          module_path: row.module_path,
+          trigger: trigger,
+          row: compiler_frontier_row_07_target_carriers
+        )
+        || band_a_emit_readiness_roster_row_trigger_matches(
+          module_path: row.module_path,
+          trigger: trigger,
+          row: compiler_frontier_row_materialization_carriers
+        )
+        || band_a_emit_readiness_roster_row_trigger_matches(
+          module_path: row.module_path,
+          trigger: trigger,
+          row: compiler_frontier_row_self_host
+        )
+  }
+}
+
+fn compiler_frontier_band_a_other_gate_triggers_match_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_band_a_emit_readiness_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && band_a_emit_readiness_other_gate_matches_frontier_row(row: row)
+    }
+  )
+}
+
+fn compiler_frontier_band_a_emit_readiness_holds() -> Bool {
+  compiler_frontier_band_a_emit_readiness_core_holds()
+    && compiler_frontier_band_a_other_gate_triggers_match_holds()
+}
+
 fn compiler_frontier_census_holds() -> Bool {
   compiler_frontier_roster_complete_holds()
     && compiler_frontier_roster_paths_unique_holds()
@@ -625,6 +688,7 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_roster_all_classified_holds()
     && compiler_frontier_roster_located_reason_not_class_projection_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
+    && compiler_frontier_band_a_emit_readiness_holds()
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
