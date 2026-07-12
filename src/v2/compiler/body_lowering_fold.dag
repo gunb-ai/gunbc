@@ -1453,8 +1453,21 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_pattern_first_atom_optional(node: Node) -> Optional<Node> {
+  match body_lower_pattern_leaf_atom_optional(node: node) {
+    Present { value: atom } => Present { value: atom }
+    Absent =>
+      fold(node.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lower_pattern_first_atom_optional(node: e.target)
+        }
+      })
+  }
+}
+
 fn body_lower_pattern_atom_optional(pattern_capture: Node) -> Optional<Node> {
-  body_lower_pattern_leaf_atom_optional(node: pattern_capture)
+  body_lower_pattern_first_atom_optional(node: pattern_capture)
 }
 
 fn body_lower_match_arm_navigation_reject(arm_capture: Node) -> Outcome<Node> {
