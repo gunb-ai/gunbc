@@ -20,9 +20,13 @@
 //!   `memory.events` high/oom_kill — cumulative counters; a positive delta is a hard event
 //!
 //! No-swap regimes degrade honestly: an absent `memory.swap.current` makes the swap check
-//! inert (`None`, never a fabricated zero) while current + PSI carry the decision; no
-//! readable cgroup at all falls back to `/proc/meminfo` MemTotal for the budget and leaves
-//! the creep checks inert — the window arithmetic (and the kill line) still governs.
+//! inert (`None`, never a fabricated zero) while current + PSI carry the decision. The
+//! budget chain is env override > tightest cgroup `memory.high` > tightest `memory.max` >
+//! `/proc/meminfo` MemAvailable > MemTotal — on uncapped hosts MemAvailable precedes
+//! MemTotal because the kernel's availability estimate excludes the co-tenant baseline
+//! (run 29180195694: a MemTotal budget let demand reach physical RAM and starve the
+//! runner agent). No readable cgroup at all leaves the creep checks inert — the window
+//! arithmetic, the pacing/headroom gates, and the kill line still govern.
 //!
 //! Fail-closed discipline (DESIGN §5): every graceful hold and hard back-off is a typed,
 //! counted, logged event surfaced in the end-of-run receipt — degradation is loud, bounded,
@@ -50,6 +54,14 @@ const PSI_HOLD_AVG10: f64 = 10.0;
 /// Admission holds when swap usage grew at least this much since the previous sample —
 /// growth (not absolute level) is the "actively creeping above physical" signal.
 const SWAP_GROWTH_HOLD_BYTES: u64 = 8 * 1024 * 1024;
+/// Admissions stop once `memory.current` exceeds this fraction of the budget — the
+/// maturation reserve (TCP's ssthresh): admitted demand matures MINUTES after admission
+/// at ~7× its digest-time footprint (runs 29181858455/29183064852/29183727188 — a share
+/// measured at index-build time read 0.48GiB where the mature share was ~3.5GiB), so
+/// the other half of the pipe is reserved for in-flight growth the signals cannot see
+/// yet. Dimensionless policy, like the high-water fraction — no workload constant.
+const ADMIT_CEILING_NUM: u64 = 1;
+const ADMIT_CEILING_DEN: u64 = 2;
 /// Poll cadence while holding for admission.
 const HOLD_POLL: std::time::Duration = std::time::Duration::from_millis(150);
 
@@ -92,6 +104,10 @@ pub enum HoldReason {
         share: u64,
         high_water: u64,
     },
+    /// `memory.current` is past the admission ceiling (half the budget): the maturation
+    /// reserve is spoken for. Existing workers run on; new demand waits until in-flight
+    /// demand finishes maturing (or drains).
+    AdmissionCeiling { current: u64, ceiling: u64 },
 }
 
 impl HoldReason {
@@ -120,6 +136,9 @@ impl HoldReason {
             } => format!(
                 "headroom: current {current} + measured worker share {share} > high-water {high_water}"
             ),
+            HoldReason::AdmissionCeiling { current, ceiling } => format!(
+                "admission ceiling: current {current} > {ceiling} (half the budget is the maturation reserve)"
+            ),
         }
     }
     fn is_memory_creep(&self) -> bool {
@@ -128,6 +147,7 @@ impl HoldReason {
             HoldReason::WindowFull { .. }
                 | HoldReason::AwaitFirstCost { .. }
                 | HoldReason::InsufficientHeadroom { .. }
+                | HoldReason::AdmissionCeiling { .. }
         )
     }
 }
@@ -173,11 +193,14 @@ struct GovCore {
     measured_worker_share: Option<u64>,
     /// Episode edge for headroom holds, symmetric with `holding`.
     headroom_episode: bool,
+    /// Episode edge for admission-ceiling holds, symmetric with `holding`.
+    ceiling_episode: bool,
     admissions: u64,
     forced_serial_admissions: u64,
     creep_backoffs: u64,
     pacing_holds: u64,
     headroom_holds: u64,
+    ceiling_holds: u64,
     hard_backoffs: u64,
     budget_exceeded_backoffs: u64,
     width_growths: u64,
@@ -200,11 +223,13 @@ impl GovCore {
             pool_baseline_current: None,
             measured_worker_share: None,
             headroom_episode: false,
+            ceiling_episode: false,
             admissions: 0,
             forced_serial_admissions: 0,
             creep_backoffs: 0,
             pacing_holds: 0,
             headroom_holds: 0,
+            ceiling_holds: 0,
             hard_backoffs: 0,
             budget_exceeded_backoffs: 0,
             width_growths: 0,
@@ -431,6 +456,20 @@ fn decide_admission(
         }
     }
     core.headroom_episode = false;
+    if let (Some(current), Some(budget)) = (sig.current_bytes, limits.budget_bytes) {
+        let ceiling = budget / ADMIT_CEILING_DEN * ADMIT_CEILING_NUM;
+        if current > ceiling {
+            if !core.ceiling_episode {
+                core.ceiling_episode = true;
+                core.ceiling_holds += 1;
+            }
+            return (
+                AdmitDecision::Hold(HoldReason::AdmissionCeiling { current, ceiling }),
+                hard,
+            );
+        }
+    }
+    core.ceiling_episode = false;
     core.active += 1;
     core.undigested += 1;
     core.admissions += 1;
@@ -721,7 +760,8 @@ impl MemoryGovernor {
         format!(
             "[governor] receipt: budget={} source={} max_width_reached={} admissions={} \
              width_growths={} creep_backoffs={} pacing_holds={} headroom_holds={} \
-             hard_backoffs={} budget_exceeded={} forced_serial={} peak_current={}",
+             ceiling_holds={} hard_backoffs={} budget_exceeded={} forced_serial={} \
+             peak_current={}",
             self.limits
                 .budget_bytes
                 .map(|b| b.to_string())
@@ -733,6 +773,7 @@ impl MemoryGovernor {
             core.creep_backoffs,
             core.pacing_holds,
             core.headroom_holds,
+            core.ceiling_holds,
             core.hard_backoffs,
             core.budget_exceeded_backoffs,
             core.forced_serial_admissions,
@@ -1094,6 +1135,39 @@ mod tests {
         // Demand settles to 450k: 450k + 300k fits again — admission resumes.
         let (d5, _) = decide_admission(&mut core, &at(450_000), &lim);
         assert!(matches!(d5, AdmitDecision::Admit { .. }));
+    }
+
+    #[test]
+    fn admission_ceiling_reserves_half_the_budget_for_maturation() {
+        let lim = limits(1_000_000, 8); // ceiling 500_000, high-water 800_000
+        let mut core = GovCore::new();
+        core.target_width = 8;
+        core.active = 3;
+        let at = |current: u64| MemorySignals {
+            current_bytes: Some(current),
+            ..calm()
+        };
+        // 510k is calm by every reactive measure (below high-water, no PSI, no swap),
+        // but past the ceiling: the maturation reserve is spoken for — hold.
+        let (d, _) = decide_admission(&mut core, &at(510_000), &lim);
+        assert_eq!(
+            d,
+            AdmitDecision::Hold(HoldReason::AdmissionCeiling {
+                current: 510_000,
+                ceiling: 500_000,
+            })
+        );
+        let (d2, _) = decide_admission(&mut core, &at(510_000), &lim);
+        assert!(matches!(d2, AdmitDecision::Hold(_)));
+        assert_eq!(core.ceiling_holds, 1, "one episode, not one per poll");
+        assert_eq!(core.creep_backoffs, 0, "the ceiling is not a creep event");
+        assert_eq!(
+            core.target_width, 8,
+            "the ceiling does not shrink the window"
+        );
+        // Demand matures and drains below the line: admission resumes.
+        let (d3, _) = decide_admission(&mut core, &at(490_000), &lim);
+        assert!(matches!(d3, AdmitDecision::Admit { .. }));
     }
 
     #[test]
