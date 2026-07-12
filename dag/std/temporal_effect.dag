@@ -1,6 +1,6 @@
 module std.temporal_effect
 
-import std.types { String, NonEmptyStr, Int, Bool, ContentHash, Timestamp, List }
+import std.types { String, NonEmptyStr, Int, Bool, ContentHash, Timestamp, List, Milliseconds }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -268,3 +268,89 @@ fn prior_receipt_for_step(
     },
   )
 }
+
+type EffectStallBudget {
+  step_id: NonEmptyStr
+  limit_ms: Milliseconds
+  elapsed_ms: Milliseconds
+}
+
+type StallBudgetVerdict
+  = StallWithinBudget
+  | StallBudgetExceeded {
+      step_id: NonEmptyStr
+      elapsed_ms: Milliseconds
+      limit_ms: Milliseconds
+    }
+
+fn stall_budget_verdict(budget: EffectStallBudget) -> StallBudgetVerdict {
+  if budget.elapsed_ms <= budget.limit_ms {
+    StallWithinBudget
+  } else {
+    StallBudgetExceeded {
+      step_id: budget.step_id,
+      elapsed_ms: budget.elapsed_ms,
+      limit_ms: budget.limit_ms,
+    }
+  }
+}
+
+fn next_step_plan_on_stall_budget(
+  pending_plan: NextStepPlan,
+  budget: EffectStallBudget,
+) -> NextStepPlan {
+  match stall_budget_verdict(budget: budget) {
+    StallWithinBudget => pending_plan
+    StallBudgetExceeded { step_id: sid, elapsed_ms: e, limit_ms: l } =>
+      PlanRefuse {
+        step_id: sid,
+        reason: concat(
+          concat(
+            concat("stall budget exceeded elapsed_ms=", to_string(e)),
+            concat(" limit_ms=", to_string(l))
+          ),
+          concat(" step=", sid)
+        ),
+      }
+  }
+}
+
+type EffectStallCause
+  = StallCauseWithinBudget
+  | StallCauseInstallerProgressSilent { elapsed_ms: Milliseconds }
+  | StallCauseRouterLeaseAbsent { elapsed_ms: Milliseconds }
+
+type StallCauseFoldAcc {
+  dominant: EffectStallCause
+  priority: Int
+}
+
+fn stall_cause_priority(cause: EffectStallCause) -> Int {
+  match cause {
+    StallCauseWithinBudget => 0
+    StallCauseInstallerProgressSilent { elapsed_ms: _ } => 1
+    StallCauseRouterLeaseAbsent { elapsed_ms: _ } => 2
+  }
+}
+
+fn cause_fold_dominant_stall(causes: List<EffectStallCause>) -> EffectStallCause {
+  fold(
+    causes,
+    init: StallCauseFoldAcc {
+      dominant: StallCauseWithinBudget,
+      priority: stall_cause_priority(cause: StallCauseWithinBudget),
+    },
+    f: (acc, c) => {
+      let p = stall_cause_priority(cause: c)
+      if p > acc.priority {
+        StallCauseFoldAcc { dominant: c, priority: p }
+      } else {
+        acc
+      }
+    },
+  ).dominant
+}
+
+data srv3_install_stall_installer_progress_limit_ms: Milliseconds = 900000
+
+data srv3_install_stall_router_lease_limit_ms: Milliseconds = 4500000

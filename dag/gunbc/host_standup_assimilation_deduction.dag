@@ -1,0 +1,122 @@
+module gunbc.host_standup_assimilation_deduction
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.disposition { Disposition, Terminal }
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.network_identity_subsumption {
+  lease_table_has_os_up_subsumption,
+  srv3_pre_install_lease_table,
+  srv3_post_install_lease_table_fixture,
+}
+
+data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = Terminal {
+  reason: "Level-triggered assimilation deduction: OsInstalled from DHCP option-12 subsumption is the sole authority that satisfies prefix:os-install-actuated and unlocks P0:host-identity-converge. KVM/login weak observations never substitute for router read-back (cause-fold priority). Level-triggered = current observation level, not edge events."
+}
+
+type OsInstallActuationLevel
+  = ActuationUnobserved
+  | ActuationPending
+  | ActuationOsInstalledFromDhcpSubsumption
+
+type AssimilationDeductionCause
+  = DeductionCauseOnlyBmcLease
+  | DeductionCauseDhcpSubsumptionOsInstalled
+  | DeductionCauseKvmWeakBooted
+
+type AssimilationCauseFoldAcc {
+  dominant: AssimilationDeductionCause
+  priority: Int
+}
+
+fn assimilation_deduction_cause_priority(cause: AssimilationDeductionCause) -> Int {
+  match cause {
+    DeductionCauseOnlyBmcLease => 0
+    DeductionCauseKvmWeakBooted => 1
+    DeductionCauseDhcpSubsumptionOsInstalled => 2
+  }
+}
+
+fn cause_fold_dominant_assimilation(
+  causes: List<AssimilationDeductionCause>,
+) -> AssimilationDeductionCause {
+  fold(
+    causes,
+    init: AssimilationCauseFoldAcc {
+      dominant: DeductionCauseOnlyBmcLease,
+      priority: assimilation_deduction_cause_priority(cause: DeductionCauseOnlyBmcLease),
+    },
+    f: (acc, c) => {
+      let p = assimilation_deduction_cause_priority(cause: c)
+      if p > acc.priority {
+        AssimilationCauseFoldAcc { dominant: c, priority: p }
+      } else {
+        acc
+      }
+    },
+  ).dominant
+}
+
+fn os_install_actuation_level_from_lease_table(
+  table: Cr1000aDhcpLeaseTable,
+  fleet_slot: HostIdentity,
+) -> OsInstallActuationLevel {
+  if lease_table_has_os_up_subsumption(table: table, fleet_slot: fleet_slot) {
+    ActuationOsInstalledFromDhcpSubsumption
+  } else {
+    ActuationPending
+  }
+}
+
+fn srv3_default_os_install_actuation_level() -> OsInstallActuationLevel {
+  os_install_actuation_level_from_lease_table(
+    table: srv3_pre_install_lease_table,
+    fleet_slot: operator_host_srv3,
+  )
+}
+
+fn srv3_post_install_os_install_actuation_level() -> OsInstallActuationLevel {
+  os_install_actuation_level_from_lease_table(
+    table: srv3_post_install_lease_table_fixture,
+    fleet_slot: operator_host_srv3,
+  )
+}
+
+fn deduce_os_install_actuated_satisfied(level: OsInstallActuationLevel) -> Bool {
+  match level {
+    ActuationOsInstalledFromDhcpSubsumption => true
+    ActuationPending => false
+    ActuationUnobserved => false
+  }
+}
+
+fn deduce_host_identity_converge_reachable(level: OsInstallActuationLevel) -> Bool {
+  deduce_os_install_actuated_satisfied(level: level)
+}
+
+fn assimilation_deduction_cause_from_level(level: OsInstallActuationLevel) -> AssimilationDeductionCause {
+  match level {
+    ActuationOsInstalledFromDhcpSubsumption => DeductionCauseDhcpSubsumptionOsInstalled
+    ActuationPending => DeductionCauseOnlyBmcLease
+    ActuationUnobserved => DeductionCauseOnlyBmcLease
+  }
+}
+
+fn assimilation_deduction_cause_dominates_kvm_weak(
+  causes: List<AssimilationDeductionCause>,
+) -> Bool {
+  match cause_fold_dominant_assimilation(causes: causes) {
+    DeductionCauseDhcpSubsumptionOsInstalled => true
+    DeductionCauseKvmWeakBooted => false
+    DeductionCauseOnlyBmcLease => false
+  }
+}
+
+fn assimilation_deduction_cause_label(cause: AssimilationDeductionCause) -> String {
+  match cause {
+    DeductionCauseOnlyBmcLease => "OnlyBmcLeasePresent"
+    DeductionCauseKvmWeakBooted => "KvmSuggestsOsBooted"
+    DeductionCauseDhcpSubsumptionOsInstalled => "OsInstalledFromDhcpSubsumption"
+  }
+}

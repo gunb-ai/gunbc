@@ -1,6 +1,6 @@
 module test.claim.temporal_effect_spine
 
-import std.types { Bool, NonEmptyStr, List, ContentHash, Timestamp }
+import std.types { Bool, NonEmptyStr, List, ContentHash, Timestamp, Milliseconds }
 import std.temporal_effect {
   EffectAttemptIntent,
   EffectStepReceipt,
@@ -35,6 +35,18 @@ import std.temporal_effect {
   NextStepApplyPlan,
   ApplyAtStep,
   DrainThenStartAtStep,
+  EffectStallBudget,
+  StallWithinBudget,
+  StallBudgetExceeded,
+  stall_budget_verdict,
+  next_step_plan_on_stall_budget,
+  EffectStallCause,
+  StallCauseWithinBudget,
+  StallCauseInstallerProgressSilent,
+  StallCauseRouterLeaseAbsent,
+  cause_fold_dominant_stall,
+  srv3_install_stall_installer_progress_limit_ms,
+  srv3_install_stall_router_lease_limit_ms,
 }
 import std.upsert_decision {
   ObservationVerdict,
@@ -443,4 +455,62 @@ test fn decision_for_held_lease_verdict_grounds_each_observation_arm() -> Bool {
       Refuse { reason: r } => string_contains(s: r, pattern: "foreign")
       _ => false
     }
+}
+
+test fn stall_budget_within_limit_preserves_apply_plan() -> Bool {
+  let budget = EffectStallBudget {
+    step_id: witness_step_serve,
+    limit_ms: srv3_install_stall_installer_progress_limit_ms,
+    elapsed_ms: 600000,
+  }
+  match stall_budget_verdict(budget: budget) {
+    StallWithinBudget => true
+    StallBudgetExceeded { step_id: _, elapsed_ms: _, limit_ms: _ } => false
+  }
+    && match next_step_plan_on_stall_budget(
+      pending_plan: PlanApply { step_id: witness_step_serve },
+      budget: budget,
+    ) {
+      PlanApply { step_id: sid } => sid == witness_step_serve
+      _ => false
+    }
+}
+
+test fn stall_budget_exceeded_refuses_not_widen() -> Bool {
+  let budget = EffectStallBudget {
+    step_id: witness_step_serve,
+    limit_ms: srv3_install_stall_installer_progress_limit_ms,
+    elapsed_ms: srv3_install_stall_router_lease_limit_ms,
+  }
+  match stall_budget_verdict(budget: budget) {
+    StallBudgetExceeded { step_id: sid, elapsed_ms: _, limit_ms: _ } => sid == witness_step_serve
+    StallWithinBudget => false
+  }
+    && match next_step_plan_on_stall_budget(
+      pending_plan: PlanApply { step_id: witness_step_serve },
+      budget: budget,
+    ) {
+      PlanRefuse { step_id: _, reason: r } => string_contains(s: r, pattern: "stall budget exceeded")
+      PlanApply { step_id: _ } => false
+      _ => false
+    }
+}
+
+test fn stall_cause_fold_router_absent_dominates_silent_installer() -> Bool {
+  match cause_fold_dominant_stall(causes: [
+    StallCauseInstallerProgressSilent { elapsed_ms: 1000000 as Milliseconds },
+    StallCauseRouterLeaseAbsent { elapsed_ms: 4600000 as Milliseconds },
+  ]) {
+    StallCauseRouterLeaseAbsent { elapsed_ms: _ } => true
+    _ => false
+  }
+    && match cause_fold_dominant_stall(causes: [StallCauseWithinBudget]) {
+      StallCauseWithinBudget => true
+      _ => false
+    }
+}
+
+test fn srv3_stall_budget_limits_match_runbook() -> Bool {
+  srv3_install_stall_installer_progress_limit_ms == 900000
+    && srv3_install_stall_router_lease_limit_ms == 4500000
 }

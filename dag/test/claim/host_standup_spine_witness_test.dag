@@ -6,6 +6,7 @@ import gunbc.host_standup {
   host_standup_spine,
   host_standup_spine_length,
   host_standup_gap_count,
+  host_standup_gap_count_at_os_install_level,
   host_standup_gap_ledger,
   srv3_host_standup_target,
   srv3_install_mechanism_is_nbd_proxy_no_fallback,
@@ -58,6 +59,10 @@ import gunbc.bmc_onboarding {
   RotatedCredentialActive,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.host_standup_assimilation_deduction {
+  ActuationOsInstalledFromDhcpSubsumption,
+  srv3_post_install_os_install_actuation_level,
+}
 import gunbc.ci_fleet { fleet_intent_offers, srv3_offer }
 import gunbc.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound }
 import product.compute_fabric { witness_fabric_binds_need_to_opportunity }
@@ -209,6 +214,13 @@ test fn assimilation_gate_still_refuses_p0_p2_p4_gaps_when_p3_landed() -> Bool {
         string_contains(s: r, pattern: "P5:gap-refused:")
       AssimilationComplete => false
     }
+}
+
+test fn post_install_dhcp_subsumption_reduces_gap_count_by_one() -> Bool {
+  srv3_post_install_os_install_actuation_level() == ActuationOsInstalledFromDhcpSubsumption
+    && host_standup_gap_count_at_os_install_level(
+      level: ActuationOsInstalledFromDhcpSubsumption,
+    ) == host_standup_gap_count() - 1
 }
 
 test fn declared_gap_steps_carry_interim_realization_authority() -> Bool {

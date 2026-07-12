@@ -1,0 +1,116 @@
+module test.claim.host_standup_assimilation_deduction
+
+import std.types { Bool, List }
+import gunbc.host_standup_assimilation_deduction {
+  ActuationPending,
+  ActuationOsInstalledFromDhcpSubsumption,
+  DeductionCauseOnlyBmcLease,
+  DeductionCauseKvmWeakBooted,
+  DeductionCauseDhcpSubsumptionOsInstalled,
+  srv3_default_os_install_actuation_level,
+  srv3_post_install_os_install_actuation_level,
+  deduce_os_install_actuated_satisfied,
+  deduce_host_identity_converge_reachable,
+  assimilation_deduction_cause_from_level,
+  assimilation_deduction_cause_dominates_kvm_weak,
+  cause_fold_dominant_assimilation,
+  assimilation_deduction_cause_label,
+}
+import gunbc.host_standup {
+  host_standup_gap_count,
+  host_standup_gap_count_at_os_install_level,
+  host_standup_step_is_effective_gap_at_os_install_level,
+  host_standup_spine,
+  Prefix,
+  OsInstallActuated,
+  Assimilation,
+  HostIdentityConverge,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn pre_install_level_is_pending_not_actuated() -> Bool {
+  srv3_default_os_install_actuation_level() == ActuationPending
+    && !deduce_os_install_actuated_satisfied(level: ActuationPending)
+    && !deduce_host_identity_converge_reachable(level: ActuationPending)
+}
+
+test fn post_install_dhcp_subsumption_deduces_actuated_and_converge() -> Bool {
+  srv3_post_install_os_install_actuation_level() == ActuationOsInstalledFromDhcpSubsumption
+    && deduce_os_install_actuated_satisfied(level: ActuationOsInstalledFromDhcpSubsumption)
+    && deduce_host_identity_converge_reachable(level: ActuationOsInstalledFromDhcpSubsumption)
+}
+
+test fn dhcp_subsumption_cause_dominates_kvm_weak() -> Bool {
+  assimilation_deduction_cause_dominates_kvm_weak(causes: [
+    DeductionCauseKvmWeakBooted,
+    DeductionCauseDhcpSubsumptionOsInstalled,
+  ])
+    && !assimilation_deduction_cause_dominates_kvm_weak(causes: [
+      DeductionCauseKvmWeakBooted,
+      DeductionCauseOnlyBmcLease,
+    ])
+}
+
+test fn cause_fold_picks_highest_priority() -> Bool {
+  match cause_fold_dominant_assimilation(causes: [
+    DeductionCauseOnlyBmcLease,
+    DeductionCauseKvmWeakBooted,
+    DeductionCauseDhcpSubsumptionOsInstalled,
+  ]) {
+    DeductionCauseDhcpSubsumptionOsInstalled => true
+    _ => false
+  }
+}
+
+test fn pre_install_gap_count_stays_four() -> Bool {
+  host_standup_gap_count() == 4
+    && host_standup_gap_count_at_os_install_level(level: ActuationPending) == 4
+}
+
+test fn post_install_subsumption_clears_os_install_actuated_gap() -> Bool {
+  host_standup_gap_count_at_os_install_level(
+    level: ActuationOsInstalledFromDhcpSubsumption,
+  ) == 3
+    && fold(
+      host_standup_spine,
+      init: false,
+      f: (acc, s) =>
+        acc || (match s.phase {
+          Prefix { phase: OsInstallActuated } =>
+            !host_standup_step_is_effective_gap_at_os_install_level(
+              step: s,
+              level: ActuationOsInstalledFromDhcpSubsumption,
+            )
+          _ => false
+        })
+    )
+}
+
+test fn assimilation_cause_labels_are_stable() -> Bool {
+  assimilation_deduction_cause_label(
+    cause: assimilation_deduction_cause_from_level(level: ActuationPending),
+  ) == "OnlyBmcLeasePresent"
+    && assimilation_deduction_cause_label(
+      cause: assimilation_deduction_cause_from_level(
+        level: ActuationOsInstalledFromDhcpSubsumption,
+      ),
+    ) == "OsInstalledFromDhcpSubsumption"
+}
+
+test fn host_identity_converge_step_stays_modeled_not_gap() -> Bool {
+  fold(
+    host_standup_spine,
+    init: false,
+    f: (acc, s) =>
+      acc || (match s.phase {
+        Assimilation { phase: HostIdentityConverge } =>
+          !host_standup_step_is_effective_gap_at_os_install_level(
+            step: s,
+            level: ActuationOsInstalledFromDhcpSubsumption,
+          )
+        _ => false
+      })
+  )
+}

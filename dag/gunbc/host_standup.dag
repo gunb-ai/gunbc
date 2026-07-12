@@ -23,6 +23,11 @@ import gunbc.os_install_mechanism {
 import gunbc.host_converge { fleet_converge_policy, ConvergePolicy }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import product.placement_supply { HostIdentity }
+import gunbc.host_standup_assimilation_deduction {
+  OsInstallActuationLevel,
+  srv3_default_os_install_actuation_level,
+  deduce_os_install_actuated_satisfied,
+}
 
 type HostStandupPrefixPhase
   = BmcCredentialConverge
@@ -390,11 +395,38 @@ fn host_standup_step_is_gap(step: HostStandupStep) -> Bool {
 }
 
 fn host_standup_step_is_effective_gap(step: HostStandupStep) -> Bool {
+  host_standup_step_is_effective_gap_at_os_install_level(
+    step: step,
+    level: srv3_default_os_install_actuation_level(),
+  )
+}
+
+fn host_standup_step_is_effective_gap_at_os_install_level(
+  step: HostStandupStep,
+  level: OsInstallActuationLevel,
+) -> Bool {
   match step.phase {
+    Prefix { phase: OsInstallActuated } =>
+      !deduce_os_install_actuated_satisfied(level: level)
+        && host_standup_step_is_gap(step: step)
+    Prefix { phase: _ } => host_standup_step_is_gap(step: step)
     Assimilation { phase: GreenPlaceReadiness } =>
       !host_standup_p3_gunbc_pinned_tree_landed || host_standup_step_is_gap(step: step)
-    _ => host_standup_step_is_gap(step: step)
+    Assimilation { phase: _ } => host_standup_step_is_gap(step: step)
   }
+}
+
+fn host_standup_gap_count_at_os_install_level(level: OsInstallActuationLevel) -> Int {
+  fold(
+    host_standup_spine,
+    init: 0,
+    f: (acc, s) =>
+      if host_standup_step_is_effective_gap_at_os_install_level(step: s, level: level) {
+        acc + 1
+      } else {
+        acc
+      }
+  )
 }
 
 fn host_standup_p3_green_place_input_witness() -> GreenPlacePinCoherentWitness {
@@ -466,11 +498,7 @@ fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
 }
 
 fn host_standup_gap_count() -> Int {
-  fold(
-    host_standup_spine,
-    init: 0,
-    f: (acc, s) => if host_standup_step_is_effective_gap(step: s) { acc + 1 } else { acc }
-  )
+  host_standup_gap_count_at_os_install_level(level: srv3_default_os_install_actuation_level())
 }
 
 fn assimilation_input_satisfied(w: AssimilationInputWitness) -> Bool {
