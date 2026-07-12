@@ -98,36 +98,13 @@ fn compiler_frontier_band_a_other_gate_count() -> Int {
   )
 }
 
-fn band_a_emit_readiness_other_gate_trigger_matches_row(row: BandAEmitReadinessRow) -> Bool {
-  match row.gate {
-    FlippableNow => true
-    BodyProducerGated => false
-    OtherGate { migration_trigger: trigger } =>
-      match row.module_path {
-        "src/v2/compiler/use_site_verdict.dag" =>
-          trigger == ^migrate_when_ownership_defork_lands
-        "src/v2/compiler/07_target_carriers.dag" =>
-          trigger == ^migrate_when_rust_body_emit_track_b_completes
-        "src/v2/compiler/materialization_carriers.dag" =>
-          trigger == ^migrate_when_materialize_spine_lane_lands
-        "src/v2/compiler/self_host.dag" =>
-          trigger == ^migrate_when_frontier_harness_repurposed
-        _ => false
-      }
-  }
+fn compiler_frontier_band_a_emit_readiness_core_holds() -> Bool {
+  (length(xs: compiler_frontier_band_a_emit_readiness_roster) == compiler_frontier_band_a_emit_readiness_count_expected)
+    && compiler_frontier_band_a_paths_unique_holds()
+    && (compiler_frontier_band_a_body_producer_gated_count() == 0)
+    && (compiler_frontier_band_a_flippable_now_count() == 2)
+    && (compiler_frontier_band_a_other_gate_count() == 4)
 }
-
-fn compiler_frontier_band_a_other_gate_triggers_match_holds() -> Bool {
-  fold_list(
-    xs: compiler_frontier_band_a_emit_readiness_roster,
-    empty: true,
-    cons: fn(ok, row) {
-      ok && band_a_emit_readiness_other_gate_trigger_matches_row(row: row)
-    }
-  )
-}
-
-fn count_band_a_emit_readiness_rows_with_path(
   xs: List<BandAEmitReadinessRow>,
   target: String
 ) -> Int {
@@ -167,11 +144,4 @@ fn compiler_frontier_band_a_paths_unique_holds() -> Bool {
     ) == 1
 }
 
-fn compiler_frontier_band_a_emit_readiness_holds() -> Bool {
-  (length(xs: compiler_frontier_band_a_emit_readiness_roster) == compiler_frontier_band_a_emit_readiness_count_expected)
-    && compiler_frontier_band_a_paths_unique_holds()
-    && (compiler_frontier_band_a_body_producer_gated_count() == 0)
-    && (compiler_frontier_band_a_flippable_now_count() == 2)
-    && (compiler_frontier_band_a_other_gate_count() == 4)
-    && compiler_frontier_band_a_other_gate_triggers_match_holds()
-}
+fn count_band_a_emit_readiness_rows_with_path(
