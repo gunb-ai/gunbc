@@ -1,0 +1,134 @@
+module v2.test.claim.body_lowering_descent_bound
+
+import std.termination { Strict }
+import v2.compiler.body_lowering_descent {
+  body_lower_descent_evidence,
+  body_lower_descent_termination_proof
+}
+import v2.std.cardinality { structural_node_size_termination_proof }
+import v2.compiler.body_lowering_fold {
+  body_lower_after_children,
+  body_lower_collect_param_edges,
+  body_lower_domain_from_param_list,
+  body_lower_extract_comma_list_arm_head,
+  body_lower_match_capture_heads_spine,
+  body_lower_operand_ref_optional,
+  body_lower_return_type_from_fn_captured,
+  body_lower_try_infix_transform,
+  body_lower_unwrap_captured
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, TypeNode, node_synthetic }
+
+data body_lowering_descent_bound_note: String = "Discriminating witness for #6459 eval-cost wedge: body_lowering_fold walkers budget remaining steps to node_subtree_count(folded). Exhaustion is a typed, located refusal (^body_lowering_reason_descent_not_proven), never silent widen or unbounded retry. Green: DescentEvidence is Strict on the step budget anchored to structural_node_size (not per-step sub-value descent); remaining=0 refuses with the descent reason. RED control: remaining>0 on a pass-through shell accepts (not a descent refusal)."
+
+fn witness_descent_budget_exhaustion_refuses() -> Bool {
+  let shell = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_after_children(remaining: 0, folded: shell) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn witness_descent_budget_positive_not_exhausted() -> Bool {
+  let shell = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_after_children(remaining: 1, folded: shell) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+fn witness_descent_fn_decl_optional_chain_refuses() -> Bool {
+  let shell = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_unwrap_captured(remaining: 0, shell: shell) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn witness_descent_domain_param_list_refuses() -> Bool {
+  let param_list = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_domain_from_param_list(remaining: 0, param_list: param_list) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn witness_descent_return_type_fn_captured_refuses() -> Bool {
+  let captured = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_return_type_from_fn_captured(remaining: 0, captured: captured) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn witness_descent_collect_param_edges_refuses() -> Bool {
+  let comma_spine = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_collect_param_edges(remaining: 0, sequence_capture: comma_spine) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn witness_descent_try_infix_transform_refuses() -> Bool {
+  let shell = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_try_infix_transform(remaining: 0, node: shell) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn witness_descent_operand_ref_optional_refuses() -> Bool {
+  let shell = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_operand_ref_optional(remaining: 0, node: shell) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn witness_descent_match_capture_heads_spine_refuses() -> Bool {
+  let spine = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_match_capture_heads_spine(remaining: 0, spine: spine) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn witness_descent_extract_comma_list_arm_head_refuses() -> Bool {
+  let node = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_extract_comma_list_arm_head(remaining: 0, node: node) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn body_lowering_descent_evidence_strict_holds() -> Bool {
+  body_lower_descent_evidence() == Strict
+}
+
+test fn body_lowering_descent_termination_proof_holds() -> Bool {
+  body_lower_descent_termination_proof() == structural_node_size_termination_proof()
+}
+
+test fn body_lowering_descent_budget_refusal_holds() -> Bool {
+  witness_descent_budget_exhaustion_refuses()
+    && witness_descent_budget_positive_not_exhausted()
+    && witness_descent_fn_decl_optional_chain_refuses()
+    && witness_descent_domain_param_list_refuses()
+    && witness_descent_return_type_fn_captured_refuses()
+    && witness_descent_collect_param_edges_refuses()
+    && witness_descent_try_infix_transform_refuses()
+    && witness_descent_operand_ref_optional_refuses()
+    && witness_descent_match_capture_heads_spine_refuses()
+    && witness_descent_extract_comma_list_arm_head_refuses()
+}

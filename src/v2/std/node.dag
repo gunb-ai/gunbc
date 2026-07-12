@@ -191,6 +191,16 @@ fn node_subtree_nodes(root: Node) -> List<Node> {
   )
 }
 
+fn node_subtree_count(n: Node) -> Int {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(_) { 1 },
+      step: fn(acc, _edge, child_count) { acc + child_count }
+    }
+  )
+}
+
 type NodeFoldTopDown<A,R> {
   init: fn(Node, A) -> R
   child_context: fn(Node, A, Edge) -> A
