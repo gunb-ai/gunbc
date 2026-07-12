@@ -1,0 +1,124 @@
+# Shell → DAG: residual census, thin-run scoping, and arc completion
+
+> **Status: assessment + sign-ready scoping draft (witty-ibex-317, 2026-07-12).** Grounded against `origin/main` @ #6507. Builds on the landed slices (Retry #6467, If-band #6475, typed transports #6457/#6478) and lane D's authority [provisioning-window-executor-capability-design.md](provisioning-window-executor-capability-design.md). No `.dag` edits — records direction for operator + host-effect-lane sign-off. ⚠ FLAG = a decision needing sign-off.
+
+## 0. The one finding
+
+The remainder of the ShellProgram→DAG arc is **not** "migrate N files onto the v2 bash emitter." It splits cleanly:
+
+- **Legitimate shell** (foreign executors + pre-runtime bootstrap) stays shell, emitted through the **v2 bash rows** (grammar-owned), and is *bounded* — a roster, not a growth surface.
+- **Runtime-present shell** (fleet-converge steady-state, the srv3 install/reconcile tails, host-identity converge) **all funnels onto one keystone: `host_effect_apply` carrying typed effects.** Two sites already prove the pattern (`floor_diff_observe.dag`, `host_identity_converge.dag`); nearly every srv3 dissolution trigger already *names* `host_effect_apply` as its destination.
+
+So srv1/srv2 subsumption and srv3 bringup are the **same** work seen twice: generalize `host_effect_apply` from `ShellCommand{script:String}` toward typed effects, and add the `EmitArtifactThenThinRun` transport arm. Everything else is consequence.
+
+---
+
+## 1. Residual-shell census (current tree)
+
+Five categories. "Genuine emitter" = emits bash that actually runs; "oracle/scaffold" = `serialize_bash` retained only for a test.
+
+### A. Foreign-executor shell — PERMANENT framing (category (a), stays shell)
+
+| site | what | invoked by |
+| --- | --- | --- |
+| `ci_workflow.dag` | 8 GHA `RunStep.run:` bodies + concat-built floor-peak/cgroup runners (`ci_cgroup_peak_locate_shell`, `ci_floor_peak_{pre,post}_script`) | GitHub Actions (byte-consumes `run:`) |
+| `local_tidy_spec.dag` | git pre-push hook via `serialize_bash` (`githooks_pre_push_emit_scaffold`) | git (foreign executor) |
+| cron entry lines | (per lane D census) | cron |
+
+These are correct as shell — the executor only understands shell text. Target end-state: emitted through v2 bash rows (the concat-built `ci_workflow` runners carry `…_shell_emit_dissolution_trigger` rows to the `emit(intent,Bash)` path), **not** dissolved to a typed transport. The floor-peak runners are the near-term win (they cite `floor_diff_observe.dag` as their pattern, but they're foreign-executor so they emit rather than `apply()`).
+
+### B. Bootstrap / pre-runtime shell — provisioning window (category (b))
+
+| site | what | genuine? |
+| --- | --- | --- |
+| `ubuntu_install_media_fetch.dag` | ISO fetch: `curl` mirror loop + `sha256sum -c` + `mv`; `serialize_bash`+`RawLine` | genuine emitter |
+| `ubuntu_seeded_install_media_remaster.dag` | ISO remaster: `xorriso` extract/mkisofs, NoCloud `user-data`/`meta-data`, grub `sed`; heaviest raw shell | genuine emitter |
+| `fleet_converge` fresh-standup arm | `git fetch`/`cargo build`/`cp` greenfield bring-up (3 frontier rows: `orch_construct_procedure`, `…_cmdsubst_assign`, `…_let_assign`) | genuine emitter |
+
+These run before a gunbc runtime exists on the target, so shell is the honest lowest-dependency medium. They emit through the v2 bash rows (the If-band + the Procedure/Let/Arith band once modeled). **⚠ FLAG B1:** the ISO remaster/fetch may stay `ShellPayloadRequired` bootstrap *permanently* (they run on the provisioning host before any typed transport) — decide whether they're a permanent roster entry or a future typed-`Filesystem.Write` + typed-argv target.
+
+### C. Runtime-present shell — MUST become typed via `host_effect_apply` (the real work)
+
+| site | what | current path | dissolves to |
+| --- | --- | --- | --- |
+| `fleet_converge_emit.dag` | **~275 lines** Doc-literal bash: 12+ fn defs (`emit_receipt`,`converge_runner_width`,…), 4 for-loops, while-read drain, `$((…))` arithmetic, verdict if/elif | committed `.github/fleet-converge.sh`, run by thin ctrl reconciler | `EmitArtifactThenThinRun` (slice 2) — §2 |
+| srv3 tails (9 files) | observe scripts, receipt echoes, token-extract, sleep glue; **2 heavy**: `srv3_install_diagnostic_checklist` (curl/redfish/sol probing, FROZEN/terminal), `srv3_os_install_actuator_toolchain_ensure` (apt/curl/websocat) | `shell_exec_via_bash` heredoc → `shell.Exec.Run` | typed observe/effect on `host_effect_apply` (their scaffolds already say so) |
+| `host_identity_converge.dag` | 1–2 line `sudo hostnamectl set-hostname` as `ShellCommand{script}` | **already** `host_effect_apply_gated` | typed hostname effect (drop the shell string) |
+| `floor_diff_observe.dag` | `git diff` observe as `ShellCommand{script}` | **already** `host_effect_apply` LocalShell | **this is the target pattern already realized** |
+| `nbd_proxy_serve.dag` | `nbd_proxy_serve_program` body is `RawLine` (`&`/`trap`/`$!` backgrounding) | typed `ShellProgram` → `serialize_bash` | first-class typed background/trap statements or a typed long-running-process effect |
+
+The srv3 dissolution triggers are unanimous: `srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger` = *"DISSOLVES WHEN host_effect_apply binds Srv3InstallDiagnosticObserve without concat runner glue"*; the same shape repeats across the reconcile files. The common runner `gunbc.shell_bash_runner.shell_exec_via_bash` (the `bash <<'GUNBC_BASH_EOF'` heredoc framing) is itself a scaffold that *"dissolves when host_effect_apply … binds multiline shell transport without concat heredoc framing."*
+
+### D. Oracle / scaffold retainers — NOT genuine emitters (mostly my Phase 3a work)
+
+| site | state |
+| --- | --- |
+| `dag_compile_clean_transport.dag` | **fully migrated** — `serialize_bash` not even imported; scaffolds dissolved ✓ |
+| `emit_determinism_transport.dag` | **fully migrated** — same; pairing now via `duplicate_computation` lens ✓ |
+| `host_prelude.dag` | run path typed (`WitnessBin.Run`/`cargo.Build`); residual typed `ShellStmt` builders are scaffold-only for the emit_determinism lane ✓ |
+| `build_step_transport.dag` | **EXCEPTION — still genuine bash execution:** splices `verifications_script` (`serialize_bash`) into a raw `mktemp`/`touch`/`chmod`/`printf` harness through `shell.Exec.Run` (a corruption-probe execution oracle). Not off the bash path. |
+| `build_step.dag` | typed `ShellStmt` AST library (no `RawLine`); consumed by the above |
+
+### E. Replacement machinery + detectors — not dissolution targets
+
+`bash_program_emit.dag` + `bash_command_fold.dag` (the v2 compositional emitter that *is* the replacement); the lenses `realization_vocabulary_containment` / `medium_structure_containment` / `duplicate_computation` (detectors); `program.dag` (the sidecar — the deletion target).
+
+**Ratchet:** `bash_program_importer_count_baseline = 19`. The genuine live emitters that must clear before `program.dag` deletes: the two ubuntu-media files, `nbd_proxy_serve`, `floor_diff_observe`, `build_step`(+transport), `bash_command_fold`(replacement). Categories D-fully-migrated and the detectors don't emit; they can drop their import or are the replacement itself.
+
+---
+
+## 2. `EmitArtifactThenThinRun` scoping — srv1/srv2 subsumption keystone
+
+**Goal:** move the fleet-converge srv1/srv2 steady-state (category C, ~275 lines) *out of emitted bash and into the gunbc binary*, which interprets the typed converge policy in-process and emits typed receipts. The emitted artifact shrinks to the fresh-standup bootstrap fragment + a thin `gunbc converge` invocation line.
+
+### What already exists (the pieces)
+
+1. **The typed plan** — `gunbc.host_converge.HostConverge` / `ConvergePolicy` / `ConvergeKnob` (`SliceProperty|PerSlotMemoryCap|RunnerWidth|JobserverTokens|VerifyOnlyCap|GunbcPinnedTree`) is a pure typed value with `ConvergeApplyMode = FreshStandup | ExistingHostQuiescentReload`, importing typed `extdeps.os.systemd`/`oomd` property names. Zero shell. **This is the plan the binary interprets.**
+2. **The apply interface** — `host_effect_apply(target, effect, evidence, transport) -> Reconciliation<HostEffectIntent, HostEffectEvidence>` is minted (`host_effect_realize.dag`), with `Drive = OneShot | ConvergeLoop` and a redrive directive. Four consumers exist; **`host_identity_converge` is the exact converge precedent** (gated apply → typed effect → read-back → noop).
+3. **The receipt** — the fleet-converge receipt grammar (`gunbc_host_converge_receipt_grammar_marker`) is byte-locked; the design says generalize it as the single `apply()` outcome, not fork it.
+
+### The gap (three coupled pieces)
+
+- **G1 — a typed converge effect.** `HostEffect` today = `ShellCommand{script:String}` | `RedfishAction`. The `script:String` is the anemic leaf (shell-emission-model §1: "same anemic leaf as `host_effect.ShellCommand.script`"). Subsumption needs the effect to carry the *typed converge intent*, not bash.
+  - **⚠ FLAG 2a — effect shape.** Option (i): add `HostEffect::ConvergePlan{ policy: HostConverge, host: ComputeHost }`, resolved by `resolve_host_effect_cell` to a new `ConvergeOnHost` cell, realized by an in-process interpreter that drives the typed systemd/oomd property reads+writes (the same knobs `host_converge.dag` already names). Option (ii): keep `ShellCommand` for one-shots and make `EmitArtifactThenThinRun` a transport that reinterprets — rejected, because the script is already bash (no typed plan to interpret). **Recommend (i)** — it's the anemic-leaf dissolution the design already calls for, and it makes the interpreter total over the knob coproduct (each `ConvergeKnob` arm → a typed `extdeps.os.systemd` set/read).
+- **G2 — the `EmitArtifactThenThinRun` transport arm.** `HostEffectTransport` today = `LocalShell` | `SshShell`. Add `EmitArtifactThenThinRun { bootstrap: BootstrapFragment, invocation: ThinInvocation }`.
+  - **Semantics:** for a `SteadyState` host it degenerates to in-process interpretation (`gunbc converge --host X` reads the typed policy and reconciles via typed systemd effects — no emitted script). For a `FreshStandup` host it *first* emits the bootstrap fragment (the 3 frontier rows: git-checkout / cargo-build / cp — legitimately bootstrap bash per category B) and *then* the thin invocation. This is exactly the `ConvergeApplyMode` split `host_converge.dag` already models.
+  - **⚠ FLAG 2b — thin-run guardrail (load-bearing).** The binary must interpret the *typed* `HostConverge`, emitting typed receipts. Replacing 275 lines of bash with 275 lines of imperative Rust in the seed is refused (shell-emission-model §6 / host-effect §Phase-D). The interpreter folds the `ConvergeKnob` coproduct; there is no free-form imperative arm.
+- **G3 — fleet_converge consumes `apply()`.** Point the fleet-converge lane at `converge_apply` (the `ConvergePlan` effect over `EmitArtifactThenThinRun`) instead of `project_fleet_converge_to_doc`. The committed `.github/fleet-converge.sh` **stays byte-locked as the oracle** during the transition (the emitted bootstrap fragment must still match its fresh-standup arm byte-for-byte); the steady-state functions are what move in-process.
+
+### Sequence (each gated by the byte oracle)
+
+1. **Mint G1+G2 together** (one PR, co-owned with the host-effect lane — they must not land alone per host-effect-orchestration §co-owned): `ConvergePlan` effect + `ConvergeOnHost` cell + `EmitArtifactThenThinRun` transport + the in-process knob interpreter, with a fail-closed `Unimplemented`-per-knob frontier so unmodeled knobs refuse (not fabricate).
+2. **Consume from fleet_converge** (G3): `converge_apply` for the steady-state arms; keep the Doc projection emitting *only* the fresh-standup bootstrap + the thin invocation; the committed `.github/fleet-converge.sh` golden shrinks and the drift gate proves the shrink is exactly the steady-state functions.
+3. **Retire** `fleet_converge_steady_state_doc_projection_dissolution_trigger` and the ctrl reconciler's script fan-out (host-effect Phase D's first net ctrl deletion — `runner_host_reconcile.mjs` hash/fan-out).
+
+**⚠ FLAG 2c — ownership.** `host_effect.dag` is a DESIGN-named seam co-owned by smart-newt-512 (dag-managed-infra) / neat-boar-71 (BMC), and its note requires **operator + bright-stag-194 sign-off before any transport arm is minted**. This scoping is the sign-ready shape; the mint is that lane's, not a solo edit from here.
+
+---
+
+## 3. The remainder of the ShellProgram→DAG arc (to `program.dag` deletion)
+
+Two tracks run in parallel; deletion is the join.
+
+### Track 1 — legitimate shell onto the v2 bash rows (bounded)
+
+- **P1 (ready now, no sign-off):** the `ci_workflow` concat-built floor-peak/cgroup runners → `emit(intent, Bash)` via the landed If-band + word support (they carry `…_shell_emit_dissolution_trigger` rows). Foreign-executor, so they *emit*; no `apply()`.
+- **P2:** the Procedure/Let/Arith emit band (the 3 fresh-standup frontier rows need it; the ubuntu-media files need `for`/heredoc). This is the one genuinely new *emitter* vocabulary the arc still needs — scoped by the bootstrap census, fail-closed where a construct isn't modeled.
+- **P3:** `local_tidy_spec` pre-push hook + cron lines stay `serialize_bash`/foreign-executor **permanently** (roster entries, category (a)). These never dissolve — they're the honest residue.
+
+### Track 2 — runtime-present shell onto `host_effect_apply` (the §2 keystone cascade)
+
+- **P4 = the G1+G2+G3 keystone above** (srv1/srv2 subsumption).
+- **P5:** the srv3 tails follow the *same* interface. Each `srv3_*_observe_script` becomes a typed `…Observe` effect on `host_effect_apply` (their dissolution triggers already name this); the receipt echoes become typed receipts; `shell_exec_via_bash` (the heredoc runner) dissolves once no caller passes a raw script. The two heavy files: `srv3_install_diagnostic_checklist` is FROZEN/terminal (typed observe effect retires it), `srv3_os_install_actuator_toolchain_ensure` → typed `extdeps.apt`/`curl` argv effects.
+- **P6:** `host_identity_converge` drops its `sudo hostnamectl` script for a typed hostname effect (it's already on `apply_gated`); `nbd_proxy_serve_program`'s `RawLine` body gets first-class typed background/trap statements or a typed long-running-process effect.
+- **P7:** `build_step_transport` — the last oracle exception: reshape the corruption-probe harness onto typed `shell.Mktemp`/`Filesystem.Write`/`WitnessBin.Run` (the pattern its siblings already use), dropping the `verifications_script` `serialize_bash` execution.
+
+### The join — delete `program.dag`
+
+When Track 1's emitters route through the v2 bash rows and Track 2's runtime-present shell is on `apply()` with typed effects, the `bash_program_importer_count` reaches the permanent-residue floor (the v2 replacement emitter + the foreign-executor roster). At that point `bash.program`/`serialize_bash` has no runtime importer, the ratchet's baseline hits the floor, and `program.dag` + `serialize_bash` delete — the arc's terminal step. The v2 bidirectional bash language is the single bash authority.
+
+**Critical-path summary:** everything non-foreign converges on **P4 (the `host_effect_apply` typed-effect + `EmitArtifactThenThinRun` mint)**. P5/P6 are mechanical once P4 lands; P1/P2 (emitter side) run independently. The one thing gating the operator's actual goal is the P4 sign-off (⚠ FLAG 2a/2b/2c).
+
+## Dissolution trigger
+
+Delete this doc when P4 lands (the `ConvergePlan` effect + `EmitArtifactThenThinRun` transport minted and consumed by fleet_converge), the census rows fold into `provisioning-window-executor-capability-design.md`'s table, and `program.dag` deletes — at which point the arc is complete and this scoping is redundant.
