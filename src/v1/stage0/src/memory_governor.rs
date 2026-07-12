@@ -81,6 +81,17 @@ pub enum HoldReason {
     /// 29180195694 — 16 index builds admitted on skip-speed completions before any of
     /// them allocated). Pacing arithmetic, not a memory event.
     AwaitFirstCost { undigested: usize },
+    /// Admitting one more worker of the RUN-MEASURED share would cross the high-water
+    /// line. Worker demand matures minutes after admission (run 29183064852: the creep
+    /// back-off fired within one poll of high-water and the box still died 2 minutes
+    /// later — 10GiB of margin consumed in 33s by already-admitted growth), so reactive
+    /// arms alone always act too late; this gate is the predictive complement, priced by
+    /// the first worker's own measured cost, never an authored constant.
+    InsufficientHeadroom {
+        current: u64,
+        share: u64,
+        high_water: u64,
+    },
 }
 
 impl HoldReason {
@@ -102,12 +113,21 @@ impl HoldReason {
             HoldReason::AwaitFirstCost { undigested } => {
                 format!("pacing: {undigested} admitted worker(s) yet to pay first cost")
             }
+            HoldReason::InsufficientHeadroom {
+                current,
+                share,
+                high_water,
+            } => format!(
+                "headroom: current {current} + measured worker share {share} > high-water {high_water}"
+            ),
         }
     }
     fn is_memory_creep(&self) -> bool {
         !matches!(
             self,
-            HoldReason::WindowFull { .. } | HoldReason::AwaitFirstCost { .. }
+            HoldReason::WindowFull { .. }
+                | HoldReason::AwaitFirstCost { .. }
+                | HoldReason::InsufficientHeadroom { .. }
         )
     }
 }
@@ -143,10 +163,21 @@ struct GovCore {
     pacing_episode: bool,
     /// Episode edge for the budget-exceeded hard event; re-arms below high-water.
     budget_exceeded_episode: bool,
+    /// `memory.current` at the first poll of the run — the pre-work floor against which
+    /// the first worker's share is measured.
+    pool_baseline_current: Option<u64>,
+    /// The first worker's measured cost (current at its first-cost landing minus the
+    /// pool baseline): the run's own estimate of one worker's share, used to predict
+    /// whether one more admission fits under high-water. Measured once; dissolves into
+    /// graph-derived per-node demand.
+    measured_worker_share: Option<u64>,
+    /// Episode edge for headroom holds, symmetric with `holding`.
+    headroom_episode: bool,
     admissions: u64,
     forced_serial_admissions: u64,
     creep_backoffs: u64,
     pacing_holds: u64,
+    headroom_holds: u64,
     hard_backoffs: u64,
     budget_exceeded_backoffs: u64,
     width_growths: u64,
@@ -166,10 +197,14 @@ impl GovCore {
             undigested: 0,
             pacing_episode: false,
             budget_exceeded_episode: false,
+            pool_baseline_current: None,
+            measured_worker_share: None,
+            headroom_episode: false,
             admissions: 0,
             forced_serial_admissions: 0,
             creep_backoffs: 0,
             pacing_holds: 0,
+            headroom_holds: 0,
             hard_backoffs: 0,
             budget_exceeded_backoffs: 0,
             width_growths: 0,
@@ -271,7 +306,14 @@ fn absorb_hard_events(
         return None;
     }
     let old_target = core.target_width;
-    core.target_width = core.active.div_ceil(2).max(1).min(old_target.max(1));
+    // Budget exceeded is TCP's timeout, not its duplicate-ACK: collapse to 1 and let
+    // slow-start rebuild. Runs 29181858455/29183064852 showed a halve leaves too many
+    // growing workers alive when the crossing is discovered one gigabyte from death.
+    core.target_width = if budget_exceeded {
+        1
+    } else {
+        core.active.div_ceil(2).max(1).min(old_target.max(1))
+    };
     core.hard_backoffs += 1;
     Some(HardEvent {
         high_delta,
@@ -318,6 +360,9 @@ fn decide_admission(
     sig: &MemorySignals,
     limits: &GovernorLimits,
 ) -> (AdmitDecision, Option<HardEvent>) {
+    if core.pool_baseline_current.is_none() {
+        core.pool_baseline_current = sig.current_bytes;
+    }
     let hard = absorb_hard_events(core, sig, limits);
     let creep = creep_reason(core, sig, limits);
     core.prev_swap_bytes = sig.swap_current_bytes.or(core.prev_swap_bytes);
@@ -364,6 +409,28 @@ fn decide_admission(
             hard,
         );
     }
+    if let (Some(current), Some(share), Some(budget)) = (
+        sig.current_bytes,
+        core.measured_worker_share,
+        limits.budget_bytes,
+    ) {
+        let high_water = budget / HIGH_WATER_DEN * HIGH_WATER_NUM;
+        if current.saturating_add(share) > high_water {
+            if !core.headroom_episode {
+                core.headroom_episode = true;
+                core.headroom_holds += 1;
+            }
+            return (
+                AdmitDecision::Hold(HoldReason::InsufficientHeadroom {
+                    current,
+                    share,
+                    high_water,
+                }),
+                hard,
+            );
+        }
+    }
+    core.headroom_episode = false;
     core.active += 1;
     core.undigested += 1;
     core.admissions += 1;
@@ -424,9 +491,21 @@ fn note_completion(
 }
 
 /// A worker's front-loaded admission cost has landed (its index build finished): its
-/// demand is now visible to the creep signals, so admission pacing may pass the next one.
-fn note_first_cost(core: &mut GovCore) {
+/// demand is now visible to the creep signals, so admission pacing may pass the next
+/// one. The FIRST landing also fixes the run's measured worker share — current minus
+/// the pool baseline — which the headroom gate uses to predict whether one more
+/// admission fits. Measured once per run from the run's own first slot; no authored
+/// constant (dissolves into graph-derived per-node demand).
+fn note_first_cost(core: &mut GovCore, sig: &MemorySignals) {
     core.undigested = core.undigested.saturating_sub(1);
+    if core.measured_worker_share.is_none() {
+        if let (Some(current), Some(base)) = (sig.current_bytes, core.pool_baseline_current) {
+            let share = current.saturating_sub(base);
+            if share > 0 {
+                core.measured_worker_share = Some(share);
+            }
+        }
+    }
 }
 
 /// A worker released its slot. A release before the first cost was paid (error/panic/
@@ -600,8 +679,19 @@ impl MemoryGovernor {
     }
 
     fn note_first_cost_paid(&self) {
+        let sig = self.source.read();
         let mut core = self.core.lock().unwrap();
-        note_first_cost(&mut core);
+        let had_share = core.measured_worker_share.is_some();
+        note_first_cost(&mut core, &sig);
+        let share = core.measured_worker_share;
+        drop(core);
+        if !had_share {
+            if let Some(s) = share {
+                eprintln!(
+                    "[governor] measured worker share: {s} bytes (first slot's cost over the pool baseline) — headroom gate armed"
+                );
+            }
+        }
     }
 
     /// A worker released its slot.
@@ -630,8 +720,8 @@ impl MemoryGovernor {
         let core = self.core.lock().unwrap();
         format!(
             "[governor] receipt: budget={} source={} max_width_reached={} admissions={} \
-             width_growths={} creep_backoffs={} pacing_holds={} hard_backoffs={} \
-             budget_exceeded={} forced_serial={} peak_current={}",
+             width_growths={} creep_backoffs={} pacing_holds={} headroom_holds={} \
+             hard_backoffs={} budget_exceeded={} forced_serial={} peak_current={}",
             self.limits
                 .budget_bytes
                 .map(|b| b.to_string())
@@ -642,6 +732,7 @@ impl MemoryGovernor {
             core.width_growths,
             core.creep_backoffs,
             core.pacing_holds,
+            core.headroom_holds,
             core.hard_backoffs,
             core.budget_exceeded_backoffs,
             core.forced_serial_admissions,
@@ -864,7 +955,7 @@ mod tests {
         assert_eq!(core.creep_backoffs, 0, "window-full is not a memory hold");
         // A calm completion grows the window; with the first worker's front cost paid,
         // the next admission fits.
-        note_first_cost(&mut core);
+        note_first_cost(&mut core, &calm());
         note_completion(&mut core, &calm(), &lim);
         assert_eq!(core.target_width, 2);
         assert_eq!(core.width_growths, 1);
@@ -899,7 +990,7 @@ mod tests {
         assert_eq!(core.pacing_holds, 1, "one episode, not one per poll");
         assert_eq!(core.creep_backoffs, 0, "pacing is not a memory hold");
         // The index build lands: the next admission passes and re-arms the episode.
-        note_first_cost(&mut core);
+        note_first_cost(&mut core, &calm());
         let (d4, _) = decide_admission(&mut core, &calm(), &lim);
         assert!(matches!(d4, AdmitDecision::Admit { .. }));
         assert_eq!(
@@ -927,15 +1018,18 @@ mod tests {
         };
         let (d, _) = decide_admission(&mut core, &over, &lim);
         assert!(matches!(d, AdmitDecision::Hold(_)));
-        assert_eq!(core.target_width, 4, "window halves on budget exceed");
+        assert_eq!(
+            core.target_width, 1,
+            "budget exceed is the timeout signal: collapse to 1, not a halve"
+        );
         assert_eq!(core.hard_backoffs, 1);
         assert_eq!(core.budget_exceeded_backoffs, 1);
-        // The drain path is reachable: concurrency now sits above the halved window.
+        // The drain path is reachable: concurrency now sits above the collapsed window.
         assert!(core.active > core.target_width, "workers must drain");
-        // Still over on the next poll: same episode, no second halving.
+        // Still over on the next poll: same episode, no second event.
         let (_, h2) = decide_admission(&mut core, &over, &lim);
         assert!(h2.is_none());
-        assert_eq!(core.target_width, 4);
+        assert_eq!(core.target_width, 1);
         assert_eq!(core.budget_exceeded_backoffs, 1);
         // Dropping under the budget but ABOVE high-water does not re-arm (hysteresis)…
         core.active = 4;
@@ -955,8 +1049,51 @@ mod tests {
         let (_, _) = decide_admission(&mut core, &calm_low, &lim);
         let (_, h5) = decide_admission(&mut core, &over, &lim);
         assert!(h5.is_some(), "re-armed below high-water");
-        assert_eq!(core.target_width, 2);
+        assert_eq!(core.target_width, 1);
         assert_eq!(core.budget_exceeded_backoffs, 2);
+    }
+
+    #[test]
+    fn measured_share_headroom_gate_predicts_before_high_water() {
+        let lim = limits(1_000_000, 8); // high-water 800_000
+        let mut core = GovCore::new();
+        // First poll fixes the pool baseline (100k) and admits worker 1.
+        let at = |current: u64| MemorySignals {
+            current_bytes: Some(current),
+            ..calm()
+        };
+        let (d, _) = decide_admission(&mut core, &at(100_000), &lim);
+        assert!(matches!(d, AdmitDecision::Admit { .. }));
+        // Worker 1's index build lands at 400k: measured share = 300k, gate armed.
+        note_first_cost(&mut core, &at(400_000));
+        assert_eq!(core.measured_worker_share, Some(300_000));
+        core.target_width = 8;
+        // 400k + 300k fits under 800k: worker 2 admitted.
+        let (d2, _) = decide_admission(&mut core, &at(400_000), &lim);
+        assert!(matches!(d2, AdmitDecision::Admit { .. }));
+        note_first_cost(&mut core, &at(400_000));
+        // 600k is still BELOW high-water, but 600k + 300k predicts a crossing: hold
+        // before the reactive arms would ever see it.
+        let (d3, _) = decide_admission(&mut core, &at(600_000), &lim);
+        assert_eq!(
+            d3,
+            AdmitDecision::Hold(HoldReason::InsufficientHeadroom {
+                current: 600_000,
+                share: 300_000,
+                high_water: 800_000,
+            })
+        );
+        let (d4, _) = decide_admission(&mut core, &at(600_000), &lim);
+        assert!(matches!(d4, AdmitDecision::Hold(_)));
+        assert_eq!(core.headroom_holds, 1, "one episode, not one per poll");
+        assert_eq!(core.creep_backoffs, 0, "prediction is not a creep event");
+        assert_eq!(
+            core.target_width, 8,
+            "prediction does not shrink the window"
+        );
+        // Demand settles to 450k: 450k + 300k fits again — admission resumes.
+        let (d5, _) = decide_admission(&mut core, &at(450_000), &lim);
+        assert!(matches!(d5, AdmitDecision::Admit { .. }));
     }
 
     #[test]
@@ -974,7 +1111,7 @@ mod tests {
         let (d2, _) = decide_admission(&mut core, &calm(), &lim);
         assert!(matches!(d2, AdmitDecision::Admit { .. }));
         // A digested worker's release does NOT touch the (absent) debt.
-        note_first_cost(&mut core);
+        note_first_cost(&mut core, &calm());
         note_release(&mut core, true);
         assert_eq!(core.undigested, 0);
     }
@@ -1009,7 +1146,7 @@ mod tests {
         note_release(&mut core, true);
         let (d3, _) = decide_admission(&mut core, &calm(), &lim);
         assert!(matches!(d3, AdmitDecision::Admit { .. }));
-        note_first_cost(&mut core);
+        note_first_cost(&mut core, &calm());
         let (_, _) = decide_admission(&mut core, &hot, &lim);
         assert_eq!(core.creep_backoffs, 2);
         assert_eq!(core.target_width, 1);
@@ -1048,11 +1185,11 @@ mod tests {
             matches!(d, AdmitDecision::Admit { .. }),
             "absolute swap level alone does not hold"
         );
-        note_first_cost(&mut core);
+        note_first_cost(&mut core, &calm());
         // Same level again: no growth, no hold.
         let (d2, _) = decide_admission(&mut core, &steady, &lim);
         assert!(matches!(d2, AdmitDecision::Admit { .. }));
-        note_first_cost(&mut core);
+        note_first_cost(&mut core, &calm());
         // Now it grows by 100 MiB in one sample: actively creeping — hold.
         let grown = MemorySignals {
             swap_current_bytes: Some(600 * 1024 * 1024),
