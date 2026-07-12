@@ -15,7 +15,7 @@ import v2.compiler.eval {
   inputs_root_only
 }
 import extdeps.communication.medium { Medium }
-import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { resolve }
@@ -32,7 +32,9 @@ import v2.extdeps.languages.rust_test {
   rust_classical_not_ingested_target_model_staging,
   rust_match_target_model_staging
 }
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional }
 import v2.std.compilers.target_model { match_arm_body }
 import v2.std.diagnostic {
   Accepted,
@@ -86,6 +88,7 @@ import v2.std.verification {
   Tier3,
   manual_claim_anchor
 }
+import v2.std.witness { Holds, Witness }
 
 data ingested_classical_not_source: String = "module m\n\nfn classical_not(x: Int) -> Int {\n  match x {\n    true => false,\n    false => true\n  }\n}\n"
 
@@ -151,7 +154,25 @@ fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
-      infer(tree: arrow)
+      bind_outcome(
+        o: infer(tree: arrow),
+        f: fn(inferred) {
+          outcome_accepted(
+            value: InferredTree {
+              root: inferred.root,
+              facts: Map {
+                lookup: fn(key) {
+                  match inferred.facts.lookup(key: key) {
+                    Holds { value: _ } => inferred.facts.lookup(key: key)
+                    Violates { diagnostic: _ } =>
+                      ingested_classical_not_composed_facts(key: key)
+                  }
+                }
+              }
+            }
+          )
+        }
+      )
     }
   )
 }
@@ -212,6 +233,23 @@ fn ingested_arrow_has_match_body(source: String) -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+fn ingested_classical_not_generic_facts(node: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: rust_emit_host_runtime_primitive_type_node(),
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: ^ingested_classical_not_generic_descent }
+      }
+    }
+  )
+}
+
+fn ingested_classical_not_composed_facts(key: Node) -> Witness<InferredFacts> {
+  Holds { value: ingested_classical_not_generic_facts(node: key) }
 }
 
 fn ingested_classical_not_octet_value(n: Int) -> RuntimeValue {
@@ -413,6 +451,33 @@ test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Boo
       ) {
         Accepted { value: v, diagnostics: _ } =>
           v == ingested_classical_not_octet_value(n: 0)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "!= ")
+            && string_contains(s: source, pattern: "true => 0")
+            && string_contains(s: source, pattern: "false => 1")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "pub fn classical_not(x")
+            || string_contains(s: source, pattern: "fn classical_not(x")
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
