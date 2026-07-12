@@ -10,9 +10,9 @@ import v2.extdeps.languages.dag {
   dag_match_if_body_fixture,
   dag_type_atom_node
 }
+import v2.std.algebra { fold_list }
 import v2.std.diagnostic {
   Accepted,
-  Diagnostic,
   Diagnostics,
   None,
   NonEmptyDiagnostics,
@@ -30,6 +30,7 @@ import v2.std.node {
   Named,
   Node,
   Positional,
+  Symbol,
   SyntheticOccurrence,
   TypeNode
 }
@@ -41,6 +42,27 @@ import v2.std.verification {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn diagnostics_contain_reason(d: Diagnostics, reason: Symbol) -> Bool {
+  match d {
+    None => false
+    Some { diagnostics: nes } => non_empty_diagnostics_contain_reason(nes: nes, reason: reason)
+  }
+}
+
+fn non_empty_diagnostics_contain_reason(nes: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  if nes.head.reason == reason {
+    true
+  } else {
+    fold_list(
+      xs: nes.tail,
+      empty: false,
+      cons: fn(acc, diag) {
+        acc || diag.reason == reason
+      }
+    )
+  }
+}
 
 fn match_infer_fail_open_audit_body() -> Node {
   dag_match_body_from_arms(
@@ -174,7 +196,11 @@ test fn complement_body_real_infer_refuses_unsupported_pattern_holds() -> Bool {
 
 test fn classical_not_int_match_arrow_real_infer_holds() -> Bool {
   match infer(tree: classical_not_int_match_arrow_fixture()) {
-    Accepted { value: _, diagnostics: _ } => true
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_contain_reason(
+        d: d,
+        reason: ^infer_match_int_scrutinee_bool_literal_scaffold
+      )
     Rejected { diagnostics: _ } => false
   }
 }
