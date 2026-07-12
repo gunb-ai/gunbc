@@ -666,46 +666,29 @@ fn compiler_frontier_sweep_order_complete_holds() -> Bool {
   length(xs: compiler_frontier_sweep_order) == compiler_frontier_module_count_expected
 }
 
-fn count_band_a_emit_readiness_gate(
-  xs: List<BandAEmitReadinessRow>,
-  target: BandAWave1EmitReadiness
-) -> Int {
+fn compiler_frontier_band_a_body_producer_gated_count() -> Int {
   fold_list(
-    xs: xs,
+    xs: compiler_frontier_band_a_emit_readiness_roster,
     empty: 0,
     cons: fn(count, row) {
       match row.gate {
-        FlippableNow =>
-          match target {
-            FlippableNow => count + 1
-            _ => count
-          }
-        BodyProducerGated =>
-          match target {
-            BodyProducerGated => count + 1
-            _ => count
-          }
-        OtherGate { migration_trigger: _ } =>
-          match target {
-            OtherGate { migration_trigger: _ } => count + 1
-            _ => count
-          }
+        BodyProducerGated => count + 1
+        _ => count
       }
     }
   )
 }
 
-fn compiler_frontier_band_a_body_producer_gated_count() -> Int {
-  count_band_a_emit_readiness_gate(
-    xs: compiler_frontier_band_a_emit_readiness_roster,
-    target: BodyProducerGated
-  )
-}
-
 fn compiler_frontier_band_a_flippable_now_count() -> Int {
-  count_band_a_emit_readiness_gate(
+  fold_list(
     xs: compiler_frontier_band_a_emit_readiness_roster,
-    target: FlippableNow
+    empty: 0,
+    cons: fn(count, row) {
+      match row.gate {
+        FlippableNow => count + 1
+        _ => count
+      }
+    }
   )
 }
 
