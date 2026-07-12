@@ -1,4 +1,4 @@
-module v2.test.manual.dag_import_block_lexeme_stamp
+module v2.test.long.dag_import_block_lexeme_stamp
 
 import v2.compiler.parse { parse }
 import v2.compiler.tokenize { tokenize }

@@ -1,4 +1,4 @@
-module v2.test.claim.complexity_linearity.syntactic_audit_witness
+module v2.test.long.syntactic_audit_witness
 
 import v2.lens.complexity_linearity_audit {
   complexity_linearity_syntactic_finding_count_live,

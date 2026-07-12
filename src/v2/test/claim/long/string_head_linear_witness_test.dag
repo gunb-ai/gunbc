@@ -1,4 +1,4 @@
-module v2.test.tokenize.string_head_linear_witness
+module v2.test.long.string_head_linear_witness
 
 import extdeps.filesystem.filesystem_io
 import v2.compiler.tokenize { tokenize }

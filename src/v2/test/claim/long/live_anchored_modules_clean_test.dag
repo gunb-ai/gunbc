@@ -1,4 +1,4 @@
-module v2.test.extdeps_external_authority.corpus.live_anchored_modules_clean
+module v2.test.long.live_anchored_modules_clean
 
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
