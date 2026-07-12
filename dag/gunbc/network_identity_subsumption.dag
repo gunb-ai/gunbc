@@ -49,7 +49,7 @@ data srv3_os_lan_ipv4_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data srv3_fleet_slot_host_name: DhcpClientHostNameOption12 = HostName {
+data srv3_fleet_slot_host_name: HostName = HostName {
   name: DomainName { labels: ["srv3" as DnsLabel] },
   qualification: PartiallyQualified,
 }
