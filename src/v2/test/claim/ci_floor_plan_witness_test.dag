@@ -38,7 +38,8 @@ import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
 import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, EmitDeterminismGate }
 import std.realization_schedule {
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
-  runnable_forbids_corpus_co_residence, ScheduleWitnessEntry, schedule_witness_entry_eq,
+  runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
+  ScheduleWitnessEntry, schedule_witness_entry_eq,
   CorpusWitnessKind, ExecutionWitnessKind
 }
 import std.execution_mode { execution_mode_is_hermetic }
@@ -169,13 +170,24 @@ fn witness_independent_jobs_parallelize() -> Bool {
   })
 }
 
+fn runnable_is_heavy_discovery(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: p } =>
+      runnable_heavy_whole_tree_resolve(profile: p)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
 fn batch_has_corpus_and_gate(b: List<Runnable>) -> Bool {
   let fns = batch_functions(b: b)
-  let has_corpus = list_contains_str(xs: fns, target: corpus_sentinel)
+  let has_heavy_corpus = fold(b, init: false, f: fn(found, r) {
+    found || runnable_is_heavy_discovery(r: r)
+  })
   let has_gate = fold(fns, init: false, f: fn(found, fn_name) {
     found || ((fn_name != corpus_sentinel) && (fn_name != "__gunbc_ci_floor_unmapped__"))
   })
-  has_corpus && has_gate
+  has_heavy_corpus && has_gate
 }
 
 fn witness_floor_discovery_flip_gates_isolated_from_corpus_for(spec: CiSpec) -> Bool {

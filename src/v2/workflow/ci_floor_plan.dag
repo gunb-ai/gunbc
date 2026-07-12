@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, gunbc_ci_emit_determinism_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
@@ -129,10 +129,17 @@ fn witness_entries_kind_path_all_agree(entries: List<ScheduleWitnessEntry>) -> B
   })
 }
 
+fn bin_witness_corpus_enrolled(spec: CiSpec) -> Bool {
+  length(xs: spec.discovery_scan_dirs) > 0 && length(xs: bin_witness_wet_entries) > 0
+}
+
 fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
   concat(
     if length(xs: corpus_witness_entries(spec: spec)) > 0 || length(xs: spec.discovery_scan_dirs) > 0 { [floor_corpus_node] } else { [] },
-    if length(xs: execution_witness_entries(spec: spec)) > 0 { [execution_corpus_node] } else { [] }
+    concat(
+      if length(xs: execution_witness_entries(spec: spec)) > 0 { [execution_corpus_node] } else { [] },
+      if bin_witness_corpus_enrolled(spec: spec) { [bin_witness_corpus_node] } else { [] }
+    )
   )
 }
 
@@ -156,7 +163,7 @@ fn floor_compile_root_node() -> Node {
 }
 
 fn floor_resource_anchor_node(node: Node) -> Bool {
-  (node == floor_compile_root_node()) || (node == floor_corpus_node) || (node == execution_corpus_node)
+  (node == floor_compile_root_node()) || (node == floor_corpus_node) || (node == execution_corpus_node) || (node == bin_witness_corpus_node)
 }
 
 fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
@@ -316,6 +323,31 @@ fn execution_corpus_runnable_for(spec: CiSpec) -> Runnable {
   }
 }
 
+data bin_witness_corpus_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_bin_witness_corpus } },
+  children: []
+}
+
+data bin_witness_corpus_note: String = "The bin-execution witness batch: the declared Wet lane for witnesses whose fns execute compiled seed witness binaries (gunbc.ci_layer_roots bin_witness_wet_entries — see bin_witness_wet_note there). They ran silently wet inside the discovery corpus until the hermetic flip; now the discovery batch is Hermetic and these rows keep their per-PR coverage under an explicit Wet profile (spawns_host_compiler: the runner may cargo-build a missing witness bin locally; in CI the build job prebuilds them). Enrolled only when the spec runs live discovery (bin_witness_corpus_enrolled), so regen/emit-determinism/synthetic specs carry no bin batch."
+
+fn bin_witness_corpus_runnable_for() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: bin_witness_wet_entries,
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    spawn_width_cap: execution_corpus_spawn_width(),
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_execution_corpus_per_witness_rss),
+      execution_mode: Wet
+    )
+  }
+}
+
 fn floor_nodes(spec: CiSpec) -> List<Node> {
   fold(spec.gates, init: corpus_plan_nodes(spec: spec), f: fn(acc, g) {
     list_snoc_item(xs: acc, item: gate_node(g: g))
@@ -342,11 +374,19 @@ fn floor_resource_depends_on(source: Node, dependent: Node) -> DependencyView {
 
 fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
   let corpus_nodes = corpus_plan_nodes(spec: spec)
-  let after_floor_corpus = if length(xs: corpus_nodes) > 1 {
-    [floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node)]
-  } else {
-    []
-  }
+  let floor_present = length(xs: corpus_witness_entries(spec: spec)) > 0 || length(xs: spec.discovery_scan_dirs) > 0
+  let after_floor_corpus = concat(
+    if floor_present && length(xs: execution_witness_entries(spec: spec)) > 0 {
+      [floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node)]
+    } else {
+      []
+    },
+    if floor_present && bin_witness_corpus_enrolled(spec: spec) {
+      [floor_resource_depends_on(source: floor_corpus_node, dependent: bin_witness_corpus_node)]
+    } else {
+      []
+    }
+  )
   fold(spec.gates, init: after_floor_corpus, f: fn(acc, g) {
     let node = gate_node(g: g)
     if floor_resource_anchor_node(node: node) {
@@ -501,6 +541,8 @@ fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
     corpus_runnable_for(spec: spec)
   } else if node == execution_corpus_node {
     execution_corpus_runnable_for(spec: spec)
+  } else if node == bin_witness_corpus_node {
+    bin_witness_corpus_runnable_for()
   } else {
     fold(spec.gates, init: floor_unrunnable_sentinel(), f: fn(acc, g) {
       if node == gate_node(g: g) { gate_runnable(g: g) } else { acc }

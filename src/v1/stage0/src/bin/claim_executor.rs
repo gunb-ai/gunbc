@@ -2355,6 +2355,7 @@ mod tests {
             entry: entry.to_string(),
             function: function.to_string(),
             use_walk_memo: false,
+            execution_mode: ExecutionMode::Hermetic,
         }
     }
 
@@ -2367,6 +2368,7 @@ mod tests {
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
             spawn_width_cap: 0,
+            execution_mode: ExecutionMode::Hermetic,
         }
     }
 
@@ -2596,9 +2598,14 @@ mod tests {
         let cold: Vec<(String, bool, String)> = functions
             .iter()
             .flat_map(|f| {
-                run_shared_entry_claims(&source_roots, &entry, std::slice::from_ref(f))
-                    .into_iter()
-                    .map(|r| (r.function, r.ok, r.detail))
+                run_shared_entry_claims(
+                    &source_roots,
+                    &entry,
+                    std::slice::from_ref(f),
+                    ExecutionMode::Hermetic,
+                )
+                .into_iter()
+                .map(|r| (r.function, r.ok, r.detail))
             })
             .collect();
 
@@ -2607,9 +2614,15 @@ mod tests {
         let warm: Vec<(String, bool, String)> = functions
             .iter()
             .flat_map(|f| {
-                run_memo_shared_claims(&source_roots, &entry, std::slice::from_ref(f), &mut memo)
-                    .into_iter()
-                    .map(|r| (r.function, r.ok, r.detail))
+                run_memo_shared_claims(
+                    &source_roots,
+                    &entry,
+                    std::slice::from_ref(f),
+                    ExecutionMode::Hermetic,
+                    &mut memo,
+                )
+                .into_iter()
+                .map(|r| (r.function, r.ok, r.detail))
             })
             .collect();
 
@@ -2648,7 +2661,9 @@ mod tests {
         );
         assert!(
             first[0].resolve_nanos > 0,
-            "first call must pay the resolve cost (resolve_entry_graph fires)"
+            "first call must pay the resolve cost (resolve_entry_graph fires); ok={} detail={}",
+            first[0].ok,
+            first[0].detail
         );
 
         // Second call for the same entry AND mode: must cache-hit (resolve_nanos == 0).
