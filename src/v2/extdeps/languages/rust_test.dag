@@ -903,7 +903,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
 fn rust_classical_not_ingested_binding_spellings() -> Map<Symbol, String> {
   let m0 = rust_binding_spellings()
   let m1 = map_insert(m0, ^dag_binding_fn_classical_not, "classical_not")
-  let m2 = map_insert(m1, ^dag_binding_pick_lit_one, "1")
+  let m2 = map_insert(m1, ^dag_binding_octet_one, "1")
   map_insert(m2, ^dag_binding_octet_zero, "0")
 }
 
