@@ -7377,6 +7377,8 @@ pub fn run_discovery_corpus_with_options(
         &index,
         &diff_edits,
     );
+    let floor_color = floor_color_enabled();
+    let floor_stream = floor_stream_enabled();
     let capped_width = if options.spawn_width_cap > 0 {
         parallel_width.min(options.spawn_width_cap)
     } else {
@@ -7393,6 +7395,11 @@ pub fn run_discovery_corpus_with_options(
             &diff_edits,
             floor_runner_ctx.as_ref(),
             whole_tree_published_keys.clone(),
+            ShardStyle {
+                shard_id: 0,
+                color: floor_color,
+                stream: floor_stream,
+            },
         )?;
         // Definition-drift oracle (single-authority reconciliation, executable): on a
         // COMPLETED width-1 run the pre-resolve import walk and the post-resolve
@@ -7427,7 +7434,7 @@ pub fn run_discovery_corpus_with_options(
     let source_roots_owned = source_roots.to_vec();
     let selection_for_shards = options.node_frontier_selection;
     let mut handles = Vec::new();
-    for shard in shards {
+    for (shard_id, shard) in shards.into_iter().enumerate() {
         if shard.is_empty() {
             continue;
         }
@@ -7436,6 +7443,11 @@ pub fn run_discovery_corpus_with_options(
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
+        let style = ShardStyle {
+            shard_id,
+            color: floor_color,
+            stream: floor_stream,
+        };
         handles.push(std::thread::spawn(move || {
             // Each shard is its own thread (Rc<ResolvedGraph> is !Send, so the resolve store
             // cannot cross the shard boundary — that cross-shard share is the S2b/Arc frontier).
@@ -7469,6 +7481,7 @@ pub fn run_discovery_corpus_with_options(
                 &seeds,
                 runner.as_ref(),
                 keys,
+                style,
             )
         }));
     }
@@ -7618,6 +7631,79 @@ fn eprintln_affected_set_categorization(
     }
 }
 
+/// Live realization view: stream affected witnesses to stderr as they finish, one colored
+/// line per shard, so a run reads as "the affected set unrolling in real time" rather than a
+/// silent wait then a summary. On by default (opt out with `GUNBC_FLOOR_QUIET=1`); color
+/// auto-detected (a terminal or GitHub Actions), `NO_COLOR` honored, `GUNBC_FLOOR_COLOR=1`
+/// forces it on. Only RUN witnesses reach the stream — skips are counted, not narrated.
+fn floor_stream_enabled() -> bool {
+    !std::env::var("GUNBC_FLOOR_QUIET")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+fn floor_color_enabled() -> bool {
+    if std::env::var("NO_COLOR").is_ok() {
+        return false;
+    }
+    if std::env::var("GUNBC_FLOOR_COLOR")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    use std::io::IsTerminal;
+    std::io::stderr().is_terminal()
+        || std::env::var("GITHUB_ACTIONS")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+}
+
+#[derive(Clone, Copy)]
+struct ShardStyle {
+    shard_id: usize,
+    color: bool,
+    stream: bool,
+}
+
+impl ShardStyle {
+    /// Distinct hue per concurrent shard so the interleaved stream reads as parallelism. Green
+    /// and red are reserved for the pass/fail glyph, so the label palette avoids them.
+    fn shard_color_code(self) -> &'static str {
+        const PALETTE: [&str; 6] = [
+            "\x1b[96m", // bright cyan
+            "\x1b[94m", // bright blue
+            "\x1b[95m", // bright magenta
+            "\x1b[93m", // bright yellow
+            "\x1b[36m", // cyan
+            "\x1b[35m", // magenta
+        ];
+        PALETTE[self.shard_id % PALETTE.len()]
+    }
+
+    fn stream_witness(self, function: &str, entry: &str, wall_nanos: u128, passed: bool) {
+        if !self.stream {
+            return;
+        }
+        let ms = wall_nanos as f64 / 1.0e6;
+        if self.color {
+            let sc = self.shard_color_code();
+            let glyph = if passed {
+                "\x1b[32m✓\x1b[0m"
+            } else {
+                "\x1b[31m✗\x1b[0m"
+            };
+            eprintln!(
+                "{sc}▎s{}\x1b[0m {glyph} {function} \x1b[2m({entry})\x1b[0m {ms:.1}ms",
+                self.shard_id
+            );
+        } else {
+            let glyph = if passed { "PASS" } else { "FAIL" };
+            eprintln!("  s{} {glyph} {function} ({entry}) {ms:.1}ms", self.shard_id);
+        }
+    }
+}
+
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
@@ -7627,6 +7713,7 @@ fn run_discovery_rows(
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
+    style: ShardStyle,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
         total: rows.len(),
@@ -7859,13 +7946,20 @@ fn run_discovery_rows(
             &format!("{}::{}", row.entry, row.function),
         );
         let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
-        summary.total_measured_nanos += receipt.wall_nanos;
+        let wall_nanos = receipt.wall_nanos;
+        summary.total_measured_nanos += wall_nanos;
         summary.performance_receipts.push(receipt);
         summary.witness_outcomes.push(DiscoveryWitnessOutcome {
             entry: row.entry.clone(),
             function: row.function.clone(),
             outcome: outcome.clone(),
         });
+        style.stream_witness(
+            &row.function,
+            &row.entry,
+            wall_nanos,
+            matches!(outcome, ClaimOutcome::Pass),
+        );
         if selection == NodeFrontierSelectionMode::PredictOnly
             && would_skip
             && !matches!(outcome, ClaimOutcome::Pass)
