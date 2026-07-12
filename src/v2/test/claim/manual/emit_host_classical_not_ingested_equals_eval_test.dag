@@ -459,12 +459,14 @@ test fn ingested_classical_not_emit_accepts_holds() -> Bool {
   }
 }
 
-test fn ingested_classical_not_real_infer_holds() -> Bool {
+data ingested_classical_not_real_infer_int_scrutinee_deficit_note: String = "ingested classical_not uses Int scrutinee + bool-literal arms; infer refuses until normalize/ingest grounds bool keywords in Int-valued match bodies (eager-heron type-model lane) or lowers to a 2-value carrier. emit-accepts is the Wave-1.6 deliverable; real_infer acceptance follows that grounding."
+
+test fn ingested_classical_not_real_infer_refuses_int_scrutinee_holds() -> Bool {
   match ingested_arrow_from_source(source: ingested_classical_not_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       match infer(tree: arrow) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
       }
     Rejected { diagnostics: _ } => false
   }

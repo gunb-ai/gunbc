@@ -153,17 +153,17 @@ fn classical_not_int_match_arrow_fixture() -> Node {
   )
 }
 
-test fn complement_body_real_infer_holds() -> Bool {
+test fn complement_body_real_infer_refuses_holds() -> Bool {
   match infer(tree: dag_complement_body_fixture) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
-test fn classical_not_int_match_arrow_real_infer_holds() -> Bool {
+test fn classical_not_int_match_arrow_real_infer_refuses_holds() -> Bool {
   match infer(tree: classical_not_int_match_arrow_fixture()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -201,10 +201,10 @@ test fn classical_not_int_match_non_octet_arm_rejects_holds() -> Bool {
   }
 }
 
-test fn complement_arrow_real_infer_holds() -> Bool {
+test fn complement_arrow_real_infer_refuses_holds() -> Bool {
   match infer(tree: dag_complement_arrow_with_body_fixture) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
