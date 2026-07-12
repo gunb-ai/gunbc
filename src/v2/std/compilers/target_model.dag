@@ -10655,6 +10655,43 @@ fn target_value_expr_binding_in_declared_param_list(
   })
 }
 
+fn target_value_expr_param_binding_for_referent(
+  referent: Symbol,
+  bindings: List<Symbol>,
+  target: TargetModel
+) -> Optional<Symbol> {
+  if target_value_expr_binding_in_declared_param_list(binding: referent, bindings: bindings) {
+    optional_present(value: referent)
+  } else {
+    match target_binding_spelling_lookup(target: target, binding: referent) {
+      Accepted { value: referent_spelling, diagnostics: _ } =>
+        fold_list(
+          xs: bindings,
+          empty: optional_absent(),
+          cons: fn(acc, param_binding) {
+            match acc {
+              Present { value: _ } => acc
+              Absent =>
+                match target_binding_spelling_lookup(
+                  target: target,
+                  binding: param_binding
+                ) {
+                  Accepted { value: param_spelling, diagnostics: _ } =>
+                    if param_spelling == referent_spelling {
+                      optional_present(value: param_binding)
+                    } else {
+                      acc
+                    }
+                  Rejected { diagnostics: _ } => acc
+                }
+            }
+          }
+        )
+      Rejected { diagnostics: _ } => optional_absent()
+    }
+  }
+}
+
 fn target_value_expr_arrow_body_scope_binding(
   arrow: Node,
   body: Node,
@@ -10664,19 +10701,31 @@ fn target_value_expr_arrow_body_scope_binding(
   bind_outcome(
     o: arrow_domain_named_param_bindings(arrow: arrow),
     f: fn(bindings) {
-      if target_value_expr_binding_in_declared_param_list(binding: binding, bindings: bindings)
-        && (
-          target_value_expr_add_signature_matches_for_target(arrow: arrow, target: target)
-          || target_value_expr_arrow_has_transform_body(arrow: arrow)
-        ) {
-        outcome_accepted(binding)
-      } else {
-        outcome_rejected(
-          target_value_expr_diagnostic(
-            reason: ^target_value_expr_reason_body_scope_binding_invalid,
-            node: body
+      match target_value_expr_param_binding_for_referent(
+        referent: binding,
+        bindings: bindings,
+        target: target
+      ) {
+        Present { value: scoped } =>
+          if target_value_expr_add_signature_matches_for_target(arrow: arrow, target: target)
+            || target_value_expr_arrow_has_transform_body(arrow: arrow)
+            || target_value_expr_arrow_has_match_body(arrow: arrow) {
+            outcome_accepted(scoped)
+          } else {
+            outcome_rejected(
+              target_value_expr_diagnostic(
+                reason: ^target_value_expr_reason_body_scope_binding_invalid,
+                node: body
+              )
+            )
+          }
+        Absent =>
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_body_scope_binding_invalid,
+              node: body
+            )
           )
-        )
       }
     }
   )
@@ -10858,6 +10907,10 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
     optional_present(value: ^dag_binding_param_x)
   } else if id == ^dag_binding_param_y {
     optional_present(value: ^dag_binding_param_y)
+  } else if id == ^rust_binding_param_x {
+    optional_present(value: ^rust_binding_param_x)
+  } else if id == ^rust_binding_param_y {
+    optional_present(value: ^rust_binding_param_y)
   } else if id == ^dag_binding_rec_v {
     optional_present(value: ^dag_binding_rec_v)
   } else {
@@ -10874,6 +10927,36 @@ fn target_value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValu
     Absent =>
       outcome_accepted(
         target_value_expression_symbol_identity(identity: id)
+      )
+  }
+}
+
+fn target_value_expr_project_atom_in_arrow_scope(
+  arrow: Node,
+  node: Node,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match target_value_expr_arrow_body_scope_binding(
+        arrow: arrow,
+        body: node,
+        binding: id,
+        target: target
+      ) {
+        Accepted { value: scoped, diagnostics: d } =>
+          outcome_accepted(
+            target_value_expression_binding_ref(binding: scoped)
+          )
+        Rejected { diagnostics: _ } =>
+          target_value_expr_project_atom_literal(node: node)
+      }
+    _ =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: node
+        )
       )
   }
 }
@@ -11510,7 +11593,11 @@ fn target_value_expr_project_body_subexpression(
         handle_transform: handle_transform
       )
     TypeNode { connective: Atom { identity: _ } } =>
-      target_value_expr_project_atom_literal(node: node)
+      target_value_expr_project_atom_in_arrow_scope(
+        arrow: arrow,
+        node: node,
+        target: target
+      )
     _ =>
       outcome_rejected(
         target_value_expr_diagnostic(
