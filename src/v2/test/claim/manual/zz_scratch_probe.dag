@@ -1,0 +1,94 @@
+module v2.test.manual.zz_scratch_probe
+
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  dag_language_model,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  parse_subtree_find_production_captured
+}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.node { Atom, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode }
+
+data probe_source: String = "module p\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn probe_parsed_tree() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: probe_source, file: ^probe_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+      }
+  }
+}
+
+fn probe_find_emitted(root: Node, target: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == target {
+        Present { value: root }
+      } else {
+        fold(root.children, init: Absent, f: fn(acc, e) {
+          match acc { Present { value: _ } => acc  Absent => probe_find_emitted(root: e.target, target: target) }
+        })
+      }
+    Absent =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc { Present { value: _ } => acc  Absent => probe_find_emitted(root: e.target, target: target) }
+      })
+  }
+}
+
+// Compact structural dump: KIND[prod=..|atom=..](childlabel: <sub> ...) to bounded depth.
+fn probe_child_label(e: Edge) -> String {
+  match e.label {
+    Named { name: n } => symbol_lexeme(sym: n)
+    Positional => "."
+  }
+}
+
+fn probe_kind_tag(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      concat("atom:", symbol_lexeme(sym: id))
+    TypeNode { connective: _ } =>
+      match parse_production_emitted_identity_optional(node: n) {
+        Present { value: pid } => concat("prod:", symbol_lexeme(sym: pid))
+        Absent => "Conj"
+      }
+    ComputationNode { behavior: _ } => "COMP"
+  }
+}
+
+fn probe_dump(n: Node, depth: Int) -> String {
+  let tag = probe_kind_tag(n: n)
+  if depth <= 0 {
+    concat(tag, "~")
+  } else {
+    let kids = fold(n.children, init: "", f: fn(acc, e) {
+      concat(acc, concat(" ", concat(probe_child_label(e: e), concat("=", concat(probe_dump(n: e.target, depth: depth - 1), ";")))))
+    })
+    concat(tag, concat("(", concat(kids, ")")))
+  }
+}
+
+fn probe_fn_body_dump() -> String {
+  match probe_parsed_tree() {
+    Absent => "NO_PARSE"
+    Present { value: tree } =>
+      match probe_find_emitted(root: tree, target: ^dag_surface_fn_body) {
+        Absent => "NO_FN_BODY"
+        Present { value: body } => probe_dump(n: body, depth: 9)
+      }
+  }
+}
