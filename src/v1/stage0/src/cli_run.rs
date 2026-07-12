@@ -7338,7 +7338,7 @@ pub fn run_discovery_corpus_with_options(
             move || -> Result<Vec<DiscoverySummary>, String> {
                 // The slot was granted by try_admit on the pump thread; the guard owns the
                 // matching release so a panicking worker cannot wedge admissions.
-                let _slot = crate::memory_governor::AdmittedSlot::from_admitted(
+                let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
                     governor_for_worker.clone(),
                 );
                 // Each worker is its own thread (Rc<ResolvedGraph> is !Send, so the resolve
@@ -7363,6 +7363,9 @@ pub fn run_discovery_corpus_with_options(
                 } else {
                     None
                 };
+                // The front-loaded admission cost (index build + runner resolve) has
+                // landed and is visible to the creep signals: unblock admission pacing.
+                slot.note_first_cost_paid();
                 let mut worker_summaries = Vec::new();
                 loop {
                     // Multiplicative decrease drains here: a worker between groups retires
@@ -7387,7 +7390,7 @@ pub fn run_discovery_corpus_with_options(
                     ) {
                         Ok(summary) => {
                             worker_summaries.push(summary);
-                            governor_for_worker.note_unit_complete();
+                            slot.note_unit_complete();
                         }
                         Err(e) => {
                             abort_for_worker.store(true, Ordering::SeqCst);

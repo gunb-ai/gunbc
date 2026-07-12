@@ -556,10 +556,10 @@ fn run_batch_unit(
             // A gate unit's resolved graph is a real memory resident: take a governor
             // slot for the unit's lifetime so gate threads and discovery workers draw
             // from the same admission window instead of stacking unbounded.
-            let _slot = AdmittedSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
+            let mut slot = AdmittedSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
             let results =
                 run_shared_entry_claims(&source_roots, &entry, &functions, execution_mode);
-            governor.note_unit_complete();
+            slot.note_unit_complete();
             results
         }
     }
