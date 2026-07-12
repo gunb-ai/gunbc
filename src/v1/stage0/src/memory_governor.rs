@@ -138,11 +138,14 @@ struct GovCore {
     undigested: usize,
     /// Episode edge for pacing holds, symmetric with `holding`.
     pacing_episode: bool,
+    /// Episode edge for the budget-exceeded hard event; re-arms below high-water.
+    budget_exceeded_episode: bool,
     admissions: u64,
     forced_serial_admissions: u64,
     graceful_holds: u64,
     pacing_holds: u64,
     hard_backoffs: u64,
+    budget_exceeded_backoffs: u64,
     width_growths: u64,
     max_width_reached: usize,
     peak_current_bytes: u64,
@@ -159,11 +162,13 @@ impl GovCore {
             holding: false,
             undigested: 0,
             pacing_episode: false,
+            budget_exceeded_episode: false,
             admissions: 0,
             forced_serial_admissions: 0,
             graceful_holds: 0,
             pacing_holds: 0,
             hard_backoffs: 0,
+            budget_exceeded_backoffs: 0,
             width_growths: 0,
             max_width_reached: 0,
             peak_current_bytes: 0,
@@ -176,8 +181,31 @@ impl GovCore {
 struct HardEvent {
     high_delta: u64,
     oom_kill_delta: u64,
+    /// `memory.current` crossed the declared budget itself. The budget IS the declaration
+    /// (§5 correctness-by-construction: on uncapped hosts `memory.events` never fires, so
+    /// without this arm the multiplicative decrease is unreachable and in-flight worker
+    /// growth sails through the hold zone to physical RAM — CI run 29181858455: held at
+    /// high-water 41.5GiB, dead at 52.6GiB seventy seconds later with zero admissions).
+    budget_exceeded: bool,
     old_target: usize,
     new_target: usize,
+}
+
+impl HardEvent {
+    fn describe(&self) -> String {
+        let cause = if self.budget_exceeded {
+            "memory.current exceeded the declared budget".to_string()
+        } else {
+            format!(
+                "memory.events high +{} oom_kill +{}",
+                self.high_delta, self.oom_kill_delta
+            )
+        };
+        format!(
+            "[governor] hard back-off: {cause} — target_width {}→{} (workers drain between units)",
+            self.old_target, self.new_target
+        )
+    }
 }
 
 /// The governor's static configuration: the declared pipe.
@@ -188,10 +216,20 @@ pub struct GovernorLimits {
     pub max_width: usize,
 }
 
-/// Fold one sample's cumulative counters into the core: first sight sets the baseline
-/// (the counters count since cgroup creation, so a nonzero first read is history, not an
-/// event); a later positive delta is a hard event and halves the window (floor 1).
-fn absorb_hard_events(core: &mut GovCore, sig: &MemorySignals) -> Option<HardEvent> {
+/// Fold one sample's hard signals into the core. Two hard families, one halving:
+/// cumulative `memory.events` counters (first sight sets the baseline — history, not an
+/// event; a later positive delta is an event), and the budget-exceeded edge — `current`
+/// above the declared budget is an exceeded pipe by definition, giving uncapped hosts
+/// (where `memory.events` never fires) a reachable multiplicative decrease. The exceeded
+/// edge is episode-counted with hysteresis: it fires once per crossing and re-arms only
+/// when `current` falls back under the high-water line, so oscillation at the budget
+/// line cannot halve the window once per poll. Any hard event halves the window
+/// (floor 1); `should_retire` then drains workers between units, freeing their indexes.
+fn absorb_hard_events(
+    core: &mut GovCore,
+    sig: &MemorySignals,
+    limits: &GovernorLimits,
+) -> Option<HardEvent> {
     if let Some(cur) = sig.current_bytes {
         core.peak_current_bytes = core.peak_current_bytes.max(cur);
     }
@@ -213,7 +251,20 @@ fn absorb_hard_events(core: &mut GovCore, sig: &MemorySignals) -> Option<HardEve
         }
         core.baseline_events_oom_kill = Some(o);
     }
-    if high_delta == 0 && oom_delta == 0 {
+    let mut budget_exceeded = false;
+    if let (Some(current), Some(budget)) = (sig.current_bytes, limits.budget_bytes) {
+        let high_water = budget / HIGH_WATER_DEN * HIGH_WATER_NUM;
+        if current > budget {
+            if !core.budget_exceeded_episode {
+                core.budget_exceeded_episode = true;
+                core.budget_exceeded_backoffs += 1;
+                budget_exceeded = true;
+            }
+        } else if current <= high_water {
+            core.budget_exceeded_episode = false;
+        }
+    }
+    if high_delta == 0 && oom_delta == 0 && !budget_exceeded {
         return None;
     }
     let old_target = core.target_width;
@@ -222,6 +273,7 @@ fn absorb_hard_events(core: &mut GovCore, sig: &MemorySignals) -> Option<HardEve
     Some(HardEvent {
         high_delta,
         oom_kill_delta: oom_delta,
+        budget_exceeded,
         old_target,
         new_target: core.target_width,
     })
@@ -263,7 +315,7 @@ fn decide_admission(
     sig: &MemorySignals,
     limits: &GovernorLimits,
 ) -> (AdmitDecision, Option<HardEvent>) {
-    let hard = absorb_hard_events(core, sig);
+    let hard = absorb_hard_events(core, sig, limits);
     let creep = creep_reason(core, sig, limits);
     core.prev_swap_bytes = sig.swap_current_bytes.or(core.prev_swap_bytes);
     if core.active == 0 {
@@ -328,14 +380,19 @@ fn decide_admission(
 
 /// Additive increase, gated on calm: a completed unit of work while no creep is visible
 /// grows the window by one, up to the CPU bound.
-fn note_completion(core: &mut GovCore, sig: &MemorySignals, limits: &GovernorLimits) {
-    let hard = absorb_hard_events(core, sig);
+fn note_completion(
+    core: &mut GovCore,
+    sig: &MemorySignals,
+    limits: &GovernorLimits,
+) -> Option<HardEvent> {
+    let hard = absorb_hard_events(core, sig, limits);
     let creep = creep_reason(core, sig, limits);
     core.prev_swap_bytes = sig.swap_current_bytes.or(core.prev_swap_bytes);
     if hard.is_none() && creep.is_none() && core.target_width < limits.max_width {
         core.target_width += 1;
         core.width_growths += 1;
     }
+    hard
 }
 
 /// A worker's front-loaded admission cost has landed (its index build finished): its
@@ -455,10 +512,7 @@ impl MemoryGovernor {
         let (decision, hard) = decide_admission(&mut core, &sig, &self.limits);
         drop(core);
         if let Some(h) = hard {
-            eprintln!(
-                "[governor] hard back-off: memory.events high +{} oom_kill +{} — target_width {}→{}",
-                h.high_delta, h.oom_kill_delta, h.old_target, h.new_target
-            );
+            eprintln!("{}", h.describe());
         }
         if let AdmitDecision::Hold(reason) = &decision {
             if reason.is_memory_creep() && !was_holding {
@@ -498,7 +552,11 @@ impl MemoryGovernor {
     fn note_unit_complete_growth(&self) {
         let sig = self.source.read();
         let mut core = self.core.lock().unwrap();
-        note_completion(&mut core, &sig, &self.limits);
+        let hard = note_completion(&mut core, &sig, &self.limits);
+        drop(core);
+        if let Some(h) = hard {
+            eprintln!("{}", h.describe());
+        }
     }
 
     fn note_first_cost_paid(&self) {
@@ -533,7 +591,7 @@ impl MemoryGovernor {
         format!(
             "[governor] receipt: budget={} source={} max_width_reached={} admissions={} \
              width_growths={} graceful_holds={} pacing_holds={} hard_backoffs={} \
-             forced_serial={} peak_current={}",
+             budget_exceeded={} forced_serial={} peak_current={}",
             self.limits
                 .budget_bytes
                 .map(|b| b.to_string())
@@ -545,6 +603,7 @@ impl MemoryGovernor {
             core.graceful_holds,
             core.pacing_holds,
             core.hard_backoffs,
+            core.budget_exceeded_backoffs,
             core.forced_serial_admissions,
             if core.peak_current_bytes == 0 {
                 "unreadable".to_string()
@@ -816,6 +875,51 @@ mod tests {
     }
 
     #[test]
+    fn budget_exceed_is_a_hard_event_once_per_episode_with_hysteresis() {
+        let lim = limits(1_000_000, 16);
+        let mut core = GovCore::new();
+        core.target_width = 8;
+        core.active = 8;
+        // Current above the DECLARED BUDGET (not merely high-water): hard event — halve.
+        let over = MemorySignals {
+            current_bytes: Some(1_000_001),
+            ..calm()
+        };
+        let (d, _) = decide_admission(&mut core, &over, &lim);
+        assert!(matches!(d, AdmitDecision::Hold(_)));
+        assert_eq!(core.target_width, 4, "window halves on budget exceed");
+        assert_eq!(core.hard_backoffs, 1);
+        assert_eq!(core.budget_exceeded_backoffs, 1);
+        // The drain path is reachable: concurrency now sits above the halved window.
+        assert!(core.active > core.target_width, "workers must drain");
+        // Still over on the next poll: same episode, no second halving.
+        let (_, h2) = decide_admission(&mut core, &over, &lim);
+        assert!(h2.is_none());
+        assert_eq!(core.target_width, 4);
+        assert_eq!(core.budget_exceeded_backoffs, 1);
+        // Dropping under the budget but ABOVE high-water does not re-arm (hysteresis)…
+        core.active = 4;
+        let between = MemorySignals {
+            current_bytes: Some(900_000),
+            ..calm()
+        };
+        let (_, h3) = decide_admission(&mut core, &between, &lim);
+        assert!(h3.is_none());
+        let (_, h4) = decide_admission(&mut core, &over, &lim);
+        assert!(h4.is_none(), "not re-armed while above high-water");
+        // …falling under high-water re-arms; a second crossing halves again.
+        let calm_low = MemorySignals {
+            current_bytes: Some(100_000),
+            ..calm()
+        };
+        let (_, _) = decide_admission(&mut core, &calm_low, &lim);
+        let (_, h5) = decide_admission(&mut core, &over, &lim);
+        assert!(h5.is_some(), "re-armed below high-water");
+        assert_eq!(core.target_width, 2);
+        assert_eq!(core.budget_exceeded_backoffs, 2);
+    }
+
+    #[test]
     fn release_before_first_cost_clears_pacing_debt() {
         let lim = limits(1_000_000, 8);
         let mut core = GovCore::new();
@@ -950,6 +1054,7 @@ mod tests {
             Some(HardEvent {
                 high_delta: 1,
                 oom_kill_delta: 0,
+                budget_exceeded: false,
                 old_target: 8,
                 new_target: 4
             })
@@ -998,6 +1103,7 @@ mod tests {
             Some(HardEvent {
                 high_delta: 0,
                 oom_kill_delta: 1,
+                budget_exceeded: false,
                 old_target: 6,
                 new_target: 3
             })
@@ -1058,6 +1164,7 @@ mod tests {
                 c.graceful_holds = 3;
                 c.pacing_holds = 5;
                 c.hard_backoffs = 2;
+                c.budget_exceeded_backoffs = 7;
                 c.forced_serial_admissions = 1;
                 c.admissions = 40;
                 c.max_width_reached = 4;
@@ -1069,6 +1176,7 @@ mod tests {
         assert!(line.contains("graceful_holds=3"));
         assert!(line.contains("pacing_holds=5"));
         assert!(line.contains("hard_backoffs=2"));
+        assert!(line.contains("budget_exceeded=7"));
         assert!(line.contains("forced_serial=1"));
         assert!(line.contains("admissions=40"));
         assert!(line.contains("budget=123456"));
