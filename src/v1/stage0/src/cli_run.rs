@@ -7462,7 +7462,14 @@ pub fn run_discovery_corpus_with_options(
             }
         }
     };
-<<<<<<< HEAD
+    eprintln_affected_set_categorization(
+        options.node_frontier_selection,
+        &rows,
+        &index,
+        &diff_edits,
+    );
+    let floor_color = floor_color_enabled();
+    let floor_stream = floor_stream_enabled();
     let governor = match width_policy {
         DiscoveryWidthPolicy::Serial => {
             let summary = run_discovery_rows(
@@ -7475,6 +7482,12 @@ pub fn run_discovery_corpus_with_options(
                 floor_runner_ctx.as_ref(),
                 whole_tree_published_keys.clone(),
                 options.fast_lane_eval_budget_ms,
+                ShardStyle {
+                    shard_id: 0,
+                    shard_count: 1,
+                    color: floor_color,
+                    stream: floor_stream,
+                },
             )?;
             // Definition-drift oracle (single-authority reconciliation, executable): on a
             // COMPLETED serial run the pre-resolve import walk and the post-resolve
@@ -7513,6 +7526,13 @@ pub fn run_discovery_corpus_with_options(
         rows.len(),
         governor.current_target_width(),
     );
+    if floor_stream && governor.current_target_width() > 1 {
+        eprintln!(
+            "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
+            floor_ts(),
+            governor.current_target_width(),
+        );
+    }
     let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
         std::sync::Arc::new(Mutex::new(
             groups
@@ -7521,87 +7541,14 @@ pub fn run_discovery_corpus_with_options(
                 .collect(),
         ));
     let abort = std::sync::Arc::new(AtomicBool::new(false));
-=======
-    eprintln_affected_set_categorization(
-        options.node_frontier_selection,
-        &rows,
-        &index,
-        &diff_edits,
-    );
-    let floor_color = floor_color_enabled();
-    let floor_stream = floor_stream_enabled();
-    let capped_width = if options.spawn_width_cap > 0 {
-        parallel_width.min(options.spawn_width_cap)
-    } else {
-        parallel_width
-    };
-    let width = capped_width.max(1);
-    if width == 1 {
-        let summary = run_discovery_rows(
-            &rows,
-            &index,
-            execution_mode,
-            options.node_frontier_selection,
-            &changed_paths,
-            &diff_edits,
-            floor_runner_ctx.as_ref(),
-            whole_tree_published_keys.clone(),
-            ShardStyle {
-                shard_id: 0,
-                shard_count: 1,
-                color: floor_color,
-                stream: floor_stream,
-            },
-        )?;
-        // Definition-drift oracle (single-authority reconciliation, executable): on a
-        // COMPLETED width-1 run the pre-resolve import walk and the post-resolve
-        // resolved-graph union must agree — resolve resolves exactly the transitive
-        // imports. Width-1 only: the merged multi-shard field is max-over-shards, not
-        // the process union, so the comparison is ill-posed there. A mismatch means one
-        // closure definition is wrong (an implicit prelude module the walk missed, or a
-        // resolve seeding change) and the space-lens calibration pair would silently
-        // skew — refuse rather than emit a lying receipt.
-        if summary.roster_closure_nodes != pre_resolve_closure_nodes {
-            return Err(format!(
-                "[calibration] closure-definition drift: pre-resolve import walk = {} nodes, \
-                 post-resolve resolved union = {} — the two closure definitions diverged \
-                 (implicit prelude/kernel module in resolve the import walk cannot see, or a \
-                 seeding change); reconcile the definitions before trusting bytes-per-node \
-                 calibration (roster_import_closure_nodes_pre_resolve is the shared authority)",
-                pre_resolve_closure_nodes, summary.roster_closure_nodes
-            ));
-        }
-        eprintln!(
-            "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
-            pre_resolve_closure_nodes
-        );
-        return Ok(summary);
-    }
-    let shards = shard_row_indices_by_entry(&rows, width);
-    let active_shards = shards.iter().filter(|s| !s.is_empty()).count();
-    eprintln!(
-        "run_discovery_corpus: parallel_width={width} ({active_shards} entry-group shard(s))"
-    );
-    if floor_stream && active_shards > 1 {
-        eprintln!(
-            "{} [affected-set] streaming run-witnesses live across {active_shards} concurrent shards (▎shard N, one color each)",
-            floor_ts()
-        );
-    }
->>>>>>> origin/main
     let source_roots_owned = source_roots.to_vec();
     let selection_for_workers = options.node_frontier_selection;
     let fast_lane_budget_for_workers = options.fast_lane_eval_budget_ms;
     let mut handles = Vec::new();
-<<<<<<< HEAD
+    let mut worker_ordinal: usize = 0;
     loop {
         if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
             break;
-=======
-    for (shard_id, shard) in shards.into_iter().enumerate() {
-        if shard.is_empty() {
-            continue;
->>>>>>> origin/main
         }
         match governor.try_admit() {
             crate::memory_governor::AdmitDecision::Admit { .. } => {}
@@ -7617,7 +7564,16 @@ pub fn run_discovery_corpus_with_options(
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
-<<<<<<< HEAD
+        // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
+        // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
+        // admission window has no interleaving to disambiguate.
+        let style = ShardStyle {
+            shard_id: worker_ordinal,
+            shard_count: governor.current_target_width(),
+            color: floor_color,
+            stream: floor_stream,
+        };
+        worker_ordinal += 1;
         handles.push(std::thread::spawn(
             move || -> Result<Vec<DiscoverySummary>, String> {
                 // The slot was granted by try_admit on the pump thread; the guard owns the
@@ -7643,26 +7599,6 @@ pub fn run_discovery_corpus_with_options(
                                  run-everything fallback"
                             ));
                         }
-=======
-        let style = ShardStyle {
-            shard_id,
-            shard_count: active_shards,
-            color: floor_color,
-            stream: floor_stream,
-        };
-        handles.push(std::thread::spawn(move || {
-            // Each shard is its own thread (Rc<ResolvedGraph> is !Send, so the resolve store
-            // cannot cross the shard boundary — that cross-shard share is the S2b/Arc frontier).
-            // Within the shard, union-resolve S1 still holds: the shard's floor runner and its
-            // rows resolve against ONE index, so the shard no longer re-resolves the floor
-            // runner's closure privately alongside the rows' — the std/spec prefix typechecks
-            // once per shard, not twice.
-            let index = build_multi_entry_index(&roots);
-            let runner = if selection_for_shards != NodeFrontierSelectionMode::Off {
-                match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
-                    Ok((graph, source_indices)) => {
-                        Some(make_eval_context(&graph, source_indices, execution_mode))
->>>>>>> origin/main
                     }
                 } else {
                     None
@@ -7692,6 +7628,7 @@ pub fn run_discovery_corpus_with_options(
                         runner.as_ref(),
                         keys.clone(),
                         fast_lane_budget_for_workers,
+                        style,
                     ) {
                         Ok(summary) => {
                             worker_summaries.push(summary);
@@ -7703,27 +7640,9 @@ pub fn run_discovery_corpus_with_options(
                         }
                     }
                 }
-<<<<<<< HEAD
                 Ok(worker_summaries)
             },
         ));
-=======
-            } else {
-                None
-            };
-            run_discovery_rows(
-                &shard_rows,
-                &index,
-                execution_mode,
-                selection_for_shards,
-                &paths,
-                &seeds,
-                runner.as_ref(),
-                keys,
-                style,
-            )
-        }));
->>>>>>> origin/main
     }
     let mut summaries = Vec::new();
     let mut first_err: Option<String> = None;
@@ -7817,9 +7736,6 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     merged
 }
 
-<<<<<<< HEAD
-#[allow(clippy::too_many_arguments)]
-=======
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the floor-observability cluster
 // below — `floor_verbose` / `floor_ts` / `floor_stream_enabled` / `floor_color_enabled`,
 // `ShardStyle`, and `eprintln_affected_set_categorization` — is seed-side NARRATION wrapped
@@ -8013,7 +7929,8 @@ impl ShardStyle {
     }
 }
 
->>>>>>> origin/main
+
+#[allow(clippy::too_many_arguments)]
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
@@ -8023,11 +7940,8 @@ fn run_discovery_rows(
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
-<<<<<<< HEAD
     fast_lane_eval_budget_ms: Option<u64>,
-=======
     style: ShardStyle,
->>>>>>> origin/main
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
         total: rows.len(),
