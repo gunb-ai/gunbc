@@ -7397,6 +7397,7 @@ pub fn run_discovery_corpus_with_options(
             whole_tree_published_keys.clone(),
             ShardStyle {
                 shard_id: 0,
+                shard_count: 1,
                 color: floor_color,
                 stream: floor_stream,
             },
@@ -7426,11 +7427,16 @@ pub fn run_discovery_corpus_with_options(
         return Ok(summary);
     }
     let shards = shard_row_indices_by_entry(&rows, width);
+    let active_shards = shards.iter().filter(|s| !s.is_empty()).count();
     eprintln!(
-        "run_discovery_corpus: parallel_width={} ({} entry-group shard(s))",
-        width,
-        shards.iter().filter(|s| !s.is_empty()).count()
+        "run_discovery_corpus: parallel_width={width} ({active_shards} entry-group shard(s))"
     );
+    if floor_stream && active_shards > 1 {
+        eprintln!(
+            "{} [affected-set] streaming run-witnesses live across {active_shards} concurrent shards (▎shard N, one color each)",
+            floor_ts()
+        );
+    }
     let source_roots_owned = source_roots.to_vec();
     let selection_for_shards = options.node_frontier_selection;
     let mut handles = Vec::new();
@@ -7445,6 +7451,7 @@ pub fn run_discovery_corpus_with_options(
         let keys = whole_tree_published_keys.clone();
         let style = ShardStyle {
             shard_id,
+            shard_count: active_shards,
             color: floor_color,
             stream: floor_stream,
         };
@@ -7679,6 +7686,10 @@ fn floor_color_enabled() -> bool {
 #[derive(Clone, Copy)]
 struct ShardStyle {
     shard_id: usize,
+    /// Number of concurrent shards in this run. When it is 1 there is no parallelism to
+    /// distinguish, so the `s{id}` shard tag is dropped (it only reads as noise — the reason the
+    /// operator asked "what does s0 mean?"). The tag returns, colored, only when shards run wide.
+    shard_count: usize,
     color: bool,
     stream: bool,
 }
@@ -7698,28 +7709,35 @@ impl ShardStyle {
         PALETTE[self.shard_id % PALETTE.len()]
     }
 
+    /// Colored `▎shard N` tag, or empty when the run is single-shard (nothing to disambiguate).
+    fn shard_tag(self) -> String {
+        if self.shard_count <= 1 {
+            return String::new();
+        }
+        if self.color {
+            format!("{}▎shard {}\x1b[0m ", self.shard_color_code(), self.shard_id)
+        } else {
+            format!("[shard {}] ", self.shard_id)
+        }
+    }
+
     fn stream_witness(self, function: &str, entry: &str, wall_nanos: u128, passed: bool) {
         if !self.stream {
             return;
         }
         let ms = wall_nanos as f64 / 1.0e6;
+        let ts = floor_ts();
+        let tag = self.shard_tag();
         if self.color {
-            let sc = self.shard_color_code();
             let glyph = if passed {
                 "\x1b[32m✓\x1b[0m"
             } else {
                 "\x1b[31m✗\x1b[0m"
             };
-            eprintln!(
-                "{sc}▎s{}\x1b[0m {glyph} {function} \x1b[2m({entry})\x1b[0m {ms:.1}ms",
-                self.shard_id
-            );
+            eprintln!("\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry})\x1b[0m {ms:.1}ms");
         } else {
             let glyph = if passed { "PASS" } else { "FAIL" };
-            eprintln!(
-                "  s{} {glyph} {function} ({entry}) {ms:.1}ms",
-                self.shard_id
-            );
+            eprintln!("{ts} {tag}{glyph} {function} ({entry}) {ms:.1}ms");
         }
     }
 }

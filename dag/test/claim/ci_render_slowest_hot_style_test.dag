@@ -1,0 +1,50 @@
+module test.claim.ci_render_slowest_hot_style
+
+import gunbc.ci_render { render_slowest_witnesses_box, slowest_witness_row }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sample_body() -> List<String> {
+  [
+    slowest_witness_row(rank: 1, function: "slow_a", entry: "e1", eval_ns: 41000000, resolve_ns: 5000000, total_ns: 46000000),
+    slowest_witness_row(rank: 2, function: "med_b", entry: "e2", eval_ns: 10000000, resolve_ns: 1000000, total_ns: 11000000),
+    slowest_witness_row(rank: 3, function: "fast_c", entry: "e3", eval_ns: 100000, resolve_ns: 100000, total_ns: 200000)
+  ]
+}
+
+fn hot_box() -> String {
+  render_slowest_witnesses_box(body: sample_body(), hot_count: 2, width: 90, color: true)
+}
+
+fn cold_box() -> String {
+  render_slowest_witnesses_box(body: sample_body(), hot_count: 0, width: 90, color: true)
+}
+
+test fn hot_has_fire() -> Bool {
+  string_contains(s: hot_box(), pattern: "🔥")
+}
+
+test fn hot_has_red() -> Bool {
+  string_contains(s: hot_box(), pattern: "38;5;196")
+}
+
+test fn probe_has_esc() -> Bool {
+  string_contains(s: hot_box(), pattern: "\x1b[")
+}
+
+test fn probe_has_196() -> Bool {
+  string_contains(s: hot_box(), pattern: "196")
+}
+
+test fn probe_has_38_5() -> Bool {
+  string_contains(s: hot_box(), pattern: "38;5")
+}
+
+test fn cold_has_no_fire() -> Bool {
+  string_contains(s: cold_box(), pattern: "🔥") == false
+}
+
+test fn cold_has_no_red() -> Bool {
+  string_contains(s: cold_box(), pattern: "38;5;196") == false
+}

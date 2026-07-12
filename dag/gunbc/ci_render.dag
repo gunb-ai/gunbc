@@ -35,6 +35,10 @@ fn dim_span(text: String) -> Span {
   Span { text: text, style: SpanStyle { color: Present { value: Dim }, bold: false, italic: false, symbol: none } }
 }
 
+fn error_span(text: String) -> Span {
+  Span { text: text, style: SpanStyle { color: Present { value: Error }, bold: false, italic: false, symbol: none } }
+}
+
 fn line_of(span: Span) -> Line {
   Line { spans: [span], indent: 0, max_width: none }
 }
@@ -138,10 +142,42 @@ fn slowest_witness_row(rank: Int, function: String, entry: String, eval_ns: Int,
   )
 }
 
-fn render_slowest_witnesses_box(body: List<String>, width: Int, color: Bool) -> String {
+type HotRowAcc {
+  lines: List<Line>
+  idx: Int
+}
+
+fn box_content_line_hot(text: String, width: Int, tier: Tier, hot: Bool) -> Line {
+  let v = glyph_for(id: BoxVertical, tier: tier)
+  let marked = if hot { concat("🔥 ", text) } else { text }
+  let inner_budget = width - (2 * string_display_width(s: v)) - 2
+  let inner = pad_to(text: truncate_text(text: marked, max_width: inner_budget), width: inner_budget)
+  let bar_l = plain_span(text: concat(v, " "))
+  let mid = if hot { error_span(text: inner) } else { plain_span(text: inner) }
+  let bar_r = plain_span(text: concat(" ", v))
+  Line { spans: [bar_l, mid, bar_r], indent: 0, max_width: none }
+}
+
+fn hot_content_lines(body: List<String>, hot_count: Int, width: Int, tier: Tier) -> List<Line> {
+  let acc = fold(body, init: HotRowAcc { lines: [], idx: 0 }, f: (a, text) =>
+    HotRowAcc {
+      lines: concat(a.lines, [box_content_line_hot(text: text, width: width, tier: tier, hot: a.idx < hot_count)]),
+      idx: a.idx + 1
+    }
+  )
+  acc.lines
+}
+
+fn boxed_frame_hot(title: String, body: List<String>, hot_count: Int, width: Int, tier: Tier) -> Frame {
+  let content = hot_content_lines(body: body, hot_count: hot_count, width: width, tier: tier)
+  let all = concat([box_top(title: title, width: width, tier: tier)], concat(content, [box_bottom(width: width, tier: tier)]))
+  Frame { lines: all, cursor_action: Append }
+}
+
+fn render_slowest_witnesses_box(body: List<String>, hot_count: Int, width: Int, color: Bool) -> String {
   let cap = render_capability(color: color)
   serialize_frame(
-    frame: boxed_frame(title: "TOP SLOWEST WITNESSES (by eval)", body: body, width: width, tier: cap.tier),
+    frame: boxed_frame_hot(title: "TOP SLOWEST WITNESSES (by eval)", body: body, hot_count: hot_count, width: width, tier: cap.tier),
     cap: cap
   )
 }
