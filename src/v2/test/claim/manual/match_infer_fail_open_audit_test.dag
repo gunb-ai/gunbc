@@ -10,7 +10,16 @@ import v2.extdeps.languages.dag {
   dag_match_if_body_fixture,
   dag_type_atom_node
 }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Diagnostics,
+  None,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Some
+}
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,

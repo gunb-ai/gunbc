@@ -36,6 +36,7 @@ import v2.std.diagnostic {
   Accepted,
   None,
   Rejected,
+  Some,
   bind_outcome,
   diagnostics_merge,
   diagnostics_singleton,
@@ -214,6 +215,14 @@ fn infer_match_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
 fn infer_match_non_exhaustive_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_match_non_exhaustive,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_int_scrutinee_bool_literal_scaffold,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -506,6 +515,8 @@ fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional
   }
 }
 
+data infer_arrow_domain_binding_heuristic_note: String = "interim: infer_find_arrow_domain_type_in_tree DFS-walks the resolved tree for the first Arrow whose Conj domain names the atom-binding symbol — symbol-name collision across unrelated arrows picks first-visit order, not lexical scope. dissolve-on: namespace-only name resolution consumes containment-tree binding→domain (DESIGN open thread §namespace-only); delete this heuristic walker when SymbolIndex lookup lands."
+
 fn infer_find_arrow_domain_type_in_tree(root: Node, binding: Symbol) -> Optional<Node> {
   match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
     Present { value: ty } => Present { value: ty }
@@ -585,7 +596,26 @@ fn infer_branch_type_is_int(type_node: Node) -> Bool {
   }
 }
 
-data infer_match_int_scrutinee_bool_literal_body_note: String = "Int-scrutinee bool-literal match arms ground body type as Int at arm-row construction (same octet 0/1 authority as eval allocate_literal), not a post-unification rewrite. dissolve-on: bool keywords carry Int type in Int-valued match bodies at normalize/ingest. paired-scaffold: emit half = target_value_expr_int_bool_octet_channel_dissolution_note (target_model.dag) — dissolve both halves together on octet↔bool codec inhabitation."
+data infer_match_int_scrutinee_bool_literal_body_note: String = "Int-scrutinee bool-literal match arms ground body type as Int at arm-row construction (same octet 0/1 authority as eval allocate_literal), not a post-unification rewrite. dissolve-on: bool keywords carry Int type in Int-valued match bodies at normalize/ingest. scaffold-widen: Int scrutinee on bool-literal match emits infer_match_int_scrutinee_bool_literal_scaffold diagnostic (countable on Accepted path). paired-scaffold: emit half = target_value_expr_int_bool_octet_channel_dissolution_note (target_model.dag) — dissolve both halves together on octet↔bool codec inhabitation."
+
+fn infer_match_bool_consumer_diagnostics_with_int_scrutinee_scaffold(
+  consumer: Node,
+  cd: Diagnostics,
+  scrutinee_type: Node
+) -> Diagnostics {
+  if infer_branch_type_is_int(type_node: scrutinee_type) {
+    diagnostics_merge(
+      outer: cd,
+      inner: Some {
+        diagnostics: diagnostics_singleton(
+          d: infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: consumer)
+        )
+      }
+    )
+  } else {
+    cd
+  }
+}
 
 fn infer_match_bool_arm_body_type(
   body_target: Node,
@@ -920,7 +950,11 @@ fn infer_match_bool(
                             entries: entries,
                             first_arm_target: first_arm_target,
                             second_arm_target: second_arm_target,
-                            cd: cd,
+                            cd: infer_match_bool_consumer_diagnostics_with_int_scrutinee_scaffold(
+                              consumer: node,
+                              cd: cd,
+                              scrutinee_type: scrutinee_type
+                            ),
                             scrutinee_type: scrutinee_type
                           )
                         } else {
