@@ -335,6 +335,49 @@ data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = knowled
   migration_trigger: ^migrate_when_ownership_defork_lands
 )
 
+data compiler_frontier_band_a_emit_readiness_note: String = "Band A Wave-1-pre-flip recon: FlippableNow = no dependency on Wave 1 gates 1-3 (general body producer ingest, namespace SymbolIndex, FLAG D). Program policy sequences Band A after Wave 1 gate 4 (weak self-host behavioral receipt). BodyProducerGated count must remain 0 on this roster. OtherGate cites the matching compiler_frontier_row_* migration_trigger. Gate-4 follow-up (swift-lynx-212): pure-decl modules are NOT flippable before gate 4 — Rust Track A6 data_decl emit is absent (rust.dag has no data_decl rows; parse_engine_hooks is 100% data Symbol=^atom), frontier_probe_emit_from_ingest is unstaged (#6464), and no per-module SeedRetained->SelfEmitted receipt path exists today."
+
+data compiler_frontier_band_a_emit_readiness_count_expected: Int = 6
+
+data compiler_frontier_band_a_row_parse_engine_hooks: BandAEmitReadinessRow = BandAEmitReadinessRow {
+  module_path: "src/v2/compiler/parse_engine_hooks.dag",
+  gate: FlippableNow
+}
+
+data compiler_frontier_band_a_row_use_site_verdict: BandAEmitReadinessRow = BandAEmitReadinessRow {
+  module_path: "src/v2/compiler/use_site_verdict.dag",
+  gate: OtherGate { migration_trigger: ^migrate_when_ownership_defork_lands }
+}
+
+data compiler_frontier_band_a_row_discovery_enumeration: BandAEmitReadinessRow = BandAEmitReadinessRow {
+  module_path: "src/v2/compiler/discovery_enumeration.dag",
+  gate: FlippableNow
+}
+
+data compiler_frontier_band_a_row_self_host: BandAEmitReadinessRow = BandAEmitReadinessRow {
+  module_path: "src/v2/compiler/self_host.dag",
+  gate: OtherGate { migration_trigger: ^migrate_when_frontier_harness_repurposed }
+}
+
+data compiler_frontier_band_a_row_materialization_carriers: BandAEmitReadinessRow = BandAEmitReadinessRow {
+  module_path: "src/v2/compiler/materialization_carriers.dag",
+  gate: OtherGate { migration_trigger: ^migrate_when_materialize_spine_lane_lands }
+}
+
+data compiler_frontier_band_a_row_07_target_carriers: BandAEmitReadinessRow = BandAEmitReadinessRow {
+  module_path: "src/v2/compiler/07_target_carriers.dag",
+  gate: OtherGate { migration_trigger: ^migrate_when_rust_body_emit_track_b_completes }
+}
+
+data compiler_frontier_band_a_emit_readiness_roster: List<BandAEmitReadinessRow> = [
+  compiler_frontier_band_a_row_parse_engine_hooks,
+  compiler_frontier_band_a_row_use_site_verdict,
+  compiler_frontier_band_a_row_discovery_enumeration,
+  compiler_frontier_band_a_row_self_host,
+  compiler_frontier_band_a_row_materialization_carriers,
+  compiler_frontier_band_a_row_07_target_carriers
+]
+
 data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
   compiler_frontier_row_00_compile,
   compiler_frontier_row_01_tokenize,
@@ -623,6 +666,127 @@ fn compiler_frontier_sweep_order_complete_holds() -> Bool {
   length(xs: compiler_frontier_sweep_order) == compiler_frontier_module_count_expected
 }
 
+fn count_band_a_emit_readiness_gate(
+  xs: List<BandAEmitReadinessRow>,
+  target: BandAWave1EmitReadiness
+) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      match row.gate {
+        FlippableNow =>
+          match target {
+            FlippableNow => count + 1
+            _ => count
+          }
+        BodyProducerGated =>
+          match target {
+            BodyProducerGated => count + 1
+            _ => count
+          }
+        OtherGate { migration_trigger: _ } =>
+          match target {
+            OtherGate { migration_trigger: _ } => count + 1
+            _ => count
+          }
+      }
+    }
+  )
+}
+
+fn compiler_frontier_band_a_body_producer_gated_count() -> Int {
+  count_band_a_emit_readiness_gate(
+    xs: compiler_frontier_band_a_emit_readiness_roster,
+    target: BodyProducerGated
+  )
+}
+
+fn compiler_frontier_band_a_flippable_now_count() -> Int {
+  count_band_a_emit_readiness_gate(
+    xs: compiler_frontier_band_a_emit_readiness_roster,
+    target: FlippableNow
+  )
+}
+
+fn compiler_frontier_band_a_other_gate_count() -> Int {
+  fold_list(
+    xs: compiler_frontier_band_a_emit_readiness_roster,
+    empty: 0,
+    cons: fn(count, row) {
+      match row.gate {
+        OtherGate { migration_trigger: _ } => count + 1
+        _ => count
+      }
+    }
+  )
+}
+
+fn band_a_emit_readiness_other_gate_matches_frontier_row(row: BandAEmitReadinessRow) -> Bool {
+  match row.gate {
+    FlippableNow => true
+    BodyProducerGated => false
+    OtherGate { migration_trigger: trigger } =>
+      if row.module_path == "src/v2/compiler/use_site_verdict.dag" {
+        trigger == ^migrate_when_ownership_defork_lands
+      } else if row.module_path == "src/v2/compiler/07_target_carriers.dag" {
+        trigger == ^migrate_when_rust_body_emit_track_b_completes
+      } else if row.module_path == "src/v2/compiler/materialization_carriers.dag" {
+        trigger == ^migrate_when_materialize_spine_lane_lands
+      } else if row.module_path == "src/v2/compiler/self_host.dag" {
+        trigger == ^migrate_when_frontier_harness_repurposed
+      } else {
+        false
+      }
+  }
+}
+
+fn compiler_frontier_band_a_other_gate_triggers_match_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_band_a_emit_readiness_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && band_a_emit_readiness_other_gate_matches_frontier_row(row: row)
+    }
+  )
+}
+
+fn count_band_a_emit_readiness_rows_with_path(
+  xs: List<BandAEmitReadinessRow>,
+  target: String
+) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      if row.module_path == target { count + 1 } else { count }
+    }
+  )
+}
+
+fn compiler_frontier_band_a_paths_unique_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_band_a_emit_readiness_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok
+        && (count_band_a_emit_readiness_rows_with_path(
+          xs: compiler_frontier_band_a_emit_readiness_roster,
+          target: row.module_path
+        ) == 1)
+    }
+  )
+}
+
+fn compiler_frontier_band_a_emit_readiness_holds() -> Bool {
+  (length(xs: compiler_frontier_band_a_emit_readiness_roster) == compiler_frontier_band_a_emit_readiness_count_expected)
+    && compiler_frontier_band_a_paths_unique_holds()
+    && (compiler_frontier_band_a_body_producer_gated_count() == 0)
+    && (compiler_frontier_band_a_flippable_now_count() == 2)
+    && (compiler_frontier_band_a_other_gate_count() == 4)
+    && compiler_frontier_band_a_other_gate_triggers_match_holds()
+}
+
 fn compiler_frontier_census_holds() -> Bool {
   compiler_frontier_roster_complete_holds()
     && compiler_frontier_roster_paths_unique_holds()
@@ -635,6 +799,7 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_roster_all_classified_holds()
     && compiler_frontier_roster_located_reason_not_class_projection_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
+    && compiler_frontier_band_a_emit_readiness_holds()
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

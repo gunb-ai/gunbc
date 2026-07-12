@@ -1,0 +1,77 @@
+module v2.test.self_host.compiler_frontier_band_a_emit_readiness
+
+import v2.compiler.self_host.frontier {
+  FlippableNow,
+  OtherGate,
+  compiler_frontier_band_a_body_producer_gated_count,
+  compiler_frontier_band_a_emit_readiness_holds,
+  compiler_frontier_band_a_flippable_now_count,
+  compiler_frontier_band_a_other_gate_count,
+  compiler_frontier_band_a_other_gate_triggers_match_holds,
+  compiler_frontier_band_a_row_07_target_carriers,
+  compiler_frontier_band_a_row_discovery_enumeration,
+  compiler_frontier_band_a_row_materialization_carriers,
+  compiler_frontier_band_a_row_parse_engine_hooks,
+  compiler_frontier_band_a_row_self_host,
+  compiler_frontier_band_a_row_use_site_verdict,
+  compiler_frontier_census_holds
+}
+import v2.std.logic { Bool }
+
+test fn compiler_frontier_band_a_emit_readiness_composite_holds() -> Bool {
+  compiler_frontier_band_a_emit_readiness_holds()
+    && (compiler_frontier_band_a_body_producer_gated_count() == 0)
+    && (compiler_frontier_band_a_flippable_now_count() == 2)
+    && (compiler_frontier_band_a_other_gate_count() == 4)
+    && compiler_frontier_band_a_other_gate_triggers_match_holds()
+}
+
+test fn compiler_frontier_band_a_parse_engine_hooks_flippable_now_holds() -> Bool {
+  match compiler_frontier_band_a_row_parse_engine_hooks.gate {
+    FlippableNow => true
+    _ => false
+  }
+}
+
+test fn compiler_frontier_band_a_discovery_enumeration_flippable_now_holds() -> Bool {
+  match compiler_frontier_band_a_row_discovery_enumeration.gate {
+    FlippableNow => true
+    _ => false
+  }
+}
+
+test fn compiler_frontier_band_a_use_site_verdict_other_gate_holds() -> Bool {
+  match compiler_frontier_band_a_row_use_site_verdict.gate {
+    OtherGate { migration_trigger: t } =>
+      t == ^migrate_when_ownership_defork_lands
+    _ => false
+  }
+}
+
+test fn compiler_frontier_band_a_target_carriers_other_gate_holds() -> Bool {
+  match compiler_frontier_band_a_row_07_target_carriers.gate {
+    OtherGate { migration_trigger: t } =>
+      t == ^migrate_when_rust_body_emit_track_b_completes
+    _ => false
+  }
+}
+
+test fn compiler_frontier_band_a_materialization_carriers_other_gate_holds() -> Bool {
+  match compiler_frontier_band_a_row_materialization_carriers.gate {
+    OtherGate { migration_trigger: t } =>
+      t == ^migrate_when_materialize_spine_lane_lands
+    _ => false
+  }
+}
+
+test fn compiler_frontier_band_a_self_host_other_gate_holds() -> Bool {
+  match compiler_frontier_band_a_row_self_host.gate {
+    OtherGate { migration_trigger: t } =>
+      t == ^migrate_when_frontier_harness_repurposed
+    _ => false
+  }
+}
+
+test fn compiler_frontier_census_includes_band_a_emit_readiness_holds() -> Bool {
+  compiler_frontier_census_holds()
+}
