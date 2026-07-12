@@ -516,6 +516,7 @@ fn run_batch_unit(
     source_roots: Vec<String>,
     unit: BatchUnit,
     governor: Arc<MemoryGovernor>,
+    fast_lane_eval_budget_ms: Option<u64>,
 ) -> Vec<ClaimResult> {
     match unit {
         BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
@@ -546,6 +547,7 @@ fn run_batch_unit(
             discovery_scope_dirs,
             governor,
             execution_mode,
+            fast_lane_eval_budget_ms,
         )],
         BatchUnit::SharedClaims {
             entry,
@@ -900,6 +902,7 @@ fn run_discovery_batch_node(
     discovery_scope_dirs: Vec<String>,
     governor: Arc<MemoryGovernor>,
     execution_mode: ExecutionMode,
+    fast_lane_eval_budget_ms: Option<u64>,
 ) -> ClaimResult {
     set_phase(FloorPhase::Discovery, "discovery-corpus");
     let label = format!(
@@ -918,6 +921,7 @@ fn run_discovery_batch_node(
             explicit_roster_only: false,
             exclude_substrings,
             discovery_scope_dirs,
+            fast_lane_eval_budget_ms,
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
@@ -1447,6 +1451,7 @@ fn run_walk(
     source_roots: &[String],
     batches: &[Vec<Runnable>],
     governor: &Arc<MemoryGovernor>,
+    fast_lane_eval_budget_ms: Option<u64>,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -1515,7 +1520,9 @@ fn run_walk(
             .map(|unit| {
                 let roots = source_roots.to_vec();
                 let unit_governor = governor.clone();
-                thread::spawn(move || run_batch_unit(roots, unit, unit_governor))
+                thread::spawn(move || {
+                    run_batch_unit(roots, unit, unit_governor, fast_lane_eval_budget_ms)
+                })
             })
             .collect();
         // Run memo units on the main thread while spawned threads are working.
@@ -1791,6 +1798,7 @@ fn run_perturb_check(
         &[temp_root],
         &remapped,
         &Arc::new(MemoryGovernor::from_environment(1)),
+        None,
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -1963,6 +1971,32 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
+    // Fast-lane 5s rule (operator 2026-07-12): a plan that schedules a discovery batch
+    // must declare the per-witness eval budget; a missing/mistyped row refuses the run
+    // (fail-closed), while discovery-free plans (regen, plan-artifact) never read it.
+    let schedules_discovery = batches
+        .iter()
+        .flatten()
+        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }));
+    let fast_lane_eval_budget_ms: Option<u64> = if schedules_discovery {
+        match run_value(&plan_ctx, "gunbc_ci_fast_lane_eval_budget_ms") {
+            Ok(Value::Int(n)) if n > 0 => Some(n as u64),
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: gunbc_ci_fast_lane_eval_budget_ms must be a positive Int, got {other:?} (fail-closed)"
+                );
+                return Err(ExitCode::from(1));
+            }
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: plan schedules a discovery batch but gunbc_ci_fast_lane_eval_budget_ms is unavailable (fail-closed): {msg}"
+                );
+                return Err(ExitCode::from(1));
+            }
+        }
+    } else {
+        None
+    };
     drop(plan_ctx);
     phase_mark("plan evaluated");
 
@@ -2001,7 +2035,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         enable_floor_compile_clean_lazy_install();
     }
 
-    let outcome = run_walk(&source_roots, &batches, &governor);
+    let outcome = run_walk(&source_roots, &batches, &governor, fast_lane_eval_budget_ms);
     match peak_rss_bytes() {
         Some(bytes) => {
             eprintln!("[measurement] floor peak RSS: {bytes} bytes (VmHWM) (adaptive width)");
@@ -2268,6 +2302,7 @@ mod tests {
             vec!["src/v2".to_string()],
             unit,
             Arc::new(MemoryGovernor::from_environment(1)),
+            None,
         );
         assert_eq!(results.len(), 1);
         assert!(!results[0].ok, "unmapped sentinel must fail closed");

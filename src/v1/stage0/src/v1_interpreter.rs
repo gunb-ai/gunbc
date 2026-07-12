@@ -1207,6 +1207,8 @@ pub struct InterpContext {
     // from outside cannot terminate them (the Phase A governor lesson).
     eval_deadline: std::cell::Cell<Option<(std::time::Instant, u64)>>,
     eval_deadline_stride: std::cell::Cell<u32>,
+    // Lane-level budget: when set, run_claim_measured re-arms the deadline per witness.
+    witness_eval_budget_ms: std::cell::Cell<Option<u64>>,
 }
 
 impl InterpContext {
@@ -1355,6 +1357,7 @@ impl InterpContext {
             governed_services: RefCell::new(None),
             eval_deadline: std::cell::Cell::new(None),
             eval_deadline_stride: std::cell::Cell::new(0),
+            witness_eval_budget_ms: std::cell::Cell::new(None),
         }
     }
 
@@ -1366,6 +1369,14 @@ impl InterpContext {
 
     pub fn clear_eval_deadline(&self) {
         self.eval_deadline.set(None);
+    }
+
+    pub fn set_witness_eval_budget(&self, budget_ms: Option<u64>) {
+        self.witness_eval_budget_ms.set(budget_ms);
+    }
+
+    pub fn witness_eval_budget(&self) -> Option<u64> {
+        self.witness_eval_budget_ms.get()
     }
 
     fn published_mock_keys(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {

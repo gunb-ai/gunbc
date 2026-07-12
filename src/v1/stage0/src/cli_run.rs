@@ -3904,9 +3904,13 @@ pub fn run_claim_measured(
         crate::resolved_graph_cache::witness_work_subject_key(closure_subject_digest, function);
     v1_interpreter::eval_profile_reset();
     v1_interpreter::eval_subject_set(subject_key.clone());
+    if let Some(budget_ms) = ctx.witness_eval_budget() {
+        ctx.arm_eval_deadline(budget_ms);
+    }
     let started = std::time::Instant::now();
     let outcome = run_claim(ctx, function);
     let wall_nanos = started.elapsed().as_nanos();
+    ctx.clear_eval_deadline();
     v1_interpreter::eval_subject_clear();
     let receipt =
         v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
@@ -5970,6 +5974,11 @@ pub struct DiscoveryCorpusOptions {
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
+    /// Fast-lane per-witness eval budget (operator 5s rule, 2026-07-12). When set, every
+    /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
+    /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
+    /// bound (the long-lane / local recipe posture).
+    pub fast_lane_eval_budget_ms: Option<u64>,
 }
 
 impl Default for DiscoveryCorpusOptions {
@@ -5979,6 +5988,7 @@ impl Default for DiscoveryCorpusOptions {
             explicit_roster_only: false,
             exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
+            fast_lane_eval_budget_ms: None,
         }
     }
 }
@@ -7367,6 +7377,7 @@ pub fn run_discovery_corpus_with_options(
                 &diff_edits,
                 floor_runner_ctx.as_ref(),
                 whole_tree_published_keys.clone(),
+                options.fast_lane_eval_budget_ms,
             )?;
             // Definition-drift oracle (single-authority reconciliation, executable): on a
             // COMPLETED serial run the pre-resolve import walk and the post-resolve
@@ -7415,6 +7426,7 @@ pub fn run_discovery_corpus_with_options(
     let abort = std::sync::Arc::new(AtomicBool::new(false));
     let source_roots_owned = source_roots.to_vec();
     let selection_for_workers = options.node_frontier_selection;
+    let fast_lane_budget_for_workers = options.fast_lane_eval_budget_ms;
     let mut handles = Vec::new();
     loop {
         if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
@@ -7487,6 +7499,7 @@ pub fn run_discovery_corpus_with_options(
                         &seeds,
                         runner.as_ref(),
                         keys.clone(),
+                        fast_lane_budget_for_workers,
                     ) {
                         Ok(summary) => {
                             worker_summaries.push(summary);
@@ -7594,6 +7607,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     merged
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
@@ -7603,6 +7617,7 @@ fn run_discovery_rows(
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
+    fast_lane_eval_budget_ms: Option<u64>,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
         total: rows.len(),
@@ -7733,6 +7748,9 @@ fn run_discovery_rows(
                 current_entry_touches = resolved.touches_frontier;
                 current_entry_file_touched = resolved.entry_file_touched;
                 ctx = Some(resolved.ctx);
+                if let Some(c) = ctx.as_ref() {
+                    c.set_witness_eval_budget(fast_lane_eval_budget_ms);
+                }
                 current_entry = Some(row.entry.clone());
             }
         }
@@ -7817,6 +7835,9 @@ fn run_discovery_rows(
             current_entry_touches = resolved.touches_frontier;
             current_entry_file_touched = resolved.entry_file_touched;
             ctx = Some(resolved.ctx);
+            if let Some(c) = ctx.as_ref() {
+                c.set_witness_eval_budget(fast_lane_eval_budget_ms);
+            }
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
         let closure_subject = current_closure_subject

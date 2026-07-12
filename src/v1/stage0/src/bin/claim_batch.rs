@@ -191,6 +191,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut notice_title = "v2 CI claim gate".to_string();
     let mut execution_mode = ExecutionMode::Hermetic;
     let mut fixture_store: Option<PathBuf> = None;
+    let mut eval_budget_ms: Option<u64> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -247,6 +248,15 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             "--wet" => execution_mode = ExecutionMode::Wet,
             "--hermetic" => execution_mode = ExecutionMode::Hermetic,
             "--record" => execution_mode = ExecutionMode::Record,
+            "--eval-budget-ms" => {
+                let v = require_value(args, i, "--eval-budget-ms")?;
+                let ms: u64 = v.parse().map_err(|_| {
+                    eprintln!("claim_batch: --eval-budget-ms requires a positive integer, got {v:?}");
+                    ExitCode::from(2)
+                })?;
+                eval_budget_ms = Some(ms);
+                i += 1;
+            }
             "--fixture-store" => {
                 i += 1;
                 fixture_store = Some(PathBuf::from(require_value(args, i, "--fixture-store")?));
@@ -419,6 +429,7 @@ fn run_witnesses(
     execution_mode: ExecutionMode,
     fixture_store: Option<Rc<RecordedFixtureStore>>,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    eval_budget_ms: Option<u64>,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
@@ -434,6 +445,7 @@ fn run_witnesses(
         fixture_store,
         whole_tree_published_keys,
     );
+    ctx.set_witness_eval_budget(eval_budget_ms);
     for function in &group.functions {
         run_claim_timed(&ctx, &closure_subject, function, any_failed, timings);
         // The eval-call memo's eviction scope is the witness frame, not this
