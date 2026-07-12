@@ -578,13 +578,6 @@ fn infer_branch_type_is_bool(type_node: Node) -> Bool {
   }
 }
 
-fn infer_branch_type_is_int(type_node: Node) -> Bool {
-  match type_node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_binding_type_int
-    _ => false
-  }
-}
-
 fn infer_match_bool_arm_rows_accept(
   node: Node,
   partials: List<Node>,
