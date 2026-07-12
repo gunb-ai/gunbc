@@ -772,17 +772,30 @@ fn count_band_a_emit_readiness_rows_with_path(
 }
 
 fn compiler_frontier_band_a_paths_unique_holds() -> Bool {
-  fold_list(
+  count_band_a_emit_readiness_rows_with_path(
     xs: compiler_frontier_band_a_emit_readiness_roster,
-    empty: true,
-    cons: fn(ok, row) {
-      ok
-        && (count_band_a_emit_readiness_rows_with_path(
-          xs: compiler_frontier_band_a_emit_readiness_roster,
-          target: row.module_path
-        ) == 1)
-    }
-  )
+    target: compiler_frontier_band_a_row_parse_engine_hooks.module_path
+  ) == 1
+    && count_band_a_emit_readiness_rows_with_path(
+      xs: compiler_frontier_band_a_emit_readiness_roster,
+      target: compiler_frontier_band_a_row_use_site_verdict.module_path
+    ) == 1
+    && count_band_a_emit_readiness_rows_with_path(
+      xs: compiler_frontier_band_a_emit_readiness_roster,
+      target: compiler_frontier_band_a_row_discovery_enumeration.module_path
+    ) == 1
+    && count_band_a_emit_readiness_rows_with_path(
+      xs: compiler_frontier_band_a_emit_readiness_roster,
+      target: compiler_frontier_band_a_row_self_host.module_path
+    ) == 1
+    && count_band_a_emit_readiness_rows_with_path(
+      xs: compiler_frontier_band_a_emit_readiness_roster,
+      target: compiler_frontier_band_a_row_materialization_carriers.module_path
+    ) == 1
+    && count_band_a_emit_readiness_rows_with_path(
+      xs: compiler_frontier_band_a_emit_readiness_roster,
+      target: compiler_frontier_band_a_row_07_target_carriers.module_path
+    ) == 1
 }
 
 fn compiler_frontier_band_a_emit_readiness_holds() -> Bool {
