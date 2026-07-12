@@ -2046,7 +2046,8 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
                 Present { value: transform } => outcome_accepted(value: transform)
                 Absent =>
                   match body_lower_try_fold_loop(node: captured) {
-                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Rejected { diagnostics: _ } =>
+                      body_lower_try_operand_or_reject(shell: shell, captured: captured)
                     Accepted { value: fold_result, diagnostics: _ } =>
                       match fold_result {
                         Present { value: loop_node } => outcome_accepted(value: loop_node)
@@ -2077,7 +2078,8 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
                 Present { value: transform } => outcome_accepted(value: transform)
                 Absent =>
                   match body_lower_try_fold_loop(node: captured) {
-                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Rejected { diagnostics: _ } =>
+                      body_lower_try_operand_or_reject(shell: shell, captured: captured)
                     Accepted { value: fold_result, diagnostics: _ } =>
                       match fold_result {
                         Present { value: loop_node } => outcome_accepted(value: loop_node)

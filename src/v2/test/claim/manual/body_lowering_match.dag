@@ -6,6 +6,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_match_expr,
   body_lower_match_arms_optional,
   body_lower_primary_expr,
+  body_lower_operand_ref_optional,
   body_lower_match_scrutinee_optional,
   body_lower_match_spine_left,
   body_lower_operand_ref_optional,
