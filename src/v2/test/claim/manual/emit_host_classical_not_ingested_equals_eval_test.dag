@@ -457,6 +457,20 @@ test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Boo
   }
 }
 
+test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "!= ")
+            && string_contains(s: source, pattern: "true => 0")
+            && string_contains(s: source, pattern: "false => 1")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
   match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
     Accepted { value: tree, diagnostics: _ } =>

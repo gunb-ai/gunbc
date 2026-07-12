@@ -5959,6 +5959,183 @@ fn target_value_expr_match_arm_tokens(
   }
 }
 
+data target_value_expr_int_bool_octet_channel_dissolution_note: String = "Staging bridge only: inline scrutinee `x != 0` decodes Int wire to bool at the match seam. Ground on the modeled octet↔bool codec authority once inhabited ({0,1} domain, not general nonzero) — do not let this bridge harden into a second decode nickname."
+
+fn target_value_expr_is_bool_kw_symbol_identity(expr: TargetValueExpression) -> Bool {
+  match expr.kind {
+    TargetValueExprSymbolIdentity =>
+      match target_value_expression_symbol_identity_from_wire(wire: expr.node) {
+        Accepted { value: id, diagnostics: _ } =>
+          id == ^dag_token_kw_true || id == ^dag_token_kw_false
+        Rejected { diagnostics: _ } => false
+      }
+    _ => false
+  }
+}
+
+fn target_value_expr_match_arms_are_int_bool_octet_channel(
+  arms: List<TargetValueExprMatchArmSlot>
+) -> Bool {
+  if is_empty(xs: arms) {
+    false
+  } else {
+    !any(
+      xs: arms,
+      predicate: fn(arm) {
+        !target_value_expr_is_bool_kw_symbol_identity(expr: arm.pattern)
+          || !target_value_expr_is_bool_kw_symbol_identity(expr: arm.body)
+      }
+    )
+  }
+}
+
+fn target_value_expr_match_is_int_bool_octet_channel(
+  scrutinee: TargetValueExpression,
+  arms: List<TargetValueExprMatchArmSlot>
+) -> Bool {
+  match scrutinee.kind {
+    TargetValueExprBindingRef =>
+      target_value_expr_match_arms_are_int_bool_octet_channel(arms: arms)
+    _ => false
+  }
+}
+
+fn target_value_expr_bool_kw_octet_body_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expression_symbol_identity_from_wire(wire: expr.node),
+    f: fn(token_class) {
+      if token_class == ^dag_token_kw_false {
+        outcome_accepted(
+          Cons {
+            head: target_value_expression_binding_ref_token(
+              binding: ^dag_binding_octet_zero,
+              projection: projection
+            ),
+            tail: Empty
+          }
+        )
+      } else if token_class == ^dag_token_kw_true {
+        outcome_accepted(
+          Cons {
+            head: target_value_expression_binding_ref_token(
+              binding: ^dag_binding_pick_lit_one,
+              projection: projection
+            ),
+            tail: Empty
+          }
+        )
+      } else {
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: expr.node
+          )
+        )
+      }
+    }
+  )
+}
+
+fn target_value_expr_int_bool_octet_scrutinee_carrier_tokens(
+  scrutinee_tokens: List<ConcreteSyntaxToken>,
+  catalog: Node,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_operator_realization_catalog_lookup(
+      catalog: catalog,
+      canonical_op: canonical_operation_op_ne()
+    ),
+    f: fn(ne_realization) {
+      match ne_realization.shape {
+        InfixToken { token: ne_token } =>
+          outcome_accepted(
+            concrete_syntax_tokens_extend(
+              acc: concrete_syntax_tokens_extend(
+                acc: scrutinee_tokens,
+                more: Cons {
+                  head: FixedToken { token_class: ne_token },
+                  tail: Empty
+                }
+              ),
+              more: Cons {
+                head: target_value_expression_binding_ref_token(
+                  binding: ^dag_binding_octet_zero,
+                  projection: projection
+                ),
+                tail: Empty
+              }
+            )
+          )
+        _ =>
+          outcome_rejected(
+            target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
+          )
+      }
+    }
+  )
+}
+
+fn target_value_expr_match_arm_tokens_int_bool_octet_channel(
+  arms: List<TargetValueExprMatchArmSlot>,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match fold(
+    arms,
+    init: Accepted { value: Empty, diagnostics: None },
+    f: fn(acc, arm) {
+      match acc {
+        Rejected { diagnostics: r } => acc
+        Accepted { value: prior_tokens, diagnostics: d } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(
+              expr: arm.pattern,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(pattern_tokens) {
+              bind_outcome(
+                o: target_value_expr_bool_kw_octet_body_tokens(
+                  expr: arm.body,
+                  projection: projection
+                ),
+                f: fn(body_tokens) {
+                  let arm_chunk = concrete_syntax_tokens_extend(
+                    acc: concrete_syntax_tokens_snoc_fixed(
+                      acc: pattern_tokens,
+                      token_class: projection.match_form.fat_arrow
+                    ),
+                    more: body_tokens
+                  )
+                  if is_empty(xs: prior_tokens) {
+                    outcome_accepted(arm_chunk)
+                  } else {
+                    outcome_accepted(
+                      concrete_syntax_tokens_extend(
+                        acc: concrete_syntax_tokens_snoc_fixed(
+                          acc: prior_tokens,
+                          token_class: projection.match_form.arm_separator
+                        ),
+                        more: arm_chunk
+                      )
+                    )
+                  }
+                }
+              )
+            }
+          )
+      }
+    }
+  ) {
+    Accepted { value: tokens, diagnostics: d } => Accepted { value: tokens, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
 fn target_value_expression_match_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
@@ -6000,44 +6177,53 @@ fn target_value_expression_match_to_concrete_tokens_inner(
                   catalog: catalog
                 ),
                 f: fn(scrutinee_tokens) {
-                  bind_outcome(
-                    o: target_value_expr_match_arm_tokens(
-                      arms: arms,
-                      projection: projection,
-                      catalog: catalog
-                    ),
-                    f: fn(arm_tokens) {
-                      let prefix = concrete_syntax_tokens_snoc_fixed(
-                        acc: concrete_syntax_tokens_snoc_fixed(
-                          acc: Empty,
-                          token_class: projection.match_form.match_token
-                        ),
-                        token_class: projection.match_form.scrutinee_open
-                      )
-                      let with_scrutinee = concrete_syntax_tokens_extend(
-                        acc: prefix,
-                        more: scrutinee_tokens
-                      )
-                      let with_scrutinee_close = concrete_syntax_tokens_snoc_fixed(
-                        acc: with_scrutinee,
-                        token_class: projection.match_form.scrutinee_close
-                      )
-                      let with_open = concrete_syntax_tokens_snoc_fixed(
-                        acc: with_scrutinee_close,
-                        token_class: projection.match_form.open
-                      )
-                      let with_arms = concrete_syntax_tokens_extend(
-                        acc: with_open,
-                        more: arm_tokens
-                      )
-                      outcome_accepted(
-                        concrete_syntax_tokens_snoc_fixed(
-                          acc: with_arms,
-                          token_class: projection.match_form.close
+                  if target_value_expr_match_is_int_bool_octet_channel(
+                    scrutinee: scrutinee,
+                    arms: arms
+                  ) {
+                    bind_outcome(
+                      o: target_value_expr_int_bool_octet_scrutinee_carrier_tokens(
+                        scrutinee_tokens: scrutinee_tokens,
+                        catalog: catalog,
+                        projection: projection
+                      ),
+                      f: fn(carrier_scrutinee_tokens) {
+                        bind_outcome(
+                          o: target_value_expr_match_arm_tokens_int_bool_octet_channel(
+                            arms: arms,
+                            projection: projection,
+                            catalog: catalog
+                          ),
+                          f: fn(arm_tokens) {
+                            outcome_accepted(
+                              target_value_expression_match_concrete_token_shell(
+                                scrutinee_tokens: carrier_scrutinee_tokens,
+                                arm_tokens: arm_tokens,
+                                projection: projection
+                              )
+                            )
+                          }
                         )
-                      )
-                    }
-                  )
+                      }
+                    )
+                  } else {
+                    bind_outcome(
+                      o: target_value_expr_match_arm_tokens(
+                        arms: arms,
+                        projection: projection,
+                        catalog: catalog
+                      ),
+                      f: fn(arm_tokens) {
+                        outcome_accepted(
+                          target_value_expression_match_concrete_token_shell(
+                            scrutinee_tokens: scrutinee_tokens,
+                            arm_tokens: arm_tokens,
+                            projection: projection
+                          )
+                        )
+                      }
+                    )
+                  }
                 }
               )
             }
@@ -6045,6 +6231,40 @@ fn target_value_expression_match_to_concrete_tokens_inner(
         }
       )
     }
+  )
+}
+
+fn target_value_expression_match_concrete_token_shell(
+  scrutinee_tokens: List<ConcreteSyntaxToken>,
+  arm_tokens: List<ConcreteSyntaxToken>,
+  projection: TargetValueExpressionProjection
+) -> List<ConcreteSyntaxToken> {
+  let prefix = concrete_syntax_tokens_snoc_fixed(
+    acc: concrete_syntax_tokens_snoc_fixed(
+      acc: Empty,
+      token_class: projection.match_form.match_token
+    ),
+    token_class: projection.match_form.scrutinee_open
+  )
+  let with_scrutinee = concrete_syntax_tokens_extend(
+    acc: prefix,
+    more: scrutinee_tokens
+  )
+  let with_scrutinee_close = concrete_syntax_tokens_snoc_fixed(
+    acc: with_scrutinee,
+    token_class: projection.match_form.scrutinee_close
+  )
+  let with_open = concrete_syntax_tokens_snoc_fixed(
+    acc: with_scrutinee_close,
+    token_class: projection.match_form.open
+  )
+  let with_arms = concrete_syntax_tokens_extend(
+    acc: with_open,
+    more: arm_tokens
+  )
+  concrete_syntax_tokens_snoc_fixed(
+    acc: with_arms,
+    token_class: projection.match_form.close
   )
 }
 
