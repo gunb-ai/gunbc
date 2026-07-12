@@ -9325,7 +9325,7 @@ mod module_grain_affected_equivalence_tests {
             "dag/gunbc/ci_layer_roots.dag",
             "src/v2/test/claim/bash_command_fold_test.dag",
             "src/v2/workflow/orchestration_emit_test.dag",
-            "dag/test/claim/module_graph/import_closure_live_test.dag",
+            "dag/test/claim/long/import_closure_live_test.dag",
             "src/v2/test/claim/affected_set_universe_test.dag",
             "src/v2/lens/module_graph.dag",
         ]
@@ -9349,7 +9349,7 @@ mod module_grain_affected_equivalence_tests {
             "dag/test/claim/card_intake_risk_witness_test.dag",
             "dag/tools/host_prelude.dag",
             "src/v2/test/claim/affected_set_universe_test.dag",
-            "dag/test/claim/module_graph/import_closure_live_test.dag",
+            "dag/test/claim/long/import_closure_live_test.dag",
         ]
     }
 
