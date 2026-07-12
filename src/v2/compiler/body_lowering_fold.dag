@@ -12,6 +12,7 @@ import v2.extdeps.languages.dag {
   dag_binding_branded_atom_identity,
   dag_int_type_binding,
   dag_lex_token_symbol,
+  dag_match_arm_node,
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
@@ -19,7 +20,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra { list_append, list_snoc_item }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
-import v2.std.compilers.body_lowering { lower_binary_infix }
+import v2.std.compilers.body_lowering { lower_binary_infix, lower_match }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic {
@@ -28,8 +29,10 @@ import v2.std.diagnostic {
   Diagnostics,
   ExternalContractUnknown,
   Outcome,
+  Rejected,
   Some,
   Unavailable,
+  bind_outcome,
   diagnostics_singleton,
   node_locus,
   diagnostics_merge,
@@ -802,6 +805,22 @@ fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
 }
 
 fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_match_expr {
+        match body_lower_match_expr(match_shell: node) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: lowered, diagnostics: d } =>
+            Accepted { value: optional_present(value: lowered), diagnostics: d }
+        }
+      } else {
+        body_lower_try_body_lowered_after_match_check(node: node)
+      }
+    Absent => body_lower_try_body_lowered_after_match_check(node: node)
+  }
+}
+
+fn body_lower_try_body_lowered_after_match_check(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_try_postfix_projection(node: node) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: projection, diagnostics: pd } =>
@@ -962,6 +981,173 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
       }
     _ => outcome_accepted(value: body)
   }
+}
+
+fn body_lower_match_lit_symbol_optional(node: Node) -> Optional<Symbol> {
+  match body_lower_operand_ref_optional(node: node) {
+    Present { value: ref_node } =>
+      match ref_node.kind {
+        TypeNode { connective: Atom { identity: id } } => Present { value: id }
+        _ => Absent
+      }
+    Absent =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: id } => Present { value: id }
+        Absent =>
+          match parse_production_emitted_identity_optional(node: node) {
+            Present { value: emitted } =>
+              if body_lower_is_pass_through_emitted(emitted: emitted) {
+                match parse_production_captured_child_optional(node: node) {
+                  Present { value: captured } =>
+                    body_lower_match_lit_symbol_optional(node: captured)
+                  Absent => Absent
+                }
+              } else {
+                Absent
+              }
+            Absent => Absent
+          }
+      }
+  }
+}
+
+fn body_lower_match_arm_pattern_lit(arm_shell: Node) -> Optional<Symbol> {
+  match parse_subtree_find_production_captured(root: arm_shell, emitted: ^dag_surface_pattern) {
+    ParseSubtreeFound { captured: pattern } =>
+      body_lower_match_lit_symbol_optional(node: pattern)
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn body_lower_match_arm_body_lit(arm_shell: Node) -> Optional<Symbol> {
+  match parse_subtree_find_production_captured(root: arm_shell, emitted: ^dag_surface_expr) {
+    ParseSubtreeFound { captured: expr } =>
+      body_lower_match_lit_symbol_optional(node: expr)
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn body_lower_match_arm_from_shell(arm_shell: Node) -> Outcome<Node> {
+  match body_lower_match_arm_pattern_lit(arm_shell: arm_shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: arm_shell)
+      )
+    Present { value: pattern_lit } =>
+      match body_lower_match_arm_body_lit(arm_shell: arm_shell) {
+        Absent =>
+          outcome_rejected(
+            d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: arm_shell)
+          )
+        Present { value: body_lit } =>
+          outcome_accepted(
+            value: dag_match_arm_node(pattern_lit: pattern_lit, body_lit: body_lit)
+          )
+      }
+  }
+}
+
+fn body_lower_collect_match_arm_shells(root: Node) -> List<Node> {
+  let here = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_match_arm {
+        [root]
+      } else {
+        Empty
+      }
+    Absent => Empty
+  }
+  fold(root.children, init: here, f: fn(acc, e) {
+    list_append(
+      left: acc,
+      right: body_lower_collect_match_arm_shells(root: e.target)
+    )
+  })
+}
+
+fn body_lower_match_arms_from_shell(match_shell: Node) -> Outcome<List<Node>> {
+  match body_lower_unwrap_captured(shell: match_shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: match_shell)
+      )
+    Present { value: captured } =>
+      let arm_shells = body_lower_collect_match_arm_shells(root: captured)
+      if count(arm_shells) < 2 {
+        outcome_rejected(
+          d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: match_shell)
+        )
+      } else {
+        fold(arm_shells, init: outcome_accepted(value: Empty), f: fn(acc, arm_shell) {
+          bind_outcome(o: acc, f: fn(arms) {
+            bind_outcome(
+              o: body_lower_match_arm_from_shell(arm_shell: arm_shell),
+              f: fn(arm) {
+                outcome_accepted(value: list_snoc_item(xs: arms, item: arm))
+              }
+            )
+          })
+        })
+      }
+  }
+}
+
+fn body_lower_match_scrutinee_from_shell(match_shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: match_shell) {
+    Absent =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: match_shell)
+      )
+    Present { value: captured } =>
+      match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_binary_expr) {
+        ParseSubtreeAbsent =>
+          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_expr) {
+            ParseSubtreeAbsent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(
+                  reason: ^body_lowering_reason_unsupported_form,
+                  n: match_shell
+                )
+              )
+            ParseSubtreeFound { captured: expr } =>
+              match body_lower_operand_ref_optional(node: expr) {
+                Absent =>
+                  outcome_rejected(
+                    d: body_lower_diagnostic(
+                      reason: ^body_lowering_reason_unsupported_form,
+                      n: match_shell
+                    )
+                  )
+                Present { value: scrut } => outcome_accepted(value: scrut)
+              }
+          }
+        ParseSubtreeFound { captured: binary } =>
+          match body_lower_operand_ref_optional(node: binary) {
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(
+                  reason: ^body_lowering_reason_unsupported_form,
+                  n: match_shell
+                )
+              )
+            Present { value: scrut } => outcome_accepted(value: scrut)
+          }
+      }
+  }
+}
+
+fn body_lower_match_expr(match_shell: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: body_lower_match_scrutinee_from_shell(match_shell: match_shell),
+    f: fn(scrutinee) {
+      bind_outcome(
+        o: body_lower_match_arms_from_shell(match_shell: match_shell),
+        f: fn(arms) {
+          outcome_accepted(value: lower_match(scrutinee: scrutinee, arms: arms))
+        }
+      )
+    }
+  )
 }
 
 fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
@@ -1453,6 +1639,8 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol) -> Outcome<Node> 
     body_lower_unwrap_pass_through(shell: shell)
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_primary_expr(shell: shell)
+  } else if emitted == ^dag_surface_match_expr {
+    body_lower_match_expr(match_shell: shell)
   } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
     outcome_accepted(value: shell)
   } else {
