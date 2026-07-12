@@ -55,7 +55,7 @@ data srv3_fleet_slot_host_name: DhcpClientHostNameOption12 = HostName {
 }
 
 fn dynamic_lease_hostname_subsumes_fleet_slot(
-  reported: HostName,
+  reported: DhcpClientHostNameOption12,
   fleet_slot: HostIdentity,
 ) -> Bool {
   match deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot) {
