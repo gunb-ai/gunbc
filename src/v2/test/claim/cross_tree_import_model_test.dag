@@ -19,6 +19,9 @@ import v2.std.cross_tree.import_model {
 }
 import v2.std.layer { LayerPrefixCompiler, LayerPrefixStd, LayerPrefixWorkflow }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data both_roots: SourceRootSet = [V2Tree, DagTree]
 

@@ -46,6 +46,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_if_then_else_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
   branch_if_then_else_inferred_facts_for(node: key)

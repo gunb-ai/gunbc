@@ -56,6 +56,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sg_rc_fail_text: String = ""
 data sg_rc_expected_rc_diagnostics: String = "Rc<Diagnostics>"
 data sg_rc_expected_owned_diagnostics: String = "Diagnostics"

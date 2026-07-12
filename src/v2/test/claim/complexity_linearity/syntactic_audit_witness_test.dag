@@ -9,6 +9,9 @@ import v2.lens.complexity_linearity_audit {
   complexity_linearity_wildcard_open_domain_live,
   complexity_linearity_wildcard_triage_for_site
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 test fn syntactic_audit_runs_over_witness_roots() -> Bool {
   return complexity_linearity_syntactic_finding_count_live() > 0

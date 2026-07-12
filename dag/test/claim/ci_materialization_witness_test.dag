@@ -16,6 +16,9 @@ import gunbc.ci_materialization_gate {
   ci_uses_steps_skipped_count,
   ci_run_step_natures_claimed_not_derived_count
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data ci_materialization_witness_note: String = "The ladder run against the LIVE emitted workflow, enrolled on the CI surface — the see-it-working-up-front requirement (operator, 2026-07-08): shell -> binary in the same pipeline the redundancy would otherwise be paid in. Post-fold (ci_regen folded into ci 2026-07-11): the workflow is a SINGLE building job, so the release build is one demand -> AcceptedSingleRecompute and the ladder holds with OR without the sccache provider (state 5: a lone undeclared demand needs no provider). The demand==1 / discharged==0 / refused-without-provider==0 pins are the reintroduction guard: re-adding a second independently-building job flips demand to 2 and the refusal arm fires. The discriminating RED control for the duplication->refusal law now lives in the synthetic placement_grain witness (two building jobs -> AuthoredDuplication/RefusedNoProvider), enrolled alongside this one."
 

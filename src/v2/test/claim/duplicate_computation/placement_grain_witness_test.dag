@@ -9,6 +9,9 @@ import v2.lens.duplicate_computation {
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data placement_grain_witness_note: String = "Placement-grain discriminating witness for the codebase-wide duplicate-work lens (docs/plans/duplicate-work-graph-lens-design.md). The real cross-job build duplication (ci_job + a second building job) was DISSOLVED by the ci_regen->ci fold 2026-07-11: the live workflow now builds the release binary on a SINGLE job (the live materialization witness attests demand==1 -> AcceptedSingleRecompute). These SYNTHETIC facts are therefore the reintroduction RED control — they model two independently-building jobs (both needs:[], no artifact Share edge) and prove the lens flags it, so re-adding a second building job reds here in the same run. This is the SAME violation logic #6372 ships once each independently-building job is projected as one demand for the shared build identity — the general lens SUBSUMES #6372 (argv grain and job/placement grain are one law); the only piece #6372 lacked was the cross-job projection. Multiplicity source = placement (one identity, N runners, no Share edge), not fork. A job that consumes the shared artifact emits no build demand and never flags — exactly the fix the lens forces. Per the materialization reframe this is the content-hash generalization of std.realization reconcile keyed on the identity lattice; the ComputationDemandFact rows here stand in for materialization records pending that unification."
 

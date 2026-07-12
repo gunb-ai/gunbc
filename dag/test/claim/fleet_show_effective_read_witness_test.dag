@@ -70,6 +70,9 @@ import gunbc.runner_slot_enforcement {
   gunbc_runner_slot_enforcement_committed,
 }
 import std.realization_reconcile { ReadAbsent, ReadObserved }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn per_slot_cap_wire() -> String {
   to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap))

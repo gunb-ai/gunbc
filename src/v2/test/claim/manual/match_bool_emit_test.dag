@@ -49,6 +49,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn match_bool_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
   match_bool_inferred_facts_for(node: key)

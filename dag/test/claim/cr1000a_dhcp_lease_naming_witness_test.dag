@@ -22,6 +22,9 @@ import extdeps.router.verizon_cr1000a {
   cr1000a_catalog,
 }
 import extdeps.vendor.verizon { verizon }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data srv1_option12_host_name: HostName = HostName {
   name: DomainName { labels: ["srv1" as DnsLabel] },

@@ -28,6 +28,9 @@ import gunbc.node_http_server_emit {
   roadmap_dashboard_served_static_route_table,
   roadmap_dashboard_node_http_server_source,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn site_artifact_digest(body: String) -> ContentHash {
   content_hash_atom(value: body as NonEmptyStr)

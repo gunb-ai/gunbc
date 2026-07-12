@@ -12,6 +12,9 @@ import extdeps.observability {
   ProcessorInventory,
   route_observation,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn out_of_band_cannot_observe_storage() -> Bool {
   match route_observation(channel: OutOfBand, class: StorageInventory) {

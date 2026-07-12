@@ -28,6 +28,9 @@ import v2.lens.grounding {
   is_meta_self_coincidence,
   name_coincides
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 
 

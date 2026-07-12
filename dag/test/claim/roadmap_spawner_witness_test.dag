@@ -11,6 +11,9 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_status { DerivableLine, AuthoredLine, Signoff, Unsigned }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier, roadmap_dispatch_json }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nid(s: String) -> ProcessNodeId { s }
 

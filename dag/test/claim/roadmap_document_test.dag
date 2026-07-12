@@ -6,6 +6,9 @@ import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsi
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import ctrl.process_algebra { ProcessNodeId }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data audit_id: ProcessNodeId = "fail-closed-audit"
 data status_id: ProcessNodeId = "pr-checkbox-status"

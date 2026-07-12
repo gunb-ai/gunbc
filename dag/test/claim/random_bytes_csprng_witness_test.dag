@@ -5,6 +5,9 @@ import std.types { Int, list_length }
 import std.integer { UInt8 }
 import extdeps.entropy
 import std.encoding { Base64Variant, Standard, UrlSafe, base64_encode, base64_decode }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 
 

@@ -5,6 +5,9 @@ import v2.std.diagnostic { Accepted, Rejected, Diagnostic, ExternalContractUnkno
 import v2.std.logic { Bool }
 import v2.std.witness { Violates }
 import v2.test.lens_affected_set.excluded_propagation_proof { excluded_propagation_proof_claim_holds }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn map_get_hit_bridges_witness_to_present() -> Bool {
   let m = empty_map() |> map_insert("k", 42)

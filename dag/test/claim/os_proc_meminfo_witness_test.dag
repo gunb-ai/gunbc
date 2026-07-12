@@ -7,6 +7,9 @@ import extdeps.os.proc_meminfo {
 }
 import std.measure { Kibibyte, measure_count }
 import std.types { NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn proc_meminfo_witnesses() -> Bool {
   let info = ProcMeminfo {

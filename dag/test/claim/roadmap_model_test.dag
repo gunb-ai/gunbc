@@ -15,6 +15,9 @@ import gunbc.roadmap_model {
   node_status_drift,
 }
 import gunbc.roadmap_status { Signoff, Unsigned }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data parent_node: ProcessNodeId = "invert-hand-maintained"
 data child_node: ProcessNodeId = "pr-checkbox-status"

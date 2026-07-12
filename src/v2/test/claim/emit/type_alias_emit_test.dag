@@ -34,6 +34,9 @@ import v2.std.node {
   SyntheticOccurrence,
   TypeNode
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data type_alias_core_node_golden: String = "type CoreNode = Node;"
 data type_alias_generator_id_golden: String = "type GeneratorId = Symbol;"

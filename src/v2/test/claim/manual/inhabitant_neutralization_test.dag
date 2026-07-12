@@ -42,6 +42,9 @@ import v2.std.verification {
   UnifiedTestClaim,
   manual_claim_anchor
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn inhabitant_neutralization_python_int_std_projection_holds() -> Bool {
   match inhabitant_std_projection_symbol(inhabitant: python_int_inhabitant_node()) {

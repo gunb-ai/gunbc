@@ -5,6 +5,9 @@ import extdeps.access.posix { PosixUser, posix_user_is_root }
 import extdeps.access.rbac { RbacPolicy }
 import extdeps.bmc.access { redfish_rbac_policy }
 import extdeps.bmc.types { AccountRoleAdministrator, AccountRoleReadOnly, redfish_account_role_wire }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn role_has_privilege(policy: RbacPolicy, role: NonEmptyStr, privilege: NonEmptyStr) -> Bool {
   fold(policy.permission_assignments, init: false, f: fn(acc, pa) {

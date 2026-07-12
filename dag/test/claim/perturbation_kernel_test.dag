@@ -11,6 +11,9 @@ import std.perturbation {
   perturbation_consistent,
 }
 import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn is_consistent(reading: PerturbationReading, responded: Bool) -> Bool {
   match perturbation_verdict(reading: reading, output_responded: responded) {

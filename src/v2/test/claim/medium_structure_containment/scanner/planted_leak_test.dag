@@ -7,6 +7,9 @@ import v2.lens.medium_structure_containment {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data planted_leak_scan_roots: List<String> = [
   "src/v2/test/fixture/medium_structure_scan/leak"

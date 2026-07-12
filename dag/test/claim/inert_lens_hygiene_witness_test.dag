@@ -4,6 +4,9 @@ import v2.lens.inert_lens {
   inert_lens_hygiene_has_no_unreached_modules_holds,
   inert_lens_hygiene_universe_is_nonempty_holds
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn inert_lens_hygiene_has_no_unreached_modules() -> Bool {
   return inert_lens_hygiene_has_no_unreached_modules_holds()

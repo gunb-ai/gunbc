@@ -20,6 +20,9 @@ import v2.lens.wiring_liveness {
   wiring_dead_wires_over,
   wiring_fn_dead_wires
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn wiring_corpus_probe(alpha: Bool, beta: Bool) -> Bool {
   alpha && beta

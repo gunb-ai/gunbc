@@ -69,6 +69,9 @@ import gunbc.host_identity_assimilation {
 import gunbc.host_identity_access { host_identity_srv1_access }
 import gunbc.ci_deploy_access { deploy_access_unprivileged_fixture_actor }
 import gunbc.host_effect { SshShell }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv1_os_target() -> NodeControlPlane {
   HostOs { node: srv1_host }

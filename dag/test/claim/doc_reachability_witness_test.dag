@@ -1,4 +1,7 @@
 module test.claim.doc_reachability_witness
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn doc_graph_has_no_orphan_docs() -> Bool {
   return doc_graph_orphan_count() == 0

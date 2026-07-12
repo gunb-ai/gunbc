@@ -21,6 +21,9 @@ import extdeps.realization.hermetic_fixture {
   hermetic_fixture_file_store_id,
   hermetic_fixture_in_process_id,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data shared_input_digest: ContentHash = "hermetic-fixture-witness-shared-input-digest"
 

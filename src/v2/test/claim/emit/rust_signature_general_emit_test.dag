@@ -11,6 +11,9 @@ import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_signature_add_golden: String = "fn add(x: i32, y: i32) -> i32 { "
 

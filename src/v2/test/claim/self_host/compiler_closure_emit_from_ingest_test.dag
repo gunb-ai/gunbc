@@ -23,6 +23,9 @@ import v2.test.workflow.host_source_root_ingest_manifest {
   host_source_root_ingest,
   host_source_root_ingest_coverage_receipt
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type Gap4IngestProbeState
   = Gap4IngestProbePending

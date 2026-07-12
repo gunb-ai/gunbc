@@ -7,6 +7,9 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data medium_source_fixture_text: String = "module medium.source\nfn add(x:Int, y:Int) -> Int { x + y }"
 

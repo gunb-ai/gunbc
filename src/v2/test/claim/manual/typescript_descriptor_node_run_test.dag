@@ -28,6 +28,9 @@ import v2.test.manual.add_body_emit_typescript {
 }
 import v2.test.manual.connective_anchors { stub_empty_conj }
 import extdeps.communication.medium { Lossless, Medium }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn typescript_descriptor_node_emit_host_fixture_inputs() -> Inputs {
   inputs_for_emit_host(

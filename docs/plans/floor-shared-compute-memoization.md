@@ -179,3 +179,5 @@ M2 (`RunnableCompile`):
 - After determinism closes: `EmitDeterminismGate` dissolves from an empirical oracle into a construction-verified witness; the 2× oracle pair becomes 1×, reducing total compiles from 4× to 3× (DagCompileClean, EmitDeterminism×1, RegenVerify each use distinct tuples and all remain necessary). Further reduction below 3× would require either collapsing two of the existing tuples to the same `(source_roots, binary)` or removing a gate — neither is in scope here.
 - Dissolves into the v2 scheduler (resource-aware-scheduler.md Node B/C) once the scheduler derives `Runnable.cost` from the compile node's output rather than static measurement rows.
 - Dissolves into the Realization pattern (#4867) for cross-run caching once M2's content-addressed artifact is stored on disk between runs.
+
+Related: [lens input authority — resolve once, share by reference](lens-input-authority-design.md) — the lens-runner binding of the same computed-once/read-by-reference discipline (P1 landed #6426/#6432: `gunbc.floor_materialization` declares the floor index share with a RED control).

@@ -11,6 +11,9 @@ import gunbc.srv3_os_install_actuate_workflow {
   srv3_os_install_actuate_workflow_credential_intent_is_declared,
 }
 import gunbc.workflow_escalation { PendingApproval, ApprovalGranted }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_boot_once_cd_default_approval_is_pending() -> Bool {
   match srv3_boot_once_cd_default_approval {

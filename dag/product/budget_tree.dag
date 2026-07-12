@@ -65,7 +65,7 @@ fn admit_claims(node: BudgetNode) -> AdmissionState<Memory, One> {
   admit_all(appropriation: node.appropriation, candidates: claim_items(claims: node.claims))
 }
 
-type Reconciliation =
+type BudgetReconciliation =
     AllSatisfied { realized: List<BudgetClaim> }
   | Evicted { kept: List<BudgetClaim>, evicted: List<BudgetClaim> }
   | GuaranteedShortfall { shortfall: ByteSize }
@@ -90,7 +90,7 @@ type AdmitState {
   evicted: List<BudgetClaim>
 }
 
-fn reconcile(node: BudgetNode, actual: ByteSize) -> Reconciliation {
+fn reconcile(node: BudgetNode, actual: ByteSize) -> BudgetReconciliation {
   let ordered = ordered_by_priority(claims: node.claims)
   let final_state = fold(
     ordered,

@@ -8,7 +8,7 @@ use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_compiler_infer_env::{lookup_binding, lookup_type_by_name};
 use v1_compiler::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
-use v1_compiler::v1_std_core::{authored_name_at, intern_find, Connective};
+use v1_compiler::v1_std_core::{authored_name_at, intern_find, is_error_diagnostic, Connective};
 
 static CACHE_ENV_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -415,9 +415,14 @@ fn type_env_import_chain_scaling_not_quadratic() {
 }
 
 #[test]
-fn type_env_dual_import_later_overlay_wins() {
-    use v1_compiler::v1_compiler_infer_env::lookup_binding_by_name;
-
+fn type_env_dual_import_same_tree_collision_is_ledgered_overlay_wins_preserved() {
+    // Revised contract (S2a move 2 increment B, lane ruling REVISED 2026-07-11: novelty, not
+    // tree, is the refusal axis). A PRE-EXISTING same-tree collision is LEDGERED, never refused
+    // — refusing it would regress main's working overlay-wins resolution. This arm covers the
+    // is_all-import shape and is DISCRIMINATING: the later import (dual_import_b, Collider=Int)
+    // must win, so `pick() -> Collider { 0 }` typechecks (0:Int against the Int winner). Had the
+    // earlier import (Collider=String) won, or had the collision been silently dropped to an
+    // error, this would fail — so "no error" proves the overlay-wins winner is the last import.
     let sources = vec![
         Rc::new(SourceFile {
             path: "dual_a.dag".to_string(),
@@ -432,55 +437,27 @@ fn type_env_dual_import_later_overlay_wins() {
             content: "module test.dual_import_consumer\nimport test.dual_import_a\nimport test.dual_import_b\nfn pick() -> Collider { 0 }\n".to_string(),
         }),
     ];
-    let resolved = compile_modules(sources);
-    let graph = resolved.graph.as_ref().expect("graph");
-    let mod_a = typed_module_by_name(
-        &graph.modules,
-        &resolved.source_indices,
-        "test.dual_import_a",
-    );
-    let mod_b = typed_module_by_name(
-        &graph.modules,
-        &resolved.source_indices,
-        "test.dual_import_b",
-    );
-    let consumer = typed_module_by_name(
-        &graph.modules,
-        &resolved.source_indices,
-        "test.dual_import_consumer",
-    );
-    let cache_a = mod_a
-        .type_env_cache
-        .str_bindings
-        .get("Collider")
-        .expect("dual_import_a exports Collider");
-    let cache_b = mod_b
-        .type_env_cache
-        .str_bindings
-        .get("Collider")
-        .expect("dual_import_b exports Collider");
-    let visible_cache = consumer
-        .type_env_cache
-        .str_bindings
-        .get("Collider")
-        .expect("consumer visible cache must export Collider");
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let hard_errors: Vec<String> = resolved
+        .diagnostics
+        .iter()
+        .filter(|d| is_error_diagnostic(d.diagnostic.clone()))
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect();
     assert!(
-        Rc::ptr_eq(visible_cache, cache_b),
-        "merge_type_env_cache overlay-wins: later import (dual_import_b) must win in type_env_cache.str_bindings"
+        hard_errors.is_empty() && resolved.graph.is_some(),
+        "a same-tree pre-existing collision is LEDGERED (overlay-wins winner = last import, \
+         Collider=Int), so `pick(){{0}}` typechecks with no hard error. Got: {hard_errors:?}"
     );
+    let msgs = resolved
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(
-        !Rc::ptr_eq(visible_cache, cache_a),
-        "earlier import (dual_import_a) must not win when same visible name is exported twice"
-    );
-    let visible_binding = lookup_binding_by_name(consumer.type_env.clone(), "Collider".to_string())
-        .expect("consumer Collider binding");
-    assert!(
-        Rc::ptr_eq(&visible_binding.resolved, &cache_b.resolved),
-        "visible Collider must share dual_import_b's resolved Int alias node"
-    );
-    assert!(
-        !Rc::ptr_eq(&visible_binding.resolved, &cache_a.resolved),
-        "visible Collider must not share dual_import_a's resolved String alias node"
+        !msgs.contains("cross-parent"),
+        "the ledger must not ride the diagnostics channel as a refusal, got:\n{msgs}"
     );
 }
 

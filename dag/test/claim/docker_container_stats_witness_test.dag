@@ -3,6 +3,9 @@ module test.claim.docker_container_stats_witness
 import extdeps.docker.container_stats { CpuStats, CpuUsage, MemoryStats, ContainerStats, PidStats, NetworkStats, NetworkInterface, Networks, container_stats_memory_usage, container_stats_cpu_usage_total, container_stats_online_cpus }
 import extdeps.docker.container_inspect { ContainerState, ContainerStateDetail, HostConfig, ContainerConfig, ContainerInspect, NetworkSettings, container_inspect_memory_limit, container_inspect_cpu_quota, container_inspect_cpu_period, parse_container_state, container_state_wire_label, Running, Exited, Paused, Dead, Restarting }
 import std.measure { byte_size, nanosecond, microsecond }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_cpu_usage: CpuUsage = CpuUsage {
   total_usage: nanosecond(1234567890)

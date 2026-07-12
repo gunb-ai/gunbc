@@ -5,6 +5,9 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.live_deploy.emit { live_deploy_apply_script_for }
 import gunbc.live_deploy.spec { deployment_spec_srv1 }
 import extdeps.diagnostic.mock_corpus { diagnostic_ssh_session_mock_case_exec_script }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ssh_exec_script_remote_receiver: NonEmptyStr = "bash -s"
 

@@ -6,6 +6,9 @@ import v2.extdeps.languages.typescript {
 }
 import v2.std.logic { Bool }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn ts_arc1_eager_serialize_source_body() -> Bool {
   match ts_task_serialize_source_witness() {

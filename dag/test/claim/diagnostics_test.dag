@@ -8,6 +8,9 @@ import tools.diagnostics_witness_transport {
   run_diagnostics_constructor_owner_witness,
 }
 import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn diagnostics_import_resolution_holds() -> Bool {
   run_diagnostics_import_resolution_witness()

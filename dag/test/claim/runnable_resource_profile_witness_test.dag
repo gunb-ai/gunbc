@@ -14,6 +14,9 @@ import std.realization_schedule {
   runnable_heavy_whole_tree_resolve,
 }
 import std.measure { byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_negligible_profile_is_not_heavy() -> Bool {
   !runnable_heavy_whole_tree_resolve(profile: runnable_resource_profile_negligible())

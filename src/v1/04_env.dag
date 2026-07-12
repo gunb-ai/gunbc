@@ -1,6 +1,7 @@
 module v1.compiler.infer_env
 
 import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
+import std.types { SourceSpan }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 type TypeEnv {
@@ -82,6 +83,141 @@ fn empty_type_env_cache() -> TypeEnvCache {
     str_bindings: empty_map(),
     cycle_set_str: empty_map(),
     variant_locals: empty_map()
+  }
+}
+
+type TypeEnvCacheMergeConflict {
+  name: String
+  import_path: String
+  existing_site: String
+  incoming_site: String
+  span: SourceSpan
+  same_tree: Bool
+}
+
+data source_tree_partition_note: String = "Tree partition for the binding-fork ledger (lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). Tree does NOT decide refuse-vs-ledger anymore - it only LABELS the dissolution partition of an already-ledgered fork: same-tree (both decls under one tree, incl. dag-vs-dag across dirs) = a homonym/fork to consolidate within that tree; cross-tree (dag/ vs src/v2/) = the v1-seed-vs-v2 whole-file duplication the namespace census named; kernel-synthetic sites (<kernel:...>) are their own tree = the kernel-shadow class. ALL of these are LEDGERED (pre-existing forks already resolved on main by overlay-wins; refusing retroactively would regress working resolution), keeping the pre-guard import-order winner. Refusal is reserved for forks a PR NEWLY introduces (the novelty gate, a separate follow-up comparing this ledger to a drift-gated baseline). Partition on tree, never dir."
+
+fn source_tree_of(file: String) -> String {
+  if contains(file, "<kernel:") {
+    "kernel"
+  } else if contains(file, "src/v2") {
+    "src/v2"
+  } else if contains(file, "src/v1") {
+    "src/v1"
+  } else if contains(file, "dag/") {
+    "dag"
+  } else {
+    "other"
+  }
+}
+
+fn conflict_is_cross_tree(c: TypeEnvCacheMergeConflict) -> Bool {
+  source_tree_of(file: c.existing_site) != source_tree_of(file: c.incoming_site)
+}
+
+type GuardedTypeEnvCacheMerge {
+  cache: TypeEnvCache
+  conflicts: List<TypeEnvCacheMergeConflict>
+}
+
+data guarded_cache_union_note: String = "Cross-parent cache union (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A name reachable from two PEER imports with different bindings is a binding FORK. The union is order-INDEPENDENT by construction: keys present in both sides carrying the SAME binding (declaration-site span fast path, structural fallback) are SKIPPED (also the retained-bytes fix - the unguarded merge materialized a fresh O(|ancestry|) HAMT per module via rc_map_merge path-copy, the measured ~16.3MiB/module residency class); keys carrying DIFFERENT bindings are recorded as a typed, located conflict AND resolved by the pre-cut import-order overlay-wins winner (behavior-preserving: main already resolves these by overlay-wins, so refusing retroactively would regress working resolution, NOT close a fail-open). These conflicts are LEDGERED (out-of-band binding_forks channel, partitioned by tree for dissolution), never diagnostics; refusal is reserved for forks a PR NEWLY introduces (the separate novelty gate). Positional layers keep overlay-wins outside the guard: the kernel scope layer (merge_type_env_cache below) and locals-over-ancestry are lexical nearest-wins from the containment ruling, not peer-merge forks."
+
+fn binding_same_authority(a: TypeBinding, b: TypeBinding) -> Bool {
+  if a.resolved.span == b.resolved.span {
+    true
+  } else {
+    a == b
+  }
+}
+
+fn guarded_union_str_bindings(
+  acc: Map<String, TypeBinding>,
+  overlay: Map<String, TypeBinding>,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedStrBindingsUnion {
+  fold(overlay |> map_keys, init: GuardedStrBindingsUnion { bindings: acc, conflicts: conflicts }, f: (state, name) =>
+    match map_get(overlay, name) {
+      Absent => state
+      Present { value: incoming } =>
+        match map_get(state.bindings, name) {
+          Absent => GuardedStrBindingsUnion {
+            bindings: map_insert(state.bindings, name, incoming),
+            conflicts: state.conflicts
+          }
+          Present { value: existing } =>
+            if binding_same_authority(a: existing, b: incoming) {
+              state
+            } else {
+              GuardedStrBindingsUnion {
+                bindings: map_insert(state.bindings, name, incoming),
+                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: existing.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: existing.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) }])
+              }
+            }
+        }
+    }
+  )
+}
+
+type GuardedStrBindingsUnion {
+  bindings: Map<String, TypeBinding>
+  conflicts: List<TypeEnvCacheMergeConflict>
+}
+
+fn union_deps_map_skip_equal(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
+  fold(overlay |> map_keys, init: acc, f: (m, name) =>
+    match map_get(overlay, name) {
+      Absent => m
+      Present { value: incoming } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, incoming)
+          Present { value: existing } => if existing == incoming { m } else { map_insert(m, name, incoming) }
+        }
+    }
+  )
+}
+
+fn union_bool_set_skip_equal(acc: Map<String, Bool>, overlay: Map<String, Bool>) -> Map<String, Bool> {
+  fold(overlay |> map_keys, init: acc, f: (m, name) =>
+    match map_get(m, name) {
+      Present { value: _ } => m
+      Absent =>
+        match map_get(overlay, name) {
+          Present { value: v } => map_insert(m, name, v)
+          Absent => m
+        }
+    }
+  )
+}
+
+fn union_variant_locals_skip_equal(acc: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(overlay |> map_keys, init: acc, f: (m, name) =>
+    match map_get(overlay, name) {
+      Absent => m
+      Present { value: incoming } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, incoming)
+          Present { value: existing } => if binding_same_authority(a: existing, b: incoming) { m } else { map_insert(m, name, incoming) }
+        }
+    }
+  )
+}
+
+fn merge_type_env_cache_guarded(
+  base: TypeEnvCache,
+  overlay: TypeEnvCache,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedTypeEnvCacheMerge {
+  let str_union = guarded_union_str_bindings(acc: base.str_bindings, overlay: overlay.str_bindings, import_path: import_path, conflicts: conflicts)
+  GuardedTypeEnvCacheMerge {
+    cache: TypeEnvCache {
+      deps_map: union_deps_map_skip_equal(acc: base.deps_map, overlay: overlay.deps_map),
+      str_bindings: str_union.bindings,
+      cycle_set_str: union_bool_set_skip_equal(acc: base.cycle_set_str, overlay: overlay.cycle_set_str),
+      variant_locals: union_variant_locals_skip_equal(acc: base.variant_locals, overlay: overlay.variant_locals)
+    },
+    conflicts: str_union.conflicts
   }
 }
 

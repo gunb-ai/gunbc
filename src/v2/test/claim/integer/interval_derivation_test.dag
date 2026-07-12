@@ -27,6 +27,9 @@ import v2.std.integer {
   integer_standard_integer_type_width_bits,
   integer_nonzero_decimal_digit_widen
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data legacy_int8_spec: IntegerIntervalSpec = integer_interval(
   inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D8] }),

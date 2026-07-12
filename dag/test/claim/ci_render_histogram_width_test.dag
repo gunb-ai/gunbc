@@ -5,6 +5,9 @@ import extdeps.render.terminal { serialize_line, serialize_frame }
 import std.render { Frame, RenderCapability }
 import std.symbols { Ascii, Unicode }
 import std.unicode { string_display_width }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn no_color_cap() -> RenderCapability {
   RenderCapability { color: false, tier: Unicode, cursor_addressable: false }

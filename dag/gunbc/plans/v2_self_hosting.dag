@@ -65,6 +65,7 @@ fn v2_self_hosting_body() -> List<MarkdownBlock> {
       li(text: "**HAND kernel D (interpreter pure-eval)** — [interpreter-kernel-d.md](interpreter-kernel-d.md)."),
       li(text: "**Emit-on-demand execution** — parallel track (ROADMAP §1); not a Wave 1 blocker."),
     ]),
+    p(text: "Related: [S2 — v2 emits v2: strategic direction & decomposition](s2-v2-self-emit-direction.md) — the active lane decomposition toward the Track Z fixed point (B-rungs, whole-module harness lead)."),
   ]
 }
 

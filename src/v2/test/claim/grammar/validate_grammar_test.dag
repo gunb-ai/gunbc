@@ -14,6 +14,9 @@ import v2.std.grammar {
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data validate_grammar_fixture_start: Symbol = ^validate_grammar_fixture_start
 data validate_grammar_fixture_terminal_a: Symbol = ^validate_grammar_fixture_terminal_a

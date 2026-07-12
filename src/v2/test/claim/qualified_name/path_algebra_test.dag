@@ -12,6 +12,9 @@ import v2.std.qualified_name {
   qualified_name_snoc,
   qualified_name_to_dotted_string
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn host_disposition_binds_bridge(
   disposition: Disposition,

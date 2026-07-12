@@ -23,6 +23,9 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data loop_infer_refinement_proxy_note: String = "FLAG C witness (body-lowering design, operator-signed): the refinement-shaped case stands in for a carrier that narrows across iterations — its second stage resolves to a different type than the first stage's carrier, exactly the class a Refined<τ>-narrowing loop lands in under atom-equality unification. It must be REFUSED with the located infer_loop_iteration_type_mismatch, never silently fabricated as τ → τ. Dissolves with the refinement-typed follow-on named in infer_loop_iteration_flag_c_note."
 

@@ -19,6 +19,9 @@ import gunbc.commit_workflow {
 }
 import gunbc.ci_gate { EmitHostGate }
 import std.types { ContentHash }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data roster_surface_only_variant: List<CommitCheckEnrollment> = concat(
   [CommitCheckEnrollment {

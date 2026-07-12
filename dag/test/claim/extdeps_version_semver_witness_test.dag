@@ -13,6 +13,9 @@ import extdeps.version.semver {
   semver_version_label,
 }
 import std.algebra { Equal, Less, Greater }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn semver_identity_1_2_3() -> SemVerIdentity { "1.2.3" }
 fn semver_constraint_caret() -> SemVerConstraint { "^1.2" }
