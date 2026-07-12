@@ -10,58 +10,19 @@ import v2.std.cardinality {
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
-  Outcome,
   Unavailable,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
+  node_locus
 }
-import v2.std.node { Node, node_subtree_count }
+import v2.std.node { Node }
 import v2.std.witness { Holds, Witness }
 
 data body_lowering_descent_note: String = "Interim step-budget bound for body_lowering_fold walkers (general-body-producer-design §4 bounded fold; eval-cost wedge #6459). Each body_lower_finish call initializes remaining to node_subtree_count(folded) — the structural_node_size cardinality authority fold_node already names. Every recursive walker call consumes one budget unit; walkers do NOT uniformly recurse on a strict structural sub-value of folded (e.g. infix tails recurse on sugar_sequence siblings), so termination follows from the finite step budget, not per-step structural descent. Exhaustion is a typed, located refusal (^body_lowering_reason_descent_not_proven), never silent widen or unbounded retry. DescentEvidence is Strict on the step-budget authority anchored to node_subtree_count(folded); DescentUnknown is the honest bottom when the budget cannot be shown."
-
-type BodyLowerDescentCtx {
-  remaining: Int
-  at: Node
-  refused: Bool
-}
-
-fn body_lower_descent_init(root: Node) -> BodyLowerDescentCtx {
-  BodyLowerDescentCtx {
-    remaining: node_subtree_count(n: root),
-    at: root,
-    refused: false
-  }
-}
-
-fn body_lower_descent_enter(ctx: BodyLowerDescentCtx, at: Node) -> BodyLowerDescentCtx {
-  if ctx.refused {
-    BodyLowerDescentCtx { remaining: ctx.remaining, at: at, refused: true }
-  } else if ctx.remaining <= 0 {
-    BodyLowerDescentCtx { remaining: 0, at: at, refused: true }
-  } else {
-    BodyLowerDescentCtx { remaining: ctx.remaining - 1, at: at, refused: false }
-  }
-}
 
 fn body_lower_descent_not_proven_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^body_lowering_reason_descent_not_proven,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn body_lower_descent_refuse_outcome(ctx: BodyLowerDescentCtx) -> Outcome<Node> {
-  outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: ctx.at))
-}
-
-fn body_lower_descent_guard_outcome(ctx: BodyLowerDescentCtx) -> Outcome<BodyLowerDescentCtx> {
-  if ctx.refused {
-    body_lower_descent_refuse_outcome(ctx: ctx)
-  } else {
-    outcome_accepted(value: ctx)
   }
 }
 
