@@ -585,7 +585,7 @@ fn infer_branch_type_is_int(type_node: Node) -> Bool {
   }
 }
 
-data infer_match_int_scrutinee_bool_literal_body_note: String = "Int-scrutinee bool-literal match arms ground body type as Int at arm-row construction (same octet 0/1 authority as eval allocate_literal), not a post-unification rewrite. dissolve-on: bool keywords carry Int type in Int-valued match bodies at normalize/ingest."
+data infer_match_int_scrutinee_bool_literal_body_note: String = "Int-scrutinee bool-literal match arms ground body type as Int at arm-row construction (same octet 0/1 authority as eval allocate_literal), not a post-unification rewrite. dissolve-on: bool keywords carry Int type in Int-valued match bodies at normalize/ingest. paired-scaffold: emit half = target_value_expr_int_bool_octet_channel_dissolution_note (target_model.dag) — dissolve both halves together on octet↔bool codec inhabitation."
 
 fn infer_match_bool_arm_body_type(
   body_target: Node,
