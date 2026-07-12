@@ -93,8 +93,7 @@ data srv3_unreadable_lease_observation: DhcpLeaseTableObservation = LeaseTableUn
   reason: "router dhcp lease table unreachable" as NonEmptyStr,
 }
 
-data srv3_os_install_to_host_identity_transition: NonEmptyStr =
-  "os-install-actuated-to-host-identity-converge" as NonEmptyStr
+data srv3_os_install_to_host_identity_transition: NonEmptyStr = "os-install-actuated-to-host-identity-converge" as NonEmptyStr
 
 fn srv3_os_install_to_host_identity_budget(elapsed_ms: Milliseconds) -> EffectTransitionBudget {
   EffectTransitionBudget {
