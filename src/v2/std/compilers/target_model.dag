@@ -10855,6 +10855,10 @@ fn target_value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValu
     outcome_accepted(
       target_value_expression_binding_ref(binding: ^dag_binding_param_r)
     )
+  } else if id == ^dag_binding_param_x {
+    outcome_accepted(
+      target_value_expression_binding_ref(binding: ^dag_binding_param_x)
+    )
   } else if id == ^dag_binding_rec_v {
     outcome_accepted(
       target_value_expression_binding_ref(binding: ^dag_binding_rec_v)

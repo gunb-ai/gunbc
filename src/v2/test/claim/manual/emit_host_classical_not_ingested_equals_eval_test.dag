@@ -1,6 +1,11 @@
 module v2.test.manual.emit_host_classical_not_ingested_equals_eval
 
 import v2.compiler.emit { emit }
+import v2.compiler.translate {
+  target_project_arrow_body_to_value_expression,
+  target_serialize_source_from_model,
+  translate
+}
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -34,6 +39,7 @@ import v2.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
   Outcome,
   Rejected,
   Unavailable,
@@ -444,6 +450,48 @@ test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
           subgraph: ingested_classical_not_eval_subgraph_swapped()
         )
       )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_project_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: rust_target_model_staging(),
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_serialize_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match target_serialize_source_from_model(
+        target: rust_target_model_staging(),
+        emitted: arrow
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_translate_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: rust_target_model_staging()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }

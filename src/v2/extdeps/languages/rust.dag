@@ -1943,7 +1943,7 @@ fn rust_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_target_model_staging() -> TargetModel {
   TargetModel {
     bundle: rust_target_model_bundle_core(),
-    lex: rust_fn_add_lex(),
+    lex: rust_staging_lex(),
     binding_spellings: rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_source_text_authority(),
@@ -2057,6 +2057,28 @@ fn rust_ident_lex_rule() -> LexRule {
     token_class: ^rust_token_ident,
     pattern: rust_ident_lex_pattern()
   }
+}
+
+fn rust_staging_match_additional_lex_rules() -> List<LexRule> {
+  [
+    rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
+    rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
+    rust_lex_rule(token_class: ^dag_token_kw_true, text: "true"),
+    rust_lex_rule(token_class: ^dag_token_kw_false, text: "false")
+  ]
+}
+
+fn rust_staging_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: rust_fn_add_lex_rules().rules,
+      right: rust_staging_match_additional_lex_rules()
+    )
+  }
+}
+
+fn rust_staging_lex() -> LexRules {
+  ModeledLexRules { root: rust_staging_lex_rules() }
 }
 
 fn rust_fn_add_lex_rules() -> LexRuleSet {
