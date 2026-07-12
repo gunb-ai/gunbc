@@ -1,6 +1,6 @@
 module v2.workflow.ci_floor_plan
 
-import std.execution_mode { Wet }
+import std.execution_mode { Hermetic, Wet }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, gunbc_ci_emit_determinism_spec, CiSpec,
@@ -218,7 +218,7 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
   }
 }
 
-data gate_profile_wet_declaration_note: String = "Every existing floor gate declares execution_mode: Wet explicitly in this commit — a zero-behavior-change declaration of the pre-existing reality (the executor hardwired ExecutionMode::Wet at every witness-execution site until the profile field landed). The fail-closed default (runnable_resource_profile_negligible = Hermetic) applies to NEW runnables only; the three negligible-memory gates (layering-imports scan, extdeps external-authority scan, generated-artifact drift) are wet-DECLARED via gate_profile_negligible_wet_declared until the hermetic audit proves them repo-tree-read clean under the Filesystem.Read checkout carve-out. Flip trigger: the hermetic-audit census (claim_batch default-hermetic over the discovery corpus) plus a green hermetic run of each gate entry; then each arm drops to runnable_resource_profile_negligible() and the discovery/falsifier corpus batches flip to Hermetic in the same audit-informed commit."
+data gate_profile_wet_declaration_note: String = "Every floor GATE declares execution_mode: Wet explicitly — an honest declaration of pre-existing reality (the executor hardwired ExecutionMode::Wet at every witness-execution site until the profile field landed), kept while gates run effectful work (fmt/nextest, emit-host, regen, compile-clean shell receipts). The three negligible-memory gates (layering-imports scan, extdeps external-authority scan, generated-artifact drift) are wet-DECLARED via gate_profile_negligible_wet_declared; per-gate hermetic tightening is a follow-on, each flip proven by a green hermetic run of that gate entry. The DISCOVERY and FALSIFIER corpus batches flipped to Hermetic with the audit receipt (claim_batch default-hermetic census 2026-07-12: 1042 PASS / 105 FAIL before remediation; the mode-typed refusals zeroed by the Filesystem.Read checkout carve-out, the git.Core.Toplevel checkout-root mock case, and the six wet-integration offline rows in gunbc.ci_layer_roots — see wet_integration_offline_note). The fail-closed default (runnable_resource_profile_negligible = Hermetic, absent profile = Hermetic at the executor) applies to every NEW runnable: an undeclared live effect refuses with a typed, located diagnostic instead of dispatching."
 
 fn gate_profile_negligible_wet_declared() -> RunnableResourceProfile {
   runnable_resource_profile(
@@ -284,7 +284,7 @@ fn corpus_runnable_for(spec: CiSpec) -> Runnable {
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
       memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes()),
-      execution_mode: Wet
+      execution_mode: Hermetic
     )
   }
 }
@@ -587,7 +587,7 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
       memory: runnable_memory_substantial(predicted_peak: gunbc_falsifier_per_shard_peak_rss_bytes()),
-      execution_mode: Wet
+      execution_mode: Hermetic
     )
   }]]
 }

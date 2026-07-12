@@ -41,6 +41,7 @@ import std.realization_schedule {
   runnable_forbids_corpus_co_residence, ScheduleWitnessEntry, schedule_witness_entry_eq,
   CorpusWitnessKind, ExecutionWitnessKind
 }
+import std.execution_mode { execution_mode_is_hermetic }
 import v2.std.algebra { length, list_snoc_item, skip }
 import v2.std.collection { List }
 import std.types { Int }
@@ -282,6 +283,21 @@ fn witness_optin_emit_host_co_runs_corpus_without_serialization() -> Bool {
   })
 }
 
+fn discovery_batch_declares_hermetic(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: p } =>
+      execution_mode_is_hermetic(mode: p.execution_mode)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+fn witness_hermetic_floor_posture_declared() -> Bool {
+  discovery_batch_declares_hermetic(r: corpus_runnable_for(spec: gunbc_ci_spec))
+    && !discovery_batch_declares_hermetic(r: execution_corpus_runnable_for(spec: gunbc_ci_spec))
+    && discovery_batch_declares_hermetic(r: gunbc_falsifier_batches().first().first())
+}
+
 fn witness_emit_host_profile_forbids_corpus_co_residence() -> Bool {
   runnable_forbids_corpus_co_residence(r: gate_runnable(g: EmitHostGate))
 }
@@ -325,6 +341,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_independent_jobs_parallelize() &&
     witness_plan_serializes_heavy_resolves()
     && falsifier_plan_is_one_predict_only_batch()
+    && witness_hermetic_floor_posture_declared()
 }
 
 test fn ci_floor_optin_roster_witnesses() -> Bool {

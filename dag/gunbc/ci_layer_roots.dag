@@ -1,5 +1,7 @@
 module gunbc.ci_layer_roots
 
+import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 
 fn compile_clean_source_roots() -> List<String> {
@@ -23,8 +25,16 @@ data witness_exclusion_substrings: List<String> = [
   "claim/complexity/accumulator_copy_roster_gate",
   "test/claim/enforcement/",
   "enforcement_live_witness_test.dag",
-  "lever_a_local_receipt_witness"
+  "lever_a_local_receipt_witness",
+  "host_effect_apply_witness_test.dag",
+  "deploy_access_privilege_witness_test.dag",
+  "ci_deploy_observed_wet_test.dag",
+  "typed_witness_invocation_test.dag",
+  "random_bytes_csprng_witness_test.dag",
+  "emit_host_typed_smoke_test.dag"
 ]
+
+data wet_integration_offline_note: String = "The six wet-integration entries above (host_effect_apply, deploy_access_privilege, ci_deploy_observed_wet, typed_witness_invocation, random_bytes_csprng, emit_host_typed_smoke) are OFFLINE per the hermetic-floor posture (operator 2026-07-11: integration-style witnesses must not run regularly; CI runs hermetic/mocked behavior checks). Each performs genuinely live effects the hermetic envelope refuses by construction: host_effect_apply drives real LocalShell/SSH host effects (the 133s row atop the slow-witness census), deploy_access_privilege applies privileged shell mutations through fixture actors, ci_deploy_observed_wet shells whoami + sudo -n, typed_witness_invocation spawns the witness binaries themselves, random_bytes_csprng reads host entropy, and emit_host_typed_smoke runs host emit processes (its wet behavior stays covered per-PR by the EmitHostGate, a wet-DECLARED gate). Hermetic duals stay discovered where they exist (the ci_deploy split keeps the pure half; deploy_access_check(access, actor) is the mock-shaped dual). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> per file. Dissolve-on: the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget — then these six enroll there as declared execution rows and the exclusion rows delete."
 
 data enforcement_coverage_exclusion_note: String = "The three enforcement coverage witnesses (enforcement/cost_coverage_witness_test.dag, enforcement/grammar_coverage_witness_test.dag, enforcement_live_witness_test.dag) are operator-ruled OFFLINE (2026-07-11). Receipt: their *_live fns read the corpus as data (live-tree rosters), so the PR-A never-predict-skip rule for live-tree rows made them run on EVERY wide PR regardless of diff; the block cost 22.0 min (main run 29137081535, busy fleet) and 21.0 min (PR run 29142398465, quiet fleet) of the 60-minute floor budget - about 35 percent - and their allocation ramp feeds the ~15GiB slot memory.high throttle that turns the floor tail into swap-speed work. Their input is corpus-denominated (the InputEnvelope axis, not layer span): per-PR admission wants a declared bounded envelope, which these rows cannot declare today. Offlining required TWO edits (cursor review catch, same PR): the discovery exclusion rows here AND removing the explicit CommitCheckEnrollment for enforcement_live_witness_test.dag in gunbc.commit_workflow - explicit roster rows merge after discovery with no exclusion filter (cli_run.rs explicit_entries dedup), and that is correct: an explicitly declared row should run, so offlining one means deleting its declaration, never teaching exclusions to veto the roster (a second authority). Run them via the local recipe: claim_batch --source-root dag --source-root src/v2 --entry <entry> per fn (all pure reads, no --wet needed). Dissolve-on: witness rows declare InputEnvelope/CostEnvelope and the scheduled (nightly) lane admits corpus-input rows under its own budget - then re-enroll consciously through the floor owner's lane; the affected-set-falsifier cadence covers interim drift."
 
