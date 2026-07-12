@@ -283,3 +283,27 @@ data claim_body_lowering_match_unnavigable_arm_refuses: TestClaim = EqualsClaim 
   rhs: body_lowering_match_bool_node(pass: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+fn body_lowering_match_arms_found_witness() -> Bool {
+  body_lowering_match_arms_found()
+}
+
+fn body_lowering_match_lowers_to_match_witness() -> Bool {
+  body_lowering_match_lowers_to_match()
+}
+
+fn body_lowering_normalize_accepts_match_module_witness() -> Bool {
+  body_lowering_normalize_accepts_match_module()
+}
+
+fn body_lowering_normalized_module_has_match_witness() -> Bool {
+  body_lowering_normalized_module_has_match()
+}
+
+fn body_lowering_match_first_arm_wires_witness() -> Bool {
+  body_lowering_match_first_arm_wires()
+}
+
+fn body_lowering_match_unnavigable_arm_refuses_witness() -> Bool {
+  body_lowering_match_unnavigable_arm_refuses()
+}
