@@ -139,12 +139,12 @@ fn body_lower_wrapper_retained_shell(remaining: Int, shell: Node) -> Outcome<Nod
     outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: shell))
   } else {
     Accepted {
-    value: shell,
-    diagnostics: Some {
-      diagnostics: diagnostics_singleton(d: body_lower_wrapper_retained_diagnostic(n: shell))
+      value: shell,
+      diagnostics: Some {
+        diagnostics: diagnostics_singleton(d: body_lower_wrapper_retained_diagnostic(n: shell))
+      }
     }
-    }
-}
+  }
 }
 
 fn body_lower_is_core_substrate(node: Node) -> Bool {
