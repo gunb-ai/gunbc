@@ -177,7 +177,11 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
           match node_atom_identity_optional(node: node) {
             Present { value: id } =>
               if dag_lex_token_symbol(sym: id) {
-                optional_absent()
+                if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
+                  optional_present(value: body_lower_param_ref_atom(identity: id))
+                } else {
+                  optional_absent()
+                }
               } else {
                 optional_present(value: body_lower_param_ref_atom(identity: id))
               }
