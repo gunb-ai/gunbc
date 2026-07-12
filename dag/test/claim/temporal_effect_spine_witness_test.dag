@@ -40,10 +40,6 @@ import std.temporal_effect {
   StallBudgetExceeded,
   stall_budget_verdict,
   next_step_plan_on_stall_budget,
-  EffectTransitionBudget,
-  TransitionStalled,
-  TransitionWithinBudget,
-  transition_stall_state_from_budget,
 }
 import gunbc.srv3_os_install_diagnostic {
   srv3_install_hang_no_installer_progress_ms,
@@ -526,16 +522,16 @@ test fn srv3_stall_budget_limits_match_runbook() -> Bool {
     && srv3_install_hang_no_router_lease_ms == 4500000
 }
 
-test fn transition_stall_state_past_budget_is_stalled_not_pending() -> Bool {
+test fn srv3_transition_budget_past_limit_is_exceeded_not_within() -> Bool {
   let past = millisecond(
     count: millisecond_count(
       m: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
     ) + 1,
   )
   let budget = srv3_os_install_to_host_identity_budget(elapsed: past)
-  match transition_stall_state_from_budget(budget: budget) {
-    TransitionStalled { transition_label: t, elapsed_ms: _, limit_ms: _ } =>
-      string_contains(s: t, pattern: "os-install-actuated-to-host-identity")
-    TransitionWithinBudget => false
+  match stall_budget_verdict(budget: budget) {
+    StallBudgetExceeded { step_id: sid, elapsed_ms: _, limit_ms: _ } =>
+      string_contains(s: sid, pattern: "os-install-actuated-to-host-identity")
+    StallWithinBudget => false
   }
 }

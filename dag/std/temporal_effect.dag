@@ -315,29 +315,3 @@ fn next_step_plan_on_stall_budget(
       }
   }
 }
-
-type EffectTransitionBudget {
-  transition_label: NonEmptyStr
-  limit_ms: Millisecond
-  elapsed_ms: Millisecond
-}
-
-type TransitionStallState
-  = TransitionWithinBudget
-  | TransitionStalled {
-      transition_label: NonEmptyStr
-      elapsed_ms: Millisecond
-      limit_ms: Millisecond
-    }
-
-fn transition_stall_state_from_budget(budget: EffectTransitionBudget) -> TransitionStallState {
-  if measure_le(a: budget.elapsed_ms, b: budget.limit_ms) {
-    TransitionWithinBudget
-  } else {
-    TransitionStalled {
-      transition_label: budget.transition_label,
-      elapsed_ms: budget.elapsed_ms,
-      limit_ms: budget.limit_ms,
-    }
-  }
-}

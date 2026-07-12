@@ -12,7 +12,12 @@ import std.upsert_decision {
   Noop,
   UpsertClassification,
 }
-import std.temporal_effect { transition_stall_state_from_budget }
+import std.temporal_effect {
+  StallBudgetVerdict,
+  StallWithinBudget,
+  StallBudgetExceeded,
+  stall_budget_verdict,
+}
 import extdeps.bmc.types { BootOverrideModeLegacy, BootOverrideModeUefi }
 import gunbc.os_install_deduction { SubiquityStorageScreen }
 import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
@@ -69,7 +74,7 @@ test fn post_install_lease_row_deduces_converged_noop() -> Bool {
     && match decision_for_os_install_actuation_verdict(
       verdict: Converged,
       obs: srv3_pre_install_lease_observation,
-      stall: transition_stall_state_from_budget(
+      stall: stall_budget_verdict(
         budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
       ),
     ) {
@@ -80,7 +85,7 @@ test fn post_install_lease_row_deduces_converged_noop() -> Bool {
     && match classify_os_install_actuation_upsert(
       obs: srv3_post_install_lease_observation,
       fleet_slot: operator_host_srv3,
-      stall: transition_stall_state_from_budget(
+      stall: stall_budget_verdict(
         budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
       ),
     ) {
@@ -96,7 +101,7 @@ test fn unreadable_lease_is_unknown_refused_not_pending() -> Bool {
     && match decision_for_os_install_actuation_verdict(
       verdict: UnknownRefused,
       obs: srv3_unreadable_lease_observation,
-      stall: transition_stall_state_from_budget(
+      stall: stall_budget_verdict(
         budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
       ),
     ) {
@@ -117,7 +122,7 @@ test fn no_lease_past_budget_is_drifted_not_fabricated_success() -> Bool {
         && match decision_for_os_install_actuation_verdict(
           verdict: Drifted,
           obs: srv3_pre_install_lease_observation,
-          stall: transition_stall_state_from_budget(
+          stall: stall_budget_verdict(
             budget: srv3_os_install_to_host_identity_budget(elapsed: past),
           ),
         ) {
@@ -137,7 +142,7 @@ test fn upsert_pending_applies_assert_pending_plan() -> Bool {
   match classify_os_install_actuation_upsert(
     obs: srv3_pre_install_lease_observation,
     fleet_slot: operator_host_srv3,
-    stall: transition_stall_state_from_budget(
+    stall: stall_budget_verdict(
       budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
     ),
   ) {
