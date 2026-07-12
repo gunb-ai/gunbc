@@ -291,6 +291,7 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                     "std_effects".to_string(),
                     "std_emit_model".to_string(),
                     "std_error_primitives".to_string(),
+                    "std_execution_mode".to_string(),
                     "std_graph".to_string(),
                     "std_http_path".to_string(),
                     "std_induction".to_string(),

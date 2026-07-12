@@ -5838,10 +5838,6 @@ pub struct DiscoveryCorpusOptions {
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
-    /// When > 0, caps the effective spawn_width for this discovery corpus to this value.
-    /// Derived from RunnableDiscoveryBatch.spawn_width_cap (provisioned from runner alloc ÷
-    /// per-witness memory reservation). 0 = use the batch-wide spawn_width.
-    pub spawn_width_cap: usize,
 }
 
 impl Default for DiscoveryCorpusOptions {
@@ -5851,9 +5847,18 @@ impl Default for DiscoveryCorpusOptions {
             explicit_roster_only: false,
             exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
-            spawn_width_cap: 0,
         }
     }
+}
+
+/// How the discovery corpus parallelizes. `Serial` runs every row on the caller's thread —
+/// the calibration path that also carries the width-1 closure-drift oracle. `Adaptive`
+/// drains entry-groups through a worker pool whose concurrency the memory governor admits:
+/// a new worker (= one more whole-tree index resident) is the expensive act the governor
+/// gates, replacing the retired plan-pinned `spawn_width` / `spawn_width_cap` constants.
+pub enum DiscoveryWidthPolicy {
+    Serial,
+    Adaptive(std::sync::Arc<crate::memory_governor::MemoryGovernor>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -7031,29 +7036,12 @@ fn entry_touches_rerun_frontier(
     Ok(!saw_claim)
 }
 
-pub fn run_discovery_corpus(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    explicit_entries: &[(String, String)],
-    execution_mode: v1_interpreter::ExecutionMode,
-    parallel_width: usize,
-) -> Result<DiscoverySummary, String> {
-    run_discovery_corpus_with_options(
-        source_roots,
-        scan_dirs,
-        explicit_entries,
-        execution_mode,
-        parallel_width,
-        DiscoveryCorpusOptions::default(),
-    )
-}
-
 pub fn run_discovery_corpus_with_options(
     source_roots: &[String],
     scan_dirs: &[String],
     explicit_entries: &[(String, String)],
     execution_mode: v1_interpreter::ExecutionMode,
-    parallel_width: usize,
+    width_policy: DiscoveryWidthPolicy,
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
@@ -7268,114 +7256,179 @@ pub fn run_discovery_corpus_with_options(
             }
         }
     };
-    let capped_width = if options.spawn_width_cap > 0 {
-        parallel_width.min(options.spawn_width_cap)
-    } else {
-        parallel_width
+    let governor = match width_policy {
+        DiscoveryWidthPolicy::Serial => {
+            let summary = run_discovery_rows(
+                &rows,
+                &index,
+                execution_mode,
+                options.node_frontier_selection,
+                &changed_paths,
+                &diff_edits,
+                floor_runner_ctx.as_ref(),
+                whole_tree_published_keys.clone(),
+            )?;
+            // Definition-drift oracle (single-authority reconciliation, executable): on a
+            // COMPLETED serial run the pre-resolve import walk and the post-resolve
+            // resolved-graph union must agree — resolve resolves exactly the transitive
+            // imports. Serial only: the merged multi-worker field is max-over-workers, not
+            // the process union, so the comparison is ill-posed there. A mismatch means one
+            // closure definition is wrong (an implicit prelude module the walk missed, or a
+            // resolve seeding change) and the space-lens calibration pair would silently
+            // skew — refuse rather than emit a lying receipt.
+            if summary.roster_closure_nodes != pre_resolve_closure_nodes {
+                return Err(format!(
+                    "[calibration] closure-definition drift: pre-resolve import walk = {} nodes, \
+                     post-resolve resolved union = {} — the two closure definitions diverged \
+                     (implicit prelude/kernel module in resolve the import walk cannot see, or a \
+                     seeding change); reconcile the definitions before trusting bytes-per-node \
+                     calibration (roster_import_closure_nodes_pre_resolve is the shared authority)",
+                    pre_resolve_closure_nodes, summary.roster_closure_nodes
+                ));
+            }
+            eprintln!(
+                "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
+                pre_resolve_closure_nodes
+            );
+            return Ok(summary);
+        }
+        DiscoveryWidthPolicy::Adaptive(governor) => governor,
     };
-    let width = capped_width.max(1);
-    if width == 1 {
-        let summary = run_discovery_rows(
-            &rows,
-            &index,
-            execution_mode,
-            options.node_frontier_selection,
-            &changed_paths,
-            &diff_edits,
-            floor_runner_ctx.as_ref(),
-            whole_tree_published_keys.clone(),
-        )?;
-        // Definition-drift oracle (single-authority reconciliation, executable): on a
-        // COMPLETED width-1 run the pre-resolve import walk and the post-resolve
-        // resolved-graph union must agree — resolve resolves exactly the transitive
-        // imports. Width-1 only: the merged multi-shard field is max-over-shards, not
-        // the process union, so the comparison is ill-posed there. A mismatch means one
-        // closure definition is wrong (an implicit prelude module the walk missed, or a
-        // resolve seeding change) and the space-lens calibration pair would silently
-        // skew — refuse rather than emit a lying receipt.
-        if summary.roster_closure_nodes != pre_resolve_closure_nodes {
-            return Err(format!(
-                "[calibration] closure-definition drift: pre-resolve import walk = {} nodes, \
-                 post-resolve resolved union = {} — the two closure definitions diverged \
-                 (implicit prelude/kernel module in resolve the import walk cannot see, or a \
-                 seeding change); reconcile the definitions before trusting bytes-per-node \
-                 calibration (roster_import_closure_nodes_pre_resolve is the shared authority)",
-                pre_resolve_closure_nodes, summary.roster_closure_nodes
-            ));
-        }
-        eprintln!(
-            "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
-            pre_resolve_closure_nodes
-        );
-        return Ok(summary);
-    }
-    let shards = shard_row_indices_by_entry(&rows, width);
+    // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
+    // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
+    // resident structure across every group it pulls — admission of a worker (not of a
+    // group) is therefore the memory-relevant act the governor decides.
+    let groups = entry_row_groups(&rows);
     eprintln!(
-        "run_discovery_corpus: parallel_width={} ({} entry-group shard(s))",
-        width,
-        shards.iter().filter(|s| !s.is_empty()).count()
+        "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
+        groups.len(),
+        rows.len(),
+        governor.current_target_width(),
     );
+    let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
+        std::sync::Arc::new(Mutex::new(
+            groups
+                .into_iter()
+                .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
+                .collect(),
+        ));
+    let abort = std::sync::Arc::new(AtomicBool::new(false));
     let source_roots_owned = source_roots.to_vec();
-    let selection_for_shards = options.node_frontier_selection;
+    let selection_for_workers = options.node_frontier_selection;
     let mut handles = Vec::new();
-    for shard in shards {
-        if shard.is_empty() {
-            continue;
+    loop {
+        if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
+            break;
         }
-        let shard_rows: Vec<DiscoveryRow> = shard.iter().map(|&i| rows[i].clone()).collect();
+        match governor.try_admit() {
+            crate::memory_governor::AdmitDecision::Admit { .. } => {}
+            crate::memory_governor::AdmitDecision::Hold(_) => {
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                continue;
+            }
+        }
+        let queue_for_worker = queue.clone();
+        let abort_for_worker = abort.clone();
+        let governor_for_worker = governor.clone();
         let roots = source_roots_owned.clone();
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
-        handles.push(std::thread::spawn(move || {
-            // Each shard is its own thread (Rc<ResolvedGraph> is !Send, so the resolve store
-            // cannot cross the shard boundary — that cross-shard share is the S2b/Arc frontier).
-            // Within the shard, union-resolve S1 still holds: the shard's floor runner and its
-            // rows resolve against ONE index, so the shard no longer re-resolves the floor
-            // runner's closure privately alongside the rows' — the std/spec prefix typechecks
-            // once per shard, not twice.
-            let index = build_multi_entry_index(&roots);
-            let runner = if selection_for_shards != NodeFrontierSelectionMode::Off {
-                match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
-                    Ok((graph, source_indices)) => {
-                        Some(make_eval_context(&graph, source_indices, execution_mode))
+        handles.push(std::thread::spawn(
+            move || -> Result<Vec<DiscoverySummary>, String> {
+                // The slot was granted by try_admit on the pump thread; the guard owns the
+                // matching release so a panicking worker cannot wedge admissions.
+                let _slot = crate::memory_governor::AdmittedSlot::from_admitted(
+                    governor_for_worker.clone(),
+                );
+                // Each worker is its own thread (Rc<ResolvedGraph> is !Send, so the resolve
+                // store cannot cross the worker boundary — that cross-worker share is the
+                // S2b/Arc frontier). Within the worker, union-resolve S1 still holds: the
+                // worker's floor runner and its rows resolve against ONE index.
+                let index = build_multi_entry_index(&roots);
+                let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
+                    match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
+                        Ok((graph, source_indices)) => {
+                            Some(make_eval_context(&graph, source_indices, execution_mode))
+                        }
+                        Err(msg) => {
+                            abort_for_worker.store(true, Ordering::SeqCst);
+                            return Err(format!(
+                                "floor runner resolve failed in worker ({msg}) — declared \
+                                 affected-set machinery must resolve; no silent \
+                                 run-everything fallback"
+                            ));
+                        }
                     }
-                    Err(msg) => {
-                        return Err(format!(
-                            "floor runner resolve failed in shard ({msg}) — declared \
-                             affected-set machinery must resolve; no silent \
-                             run-everything fallback"
-                        ));
+                } else {
+                    None
+                };
+                let mut worker_summaries = Vec::new();
+                loop {
+                    // Multiplicative decrease drains here: a worker between groups retires
+                    // when concurrency sits above the (possibly just-halved) window.
+                    if governor_for_worker.should_retire()
+                        || abort_for_worker.load(Ordering::SeqCst)
+                    {
+                        break;
+                    }
+                    let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front() else {
+                        break;
+                    };
+                    match run_discovery_rows(
+                        &group_rows,
+                        &index,
+                        execution_mode,
+                        selection_for_workers,
+                        &paths,
+                        &seeds,
+                        runner.as_ref(),
+                        keys.clone(),
+                    ) {
+                        Ok(summary) => {
+                            worker_summaries.push(summary);
+                            governor_for_worker.note_unit_complete();
+                        }
+                        Err(e) => {
+                            abort_for_worker.store(true, Ordering::SeqCst);
+                            return Err(e);
+                        }
                     }
                 }
-            } else {
-                None
-            };
-            run_discovery_rows(
-                &shard_rows,
-                &index,
-                execution_mode,
-                selection_for_shards,
-                &paths,
-                &seeds,
-                runner.as_ref(),
-                keys,
-            )
-        }));
+                Ok(worker_summaries)
+            },
+        ));
     }
     let mut summaries = Vec::new();
+    let mut first_err: Option<String> = None;
     for handle in handles {
-        summaries.push(
-            handle
-                .join()
-                .map_err(|_| "discovery corpus shard thread panicked".to_string())??,
-        );
+        match handle
+            .join()
+            .map_err(|_| "discovery corpus worker thread panicked".to_string())
+        {
+            Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
+            Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
+        }
+    }
+    if let Some(e) = first_err {
+        return Err(e);
+    }
+    // The pump exits when the queue is empty OR on abort; with no error the queue must be
+    // fully drained (workers only exit early on retire/abort, and the pump re-admits while
+    // items remain), so an undrained queue here is a scheduler bug — refuse, never under-run.
+    let leftover = queue.lock().unwrap().len();
+    if leftover > 0 {
+        return Err(format!(
+            "adaptive discovery pool exited with {leftover} undrained entry-group(s) and no \
+             worker error — scheduler invariant violated; refusing a partial corpus"
+        ));
     }
     Ok(merge_discovery_summaries(summaries))
 }
 
-fn shard_row_indices_by_entry(rows: &[DiscoveryRow], parallel_width: usize) -> Vec<Vec<usize>> {
-    let width = parallel_width.max(1);
+/// Contiguous same-entry row groups, order-preserving: the unit a pool worker pulls (rows
+/// sharing an entry resolve once against the worker's index).
+fn entry_row_groups(rows: &[DiscoveryRow]) -> Vec<Vec<usize>> {
     let mut entry_groups: Vec<Vec<usize>> = Vec::new();
     let mut current: Vec<usize> = Vec::new();
     let mut current_entry: Option<&str> = None;
@@ -7393,11 +7446,7 @@ fn shard_row_indices_by_entry(rows: &[DiscoveryRow], parallel_width: usize) -> V
     if !current.is_empty() {
         entry_groups.push(current);
     }
-    let mut shards: Vec<Vec<usize>> = vec![Vec::new(); width];
-    for (gi, group) in entry_groups.into_iter().enumerate() {
-        shards[gi % width].extend(group);
-    }
-    shards
+    entry_groups
 }
 
 fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySummary {

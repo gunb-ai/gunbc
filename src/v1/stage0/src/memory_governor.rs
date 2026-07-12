@@ -101,7 +101,9 @@ impl HoldReason {
 pub enum AdmitDecision {
     /// A worker slot was granted. `forced_serial` marks the width-1 progress floor firing
     /// while signals were hot (counted in the receipt).
-    Admit { forced_serial: bool },
+    Admit {
+        forced_serial: bool,
+    },
     Hold(HoldReason),
 }
 
@@ -204,7 +206,11 @@ fn absorb_hard_events(core: &mut GovCore, sig: &MemorySignals) -> Option<HardEve
 
 /// The graceful arm: is this sample creeping? Reads `prev_swap_bytes` (last sample) and
 /// leaves updating it to the caller so the delta is per-sample, not per-check.
-fn creep_reason(core: &GovCore, sig: &MemorySignals, limits: &GovernorLimits) -> Option<HoldReason> {
+fn creep_reason(
+    core: &GovCore,
+    sig: &MemorySignals,
+    limits: &GovernorLimits,
+) -> Option<HoldReason> {
     if let (Some(current), Some(budget)) = (sig.current_bytes, limits.budget_bytes) {
         let high_water = budget / HIGH_WATER_DEN * HIGH_WATER_NUM;
         if current > high_water {
@@ -246,9 +252,12 @@ fn decide_admission(
         }
         core.holding = false;
         core.max_width_reached = core.max_width_reached.max(core.active);
-        return (AdmitDecision::Admit {
-            forced_serial: forced,
-        }, hard);
+        return (
+            AdmitDecision::Admit {
+                forced_serial: forced,
+            },
+            hard,
+        );
     }
     if core.active >= core.target_width {
         return (
@@ -270,9 +279,12 @@ fn decide_admission(
     core.admissions += 1;
     core.holding = false;
     core.max_width_reached = core.max_width_reached.max(core.active);
-    (AdmitDecision::Admit {
-        forced_serial: false,
-    }, hard)
+    (
+        AdmitDecision::Admit {
+            forced_serial: false,
+        },
+        hard,
+    )
 }
 
 /// Additive increase, gated on calm: a completed unit of work while no creep is visible
@@ -476,19 +488,32 @@ impl MemoryGovernor {
 }
 
 /// RAII slot guard: `release()` on drop so a panicking worker frees its slot and the
-/// governor's active count cannot leak upward (which would wedge admissions).
-pub struct GovernorSlot<'a> {
-    governor: &'a MemoryGovernor,
+/// governor's active count cannot leak upward (which would wedge admissions). Owns an
+/// `Arc` so it can ride into worker threads.
+pub struct AdmittedSlot {
+    governor: std::sync::Arc<MemoryGovernor>,
 }
 
-impl<'a> GovernorSlot<'a> {
-    pub fn acquire(governor: &'a MemoryGovernor, label: &str) -> GovernorSlot<'a> {
+impl AdmittedSlot {
+    /// Wrap a slot that `try_admit`/`admit_blocking` ALREADY granted (the grant is what
+    /// incremented `active`; this guard owns the matching release).
+    pub fn from_admitted(governor: std::sync::Arc<MemoryGovernor>) -> AdmittedSlot {
+        AdmittedSlot { governor }
+    }
+
+    /// Block until admitted, then wrap the slot.
+    pub fn acquire_blocking(
+        governor: &std::sync::Arc<MemoryGovernor>,
+        label: &str,
+    ) -> AdmittedSlot {
         governor.admit_blocking(label);
-        GovernorSlot { governor }
+        AdmittedSlot {
+            governor: governor.clone(),
+        }
     }
 }
 
-impl Drop for GovernorSlot<'_> {
+impl Drop for AdmittedSlot {
     fn drop(&mut self) {
         self.governor.release();
     }
@@ -651,12 +676,12 @@ mod tests {
 
     #[test]
     fn high_water_creep_holds_and_counts_once_per_episode() {
-        let lim = limits(1_000, 8);
+        let lim = limits(1_000_000, 8);
         let mut core = GovCore::new();
         core.target_width = 4;
         core.active = 1;
         let hot = MemorySignals {
-            current_bytes: Some(900), // > 800 high-water of 1000
+            current_bytes: Some(900_000), // > 800_000 high-water of 1_000_000
             ..calm()
         };
         let (d, _) = decide_admission(&mut core, &hot, &lim);
@@ -737,8 +762,14 @@ mod tests {
             },
             &lim,
         );
-        assert!(h0.is_none(), "first sight of a counter is baseline, not an event");
-        assert!(matches!(d0, AdmitDecision::Hold(HoldReason::WindowFull { .. })));
+        assert!(
+            h0.is_none(),
+            "first sight of a counter is baseline, not an event"
+        );
+        assert!(matches!(
+            d0,
+            AdmitDecision::Hold(HoldReason::WindowFull { .. })
+        ));
         assert_eq!(core.target_width, 8);
         // The counter moves: hard event, window halves against active.
         let (_, h1) = decide_admission(
@@ -818,7 +849,12 @@ mod tests {
             ..calm()
         };
         let (d, _) = decide_admission(&mut core, &hot, &lim);
-        assert_eq!(d, AdmitDecision::Admit { forced_serial: true });
+        assert_eq!(
+            d,
+            AdmitDecision::Admit {
+                forced_serial: true
+            }
+        );
         assert_eq!(core.forced_serial_admissions, 1);
         assert_eq!(core.active, 1);
     }
@@ -837,7 +873,12 @@ mod tests {
         let (d, h) = decide_admission(&mut core, &blind, &lim);
         assert!(h.is_none());
         assert!(
-            matches!(d, AdmitDecision::Admit { forced_serial: false }),
+            matches!(
+                d,
+                AdmitDecision::Admit {
+                    forced_serial: false
+                }
+            ),
             "no readable signal ≠ hot; window arithmetic still governs"
         );
     }
@@ -880,6 +921,8 @@ mod tests {
         let content = "oom 3\noom_kill 1\n";
         assert_eq!(memory_events_field(content, "oom"), Some(3));
         assert_eq!(memory_events_field(content, "oom_kill"), Some(1));
+        // `oom` must not read the `oom_kill` line when only the latter exists.
+        assert_eq!(memory_events_field("oom_kill 7\n", "oom"), None);
     }
 
     #[test]

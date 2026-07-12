@@ -5,7 +5,8 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, resolve_entry_with_index, run_discovery_corpus_with_options,
-    workspace_root, DiscoveryCorpusOptions, DiscoverySummary, NodeFrontierSelectionMode,
+    workspace_root, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
+    NodeFrontierSelectionMode,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -56,7 +57,7 @@ fn run_explicit_roster(skip: bool) -> Result<DiscoverySummary, String> {
         &[],
         &explicit,
         ExecutionMode::Wet,
-        1,
+        DiscoveryWidthPolicy::Serial,
         discovery_options(skip),
     )
 }
@@ -120,7 +121,7 @@ fn run_injected_diff_roster(
         &[],
         roster,
         ExecutionMode::Wet,
-        1,
+        DiscoveryWidthPolicy::Serial,
         discovery_options(true),
     )
     .expect("node-precise skip path must not error (FreeMonoid decode root fix)")
@@ -143,7 +144,7 @@ fn run_injected_diff_roster_with_mode(
         &[],
         roster,
         ExecutionMode::Wet,
-        1,
+        DiscoveryWidthPolicy::Serial,
         DiscoveryCorpusOptions {
             node_frontier_selection: mode,
             explicit_roster_only: true,
