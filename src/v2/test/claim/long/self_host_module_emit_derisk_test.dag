@@ -1,4 +1,4 @@
-module v2.test.manual.self_host_module_emit_derisk
+module v2.test.long.self_host_module_emit_derisk
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
