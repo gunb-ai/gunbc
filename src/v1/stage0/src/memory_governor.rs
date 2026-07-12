@@ -6,8 +6,11 @@
 //! allocation IS the declaration and no byte constant lives in the tree — work is admitted
 //! while signals are calm, and the controller backs off on CREEP before the kill line.
 //! Because `memory.high` reclaim (and swap, where present) buffer the overshoot, creep is
-//! not loss: the graceful arm stops admitting and lets in-flight work drain; only hard
-//! events (throttle-line crossings, OOM kills) shrink the window multiplicatively.
+//! not loss — it is the EARLY congestion signal (TCP's ECN mark): the first hold of a
+//! creep episode halves the window so workers drain while the buffer zone still has
+//! drain-latency margin, and admissions stay held until calm. Hard events (throttle-line
+//! crossings, OOM kills, and `memory.current` crossing the declared budget itself — the
+//! reachable loss signal on uncapped hosts) halve it again as the backstop.
 //!
 //! Signals, read from the tightest-limit cgroup directory (else the leaf):
 //!   `memory.current`             — instantaneous usage vs budget (high-water headroom)
@@ -142,7 +145,7 @@ struct GovCore {
     budget_exceeded_episode: bool,
     admissions: u64,
     forced_serial_admissions: u64,
-    graceful_holds: u64,
+    creep_backoffs: u64,
     pacing_holds: u64,
     hard_backoffs: u64,
     budget_exceeded_backoffs: u64,
@@ -165,7 +168,7 @@ impl GovCore {
             budget_exceeded_episode: false,
             admissions: 0,
             forced_serial_admissions: 0,
-            graceful_holds: 0,
+            creep_backoffs: 0,
             pacing_holds: 0,
             hard_backoffs: 0,
             budget_exceeded_backoffs: 0,
@@ -336,6 +339,10 @@ fn decide_admission(
             hard,
         );
     }
+    if let Some(reason) = creep {
+        creep_episode_backoff(core);
+        return (AdmitDecision::Hold(reason), hard);
+    }
     if core.active >= core.target_width {
         return (
             AdmitDecision::Hold(HoldReason::WindowFull {
@@ -357,13 +364,6 @@ fn decide_admission(
             hard,
         );
     }
-    if let Some(reason) = creep {
-        if !core.holding {
-            core.holding = true;
-            core.graceful_holds += 1;
-        }
-        return (AdmitDecision::Hold(reason), hard);
-    }
     core.active += 1;
     core.undigested += 1;
     core.admissions += 1;
@@ -378,21 +378,49 @@ fn decide_admission(
     )
 }
 
+/// The creep-episode edge is the EARLY congestion signal — TCP's ECN mark, not its loss.
+/// Run 29182481051 proved a hold alone cannot save the box: admissions stopped at the
+/// high-water line, but the already-admitted workers' residency growth (~1GiB/min each,
+/// request-major closure accumulation) carried memory from 47.9 to a fatal 52.7GiB in
+/// eighty seconds, and the budget-exceed halve at 51.7GiB left no drain-latency margin.
+/// So the FIRST hold of a creep episode also halves the window: workers drain while the
+/// high-water→budget buffer still has ~10GiB of margin, which is the drain latency plus
+/// the allocator's freed-page plateau. One halving per episode; re-arms on admission.
+fn creep_episode_backoff(core: &mut GovCore) -> Option<(usize, usize)> {
+    if core.holding {
+        return None;
+    }
+    core.holding = true;
+    core.creep_backoffs += 1;
+    let old = core.target_width;
+    core.target_width = core.active.div_ceil(2).max(1).min(old.max(1));
+    Some((old, core.target_width))
+}
+
 /// Additive increase, gated on calm: a completed unit of work while no creep is visible
-/// grows the window by one, up to the CPU bound.
+/// grows the window by one, up to the CPU bound. A creep edge observed here backs off
+/// exactly as in the admission path (completions may be the only polls at a full window).
 fn note_completion(
     core: &mut GovCore,
     sig: &MemorySignals,
     limits: &GovernorLimits,
-) -> Option<HardEvent> {
+) -> (Option<HardEvent>, Option<(usize, usize)>) {
     let hard = absorb_hard_events(core, sig, limits);
     let creep = creep_reason(core, sig, limits);
     core.prev_swap_bytes = sig.swap_current_bytes.or(core.prev_swap_bytes);
-    if hard.is_none() && creep.is_none() && core.target_width < limits.max_width {
+    if hard.is_some() || creep.is_some() {
+        let backoff = if creep.is_some() {
+            creep_episode_backoff(core)
+        } else {
+            None
+        };
+        return (hard, backoff);
+    }
+    if core.target_width < limits.max_width {
         core.target_width += 1;
         core.width_growths += 1;
     }
-    hard
+    (hard, None)
 }
 
 /// A worker's front-loaded admission cost has landed (its index build finished): its
@@ -504,19 +532,26 @@ impl MemoryGovernor {
         }
     }
 
-    /// One non-blocking admission poll (logs hard events and hold-episode edges).
+    /// One non-blocking admission poll (logs hard events and creep-episode back-offs).
     pub fn try_admit(&self) -> AdmitDecision {
         let sig = self.source.read();
         let mut core = self.core.lock().unwrap();
         let was_holding = core.holding;
+        let old_target = core.target_width;
         let (decision, hard) = decide_admission(&mut core, &sig, &self.limits);
+        let new_target = core.target_width;
         drop(core);
         if let Some(h) = hard {
             eprintln!("{}", h.describe());
         }
         if let AdmitDecision::Hold(reason) = &decision {
             if reason.is_memory_creep() && !was_holding {
-                eprintln!("[governor] holding admissions: {}", reason.describe());
+                eprintln!(
+                    "[governor] creep back-off: {} — target_width {}→{} (admissions held; workers drain between units)",
+                    reason.describe(),
+                    old_target,
+                    new_target
+                );
             }
         }
         if let AdmitDecision::Admit {
@@ -552,10 +587,15 @@ impl MemoryGovernor {
     fn note_unit_complete_growth(&self) {
         let sig = self.source.read();
         let mut core = self.core.lock().unwrap();
-        let hard = note_completion(&mut core, &sig, &self.limits);
+        let (hard, creep_backoff) = note_completion(&mut core, &sig, &self.limits);
         drop(core);
         if let Some(h) = hard {
             eprintln!("{}", h.describe());
+        }
+        if let Some((old, new)) = creep_backoff {
+            eprintln!(
+                "[governor] creep back-off (observed at completion): target_width {old}→{new} (admissions held; workers drain between units)"
+            );
         }
     }
 
@@ -590,7 +630,7 @@ impl MemoryGovernor {
         let core = self.core.lock().unwrap();
         format!(
             "[governor] receipt: budget={} source={} max_width_reached={} admissions={} \
-             width_growths={} graceful_holds={} pacing_holds={} hard_backoffs={} \
+             width_growths={} creep_backoffs={} pacing_holds={} hard_backoffs={} \
              budget_exceeded={} forced_serial={} peak_current={}",
             self.limits
                 .budget_bytes
@@ -600,7 +640,7 @@ impl MemoryGovernor {
             core.max_width_reached,
             core.admissions,
             core.width_growths,
-            core.graceful_holds,
+            core.creep_backoffs,
             core.pacing_holds,
             core.hard_backoffs,
             core.budget_exceeded_backoffs,
@@ -821,7 +861,7 @@ mod tests {
             d2,
             AdmitDecision::Hold(HoldReason::WindowFull { .. })
         ));
-        assert_eq!(core.graceful_holds, 0, "window-full is not a memory hold");
+        assert_eq!(core.creep_backoffs, 0, "window-full is not a memory hold");
         // A calm completion grows the window; with the first worker's front cost paid,
         // the next admission fits.
         note_first_cost(&mut core);
@@ -857,7 +897,7 @@ mod tests {
         let (d3, _) = decide_admission(&mut core, &calm(), &lim);
         assert!(matches!(d3, AdmitDecision::Hold(_)));
         assert_eq!(core.pacing_holds, 1, "one episode, not one per poll");
-        assert_eq!(core.graceful_holds, 0, "pacing is not a memory hold");
+        assert_eq!(core.creep_backoffs, 0, "pacing is not a memory hold");
         // The index build lands: the next admission passes and re-arms the episode.
         note_first_cost(&mut core);
         let (d4, _) = decide_admission(&mut core, &calm(), &lim);
@@ -940,30 +980,39 @@ mod tests {
     }
 
     #[test]
-    fn high_water_creep_holds_and_counts_once_per_episode() {
+    fn high_water_creep_edge_backs_off_once_per_episode() {
         let lim = limits(1_000_000, 8);
         let mut core = GovCore::new();
         core.target_width = 4;
-        core.active = 1;
+        core.active = 3;
         let hot = MemorySignals {
             current_bytes: Some(900_000), // > 800_000 high-water of 1_000_000
             ..calm()
         };
+        // The episode EDGE is the early-congestion signal: hold AND halve, so workers
+        // drain while the high-water→budget buffer still has drain-latency margin.
         let (d, _) = decide_admission(&mut core, &hot, &lim);
         assert!(matches!(
             d,
             AdmitDecision::Hold(HoldReason::CurrentHighWater { .. })
         ));
+        assert_eq!(core.target_width, 2, "creep edge halves the window");
+        assert!(core.active > core.target_width, "workers must drain");
         let (d2, _) = decide_admission(&mut core, &hot, &lim);
         assert!(matches!(d2, AdmitDecision::Hold(_)));
-        assert_eq!(core.graceful_holds, 1, "one episode, not one per poll");
-        // Calm again: admit, episode re-arms, a second hot spell counts again. (Settle
-        // the new worker's first cost so the hot poll reaches the creep arm, not pacing.)
+        assert_eq!(core.creep_backoffs, 1, "one episode, not one per poll");
+        assert_eq!(core.target_width, 2, "no re-halve within an episode");
+        // Drain to calm: workers retire, an admission re-arms the episode, and a second
+        // hot spell counts (and halves) again.
+        note_release(&mut core, true);
+        note_release(&mut core, true);
+        note_release(&mut core, true);
         let (d3, _) = decide_admission(&mut core, &calm(), &lim);
         assert!(matches!(d3, AdmitDecision::Admit { .. }));
         note_first_cost(&mut core);
         let (_, _) = decide_admission(&mut core, &hot, &lim);
-        assert_eq!(core.graceful_holds, 2);
+        assert_eq!(core.creep_backoffs, 2);
+        assert_eq!(core.target_width, 1);
     }
 
     #[test]
@@ -1161,7 +1210,7 @@ mod tests {
             source: SignalSource { dir: None },
             core: Mutex::new({
                 let mut c = GovCore::new();
-                c.graceful_holds = 3;
+                c.creep_backoffs = 3;
                 c.pacing_holds = 5;
                 c.hard_backoffs = 2;
                 c.budget_exceeded_backoffs = 7;
@@ -1173,7 +1222,7 @@ mod tests {
             }),
         };
         let line = gov.receipt_line();
-        assert!(line.contains("graceful_holds=3"));
+        assert!(line.contains("creep_backoffs=3"));
         assert!(line.contains("pacing_holds=5"));
         assert!(line.contains("hard_backoffs=2"));
         assert!(line.contains("budget_exceeded=7"));
