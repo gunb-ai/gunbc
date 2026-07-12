@@ -20,6 +20,9 @@ import v2.workflow.affected_set_floor_runner {
   floor_rust_run_implies_dag_run,
   floor_test_fn_declaration_edited
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_a_fixture_fn_edit_touch: FloorDiffLineTouch = FloorDiffLineTouch {
   path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",

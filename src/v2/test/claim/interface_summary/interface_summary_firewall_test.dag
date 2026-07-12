@@ -12,6 +12,9 @@ import std.algebra { Empty }
 import v2.std.collection { Present, Absent, optional_absent }
 import v2.std.decl_index { export_signature_facts_host_scaffold_dissolution_trigger }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data firewall_fixture_roots: List<String> = ["src/v2/test/fixture/interface_summary"]
 

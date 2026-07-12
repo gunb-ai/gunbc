@@ -9,8 +9,8 @@ env:
   CARGO_TERM_COLOR: always
 jobs:
   falsifier:
-    runs-on: [ubicloud-standard-16-arm]
-    timeout-minutes: 180
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 230
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -23,7 +23,7 @@ jobs:
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
           echo "MAKEFLAGS=" >> "$GITHUB_ENV"
-          echo "CARGO_BUILD_JOBS=11" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
           if sccache --show-stats >/dev/null 2>&1; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
             echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
@@ -97,7 +97,7 @@ jobs:
         env:
           GUNBC_CI_DIFF_BASE: HEAD~20
           GUNBC_CI_DIFF_HEAD: HEAD
-        timeout-minutes: 120
+        timeout-minutes: 170
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
           # dissolve-on: bash-emit (#5828 / gap-B emit(intent, Bash)) realizes the cgroup peak observation as an emitted ShellProgram intent (the floor_diff_observe.dag pattern: model the observation, emit the transport) or a typed host Observe effect; these concat-built runners retire then. Until that lands they are §2 transport scaffolds bound by the three Scaffold rows in gunbc.ci_workflow (locate/pre/post *_shell_emit_dissolution_trigger).

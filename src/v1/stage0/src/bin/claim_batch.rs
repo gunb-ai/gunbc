@@ -503,6 +503,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                         label: function.clone(),
                         entry: group.entry.clone(),
                         function: function.clone(),
+                        // claim_batch runs every row (no selection); the undeclared
+                        // fail-closed default is the honest fill for a transient row.
+                        reads_live_tree: true,
                     });
                 }
             }

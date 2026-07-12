@@ -15,6 +15,9 @@ import gunbc.srv3_boot_once_cd {
   srv3_boot_cd_enabled,
   srv3_boot_cd_reset_type,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn boot_cd_once_body_wires_correctly() -> Bool {
   let body = boot_override_body(target: "Cd", enabled: "Once")

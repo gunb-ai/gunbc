@@ -33,6 +33,9 @@ import v2.workflow.affected_set_selection {
   ci_select_from_rerun_nodes,
   test_claim_in_rerun_frontier
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data ci_runner_untouched_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ci_runner_untouched_symbol } },
   children: [],

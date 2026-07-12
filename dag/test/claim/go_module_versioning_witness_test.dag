@@ -19,6 +19,9 @@ import extdeps.languages.go.module {
   emit_host_min_go_language_version,
   emit_host_bootstrap_toolchain,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_go_manifest_file() -> Bool {
   go_manifest_file == "go.mod"

@@ -34,6 +34,9 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn ct_qn_node(seg: Symbol) -> Node {
   fold_list_node(

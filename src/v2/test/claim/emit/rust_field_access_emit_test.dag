@@ -37,6 +37,9 @@ import v2.std.node {
   Transform
 }
 import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_field_access_emit_root: Node = dag_field_access_arrow_with_body_fixture
 

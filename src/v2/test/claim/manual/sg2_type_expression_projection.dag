@@ -65,6 +65,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sg2_fail_text: String = ""
 data sg2_expected_type_text: String = "Rc<FooBar<X, Y>>"
 data sg2_expected_arrow_text: String = "(X) -> Y"

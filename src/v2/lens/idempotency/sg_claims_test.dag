@@ -10,6 +10,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn lens_idempotency_write_effect_holds() -> Bool {
   idempotency_write_effect_claim_holds()
 }

@@ -9,6 +9,9 @@ import extdeps.transports.fidelity {
   transport_hermetic,
   classify_transports,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn test_class_is_hermetic(c: TestClass) -> Bool {
   match c {

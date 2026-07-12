@@ -68,6 +68,9 @@ import extdeps.vendor.ampere { ampere }
 import std.http_path { PathTemplate }
 import std.measure { byte_size }
 import std.types { GET }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_sql_dialect_postgres_label() -> Bool {
   sql_dialect_wire_label(Postgres) == "postgres"

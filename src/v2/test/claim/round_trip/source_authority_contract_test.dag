@@ -10,6 +10,9 @@ import v2.test.round_trip.source_authority_contract {
   contract_target_advertises_declared_loss
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn source_authority_contract_serializer_section_law_holds() -> Bool {
   contract_target_advertises_declared_loss()

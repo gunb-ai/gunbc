@@ -12,6 +12,9 @@ import extdeps.bmc.serial_console {
   redfish_serial_interface_authority,
   sol_console_transport_authority_for,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_sol_console_capture_intent_uses_obmc_cli() -> Bool {
   match srv3_sol_console_capture_intent.transport {

@@ -21,6 +21,9 @@ import gunbc.os_install_actuator_selection {
 }
 import gunbc.fleet_intent { srv1_host, srv2_host }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
   os_install_actuator_requirement_kind_count() == 4

@@ -40,6 +40,9 @@ import gunbc.bmc_onboarding {
 import extdeps.bmc.types { BootTargetCd, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
 import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
 import extdeps.communication.medium { Lossless, Lossy }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn phase_tag(p: BmcOnboardingPhase) -> Int {
   match p {

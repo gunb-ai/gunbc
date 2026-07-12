@@ -11,6 +11,9 @@ import v2.lens.extdeps_shape_transport_policy {
 import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_git_module }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data clean_git_diff_service: String = "git.Core"
 data clean_git_diff_operation: String = "Diff"

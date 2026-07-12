@@ -5,6 +5,9 @@ import v2.lens.extdeps_shape_transport_policy {
 }
 import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_git_module }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn corpus_git_policy_leak_defused_holds() -> Bool {
   extdeps_live_module_policy_leak_count(module: extdeps_git_module) == 0

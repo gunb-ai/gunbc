@@ -26,6 +26,9 @@ import gunbc.host_effect_realize {
 }
 import std.realization_reconcile { reconciliation_converged, NotConverged, Converged }
 import gunbc.fleet_intent { srv1_host }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data privilege_mutation_marker: String = "host-mutation-privilege-marker-7f3a"
 

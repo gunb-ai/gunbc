@@ -12,6 +12,9 @@ import extdeps.languages.html {
   try_serialize_html_source,
   serialize_markup_node,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_button() -> MarkupNode {
   ElementNode {

@@ -3,6 +3,9 @@ module v2.test.std_dependents.dependents_test
 import v2.std.logic { Bool }
 import v2.std.occurrence_id { alloc_occurrence_id, occurrence_id_allocator_initial }
 import v2.std.dependents { Untracked, Tracked, no_dependents }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 test fn dependents_untracked_is_unused() -> Bool {
   no_dependents(d: Untracked)

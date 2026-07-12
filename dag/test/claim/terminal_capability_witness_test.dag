@@ -4,6 +4,9 @@ import std.render { Append, CursorAction, Frame, Overwrite, RenderCapability, Vi
 import std.symbols { Ascii, Unicode }
 import extdeps.render.terminal { project_frame }
 import extdeps.render.terminal_capability { TerminalEnvironment, detect_capability }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data interactive_tty: TerminalEnvironment = TerminalEnvironment {
   is_tty: true, ci: false, no_color: false, dumb_term: false

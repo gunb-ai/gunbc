@@ -48,6 +48,9 @@ import v2.std.compilers.target_model {
   target_value_expression_tokens_from_target,
   value_expr_projection_bundle_node
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fold_call_atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])

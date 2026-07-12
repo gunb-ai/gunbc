@@ -9,6 +9,9 @@ import std.lens_verdict {
   Violation,
   ModuleWholeFile,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_module: String = "test.claim.lens_verdict_witness"
 

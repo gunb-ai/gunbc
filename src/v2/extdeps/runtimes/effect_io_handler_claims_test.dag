@@ -32,6 +32,9 @@ import v2.std.runtime {
   effect_handler_for_kind
 }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn effect_io_claim_resource_arg(bytes: List<Byte>) -> RuntimeValue {
   RuntimePrimitive {

@@ -19,6 +19,7 @@ import extdeps.communication.medium { Medium }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List, optional_present }
 import v2.std.host_transport {
+  ByteString,
   EmitHostRuntimeRow,
   EmittedSource,
   EmittedWithSuffix,
@@ -46,7 +47,6 @@ import v2.std.diagnostic {
 }
 import v2.std.host_run {
   BuildLog,
-  ByteString,
   EmitHostRunReceipt,
   ExitOk,
   HostExit,

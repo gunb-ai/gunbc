@@ -28,6 +28,9 @@ import extdeps.os.ubuntu_install_media_fetch {
   install_media_fetch_script,
   install_media_fetch_bash_emit_dissolution_trigger,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn install_media_fetch_effect_is_create_if_absent_on_content_sha256() -> Bool {
   match install_media_fetch_effect_shape {

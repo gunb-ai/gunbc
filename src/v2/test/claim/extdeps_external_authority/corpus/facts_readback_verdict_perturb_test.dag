@@ -10,6 +10,9 @@ import v2.lens.extdeps_external_authority.module_refs {
   extdeps_fixture_missing_anchor_module,
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_computed_facts_readback_holds() -> Bool {
   extdeps_external_authority_clean_for_module(module: extdeps_fixture_clean_https_module)

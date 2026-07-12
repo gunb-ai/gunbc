@@ -15,6 +15,9 @@ import gunbc.idea_pr_spine {
   settle, demo_spine_green, demo_spine_unknown,
 }
 import ctrl.review_verdict { Llm, Claude, RequestChanges }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn linearize_steps(steps: List<StageStep>) -> VerdictTree {
   linearize_verdicts(

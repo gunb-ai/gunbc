@@ -7,6 +7,9 @@ import extdeps.github.mergeable_state {
   parse_mergeable_state,
   mergeable_state_wire_label,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_mergeable_wire_decodes_to_mergeable() -> Bool {
   match parse_mergeable_state(raw: "MERGEABLE") {

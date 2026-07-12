@@ -28,6 +28,9 @@ import gunbc.assimilate.bmc_wif_delegation_chain {
 import gunbc.auth.secret_access_grant { grant_is_signed, grant_is_legacy }
 import gunbc.auth.secret_ref_credential { secret_ref_credential_authority }
 import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource, secret_ref_hash_known }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn step_is(step: CredentialDelegationStep, tag: String) -> Bool {
   match step {

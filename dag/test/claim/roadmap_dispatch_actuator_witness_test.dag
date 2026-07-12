@@ -54,6 +54,9 @@ import gunbc.roadmap_dispatch_actuator {
   SessionObserved,
   SpawnSession,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nid(s: String) -> ProcessNodeId { s }
 

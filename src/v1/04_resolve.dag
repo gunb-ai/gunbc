@@ -170,12 +170,12 @@ type NodeResolveResult {
   diagnostics: List<ErrorNode>
 }
 
-type ItemResult {
+type ItemResolveResult {
   item: Node
   diagnostics: List<ErrorNode>
 }
 
-type FieldResult {
+type FieldResolveResult {
   field: Node
   diagnostics: List<ErrorNode>
 }
@@ -210,7 +210,7 @@ type TransportResolveResult {
   diagnostics: List<ErrorNode>
 }
 
-type ParamResult {
+type ParamResolveResult {
   param: Node
   diagnostics: List<ErrorNode>
 }
@@ -618,7 +618,7 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
   }
 }
 
-fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResult {
+fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResolveResult {
   let authored_type = field_node_type_expr(n: field)
   let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
@@ -631,7 +631,7 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResult 
     Present { value: result } => result.diagnostics
     Absent => []
   }
-  FieldResult {
+  FieldResolveResult {
     field: make_field_node(
       name: field_node_name_at(n: field, source_indices: env.source_indices),
       type_expr: type_resolved,
@@ -647,7 +647,7 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResult 
   }
 }
 
-fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult {
+fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResolveResult {
   let authored_type = param_node_type_expr(n: param)
   let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
@@ -669,7 +669,7 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
     Present { value: result } => Present { value: result.expr }
     Absent => none
   }
-  ParamResult {
+  ParamResolveResult {
     param: make_resolved_param_node(
       name: param_node_name_at(n: param, source_indices: env.source_indices),
       type_expr: rendered_type,
@@ -954,7 +954,7 @@ fn has_duplicate_type_param_name(names: List<String>) -> Bool {
   )
 }
 
-fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResult {
+fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResolveResult {
   let tp_names = if item.connective != NoConnective && item.transport == none {
     item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
   } else {
@@ -1035,7 +1035,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       let authored_type = field_node_type_expr(n: child)
       let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
       let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
-      ItemResult {
+      ItemResolveResult {
         item: Node { name: child.name, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: child.inferred, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
         diagnostics: type_diags
       }
@@ -1046,14 +1046,14 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
         let authored_type = field_node_type_expr(n: field)
         let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
         let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
-        ItemResult {
+        ItemResolveResult {
           item: Node { name: field.name, span: field.span, ident_span: field.ident_span, children: field.children, connective: field.connective, params: field.params, inferred: field.inferred, return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
           diagnostics: type_diags
         }
       )
       let resolved_fields = map(field_results, fr => fr.item)
       let field_diags = flat_map(field_results, fr => fr.diagnostics)
-      ItemResult {
+      ItemResolveResult {
         item: Node { name: variant.name, span: variant.span, ident_span: variant.ident_span, children: resolved_fields, connective: variant.connective, params: variant.params, inferred: variant.inferred, return_cardinality: variant.return_cardinality, uses: variant.uses, body: variant.body, transport: variant.transport, properties: variant.properties, type_annotation: variant.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
         diagnostics: field_diags
       }
@@ -1064,7 +1064,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let resolved_children = map(child_results, cr => cr.item)
   let child_diags = flat_map(child_results, cr => cr.diagnostics)
 
-  ItemResult {
+  ItemResolveResult {
     item: Node {
       name: item.name, span: item.span, ident_span: item.ident_span, children: resolved_children,
       params: resolved_params, inferred: resolved_ret,

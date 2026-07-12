@@ -57,6 +57,7 @@ pub use crate::std_termination::{
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_emit::to_string;
+pub use crate::v1_compiler_infer_sigs::CallEdge;
 pub use crate::v1_compiler_infer_types::{node_is_collection, resolved_type};
 use crate::v1_compiler_parse::ParserCallIdentity::{ParserCallFunction, ParserCallHelper};
 use crate::v1_compiler_parse::ParserResultWitness::{
@@ -213,12 +214,6 @@ pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostIn
             certainty: Certainty::Proven,
         }),
     )
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CallEdge {
-    pub caller: String,
-    pub callee: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -6,6 +6,9 @@ import v2.lens.extdeps_shape_transport_policy {
 }
 import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_github_gists_module }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn corpus_gist_create_defused_holds() -> Bool {
   extdeps_live_module_gist_create_declares_filename_input(

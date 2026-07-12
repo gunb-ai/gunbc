@@ -23,6 +23,9 @@ import v2.test.complexity_gate.subject_complexity_budget_roster {
   complexity_declared_budget_for_row,
   complexity_subject_budget_rows
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn complexity_declared_budget_is_rated(budget: ComplexityBound) -> Bool {
   match budget {

@@ -22,6 +22,9 @@ import v2.extdeps.languages.typescript {
   ts_fn_add_lex
 }
 import v2.test.manual.typescript_add_emit_translate { anchor_typescript_add_emit_accepts }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn field_access_binding_spellings() -> Map<Symbol, String> {
   map_insert(

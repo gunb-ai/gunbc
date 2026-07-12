@@ -31,6 +31,9 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data unit_ar_int_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },

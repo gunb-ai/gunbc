@@ -8,6 +8,9 @@ import gunbc.fleet_intent_network {
   operator_host_srv2,
   operator_host_srv3,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_user_data_is_cloud_config_autoinstall() -> Bool {
   let ud = autoinstall_user_data(payload: srv3_ubuntu_autoinstall)

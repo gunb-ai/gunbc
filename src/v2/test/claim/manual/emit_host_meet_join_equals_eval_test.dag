@@ -83,6 +83,9 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn meet_join_eval_generic_facts(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(

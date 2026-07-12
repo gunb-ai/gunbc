@@ -31,6 +31,9 @@ import gunbc.host_effect { HostOs, ShellCommand }
 import extdeps.bmc.webui.nbd_proxy_serve {
   nbd_proxy_serve_bash_emit_dissolution_trigger,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
   match srv3_install_mechanism {

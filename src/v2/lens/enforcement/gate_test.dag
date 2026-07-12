@@ -29,6 +29,9 @@ import v2.lens.enforcement.gate {
   all_intents_admissible
 }
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data synthetic_intent: StandingIntent = {
   id: "synthetic.parallelism.repo-wide",

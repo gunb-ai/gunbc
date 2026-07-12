@@ -87,6 +87,9 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data add_body_ts_emit_operand_swap_source_text: String = "function add(x: number, y: number): number { return y + x; }"
 

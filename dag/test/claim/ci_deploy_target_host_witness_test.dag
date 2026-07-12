@@ -21,6 +21,9 @@ import gunbc.fleet_intent { srv1_host }
 import gunbc.host_effect { LocalShell, SshShell }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import extdeps.github.actions { SelfHosted, RunsOnExpression }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_srv1_hostname_proves_target() -> Bool {
   let proof = deploy_target_proof_from_access(access: ci_deploy_srv1_access)

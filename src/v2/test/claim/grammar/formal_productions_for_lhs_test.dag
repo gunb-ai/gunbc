@@ -11,6 +11,9 @@ import v2.std.grammar {
 }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data formal_productions_for_lhs_fixture_a: Symbol = ^formal_productions_for_lhs_fixture_a
 data formal_productions_for_lhs_fixture_b: Symbol = ^formal_productions_for_lhs_fixture_b

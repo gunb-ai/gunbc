@@ -48,6 +48,9 @@ import std.upsert_decision {
   Apply,
   Refuse,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_intent_hash: ContentHash = "temporal-spine-witness-intent-v1"
 data witness_escalation_id: NonEmptyStr = "srv3-boot-once-cd" as NonEmptyStr

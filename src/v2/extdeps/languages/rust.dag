@@ -309,7 +309,7 @@ type RustIntegerCarrier {
 
 type RustIntegerPrimitiveFacts {
   surface_spelling: Symbol
-  overflow_disposition: OverflowDisposition<RustIntegerCarrier>
+  overflow_disposition: RustIntegerOverflowDisposition<RustIntegerCarrier>
   std_projection: Symbol
 }
 
@@ -366,7 +366,7 @@ type OverflowAction
   = PanicOnOverflow
   | TwoComplementWrap
 
-type OverflowDisposition<IRCarrier> {
+type RustIntegerOverflowDisposition<IRCarrier> {
   ir_carrier: IRCarrier
   checked_arithmetic_debug_default: OverflowAction
   checked_arithmetic_release_default: OverflowAction
@@ -391,8 +391,8 @@ type RustModelCoreLawKey
   | RustLawFloatNanInfCarriedByIeee754
   | RustLawBoolBoundedLattice
   | RustLawBoolComplement
-fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> OverflowDisposition<RustIntegerCarrier> {
-  OverflowDisposition {
+fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> RustIntegerOverflowDisposition<RustIntegerCarrier> {
+  RustIntegerOverflowDisposition {
     ir_carrier: RustIntegerCarrier { kind: kind, width: width },
     checked_arithmetic_debug_default: PanicOnOverflow,
     checked_arithmetic_release_default: TwoComplementWrap,
@@ -657,7 +657,7 @@ fn rust_integer_carrier_interval_spec(carrier: RustIntegerCarrier) -> IntegerInt
   }
 }
 
-fn rust_overflow_disposition_node(disposition: OverflowDisposition<RustIntegerCarrier>) -> Node {
+fn rust_overflow_disposition_node(disposition: RustIntegerOverflowDisposition<RustIntegerCarrier>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [

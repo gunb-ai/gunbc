@@ -9,6 +9,9 @@ import v2.compiler.source_authority {
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, V2Tree, source_root_set_contains }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sr_tag_v2_read: DagSourceReadWitness = DagSourceReadWitness {
   source: Medium { carried: "module v2.std.sr_tag_fixture", fidelity: Lossless },

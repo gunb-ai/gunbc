@@ -18,6 +18,9 @@ import extdeps.os.systemd {
 import std.measure { byte_size, byte_size_count }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }
 import std.types { NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_active_wire_decodes_to_active() -> Bool {
   match parse_systemd_unit_active_state(raw: "active") {

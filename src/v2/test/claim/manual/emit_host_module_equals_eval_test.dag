@@ -24,6 +24,9 @@ import v2.std.node { Node }
 import v2.std.runtime { EvaluationEnvironment, RuntimeValue }
 import v2.std.text { String }
 import v2.std.algebra { list_append }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emit_module_single_add_decls() -> List<InferredTree> {
   [emit_eval_subject_tree()]

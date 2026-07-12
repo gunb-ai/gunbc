@@ -12,6 +12,9 @@ import v2.std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data planted_stale_roster_entry: String = "dag/tools/_stale_migrated_off_consumer.dag"
 

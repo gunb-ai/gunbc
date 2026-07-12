@@ -2,6 +2,9 @@ module test.claim.string_family_cast
 
 import std.logic { Bool }
 import std.types { NonEmptyStr, Secret, SecretValue }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn string_to_secret(s: String) -> Secret {
   s as Secret

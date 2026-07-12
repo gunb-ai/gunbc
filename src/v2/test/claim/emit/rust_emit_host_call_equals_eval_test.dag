@@ -65,6 +65,9 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emit_call_eval_octet_value(n: Int) -> RuntimeValue {
   RuntimePrimitive {

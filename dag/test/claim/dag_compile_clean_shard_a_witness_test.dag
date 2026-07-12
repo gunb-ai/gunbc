@@ -16,6 +16,9 @@ import tools.dag_compile_clean_shard_transport {
   run_shard_a_exemplar_compile,
   shard_a_exemplar_entry_path
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data witness_compose_red_on_injected_failure: Bool = compose_compile_clean_shard_verdicts(
   verdicts: [ShardClean, ShardFailed { entry_path: shard_a_exemplar_entry_path }]
 ) != ShardClean

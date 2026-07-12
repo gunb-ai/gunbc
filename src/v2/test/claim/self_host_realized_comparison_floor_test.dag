@@ -15,6 +15,9 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn floor_seed_leaf() -> Node {
   Node {

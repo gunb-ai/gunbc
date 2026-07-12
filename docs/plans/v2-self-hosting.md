@@ -72,6 +72,8 @@ The June 2026 **Track A/B/T/Z** structure, Purity/Forced-precondition-order as a
 3. **HAND kernel D (interpreter pure-eval)** — [interpreter-kernel-d.md](interpreter-kernel-d.md).
 4. **Emit-on-demand execution** — parallel track (ROADMAP §1); not a Wave 1 blocker.
 
+Related: [S2 — v2 emits v2: strategic direction & decomposition](s2-v2-self-emit-direction.md) — the active lane decomposition toward the Track Z fixed point (B-rungs, whole-module harness lead).
+
 ## Dissolution trigger (DESIGN §6)
 
 Delete this doc when Wave 4 lands: pipeline on emitted Rust, import grammar deleted, v1 collapsed to pinned kernel, CI compile cone gone. The frontier carrier + absent v1 compiler logic are the authority; this tracker is redundant.

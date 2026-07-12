@@ -59,6 +59,7 @@ import v1.std.core {
   is_tree_size_preserving, is_tree_size_reducing,
   authored_name_at
 }
+import v1.compiler.infer_sigs { CallEdge }
 import v1.compiler.infer_types {
   resolved_type, node_is_collection
 }
@@ -125,11 +126,6 @@ fn evict_summary(table: CostInternTable, func_name: String) -> CostInternTable {
     output_size: empty_map(),
     certainty: Proven
   })
-}
-
-type CallEdge {
-  caller: String
-  callee: String
 }
 
 type SccInfo {

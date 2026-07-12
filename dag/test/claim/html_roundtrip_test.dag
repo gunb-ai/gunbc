@@ -16,6 +16,9 @@ import extdeps.languages.html {
   html_medium_lossless,
 }
 import extdeps.communication.medium { Lossless, Lossy }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn roundtrip_core_node() -> MarkupNode {
   ElementNode {

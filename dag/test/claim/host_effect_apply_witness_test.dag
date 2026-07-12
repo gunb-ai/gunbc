@@ -19,6 +19,9 @@ import std.realization_reconcile { Reconciliation, reconciliation_converged, Not
 import std.effects { IdempotencyEvidence, LatticeEffect, NonIdempotent, AppendEffect }
 import gunbc.fleet_intent { srv1_host }
 import extdeps.bmc.types { RedfishSystemAction, GetSystem }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn host_os_target() -> NodeControlPlane {
   HostOs { node: srv1_host }

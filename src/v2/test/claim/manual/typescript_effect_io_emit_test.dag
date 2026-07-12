@@ -28,6 +28,9 @@ import v2.extdeps.languages.typescript {
   ts_value_expression_projection,
   ts_fn_add_lex
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn effect_io_binding_spellings() -> Map<Symbol, String> {
   map_insert(

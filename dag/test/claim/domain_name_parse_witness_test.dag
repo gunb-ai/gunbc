@@ -17,6 +17,9 @@ import extdeps.dns.domain_name {
   Err,
 }
 import std.render { repeat_string }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn domain_name_parse_fqdn_srv1_tailnet() -> Bool {
   match parse_host_name(raw: "srv1.tailecbe08.ts.net.") {

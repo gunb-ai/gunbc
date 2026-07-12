@@ -26,6 +26,9 @@ import extdeps.vendor.apple { apple }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.memory.types { UnifiedShared, Dram, Hbm }
 import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_m5_vendor_grounds_on_apple_entity() -> Bool {
   apple_m5_gpu_catalog.vendor == apple

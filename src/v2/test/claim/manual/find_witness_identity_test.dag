@@ -45,6 +45,9 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { StructuralPropertyWitness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn identity_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^identity_source_atom } },

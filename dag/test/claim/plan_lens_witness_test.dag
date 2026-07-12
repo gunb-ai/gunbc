@@ -6,6 +6,9 @@ import gunbc.plan {
   plan_title_is_present, plans_all_titled,
 }
 import gunbc.plan_registry { all_plans }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn plan_with_trigger() -> Plan {
   Plan { slug: "x", title: "x", body: [], dissolution: HasTrigger { text: "delete when X is witnessed" } }

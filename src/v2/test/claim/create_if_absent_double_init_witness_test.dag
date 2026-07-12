@@ -9,6 +9,9 @@ import v2.std.effects {
   sample_create_if_absent_key_source
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn create_if_absent_same_identity_is_dedupable_holds() -> Bool {
   let shape = create_if_absent_shape(key_source: sample_create_if_absent_key_source)

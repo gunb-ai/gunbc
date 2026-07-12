@@ -70,6 +70,9 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data bash_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_stmt and of the grammar rows/segment spellings. Each fold test compares bash_program_serialize_stmt (row-emit) against its golden only (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
 data bash_fold_and_then_golden: String = "'true' && 'false'"

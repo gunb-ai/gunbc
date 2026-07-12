@@ -24,6 +24,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data lens_registry_v0_required_ids: List<LensIdV0> = [
   Complexity,
   Cost,

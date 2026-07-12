@@ -11,6 +11,9 @@ import v2.std.spine {
 import v2.std.node { Node, Edge, Named, TypeNode, Atom, Conj, Symbol, node_synthetic }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn atom(sym: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])

@@ -25,6 +25,9 @@ import std.numerical_contract {
 }
 import std.approximate_field { ToNearestEven }
 import extdeps.communication.medium { Lossless, Lossy }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_integer_contract_maps_to_lossless_fidelity() -> Bool {
   match lowering_fidelity_verdict_for_contract(contract: integer_exact_contract()) {

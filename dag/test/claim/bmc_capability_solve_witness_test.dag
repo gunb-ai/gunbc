@@ -32,6 +32,9 @@ import gunbc.os_install_mechanism {
   srv3_firmware_catalog,
   srv3_install_mechanism,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_capabilities_are_grounded() -> Bool {
   firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityPowerControl)

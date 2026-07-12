@@ -33,6 +33,9 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn lmm_atom(s: Symbol) -> Node {
   Node {

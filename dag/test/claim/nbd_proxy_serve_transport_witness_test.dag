@@ -23,6 +23,9 @@ import extdeps.tools.curl { curl_cli_tool }
 import extdeps.tools.websocat { websocat_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn nbd_proxy_ws_path_for_vm_slot_index() -> Bool {
   bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0) == "/vm/0/0"

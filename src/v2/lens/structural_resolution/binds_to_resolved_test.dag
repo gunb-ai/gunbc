@@ -22,6 +22,9 @@ import v2.std.dependency {
 }
 import v2.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.witness { Holds }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sr_claim_hash: Hash = sr_claim_hash
 
 fn sr_claim_atom(s: Symbol) -> Node {
