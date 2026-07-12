@@ -1,152 +1,46 @@
 module v2.test.manual.body_lowering_match
 
 import v2.compiler.body_lowering_fold {
-  body_lower_body_from_fn_captured,
-  body_lower_fn_decl_to_arrow,
-  body_lower_match_expr,
   body_lower_match_arms_optional,
-  body_lower_primary_expr,
-  body_lower_operand_ref_optional,
-  body_lower_match_scrutinee_optional,
-  body_lower_match_spine_left,
-  body_lower_operand_ref_optional,
-  body_lower_pattern_atom_optional,
   body_lower_try_match_from_captured,
   body_lower_unwrap_captured,
   body_lower_wire_match_arm_capture
 }
-import v2.std.grammar { node_atom_identity_optional }
-import v2.compiler.normalize { normalize, normalize_node }
+import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_binding_branded_atom_identity,
   dag_language_model,
   parse_production_emitted_identity_optional,
   parse_subtree_find_production_captured
 }
-import std.algebra { Cons, Empty }
+import std.algebra { Empty }
 import v2.std.algebra { length }
 import v2.std.collection { Absent, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
-  Arrow,
   ComputationNode,
+  Conj,
   Match,
   Node,
   TypeNode,
-  node_synthetic,
-  well_formed
+  node_synthetic
 }
-
-data body_lowering_match_trivial_body_source: String = "module m\n\nfn f(a: Int) -> Int {\n  a\n}\n"
-
-data body_lowering_match_ident_arms_source: String = "module m\n\nfn f(a: Int) -> Int {\n  match a {\n    a => a\n  }\n}\n"
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
 
 data body_lowering_match_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => false,\n    false => true\n  }\n}\n"
 
 data body_lowering_match_swapped_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => true,\n    false => false\n  }\n}\n"
-
-fn body_lowering_tree_has_branded_atom(root: Node) -> Bool {
-  match dag_binding_branded_atom_identity(node: root) {
-    Present { value: _ } => true
-    Absent =>
-      fold(root.children, init: false, f: fn(found, e) {
-        if found {
-          true
-        } else {
-          body_lowering_tree_has_branded_atom(root: e.target)
-        }
-      })
-  }
-}
-
-fn body_lowering_match_trivial_body_normalize_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_trivial_body_source) {
-    Absent => false
-    Present { value: tree } =>
-      match normalize(parse_tree: tree) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
-      }
-  }
-}
-
-fn body_lowering_match_ident_arms_normalize_accepts_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_ident_arms_source) {
-    Absent => false
-    Present { value: tree } =>
-      match normalize(parse_tree: tree) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
-      }
-  }
-}
-
-fn body_lowering_match_pat_pattern_atom_direct_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      match body_lower_pattern_atom_optional(pattern_capture: pat) {
-                        Present { value: _ } => true
-                        Absent => false
-                      }
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_pat_has_branded_atom_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      body_lowering_tree_has_branded_atom(root: pat)
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
 
 fn body_lowering_match_bool_node(pass: Bool) -> Node {
   if pass {
@@ -159,323 +53,6 @@ fn body_lowering_match_bool_node(pass: Bool) -> Node {
       kind: TypeNode { connective: Atom { identity: ^body_lowering_match_fail } },
       children: []
     )
-  }
-}
-
-fn body_lowering_find_fn_decl(root: Node) -> Optional<Node> {
-  match parse_production_emitted_identity_optional(node: root) {
-    Present { value: emitted } =>
-      match emitted == ^dag_surface_fn_decl {
-        true => Present { value: root }
-        false =>
-          fold(root.children, init: Absent, f: fn(acc, e) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => body_lowering_find_fn_decl(root: e.target)
-            }
-          })
-      }
-    Absent =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => body_lowering_find_fn_decl(root: e.target)
-        }
-      })
-  }
-}
-
-fn body_lowering_match_pattern_primary_captured_atom_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      match parse_subtree_find_production_captured(
-                        root: pat,
-                        emitted: ^dag_surface_primary_expr
-                      ) {
-                        ParseSubtreeFound { captured: primary } =>
-                          match body_lower_unwrap_captured(shell: primary) {
-                            Present { value: primary_captured } =>
-                              match body_lower_pattern_atom_optional(
-                                pattern_capture: primary_captured
-                              ) {
-                                Present { value: _ } => true
-                                Absent => false
-                              }
-                            Absent => false
-                          }
-                        ParseSubtreeAbsent => false
-                      }
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_pattern_literal_bool_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      match body_lower_pattern_atom_optional(pattern_capture: pat) {
-                        Present { value: _ } => true
-                        Absent => false
-                      }
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_pattern_operand_ref_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      match body_lower_operand_ref_optional(node: pat) {
-                        Present { value: _ } => true
-                        Absent => false
-                      }
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_pattern_primary_lowers_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      match parse_subtree_find_production_captured(
-                        root: pat,
-                        emitted: ^dag_surface_primary_expr
-                      ) {
-                        ParseSubtreeFound { captured: primary } =>
-                          match body_lower_primary_expr(shell: primary) {
-                            Accepted { value: _, diagnostics: _ } => true
-                            Rejected { diagnostics: _ } => false
-                          }
-                        ParseSubtreeAbsent => false
-                      }
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_arm_body_primary_lowers_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_primary_expr
-              ) {
-                ParseSubtreeFound { captured: primary } =>
-                  match body_lower_primary_expr(shell: primary) {
-                    Accepted { value: _, diagnostics: _ } => true
-                    Rejected { diagnostics: _ } => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_expr_direct_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_match_expr(shell: shell) {
-            Accepted { value: lowered, diagnostics: _ } =>
-              match lowered.kind {
-                ComputationNode { behavior: Match } => true
-                _ => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_normalize_node_accepts_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match normalize_node(n: tree) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
-      }
-  }
-}
-
-fn body_lowering_match_normalize_well_formed_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match normalize_node(n: tree) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: normalized, diagnostics: _ } => well_formed(n: normalized)
-      }
-  }
-}
-
-fn body_lowering_match_fn_body_expr_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_fn_decl(root: tree) {
-        Absent => false
-        Present { value: fn_decl } =>
-          match body_lower_unwrap_captured(shell: fn_decl) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_fn_body
-              ) {
-                ParseSubtreeFound { captured: body } =>
-                  match parse_subtree_find_production_captured(
-                    root: body,
-                    emitted: ^dag_surface_expr
-                  ) {
-                    ParseSubtreeFound { captured: _ } => true
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_fn_decl_arrow_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_fn_decl(root: tree) {
-        Absent => false
-        Present { value: fn_decl } =>
-          match body_lower_fn_decl_to_arrow(shell: fn_decl) {
-            Accepted { value: arrow, diagnostics: _ } =>
-              match arrow.kind {
-                TypeNode { connective: Arrow } => well_formed(n: arrow)
-                _ => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_body_from_fn_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_fn_decl(root: tree) {
-        Absent => false
-        Present { value: fn_decl } =>
-          match body_lower_unwrap_captured(shell: fn_decl) {
-            Present { value: captured } =>
-              match body_lower_body_from_fn_captured(captured: captured) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: body_opt, diagnostics: _ } =>
-                  match body_opt {
-                    Present { value: body } =>
-                      match body.kind {
-                        ComputationNode { behavior: Match } => true
-                        _ => false
-                      }
-                    Absent => false
-                  }
-              }
-            Absent => false
-          }
-      }
   }
 }
 
@@ -589,40 +166,7 @@ fn body_lowering_match_swapped_arms_normalize_accepts() -> Bool {
   }
 }
 
-fn body_lowering_match_parse_succeeds_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn body_lowering_find_match_expr_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Present { value: _ } => true
-        Absent => false
-      }
-  }
-}
-
-fn body_lowering_match_captured_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: _ } => true
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_binary_subtree_witness() -> Bool {
+fn body_lowering_match_arms_found() -> Bool {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
     Absent => false
     Present { value: tree } =>
@@ -631,38 +175,13 @@ fn body_lowering_match_binary_subtree_witness() -> Bool {
         Present { value: shell } =>
           match body_lower_unwrap_captured(shell: shell) {
             Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_binary_expr
-              ) {
-                ParseSubtreeFound { captured: _ } => true
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_operand_ref_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_binary_expr
-              ) {
-                ParseSubtreeFound { captured: binary } =>
-                  match body_lower_operand_ref_optional(node: binary) {
-                    Present { value: _ } => true
+              match body_lower_match_arms_optional(captured: captured) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: arms_opt, diagnostics: _ } =>
+                  match arms_opt {
+                    Present { value: arms } => length(xs: arms) > 0
                     Absent => false
                   }
-                ParseSubtreeAbsent => false
               }
             Absent => false
           }
@@ -670,452 +189,7 @@ fn body_lowering_match_operand_ref_witness() -> Bool {
   }
 }
 
-fn body_lowering_match_scrutinee_found_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match body_lower_match_scrutinee_optional(captured: captured) {
-                Present { value: _ } => true
-                Absent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_first_arm_subtree_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: _ } => true
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_tree_has_any_atom(root: Node) -> Bool {
-  match node_atom_identity_optional(node: root) {
-    Present { value: _ } => true
-    Absent =>
-      fold(root.children, init: false, f: fn(found, e) {
-        if found {
-          true
-        } else {
-          body_lowering_tree_has_any_atom(root: e.target)
-        }
-      })
-  }
-}
-
-fn body_lowering_match_pat_emitted_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      match parse_production_emitted_identity_optional(node: pat) {
-                        Present { value: _ } => true
-                        Absent => false
-                      }
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_pat_has_any_atom_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      body_lowering_tree_has_any_atom(root: pat)
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_arm_has_any_atom_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  body_lowering_tree_has_any_atom(root: arm)
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_arm_has_kw_true_subtree_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  body_lowering_tree_has_kw_true_atom(root: arm)
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_tree_has_kw_true_atom(root: Node) -> Bool {
-  match node_atom_identity_optional(node: root) {
-    Present { value: id } =>
-      (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false)
-    Absent =>
-      fold(root.children, init: false, f: fn(found, e) {
-        if found {
-          true
-        } else {
-          body_lowering_tree_has_kw_true_atom(root: e.target)
-        }
-      })
-  }
-}
-
-fn body_lowering_match_arm_pat_has_kw_true_subtree_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      body_lowering_tree_has_kw_true_atom(root: pat)
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_arm_pat_atom_identity_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      match node_atom_identity_optional(node: pat) {
-                        Present { value: id } =>
-                          (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false)
-                        Absent =>
-                          match parse_production_emitted_identity_optional(node: pat) {
-                            Present { value: emitted } => emitted == ^dag_surface_pattern
-                            Absent => false
-                          }
-                      }
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_arm_shell_pattern_atom_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: pat } =>
-                      match body_lower_pattern_atom_optional(pattern_capture: pat) {
-                        Present { value: _ } => true
-                        Absent => false
-                      }
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_arm_shell_expr_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_expr
-                  ) {
-                    ParseSubtreeFound { captured: _ } => true
-                    ParseSubtreeAbsent =>
-                      match parse_subtree_find_production_captured(
-                        root: arm,
-                        emitted: ^dag_surface_primary_expr
-                      ) {
-                        ParseSubtreeFound { captured: _ } => true
-                        ParseSubtreeAbsent =>
-                          match parse_subtree_find_production_captured(
-                            root: arm,
-                            emitted: ^dag_surface_postfix_expr
-                          ) {
-                            ParseSubtreeFound { captured: _ } => true
-                            ParseSubtreeAbsent => false
-                          }
-                      }
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_arm_shell_pattern_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match parse_subtree_find_production_captured(
-                    root: arm,
-                    emitted: ^dag_surface_pattern
-                  ) {
-                    ParseSubtreeFound { captured: _ } => true
-                    ParseSubtreeAbsent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_first_arm_unwrap_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match body_lower_unwrap_captured(shell: arm) {
-                    Present { value: _ } => true
-                    Absent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_first_arm_spine_pattern_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match body_lower_unwrap_captured(shell: arm) {
-                    Present { value: inner } =>
-                      match body_lower_match_spine_left(spine: inner) {
-                        Present { value: left } =>
-                          match body_lower_pattern_atom_optional(pattern_capture: left) {
-                            Present { value: _ } => true
-                            Absent => false
-                          }
-                        Absent => false
-                      }
-                    Absent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_first_arm_inner_pattern_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match body_lower_unwrap_captured(shell: arm) {
-                    Present { value: inner } =>
-                      match parse_subtree_find_production_captured(
-                        root: inner,
-                        emitted: ^dag_surface_pattern
-                      ) {
-                        ParseSubtreeFound { captured: _ } => true
-                        ParseSubtreeAbsent => false
-                      }
-                    Absent => false
-                  }
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
-          }
-      }
-  }
-}
-
-fn body_lowering_match_first_arm_wire_witness() -> Bool {
+fn body_lowering_match_first_arm_wires() -> Bool {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
     Absent => false
     Present { value: tree } =>
@@ -1141,57 +215,71 @@ fn body_lowering_match_first_arm_wire_witness() -> Bool {
   }
 }
 
-fn body_lowering_match_arms_found_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match body_lower_match_arms_optional(captured: captured) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: arms_opt, diagnostics: _ } =>
-                  match arms_opt {
-                    Present { value: arms } => length(xs: arms) > 0
-                    Absent => false
-                  }
-              }
-            Absent => false
-          }
-      }
+fn body_lowering_match_unnavigable_arm_refuses() -> Bool {
+  match body_lower_wire_match_arm_capture(
+    arm_capture: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: Empty
+    )
+  ) {
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^body_lowering_reason_match_arm_navigation_refused
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn body_lowering_match_arm_navigation_refuses_witness() -> Bool {
-  match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match body_lower_try_match_from_captured(captured: captured) {
-                Rejected { diagnostics: ne } =>
-                  ne.head.reason == ^body_lowering_reason_match_arm_navigation_refused
-                Accepted { value: _, diagnostics: _ } => false
-              }
-            Absent => false
-          }
-      }
-  }
+data claim_body_lowering_match_arms_found: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-match: classical_not arms discoverable",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_match_bool_node(pass: body_lowering_match_arms_found()),
+  rhs: body_lowering_match_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-fn body_lowering_match_lowers_to_match_witness() -> Bool {
-  body_lowering_match_lowers_to_match()
+data claim_body_lowering_match_lowers_to_match: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-match: match_expr lowers to Match computation",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_match_bool_node(pass: body_lowering_match_lowers_to_match()),
+  rhs: body_lowering_match_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-fn body_lowering_normalize_accepts_match_module_witness() -> Bool {
-  body_lowering_normalize_accepts_match_module()
+data claim_body_lowering_match_normalize_accepts: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-match: classical_not module normalizes without refusal",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_match_bool_node(pass: body_lowering_normalize_accepts_match_module()),
+  rhs: body_lowering_match_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-fn body_lowering_normalized_module_has_match_witness() -> Bool {
-  body_lowering_normalized_module_has_match()
+data claim_body_lowering_match_normalized_has_match: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-match: normalized classical_not retains Match behavior",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_match_bool_node(pass: body_lowering_normalized_module_has_match()),
+  rhs: body_lowering_match_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_body_lowering_match_swapped_normalize_accepts: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-match: swapped-arm module normalizes without refusal",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_match_bool_node(pass: body_lowering_match_swapped_arms_normalize_accepts()),
+  rhs: body_lowering_match_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_body_lowering_match_first_arm_wires: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-match: true=>false arm wires pattern and body",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_match_bool_node(pass: body_lowering_match_first_arm_wires()),
+  rhs: body_lowering_match_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_body_lowering_match_unnavigable_arm_refuses: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-match: unnavigable arm subtree refuses (fail-closed)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_match_bool_node(pass: body_lowering_match_unnavigable_arm_refuses()),
+  rhs: body_lowering_match_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
 }
