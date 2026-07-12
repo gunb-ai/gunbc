@@ -511,7 +511,7 @@ test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
       ingested_classical_not_verdict_is_fail(
         run: ingested_classical_not_run(
           tree: tree,
-          subgraph: ingested_classical_not_eval_subgraph_swapped()
+          subgraph: ingested_classical_not_eval_subgraph_canonical()
         )
       )
     Rejected { diagnostics: _ } => false
