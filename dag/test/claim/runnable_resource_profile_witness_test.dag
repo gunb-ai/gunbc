@@ -7,6 +7,7 @@ import std.realization_schedule {
   RunnableDiscoveryBatch,
   runnable_resource_profile,
   runnable_resource_profile_negligible,
+  runnable_resource_profile_eq,
   runnable_memory_substantial,
   runnable_memory_substantial_sum,
   runnable_forbids_corpus_co_residence,
@@ -14,9 +15,32 @@ import std.realization_schedule {
   runnable_heavy_whole_tree_resolve,
 }
 import std.measure { byte_size, byte_size_count }
+import std.execution_mode { Hermetic, Wet, execution_mode_is_hermetic }
 
 fn witness_negligible_profile_is_not_heavy() -> Bool {
   !runnable_heavy_whole_tree_resolve(profile: runnable_resource_profile_negligible())
+}
+
+fn witness_negligible_profile_declares_hermetic() -> Bool {
+  let p = runnable_resource_profile_negligible()
+  execution_mode_is_hermetic(mode: p.execution_mode)
+}
+
+fn witness_profile_eq_discriminates_execution_mode() -> Bool {
+  let hermetic = runnable_resource_profile(
+    heavy_whole_tree_resolve: false,
+    spawns_host_compiler: false,
+    memory: runnable_memory_substantial(predicted_peak: byte_size(count: 7)),
+    execution_mode: Hermetic
+  )
+  let wet = runnable_resource_profile(
+    heavy_whole_tree_resolve: false,
+    spawns_host_compiler: false,
+    memory: runnable_memory_substantial(predicted_peak: byte_size(count: 7)),
+    execution_mode: Wet
+  )
+  runnable_resource_profile_eq(left: hermetic, right: hermetic)
+    && !runnable_resource_profile_eq(left: hermetic, right: wet)
 }
 
 fn witness_substantial_memory_forbids_corpus_co_residence() -> Bool {
@@ -26,7 +50,8 @@ fn witness_substantial_memory_forbids_corpus_co_residence() -> Bool {
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: false,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: byte_size(count: 1))
+      memory: runnable_memory_substantial(predicted_peak: byte_size(count: 1)),
+      execution_mode: Wet
     )
   }
   runnable_forbids_corpus_co_residence(r: heavy)
@@ -41,7 +66,8 @@ fn witness_corpus_never_forbids_co_residence() -> Bool {
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: byte_size(count: 3226056704))
+      memory: runnable_memory_substantial(predicted_peak: byte_size(count: 3226056704)),
+      execution_mode: Wet
     )
   }
   !runnable_forbids_corpus_co_residence(r: corpus)
@@ -54,12 +80,15 @@ fn witness_memory_sum_matches_byte_totals() -> Bool {
   byte_size_count(b: runnable_predicted_space(profile: runnable_resource_profile(
     heavy_whole_tree_resolve: false,
     spawns_host_compiler: false,
-    memory: sum
+    memory: sum,
+    execution_mode: Hermetic
   ))) == 300
 }
 
 test fn runnable_resource_profile_witnesses() -> Bool {
   witness_negligible_profile_is_not_heavy()
+    && witness_negligible_profile_declares_hermetic()
+    && witness_profile_eq_discriminates_execution_mode()
     && witness_substantial_memory_forbids_corpus_co_residence()
     && witness_corpus_never_forbids_co_residence()
     && witness_memory_sum_matches_byte_totals()

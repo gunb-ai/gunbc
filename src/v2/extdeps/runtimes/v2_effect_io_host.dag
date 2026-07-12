@@ -15,7 +15,7 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
   effect_io_pure_store_lookup,
   effect_io_pure_write_payload_from_args
 }
-import v2.std.execution_mode {
+import std.execution_mode {
   ExecutionMode,
   Hermetic,
   execution_mode_is_hermetic

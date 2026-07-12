@@ -1,6 +1,7 @@
 module std.realization_schedule
 
 import std.types { ContentHash, Bool, String, List, Int }
+import std.execution_mode { ExecutionMode, Hermetic, execution_mode_eq }
 import std.nat { Nat }
 import std.measure {
   Measure, Time, ByteSize, Watt,
@@ -86,10 +87,13 @@ type RunnableMemoryClass
   = RunnableMemoryNegligible
   | RunnableMemorySubstantial { peak: RunnableMemoryPeak }
 
+data runnable_profile_execution_mode_note: String = "execution_mode is the runnable's declared effect envelope (operator posture 2026-07-11): the runner binds the injector the profile declares — Hermetic replays published mocks/recorded fixtures and refuses unmocked effects with typed diagnostics, Wet dispatches live transports, Record dispatches and captures fixtures. The declaration lives on the profile so every runnable kind (gate claim, discovery batch, execution batch) carries it uniformly, beside its resource siblings (spawns_host_compiler is already an effect-class fact). Fail-closed default: runnable_resource_profile_negligible declares Hermetic, so an undeclared-envelope runnable cannot silently reach live effects — it refuses, loudly, at the effect boundary. Future hardening (named trigger, not built here): an OS-level harness that fail-closes on sensed bypasses (shell spawn / network / out-of-root disk IO) beneath the interpreter seam."
+
 type RunnableResourceProfile {
   heavy_whole_tree_resolve: Bool
   spawns_host_compiler: Bool
   memory: RunnableMemoryClass
+  execution_mode: ExecutionMode
 }
 
 fn runnable_memory_negligible() -> RunnableMemoryClass {
@@ -132,6 +136,7 @@ fn runnable_resource_profile_eq(left: RunnableResourceProfile, right: RunnableRe
   (left.heavy_whole_tree_resolve == right.heavy_whole_tree_resolve)
     && (left.spawns_host_compiler == right.spawns_host_compiler)
     && runnable_memory_class_eq(left: left.memory, right: right.memory)
+    && execution_mode_eq(left: left.execution_mode, right: right.execution_mode)
 }
 
 fn runnable_resource_profile_negligible() -> RunnableResourceProfile {
@@ -139,18 +144,21 @@ fn runnable_resource_profile_negligible() -> RunnableResourceProfile {
     heavy_whole_tree_resolve: false
     spawns_host_compiler: false
     memory: runnable_memory_negligible()
+    execution_mode: Hermetic
   }
 }
 
 fn runnable_resource_profile(
   heavy_whole_tree_resolve: Bool,
   spawns_host_compiler: Bool,
-  memory: RunnableMemoryClass
+  memory: RunnableMemoryClass,
+  execution_mode: ExecutionMode
 ) -> RunnableResourceProfile {
   RunnableResourceProfile {
     heavy_whole_tree_resolve: heavy_whole_tree_resolve
     spawns_host_compiler: spawns_host_compiler
     memory: memory
+    execution_mode: execution_mode
   }
 }
 

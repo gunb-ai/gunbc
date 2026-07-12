@@ -32,7 +32,7 @@ fn parse_one(path: &str) {
 fn main() {
     for path in [
         "src/v2/std/witness.dag",
-        "src/v2/std/execution_mode.dag",
+        "dag/std/execution_mode.dag",
         "src/v2/std/datetime.dag",
         "src/v2/std/node.dag",
         "src/v2/std/grammar.dag",
