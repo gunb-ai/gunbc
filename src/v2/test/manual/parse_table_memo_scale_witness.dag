@@ -15,7 +15,6 @@ import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
-type FilesystemReadResult { content: String }
 
 data parse_memo_scale_tokenize_path: String = "src/v1/01_tokenize.dag"
 

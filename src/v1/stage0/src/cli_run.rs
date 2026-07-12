@@ -11881,6 +11881,43 @@ fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
     out
 }
 
+// A coproduct is consumed through its variant names (constructors, match arms) at least as
+// often as through the type name itself, which may appear only at the declaration. Credit
+// variant occurrences to the parent type or a live state machine reads as inert. Variant
+// names shared across coproducts merge their tallies — an approximation that errs toward
+// not flagging; the roster stays the per-name override.
+fn inert_carrier_variant_names(block: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (idx, raw) in block.lines().enumerate() {
+        let t = raw.trim_start();
+        let payload = if idx == 0 {
+            match t.find('=') {
+                Some(p) => &t[p + 1..],
+                None => continue,
+            }
+        } else if let Some(rest) = t.strip_prefix('=') {
+            rest
+        } else if let Some(rest) = t.strip_prefix('|') {
+            rest
+        } else {
+            continue;
+        };
+        for seg in payload.split('|') {
+            let name: String = seg
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() && name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+                out.push(name);
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
 const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
 
@@ -11951,6 +11988,7 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
     let mut declared: BTreeMap<String, String> = BTreeMap::new();
     let mut decl_count: BTreeMap<String, usize> = BTreeMap::new();
     let mut self_block_refs: BTreeMap<String, i64> = BTreeMap::new();
+    let mut type_variants: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (rel, content) in files {
         if is_test_dag(rel) {
             continue;
@@ -11960,9 +11998,17 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
             *decl_count.entry(name.clone()).or_insert(0) += 1;
             *self_block_refs.entry(name.clone()).or_insert(0) +=
                 inert_carrier_count_token(&block, &name);
+            for v in inert_carrier_variant_names(&block) {
+                *self_block_refs.entry(v.clone()).or_insert(0) +=
+                    inert_carrier_count_token(&block, &v);
+                type_variants.entry(name.clone()).or_default().push(v);
+            }
         }
     }
-    let names: BTreeSet<String> = declared.keys().cloned().collect();
+    let mut names: BTreeSet<String> = declared.keys().cloned().collect();
+    for vs in type_variants.values() {
+        names.extend(vs.iter().cloned());
+    }
     let mut nontest_occ: BTreeMap<String, i64> = BTreeMap::new();
     let mut self_tested: BTreeSet<String> = BTreeSet::new();
     for (rel, content) in files {
@@ -11994,7 +12040,13 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
         }
         let total = nontest_occ.get(name).copied().unwrap_or(0);
         let own = self_block_refs.get(name).copied().unwrap_or(0);
-        if total - own <= 0 {
+        let mut consumption = total - own;
+        for v in type_variants.get(name).map(|v| v.as_slice()).unwrap_or(&[]) {
+            let vtotal = nontest_occ.get(v).copied().unwrap_or(0);
+            let vown = self_block_refs.get(v).copied().unwrap_or(0);
+            consumption += vtotal - vown;
+        }
+        if consumption <= 0 {
             inert_names.push(name.clone());
         }
     }
@@ -12048,6 +12100,44 @@ mod inert_carrier_tests {
         assert!(toks.contains(&"PlacementSupply".to_string()));
         assert!(toks.contains(&"Placement".to_string()));
         assert!(toks.contains(&"field".to_string()));
+    }
+
+    #[test]
+    fn variant_consumed_coproduct_is_not_inert() {
+        // The RustGramBuild1State shape: type name appears only at its declaration;
+        // consumption is entirely via variant constructors/match arms in a nontest fn.
+        let inert = inert_names_of(&[
+            (
+                "a.dag",
+                "module a\ntype BuildState\n  = BuildInit\n  | BuildReady { expr: Int }\nfn go(x: Int) -> Int {\n  match BuildInit {\n    BuildInit => 0\n    BuildReady { expr: e } => e\n  }\n}\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { go(x: 1) == 0 }\nfn probe(s: BuildState) -> Bool { true }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"BuildState".to_string()),
+            "variant-mediated consumption must credit the parent type; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn red_control_variant_dead_coproduct_stays_inert() {
+        let inert = inert_names_of(&[
+            (
+                "a.dag",
+                "module a\ntype LonelyState\n  = LonelyInit\n  | LonelyReady { expr: Int }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { match LonelyInit { LonelyInit => true _ => false } }\nfn probe(s: LonelyState) -> Bool { true }\n",
+            ),
+        ]);
+        assert!(
+            inert.contains(&"LonelyState".to_string()),
+            "a coproduct whose variants are used nowhere outside its block must stay flagged; got {inert:?}"
+        );
     }
 
     #[test]
