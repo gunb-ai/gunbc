@@ -98,20 +98,24 @@ fn body_lowering_projection_lowers_to_transform() -> Bool {
         Absent => false
         Present { value: postfix } =>
           match body_lower_unwrap_captured(remaining: node_subtree_count(n: postfix), shell: postfix) {
-            Present { value: captured } =>
-              match body_lower_try_postfix_projection(remaining: node_subtree_count(n: captured), node: captured) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: found, diagnostics: _ } =>
-                  match found {
-                    Present { value: lowered } =>
-                      match lowered.kind {
-                        ComputationNode { behavior: Transform } => true
-                        _ => false
+            Rejected { diagnostics: _ } => false
+            Accepted { value: captured_opt, diagnostics: _ } =>
+              match captured_opt {
+                Present { value: captured } =>
+                  match body_lower_try_postfix_projection(remaining: node_subtree_count(n: captured), node: captured) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: found, diagnostics: _ } =>
+                      match found {
+                        Present { value: lowered } =>
+                          match lowered.kind {
+                            ComputationNode { behavior: Transform } => true
+                            _ => false
+                          }
+                        Absent => false
                       }
-                    Absent => false
                   }
+                Absent => false
               }
-            Absent => false
           }
       }
   }
@@ -135,12 +139,16 @@ fn body_lowering_field_access_postfix_rejects() -> Bool {
             Absent => false
             Present { value: postfix } =>
               match body_lower_unwrap_captured(remaining: node_subtree_count(n: postfix), shell: postfix) {
-                Present { value: captured } =>
-                  match body_lower_try_postfix_projection(remaining: node_subtree_count(n: captured), node: captured) {
-                    Rejected { diagnostics: _ } => true
-                    Accepted { value: _, diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
+                Accepted { value: captured_opt, diagnostics: _ } =>
+                  match captured_opt {
+                    Present { value: captured } =>
+                      match body_lower_try_postfix_projection(remaining: node_subtree_count(n: captured), node: captured) {
+                        Rejected { diagnostics: _ } => true
+                        Accepted { value: _, diagnostics: _ } => false
+                      }
+                    Absent => false
                   }
-                Absent => false
               }
           }
       }

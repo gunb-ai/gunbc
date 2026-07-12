@@ -114,20 +114,24 @@ fn body_lowering_match_lowers_to_match() -> Bool {
         Absent => false
         Present { value: shell } =>
           match body_lower_unwrap_captured(remaining: node_subtree_count(n: shell), shell: shell) {
-            Present { value: captured } =>
-              match body_lower_try_match_from_captured(remaining: node_subtree_count(n: captured), captured: captured) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: lowered_opt, diagnostics: _ } =>
-                  match lowered_opt {
-                    Present { value: lowered } =>
-                      match lowered.kind {
-                        ComputationNode { behavior: Match } => true
-                        _ => false
+            Rejected { diagnostics: _ } => false
+            Accepted { value: captured_opt, diagnostics: _ } =>
+              match captured_opt {
+                Present { value: captured } =>
+                  match body_lower_try_match_from_captured(remaining: node_subtree_count(n: captured), captured: captured) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: lowered_opt, diagnostics: _ } =>
+                      match lowered_opt {
+                        Present { value: lowered } =>
+                          match lowered.kind {
+                            ComputationNode { behavior: Match } => true
+                            _ => false
+                          }
+                        Absent => false
                       }
-                    Absent => false
                   }
+                Absent => false
               }
-            Absent => false
           }
       }
   }
@@ -175,16 +179,20 @@ fn body_lowering_match_arms_found() -> Bool {
         Absent => false
         Present { value: shell } =>
           match body_lower_unwrap_captured(remaining: node_subtree_count(n: shell), shell: shell) {
-            Present { value: captured } =>
-              match body_lower_match_arms_optional(remaining: node_subtree_count(n: captured), captured: captured) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: arms_opt, diagnostics: _ } =>
-                  match arms_opt {
-                    Present { value: arms } => length(xs: arms) > 0
-                    Absent => false
+            Rejected { diagnostics: _ } => false
+            Accepted { value: captured_opt, diagnostics: _ } =>
+              match captured_opt {
+                Present { value: captured } =>
+                  match body_lower_match_arms_optional(remaining: node_subtree_count(n: captured), captured: captured) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: arms_opt, diagnostics: _ } =>
+                      match arms_opt {
+                        Present { value: arms } => length(xs: arms) > 0
+                        Absent => false
+                      }
                   }
+                Absent => false
               }
-            Absent => false
           }
       }
   }
@@ -198,19 +206,23 @@ fn body_lowering_match_first_arm_wires() -> Bool {
         Absent => false
         Present { value: shell } =>
           match body_lower_unwrap_captured(remaining: node_subtree_count(n: shell), shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match body_lower_wire_match_arm_capture(remaining: node_subtree_count(n: arm), arm_capture: arm) {
-                    Accepted { value: _, diagnostics: _ } => true
-                    Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
+            Accepted { value: captured_opt, diagnostics: _ } =>
+              match captured_opt {
+                Present { value: captured } =>
+                  match parse_subtree_find_production_captured(
+                    root: captured,
+                    emitted: ^dag_surface_match_arm
+                  ) {
+                    ParseSubtreeFound { captured: arm } =>
+                      match body_lower_wire_match_arm_capture(remaining: node_subtree_count(n: arm), arm_capture: arm) {
+                        Accepted { value: _, diagnostics: _ } => true
+                        Rejected { diagnostics: _ } => false
+                      }
+                    ParseSubtreeAbsent => false
                   }
-                ParseSubtreeAbsent => false
+                Absent => false
               }
-            Absent => false
           }
       }
   }
