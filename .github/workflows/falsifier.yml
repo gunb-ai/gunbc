@@ -9,13 +9,8 @@ env:
   CARGO_TERM_COLOR: always
 jobs:
   falsifier:
-<<<<<<< HEAD
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 230
-=======
     runs-on: [ubicloud-standard-16-arm]
-    timeout-minutes: 180
->>>>>>> origin/main
+    timeout-minutes: 230
     steps:
       - name: Checkout
         uses: actions/checkout@v5
