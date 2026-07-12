@@ -5884,6 +5884,25 @@ fn target_value_expr_match_arms_from_wire(
   }
 }
 
+fn concrete_syntax_tokens_extend(
+  acc: List<ConcreteSyntaxToken>,
+  more: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  fold_list(xs: more, empty: acc, cons: fn(a, item) {
+    list_snoc_item(xs: a, item: item)
+  })
+}
+
+fn concrete_syntax_tokens_snoc_fixed(
+  acc: List<ConcreteSyntaxToken>,
+  token_class: Symbol
+) -> List<ConcreteSyntaxToken> {
+  list_snoc_item(
+    xs: acc,
+    item: FixedToken { token_class: token_class }
+  )
+}
+
 fn target_value_expr_match_arm_tokens(
   arms: List<TargetValueExprMatchArmSlot>,
   projection: TargetValueExpressionProjection,
@@ -5910,33 +5929,23 @@ fn target_value_expr_match_arm_tokens(
                   catalog: catalog
                 ),
                 f: fn(body_tokens) {
-                  let arm_chunk = list_append(
-                    left: list_append(
-                      left: pattern_tokens,
-                      right: Cons {
-                        head: FixedToken {
-                          token_class: projection.match_form.fat_arrow
-                        },
-                        tail: Empty
-                      }
+                  let arm_chunk = concrete_syntax_tokens_extend(
+                    acc: concrete_syntax_tokens_snoc_fixed(
+                      acc: pattern_tokens,
+                      token_class: projection.match_form.fat_arrow
                     ),
-                    right: body_tokens
+                    more: body_tokens
                   )
                   if is_empty(xs: prior_tokens) {
                     outcome_accepted(arm_chunk)
                   } else {
                     outcome_accepted(
-                      list_append(
-                        left: list_append(
-                          left: prior_tokens,
-                          right: Cons {
-                            head: FixedToken {
-                              token_class: projection.match_form.arm_separator
-                            },
-                            tail: Empty
-                          }
+                      concrete_syntax_tokens_extend(
+                        acc: concrete_syntax_tokens_snoc_fixed(
+                          acc: prior_tokens,
+                          token_class: projection.match_form.arm_separator
                         ),
-                        right: arm_chunk
+                        more: arm_chunk
                       )
                     )
                   }
@@ -6000,50 +6009,33 @@ fn target_value_expression_match_to_concrete_tokens_inner(
                       catalog: catalog
                     ),
                     f: fn(arm_tokens) {
+                      let prefix = concrete_syntax_tokens_snoc_fixed(
+                        acc: concrete_syntax_tokens_snoc_fixed(
+                          acc: Empty,
+                          token_class: projection.match_form.match_token
+                        ),
+                        token_class: projection.match_form.scrutinee_open
+                      )
+                      let with_scrutinee = concrete_syntax_tokens_extend(
+                        acc: prefix,
+                        more: scrutinee_tokens
+                      )
+                      let with_scrutinee_close = concrete_syntax_tokens_snoc_fixed(
+                        acc: with_scrutinee,
+                        token_class: projection.match_form.scrutinee_close
+                      )
+                      let with_open = concrete_syntax_tokens_snoc_fixed(
+                        acc: with_scrutinee_close,
+                        token_class: projection.match_form.open
+                      )
+                      let with_arms = concrete_syntax_tokens_extend(
+                        acc: with_open,
+                        more: arm_tokens
+                      )
                       outcome_accepted(
-                        list_append(
-                          left: list_append(
-                            left: list_append(
-                              left: list_append(
-                                left: list_append(
-                                  left: list_append(
-                                    left: Cons {
-                                      head: FixedToken {
-                                        token_class: projection.match_form.match_token
-                                      },
-                                      tail: Empty
-                                    },
-                                    right: Cons {
-                                      head: FixedToken {
-                                        token_class: projection.match_form.scrutinee_open
-                                      },
-                                      tail: Empty
-                                    }
-                                  ),
-                                  right: scrutinee_tokens
-                                ),
-                                right: Cons {
-                                  head: FixedToken {
-                                    token_class: projection.match_form.scrutinee_close
-                                  },
-                                  tail: Empty
-                                }
-                              ),
-                              right: Cons {
-                                head: FixedToken {
-                                  token_class: projection.match_form.open
-                                },
-                                tail: Empty
-                              }
-                            ),
-                            right: arm_tokens
-                          ),
-                          right: Cons {
-                            head: FixedToken {
-                              token_class: projection.match_form.close
-                            },
-                            tail: Empty
-                          }
+                        concrete_syntax_tokens_snoc_fixed(
+                          acc: with_arms,
+                          token_class: projection.match_form.close
                         )
                       )
                     }
