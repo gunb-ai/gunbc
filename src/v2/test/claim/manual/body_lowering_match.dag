@@ -1,6 +1,8 @@
 module v2.test.manual.body_lowering_match
 
 import v2.compiler.body_lowering_fold {
+  body_lower_body_from_fn_captured,
+  body_lower_fn_decl_to_arrow,
   body_lower_match_arms_optional,
   body_lower_match_scrutinee_optional,
   body_lower_match_spine_left,
@@ -27,11 +29,13 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
+  Arrow,
   ComputationNode,
   Match,
   Node,
   TypeNode,
-  node_synthetic
+  node_synthetic,
+  well_formed
 }
 
 data body_lowering_match_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => false,\n    false => true\n  }\n}\n"
@@ -126,6 +130,75 @@ fn body_lowering_match_bool_node(pass: Bool) -> Node {
       kind: TypeNode { connective: Atom { identity: ^body_lowering_match_fail } },
       children: []
     )
+  }
+}
+
+fn body_lowering_find_fn_decl(root: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: emitted } =>
+      match emitted == ^dag_surface_fn_decl {
+        true => Present { value: root }
+        false =>
+          fold(root.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lowering_find_fn_decl(root: e.target)
+            }
+          })
+      }
+    Absent =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lowering_find_fn_decl(root: e.target)
+        }
+      })
+  }
+}
+
+fn body_lowering_match_fn_decl_arrow_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_fn_decl(root: tree) {
+        Absent => false
+        Present { value: fn_decl } =>
+          match body_lower_fn_decl_to_arrow(shell: fn_decl) {
+            Accepted { value: arrow, diagnostics: _ } =>
+              match arrow.kind {
+                TypeNode { connective: Arrow } => well_formed(n: arrow)
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+fn body_lowering_match_body_from_fn_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_fn_decl(root: tree) {
+        Absent => false
+        Present { value: fn_decl } =>
+          match body_lower_unwrap_captured(shell: fn_decl) {
+            Present { value: captured } =>
+              match body_lower_body_from_fn_captured(captured: captured) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: body_opt, diagnostics: _ } =>
+                  match body_opt {
+                    Present { value: body } =>
+                      match body.kind {
+                        ComputationNode { behavior: Match } => true
+                        _ => false
+                      }
+                    Absent => false
+                  }
+              }
+            Absent => false
+          }
+      }
   }
 }
 
