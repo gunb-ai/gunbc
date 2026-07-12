@@ -1,7 +1,7 @@
 module gunbc.srv3_os_install_diagnostic
 
 import std.types { NonEmptyStr, Bool, Int, String, ContentHash, Milliseconds, List }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, Millisecond }
 import std.disposition { Disposition, Terminal }
 import extdeps.bmc.types {
   RedfishPowerState,
@@ -57,8 +57,8 @@ data srv3_install_hang_no_router_lease_ms: Milliseconds = 4500000
 
 type OsInstallHangStallCause
   = HangStallWithinBudget
-  | HangStallInstallerProgressSilent { elapsed_ms: Milliseconds }
-  | HangStallRouterLeaseAbsent { elapsed_ms: Milliseconds }
+  | HangStallInstallerProgressSilent { elapsed_ms: Millisecond }
+  | HangStallRouterLeaseAbsent { elapsed_ms: Millisecond }
 
 type HangStallCauseFoldAcc {
   dominant: OsInstallHangStallCause

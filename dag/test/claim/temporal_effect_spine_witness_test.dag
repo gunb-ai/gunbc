@@ -1,6 +1,7 @@
 module test.claim.temporal_effect_spine
 
 import std.types { Bool, NonEmptyStr, List, ContentHash, Timestamp, Milliseconds }
+import std.measure { millisecond }
 import std.temporal_effect {
   EffectAttemptIntent,
   EffectStepReceipt,
@@ -505,8 +506,8 @@ test fn stall_budget_exceeded_refuses_not_widen() -> Bool {
 
 test fn stall_cause_fold_router_absent_dominates_silent_installer() -> Bool {
   match cause_fold_dominant_hang_stall(causes: [
-    HangStallInstallerProgressSilent { elapsed_ms: 1000000 },
-    HangStallRouterLeaseAbsent { elapsed_ms: 4600000 },
+    HangStallInstallerProgressSilent { elapsed_ms: millisecond(count: 1000000) },
+    HangStallRouterLeaseAbsent { elapsed_ms: millisecond(count: 4600000) },
   ]) {
     HangStallRouterLeaseAbsent { elapsed_ms: _ } => true
     _ => false
