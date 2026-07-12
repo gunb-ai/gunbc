@@ -7,6 +7,9 @@ import std.upsert_decision {
   Converged,
   Absent,
   Drifted,
+  UnknownRefused,
+  Conflict,
+  Inaccessible,
   UpsertDecision,
   UpsertClassification,
   Noop,
@@ -17,7 +20,6 @@ import std.temporal_effect {
   TransitionStallState,
   TransitionWithinBudget,
   TransitionStalled,
-  EffectTransitionBudget,
   transition_stall_state_from_budget,
   srv3_os_install_to_host_identity_budget,
   srv3_install_stall_router_lease_limit_ms,
@@ -41,18 +43,15 @@ import gunbc.os_install_deduction {
 }
 
 data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = Terminal {
-  reason: "Level-triggered assimilation deduction: OsInstalled from DHCP option-12 subsumption satisfies prefix:os-install-actuated and unlocks P0:host-identity-converge. Happy path = lease read only; KVM/BMC weak surfaces consulted ONLY inside stall cause-fold. Low durable state — deduce fresh from grounded observations, upsert via std.upsert_decision."
+  reason: "Level-triggered assimilation deduction: OsInstalled from DHCP option-12 subsumption satisfies prefix:os-install-actuated and unlocks P0:host-identity-converge. Verdict authority is std.upsert_decision.ObservationVerdict (no parallel level enum). Happy path = lease read only; unreadable lease table → UnknownRefused, never Absent/Pending. Converged → UpsertDecision Noop. KVM/BMC weak surfaces consulted ONLY inside stall cause-fold."
 }
 
-type HostStandupTransitionLevel
-  = TransitionReached
-  | TransitionPending
-  | TransitionFailed { reason: NonEmptyStr }
+type DhcpLeaseTableObservation
+  = LeaseTableObserved { table: Cr1000aDhcpLeaseTable }
+  | LeaseTableUnreadable { reason: NonEmptyStr }
 
 type OsInstallActuationAssertPlan
-  = AssertOsInstallActuatedReached
-  | AssertOsInstallActuationPending
-  | AssertOsInstallActuationFailed { reason: NonEmptyStr }
+  = AssertOsInstallActuationPending
 
 type StallTransitionProbe {
   boot_override_mode: RedfishBootSourceOverrideMode?
@@ -81,6 +80,18 @@ type StallCauseFoldAcc {
   priority: Int
 }
 
+data srv3_pre_install_lease_observation: DhcpLeaseTableObservation = LeaseTableObserved {
+  table: srv3_pre_install_lease_table,
+}
+
+data srv3_post_install_lease_observation: DhcpLeaseTableObservation = LeaseTableObserved {
+  table: srv3_post_install_lease_table_fixture,
+}
+
+data srv3_unreadable_lease_observation: DhcpLeaseTableObservation = LeaseTableUnreadable {
+  reason: "router dhcp lease table unreachable" as NonEmptyStr,
+}
+
 fn stall_transition_cause_priority(cause: StallTransitionCause) -> Int {
   match cause {
     StallCauseConsoleRedirectOff => 0
@@ -91,73 +102,108 @@ fn stall_transition_cause_priority(cause: StallTransitionCause) -> Int {
   }
 }
 
-fn deduce_os_install_actuated_from_lease_table(
-  table: Cr1000aDhcpLeaseTable,
-  fleet_slot: HostIdentity,
-) -> Bool {
-  lease_table_has_os_up_subsumption(table: table, fleet_slot: fleet_slot)
+fn stall_failure_reason(stall: TransitionStallState) -> NonEmptyStr? {
+  match stall {
+    TransitionWithinBudget => none
+    TransitionStalled { transition_label: t, elapsed_ms: e, limit_ms: l } =>
+      Present {
+        value: concat(
+          concat(
+            concat("transition stalled: ", t),
+            concat(" elapsed_ms=", to_string(e))
+          ),
+          concat(" limit_ms=", to_string(l))
+        ) as NonEmptyStr,
+      }
+  }
 }
 
-fn deduce_host_standup_transition_level(
-  table: Cr1000aDhcpLeaseTable,
+fn deduce_os_install_actuation_verdict(
+  obs: DhcpLeaseTableObservation,
   fleet_slot: HostIdentity,
   stall: TransitionStallState,
-) -> HostStandupTransitionLevel {
-  if deduce_os_install_actuated_from_lease_table(table: table, fleet_slot: fleet_slot) {
-    TransitionReached
-  } else {
-    match stall {
-      TransitionWithinBudget => TransitionPending
-      TransitionStalled { transition_label: t, elapsed_ms: e, limit_ms: l } =>
-        TransitionFailed {
-          reason: concat(
-            concat(
-              concat("transition stalled: ", t),
-              concat(" elapsed_ms=", to_string(e))
-            ),
-            concat(" limit_ms=", to_string(l))
-          ) as NonEmptyStr,
-        }
-    }
-  }
-}
-
-fn classify_os_install_actuation_level(
-  level: HostStandupTransitionLevel,
 ) -> ObservationVerdict {
-  match level {
-    TransitionReached => Converged
-    TransitionPending => Absent
-    TransitionFailed { reason: _ } => Drifted
+  match obs {
+    LeaseTableUnreadable { reason: _ } => UnknownRefused
+    LeaseTableObserved { table: t } =>
+      if lease_table_has_os_up_subsumption(table: t, fleet_slot: fleet_slot) {
+        Converged
+      } else {
+        match stall {
+          TransitionWithinBudget => Absent
+          TransitionStalled { transition_label: _, elapsed_ms: _, limit_ms: _ } => Drifted
+        }
+      }
   }
 }
 
-fn decision_for_os_install_actuation_level(
-  level: HostStandupTransitionLevel,
+fn refusal_reason_for_os_install_actuation_verdict(
+  obs: DhcpLeaseTableObservation,
+  stall: TransitionStallState,
+) -> NonEmptyStr? {
+  match obs {
+    LeaseTableUnreadable { reason: r } => Present { value: r }
+    LeaseTableObserved { table: _ } => stall_failure_reason(stall: stall)
+  }
+}
+
+fn decision_for_os_install_actuation_verdict(
+  verdict: ObservationVerdict,
+  obs: DhcpLeaseTableObservation,
+  stall: TransitionStallState,
 ) -> UpsertDecision<OsInstallActuationAssertPlan> {
-  match level {
-    TransitionReached => Apply { plan: AssertOsInstallActuatedReached }
-    TransitionPending => Apply { plan: AssertOsInstallActuationPending }
-    TransitionFailed { reason: r } =>
-      Refuse { reason: r }
+  match verdict {
+    Converged => Noop
+    Absent => Apply { plan: AssertOsInstallActuationPending }
+    Drifted =>
+      match refusal_reason_for_os_install_actuation_verdict(obs: obs, stall: stall) {
+        Present { value: r } => Refuse { reason: r }
+        Absent =>
+          Refuse {
+            reason: "os-install actuation drifted without located refusal reason" as NonEmptyStr,
+          }
+      }
+    UnknownRefused =>
+      match obs {
+        LeaseTableUnreadable { reason: r } => Refuse { reason: r }
+        LeaseTableObserved { table: _ } =>
+          Refuse {
+            reason: "dhcp lease table observation refused" as NonEmptyStr,
+          }
+      }
+    Conflict =>
+      Refuse { reason: "os-install actuation observation conflict" as NonEmptyStr }
+    Inaccessible =>
+      Refuse { reason: "os-install actuation observation inaccessible" as NonEmptyStr }
   }
 }
 
 fn classify_os_install_actuation_upsert(
-  level: HostStandupTransitionLevel,
+  obs: DhcpLeaseTableObservation,
+  fleet_slot: HostIdentity,
+  stall: TransitionStallState,
 ) -> UpsertClassification<OsInstallActuationAssertPlan> {
+  let verdict = deduce_os_install_actuation_verdict(
+    obs: obs,
+    fleet_slot: fleet_slot,
+    stall: stall,
+  )
   UpsertClassification {
-    verdict: classify_os_install_actuation_level(level: level),
-    decision: decision_for_os_install_actuation_level(level: level),
+    verdict: verdict,
+    decision: decision_for_os_install_actuation_verdict(
+      verdict: verdict,
+      obs: obs,
+      stall: stall,
+    ),
   }
 }
 
-fn srv3_deduce_os_install_to_host_identity_level(
-  table: Cr1000aDhcpLeaseTable,
+fn srv3_deduce_os_install_to_host_identity_verdict(
+  obs: DhcpLeaseTableObservation,
   elapsed_ms: Milliseconds,
-) -> HostStandupTransitionLevel {
-  deduce_host_standup_transition_level(
-    table: table,
+) -> ObservationVerdict {
+  deduce_os_install_actuation_verdict(
+    obs: obs,
     fleet_slot: operator_host_srv3,
     stall: transition_stall_state_from_budget(
       budget: srv3_os_install_to_host_identity_budget(elapsed_ms: elapsed_ms),
@@ -165,30 +211,40 @@ fn srv3_deduce_os_install_to_host_identity_level(
   )
 }
 
-fn srv3_pre_install_transition_level(elapsed_ms: Milliseconds) -> HostStandupTransitionLevel {
-  srv3_deduce_os_install_to_host_identity_level(
-    table: srv3_pre_install_lease_table,
+fn srv3_pre_install_actuation_verdict(elapsed_ms: Milliseconds) -> ObservationVerdict {
+  srv3_deduce_os_install_to_host_identity_verdict(
+    obs: srv3_pre_install_lease_observation,
     elapsed_ms: elapsed_ms,
   )
 }
 
-fn srv3_post_install_transition_level(elapsed_ms: Milliseconds) -> HostStandupTransitionLevel {
-  srv3_deduce_os_install_to_host_identity_level(
-    table: srv3_post_install_lease_table_fixture,
+fn srv3_post_install_actuation_verdict(elapsed_ms: Milliseconds) -> ObservationVerdict {
+  srv3_deduce_os_install_to_host_identity_verdict(
+    obs: srv3_post_install_lease_observation,
     elapsed_ms: elapsed_ms,
   )
 }
 
-fn deduce_os_install_actuated_satisfied(level: HostStandupTransitionLevel) -> Bool {
-  match level {
-    TransitionReached => true
-    TransitionPending => false
-    TransitionFailed { reason: _ } => false
+fn srv3_unreadable_lease_actuation_verdict(elapsed_ms: Milliseconds) -> ObservationVerdict {
+  srv3_deduce_os_install_to_host_identity_verdict(
+    obs: srv3_unreadable_lease_observation,
+    elapsed_ms: elapsed_ms,
+  )
+}
+
+fn deduce_os_install_actuated_satisfied(verdict: ObservationVerdict) -> Bool {
+  match verdict {
+    Converged => true
+    Absent => false
+    Drifted => false
+    UnknownRefused => false
+    Conflict => false
+    Inaccessible => false
   }
 }
 
-fn deduce_host_identity_converge_reachable(level: HostStandupTransitionLevel) -> Bool {
-  deduce_os_install_actuated_satisfied(level: level)
+fn deduce_host_identity_converge_reachable(verdict: ObservationVerdict) -> Bool {
+  deduce_os_install_actuated_satisfied(verdict: verdict)
 }
 
 fn stall_cause_boot_mode_legacy_probe(
