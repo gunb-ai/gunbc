@@ -1134,7 +1134,7 @@ fn account_value(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExecutionMode {
     Hermetic,
     Wet,
@@ -4777,6 +4777,52 @@ fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> 
     }
 }
 
+/// Decide whether a hermetic `Filesystem.Read` of `requested` is checkout-input access
+/// under `root`: the canonicalized path must sit under the canonicalized root with no
+/// `.git` or `target` component below it (branch state and build artifacts are not
+/// commit-deterministic, so they are host state, not input). Err carries the typed
+/// refusal cause; the caller never widens a failure into a canned response.
+fn hermetic_checkout_read_disposition_under(
+    root: &std::path::Path,
+    requested: &str,
+) -> Result<(), String> {
+    let root = std::fs::canonicalize(root)
+        .map_err(|e| format!("checkout root `{}` unresolvable: {e}", root.display()))?;
+    let requested_path = std::path::Path::new(requested);
+    let joined = if requested_path.is_absolute() {
+        requested_path.to_path_buf()
+    } else {
+        root.join(requested_path)
+    };
+    let canon = std::fs::canonicalize(&joined)
+        .map_err(|e| format!("path does not canonicalize under the checkout ({e})"))?;
+    if !canon.starts_with(&root) {
+        return Err(format!(
+            "path resolves outside the checkout root {}",
+            root.display()
+        ));
+    }
+    let rel = canon.strip_prefix(&root).expect("starts_with checked above");
+    for comp in rel.components() {
+        if let std::path::Component::Normal(name) = comp {
+            if name == ".git" || name == "target" {
+                return Err(format!(
+                    "`{}` components are not commit-deterministic inputs",
+                    name.to_string_lossy()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The runner contract binds the process cwd to the checkout root (claim_batch and
+/// claim_executor both run from the repo root), so cwd IS the injected input root.
+fn hermetic_checkout_read_disposition(requested: &str) -> Result<(), String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("checkout root (cwd) unresolvable: {e}"))?;
+    hermetic_checkout_read_disposition_under(&cwd, requested)
+}
+
 fn eval_service_call(
     service_name: &str,
     op_name: &str,
@@ -4808,6 +4854,35 @@ fn eval_service_call(
             .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
 
     if ctx.execution_mode.is_hermetic() {
+        // Checkout-read carve-out: the repo checkout is the run's injected input (the
+        // commit IS the input), so a read-only Filesystem.Read of a path proven under
+        // the checkout root stays a REAL read in hermetic mode — it is input access,
+        // not a host effect. Everything else about the arm is fail-closed: an
+        // out-of-root path, a `.git`/`target` component (branch state and build
+        // artifacts are not commit-deterministic), or an unresolvable path each
+        // refuse with a typed diagnostic — never a canned response.
+        if service_name == "Filesystem" && op_name == "Read" {
+            let path_arg = param_env
+                .lookup(ctx.sym("path"))
+                .and_then(|v| match v {
+                    Value::Str(s) => Some(s.clone()),
+                    _ => None,
+                });
+            let requested = path_arg.ok_or_else(|| InterpError::TypeError {
+                msg: "hermetic checkout read: Filesystem.Read requires a string `path` argument"
+                    .to_string(),
+            })?;
+            return match hermetic_checkout_read_disposition(&requested) {
+                Ok(()) => dispatch_service_wet(service_node, op_node, transport, &param_env, ctx),
+                Err(reason) => Err(InterpError::TypeError {
+                    msg: format!(
+                        "hermetic mode: Filesystem.Read of `{requested}` refused — {reason} \
+                         (only read-only paths under the injected checkout root are hermetic \
+                         inputs; declare the runnable Wet if it must observe host state)"
+                    ),
+                }),
+            };
+        }
         let published = ctx.published_mock_keys()?;
         let governed = ctx.governed_services()?;
         let service_is_governed = governed.contains(service_name);
@@ -8707,5 +8782,62 @@ mod shell_completion_trace_tests {
             line,
             "[shell] done exit=1 stdout=0 stderr=4096 bytes wall=2.000s"
         );
+    }
+
+    #[test]
+    fn hermetic_checkout_read_admits_relative_path_under_root() {
+        let dir = std::env::temp_dir().join(format!(
+            "hermetic-carveout-admit-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(dir.join("dag/std")).unwrap();
+        std::fs::write(dir.join("dag/std/x.dag"), "module x\n").unwrap();
+        assert_eq!(
+            hermetic_checkout_read_disposition_under(&dir, "dag/std/x.dag"),
+            Ok(())
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn hermetic_checkout_read_refuses_traversal_escape_and_absolute_outside() {
+        let dir = std::env::temp_dir().join(format!(
+            "hermetic-carveout-escape-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let escape = hermetic_checkout_read_disposition_under(&dir, "../outside.txt");
+        assert!(escape.is_err(), "`..` traversal must refuse, got {escape:?}");
+        let absolute = hermetic_checkout_read_disposition_under(&dir, "/etc/hostname");
+        assert!(
+            absolute.is_err(),
+            "absolute out-of-root path must refuse, got {absolute:?}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn hermetic_checkout_read_refuses_git_and_target_components() {
+        let dir = std::env::temp_dir().join(format!(
+            "hermetic-carveout-gitdir-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        std::fs::create_dir_all(dir.join("target")).unwrap();
+        std::fs::write(dir.join(".git/HEAD"), "ref: x\n").unwrap();
+        std::fs::write(dir.join("target/receipt.txt"), "r\n").unwrap();
+        let git = hermetic_checkout_read_disposition_under(&dir, ".git/HEAD");
+        assert!(
+            git.err().is_some_and(|e| e.contains("not commit-deterministic")),
+            ".git read must refuse as non-commit-deterministic"
+        );
+        let target = hermetic_checkout_read_disposition_under(&dir, "target/receipt.txt");
+        assert!(
+            target
+                .err()
+                .is_some_and(|e| e.contains("not commit-deterministic")),
+            "target read must refuse as non-commit-deterministic"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

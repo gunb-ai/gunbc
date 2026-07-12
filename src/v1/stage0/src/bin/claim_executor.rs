@@ -26,6 +26,7 @@ enum Runnable {
         entry: String,
         function: String,
         use_walk_memo: bool,
+        execution_mode: ExecutionMode,
     },
     DiscoveryBatch {
         source_roots: Vec<String>,
@@ -35,7 +36,56 @@ enum Runnable {
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         spawn_width_cap: usize,
+        execution_mode: ExecutionMode,
     },
+}
+
+/// The runnable's declared effect envelope, read from its profile's `execution_mode`
+/// field (`std.execution_mode`, carried on `RunnableResourceProfile`). Absent PROFILE
+/// falls to Hermetic — the fail-closed direction: an undeclared runnable that needs
+/// live effects refuses loudly at the effect boundary instead of silently dispatching
+/// them (mirrors `runnable_resource_profile_negligible`). A profile that EXISTS but
+/// lacks the field is a refusal, not a default (the `node_frontier_selection`
+/// precedent: a stale plan must redeclare its semantics, never inherit them silently).
+fn execution_mode_from_profile_field(
+    fields: Option<&Value>,
+    owner: &str,
+    ctx: &InterpContext,
+) -> Result<ExecutionMode, String> {
+    let profile_fields = match fields {
+        Some(Value::Record { fields: pf, .. }) | Some(Value::Variant { fields: pf, .. }) => pf,
+        Some(other) => {
+            return Err(format!(
+                "{owner}.profile must be a RunnableResourceProfile record, got {}",
+                other.type_label_public()
+            ))
+        }
+        None => return Ok(ExecutionMode::Hermetic),
+    };
+    match ctx.field(profile_fields, "execution_mode") {
+        Some(Value::Variant { variant_name, .. }) => {
+            if ctx.sym_eq(*variant_name, "Hermetic") {
+                Ok(ExecutionMode::Hermetic)
+            } else if ctx.sym_eq(*variant_name, "Wet") {
+                Ok(ExecutionMode::Wet)
+            } else if ctx.sym_eq(*variant_name, "Record") {
+                Ok(ExecutionMode::Record)
+            } else {
+                Err(format!(
+                    "{owner}.profile.execution_mode: unknown ExecutionMode variant `{}`",
+                    ctx.resolve(*variant_name)
+                ))
+            }
+        }
+        Some(other) => Err(format!(
+            "{owner}.profile.execution_mode must be an ExecutionMode variant, got {}",
+            other.type_label_public()
+        )),
+        None => Err(format!(
+            "{owner}.profile is present but declares no execution_mode — the plan row \
+             must declare its effect envelope (Hermetic / Wet / Record); no silent default"
+        )),
+    }
 }
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -138,6 +188,9 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 entry: str_field(fields, "entry", "ClaimRef", ctx)?,
                 function: str_field(fields, "function", "ClaimRef", ctx)?,
                 use_walk_memo: false,
+                // ClaimRef carries no profile: fail-closed envelope (see
+                // execution_mode_from_profile_field).
+                execution_mode: ExecutionMode::Hermetic,
             })
         }
         Value::Variant {
@@ -147,7 +200,8 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
         } if ctx.sym_eq(*variant_name, "RunnableSingleClaim") => {
             let entry = str_field(fields, "entry", "RunnableSingleClaim", ctx)?;
             let function = str_field(fields, "function", "RunnableSingleClaim", ctx)?;
-            let use_walk_memo = match ctx.field(fields, "profile") {
+            let profile = ctx.field(fields, "profile");
+            let use_walk_memo = match profile {
                 Some(Value::Record { fields: pf, .. })
                 | Some(Value::Variant { fields: pf, .. }) => {
                     matches!(
@@ -157,10 +211,13 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 }
                 _ => false,
             };
+            let execution_mode =
+                execution_mode_from_profile_field(profile, "RunnableSingleClaim", ctx)?;
             Ok(Runnable::SingleClaim {
                 entry,
                 function,
                 use_walk_memo,
+                execution_mode,
             })
         }
         Value::Variant {
@@ -250,6 +307,11 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(Value::Int(n)) => (*n).max(0) as usize,
                 Some(_) | None => 0,
             };
+            let execution_mode = execution_mode_from_profile_field(
+                ctx.field(fields, "profile"),
+                "RunnableDiscoveryBatch",
+                ctx,
+            )?;
             Ok(Runnable::DiscoveryBatch {
                 source_roots,
                 scan_dirs,
@@ -258,6 +320,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 exclude_substrings,
                 discovery_scope_dirs,
                 spawn_width_cap,
+                execution_mode,
             })
         }
         other => Err(format!(
@@ -311,6 +374,7 @@ enum BatchUnit {
         entry: String,
         functions: Vec<String>,
         use_walk_memo: bool,
+        execution_mode: ExecutionMode,
     },
     UnrunnableSentinel {
         function: String,
@@ -323,6 +387,7 @@ enum BatchUnit {
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         spawn_width_cap: usize,
+        execution_mode: ExecutionMode,
     },
 }
 
@@ -331,7 +396,10 @@ enum BatchUnit {
 /// empty-entry sentinels and DiscoveryBatch nodes stay their own units (each resolves apart).
 fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
     let mut units: Vec<BatchUnit> = Vec::new();
-    let mut entry_to_unit: std::collections::HashMap<String, usize> =
+    // Same-entry claims share one resolved context, so the shared context's
+    // execution mode is part of the group key: a Wet gate and a Hermetic gate on
+    // the same entry resolve apart rather than silently sharing an envelope.
+    let mut entry_to_unit: std::collections::HashMap<(String, ExecutionMode), usize> =
         std::collections::HashMap::new();
     for runnable in batch {
         match runnable {
@@ -346,8 +414,10 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 entry,
                 function,
                 use_walk_memo,
+                execution_mode,
             } => {
-                if let Some(&idx) = entry_to_unit.get(entry) {
+                let unit_key = (entry.clone(), *execution_mode);
+                if let Some(&idx) = entry_to_unit.get(&unit_key) {
                     if let BatchUnit::SharedClaims {
                         functions,
                         use_walk_memo: existing_memo,
@@ -361,11 +431,12 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                         *existing_memo |= use_walk_memo;
                     }
                 } else {
-                    entry_to_unit.insert(entry.clone(), units.len());
+                    entry_to_unit.insert(unit_key, units.len());
                     units.push(BatchUnit::SharedClaims {
                         entry: entry.clone(),
                         functions: vec![function.clone()],
                         use_walk_memo: *use_walk_memo,
+                        execution_mode: *execution_mode,
                     });
                 }
             }
@@ -377,6 +448,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 exclude_substrings,
                 discovery_scope_dirs,
                 spawn_width_cap,
+                execution_mode,
             } => units.push(BatchUnit::Discovery {
                 source_roots: source_roots.clone(),
                 scan_dirs: scan_dirs.clone(),
@@ -385,6 +457,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 exclude_substrings: exclude_substrings.clone(),
                 discovery_scope_dirs: discovery_scope_dirs.clone(),
                 spawn_width_cap: *spawn_width_cap,
+                execution_mode: *execution_mode,
             }),
         }
     }
@@ -466,6 +539,7 @@ fn run_batch_unit(
             exclude_substrings,
             discovery_scope_dirs,
             spawn_width_cap,
+            execution_mode,
         } => vec![run_discovery_batch_node(
             roots,
             scan_dirs,
@@ -475,10 +549,14 @@ fn run_batch_unit(
             discovery_scope_dirs,
             spawn_width,
             spawn_width_cap,
+            execution_mode,
         )],
         BatchUnit::SharedClaims {
-            entry, functions, ..
-        } => run_shared_entry_claims(&source_roots, &entry, &functions),
+            entry,
+            functions,
+            execution_mode,
+            ..
+        } => run_shared_entry_claims(&source_roots, &entry, &functions, execution_mode),
     }
 }
 
@@ -486,6 +564,7 @@ fn run_shared_entry_claims(
     source_roots: &[String],
     entry: &str,
     functions: &[String],
+    execution_mode: ExecutionMode,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
@@ -507,7 +586,7 @@ fn run_shared_entry_claims(
         }
     };
     let resolve_nanos = resolve_start.elapsed().as_nanos();
-    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+    let ctx = make_eval_context(&graph, source_indices, execution_mode);
     let mut first = true;
     functions
         .iter()
@@ -537,11 +616,15 @@ fn run_memo_shared_claims(
     source_roots: &[String],
     entry: &str,
     functions: &[String],
+    execution_mode: ExecutionMode,
     memo: &mut std::collections::HashMap<String, InterpContext>,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let mut fresh_resolve = false;
-    if !memo.contains_key(entry) {
+    // The cached context carries its execution mode, so the memo key must too —
+    // same-entry claims with different declared envelopes resolve apart.
+    let memo_key = format!("{entry}\u{0}{execution_mode:?}");
+    if !memo.contains_key(&memo_key) {
         let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
             Ok(pair) => pair,
             Err(msg) => {
@@ -561,8 +644,8 @@ fn run_memo_shared_claims(
             }
         };
         memo.insert(
-            entry.to_string(),
-            make_eval_context(&graph, source_indices, ExecutionMode::Wet),
+            memo_key.clone(),
+            make_eval_context(&graph, source_indices, execution_mode),
         );
         fresh_resolve = true;
     }
@@ -571,7 +654,7 @@ fn run_memo_shared_claims(
     } else {
         0
     };
-    let ctx = memo.get(entry).expect("memo populated above");
+    let ctx = memo.get(&memo_key).expect("memo populated above");
     let mut first = fresh_resolve;
     functions
         .iter()
@@ -621,7 +704,9 @@ fn render_timing_histogram(
     let entry = "dag/gunbc/ci_render.dag";
     let (graph, indices) = resolve_entry_graph(source_roots, entry)
         .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
-    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
+    // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let width = histogram_output_width();
     let color = color_enabled();
 
@@ -711,7 +796,9 @@ fn render_slowest_witnesses(
     let entry = "dag/gunbc/ci_render.dag";
     let (graph, indices) = resolve_entry_graph(source_roots, entry)
         .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
-    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
+    // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let width = histogram_output_width();
     let color = color_enabled();
 
@@ -799,6 +886,7 @@ fn emit_slowest_witness_attribution(source_roots: &[String], summary: &Discovery
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
@@ -808,6 +896,7 @@ fn run_discovery_batch_node(
     discovery_scope_dirs: Vec<String>,
     spawn_width: usize,
     spawn_width_cap: usize,
+    execution_mode: ExecutionMode,
 ) -> ClaimResult {
     set_phase(FloorPhase::Discovery, "discovery-corpus");
     let label = format!(
@@ -1637,11 +1726,19 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
         let mut memo_results: Vec<ClaimResult> = Vec::new();
         for unit in memo_units {
             if let BatchUnit::SharedClaims {
-                entry, functions, ..
+                entry,
+                functions,
+                execution_mode,
+                ..
             } = unit
             {
-                let results =
-                    run_memo_shared_claims(source_roots, &entry, &functions, &mut walk_memo);
+                let results = run_memo_shared_claims(
+                    source_roots,
+                    &entry,
+                    &functions,
+                    execution_mode,
+                    &mut walk_memo,
+                );
                 memo_results.extend(results);
             }
         }
@@ -2179,7 +2276,9 @@ mod tests {
         {
             let (graph, indices) =
                 resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
-            let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+            // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
+    // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
             let outcome = run_claim(&ctx, "single_pure_demand_is_accepted_recompute");
             assert!(
                 matches!(outcome, ClaimOutcome::Pass),
@@ -2217,7 +2316,9 @@ mod tests {
             .into_owned();
         let (graph, indices) =
             resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
-        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+        // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
+    // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
         let first = run_value(
             &ctx,
             "cross_frame_duplicate_discharged_by_covering_provider",
