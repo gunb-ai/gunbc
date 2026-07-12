@@ -722,21 +722,19 @@ fn compiler_frontier_band_a_other_gate_count() -> Int {
   )
 }
 
-fn compiler_frontier_seed_retained_migration_trigger_for_path(target: String) -> Symbol {
-  fold_list(
-    xs: compiler_frontier_roster,
-    empty: ^frontier_migration_trigger_path_absent,
-    cons: fn(found, row) {
-      if row.module_path == target {
-        match row.disposition {
-          SeedRetained { reason: _, migration_trigger: trigger } => trigger
-          SelfEmitted => found
-        }
-      } else {
-        found
-      }
+fn band_a_emit_readiness_roster_row_trigger_matches(
+  module_path: String,
+  trigger: Symbol,
+  row: CompilerModuleFrontierRow
+) -> Bool {
+  if module_path == row.module_path {
+    match row.disposition {
+      SeedRetained { reason: _, migration_trigger: expected } => trigger == expected
+      SelfEmitted => false
     }
-  )
+  } else {
+    false
+  }
 }
 
 fn band_a_emit_readiness_other_gate_matches_frontier_row(row: BandAEmitReadinessRow) -> Bool {
@@ -744,7 +742,26 @@ fn band_a_emit_readiness_other_gate_matches_frontier_row(row: BandAEmitReadiness
     FlippableNow => true
     BodyProducerGated => false
     OtherGate { migration_trigger: trigger } =>
-      trigger == compiler_frontier_seed_retained_migration_trigger_for_path(target: row.module_path)
+      band_a_emit_readiness_roster_row_trigger_matches(
+        module_path: row.module_path,
+        trigger: trigger,
+        row: compiler_frontier_row_use_site_verdict
+      )
+        || band_a_emit_readiness_roster_row_trigger_matches(
+          module_path: row.module_path,
+          trigger: trigger,
+          row: compiler_frontier_row_07_target_carriers
+        )
+        || band_a_emit_readiness_roster_row_trigger_matches(
+          module_path: row.module_path,
+          trigger: trigger,
+          row: compiler_frontier_row_materialization_carriers
+        )
+        || band_a_emit_readiness_roster_row_trigger_matches(
+          module_path: row.module_path,
+          trigger: trigger,
+          row: compiler_frontier_row_self_host
+        )
   }
 }
 
