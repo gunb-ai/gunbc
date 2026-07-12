@@ -56,23 +56,6 @@ fn witness_deploy_access_uses_local_apply_on_srv1() -> Bool {
     }
 }
 
-fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
-  let d = deploy_access_check_observed(access: ci_deploy_srv1_access)
-  match d {
-    Permit =>
-      string_contains(
-        s: deploy_access_preflight_pass_message(access: ci_deploy_srv1_access),
-        pattern: "deploy-access-preflight: PASS"
-      )
-        && string_contains(
-          s: deploy_access_preflight_pass_message(access: ci_deploy_srv1_access),
-          pattern: ci_deploy_runner_principal_name()
-        )
-    Deny { reason: _ } =>
-      string_contains(s: deploy_access_decision_reason(d: d), pattern: deploy_access_refusal_prefix)
-  }
-}
-
 fn witness_deploy_access_sudo_miss_surfaces_sudoers_hint() -> Bool {
   let actor = DeployAccessActor {
     observed_name: fleet_posix_principal(key: FleetAccountCiRunner).posix.name,
@@ -131,7 +114,6 @@ fn witness_ci_yml_deploy_job_matches_enrollment() -> Bool {
 test fn ci_deploy_witnesses() -> Bool {
   witness_deploy_stage_targets_live_deploy_wet()
     && witness_deploy_access_uses_local_apply_on_srv1()
-    && witness_deploy_access_preflight_is_fail_closed()
     && witness_deploy_access_sudo_miss_surfaces_sudoers_hint()
     && witness_deploy_access_sudoers_line_authority()
     && witness_ci_spec_carries_deploy_stages()

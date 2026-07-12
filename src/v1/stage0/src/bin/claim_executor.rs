@@ -909,7 +909,7 @@ fn run_discovery_batch_node(
         &source_roots,
         &scan_dirs,
         &explicit_entries,
-        ExecutionMode::Wet,
+        execution_mode,
         spawn_width,
         DiscoveryCorpusOptions {
             node_frontier_selection,
@@ -1950,6 +1950,7 @@ fn run_perturb_check(
                         entry,
                         function,
                         use_walk_memo,
+                        execution_mode,
                     } => Runnable::SingleClaim {
                         entry: if entry.is_empty() {
                             entry.clone()
@@ -1960,6 +1961,7 @@ fn run_perturb_check(
                         },
                         function: function.clone(),
                         use_walk_memo: *use_walk_memo,
+                        execution_mode: *execution_mode,
                     },
                     Runnable::DiscoveryBatch {
                         source_roots: roots,
@@ -1969,6 +1971,7 @@ fn run_perturb_check(
                         exclude_substrings,
                         discovery_scope_dirs,
                         spawn_width_cap,
+                        execution_mode,
                     } => Runnable::DiscoveryBatch {
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
@@ -1977,6 +1980,7 @@ fn run_perturb_check(
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         spawn_width_cap: *spawn_width_cap,
+                        execution_mode: *execution_mode,
                     },
                 })
                 .collect()
@@ -2639,6 +2643,7 @@ mod tests {
             &source_roots,
             &entry,
             &["witness_negligible_profile_is_not_heavy".to_string()],
+            ExecutionMode::Hermetic,
             &mut memo,
         );
         assert!(
@@ -2646,11 +2651,12 @@ mod tests {
             "first call must pay the resolve cost (resolve_entry_graph fires)"
         );
 
-        // Second call for the same entry: must cache-hit (resolve_nanos == 0).
+        // Second call for the same entry AND mode: must cache-hit (resolve_nanos == 0).
         let second = run_memo_shared_claims(
             &source_roots,
             &entry,
             &["witness_substantial_memory_forbids_corpus_co_residence".to_string()],
+            ExecutionMode::Hermetic,
             &mut memo,
         );
         assert_eq!(

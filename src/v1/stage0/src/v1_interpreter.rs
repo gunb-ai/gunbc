@@ -8763,6 +8763,7 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
 
 #[cfg(test)]
 mod shell_completion_trace_tests {
+    use super::hermetic_checkout_read_disposition_under;
     use super::shell_completion_trace_line;
     use std::time::Duration;
 
