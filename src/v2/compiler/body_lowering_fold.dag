@@ -1972,7 +1972,11 @@ fn body_lower_try_match_from_node(node: Node) -> Outcome<Optional<Node>> {
       } else {
         outcome_accepted(value: optional_absent())
       }
-    Absent => body_lower_try_match_from_captured(captured: node)
+    Absent =>
+      match body_lower_match_scrutinee_optional(captured: node) {
+        Present { value: _ } => body_lower_try_match_from_captured(captured: node)
+        Absent => outcome_accepted(value: optional_absent())
+      }
   }
 }
 
