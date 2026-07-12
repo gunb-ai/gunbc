@@ -3,6 +3,7 @@ module v2.test.manual.body_lowering_match
 import v2.compiler.body_lowering_fold {
   body_lower_body_from_fn_captured,
   body_lower_fn_decl_to_arrow,
+  body_lower_match_expr,
   body_lower_match_arms_optional,
   body_lower_match_scrutinee_optional,
   body_lower_match_spine_left,
@@ -13,7 +14,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_wire_match_arm_capture
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.compiler.normalize { normalize }
+import v2.compiler.normalize { normalize, normalize_node }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
@@ -153,6 +154,47 @@ fn body_lowering_find_fn_decl(root: Node) -> Optional<Node> {
           Absent => body_lowering_find_fn_decl(root: e.target)
         }
       })
+  }
+}
+
+fn body_lowering_match_expr_direct_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_match_expr(shell: shell) {
+            Accepted { value: lowered, diagnostics: _ } =>
+              match lowered.kind {
+                ComputationNode { behavior: Match } => true
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+fn body_lowering_match_normalize_node_accepts_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize_node(n: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+fn body_lowering_match_normalize_well_formed_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize_node(n: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: normalized, diagnostics: _ } => well_formed(n: normalized)
+      }
   }
 }
 
