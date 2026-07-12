@@ -2464,8 +2464,27 @@ fn load_sources_for_entry_with_index(
 }
 
 fn same_canonical_file(a: &str, b: &str) -> bool {
-    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-        (Ok(ca), Ok(cb)) => ca == cb,
+    // A relative path here is WORKSPACE-relative (the module index stores paths
+    // stripped of the workspace prefix by `build_module_path_index`); an entry
+    // argument is typically already absolute. Resolve a relative path against
+    // `workspace_root()` — its real base — NOT the process CWD: `cargo`/`nextest`
+    // run test binaries with CWD = the crate dir, so canonicalizing a
+    // workspace-relative path against CWD fails, the dedup silently misses, and the
+    // absolutely-spelled entry is minted as a SECOND declaring file for one module
+    // (the `duplicate module declaration` + self-circular collision on a temp-dir-
+    // under-target fixture; blackout-masked from CI's nextest gate). Fall back to a
+    // CWD-relative canonicalize so a genuinely CWD-relative spelling still matches.
+    let canon = |p: &str| -> Option<std::path::PathBuf> {
+        let path = Path::new(p);
+        if path.is_absolute() {
+            return std::fs::canonicalize(path).ok();
+        }
+        std::fs::canonicalize(workspace_root().join(path))
+            .or_else(|_| std::fs::canonicalize(path))
+            .ok()
+    };
+    match (canon(a), canon(b)) {
+        (Some(ca), Some(cb)) => ca == cb,
         _ => false,
     }
 }
