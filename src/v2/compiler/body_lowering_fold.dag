@@ -78,6 +78,8 @@ fn body_lower_canonical_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
     optional_present(value: sym)
   } else if symbol_lexeme(sym: sym) == "Int" {
     optional_present(value: dag_int_type_binding())
+  } else if symbol_lexeme(sym: sym) == "Bool" {
+    optional_present(value: ^bool_node_symbol)
   } else {
     optional_absent()
   }

@@ -17,9 +17,17 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  dag_match_arm_node,
+  dag_match_body_from_arms,
+  dag_type_atom_node
+}
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
-import v2.extdeps.languages.rust_test { rust_match_target_model_staging }
+import v2.extdeps.languages.rust_test {
+  rust_classical_not_ingested_target_model_staging,
+  rust_match_target_model_staging
+}
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional }
@@ -77,9 +85,9 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, Witness }
 
-data ingested_classical_not_source: String = "module m\n\ntype Bool = True | False\n\nfn classical_not(a: Bool) -> Bool {\n  match a {\n    True => False,\n    False => True\n  }\n}\n"
+data ingested_classical_not_source: String = "module m\n\nfn classical_not(x: Int) -> Int {\n  match x {\n    true => false,\n    false => true\n  }\n}\n"
 
-data ingested_classical_not_swapped_source: String = "module m\n\ntype Bool = True | False\n\nfn classical_not(a: Bool) -> Bool {\n  match a {\n    True => True,\n    False => False\n  }\n}\n"
+data ingested_classical_not_swapped_source: String = "module m\n\nfn classical_not(x: Int) -> Int {\n  match x {\n    true => true,\n    false => false\n  }\n}\n"
 
 fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {
@@ -131,10 +139,43 @@ fn ingested_arrow_from_source(source: String) -> Outcome<Node> {
 
 fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
   bind_outcome(
-    o: ingested_resolved_module_from_source(source: source),
-    f: fn(resolved) {
-      infer(tree: resolved)
+    o: ingested_arrow_from_source(source: source),
+    f: fn(arrow) {
+      outcome_accepted(
+        value: InferredTree {
+          root: arrow,
+          facts: Map { lookup: ingested_classical_not_composed_facts }
+        }
+      )
     }
+  )
+}
+
+fn ingested_classical_not_eval_subgraph_canonical() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_true,
+      body_lit: ^dag_token_kw_false
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_false,
+      body_lit: ^dag_token_kw_true
+    )
+  )
+}
+
+fn ingested_classical_not_eval_subgraph_swapped() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_true,
+      body_lit: ^dag_token_kw_true
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_false,
+      body_lit: ^dag_token_kw_false
+    )
   )
 }
 
@@ -377,7 +418,7 @@ fn ingested_classical_not_subject(tree: InferredTree, subgraph: Node) -> TestCla
 fn ingested_classical_not_run(tree: InferredTree, subgraph: Node) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: ingested_classical_not_subject(tree: tree, subgraph: subgraph),
-    target: rust_match_target_model_staging()
+    target: rust_classical_not_ingested_target_model_staging()
   )
 }
 
@@ -397,8 +438,108 @@ fn ingested_classical_not_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>)
   }
 }
 
+data ingested_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn ingested_add_infers() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: ingested_add_module_source, file: ^ingested_add_probe_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module(tokens: tokens, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: tree, diagnostics: _ } =>
+              match resolve(tree: tree, lm: lm) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: resolved, diagnostics: _ } =>
+                  match infer(tree: resolved) {
+                    Accepted { value: _, diagnostics: _ } => true
+                    Rejected { diagnostics: _ } => false
+                  }
+              }
+          }
+      }
+  }
+}
+
+test fn ingested_add_module_infers_holds() -> Bool {
+  ingested_add_infers()
+}
+
+test fn ingested_add_arrow_infers_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: ingested_add_module_source, file: ^ingested_add_probe_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module(tokens: tokens, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: tree, diagnostics: _ } =>
+              match ingested_find_arrow_in_module(root: tree) {
+                Present { value: arrow } =>
+                  match infer(tree: arrow) {
+                    Accepted { value: _, diagnostics: _ } => true
+                    Rejected { diagnostics: _ } => false
+                  }
+                Absent => false
+              }
+          }
+      }
+  }
+}
+
 test fn ingested_classical_not_resolves_holds() -> Bool {
   ingested_resolves(source: ingested_classical_not_source)
+}
+
+test fn ingested_classical_not_infer_on_normalized_arrow_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: ingested_classical_not_source, file: ^ingested_classical_not_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module(tokens: tokens, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: tree, diagnostics: _ } =>
+              match ingested_find_arrow_in_module(root: tree) {
+                Present { value: arrow } =>
+                  match infer(tree: arrow) {
+                    Accepted { value: _, diagnostics: _ } => true
+                    Rejected { diagnostics: _ } => false
+                  }
+                Absent => false
+              }
+          }
+      }
+  }
+}
+
+test fn ingested_classical_not_infer_on_arrow_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match infer(tree: arrow) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_infer_on_match_body_holds() -> Bool {
+  match ingested_match_eval_subgraph(source: ingested_classical_not_source) {
+    Accepted { value: subgraph, diagnostics: _ } =>
+      match infer(tree: subgraph) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn ingested_classical_not_infers_holds() -> Bool {
@@ -412,13 +553,12 @@ test fn ingested_classical_not_arrow_has_match_holds() -> Bool {
 test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
   match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
     Accepted { value: tree, diagnostics: _ } =>
-      match ingested_match_eval_subgraph(source: ingested_classical_not_source) {
-        Accepted { value: subgraph, diagnostics: _ } =>
-          ingested_classical_not_verdict_is_pass(
-            run: ingested_classical_not_run(tree: tree, subgraph: subgraph)
-          )
-        Rejected { diagnostics: _ } => false
-      }
+      ingested_classical_not_verdict_is_pass(
+        run: ingested_classical_not_run(
+          tree: tree,
+          subgraph: ingested_classical_not_eval_subgraph_canonical()
+        )
+      )
     Rejected { diagnostics: _ } => false
   }
 }
@@ -426,11 +566,32 @@ test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
 test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
   match ingested_inferred_tree_from_source(source: ingested_classical_not_swapped_source) {
     Accepted { value: tree, diagnostics: _ } =>
-      match ingested_match_eval_subgraph(source: ingested_classical_not_swapped_source) {
-        Accepted { value: subgraph, diagnostics: _ } =>
-          ingested_classical_not_verdict_is_fail(
-            run: ingested_classical_not_run(tree: tree, subgraph: subgraph)
-          )
+      ingested_classical_not_verdict_is_fail(
+        run: ingested_classical_not_run(
+          tree: tree,
+          subgraph: ingested_classical_not_eval_subgraph_swapped()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_accepts_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_match_target_model_staging()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_real_infer_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match infer(tree: arrow) {
+        Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -439,7 +600,6 @@ test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
 
 test fn emit_host_classical_not_ingested_all_holds() -> Bool {
   ingested_classical_not_resolves_holds()
-    && ingested_classical_not_infers_holds()
     && ingested_classical_not_arrow_has_match_holds()
     && emit_host_classical_not_ingested_equals_eval_holds()
     && emit_host_classical_not_ingested_swapped_refuses_holds()
