@@ -173,3 +173,5 @@ test fn complement_arrow_real_infer_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+data complement_arrow_post_exit_wave1_breadth_note: String = "complement_arrow_real_infer_holds is post-exit Wave-1 breadth (and/or family): arm bodies use dag_complement_lit_* not dag_token_kw_*, so bool-literal arm typing misses. NOT a classical_not / 1.6 blocker — keep visible so the deficit is not lost."

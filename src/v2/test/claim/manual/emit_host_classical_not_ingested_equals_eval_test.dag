@@ -18,6 +18,7 @@ import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
   dag_language_model,
   dag_match_arm_node,
   dag_match_body_from_arms,
@@ -51,6 +52,7 @@ import v2.std.node {
   Match,
   Node,
   Symbol,
+  SyntheticOccurrence,
   TypeNode
 }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
@@ -466,6 +468,51 @@ test fn ingested_classical_not_real_infer_holds() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+fn ingested_classical_not_match_only_param_body_fixture() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_binding_param_x),
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_true,
+      body_lit: ^dag_token_kw_false
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_false,
+      body_lit: ^dag_token_kw_true
+    )
+  )
+}
+
+fn ingested_classical_not_arrow_empty_domain_fixture() -> Node {
+  dag_arrow_with_body_node(
+    domain: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    },
+    return_type_binding: ^dag_binding_type_int,
+    body: ingested_classical_not_match_only_param_body_fixture()
+  )
+}
+
+fn ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(tree: Node) -> Bool {
+  match infer(tree: tree) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds() -> Bool {
+  ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(
+    tree: ingested_classical_not_match_only_param_body_fixture()
+  )
+}
+
+test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool {
+  ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(
+    tree: ingested_classical_not_arrow_empty_domain_fixture()
+  )
 }
 
 test fn emit_host_classical_not_ingested_all_holds() -> Bool {
