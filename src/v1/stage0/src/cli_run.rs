@@ -7571,6 +7571,22 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     merged
 }
 
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the floor-observability cluster
+// below — `floor_verbose` / `floor_ts` / `floor_stream_enabled` / `floor_color_enabled`,
+// `ShardStyle`, and `eprintln_affected_set_categorization` — is seed-side NARRATION wrapped
+// around the existing affected-set selection. It adds no selection authority: the fail-closed
+// skip/run decision, its refusals, and the `DiscoverySummary` counts are unchanged (see
+// `run_discovery_rows`); these helpers only choose how the already-decided run is printed. They
+// live in Rust because the v1 evaluator narrates its own floor walk (the same seed-side reason as
+// `phase_profile.rs` and `GUNBC_FLOOR_GANTT`). The *rendering* they emit is the same class of
+// output already migrating into `dag/gunbc/ci_render.dag` (the timing histogram + slowest-witness
+// rollup render there today). Full dissolution: when v2 emit-host owns floor observability — a
+// `.dag` floor-event carrier a witness consumes by execution, the retirement event shared with
+// `phase_profile.rs` (`docs/plans/realization-measurement-loop.md` Phase 0) and the fractal Gantt
+// (`docs/plans/ci-floor-fractal-gantt.md` § dissolution) — this narration collapses into that
+// carrier and is deleted. Until then it is counted seed Rust, not a new authority; do not accrete
+// further floor logic here — extend the `.dag` render/observability surface instead.
+
 /// Per-witness selection detail (the `SKIP`/`SKIP-RESOLVE`/`PREDICT` lines and the
 /// per-resolve `[binding-fork-ledger]` census) is opt-in. The default floor output is the
 /// upfront `[affected-set]` categorization plus the final `[measurement]` tally — a wide
@@ -7715,7 +7731,11 @@ impl ShardStyle {
             return String::new();
         }
         if self.color {
-            format!("{}▎shard {}\x1b[0m ", self.shard_color_code(), self.shard_id)
+            format!(
+                "{}▎shard {}\x1b[0m ",
+                self.shard_color_code(),
+                self.shard_id
+            )
         } else {
             format!("[shard {}] ", self.shard_id)
         }
@@ -7734,7 +7754,9 @@ impl ShardStyle {
             } else {
                 "\x1b[31m✗\x1b[0m"
             };
-            eprintln!("\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry})\x1b[0m {ms:.1}ms");
+            eprintln!(
+                "\x1b[2m{ts}\x1b[0m {tag}{glyph} {function} \x1b[2m({entry})\x1b[0m {ms:.1}ms"
+            );
         } else {
             let glyph = if passed { "PASS" } else { "FAIL" };
             eprintln!("{ts} {tag}{glyph} {function} ({entry}) {ms:.1}ms");
