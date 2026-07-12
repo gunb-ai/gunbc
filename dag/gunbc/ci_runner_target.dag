@@ -45,10 +45,10 @@ fn ci_runner_target_ram_speed_budget(target: CiRunnerTarget) -> ByteSize {
   }
 }
 
-data selected_ci_runner_target_note: String = "Operator routing 2026-07-11: ubicloud-standard-16-arm while the self-hosted fleet is slot-contended - and THROUGH this selection row, not as an override beside it (the #6489 iteration window's override forked the runner authority and needed a paired revert; this row IS the sanctioned switch point). The projections carry everything the override could not: runs-on labels, the memory regime (WholeMachine, no memory.high carve - the floor's swap-throttle class does not exist on this shape), the RAM-speed budget (catalog 48GB feeds CARGO_BUILD_JOBS and floor width in place of the fleet slot ceiling), and the fleet derivation stays live and witnessed for the flip back. Returning to the fleet = FleetSelfHosted here + regen; nothing else moves."
+data selected_ci_runner_target_note: String = "Operator routing 2026-07-12: back to FleetSelfHosted - the ubicloud window (routed 2026-07-11 while the fleet was slot-contended) was intended for local debugging only, and the return happens THROUGH this selection row exactly as its design promised (the #6489 iteration window's override forked the runner authority and needed a paired revert; this row IS the sanctioned switch point). The projections carry the whole flip: runs-on returns to the fleet-offer labels, the memory regime returns to SlotCarved (memory.max carves and the floor's swap-throttle class exist again on this shape), and the RAM-speed budget returns to the fleet slot ceiling for CARGO_BUILD_JOBS and floor width. The ubicloud catalog row and its derivations stay live and witnessed for any future cloud window: that selection is one row here + regen; nothing else moves."
 
 fn selected_ci_runner_target() -> CiRunnerTarget {
-  UbicloudRunner { row: ubicloud_standard_16_arm_catalog }
+  FleetSelfHosted
 }
 
 fn gunbc_ci_selected_runner_spec() -> RunnerSpec {
