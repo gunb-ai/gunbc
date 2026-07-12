@@ -1,0 +1,56 @@
+module gunbc.ci_runner_target
+
+import extdeps.cloud.ubicloud { UbicloudRunnerCatalogRow, ubicloud_standard_16_arm_catalog }
+import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner }
+import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow }
+import gunbc.ci_fleet { gunbc_ci_fleet_offer }
+import gunbc.runner_slot_allocation { RunnerSlotDesired, gunbc_runner_slot_desired }
+import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import std.measure { ByteSize }
+
+data ci_runner_target_mapping_note: String = "The single seam the 2026-07-11 ubicloud iteration window proved missing: 'which machine runs CI' was modeled as a label, so switching runners propagated nothing (CARGO_BUILD_JOBS stayed fleet-derived, the toolchain-image assumption stayed baked, the memory regime stayed invisible). This module makes the selection one fact with N projections: selected_ci_runner_target() is the authority; the runs-on spec and the memory regime PROJECT from it; a runner switch is a one-row edit here and every derivation follows (DESIGN 2, model-local/derive-global). Fleet labels stay DERIVED from the fleet offer (gunbc.runner_spec_from_offer, unchanged authority); cloud rows carry the provider's cited runs-on token (extdeps catalog rows), not a re-derivation. Consumers migrate to the projections as they need them - ci_workflow reads the spec projection now; the floor budget's regime read (gunbc.ci_floor_measurement live rows) is the declared convergence successor: once a completed fleet floor readback proves live == declared, the budget reads ci_runner_target_memory_regime and the live rows collapse (their own dissolve-on)."
+
+type CiRunnerTarget
+  = FleetSelfHosted
+  | UbicloudRunner { row: UbicloudRunnerCatalogRow }
+  | GithubHostedRunner { row: GithubHostedRunnerCatalogRow }
+
+type RunnerMemoryRegime
+  = SlotCarved { desired: RunnerSlotDesired }
+  | WholeMachine { ram: ByteSize }
+
+fn ci_runner_target_spec(target: CiRunnerTarget) -> RunnerSpec {
+  match target {
+    FleetSelfHosted => runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
+    UbicloudRunner { row: row } => SelfHosted { labels: [row.runs_on_label] }
+    GithubHostedRunner { row: row } => HostedRunner { label: row.runs_on_label }
+  }
+}
+
+data ci_runner_target_spec_form_note: String = "Two serialization classes, per the actions grammar (extdeps.languages.yaml.gha_workflow runner_yaml): GitHub-HOSTED labels are the scalar runs-on form and only the HostedRunner variant serializes that way, so the hosted target projects HostedRunner with the row's RunnerLabel (a labels-list here would emit the label-matching form GitHub reserves for the self-hosted class - the 2026-07-11 cursor catch). Ubicloud tokens are NOT GitHub hosted vocabulary: ubicloud routes queued jobs by label match exactly like the self-hosted class, so its rows stay a provider-cited token in the SelfHosted list form (proven live: the 2026-07-11 receipts ran on runs-on: [ubicloud-standard-16-arm])."
+
+fn ci_runner_target_memory_regime(target: CiRunnerTarget) -> RunnerMemoryRegime {
+  match target {
+    FleetSelfHosted => SlotCarved { desired: gunbc_runner_slot_desired() }
+    UbicloudRunner { row: row } => WholeMachine { ram: row.memory_bytes }
+    GithubHostedRunner { row: row } => WholeMachine { ram: row.memory_bytes }
+  }
+}
+
+fn ci_runner_target_ram_speed_budget(target: CiRunnerTarget) -> ByteSize {
+  match ci_runner_target_memory_regime(target: target) {
+    SlotCarved { desired: _ } => gunbc_ci_runner_slot_ram_speed_ceiling()
+    WholeMachine { ram: ram } => ram
+  }
+}
+
+data selected_ci_runner_target_note: String = "Operator routing 2026-07-12: back to FleetSelfHosted - the ubicloud window (routed 2026-07-11 while the fleet was slot-contended) was intended for local debugging only, and the return happens THROUGH this selection row exactly as its design promised (the #6489 iteration window's override forked the runner authority and needed a paired revert; this row IS the sanctioned switch point). The projections carry the whole flip: runs-on returns to the fleet-offer labels, the memory regime returns to SlotCarved (memory.max carves and the floor's swap-throttle class exist again on this shape), and the RAM-speed budget returns to the fleet slot ceiling for CARGO_BUILD_JOBS and floor width. The ubicloud catalog row and its derivations stay live and witnessed for any future cloud window: that selection is one row here + regen; nothing else moves."
+
+fn selected_ci_runner_target() -> CiRunnerTarget {
+  FleetSelfHosted
+}
+
+fn gunbc_ci_selected_runner_spec() -> RunnerSpec {
+  ci_runner_target_spec(target: selected_ci_runner_target())
+}

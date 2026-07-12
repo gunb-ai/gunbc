@@ -319,8 +319,11 @@ fn run() -> Result<(), String> {
     }
 
     assert_registry_is_partitioned()?;
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace = workspace_root(&manifest_dir)?;
+    // Runtime-derived, never env!("CARGO_MANIFEST_DIR"): a baked path in a binary
+    // served across runner slots reads ANOTHER slot's checkout (silent wrong-tree
+    // regen, worse than the cli_run.rs strip_prefix panic — fleet red 2026-07-11).
+    let workspace = v1_compiler::cli_run::workspace_root();
+    let manifest_dir = workspace.join("src/v1/stage0");
     let receipt_path = bootstrap_timing_receipt_path(&workspace);
     let stage0_src = manifest_dir.join("src");
     let fresh_dir = match &emit_fresh {
@@ -451,19 +454,6 @@ fn run() -> Result<(), String> {
         GENERATED_STAGE0_FILES.len()
     );
     Ok(())
-}
-
-fn workspace_root(manifest_dir: &Path) -> Result<PathBuf, String> {
-    manifest_dir
-        .ancestors()
-        .nth(3)
-        .map(Path::to_path_buf)
-        .ok_or_else(|| {
-            format!(
-                "could not find workspace root from {}",
-                manifest_dir.display()
-            )
-        })
 }
 
 fn time_phase<T, F>(phases: &mut Vec<BootstrapTimingPhase>, name: &str, f: F) -> Result<T, String>
