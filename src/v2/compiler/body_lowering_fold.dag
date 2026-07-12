@@ -1083,9 +1083,16 @@ fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node
       match body_lower_literal_bool_atom_optional(node: captured) {
         Present { value: lit } => outcome_accepted(value: lit)
         Absent =>
-          outcome_rejected(
-            d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-          )
+          match body_lower_pattern_first_atom_optional(node: captured) {
+            Present { value: pat_atom } => outcome_accepted(value: pat_atom)
+            Absent =>
+              outcome_rejected(
+                d: body_lower_diagnostic(
+                  reason: ^body_lowering_reason_unsupported_form,
+                  n: shell
+                )
+              )
+          }
       }
   }
 }
