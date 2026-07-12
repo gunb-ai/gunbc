@@ -886,7 +886,6 @@ fn emit_slowest_witness_attribution(source_roots: &[String], summary: &Discovery
 }
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_arguments)]
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
@@ -2281,8 +2280,8 @@ mod tests {
             let (graph, indices) =
                 resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
             // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
-    // the hermetic envelope is exact; a service call sneaking in refuses loudly.
-    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+            // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+            let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
             let outcome = run_claim(&ctx, "single_pure_demand_is_accepted_recompute");
             assert!(
                 matches!(outcome, ClaimOutcome::Pass),
@@ -2321,8 +2320,8 @@ mod tests {
         let (graph, indices) =
             resolve_entry_graph(&roots, &entry).expect("resolve ladder witness entry");
         // Pure render evaluation (ci_render.dag fns over measured data) — no effects, so
-    // the hermetic envelope is exact; a service call sneaking in refuses loudly.
-    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        // the hermetic envelope is exact; a service call sneaking in refuses loudly.
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
         let first = run_value(
             &ctx,
             "cross_frame_duplicate_discharged_by_covering_provider",
