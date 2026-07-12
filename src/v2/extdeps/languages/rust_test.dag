@@ -779,33 +779,6 @@ fn rust_match_target_model_staging() -> TargetModel {
   }
 }
 
-fn rust_classical_not_ingested_binding_spellings() -> Map<Symbol, String> {
-  let base = rust_binding_spellings()
-  map_insert(base, ^classical_not, "classical_not")
-}
-
-fn rust_classical_not_ingested_additional_lex_rules() -> List<LexRule> {
-  [
-    rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
-    rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
-    rust_lex_rule(token_class: ^dag_token_kw_true, text: "1"),
-    rust_lex_rule(token_class: ^dag_token_kw_false, text: "0")
-  ]
-}
-
-fn rust_classical_not_ingested_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: list_append(
-      left: rust_fn_add_lex_rules().rules,
-      right: rust_classical_not_ingested_additional_lex_rules()
-    )
-  }
-}
-
-fn rust_classical_not_ingested_lex() -> LexRules {
-  ModeledLexRules { root: rust_classical_not_ingested_lex_rules() }
-}
-
 data rust_classical_not_ingested_emit_host_main_suffix: String = "\n\nfn main() { let value = classical_not(1); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
 
 fn rust_classical_not_ingested_host_transport_descriptor() -> HostTransportDescriptor {
@@ -844,10 +817,97 @@ fn rust_classical_not_ingested_runtime_row() -> TargetEmitHostRuntimeRow {
   }
 }
 
+fn rust_classical_not_block_close() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_rbrace }
+  ]
+}
+
+fn rust_classical_not_signature_with_open() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_kw_fn },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_fn_classical_not },
+    FixedToken { token_class: ^rust_token_lparen },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_x },
+    FixedToken { token_class: ^rust_token_colon },
+    FixedToken { token_class: ^rust_token_ty_i32 },
+    FixedToken { token_class: ^rust_token_rparen },
+    FixedToken { token_class: ^rust_token_arrow },
+    FixedToken { token_class: ^rust_token_ty_i32 },
+    FixedToken { token_class: ^rust_token_lbrace }
+  ]
+}
+
+fn rust_classical_not_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
+  derive_bodied_arrow_scaffold(
+    signature_with_open: rust_classical_not_signature_with_open(),
+    block_close: rust_classical_not_block_close(),
+    mode: ValueProducing
+  )
+}
+
+fn rust_classical_not_bodied_relation_row_node() -> Node {
+  grammar_relation_row_attach_bodied_scaffold(
+    row: rust_grammar_relation_row_node(row: rust_match_grammar_relation_row()),
+    scaffold: rust_classical_not_bodied_arrow_statement_scaffold()
+  )
+}
+
+fn rust_classical_not_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^rust_relation_rule_fn_classical_not,
+        target: rust_classical_not_bodied_relation_row_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_classical_not_target_model_bundle_core() -> Node {
+  let core = rust_target_model_core_edges_with_operators(
+    operator_catalog: rust_operator_realizations_catalog_node()
+  )
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold(
+      core,
+      init: Empty,
+      f: fn(acc, edge) {
+        match edge.label {
+          Named { name: n } =>
+            if n == ^target_model_edge_translation_rules {
+              list_snoc_item(
+                xs: acc,
+                item: rust_named_edge(
+                  name: ^target_model_edge_translation_rules,
+                  target: rust_classical_not_translation_rules_node()
+                )
+              )
+            } else {
+              list_snoc_item(xs: acc, item: edge)
+            }
+          Positional => list_snoc_item(xs: acc, item: edge)
+        }
+      }
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_classical_not_ingested_binding_spellings() -> Map<Symbol, String> {
+  let m0 = rust_binding_spellings()
+  let m1 = map_insert(m0, ^dag_binding_fn_classical_not, "classical_not")
+  let m2 = map_insert(m1, ^dag_binding_pick_lit_one, "1")
+  map_insert(m2, ^dag_binding_octet_zero, "0")
+}
+
 fn rust_classical_not_ingested_target_model_staging() -> TargetModel {
   TargetModel {
-    bundle: rust_target_model_bundle_core(),
-    lex: rust_classical_not_ingested_lex(),
+    bundle: rust_classical_not_target_model_bundle_core(),
+    lex: rust_staging_lex(),
     binding_spellings: rust_classical_not_ingested_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_source_text_authority(),

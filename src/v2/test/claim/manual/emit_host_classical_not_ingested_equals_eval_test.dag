@@ -9,9 +9,12 @@ import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
+  eval,
   eval_context_with_semantics,
-  eval_test_claim_subject
+  eval_test_claim_subject,
+  inputs_root_only
 }
+import extdeps.communication.medium { Medium }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
@@ -25,7 +28,10 @@ import v2.extdeps.languages.dag {
   dag_type_atom_node
 }
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node, rust_target_model_staging }
-import v2.extdeps.languages.rust_test { rust_classical_not_ingested_target_model_staging }
+import v2.extdeps.languages.rust_test {
+  rust_classical_not_ingested_target_model_staging,
+  rust_match_target_model_staging
+}
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional }
@@ -136,14 +142,35 @@ fn ingested_arrow_from_source(source: String) -> Outcome<Node> {
   )
 }
 
+fn ingested_match_body_from_source(source: String) -> Outcome<Node> {
+  bind_outcome(
+    o: ingested_arrow_from_source(source: source),
+    f: fn(arrow) {
+      find_arrow_body_child(root: arrow)
+    }
+  )
+}
 fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
-      outcome_accepted(
-        value: InferredTree {
-          root: arrow,
-          facts: Map { lookup: ingested_classical_not_composed_facts }
+      bind_outcome(
+        o: infer(tree: arrow),
+        f: fn(inferred) {
+          outcome_accepted(
+            value: InferredTree {
+              root: inferred.root,
+              facts: Map {
+                lookup: fn(key) {
+                  match inferred.facts.lookup(key: key) {
+                    Holds { value: _ } => inferred.facts.lookup(key: key)
+                    Violates { diagnostic: _ } =>
+                      ingested_classical_not_composed_facts(key: key)
+                  }
+                }
+              }
+            }
+          )
         }
       )
     }
@@ -414,6 +441,49 @@ fn ingested_classical_not_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>)
   }
 }
 
+test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match eval(
+        tree: tree,
+        interpretation: ingested_classical_not_interpretation(),
+        inputs: inputs_root_only(root: ingested_classical_not_eval_subgraph_canonical())
+      ) {
+        Accepted { value: v, diagnostics: _ } =>
+          v == ingested_classical_not_octet_value(n: 0)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "!= ")
+            && string_contains(s: source, pattern: "true => 0")
+            && string_contains(s: source, pattern: "false => 1")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "pub fn classical_not(x")
+            || string_contains(s: source, pattern: "fn classical_not(x")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn ingested_classical_not_resolves_holds() -> Bool {
   ingested_resolves(source: ingested_classical_not_source)
 }
@@ -459,14 +529,12 @@ test fn ingested_classical_not_emit_accepts_holds() -> Bool {
   }
 }
 
-data ingested_classical_not_real_infer_int_scrutinee_deficit_note: String = "ingested classical_not uses Int scrutinee + bool-literal arms; infer refuses until normalize/ingest grounds bool keywords in Int-valued match bodies (eager-heron type-model lane) or lowers to a 2-value carrier. emit-accepts is the Wave-1.6 deliverable; real_infer acceptance follows that grounding."
-
-test fn ingested_classical_not_real_infer_refuses_int_scrutinee_holds() -> Bool {
+test fn ingested_classical_not_real_infer_holds() -> Bool {
   match ingested_arrow_from_source(source: ingested_classical_not_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       match infer(tree: arrow) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
