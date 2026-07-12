@@ -99,3 +99,5 @@ Discovery ran 1111/1112 witnesses before one `doc_reachability` failure; peak RS
 - `docs/plans/interpreter-memory-chronicle.md` (this receipt)
 
 **Dissolution trigger:** phase-0 `PerformanceReceipt` / resource-aware scheduler Node A supersedes prose receipts (same family as `ci-floor-fractal-gantt.md`).
+
+Related: [space lens — minimal memory prediction from the static `.dag`](space-lens-minimal-project.md) — the predictive counterpart to this chronicle's measured receipts.

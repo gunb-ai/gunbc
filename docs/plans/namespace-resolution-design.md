@@ -334,3 +334,5 @@ collecting every unresolved-name error.
   previously-bare `Symbol` in-scope `Ambiguous` — a compile error until qualified. Loud and
   fail-closed (Rule 2), the honest cost of "no ambiguity." The alternative (narrower per-module
   scope) kills the sibling-access ergonomics the operator asked for; not taken.
+
+Related: [type environment: single import authority + scope cursor](type-env-single-authority-design.md) — the type-env/SymbolIndex lane design this walk-rule migration rides on · [interface summaries and the declared↔use arity family](interface-summary-declared-use-arity.md) — the `std.interface_summary` carrier consumed by interface-grain resolve.

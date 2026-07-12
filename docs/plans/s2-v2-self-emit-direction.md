@@ -218,3 +218,5 @@ Track B is **smaller and safer** than §7's original estimate: the engine, node 
 5. **Whole-module assembly + behavioral harness [lead].** `enum Classical` + 3 fns → one `lib.rs`; driver runs not/and/or over `{True,False}`; compile; compare to `std_logic.rs`. Scales `emit_host.run_test_claim_emit_vs_eval` from fn to module.
 
 **Decoupling insight:** the harness skeleton can be proven on `fn classical_id(a: Classical) -> Classical { a }` (generalized signature + enum decl + driver + enum codec, **no `match`**), so the lead workstream (signatures + harness) does **not** block on B9. `match` drops in for the real logic bodies once B9 lands.
+
+Worker brief: [S2 v2-emits-v2 worker brief](s2-v2-self-emit-brief.md) — the dispatched parallel-worker cut of this direction doc.
