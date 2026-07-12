@@ -309,24 +309,41 @@ fn repo_relative_path(path: &Path) -> Result<String, String> {
 /// relative source roots (`layer_import_facts`) emit exactly these spellings, while a
 /// relative path anchored anywhere else stays a refusal, never a fabricated key.
 fn repo_relative_path_normalized(path: &Path) -> String {
+    try_repo_relative_path_normalized(path).unwrap_or_else(|| {
+        panic!(
+            "repo_relative_path_normalized: path {} is not under process workspace \
+             root {} or compiled-in root {}",
+            path.display(),
+            process_workspace_root().display(),
+            workspace_root().display()
+        )
+    })
+}
+
+fn try_repo_relative_path_normalized(path: &Path) -> Option<String> {
     if path.is_relative() && process_workspace_root().join(path).exists() {
-        return path.to_string_lossy().replace('\\', "/");
+        return Some(path.to_string_lossy().replace('\\', "/"));
     }
     if let Ok(rel) = repo_relative_path(path) {
-        return rel;
+        return Some(rel);
     }
     let baked = workspace_root();
     path.strip_prefix(&baked)
         .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|_| {
-            panic!(
-                "repo_relative_path_normalized: path {} is not under process workspace \
-                 root {} or compiled-in root {}",
-                path.display(),
-                process_workspace_root().display(),
-                baked.display()
-            )
-        })
+        .ok()
+}
+
+/// Module-index key for a file under a caller-supplied source root. Files under an
+/// OUT-OF-TREE absolute root (a temp fixture tree, another checkout handed to the
+/// parse-only audits) have no workspace-relative spelling — their absolute path IS the
+/// canonical, readable key, not a fabrication. A relative spelling anchored outside the
+/// process root stays a refusal (the fabricated-key hazard the panic guards).
+fn module_index_path_key(path: &Path) -> String {
+    match try_repo_relative_path_normalized(path) {
+        Some(rel) => rel,
+        None if path.is_absolute() => path.to_string_lossy().replace('\\', "/"),
+        None => repo_relative_path_normalized(path),
+    }
 }
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold
@@ -769,7 +786,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                 panic!("build_module_path_index: failed to read {:?}: {}", path, e)
             });
             if let Some(module_path) = extract_module_path(&content) {
-                let rel = repo_relative_path_normalized(&path);
+                let rel = module_index_path_key(&path);
                 if is_source_root_ingest_manifest_stub_rel(&rel)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
                 {
