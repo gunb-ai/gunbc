@@ -62,6 +62,16 @@ type CompilerModuleFrontierRow {
   tractability_rank: Int
 }
 
+type BandAWave1EmitReadiness
+  = FlippableNow
+  | BodyProducerGated
+  | OtherGate { migration_trigger: Symbol }
+
+type BandAEmitReadinessRow {
+  module_path: String
+  gate: BandAWave1EmitReadiness
+}
+
 data compiler_frontier_module_count_expected: Int = 27
 
 data compiler_frontier_self_emitted_baseline: Int = 0
