@@ -1227,7 +1227,7 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             if let Some(module_path) = extract_module_path(&content) {
-                let rel_path = repo_relative_path_normalized(&path);
+                let rel_path = module_index_path_key(&path);
                 let rel_forward = rel_path.clone();
                 if is_source_root_ingest_manifest_stub_rel(&rel_forward)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
@@ -3932,9 +3932,82 @@ pub fn run_claim_measured(
     let wall_nanos = started.elapsed().as_nanos();
     ctx.clear_eval_deadline();
     v1_interpreter::eval_subject_clear();
+    let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, wall_nanos);
     let receipt =
         v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
     (outcome, receipt)
+}
+
+/// Completion-side budget enforcement: the cooperative deadline polls every 4096
+/// eval_expr dispatches, so a witness whose time is spent in few dispatches (native
+/// builtin-heavy) can finish over budget without ever hitting a poll. A Pass that
+/// exceeded the budget converts to the same typed refusal here — the witness is over
+/// the fast-lane classification either way, and silent green would fail open on the
+/// operator 5s rule. A Fail/RuntimeError stays itself: those are already loud, and
+/// replacing a genuine finding with the budget message would discard it.
+fn budget_completion_outcome(
+    budget: Option<u64>,
+    outcome: ClaimOutcome,
+    wall_nanos: u128,
+) -> ClaimOutcome {
+    match (budget, outcome) {
+        (Some(budget_ms), ClaimOutcome::Pass) if wall_nanos > u128::from(budget_ms) * 1_000_000 => {
+            ClaimOutcome::RuntimeError {
+                message: format!(
+                    "{}",
+                    v1_interpreter::InterpError::EvalBudgetExceeded {
+                        elapsed_ms: (wall_nanos / 1_000_000) as u64,
+                        budget_ms,
+                    }
+                ),
+            }
+        }
+        (_, o) => o,
+    }
+}
+
+#[cfg(test)]
+mod budget_completion_tests {
+    use super::*;
+
+    #[test]
+    fn pass_over_budget_converts_to_typed_refusal() {
+        // The stride-poll blind spot: a witness finishing over budget in fewer than
+        // 4096 dispatches must still refuse at completion, never green silently.
+        match budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000) {
+            ClaimOutcome::RuntimeError { message } => {
+                assert!(
+                    message.contains("eval budget exceeded"),
+                    "typed refusal expected; got {message}"
+                );
+            }
+            other => panic!("expected RuntimeError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pass_under_budget_stays_pass() {
+        assert!(matches!(
+            budget_completion_outcome(Some(5), ClaimOutcome::Pass, 4_000_000),
+            ClaimOutcome::Pass
+        ));
+    }
+
+    #[test]
+    fn no_budget_never_converts() {
+        assert!(matches!(
+            budget_completion_outcome(None, ClaimOutcome::Pass, u128::MAX),
+            ClaimOutcome::Pass
+        ));
+    }
+
+    #[test]
+    fn over_budget_fail_keeps_its_finding() {
+        assert!(matches!(
+            budget_completion_outcome(Some(5), ClaimOutcome::Fail, 6_000_000),
+            ClaimOutcome::Fail
+        ));
+    }
 }
 
 pub fn run_value(
@@ -9111,20 +9184,27 @@ mod module_grain_affected_equivalence_tests {
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
-        // `orchestration_emit_test.dag` imports `bash_orchestration_emit.dag` directly, which in
-        // turn imports `bash.dag` — a genuine 2-hop chain (not a 1-hop direct import), so
-        // dropping the intermediate's edges is the only way to sever reachability to the leaf.
+        // `orchestration_emit_test.dag` reaches `bash.dag` transitively along two routes:
+        // via `bash_orchestration_emit.dag` and (since the bash-program-emit lane) via
+        // `05_emit_orchestration.dag`. Dropping the outgoing edges of BOTH intermediates
+        // severs every route to the leaf without touching the entry's own imports — still
+        // a genuine wiring perturbation (the entry stays resolvable; only reachability to
+        // the leaf flips).
         let entry = "src/v2/workflow/orchestration_emit_test.dag";
         let leaf = "src/v2/extdeps/languages/bash.dag".to_string();
-        let intermediate_exclude = "extdeps/languages/bash_orchestration_emit.dag".to_string();
+        let intermediate_excludes = [
+            "extdeps/languages/bash_orchestration_emit.dag".to_string(),
+            "compiler/05_emit_orchestration.dag".to_string(),
+        ];
+        let intermediate_exclude = intermediate_excludes.join(" + ");
 
         let content = std::fs::read_to_string(ws.join(entry))
             .unwrap_or_else(|e| panic!("read {entry} for precondition: {e}"));
         assert!(
             !content.contains("v2.extdeps.languages.bash "),
-            "precondition: {entry} must reach {leaf} only transitively (via \
-             bash_orchestration_emit.dag), not via a direct import — otherwise excluding the \
-             intermediate would not discriminate"
+            "precondition: {entry} must reach {leaf} only transitively (via the excluded \
+             intermediates), not via a direct import — otherwise excluding the \
+             intermediates would not discriminate"
         );
 
         let touched = vec![leaf.clone()];
@@ -9145,7 +9225,7 @@ mod module_grain_affected_equivalence_tests {
             (Some("touched_paths".to_string()), str_list_value(&touched)),
             (
                 Some("exclude_substrings".to_string()),
-                str_list_value(&[intermediate_exclude.clone()]),
+                str_list_value(&intermediate_excludes),
             ),
         ];
         let perturbed = match v1_interpreter::run_in_context_with_args(
