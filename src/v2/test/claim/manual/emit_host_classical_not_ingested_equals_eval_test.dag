@@ -654,6 +654,41 @@ fn ingested_token_eq_any_golden(token: ConcreteSyntaxToken) -> Bool {
     || ingested_token_eq_golden_index(token: token, golden_index: 12)
 }
 
+test fn ingested_classical_not_debug_body_token2_eq_golden5_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } =>
+                      ingested_token_eq_golden_index(token: t2, golden_index: 5)
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn ingested_classical_not_debug_body_token2_eq_golden_fixed_classes_holds() -> Bool {
   match ingested_arrow_from_source(source: ingested_classical_not_source) {
     Accepted { value: arrow, diagnostics: _ } =>
