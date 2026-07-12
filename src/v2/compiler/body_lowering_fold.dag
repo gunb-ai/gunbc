@@ -1413,7 +1413,17 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
     Present { value: emitted } =>
       match parse_production_captured_child_optional(node: stripped) {
         Present { value: captured } => body_lower_pattern_leaf_atom_optional(node: captured)
-        Absent => optional_absent()
+        Absent =>
+          if emitted == ^dag_surface_pattern {
+            fold(stripped.children, init: Absent, f: fn(acc, e) {
+              match acc {
+                Present { value: _ } => acc
+                Absent => body_lower_pattern_leaf_atom_optional(node: e.target)
+              }
+            })
+          } else {
+            optional_absent()
+          }
       }
     Absent =>
       match node_atom_identity_optional(node: stripped) {
@@ -1449,6 +1459,27 @@ fn body_lower_match_arm_navigation_reject(arm_capture: Node) -> Outcome<Node> {
       n: arm_capture
     )
   )
+}
+
+fn body_lower_match_arm_body_capture_optional(stripped: Node) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: stripped, emitted: ^dag_surface_expr) {
+    ParseSubtreeFound { captured: expr } => optional_present(value: expr)
+    ParseSubtreeAbsent =>
+      match parse_subtree_find_production_captured(
+        root: stripped,
+        emitted: ^dag_surface_primary_expr
+      ) {
+        ParseSubtreeFound { captured: primary } => optional_present(value: primary)
+        ParseSubtreeAbsent =>
+          match parse_subtree_find_production_captured(
+            root: stripped,
+            emitted: ^dag_surface_postfix_expr
+          ) {
+            ParseSubtreeFound { captured: postfix } => optional_present(value: postfix)
+            ParseSubtreeAbsent => optional_absent()
+          }
+      }
+  }
 }
 
 fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
@@ -1494,11 +1525,8 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
     ParseSubtreeFound { captured: pat_capture } =>
       match body_lower_pattern_atom_optional(pattern_capture: pat_capture) {
         Present { value: pat_node } =>
-          match parse_subtree_find_production_captured(
-            root: stripped,
-            emitted: ^dag_surface_expr
-          ) {
-            ParseSubtreeFound { captured: body_capture } =>
+          match body_lower_match_arm_body_capture_optional(stripped: stripped) {
+            Present { value: body_capture } =>
               match body_lower_match_arm_body_optional(body_capture: body_capture) {
                 Present { value: body } =>
                   outcome_accepted(
@@ -1506,14 +1534,7 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
                   )
                 Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
               }
-            ParseSubtreeAbsent =>
-              match body_lower_match_arm_body_optional(body_capture: stripped) {
-                Present { value: body } =>
-                  outcome_accepted(
-                    value: body_lower_match_arm_wire(pat_node: pat_node, body: body)
-                  )
-                Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
-              }
+            Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
           }
         Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
       }
