@@ -105,6 +105,8 @@ fn compiler_frontier_band_a_emit_readiness_core_holds() -> Bool {
     && (compiler_frontier_band_a_flippable_now_count() == 2)
     && (compiler_frontier_band_a_other_gate_count() == 4)
 }
+
+fn count_band_a_emit_readiness_rows_with_path(
   xs: List<BandAEmitReadinessRow>,
   target: String
 ) -> Int {
@@ -143,5 +145,3 @@ fn compiler_frontier_band_a_paths_unique_holds() -> Bool {
       target: "src/v2/compiler/07_target_carriers.dag"
     ) == 1
 }
-
-fn count_band_a_emit_readiness_rows_with_path(

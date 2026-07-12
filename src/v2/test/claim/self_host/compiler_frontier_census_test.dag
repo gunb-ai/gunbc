@@ -3,12 +3,12 @@ module v2.test.self_host.compiler_frontier_census
 import v2.compiler.self_host.frontier_band_a_emit_readiness {
   FlippableNow,
   OtherGate,
-  compiler_frontier_band_a_emit_readiness_holds,
   compiler_frontier_band_a_row_discovery_enumeration,
   compiler_frontier_band_a_row_parse_engine_hooks,
   compiler_frontier_band_a_row_use_site_verdict
 }
 import v2.compiler.self_host.frontier {
+  compiler_frontier_band_a_emit_readiness_holds,
   compiler_frontier_blocker_class_distribution_knowledge_attributed_holds,
   compiler_frontier_census_holds,
   compiler_frontier_execution_measured_attribution_holds,
