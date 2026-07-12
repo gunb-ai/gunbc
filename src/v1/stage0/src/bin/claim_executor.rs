@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
@@ -13,8 +14,14 @@ use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, enable_floor_compile_clean_lazy_install,
     make_eval_context, resolve_entry_graph, resolve_entry_graph_shared, run_claim,
     run_discovery_corpus_with_options, run_value, set_phase, top_n_slowest_witnesses, ClaimOutcome,
-    DiscoveryCorpusOptions, DiscoverySummary, FloorPhase, HistogramData, NodeFrontierSelectionMode,
-    PhaseProfile, TimingPercentiles, WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy, FloorPhase, HistogramData,
+    NodeFrontierSelectionMode, PhaseProfile, TimingPercentiles, WitnessTimingRow,
+    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+};
+use v1_compiler::memory_governor::{
+    binding_cap_cgroup_dir, binding_high_cgroup_dir, leaf_cgroup_dir, mem_total_bytes,
+    memory_events_field, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
+    AdmittedSlot, MemoryGovernor,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -35,7 +42,6 @@ enum Runnable {
         node_frontier_selection: NodeFrontierSelectionMode,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
-        spawn_width_cap: usize,
         execution_mode: ExecutionMode,
     },
 }
@@ -303,10 +309,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => Vec::new(),
             };
-            let spawn_width_cap = match ctx.field(fields, "spawn_width_cap") {
-                Some(Value::Int(n)) => (*n).max(0) as usize,
-                Some(_) | None => 0,
-            };
             let execution_mode = execution_mode_from_profile_field(
                 ctx.field(fields, "profile"),
                 "RunnableDiscoveryBatch",
@@ -319,7 +321,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
-                spawn_width_cap,
                 execution_mode,
             })
         }
@@ -386,7 +387,6 @@ enum BatchUnit {
         node_frontier_selection: NodeFrontierSelectionMode,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
-        spawn_width_cap: usize,
         execution_mode: ExecutionMode,
     },
 }
@@ -447,7 +447,6 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
-                spawn_width_cap,
                 execution_mode,
             } => units.push(BatchUnit::Discovery {
                 source_roots: source_roots.clone(),
@@ -456,7 +455,6 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 node_frontier_selection: *node_frontier_selection,
                 exclude_substrings: exclude_substrings.clone(),
                 discovery_scope_dirs: discovery_scope_dirs.clone(),
-                spawn_width_cap: *spawn_width_cap,
                 execution_mode: *execution_mode,
             }),
         }
@@ -517,7 +515,7 @@ fn claim_result_for_outcome(
 fn run_batch_unit(
     source_roots: Vec<String>,
     unit: BatchUnit,
-    spawn_width: usize,
+    governor: Arc<MemoryGovernor>,
 ) -> Vec<ClaimResult> {
     match unit {
         BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
@@ -538,7 +536,6 @@ fn run_batch_unit(
             node_frontier_selection,
             exclude_substrings,
             discovery_scope_dirs,
-            spawn_width_cap,
             execution_mode,
         } => vec![run_discovery_batch_node(
             roots,
@@ -547,8 +544,7 @@ fn run_batch_unit(
             node_frontier_selection,
             exclude_substrings,
             discovery_scope_dirs,
-            spawn_width,
-            spawn_width_cap,
+            governor,
             execution_mode,
         )],
         BatchUnit::SharedClaims {
@@ -556,7 +552,16 @@ fn run_batch_unit(
             functions,
             execution_mode,
             ..
-        } => run_shared_entry_claims(&source_roots, &entry, &functions, execution_mode),
+        } => {
+            // A gate unit's resolved graph is a real memory resident: take a governor
+            // slot for the unit's lifetime so gate threads and discovery workers draw
+            // from the same admission window instead of stacking unbounded.
+            let _slot = AdmittedSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
+            let results =
+                run_shared_entry_claims(&source_roots, &entry, &functions, execution_mode);
+            governor.note_unit_complete();
+            results
+        }
     }
 }
 
@@ -617,13 +622,13 @@ fn run_memo_shared_claims(
     entry: &str,
     functions: &[String],
     execution_mode: ExecutionMode,
-    memo: &mut std::collections::HashMap<String, InterpContext>,
+    memo: &mut std::collections::HashMap<(String, ExecutionMode), InterpContext>,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let mut fresh_resolve = false;
     // The cached context carries its execution mode, so the memo key must too —
     // same-entry claims with different declared envelopes resolve apart.
-    let memo_key = format!("{entry}\u{0}{execution_mode:?}");
+    let memo_key = (entry.to_string(), execution_mode);
     if !memo.contains_key(&memo_key) {
         let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
             Ok(pair) => pair,
@@ -893,29 +898,26 @@ fn run_discovery_batch_node(
     node_frontier_selection: NodeFrontierSelectionMode,
     exclude_substrings: Vec<String>,
     discovery_scope_dirs: Vec<String>,
-    spawn_width: usize,
-    spawn_width_cap: usize,
+    governor: Arc<MemoryGovernor>,
     execution_mode: ExecutionMode,
 ) -> ClaimResult {
     set_phase(FloorPhase::Discovery, "discovery-corpus");
     let label = format!(
-        "discovery-corpus[{} root(s)+{} explicit, width={}]",
+        "discovery-corpus[{} root(s)+{} explicit, adaptive width]",
         source_roots.len(),
         explicit_entries.len(),
-        spawn_width.max(1),
     );
     match run_discovery_corpus_with_options(
         &source_roots,
         &scan_dirs,
         &explicit_entries,
         execution_mode,
-        spawn_width,
+        DiscoveryWidthPolicy::Adaptive(governor),
         DiscoveryCorpusOptions {
             node_frontier_selection,
             explicit_roster_only: false,
             exclude_substrings,
             discovery_scope_dirs,
-            spawn_width_cap,
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
@@ -1003,109 +1005,6 @@ fn eval_plan(
     eval_plan_in_ctx(&plan_ctx, plan_entry, plan_function)
 }
 
-fn spawn_width_function_name(plan_function: &str) -> Option<String> {
-    match plan_function {
-        "gunbc_ci_floor_batches" => Some("gunbc_ci_plan_spawn_width".to_string()),
-        other => other
-            .strip_suffix("_batches")
-            .map(|prefix| format!("{prefix}_plan_spawn_width")),
-    }
-}
-
-fn hardware_thread_count_from_value(value: &Value, ctx: &InterpContext) -> Result<usize, String> {
-    match value {
-        Value::Record { fields, .. } => match ctx.field(fields, "count") {
-            Some(Value::Int(n)) => Ok((*n).max(1) as usize),
-            Some(other) => Err(format!(
-                "HardwareThreadCount.count is {}, not Int",
-                ctx.format_value(other)
-            )),
-            None => Err("HardwareThreadCount missing `count` field".to_string()),
-        },
-        other => Err(format!(
-            "expected HardwareThreadCount record, got {}",
-            other.type_label_public()
-        )),
-    }
-}
-
-fn read_host_memory_budget_bytes() -> Option<u64> {
-    if let Ok(self_cg) = fs::read_to_string("/proc/self/cgroup") {
-        if let Some(rel) = self_cg
-            .lines()
-            .find_map(|l| l.strip_prefix("0::"))
-            .map(|p| p.trim().trim_start_matches('/').to_string())
-        {
-            let root = Path::new("/sys/fs/cgroup");
-            let mut dir = root.join(&rel);
-            let mut effective: Option<u64> = None;
-            loop {
-                if let Ok(s) = fs::read_to_string(dir.join("memory.max")) {
-                    let s = s.trim();
-                    if s != "max" {
-                        if let Ok(v) = s.parse::<u64>() {
-                            effective = Some(effective.map_or(v, |cur| cur.min(v)));
-                        }
-                    }
-                }
-                if dir == root || !dir.pop() {
-                    break;
-                }
-            }
-            if let Some(v) = effective {
-                return Some(v);
-            }
-        }
-    }
-    if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
-        for key in ["MemAvailable", "MemTotal"] {
-            if let Some(kb) = meminfo
-                .lines()
-                .find(|l| l.starts_with(key))
-                .and_then(|l| l.split_whitespace().nth(1))
-                .and_then(|n| n.parse::<u64>().ok())
-            {
-                return Some(kb.saturating_mul(1024));
-            }
-        }
-    }
-    None
-}
-
-fn eval_spawn_width_in(
-    plan_ctx: &InterpContext,
-    plan_entry: &str,
-    plan_function: &str,
-) -> Result<usize, String> {
-    let Some(width_fn) = spawn_width_function_name(plan_function) else {
-        return Ok(1);
-    };
-    let budget_bytes = read_host_memory_budget_bytes().unwrap_or(0);
-    match budget_bytes {
-        0 => eprintln!(
-            "claim_executor: live memory budget unavailable — width uses the .dag conservative fallback"
-        ),
-        b => eprintln!("claim_executor: live memory budget {b} bytes (cgroup memory.max / meminfo)"),
-    }
-    let budget_arg = i64::try_from(budget_bytes).unwrap_or(i64::MAX);
-    let width_value = run_in_context_with_args(
-        plan_ctx,
-        &width_fn,
-        &[(
-            Some("memory_budget_bytes".to_string()),
-            Value::Int(budget_arg),
-        )],
-        false,
-    )
-    .map_err(|e| {
-        format!(
-            "spawn width eval failed ({}::{}): {}",
-            plan_entry, width_fn, e
-        )
-    })?;
-    hardware_thread_count_from_value(&width_value, plan_ctx)
-}
-
 struct WalkOutcome {
     any_failed: bool,
     batches_run: usize,
@@ -1116,106 +1015,6 @@ fn peak_rss_bytes() -> Option<u64> {
     let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
     let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
     Some(kb.saturating_mul(1024))
-}
-
-/// The cgroup directory whose `memory.max` is the TIGHTEST along the `/proc/self/cgroup`
-/// leaf→root walk — the EFFECTIVE budget the OOM-killer enforces (the same ancestor
-/// `read_host_memory_budget_bytes` reduces to by `min`, returned here so the peak can be
-/// read at the SAME level the budget binds). `None` when `/proc/self/cgroup` is unreadable
-/// or no ancestor sets a numeric cap.
-fn binding_cap_cgroup_dir() -> Option<std::path::PathBuf> {
-    tightest_cgroup_dir_for("memory.max")
-}
-
-/// The cgroup directory whose `memory.high` is the TIGHTEST along the same walk — the
-/// reclaim-THROTTLE line, distinct from `memory.max` (the kill line): past it malloc keeps
-/// succeeding while the kernel forces direct reclaim + swap-out, so a floor that crosses it
-/// wedges to swap speed with zero log evidence instead of dying (the 2026-07-11 incident:
-/// four floors on three hosts pinned at `memory.peak == memory.high + <1MiB` through
-/// 30-49min silent tails). `None` when no ancestor sets a numeric high (the whole-machine
-/// regimes: ubicloud / hosted / pre-carve fleet).
-fn binding_high_cgroup_dir() -> Option<std::path::PathBuf> {
-    tightest_cgroup_dir_for("memory.high")
-}
-
-/// Leaf→root walk shared by [`binding_cap_cgroup_dir`] / [`binding_high_cgroup_dir`]: the
-/// directory carrying the smallest numeric value of `limit_file` (non-numeric `max` = unset).
-fn tightest_cgroup_dir_for(limit_file: &str) -> Option<std::path::PathBuf> {
-    let self_cg = fs::read_to_string("/proc/self/cgroup").ok()?;
-    let rel = self_cg
-        .lines()
-        .find_map(|l| l.strip_prefix("0::"))
-        .map(|p| p.trim().trim_start_matches('/').to_string())?;
-    let root = Path::new("/sys/fs/cgroup");
-    let mut dir = root.join(&rel);
-    let mut best: Option<(u64, std::path::PathBuf)> = None;
-    loop {
-        if let Ok(s) = fs::read_to_string(dir.join(limit_file)) {
-            let s = s.trim();
-            if s != "max" {
-                if let Ok(v) = s.parse::<u64>() {
-                    let take = best.as_ref().map(|(cur, _)| v < *cur).unwrap_or(true);
-                    if take {
-                        best = Some((v, dir.clone()));
-                    }
-                }
-            }
-        }
-        if dir == root || !dir.pop() {
-            break;
-        }
-    }
-    best.map(|(_, d)| d)
-}
-
-/// The process's own deepest (leaf) cgroup from `/proc/self/cgroup`. On the ephemeral GitHub
-/// runners this is `actions-runner@srv1-NN.service` — fresh per job — so its hierarchical cgroup-v2
-/// `memory.peak` isolates ONE job's whole-tree footprint. We read the peak HERE, not at a shared
-/// parent slice, so the placement divisor is per-job and not an aggregate over co-resident runners
-/// (measured 2026-06-22: the runner units run `MemoryMax=infinity`, so there is NO binding numeric
-/// cap and `binding_cap_cgroup_dir` returns `None` on the real fleet; the leaf is always present).
-fn leaf_cgroup_dir() -> Option<std::path::PathBuf> {
-    let self_cg = fs::read_to_string("/proc/self/cgroup").ok()?;
-    let rel = self_cg
-        .lines()
-        .find_map(|l| l.strip_prefix("0::"))
-        .map(|p| p.trim().trim_start_matches('/').to_string())?;
-    Some(Path::new("/sys/fs/cgroup").join(rel))
-}
-
-/// `memory.events`-style content: whitespace-separated `key value` lines. Pure over the file
-/// content so the parse carries its own unit tests.
-fn memory_events_field(content: &str, field: &str) -> Option<u64> {
-    content.lines().find_map(|l| {
-        let mut it = l.split_whitespace();
-        match (it.next(), it.next()) {
-            (Some(k), Some(v)) if k == field => v.parse().ok(),
-            _ => None,
-        }
-    })
-}
-
-/// PSI `memory.pressure` content: extract `avg10` from the `some` line
-/// (`some avg10=1.23 avg60=... total=...`).
-fn memory_pressure_some_avg10(content: &str) -> Option<String> {
-    let line = content
-        .lines()
-        .find(|l| l.split_whitespace().next() == Some("some"))?;
-    line.split_whitespace()
-        .find_map(|t| t.strip_prefix("avg10="))
-        .map(|v| v.to_string())
-}
-
-fn read_cgroup_u64(dir: &Path, file: &str) -> Option<u64> {
-    fs::read_to_string(dir.join(file))
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-}
-
-fn read_cgroup_raw(dir: &Path, file: &str) -> Option<String> {
-    fs::read_to_string(dir.join(file))
-        .ok()
-        .map(|s| s.trim().to_string())
 }
 
 fn heartbeat_field(v: Option<u64>) -> String {
@@ -1283,16 +1082,6 @@ fn spawn_floor_memory_heartbeat() {
             "[floor-memory] heartbeat thread failed to spawn: {e} (floor proceeds unmonitored)"
         );
     }
-}
-
-/// Total physical RAM in bytes (`/proc/meminfo` `MemTotal`, kB→bytes) — the EFFECTIVE memory budget
-/// when the cgroup is uncapped, which is the real CI fleet (runner units `MemoryMax=infinity`, so
-/// the OOM bound is physical RAM, not a cgroup `memory.max`).
-fn mem_total_bytes() -> Option<u64> {
-    let s = fs::read_to_string("/proc/meminfo").ok()?;
-    let line = s.lines().find(|l| l.starts_with("MemTotal"))?;
-    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
-    Some(kb.saturating_mul(1024))
 }
 
 /// One read of the whole-tree job footprint and its budget context, taken in a single cgroup walk so
@@ -1654,8 +1443,11 @@ fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
     }
 }
 
-fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usize) -> WalkOutcome {
-    let width = spawn_width.max(1);
+fn run_walk(
+    source_roots: &[String],
+    batches: &[Vec<Runnable>],
+    governor: &Arc<MemoryGovernor>,
+) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
     let walk_start = Instant::now();
@@ -1665,20 +1457,20 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
     // Rc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
     // run sequentially here after the spawned (non-memo) threads in each batch are joined.
     // Key invariant: source_roots is constant for the lifetime of a run_walk call, so
-    // keying the memo by entry alone is sufficient — a given entry always resolves against
-    // the same source_roots here. If this function ever accepts multiple source_root sets,
-    // the key must become (source_roots_hash, entry).
-    let mut walk_memo: std::collections::HashMap<String, InterpContext> =
+    // keying the memo by (entry, execution_mode) is sufficient — a given entry always
+    // resolves against the same source_roots here. If this function ever accepts multiple
+    // source_root sets, the key must grow a source_roots_hash component.
+    let mut walk_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
         std::collections::HashMap::new();
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
         let units = group_batch_units(batch);
         eprintln!(
-            "claim_executor: batch {} — {} node(s) in {} resolve-group(s), spawn_width={}",
+            "claim_executor: batch {} — {} node(s) in {} resolve-group(s), governor target_width={}",
             bi + 1,
             batch.len(),
             units.len(),
-            width
+            governor.current_target_width()
         );
         let batch_start = Instant::now();
         // Partition units: memo units stay on the main thread; others spawn.
@@ -1693,7 +1485,11 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                     use_walk_memo: true,
                     ..
                 } => memo_units.push(unit),
-                BatchUnit::SharedClaims { entry, .. } if walk_memo.contains_key(entry) => {
+                BatchUnit::SharedClaims {
+                    entry,
+                    execution_mode,
+                    ..
+                } if walk_memo.contains_key(&(entry.clone(), *execution_mode)) => {
                     memo_units.push(unit)
                 }
                 _ => thread_units.push(unit),
@@ -1705,7 +1501,7 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
         // closes (below) so it stays outside the collapsed section. GitHub Actions
         // renders this as a collapsible `::group::`; a plain terminal as a header.
         // Threads can't interleave group markers (one open/close on the main thread
-        // spans the whole batch), so it is sound under `spawn_width > 1`.
+        // spans the whole batch), so it is sound under parallel unit threads.
         let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
         if grouped {
             set_phase(
@@ -1718,7 +1514,8 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             .into_iter()
             .map(|unit| {
                 let roots = source_roots.to_vec();
-                thread::spawn(move || run_batch_unit(roots, unit, width))
+                let unit_governor = governor.clone();
+                thread::spawn(move || run_batch_unit(roots, unit, unit_governor))
             })
             .collect();
         // Run memo units on the main thread while spawned threads are working.
@@ -1969,7 +1766,6 @@ fn run_perturb_check(
                         node_frontier_selection,
                         exclude_substrings,
                         discovery_scope_dirs,
-                        spawn_width_cap,
                         execution_mode,
                     } => Runnable::DiscoveryBatch {
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
@@ -1978,7 +1774,6 @@ fn run_perturb_check(
                         node_frontier_selection: *node_frontier_selection,
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
-                        spawn_width_cap: *spawn_width_cap,
                         execution_mode: *execution_mode,
                     },
                 })
@@ -1990,7 +1785,13 @@ fn run_perturb_check(
         "claim_executor: --perturb-check: planted batch-1 gating witness `{}` -> false; re-walking",
         gating_function
     );
-    let outcome = run_walk(&[temp_root], &remapped, 1);
+    // The perturb re-walk is a small diagnostics pass: a max_width=1 governor keeps it
+    // serial, matching the prior fixed width-1 semantics.
+    let outcome = run_walk(
+        &[temp_root],
+        &remapped,
+        &Arc::new(MemoryGovernor::from_environment(1)),
+    );
     let _ = fs::remove_dir_all(&tmp);
 
     if outcome.any_failed && outcome.batches_run == 1 {
@@ -2178,25 +1979,16 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(1));
     }
 
-    let width_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
-    let spawn_width = match eval_spawn_width_in(&width_ctx, &plan_entry, &plan_function) {
-        Ok(w) => w,
-        Err(msg) => {
-            eprintln!("claim_executor: {msg}");
-            return Err(ExitCode::from(1));
-        }
-    };
-    drop(width_ctx);
     drop(plan_graph);
-    eprintln!(
-        "claim_executor: spawn_width={} from {}::{}",
-        spawn_width,
-        plan_entry,
-        spawn_width_function_name(&plan_function)
-            .as_deref()
-            .unwrap_or("<serial>")
-    );
-    phase_mark("spawn width evaluated; starting batch walk");
+    // Adaptive width: no plan-evaluated spawn width and no pinned per-shard constants —
+    // the governor admits workers against the slot's own declared budget (AIMD), so the
+    // width story for the run is its announce line here plus its end-of-run receipt.
+    let governor = Arc::new(MemoryGovernor::from_environment(
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1),
+    ));
+    phase_mark("memory governor armed; starting batch walk");
     spawn_floor_memory_heartbeat();
 
     // Plans whose schedule carries the compile-clean gate node: the gate only CONSUMES the
@@ -2209,27 +2001,23 @@ fn run() -> Result<ExitCode, ExitCode> {
         enable_floor_compile_clean_lazy_install();
     }
 
-    let outcome = run_walk(&source_roots, &batches, spawn_width);
+    let outcome = run_walk(&source_roots, &batches, &governor);
     match peak_rss_bytes() {
         Some(bytes) => {
-            eprintln!(
-                "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
-            );
-            let width = spawn_width.max(1) as u64;
-            let per_shard = bytes.div_ceil(width);
-            eprintln!(
-                "[calibration] max-per-shard-peak-rss: {per_shard} bytes at spawn_width={spawn_width}"
-            );
+            eprintln!("[measurement] floor peak RSS: {bytes} bytes (VmHWM) (adaptive width)");
         }
         None => eprintln!(
-            "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
+            "[measurement] floor peak RSS: unavailable (no /proc/self/status) (adaptive width)"
         ),
     }
+    // The governor receipt is the §5-counted degradation story for the run: every graceful
+    // hold, hard back-off, and forced-serial admission, beside the width actually reached.
+    eprintln!("{}", governor.receipt_line());
     // [measurement] WHOLE-TREE cgroup peak — the SOUND placement divisor input (SELF-RSS above omits
     // child rustc/sccache PIDs; cgroup-v2 `memory.peak` at the leaf job cgroup is hierarchical and
     // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
     // report an identically-shaped line. Runtime-harmless read-only.
-    emit_cgroup_measurement(&format!("floor spawn_width={spawn_width}"));
+    emit_cgroup_measurement("floor adaptive-width");
     if outcome.any_failed {
         Ok(ExitCode::from(1))
     } else {
@@ -2366,7 +2154,6 @@ mod tests {
             node_frontier_selection: NodeFrontierSelectionMode::Applied,
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
-            spawn_width_cap: 0,
             execution_mode: ExecutionMode::Hermetic,
         }
     }
@@ -2477,7 +2264,11 @@ mod tests {
 
         // And it fails closed when run.
         let unit = units.into_iter().next().unwrap();
-        let results = run_batch_unit(vec!["src/v2".to_string()], unit, 1);
+        let results = run_batch_unit(
+            vec!["src/v2".to_string()],
+            unit,
+            Arc::new(MemoryGovernor::from_environment(1)),
+        );
         assert_eq!(results.len(), 1);
         assert!(!results[0].ok, "unmapped sentinel must fail closed");
     }
@@ -2677,30 +2468,5 @@ mod tests {
             second[0].resolve_nanos, 0,
             "second call must cache-hit — resolve_entry_graph must NOT fire again"
         );
-    }
-
-    #[test]
-    fn memory_events_field_reads_the_named_counter() {
-        let content = "low 0\nhigh 4821\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n";
-        assert_eq!(memory_events_field(content, "high"), Some(4821));
-        assert_eq!(memory_events_field(content, "oom_kill"), Some(0));
-        assert_eq!(memory_events_field(content, "absent_key"), None);
-    }
-
-    #[test]
-    fn memory_events_field_does_not_prefix_match_keys() {
-        // `oom` must not read the `oom_kill` line (exact key, not prefix).
-        let content = "oom_kill 7\n";
-        assert_eq!(memory_events_field(content, "oom"), None);
-    }
-
-    #[test]
-    fn memory_pressure_some_avg10_extracts_from_psi_shape() {
-        let content = "some avg10=12.48 avg60=9.31 avg300=4.02 total=812345678\nfull avg10=8.11 avg60=6.02 avg300=2.44 total=51234567\n";
-        assert_eq!(
-            memory_pressure_some_avg10(content),
-            Some("12.48".to_string())
-        );
-        assert_eq!(memory_pressure_some_avg10("garbage\n"), None);
     }
 }
