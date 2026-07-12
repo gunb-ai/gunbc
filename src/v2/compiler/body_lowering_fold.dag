@@ -1058,13 +1058,35 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   }
 }
 
+fn body_lower_literal_bool_atom_optional(node: Node) -> Optional<Node> {
+  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+    Present { value: id } =>
+      if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
+        optional_present(value: body_lower_param_ref_atom(identity: id))
+      } else {
+        optional_absent()
+      }
+    Absent =>
+      fold(node.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lower_literal_bool_atom_optional(node: e.target)
+        }
+      })
+  }
+}
+
 fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node> {
   match body_lower_operand_ref_optional(node: captured) {
     Present { value: operand } => outcome_accepted(value: operand)
     Absent =>
-      outcome_rejected(
-        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-      )
+      match body_lower_literal_bool_atom_optional(node: captured) {
+        Present { value: lit } => outcome_accepted(value: lit)
+        Absent =>
+          outcome_rejected(
+            d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+          )
+      }
   }
 }
 
@@ -2036,7 +2058,11 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match body_lower_try_postfix_projection(node: captured) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } =>
+          match body_lower_literal_bool_atom_optional(node: captured) {
+            Present { value: lit } => outcome_accepted(value: lit)
+            Absent => Rejected { diagnostics: r }
+          }
         Accepted { value: found, diagnostics: d } =>
           match found {
             Present { value: transform } =>
@@ -2068,7 +2094,11 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
       )
     Present { value: captured } =>
       match body_lower_try_postfix_projection(node: captured) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Rejected { diagnostics: r } =>
+          match body_lower_literal_bool_atom_optional(node: captured) {
+            Present { value: lit } => outcome_accepted(value: lit)
+            Absent => Rejected { diagnostics: r }
+          }
         Accepted { value: found, diagnostics: d } =>
           match found {
             Present { value: transform } =>
