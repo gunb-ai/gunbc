@@ -592,7 +592,8 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
 fn runnable_scan_dir_count(r: Runnable) -> Int {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => length(xs: dirs)
-    _ => 0 - 1
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => 0 - 1
+    RunnableKernelWorkload { fused_op_count: _ } => 0 - 1
   }
 }
 

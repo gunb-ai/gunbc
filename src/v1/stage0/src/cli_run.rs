@@ -11064,6 +11064,22 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
     "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
+    // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
+    // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
+    // re-arms; each burns down with its owning file's fold migration.
+    "dag/extdeps/git/git.dag::git_diff_name_status_pending_after_status",
+    "dag/gunbc/srv3_os_install_reconcile.dag::kvm_screen_from_diagnostic",
+    "dag/gunbc/srv3_os_install_reconcile.dag::optional_kvm_attestation_from_observation",
+    "dag/gunbc/srv3_os_install_reconcile.dag::reconcile_pending_step_id",
+    "dag/gunbc/srv3_os_install_reconcile.dag::workflow_approval_from_durable_grant",
+    "dag/gunbc/srv3_os_install_reconcile_apply.dag::process_exit_succeeded",
+    "dag/gunbc/srv3_os_install_reconcile_receipt.dag::durable_grant_is_active",
+    "dag/gunbc/srv3_os_install_reconcile_receipt.dag::reconcile_refusal_reason_wire",
+    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_body_not_located",
+    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_known",
+    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_parse_tree_opaque",
+    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_unknown",
+    "src/v2/lens/enforcement/receipts.dag::consumer_receipt_ref_for",
     "dag/extdeps/languages/markdown.dag::md_nested",
     "dag/gunbc/generated_artifact.dag::artifact_eq",
     "dag/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
