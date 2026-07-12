@@ -602,6 +602,382 @@ fn ingested_token_is_rparen(token: ConcreteSyntaxToken) -> Bool {
   }
 }
 
+fn ingested_token_is_fixed(token: ConcreteSyntaxToken) -> Bool {
+  match token {
+    FixedToken { token_class: _ } => true
+    BoundToken { token_class: _, binding: _ } => false
+  }
+}
+
+fn ingested_token_fixed_class_eq(token: ConcreteSyntaxToken, wanted: Symbol) -> Bool {
+  match token {
+    FixedToken { token_class: ca } => ca == wanted
+    BoundToken { token_class: _, binding: _ } => false
+  }
+}
+
+fn ingested_token_eq_golden_at(body_tokens: List<ConcreteSyntaxToken>, body_index: Int, golden_index: Int) -> Bool {
+  match list_at_optional(xs: body_tokens, index: body_index) {
+    Absent => false
+    Present { value: emitted } =>
+      ingested_body_tokens_match_golden_at(
+        body_tokens: body_tokens,
+        index: golden_index
+      )
+      && match list_at_optional(xs: ingested_match_body_golden_tokens, index: golden_index) {
+        Absent => false
+        Present { value: golden } => ingested_concrete_token_eq(a: emitted, b: golden)
+      }
+  }
+}
+
+fn ingested_token_eq_golden_index(token: ConcreteSyntaxToken, golden_index: Int) -> Bool {
+  match list_at_optional(xs: ingested_match_body_golden_tokens, index: golden_index) {
+    Absent => false
+    Present { value: golden } => ingested_concrete_token_eq(a: token, b: golden)
+  }
+}
+
+fn ingested_token_eq_any_golden(token: ConcreteSyntaxToken) -> Bool {
+  ingested_token_eq_golden_index(token: token, golden_index: 0)
+    || ingested_token_eq_golden_index(token: token, golden_index: 1)
+    || ingested_token_eq_golden_index(token: token, golden_index: 2)
+    || ingested_token_eq_golden_index(token: token, golden_index: 3)
+    || ingested_token_eq_golden_index(token: token, golden_index: 4)
+    || ingested_token_eq_golden_index(token: token, golden_index: 5)
+    || ingested_token_eq_golden_index(token: token, golden_index: 6)
+    || ingested_token_eq_golden_index(token: token, golden_index: 7)
+    || ingested_token_eq_golden_index(token: token, golden_index: 8)
+    || ingested_token_eq_golden_index(token: token, golden_index: 9)
+    || ingested_token_eq_golden_index(token: token, golden_index: 10)
+    || ingested_token_eq_golden_index(token: token, golden_index: 11)
+    || ingested_token_eq_golden_index(token: token, golden_index: 12)
+}
+
+test fn ingested_classical_not_debug_body_token2_eq_golden_fixed_classes_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } =>
+                      ingested_token_eq_golden_index(token: t2, golden_index: 0)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 1)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 3)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 4)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 5)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 6)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 7)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 8)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 9)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 10)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 11)
+                        || ingested_token_eq_golden_index(token: t2, golden_index: 12)
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_is_rust_ident_class_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } =>
+                      ingested_token_fixed_class_eq(token: t2, wanted: ^rust_token_ident)
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_eq_any_golden_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } => ingested_token_eq_any_golden(token: t2)
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_is_type_int_class_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } =>
+                      ingested_token_fixed_class_eq(token: t2, wanted: ^dag_binding_type_int)
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_eq_golden1_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Absent => false
+                    Present { value: t2 } =>
+                      match list_at_optional(xs: ingested_match_body_golden_tokens, index: 1) {
+                        Absent => false
+                        Present { value: golden1 } =>
+                          ingested_concrete_token_eq(a: t2, b: golden1)
+                      }
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_is_dag_param_x_class_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } =>
+                      ingested_token_fixed_class_eq(token: t2, wanted: ^dag_binding_param_x)
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_is_dag_ident_class_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } =>
+                      ingested_token_fixed_class_eq(token: t2, wanted: ^dag_token_ident)
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_is_fixed_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } => ingested_token_is_fixed(token: t2)
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token3_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  ingested_body_tokens_match_golden_at(body_tokens: body_tokens, index: 3)
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn ingested_classical_not_debug_body_tokens_all_match_golden_holds() -> Bool {
   match ingested_arrow_from_source(source: ingested_classical_not_source) {
     Accepted { value: arrow, diagnostics: _ } =>

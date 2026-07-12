@@ -6049,17 +6049,31 @@ fn target_value_expression_match_to_concrete_tokens_inner(
 }
 
 fn target_value_expression_symbol_identity_to_concrete_tokens(
-  expr: TargetValueExpression
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expression_symbol_identity_from_wire(wire: expr.node),
     f: fn(token_class) {
-      outcome_accepted(
-        Cons {
-          head: FixedToken { token_class: token_class },
-          tail: Empty
-        }
-      )
+      match target_value_expr_binding_ref_for_literal_atom(id: token_class) {
+        Present { value: binding } =>
+          outcome_accepted(
+            Cons {
+              head: target_value_expression_binding_ref_token(
+                binding: binding,
+                projection: projection
+              ),
+              tail: Empty
+            }
+          )
+        Absent =>
+          outcome_accepted(
+            Cons {
+              head: FixedToken { token_class: token_class },
+              tail: Empty
+            }
+          )
+      }
     }
   )
 }
@@ -6516,7 +6530,10 @@ fn target_value_expression_to_concrete_tokens(
         catalog: catalog
       )
     TargetValueExprSymbolIdentity =>
-      target_value_expression_symbol_identity_to_concrete_tokens(expr: expr)
+      target_value_expression_symbol_identity_to_concrete_tokens(
+        expr: expr,
+        projection: projection
+      )
     TargetValueExprConditional =>
       target_value_expression_conditional_to_concrete_tokens(
         expr: expr,
@@ -10828,42 +10845,52 @@ fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
   }
 }
 
-fn target_value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValueExpression> {
+fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol> {
   if id == ^dag_pick_lit_one {
-    outcome_accepted(
-      target_value_expression_binding_ref(binding: ^dag_binding_pick_lit_one)
-    )
+    optional_present(value: ^dag_binding_pick_lit_one)
   } else if id == ^dag_pick_lit_two {
-    outcome_accepted(
-      target_value_expression_binding_ref(binding: ^dag_binding_pick_lit_two)
-    )
+    optional_present(value: ^dag_binding_pick_lit_two)
   } else if id == ^dag_rec_lit_nine {
-    outcome_accepted(
-      target_value_expression_binding_ref(binding: ^dag_binding_rec_lit_nine)
-    )
+    optional_present(value: ^dag_binding_rec_lit_nine)
   } else if id == ^dag_binding_param_r {
-    outcome_accepted(
-      target_value_expression_binding_ref(binding: ^dag_binding_param_r)
-    )
+    optional_present(value: ^dag_binding_param_r)
   } else if id == ^dag_binding_param_x {
-    outcome_accepted(
-      target_value_expression_binding_ref(binding: ^dag_binding_param_x)
-    )
+    optional_present(value: ^dag_binding_param_x)
+  } else if id == ^dag_binding_param_y {
+    optional_present(value: ^dag_binding_param_y)
   } else if id == ^dag_binding_rec_v {
-    outcome_accepted(
-      target_value_expression_binding_ref(binding: ^dag_binding_rec_v)
-    )
+    optional_present(value: ^dag_binding_rec_v)
   } else {
-    outcome_accepted(
-      target_value_expression_symbol_identity(identity: id)
-    )
+    optional_absent()
+  }
+}
+
+fn target_value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValueExpression> {
+  match target_value_expr_binding_ref_for_literal_atom(id: id) {
+    Present { value: binding } =>
+      outcome_accepted(
+        target_value_expression_binding_ref(binding: binding)
+      )
+    Absent =>
+      outcome_accepted(
+        target_value_expression_symbol_identity(identity: id)
+      )
   }
 }
 
 fn target_value_expr_project_atom_literal(node: Node) -> Outcome<TargetValueExpression> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      target_value_expr_project_pick_literal_atom(id: id)
+      if id == ^target_value_expression_symbol_identity_atom {
+        bind_outcome(
+          o: target_value_expression_symbol_identity_from_wire(wire: node),
+          f: fn(inner_id) {
+            target_value_expr_project_pick_literal_atom(id: inner_id)
+          }
+        )
+      } else {
+        target_value_expr_project_pick_literal_atom(id: id)
+      }
     _ =>
       outcome_rejected(
         target_value_expr_diagnostic(
