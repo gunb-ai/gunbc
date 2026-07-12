@@ -89,7 +89,7 @@ fn section_3() -> List<MarkdownBlock> {
     ]),
     p(text: "**Placement:** normalize, after child-fold, before sugar — same `body_lower_finish` seam; implementation replaces call target with forward row fold."),
     h3(text: "3.3 Forward selection machinery (Slice 0)"),
-    p(text: "`GrammarInterpretationDirection` + `ObligationForwardDeterminism` exist (`grammar.dag`) with zero consumers. Slice 0 adds `grammar_relation_row_forward_selection` → `ForwardSelectionVerdict` (`None` | `One{row}` | `Many{rows}`), consuming existing obligation carriers — no re-minted direction vocabulary."),
+    p(text: "`GrammarInterpretationDirection` + `ObligationForwardDeterminism` exist (`grammar.dag`) with zero consumers. Slice 0 adds `grammar_relation_row_forward_selection` → `ForwardSelectionVerdict` (`None` / `One` / `Many` — typed selection verdict), consuming existing obligation carriers — no re-minted direction vocabulary."),
     h3(text: "3.4 Row inventory (hand-walker arms → rows)"),
     TableBlock {
       header: row(cells: [cell(text: "slice"), cell(text: "productions"), cell(text: "core target"), cell(text: "dissolves")]),
