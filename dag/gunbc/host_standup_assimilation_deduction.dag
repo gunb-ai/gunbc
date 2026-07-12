@@ -17,12 +17,11 @@ import std.upsert_decision {
   Refuse,
 }
 import std.temporal_effect {
+  EffectTransitionBudget,
   TransitionStallState,
   TransitionWithinBudget,
   TransitionStalled,
   transition_stall_state_from_budget,
-  srv3_os_install_to_host_identity_budget,
-  srv3_install_stall_router_lease_limit_ms,
 }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
 import extdeps.bmc.types {
@@ -37,6 +36,7 @@ import gunbc.network_identity_subsumption {
   srv3_pre_install_lease_table,
   srv3_post_install_lease_table_fixture,
 }
+import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import gunbc.os_install_deduction {
   KvmObservedScreen,
   SubiquityStorageScreen,
@@ -91,6 +91,17 @@ data srv3_post_install_lease_observation: DhcpLeaseTableObservation = LeaseTable
 
 data srv3_unreadable_lease_observation: DhcpLeaseTableObservation = LeaseTableUnreadable {
   reason: "router dhcp lease table unreachable" as NonEmptyStr,
+}
+
+data srv3_os_install_to_host_identity_transition: NonEmptyStr =
+  "os-install-actuated-to-host-identity-converge" as NonEmptyStr
+
+fn srv3_os_install_to_host_identity_budget(elapsed_ms: Milliseconds) -> EffectTransitionBudget {
+  EffectTransitionBudget {
+    transition_label: srv3_os_install_to_host_identity_transition,
+    limit_ms: srv3_install_hang_no_router_lease_ms,
+    elapsed_ms: elapsed_ms,
+  }
 }
 
 fn stall_transition_cause_priority(cause: StallTransitionCause) -> Int {

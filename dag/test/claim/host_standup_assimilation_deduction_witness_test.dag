@@ -11,12 +11,12 @@ import std.upsert_decision {
   Noop,
   UpsertClassification,
 }
-import std.temporal_effect {
-  srv3_install_stall_router_lease_limit_ms,
-}
+import std.temporal_effect { transition_stall_state_from_budget }
 import extdeps.bmc.types { BootOverrideModeLegacy, BootOverrideModeUefi }
 import gunbc.os_install_deduction { SubiquityStorageScreen }
+import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import gunbc.host_standup_assimilation_deduction {
+  srv3_os_install_to_host_identity_budget,
   AssertOsInstallActuationPending,
   StallTransitionProbe,
   StallCauseBootModeLegacyUefiRequired,
@@ -50,10 +50,6 @@ import gunbc.host_standup {
   OsInstallActuated,
   Assimilation,
   HostIdentityConverge,
-}
-import std.temporal_effect {
-  transition_stall_state_from_budget,
-  srv3_os_install_to_host_identity_budget,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -109,7 +105,7 @@ test fn unreadable_lease_is_unknown_refused_not_pending() -> Bool {
 }
 
 test fn no_lease_past_budget_is_drifted_not_fabricated_success() -> Bool {
-  let past = srv3_install_stall_router_lease_limit_ms + 1
+  let past = srv3_install_hang_no_router_lease_ms + 1
   match srv3_pre_install_actuation_verdict(elapsed_ms: past) {
     Drifted =>
       !deduce_os_install_actuated_satisfied(verdict: Drifted)
