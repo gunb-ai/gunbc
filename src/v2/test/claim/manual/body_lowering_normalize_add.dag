@@ -32,6 +32,7 @@ import v2.std.node {
   Node,
   Transform,
   TypeNode,
+  node_subtree_count,
   node_synthetic,
   well_formed
 }
@@ -153,7 +154,7 @@ fn body_lowering_fn_body_subtree_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(shell: fn_decl) {
+      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Present { value: captured } =>
           match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
             ParseSubtreeFound { captured: _ } => true
@@ -168,7 +169,7 @@ fn body_lowering_arrow_token_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(shell: fn_decl) {
+      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Present { value: captured } => body_lower_has_arrow_token(root: captured)
         Absent => false
       }
@@ -189,7 +190,7 @@ fn body_lowering_has_plus_token() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(shell: fn_decl) {
+      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Present { value: captured } =>
           fold(
             body_lower_collect_atoms(root: captured, acc: Empty),
@@ -205,11 +206,11 @@ fn body_lowering_binary_infix_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(shell: fn_decl) {
+      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Present { value: captured } =>
           match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_binary_expr) {
             ParseSubtreeFound { captured: binary } =>
-              match body_lower_try_infix_transform(node: binary) {
+              match body_lower_try_infix_transform(remaining: node_subtree_count(n: binary), node: binary) {
                 Present { value: _ } => true
                 Absent => false
               }
@@ -224,11 +225,11 @@ fn body_lowering_expr_infix_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(shell: fn_decl) {
+      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Present { value: captured } =>
           match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_expr) {
             ParseSubtreeFound { captured: expr } =>
-              match body_lower_try_infix_transform(node: expr) {
+              match body_lower_try_infix_transform(remaining: node_subtree_count(n: expr), node: expr) {
                 Present { value: _ } => true
                 Absent => false
               }
@@ -243,11 +244,11 @@ fn body_lowering_fn_body_infix_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(shell: fn_decl) {
+      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Present { value: captured } =>
           match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
             ParseSubtreeFound { captured: body } =>
-              match body_lower_try_infix_transform(node: body) {
+              match body_lower_try_infix_transform(remaining: node_subtree_count(n: body), node: body) {
                 Present { value: _ } => true
                 Absent => false
               }
@@ -269,11 +270,11 @@ fn body_lowering_domain_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(shell: fn_decl) {
+      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Present { value: captured } =>
           match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
             ParseSubtreeFound { captured: param_list } =>
-              match body_lower_domain_from_param_list(param_list: param_list) {
+              match body_lower_domain_from_param_list(remaining: node_subtree_count(n: param_list), param_list: param_list) {
                 Present { value: _ } => true
                 Absent => false
               }
@@ -288,9 +289,9 @@ fn body_lowering_body_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(shell: fn_decl) {
+      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Present { value: captured } =>
-          match body_lower_body_from_fn_captured(captured: captured) {
+          match body_lower_body_from_fn_captured(remaining: node_subtree_count(n: captured), captured: captured) {
             Rejected { diagnostics: _ } => false
             Accepted { value: body_opt, diagnostics: _ } =>
               match body_opt {
@@ -307,9 +308,9 @@ fn body_lowering_return_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(shell: fn_decl) {
+      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Present { value: captured } =>
-          match body_lower_return_type_from_fn_captured(captured: captured) {
+          match body_lower_return_type_from_fn_captured(remaining: node_subtree_count(n: captured), captured: captured) {
             Present { value: _ } => true
             Absent => false
           }
@@ -322,7 +323,7 @@ fn body_lowering_arrow_direct_well_formed() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_fn_decl_to_arrow(shell: fn_decl) {
+      match body_lower_fn_decl_to_arrow(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Accepted { value: arrow, diagnostics: _ } => well_formed(n: arrow)
         Rejected { diagnostics: _ } => false
       }
@@ -354,7 +355,7 @@ fn body_lowering_direct_arrow_domain_param_count() -> Int {
   match body_lowering_parsed_fn_decl() {
     Absent => 0
     Present { value: fn_decl } =>
-      match body_lower_fn_decl_to_arrow(shell: fn_decl) {
+      match body_lower_fn_decl_to_arrow(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
         Accepted { value: arrow, diagnostics: _ } =>
           body_lowering_arrow_domain_named_count(arrow: arrow)
         Rejected { diagnostics: _ } => 0
