@@ -34,9 +34,9 @@ import v2.std.node {
   node_synthetic
 }
 
-data body_lowering_match_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    True => False,\n    False => True\n  }\n}\n"
+data body_lowering_match_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => false,\n    false => true\n  }\n}\n"
 
-data body_lowering_match_swapped_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    True => True,\n    False => False\n  }\n}\n"
+data body_lowering_match_swapped_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => true,\n    false => false\n  }\n}\n"
 
 fn body_lowering_tree_has_branded_atom(root: Node) -> Bool {
   match dag_binding_branded_atom_identity(node: root) {
