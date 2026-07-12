@@ -5,22 +5,18 @@ import std.upsert_decision {
   Converged,
   Absent,
   Drifted,
+  UnknownRefused,
   Apply,
   Refuse,
   Noop,
   UpsertClassification,
 }
 import std.temporal_effect {
-  TransitionStalled,
   srv3_install_stall_router_lease_limit_ms,
 }
 import extdeps.bmc.types { BootOverrideModeLegacy, BootOverrideModeUefi }
 import gunbc.os_install_deduction { SubiquityStorageScreen }
 import gunbc.host_standup_assimilation_deduction {
-  TransitionReached,
-  TransitionPending,
-  TransitionFailed,
-  AssertOsInstallActuatedReached,
   AssertOsInstallActuationPending,
   StallTransitionProbe,
   StallCauseBootModeLegacyUefiRequired,
@@ -31,72 +27,119 @@ import gunbc.host_standup_assimilation_deduction {
   RemediationSetBootOverrideModeUefi,
   RemediationStartNbdServeSession,
   RemediationRemasterSeedOrDeclareStoragePolicy,
-  srv3_pre_install_transition_level,
-  srv3_post_install_transition_level,
+  srv3_pre_install_actuation_verdict,
+  srv3_post_install_actuation_verdict,
+  srv3_unreadable_lease_actuation_verdict,
   deduce_os_install_actuated_satisfied,
   deduce_host_identity_converge_reachable,
-  classify_os_install_actuation_level,
-  decision_for_os_install_actuation_level,
+  decision_for_os_install_actuation_verdict,
   classify_os_install_actuation_upsert,
+  srv3_pre_install_lease_observation,
+  srv3_unreadable_lease_observation,
   stall_causes_from_probe,
   cause_fold_primary_stall_remediation,
   stall_transition_cause_label,
 }
+import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.host_standup {
   host_standup_gap_count,
-  host_standup_gap_count_at_transition_level,
-  host_standup_step_is_effective_gap_at_transition_level,
+  host_standup_gap_count_at_actuation_verdict,
+  host_standup_step_is_effective_gap_at_actuation_verdict,
   host_standup_spine,
   Prefix,
   OsInstallActuated,
   Assimilation,
   HostIdentityConverge,
 }
+import std.temporal_effect {
+  transition_stall_state_from_budget,
+  srv3_os_install_to_host_identity_budget,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn pre_install_within_budget_is_pending_not_reached() -> Bool {
-  srv3_pre_install_transition_level(elapsed_ms: 0) == TransitionPending
-    && !deduce_os_install_actuated_satisfied(level: TransitionPending)
-    && !deduce_host_identity_converge_reachable(level: TransitionPending)
-    && classify_os_install_actuation_level(level: TransitionPending) == Absent
+test fn pre_install_within_budget_is_absent_not_converged() -> Bool {
+  srv3_pre_install_actuation_verdict(elapsed_ms: 0) == Absent
+    && !deduce_os_install_actuated_satisfied(verdict: Absent)
+    && !deduce_host_identity_converge_reachable(verdict: Absent)
 }
 
-test fn post_install_lease_row_deduces_reached() -> Bool {
-  srv3_post_install_transition_level(elapsed_ms: 0) == TransitionReached
-    && deduce_os_install_actuated_satisfied(level: TransitionReached)
-    && deduce_host_identity_converge_reachable(level: TransitionReached)
-    && classify_os_install_actuation_level(level: TransitionReached) == Converged
-    && match decision_for_os_install_actuation_level(level: TransitionReached) {
-      Apply { plan: AssertOsInstallActuatedReached } => true
+test fn post_install_lease_row_deduces_converged_noop() -> Bool {
+  srv3_post_install_actuation_verdict(elapsed_ms: 0) == Converged
+    && deduce_os_install_actuated_satisfied(verdict: Converged)
+    && deduce_host_identity_converge_reachable(verdict: Converged)
+    && match decision_for_os_install_actuation_verdict(
+      verdict: Converged,
+      obs: srv3_pre_install_lease_observation,
+      stall: transition_stall_state_from_budget(
+        budget: srv3_os_install_to_host_identity_budget(elapsed_ms: 0),
+      ),
+    ) {
+      Noop => true
+      Apply { plan: _ } => false
+      Refuse { reason: _ } => false
+    }
+    && match classify_os_install_actuation_upsert(
+      obs: srv3_post_install_lease_observation,
+      fleet_slot: operator_host_srv3,
+      stall: transition_stall_state_from_budget(
+        budget: srv3_os_install_to_host_identity_budget(elapsed_ms: 0),
+      ),
+    ) {
+      UpsertClassification { verdict: Converged, decision: Noop } => true
       _ => false
     }
 }
 
-test fn no_lease_past_budget_is_failed_not_fabricated_success() -> Bool {
+test fn unreadable_lease_is_unknown_refused_not_pending() -> Bool {
+  srv3_unreadable_lease_actuation_verdict(elapsed_ms: 0) == UnknownRefused
+    && srv3_unreadable_lease_actuation_verdict(elapsed_ms: 0) != Absent
+    && !deduce_os_install_actuated_satisfied(verdict: UnknownRefused)
+    && match decision_for_os_install_actuation_verdict(
+      verdict: UnknownRefused,
+      obs: srv3_unreadable_lease_observation,
+      stall: transition_stall_state_from_budget(
+        budget: srv3_os_install_to_host_identity_budget(elapsed_ms: 0),
+      ),
+    ) {
+      Refuse { reason: r } => string_contains(s: r, pattern: "unreachable")
+      _ => false
+    }
+}
+
+test fn no_lease_past_budget_is_drifted_not_fabricated_success() -> Bool {
   let past = srv3_install_stall_router_lease_limit_ms + 1
-  match srv3_pre_install_transition_level(elapsed_ms: past) {
-    TransitionFailed { reason: r } =>
-      string_contains(s: r, pattern: "transition stalled:")
-        && !deduce_os_install_actuated_satisfied(level: TransitionFailed { reason: r })
-        && classify_os_install_actuation_level(
-          level: TransitionFailed { reason: r },
-        ) == Drifted
-        && match decision_for_os_install_actuation_level(
-          level: TransitionFailed { reason: r },
+  match srv3_pre_install_actuation_verdict(elapsed_ms: past) {
+    Drifted =>
+      !deduce_os_install_actuated_satisfied(verdict: Drifted)
+        && match decision_for_os_install_actuation_verdict(
+          verdict: Drifted,
+          obs: srv3_pre_install_lease_observation,
+          stall: transition_stall_state_from_budget(
+            budget: srv3_os_install_to_host_identity_budget(elapsed_ms: past),
+          ),
         ) {
           Refuse { reason: _ } => true
           Apply { plan: _ } => false
           Noop => false
         }
-    TransitionReached => false
-    TransitionPending => false
+    Converged => false
+    Absent => false
+    UnknownRefused => false
+    Conflict => false
+    Inaccessible => false
   }
 }
 
 test fn upsert_pending_applies_assert_pending_plan() -> Bool {
-  match classify_os_install_actuation_upsert(level: TransitionPending) {
+  match classify_os_install_actuation_upsert(
+    obs: srv3_pre_install_lease_observation,
+    fleet_slot: operator_host_srv3,
+    stall: transition_stall_state_from_budget(
+      budget: srv3_os_install_to_host_identity_budget(elapsed_ms: 0),
+    ),
+  ) {
     UpsertClassification { verdict: Absent, decision: Apply { plan: AssertOsInstallActuationPending } } => true
     _ => false
   }
@@ -196,20 +239,20 @@ test fn stall_cause_fold_no_bootable_device() -> Bool {
 
 test fn pre_install_gap_count_stays_four() -> Bool {
   host_standup_gap_count() == 4
-    && host_standup_gap_count_at_transition_level(level: TransitionPending) == 4
+    && host_standup_gap_count_at_actuation_verdict(verdict: Absent) == 4
 }
 
 test fn post_install_subsumption_clears_os_install_actuated_gap() -> Bool {
-  host_standup_gap_count_at_transition_level(level: TransitionReached) == 3
+  host_standup_gap_count_at_actuation_verdict(verdict: Converged) == 3
     && fold(
       host_standup_spine,
       init: false,
       f: (acc, s) =>
         acc || (match s.phase {
           Prefix { phase: OsInstallActuated } =>
-            !host_standup_step_is_effective_gap_at_transition_level(
+            !host_standup_step_is_effective_gap_at_actuation_verdict(
               step: s,
-              level: TransitionReached,
+              verdict: Converged,
             )
           _ => false
         })
@@ -223,9 +266,9 @@ test fn host_identity_converge_step_stays_modeled_not_gap() -> Bool {
     f: (acc, s) =>
       acc || (match s.phase {
         Assimilation { phase: HostIdentityConverge } =>
-          !host_standup_step_is_effective_gap_at_transition_level(
+          !host_standup_step_is_effective_gap_at_actuation_verdict(
             step: s,
-            level: TransitionReached,
+            verdict: Converged,
           )
         _ => false
       })

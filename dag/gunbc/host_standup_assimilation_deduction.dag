@@ -52,6 +52,7 @@ type DhcpLeaseTableObservation
 
 type OsInstallActuationAssertPlan
   = AssertOsInstallActuationPending
+  | AssertOsInstallActuationConvergedMarker
 
 type StallTransitionProbe {
   boot_override_mode: RedfishBootSourceOverrideMode?
