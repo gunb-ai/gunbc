@@ -179,3 +179,12 @@ fn render_slowest_witnesses_box(body: List<String>, hot_count: Int, width: Int, 
     cap: cap
   )
 }
+
+fn slowest_witness_default_hot_count(body: List<String>) -> Int {
+  let n = count(body)
+  if n < 3 { n } else { 3 }
+}
+
+fn render_slowest_witnesses_box_default(body: List<String>, width: Int, color: Bool) -> String {
+  render_slowest_witnesses_box(body: body, hot_count: slowest_witness_default_hot_count(body: body), width: width, color: color)
+}

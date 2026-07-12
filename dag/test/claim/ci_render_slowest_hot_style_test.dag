@@ -1,6 +1,6 @@
 module test.claim.ci_render_slowest_hot_style
 
-import gunbc.ci_render { render_slowest_witnesses_box, slowest_witness_row }
+import gunbc.ci_render { render_slowest_witnesses_box, render_slowest_witnesses_box_default, slowest_witness_row }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -24,10 +24,16 @@ fn nocolor_box() -> String {
   render_slowest_witnesses_box(body: sample_body(), hot_count: 1, width: 90, color: false)
 }
 
+fn default_box() -> String {
+  render_slowest_witnesses_box_default(body: sample_body(), width: 90, color: true)
+}
+
 test fn ci_render_slowest_hot_style_holds() -> Bool {
   string_contains(s: hot_box(), pattern: "🔥")
     && string_contains(s: hot_box(), pattern: "38;5;196")
     && (string_contains(s: cold_box(), pattern: "🔥") == false)
     && (string_contains(s: cold_box(), pattern: "38;5;196") == false)
     && (string_contains(s: nocolor_box(), pattern: "38;5;196") == false)
+    && string_contains(s: default_box(), pattern: "🔥")
+    && string_contains(s: default_box(), pattern: "38;5;196")
 }
