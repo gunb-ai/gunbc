@@ -788,8 +788,33 @@ fn body_lower_param_list_comma_spine_budgeted(remaining: Int, param_list_capture
   if remaining <= 0 {
     outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: param_list_captured))
   } else {
-    outcome_accepted(
-      value: body_lower_param_list_comma_spine_optional(remaining: remaining, param_list_captured: param_list_captured)
+    bind_outcome(
+      o: body_lower_budget_outcome(remaining: remaining, at: param_list_captured),
+      f: fn(rem) {
+        match sugar_sequence_pair_optional(node: param_list_captured) {
+          Absent => outcome_accepted(value: optional_absent())
+          Present { value: pair } =>
+            bind_outcome(
+              o: body_lower_budget_outcome(remaining: rem - 1, at: param_list_captured),
+              f: fn(rem2) {
+                match sugar_sequence_pair_optional(node: pair.right) {
+                  Absent => outcome_accepted(value: optional_absent())
+                  Present { value: inner } =>
+                    bind_outcome(
+                      o: body_lower_budget_outcome(remaining: rem2 - 1, at: param_list_captured),
+                      f: fn(rem3) {
+                        outcome_accepted(
+                          value: optional_present(
+                            value: body_lower_unwrap_optional_element(remaining: rem3 - 1, node: inner.left)
+                          )
+                        )
+                      }
+                    )
+                }
+              }
+            )
+        }
+      }
     )
   }
 }
@@ -842,35 +867,59 @@ fn body_lower_arrow_seq_return_type(remaining: Int, node: Node) -> Optional<Node
   }
 }
 
-fn body_lower_return_type_after_arrow_walk(remaining: Int, node: Node) -> Optional<Node> {
-  match remaining <= 0 {
-    true => Absent
-    false =>
-      let stripped = body_lower_deep_unwrap_optional(remaining: remaining - 1, node: node)
-      match body_lower_arrow_seq_return_type(remaining: remaining - 1, node: stripped) {
-      Present { value: found } => Present { value: found }
+fn body_lower_return_type_after_arrow_walk(remaining: Int, node: Node) -> Outcome<Optional<Node>> {
+  if remaining <= 0 {
+    outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: node))
+  } else {
+    let stripped = body_lower_deep_unwrap_optional(remaining: remaining - 1, node: node)
+    match body_lower_arrow_seq_return_type(remaining: remaining - 1, node: stripped) {
+      Present { value: found } => outcome_accepted(value: optional_present(value: found))
       Absent =>
-      match parse_production_captured_child_optional(node: stripped) {
-        Present { value: captured } =>
-          match body_lower_return_type_after_arrow_walk(remaining: remaining - 1, node: captured) {
-            Present { value: found } => Present { value: found }
-            Absent =>
-              fold(stripped.children, init: Absent, f: fn(acc, e) {
-                match acc {
-                  Present { value: _ } => acc
-                  Absent => body_lower_return_type_after_arrow_walk(remaining: remaining - 1, node: e.target)
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: captured } =>
+            bind_outcome(
+              o: body_lower_return_type_after_arrow_walk(remaining: remaining - 1, node: captured),
+              f: fn(found) {
+                match found {
+                  Present { value: _ } => outcome_accepted(value: found)
+                  Absent =>
+                    body_lower_return_type_after_arrow_walk_children(
+                      remaining: remaining - 1,
+                      at: node,
+                      children: stripped.children
+                    )
                 }
-              })
-          }
-        Absent =>
-          fold(stripped.children, init: Absent, f: fn(acc, e) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => body_lower_return_type_after_arrow_walk(remaining: remaining - 1, node: e.target)
-            }
-          })
-      }
+              }
+            )
+          Absent =>
+            body_lower_return_type_after_arrow_walk_children(
+              remaining: remaining - 1,
+              at: node,
+              children: stripped.children
+            )
+        }
+    }
   }
+}
+
+fn body_lower_return_type_after_arrow_walk_children(
+  remaining: Int,
+  at: Node,
+  children: List<Edge>
+) -> Outcome<Optional<Node>> {
+  if remaining <= 0 {
+    outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: at))
+  } else {
+    fold(children, init: outcome_accepted(value: optional_absent()), f: fn(acc_outcome, e) {
+      match acc_outcome {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: acc, diagnostics: _ } =>
+          match acc {
+            Present { value: _ } => acc_outcome
+            Absent => body_lower_return_type_after_arrow_walk(remaining: remaining - 1, node: e.target)
+          }
+      }
+    })
   }
 }
 
@@ -986,9 +1035,7 @@ fn body_lower_return_type_from_fn_captured(remaining: Int, captured: Node) -> Ou
     bind_outcome(
       o: body_lower_budget_outcome(remaining: remaining - 1, at: captured),
       f: fn(walk_budget) {
-        outcome_accepted(
-          value: body_lower_return_type_after_arrow_walk(remaining: walk_budget, node: captured)
-        )
+        body_lower_return_type_after_arrow_walk(remaining: walk_budget, node: captured)
       }
     )
   }
@@ -2514,8 +2561,7 @@ fn body_lower_postfix_expr(remaining: Int, shell: Node) -> Outcome<Node> {
                           Present { value: transform } => outcome_accepted(value: transform)
                           Absent =>
                             match body_lower_try_fold_loop(remaining: remaining - 1, node: captured) {
-                              Rejected { diagnostics: _ } =>
-                                body_lower_try_operand_or_reject(remaining: remaining - 1, shell: shell, captured: captured)
+                              Rejected { diagnostics: r } => Rejected { diagnostics: r }
                               Accepted { value: fold_result, diagnostics: _ } =>
                                 match fold_result {
                                   Present { value: loop_node } => outcome_accepted(value: loop_node)
@@ -2567,8 +2613,7 @@ fn body_lower_primary_expr(remaining: Int, shell: Node) -> Outcome<Node> {
                           Present { value: transform } => outcome_accepted(value: transform)
                           Absent =>
                             match body_lower_try_fold_loop(remaining: remaining - 1, node: captured) {
-                              Rejected { diagnostics: _ } =>
-                                body_lower_try_operand_or_reject(remaining: remaining - 1, shell: shell, captured: captured)
+                              Rejected { diagnostics: r } => Rejected { diagnostics: r }
                               Accepted { value: fold_result, diagnostics: _ } =>
                                 match fold_result {
                                   Present { value: loop_node } => outcome_accepted(value: loop_node)
