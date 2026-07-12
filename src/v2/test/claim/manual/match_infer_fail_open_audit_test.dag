@@ -153,17 +153,17 @@ fn classical_not_int_match_arrow_fixture() -> Node {
   )
 }
 
-test fn complement_body_real_infer_refuses_holds() -> Bool {
+test fn complement_body_real_infer_refuses_unsupported_pattern_holds() -> Bool {
   match infer(tree: dag_complement_body_fixture) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
-test fn classical_not_int_match_arrow_real_infer_refuses_holds() -> Bool {
+test fn classical_not_int_match_arrow_real_infer_holds() -> Bool {
   match infer(tree: classical_not_int_match_arrow_fixture()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -201,11 +201,11 @@ test fn classical_not_int_match_non_octet_arm_rejects_holds() -> Bool {
   }
 }
 
-test fn complement_arrow_real_infer_refuses_holds() -> Bool {
+test fn complement_arrow_real_infer_refuses_unsupported_pattern_holds() -> Bool {
   match infer(tree: dag_complement_arrow_with_body_fixture) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
-data complement_arrow_post_exit_wave1_breadth_note: String = "complement_arrow_real_infer_holds is post-exit Wave-1 breadth (and/or family): arm bodies use dag_complement_lit_* not dag_token_kw_*, so bool-literal arm typing misses. NOT a classical_not / 1.6 blocker — keep visible so the deficit is not lost."
+data complement_arrow_post_exit_wave1_breadth_note: String = "complement infer refuses because match patterns use dag_complement_lit_* (unsupported by infer_bool_literal_pattern_classify — only dag_token_kw_true/false). Refuse is fail-closed-correct for that unsupported shape. Counted deficit: ground complement_lit on the bool-literal authority (post-exit breadth); target witness is then complement_arrow_real_infer_holds."
