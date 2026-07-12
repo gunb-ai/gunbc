@@ -80,6 +80,7 @@ import v1.compiler.infer_method {
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
+  merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
@@ -102,7 +103,7 @@ import v1.compiler.infer_resolve {
   resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
   is_user_generic_use_site,
-  NodeResolveResult, ItemResult
+  NodeResolveResult, ItemResolveResult
 }
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
@@ -276,15 +277,13 @@ type BuildTypeEnvResult {
   env: TypeEnv
   cache: TypeEnvCache
   diagnostics: List<ErrorNode>
+  binding_forks: List<TypeEnvCacheMergeConflict>
 }
+
+data binding_forks_channel_note: String = "Out-of-band binding-fork ledger channel (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A binding fork is one name reaching a module from two peer imports with DIFFERENT bindings. A PRE-EXISTING fork (present on main) is already resolved there by import-order overlay-wins and every real consumer gets that winner, so refusing it retroactively is a REGRESSION (breaks working resolution, makes this PR pay pre-existing corpus debt), NOT a fail-open being closed. So ALL pre-existing forks - same-tree AND cross-tree - are LEDGERED here, keeping the pre-cut overlay-wins winner (behavior-preserving); NONE ride the diagnostics channel (consumers read diagnostics as compile cleanliness). This is the SANCTIONED declared-interim: loud + typed + counted (the floor prints a partitioned count line per run, cli_run reconcile_with_typed_cache) + dissolution-named (std consolidation / namespace Rule-1 terminal) = the std-consolidation worklist, strictly better than main's SILENT overlay-wins. TREE only labels the dissolution partition (same-tree = homonym/fork within one tree; cross-tree = v1-seed-vs-v2 migration debt). The actual WALL is novelty-refusal - hard-refuse a fork a PR NEWLY introduces - implemented as a separate per-PR gate comparing this ledger against a drift-gated baseline receipt (follow-up work item), NOT an in-run refusal (that would double floor cost by re-resolving main's ledger)."
 
 type ParentModulesResult {
   modules: List<TypedModule>
-  diagnostics: List<ErrorNode>
-}
-
-type VariantResult {
-  variant: Node
   diagnostics: List<ErrorNode>
 }
 
@@ -3039,7 +3038,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   }
 }
 
-type SizeExpr
+type DescentSizeExpr
   = ParamSize { param: String }
   | DividedSize { param: String, divisor: Int }
 
@@ -3049,13 +3048,13 @@ type DescentContext {
   param_order: List<String>
   type_env: TypeEnv
   sub_value_vars: Map<String, SubValueRelation>
-  size_aliases: Map<String, SizeExpr>
+  size_aliases: Map<String, DescentSizeExpr>
   scope_locals: Map<String, TypeBinding>
   func_env: ResolvedFuncEnv
   per_field_vars: Map<String, Map<String, SubValueRelation>>
 }
 
-fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
+fn classify_size_expr(val: Node, ctx: DescentContext) -> DescentSizeExpr? {
   match val.expr_data {
     ExprMethodCall { method_semantics: _ } =>
       let mname = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
@@ -5490,21 +5489,26 @@ fn type_env_cache_from_bindings(
   }
 }
 
+type ParentCacheRow {
+  import_path: String
+  cache: TypeEnvCache
+}
+
 fn union_parent_type_env_caches(
   resolved_imports: List<ResolvedImport>,
   parent_index: Map<String, TypedModule>
-) -> TypeEnvCache {
+) -> GuardedTypeEnvCacheMerge {
   let parent_caches = flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: parent } => [parent.type_env_cache]
+      Present { value: parent } => [ParentCacheRow { import_path: imp.module_path, cache: parent.type_env_cache }]
       Absent => []
     }
   )
   match parent_caches |> first {
-    Absent => empty_type_env_cache()
+    Absent => GuardedTypeEnvCacheMerge { cache: empty_type_env_cache(), conflicts: [] }
     Present { value: head } =>
-      fold(parent_caches |> skip(1), init: head, f: (acc, cache) =>
-        merge_type_env_cache(base: acc, overlay: cache)
+      fold(parent_caches |> skip(1), init: GuardedTypeEnvCacheMerge { cache: head.cache, conflicts: [] }, f: (acc, row) =>
+        merge_type_env_cache_guarded(base: acc.cache, overlay: row.cache, import_path: row.import_path, conflicts: acc.conflicts)
       )
   }
 }
@@ -5593,6 +5597,24 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
   } else { parent_env }
 }
 
+data interface_env_for_import_note: String = "Interface-grain scope parent (S2a move 2 increment B, resolver-graph-major-design.md 7): a dependent's typecheck may read exactly its direct import's exported surface - str_bindings, the flattened ancestry maps, the MERGED inductive_fields/recursive sets (each inductively carries the parent's own ancestry, so one level suffices) - and never the parent's parent-chain env OBJECTS. parents: [] cuts the whole-ancestry retention (the measured ~16.3MiB/module residency class) while every chain consumer stays satisfied: phantom-variant and paramless-generic retries read direct parents' str_bindings (carried), inductive_fields_for reads the merged fields (carried), and the kernel stays the dependent's own last scope parent. Discriminating receipt: transitive_interface_binding_test (green arm = a C-declared record projected through B's exported signature still typechecks in A; red control = a bogus field on the same transitive record still errors)."
+
+fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
+  let filtered = type_env_for_import(module_path: module_path, parent_env: parent_env)
+  TypeEnv {
+    bindings: filtered.bindings,
+    str_bindings: filtered.str_bindings,
+    ancestry_str_bindings: filtered.ancestry_str_bindings,
+    parents: [],
+    recursive_types: filtered.recursive_types,
+    recursive_type_set: filtered.recursive_type_set,
+    inductive_fields: filtered.inductive_fields,
+    source_indices: filtered.source_indices,
+    intern_table: filtered.intern_table,
+    source_visible_names: filtered.source_visible_names
+  }
+}
+
 
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
@@ -5631,7 +5653,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } => [type_env_for_import(module_path: imp.module_path, parent_env: typed_parent.type_env)]
+      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.type_env)]
       Absent => []
     }
   )
@@ -5696,7 +5718,9 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     source_indices: source_indices,
     cycle_set_str: compiler_recursive_name_set()
   )
-  let import_cache = union_parent_type_env_caches(resolved_imports: module.resolved_imports, parent_index: parent_index)
+  let import_union = union_parent_type_env_caches(resolved_imports: module.resolved_imports, parent_index: parent_index)
+  let import_cache = import_union.cache
+  let binding_forks = import_union.conflicts
   let ancestry_cache = if module.resolved_imports |> count == 1 {
     import_cache
   } else {
@@ -5774,7 +5798,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   BuildTypeEnvResult {
     env: final_env,
     cache: type_env_cache,
-    diagnostics: concat(import_diags, resolved_diags)
+    diagnostics: concat(import_diags, resolved_diags),
+    binding_forks: binding_forks
   }
 }
 
@@ -5797,7 +5822,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } => [type_env_for_import(module_path: imp.module_path, parent_env: typed_parent.type_env)]
+      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.type_env)]
       Absent => []
     }
   )
@@ -5825,7 +5850,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     source_indices: source_indices,
     cycle_set_str: compiler_recursive_name_set()
   )
-  let import_cache = union_parent_type_env_caches(resolved_imports: module.resolved_imports, parent_index: parent_index)
+  let import_cache = union_parent_type_env_caches(resolved_imports: module.resolved_imports, parent_index: parent_index).cache
   let ancestry_cache = if module.resolved_imports |> count == 1 {
     import_cache
   } else {
@@ -5871,7 +5896,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     cycle_set_str: cycle_set_str,
     variant_locals: empty_map()
   }
-  BuildTypeEnvResult { env: unresolved_env, cache: type_env_cache, diagnostics: [] }
+  BuildTypeEnvResult { env: unresolved_env, cache: type_env_cache, diagnostics: [], binding_forks: [] }
 }
 
 fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module_name: String) -> ItemInfo {
@@ -6226,6 +6251,7 @@ fn build_module_context(contributions: List<ItemContribution>,
 type TypecheckModuleResult {
   typed: TypedModule
   diagnostics: List<ErrorNode>
+  binding_forks: List<TypeEnvCacheMergeConflict>
 }
 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckModuleResult {
@@ -6246,7 +6272,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         func_env: ResolvedFuncEnv { local: empty_map(), parents: [] },
         item_registry: empty_map()
       },
-      diagnostics: concat(env_diags, seed_diags)
+      diagnostics: concat(env_diags, seed_diags),
+      binding_forks: env_result.binding_forks
     }
   }
 
@@ -6324,7 +6351,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       func_env: updated_func_env,
       item_registry: ctx.item_registry
     },
-    diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, seed_diags)
+    diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, seed_diags),
+    binding_forks: env_result.binding_forks
   }
 }
 
@@ -6823,7 +6851,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     let import_parents = flat_map(module_imports(n: m.module), imp =>
       let path = import_module_path_at(imp: imp, source_indices: source_indices)
       match map_get(index, path) {
-        Present { value: parent } => [type_env_for_import(module_path: path, parent_env: parent.type_env)]
+        Present { value: parent } => [interface_env_for_import(module_path: path, parent_env: parent.type_env)]
         Absent => []
       }
     )

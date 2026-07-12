@@ -3159,6 +3159,20 @@ fn reconcile_with_typed_cache(
         }
     }
 
+    // Binding-fork ledger receipt (declared interim, lane ruling REVISED 2026-07-11: novelty,
+    // not tree, is the refusal axis). ALL pre-existing binding forks — same-tree AND cross-tree —
+    // ride the typed out-of-band channel (TypecheckModuleResult.binding_forks), never diagnostics
+    // (consumers read diagnostics as compile cleanliness), keeping the pre-cut overlay-wins winner
+    // (behavior-preserving: main already resolves these by overlay-wins, so refusing retroactively
+    // would be a regression, not a fail-open being closed). Counted per run, PARTITIONED by tree,
+    // on the receipt surface the floor prints — the std-consolidation worklist, and strictly better
+    // than main's SILENT overlay-wins. TREE only labels the dissolution partition (same-tree =
+    // homonym/fork within one tree; cross-tree = v1-seed-vs-v2 migration debt). The actual WALL is
+    // novelty-refusal (a separate per-PR gate diffing this ledger against a drift-gated baseline;
+    // follow-up work item), NOT an in-run refusal (that would double floor cost). Dissolve-on: std
+    // consolidation / namespace Rule-1 terminal.
+    let mut same_tree_fork_count: usize = 0;
+    let mut cross_tree_fork_count: usize = 0;
     // Assembled view (original resolver order): dispatch order above is the schedule's
     // concern; the graph handed to consumers — module list, registry merge order, and
     // diagnostic order — is assembled in the exact order the serial fold produced, so the
@@ -3176,6 +3190,16 @@ fn reconcile_with_typed_cache(
         item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
+        for fork in tc_result.binding_forks.iter() {
+            // `same_tree` is computed on the `.dag` side (04_env `source_tree_of`, the single
+            // classification authority) and carried on the conflict — no parallel Rust
+            // classifier to drift (§3).
+            if fork.same_tree {
+                same_tree_fork_count += 1;
+            } else {
+                cross_tree_fork_count += 1;
+            }
+        }
     }
 
     let expanded_registry =
@@ -3187,6 +3211,12 @@ fn reconcile_with_typed_cache(
         }
         acc
     });
+    let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
+    if total_fork_count > 0 {
+        eprintln!(
+            "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
+        );
+    }
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
