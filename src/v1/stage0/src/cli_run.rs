@@ -7929,7 +7929,6 @@ impl ShardStyle {
     }
 }
 
-
 #[allow(clippy::too_many_arguments)]
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
