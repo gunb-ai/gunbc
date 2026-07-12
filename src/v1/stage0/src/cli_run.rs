@@ -1148,7 +1148,10 @@ pub fn free_monoid_symbol_value_from_dotted_string(
 }
 
 pub(crate) fn repo_rel(path: &Path) -> String {
-    repo_relative_path_normalized(path)
+    // Same out-of-tree fallback as the module index: corpus walks accept
+    // caller-supplied roots (temp fixture trees, other checkouts), whose files key
+    // by their absolute spelling; relative-not-under-root stays a refusal.
+    module_index_path_key(path)
 }
 
 pub(crate) fn is_test_dag(path: &str) -> bool {
