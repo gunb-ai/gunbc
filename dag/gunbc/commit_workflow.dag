@@ -250,30 +250,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/complexity/fold_lowering_test.dag",
-      check_fns: [
-        "fold_call_lowers_to_terminating_loop",
-        "non_fold_call_refuses"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/complexity/accumulator_copy_fold_analysis_test.dag",
-      check_fns: [
-        "quadratic_fold_has_suspect",
-        "identity_fold_has_no_finding"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/lens/complexity_accumulator_copy_test.dag",
       check_fns: [
         "red_list_append_left_is_suspect",
@@ -650,3 +626,5 @@ fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> Generated
     GitPrePushHook => GithooksPrePushArtifact
   }
 }
+
+data commit_workflow_long_lane_note: String = "Two complexity-lens enrollments (fold_lowering_test, accumulator_copy_fold_analysis_test) DELETED from the GithubActionsCiJob surface 2026-07-12: their check_fns measured over the fast-lane 5-second witness eval budget (operator rule; authority gunbc_ci_fast_lane_rule_note in v2.workflow.ci_floor_plan), and an explicit enrollment row bypasses discovery exclusion, so re-pathing the row to test/claim/long/ would keep the over-budget rows on every PR. Offlining an explicit row means deleting its declaration, never teaching exclusions to veto the roster (the enforcement-coverage precedent in gunbc.ci_layer_roots). The files live under src/v2/test/claim/long/ with the local recipe; dissolve-on: the long-lane scheduled trigger (falsifier follow-on) enrolls them and this note retires."

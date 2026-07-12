@@ -13,7 +13,7 @@ import v2.compiler.parse {
   parse_table_memo_insert_refused,
 }
 import v2.compiler.materialization_carriers { materialization_allows_memo_store }
-import v2.test.parse.parse_table_memo_amortization {
+import v2.test.long.parse_table_memo_amortization {
   witness_parse_table_memo_hit_path_content_hash_stable,
 }
 import v2.std.collection { Absent, Present, map_get, map_insert, empty_map }

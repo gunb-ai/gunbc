@@ -9,7 +9,7 @@ import v2.extdeps.languages.rust {
   rust_source_text,
   rust_target_model_staging
 }
-import v2.test.manual.emit_host_add_equals_eval {
+import v2.test.execution.emit_host_add_equals_eval {
   emit_eval_call_primitive_five,
   emit_eval_call_primitive_six,
   emit_eval_subject,
