@@ -1,25 +1,51 @@
 module test.claim.host_standup_assimilation_deduction
 
-import std.types { Bool, List }
+import std.types { Bool, List, Milliseconds }
+import std.upsert_decision {
+  Converged,
+  Absent,
+  Drifted,
+  Apply,
+  Refuse,
+  Noop,
+  UpsertClassification,
+}
+import std.temporal_effect {
+  TransitionStalled,
+  srv3_install_stall_router_lease_limit_ms,
+}
+import extdeps.bmc.types { BootOverrideModeLegacy, BootOverrideModeUefi }
+import gunbc.os_install_deduction { SubiquityStorageScreen }
 import gunbc.host_standup_assimilation_deduction {
-  ActuationPending,
-  ActuationOsInstalledFromDhcpSubsumption,
-  DeductionCauseOnlyBmcLease,
-  DeductionCauseKvmWeakBooted,
-  DeductionCauseDhcpSubsumptionOsInstalled,
-  srv3_default_os_install_actuation_level,
-  srv3_post_install_os_install_actuation_level,
+  TransitionReached,
+  TransitionPending,
+  TransitionFailed,
+  AssertOsInstallActuatedReached,
+  AssertOsInstallActuationPending,
+  StallTransitionProbe,
+  StallCauseBootModeLegacyUefiRequired,
+  StallCauseMediaNeverAttached,
+  StallCauseSeedNotFoundAwaitingStorage,
+  StallCauseConsoleRedirectOff,
+  StallCauseNoBootableDevice,
+  RemediationSetBootOverrideModeUefi,
+  RemediationStartNbdServeSession,
+  RemediationRemasterSeedOrDeclareStoragePolicy,
+  srv3_pre_install_transition_level,
+  srv3_post_install_transition_level,
   deduce_os_install_actuated_satisfied,
   deduce_host_identity_converge_reachable,
-  assimilation_deduction_cause_from_level,
-  assimilation_deduction_cause_dominates_kvm_weak,
-  cause_fold_dominant_assimilation,
-  assimilation_deduction_cause_label,
+  classify_os_install_actuation_level,
+  decision_for_os_install_actuation_level,
+  classify_os_install_actuation_upsert,
+  stall_causes_from_probe,
+  cause_fold_primary_stall_remediation,
+  stall_transition_cause_label,
 }
 import gunbc.host_standup {
   host_standup_gap_count,
-  host_standup_gap_count_at_os_install_level,
-  host_standup_step_is_effective_gap_at_os_install_level,
+  host_standup_gap_count_at_transition_level,
+  host_standup_step_is_effective_gap_at_transition_level,
   host_standup_spine,
   Prefix,
   OsInstallActuated,
@@ -30,73 +56,164 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn pre_install_level_is_pending_not_actuated() -> Bool {
-  srv3_default_os_install_actuation_level() == ActuationPending
-    && !deduce_os_install_actuated_satisfied(level: ActuationPending)
-    && !deduce_host_identity_converge_reachable(level: ActuationPending)
+test fn pre_install_within_budget_is_pending_not_reached() -> Bool {
+  srv3_pre_install_transition_level(elapsed_ms: 0) == TransitionPending
+    && !deduce_os_install_actuated_satisfied(level: TransitionPending)
+    && !deduce_host_identity_converge_reachable(level: TransitionPending)
+    && classify_os_install_actuation_level(level: TransitionPending) == Absent
 }
 
-test fn post_install_dhcp_subsumption_deduces_actuated_and_converge() -> Bool {
-  srv3_post_install_os_install_actuation_level() == ActuationOsInstalledFromDhcpSubsumption
-    && deduce_os_install_actuated_satisfied(level: ActuationOsInstalledFromDhcpSubsumption)
-    && deduce_host_identity_converge_reachable(level: ActuationOsInstalledFromDhcpSubsumption)
+test fn post_install_lease_row_deduces_reached() -> Bool {
+  srv3_post_install_transition_level(elapsed_ms: 0) == TransitionReached
+    && deduce_os_install_actuated_satisfied(level: TransitionReached)
+    && deduce_host_identity_converge_reachable(level: TransitionReached)
+    && classify_os_install_actuation_level(level: TransitionReached) == Converged
+    && match decision_for_os_install_actuation_level(level: TransitionReached) {
+      Apply { plan: AssertOsInstallActuatedReached } => true
+      _ => false
+    }
 }
 
-test fn dhcp_subsumption_cause_dominates_kvm_weak() -> Bool {
-  assimilation_deduction_cause_dominates_kvm_weak(causes: [
-    DeductionCauseKvmWeakBooted,
-    DeductionCauseDhcpSubsumptionOsInstalled,
-  ])
-    && !assimilation_deduction_cause_dominates_kvm_weak(causes: [
-      DeductionCauseKvmWeakBooted,
-      DeductionCauseOnlyBmcLease,
-    ])
+test fn no_lease_past_budget_is_failed_not_fabricated_success() -> Bool {
+  let past = srv3_install_stall_router_lease_limit_ms + 1
+  match srv3_pre_install_transition_level(elapsed_ms: past) {
+    TransitionFailed { reason: r } =>
+      string_contains(s: r, pattern: "transition stalled:")
+        && !deduce_os_install_actuated_satisfied(level: TransitionFailed { reason: r })
+        && classify_os_install_actuation_level(
+          level: TransitionFailed { reason: r },
+        ) == Drifted
+        && match decision_for_os_install_actuation_level(
+          level: TransitionFailed { reason: r },
+        ) {
+          Refuse { reason: _ } => true
+          Apply { plan: _ } => false
+          Noop => false
+        }
+    TransitionReached => false
+    TransitionPending => false
+  }
 }
 
-test fn cause_fold_picks_highest_priority() -> Bool {
-  match cause_fold_dominant_assimilation(causes: [
-    DeductionCauseOnlyBmcLease,
-    DeductionCauseKvmWeakBooted,
-    DeductionCauseDhcpSubsumptionOsInstalled,
-  ]) {
-    DeductionCauseDhcpSubsumptionOsInstalled => true
+test fn upsert_pending_applies_assert_pending_plan() -> Bool {
+  match classify_os_install_actuation_upsert(level: TransitionPending) {
+    UpsertClassification { verdict: Absent, decision: Apply { plan: AssertOsInstallActuationPending } } => true
     _ => false
   }
 }
 
+test fn stall_cause_fold_legacy_boot_mode() -> Bool {
+  let causes = stall_causes_from_probe(probe: StallTransitionProbe {
+    boot_override_mode: Present { value: BootOverrideModeLegacy },
+    nbd_serve_session_active: true,
+    kvm_screen: Absent,
+    host_logger_nonempty: true,
+    boot_progress_none: false,
+  })
+  fold(
+    causes,
+    init: false,
+    f: (acc, c) =>
+      acc || (match c {
+        StallCauseBootModeLegacyUefiRequired => true
+        _ => false
+      })
+  )
+    && match cause_fold_primary_stall_remediation(causes: causes) {
+      Present { value: RemediationSetBootOverrideModeUefi } => true
+      _ => false
+    }
+}
+
+test fn stall_cause_fold_subiquity_storage_screen() -> Bool {
+  let causes = stall_causes_from_probe(probe: StallTransitionProbe {
+    boot_override_mode: Present { value: BootOverrideModeUefi },
+    nbd_serve_session_active: true,
+    kvm_screen: Present { value: SubiquityStorageScreen },
+    host_logger_nonempty: true,
+    boot_progress_none: false,
+  })
+  fold(
+    causes,
+    init: false,
+    f: (acc, c) =>
+      acc || stall_transition_cause_label(cause: c) == "seed-not-found-awaiting-storage"
+  )
+    && match cause_fold_primary_stall_remediation(causes: causes) {
+      Present { value: RemediationRemasterSeedOrDeclareStoragePolicy } => true
+      _ => false
+    }
+}
+
+test fn stall_cause_fold_media_and_logger_distinct() -> Bool {
+  let media_causes = stall_causes_from_probe(probe: StallTransitionProbe {
+    boot_override_mode: Present { value: BootOverrideModeUefi },
+    nbd_serve_session_active: false,
+    kvm_screen: Absent,
+    host_logger_nonempty: true,
+    boot_progress_none: false,
+  })
+  let logger_causes = stall_causes_from_probe(probe: StallTransitionProbe {
+    boot_override_mode: Present { value: BootOverrideModeUefi },
+    nbd_serve_session_active: true,
+    kvm_screen: Absent,
+    host_logger_nonempty: false,
+    boot_progress_none: false,
+  })
+  match cause_fold_primary_stall_remediation(causes: media_causes) {
+    Present { value: RemediationStartNbdServeSession } => true
+    _ => false
+  }
+    && fold(
+      logger_causes,
+      init: false,
+      f: (acc, c) =>
+        acc || (match c {
+          StallCauseConsoleRedirectOff => true
+          _ => false
+        })
+    )
+}
+
+test fn stall_cause_fold_no_bootable_device() -> Bool {
+  let causes = stall_causes_from_probe(probe: StallTransitionProbe {
+    boot_override_mode: Present { value: BootOverrideModeUefi },
+    nbd_serve_session_active: true,
+    kvm_screen: Absent,
+    host_logger_nonempty: true,
+    boot_progress_none: true,
+  })
+  fold(
+    causes,
+    init: false,
+    f: (acc, c) =>
+      acc || (match c {
+        StallCauseNoBootableDevice => true
+        _ => false
+      })
+  )
+}
+
 test fn pre_install_gap_count_stays_four() -> Bool {
   host_standup_gap_count() == 4
-    && host_standup_gap_count_at_os_install_level(level: ActuationPending) == 4
+    && host_standup_gap_count_at_transition_level(level: TransitionPending) == 4
 }
 
 test fn post_install_subsumption_clears_os_install_actuated_gap() -> Bool {
-  host_standup_gap_count_at_os_install_level(
-    level: ActuationOsInstalledFromDhcpSubsumption,
-  ) == 3
+  host_standup_gap_count_at_transition_level(level: TransitionReached) == 3
     && fold(
       host_standup_spine,
       init: false,
       f: (acc, s) =>
         acc || (match s.phase {
           Prefix { phase: OsInstallActuated } =>
-            !host_standup_step_is_effective_gap_at_os_install_level(
+            !host_standup_step_is_effective_gap_at_transition_level(
               step: s,
-              level: ActuationOsInstalledFromDhcpSubsumption,
+              level: TransitionReached,
             )
           _ => false
         })
     )
-}
-
-test fn assimilation_cause_labels_are_stable() -> Bool {
-  assimilation_deduction_cause_label(
-    cause: assimilation_deduction_cause_from_level(level: ActuationPending),
-  ) == "OnlyBmcLeasePresent"
-    && assimilation_deduction_cause_label(
-      cause: assimilation_deduction_cause_from_level(
-        level: ActuationOsInstalledFromDhcpSubsumption,
-      ),
-    ) == "OsInstalledFromDhcpSubsumption"
 }
 
 test fn host_identity_converge_step_stays_modeled_not_gap() -> Bool {
@@ -106,9 +223,9 @@ test fn host_identity_converge_step_stays_modeled_not_gap() -> Bool {
     f: (acc, s) =>
       acc || (match s.phase {
         Assimilation { phase: HostIdentityConverge } =>
-          !host_standup_step_is_effective_gap_at_os_install_level(
+          !host_standup_step_is_effective_gap_at_transition_level(
             step: s,
-            level: ActuationOsInstalledFromDhcpSubsumption,
+            level: TransitionReached,
           )
         _ => false
       })

@@ -1,8 +1,33 @@
 module gunbc.host_standup_assimilation_deduction
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, Milliseconds }
 import std.disposition { Disposition, Terminal }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Absent,
+  Drifted,
+  UpsertDecision,
+  UpsertClassification,
+  Noop,
+  Apply,
+  Refuse,
+}
+import std.temporal_effect {
+  TransitionStallState,
+  TransitionWithinBudget,
+  TransitionStalled,
+  EffectTransitionBudget,
+  transition_stall_state_from_budget,
+  srv3_os_install_to_host_identity_budget,
+  srv3_install_stall_router_lease_limit_ms,
+}
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
+import extdeps.bmc.types {
+  RedfishBootSourceOverrideMode,
+  BootOverrideModeLegacy,
+  BootOverrideModeUefi,
+}
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.network_identity_subsumption {
@@ -10,113 +35,284 @@ import gunbc.network_identity_subsumption {
   srv3_pre_install_lease_table,
   srv3_post_install_lease_table_fixture,
 }
-
-data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = Terminal {
-  reason: "Level-triggered assimilation deduction: OsInstalled from DHCP option-12 subsumption is the sole authority that satisfies prefix:os-install-actuated and unlocks P0:host-identity-converge. KVM/login weak observations never substitute for router read-back (cause-fold priority). Level-triggered = current observation level, not edge events."
+import gunbc.os_install_deduction {
+  KvmObservedScreen,
+  SubiquityStorageScreen,
 }
 
-type OsInstallActuationLevel
-  = ActuationUnobserved
-  | ActuationPending
-  | ActuationOsInstalledFromDhcpSubsumption
+data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = Terminal {
+  reason: "Level-triggered assimilation deduction: OsInstalled from DHCP option-12 subsumption satisfies prefix:os-install-actuated and unlocks P0:host-identity-converge. Happy path = lease read only; KVM/BMC weak surfaces consulted ONLY inside stall cause-fold. Low durable state — deduce fresh from grounded observations, upsert via std.upsert_decision."
+}
 
-type AssimilationDeductionCause
-  = DeductionCauseOnlyBmcLease
-  | DeductionCauseDhcpSubsumptionOsInstalled
-  | DeductionCauseKvmWeakBooted
+type HostStandupTransitionLevel
+  = TransitionReached
+  | TransitionPending
+  | TransitionFailed { reason: NonEmptyStr }
 
-type AssimilationCauseFoldAcc {
-  dominant: AssimilationDeductionCause
+type OsInstallActuationAssertPlan
+  = AssertOsInstallActuatedReached
+  | AssertOsInstallActuationPending
+  | AssertOsInstallActuationFailed { reason: NonEmptyStr }
+
+type StallTransitionProbe {
+  boot_override_mode: RedfishBootSourceOverrideMode?
+  nbd_serve_session_active: Bool
+  kvm_screen: KvmObservedScreen?
+  host_logger_nonempty: Bool
+  boot_progress_none: Bool
+}
+
+type StallTransitionCause
+  = StallCauseBootModeLegacyUefiRequired
+  | StallCauseMediaNeverAttached
+  | StallCauseSeedNotFoundAwaitingStorage
+  | StallCauseConsoleRedirectOff
+  | StallCauseNoBootableDevice
+
+type StallRemediation
+  = RemediationSetBootOverrideModeUefi
+  | RemediationStartNbdServeSession
+  | RemediationRemasterSeedOrDeclareStoragePolicy
+  | RemediationEnableHostLoggerConsoleRedirect
+  | RemediationInspectBootProgressAndSel
+
+type StallCauseFoldAcc {
+  dominant: StallTransitionCause
   priority: Int
 }
 
-fn assimilation_deduction_cause_priority(cause: AssimilationDeductionCause) -> Int {
+fn stall_transition_cause_priority(cause: StallTransitionCause) -> Int {
   match cause {
-    DeductionCauseOnlyBmcLease => 0
-    DeductionCauseKvmWeakBooted => 1
-    DeductionCauseDhcpSubsumptionOsInstalled => 2
+    StallCauseConsoleRedirectOff => 0
+    StallCauseMediaNeverAttached => 1
+    StallCauseBootModeLegacyUefiRequired => 2
+    StallCauseSeedNotFoundAwaitingStorage => 3
+    StallCauseNoBootableDevice => 4
   }
 }
 
-fn cause_fold_dominant_assimilation(
-  causes: List<AssimilationDeductionCause>,
-) -> AssimilationDeductionCause {
-  fold(
+fn deduce_os_install_actuated_from_lease_table(
+  table: Cr1000aDhcpLeaseTable,
+  fleet_slot: HostIdentity,
+) -> Bool {
+  lease_table_has_os_up_subsumption(table: table, fleet_slot: fleet_slot)
+}
+
+fn deduce_host_standup_transition_level(
+  table: Cr1000aDhcpLeaseTable,
+  fleet_slot: HostIdentity,
+  stall: TransitionStallState,
+) -> HostStandupTransitionLevel {
+  if deduce_os_install_actuated_from_lease_table(table: table, fleet_slot: fleet_slot) {
+    TransitionReached
+  } else {
+    match stall {
+      TransitionWithinBudget => TransitionPending
+      TransitionStalled { transition_label: t, elapsed_ms: e, limit_ms: l } =>
+        TransitionFailed {
+          reason: concat(
+            concat(
+              concat("transition stalled: ", t),
+              concat(" elapsed_ms=", to_string(e))
+            ),
+            concat(" limit_ms=", to_string(l))
+          ) as NonEmptyStr,
+        }
+    }
+  }
+}
+
+fn classify_os_install_actuation_level(
+  level: HostStandupTransitionLevel,
+) -> ObservationVerdict {
+  match level {
+    TransitionReached => Converged
+    TransitionPending => Absent
+    TransitionFailed { reason: _ } => Drifted
+  }
+}
+
+fn decision_for_os_install_actuation_level(
+  level: HostStandupTransitionLevel,
+) -> UpsertDecision<OsInstallActuationAssertPlan> {
+  match level {
+    TransitionReached => Apply { plan: AssertOsInstallActuatedReached }
+    TransitionPending => Apply { plan: AssertOsInstallActuationPending }
+    TransitionFailed { reason: r } =>
+      Refuse { reason: r }
+  }
+}
+
+fn classify_os_install_actuation_upsert(
+  level: HostStandupTransitionLevel,
+) -> UpsertClassification<OsInstallActuationAssertPlan> {
+  UpsertClassification {
+    verdict: classify_os_install_actuation_level(level: level),
+    decision: decision_for_os_install_actuation_level(level: level),
+  }
+}
+
+fn srv3_deduce_os_install_to_host_identity_level(
+  table: Cr1000aDhcpLeaseTable,
+  elapsed_ms: Milliseconds,
+) -> HostStandupTransitionLevel {
+  deduce_host_standup_transition_level(
+    table: table,
+    fleet_slot: operator_host_srv3,
+    stall: transition_stall_state_from_budget(
+      budget: srv3_os_install_to_host_identity_budget(elapsed_ms: elapsed_ms),
+    ),
+  )
+}
+
+fn srv3_pre_install_transition_level(elapsed_ms: Milliseconds) -> HostStandupTransitionLevel {
+  srv3_deduce_os_install_to_host_identity_level(
+    table: srv3_pre_install_lease_table,
+    elapsed_ms: elapsed_ms,
+  )
+}
+
+fn srv3_post_install_transition_level(elapsed_ms: Milliseconds) -> HostStandupTransitionLevel {
+  srv3_deduce_os_install_to_host_identity_level(
+    table: srv3_post_install_lease_table_fixture,
+    elapsed_ms: elapsed_ms,
+  )
+}
+
+fn deduce_os_install_actuated_satisfied(level: HostStandupTransitionLevel) -> Bool {
+  match level {
+    TransitionReached => true
+    TransitionPending => false
+    TransitionFailed { reason: _ } => false
+  }
+}
+
+fn deduce_host_identity_converge_reachable(level: HostStandupTransitionLevel) -> Bool {
+  deduce_os_install_actuated_satisfied(level: level)
+}
+
+fn stall_cause_boot_mode_legacy_probe(
+  mode: RedfishBootSourceOverrideMode?,
+) -> StallTransitionCause? {
+  match mode {
+    Present { value: BootOverrideModeLegacy } =>
+      Present { value: StallCauseBootModeLegacyUefiRequired }
+    Present { value: BootOverrideModeUefi } => none
+    Absent => none
+  }
+}
+
+fn stall_cause_media_probe(nbd_serve_session_active: Bool) -> StallTransitionCause? {
+  if nbd_serve_session_active {
+    none
+  } else {
+    Present { value: StallCauseMediaNeverAttached }
+  }
+}
+
+fn stall_cause_kvm_probe(screen: KvmObservedScreen?) -> StallTransitionCause? {
+  match screen {
+    Present { value: SubiquityStorageScreen } =>
+      Present { value: StallCauseSeedNotFoundAwaitingStorage }
+    Present { value: _ } => none
+    Absent => none
+  }
+}
+
+fn stall_cause_host_logger_probe(host_logger_nonempty: Bool) -> StallTransitionCause? {
+  if host_logger_nonempty {
+    none
+  } else {
+    Present { value: StallCauseConsoleRedirectOff }
+  }
+}
+
+fn stall_cause_boot_progress_probe(boot_progress_none: Bool) -> StallTransitionCause? {
+  if boot_progress_none {
+    Present { value: StallCauseNoBootableDevice }
+  } else {
+    none
+  }
+}
+
+fn stall_causes_from_probe(probe: StallTransitionProbe) -> List<StallTransitionCause> {
+  let causes = []
+  let causes = match stall_cause_boot_mode_legacy_probe(mode: probe.boot_override_mode) {
+    Present { value: c } => concat(causes, [c])
+    Absent => causes
+  }
+  let causes = match stall_cause_media_probe(nbd_serve_session_active: probe.nbd_serve_session_active) {
+    Present { value: c } => concat(causes, [c])
+    Absent => causes
+  }
+  let causes = match stall_cause_kvm_probe(screen: probe.kvm_screen) {
+    Present { value: c } => concat(causes, [c])
+    Absent => causes
+  }
+  let causes = match stall_cause_host_logger_probe(host_logger_nonempty: probe.host_logger_nonempty) {
+    Present { value: c } => concat(causes, [c])
+    Absent => causes
+  }
+  match stall_cause_boot_progress_probe(boot_progress_none: probe.boot_progress_none) {
+    Present { value: c } => concat(causes, [c])
+    Absent => causes
+  }
+}
+
+fn cause_fold_primary_stall_remediation(
+  causes: List<StallTransitionCause>,
+) -> StallRemediation? {
+  match fold(
     causes,
-    init: AssimilationCauseFoldAcc {
-      dominant: DeductionCauseOnlyBmcLease,
-      priority: assimilation_deduction_cause_priority(cause: DeductionCauseOnlyBmcLease),
+    init: StallCauseFoldAcc {
+      dominant: StallCauseConsoleRedirectOff,
+      priority: -1,
     },
     f: (acc, c) => {
-      let p = assimilation_deduction_cause_priority(cause: c)
+      let p = stall_transition_cause_priority(cause: c)
       if p > acc.priority {
-        AssimilationCauseFoldAcc { dominant: c, priority: p }
+        StallCauseFoldAcc { dominant: c, priority: p }
       } else {
         acc
       }
     },
-  ).dominant
-}
-
-fn os_install_actuation_level_from_lease_table(
-  table: Cr1000aDhcpLeaseTable,
-  fleet_slot: HostIdentity,
-) -> OsInstallActuationLevel {
-  if lease_table_has_os_up_subsumption(table: table, fleet_slot: fleet_slot) {
-    ActuationOsInstalledFromDhcpSubsumption
-  } else {
-    ActuationPending
+  ) {
+    StallCauseFoldAcc { dominant: d, priority: p } =>
+      if p < 0 {
+        none
+      } else {
+        match d {
+          StallCauseBootModeLegacyUefiRequired =>
+            Present { value: RemediationSetBootOverrideModeUefi }
+          StallCauseMediaNeverAttached =>
+            Present { value: RemediationStartNbdServeSession }
+          StallCauseSeedNotFoundAwaitingStorage =>
+            Present { value: RemediationRemasterSeedOrDeclareStoragePolicy }
+          StallCauseConsoleRedirectOff =>
+            Present { value: RemediationEnableHostLoggerConsoleRedirect }
+          StallCauseNoBootableDevice =>
+            Present { value: RemediationInspectBootProgressAndSel }
+        }
+      }
   }
 }
 
-fn srv3_default_os_install_actuation_level() -> OsInstallActuationLevel {
-  os_install_actuation_level_from_lease_table(
-    table: srv3_pre_install_lease_table,
-    fleet_slot: operator_host_srv3,
-  )
-}
-
-fn srv3_post_install_os_install_actuation_level() -> OsInstallActuationLevel {
-  os_install_actuation_level_from_lease_table(
-    table: srv3_post_install_lease_table_fixture,
-    fleet_slot: operator_host_srv3,
-  )
-}
-
-fn deduce_os_install_actuated_satisfied(level: OsInstallActuationLevel) -> Bool {
-  match level {
-    ActuationOsInstalledFromDhcpSubsumption => true
-    ActuationPending => false
-    ActuationUnobserved => false
+fn stall_remediation_label(remediation: StallRemediation) -> String {
+  match remediation {
+    RemediationSetBootOverrideModeUefi => "set BootSourceOverrideMode=UEFI on boot-once-cd"
+    RemediationStartNbdServeSession => "start nbd serve session and hold lease"
+    RemediationRemasterSeedOrDeclareStoragePolicy => "remaster seeded ISO or declare storage policy"
+    RemediationEnableHostLoggerConsoleRedirect => "enable HostLogger console redirect"
+    RemediationInspectBootProgressAndSel => "inspect BootProgress and SEL for no-bootable-device"
   }
 }
 
-fn deduce_host_identity_converge_reachable(level: OsInstallActuationLevel) -> Bool {
-  deduce_os_install_actuated_satisfied(level: level)
-}
-
-fn assimilation_deduction_cause_from_level(level: OsInstallActuationLevel) -> AssimilationDeductionCause {
-  match level {
-    ActuationOsInstalledFromDhcpSubsumption => DeductionCauseDhcpSubsumptionOsInstalled
-    ActuationPending => DeductionCauseOnlyBmcLease
-    ActuationUnobserved => DeductionCauseOnlyBmcLease
-  }
-}
-
-fn assimilation_deduction_cause_dominates_kvm_weak(
-  causes: List<AssimilationDeductionCause>,
-) -> Bool {
-  match cause_fold_dominant_assimilation(causes: causes) {
-    DeductionCauseDhcpSubsumptionOsInstalled => true
-    DeductionCauseKvmWeakBooted => false
-    DeductionCauseOnlyBmcLease => false
-  }
-}
-
-fn assimilation_deduction_cause_label(cause: AssimilationDeductionCause) -> String {
+fn stall_transition_cause_label(cause: StallTransitionCause) -> String {
   match cause {
-    DeductionCauseOnlyBmcLease => "OnlyBmcLeasePresent"
-    DeductionCauseKvmWeakBooted => "KvmSuggestsOsBooted"
-    DeductionCauseDhcpSubsumptionOsInstalled => "OsInstalledFromDhcpSubsumption"
+    StallCauseBootModeLegacyUefiRequired => "boot-mode-legacy-uefi-required"
+    StallCauseMediaNeverAttached => "media-never-attached"
+    StallCauseSeedNotFoundAwaitingStorage => "seed-not-found-awaiting-storage"
+    StallCauseConsoleRedirectOff => "console-redirect-off"
+    StallCauseNoBootableDevice => "no-bootable-device"
   }
 }

@@ -49,13 +49,13 @@ data srv3_os_lan_ipv4_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data srv3_fleet_slot_host_name: HostName = HostName {
+data srv3_fleet_slot_host_name: DhcpClientHostNameOption12 = HostName {
   name: DomainName { labels: ["srv3" as DnsLabel] },
   qualification: PartiallyQualified,
 }
 
 fn dynamic_lease_hostname_subsumes_fleet_slot(
-  reported: DhcpClientHostNameOption12,
+  reported: HostName,
   fleet_slot: HostIdentity,
 ) -> Bool {
   match deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot) {

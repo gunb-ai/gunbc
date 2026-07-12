@@ -24,8 +24,10 @@ import gunbc.host_converge { fleet_converge_policy, ConvergePolicy }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import product.placement_supply { HostIdentity }
 import gunbc.host_standup_assimilation_deduction {
-  OsInstallActuationLevel,
-  srv3_default_os_install_actuation_level,
+  HostStandupTransitionLevel,
+  TransitionPending,
+  TransitionReached,
+  srv3_pre_install_transition_level,
   deduce_os_install_actuated_satisfied,
 }
 
@@ -395,15 +397,15 @@ fn host_standup_step_is_gap(step: HostStandupStep) -> Bool {
 }
 
 fn host_standup_step_is_effective_gap(step: HostStandupStep) -> Bool {
-  host_standup_step_is_effective_gap_at_os_install_level(
+  host_standup_step_is_effective_gap_at_transition_level(
     step: step,
-    level: srv3_default_os_install_actuation_level(),
+    level: srv3_pre_install_transition_level(elapsed_ms: 0),
   )
 }
 
-fn host_standup_step_is_effective_gap_at_os_install_level(
+fn host_standup_step_is_effective_gap_at_transition_level(
   step: HostStandupStep,
-  level: OsInstallActuationLevel,
+  level: HostStandupTransitionLevel,
 ) -> Bool {
   match step.phase {
     Prefix { phase: OsInstallActuated } =>
@@ -416,12 +418,12 @@ fn host_standup_step_is_effective_gap_at_os_install_level(
   }
 }
 
-fn host_standup_gap_count_at_os_install_level(level: OsInstallActuationLevel) -> Int {
+fn host_standup_gap_count_at_transition_level(level: HostStandupTransitionLevel) -> Int {
   fold(
     host_standup_spine,
     init: 0,
     f: (acc, s) =>
-      if host_standup_step_is_effective_gap_at_os_install_level(step: s, level: level) {
+      if host_standup_step_is_effective_gap_at_transition_level(step: s, level: level) {
         acc + 1
       } else {
         acc
@@ -498,7 +500,9 @@ fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
 }
 
 fn host_standup_gap_count() -> Int {
-  host_standup_gap_count_at_os_install_level(level: srv3_default_os_install_actuation_level())
+  host_standup_gap_count_at_transition_level(
+    level: srv3_pre_install_transition_level(elapsed_ms: 0),
+  )
 }
 
 fn assimilation_input_satisfied(w: AssimilationInputWitness) -> Bool {

@@ -354,3 +354,39 @@ fn cause_fold_dominant_stall(causes: List<EffectStallCause>) -> EffectStallCause
 data srv3_install_stall_installer_progress_limit_ms: Milliseconds = 900000
 
 data srv3_install_stall_router_lease_limit_ms: Milliseconds = 4500000
+
+type EffectTransitionBudget {
+  transition_label: NonEmptyStr
+  limit_ms: Milliseconds
+  elapsed_ms: Milliseconds
+}
+
+type TransitionStallState
+  = TransitionWithinBudget
+  | TransitionStalled {
+      transition_label: NonEmptyStr
+      elapsed_ms: Milliseconds
+      limit_ms: Milliseconds
+    }
+
+fn transition_stall_state_from_budget(budget: EffectTransitionBudget) -> TransitionStallState {
+  if budget.elapsed_ms <= budget.limit_ms {
+    TransitionWithinBudget
+  } else {
+    TransitionStalled {
+      transition_label: budget.transition_label,
+      elapsed_ms: budget.elapsed_ms,
+      limit_ms: budget.limit_ms,
+    }
+  }
+}
+
+data srv3_os_install_to_host_identity_transition: NonEmptyStr = "os-install-actuated-to-host-identity-converge" as NonEmptyStr
+
+fn srv3_os_install_to_host_identity_budget(elapsed_ms: Milliseconds) -> EffectTransitionBudget {
+  EffectTransitionBudget {
+    transition_label: srv3_os_install_to_host_identity_transition,
+    limit_ms: srv3_install_stall_router_lease_limit_ms,
+    elapsed_ms: elapsed_ms,
+  }
+}

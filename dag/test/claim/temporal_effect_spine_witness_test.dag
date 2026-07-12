@@ -47,6 +47,10 @@ import std.temporal_effect {
   cause_fold_dominant_stall,
   srv3_install_stall_installer_progress_limit_ms,
   srv3_install_stall_router_lease_limit_ms,
+  TransitionStalled,
+  TransitionWithinBudget,
+  transition_stall_state_from_budget,
+  srv3_os_install_to_host_identity_budget,
 }
 import std.upsert_decision {
   ObservationVerdict,
@@ -513,4 +517,15 @@ test fn stall_cause_fold_router_absent_dominates_silent_installer() -> Bool {
 test fn srv3_stall_budget_limits_match_runbook() -> Bool {
   srv3_install_stall_installer_progress_limit_ms == 900000
     && srv3_install_stall_router_lease_limit_ms == 4500000
+}
+
+test fn transition_stall_state_past_budget_is_stalled_not_pending() -> Bool {
+  let budget = srv3_os_install_to_host_identity_budget(
+    elapsed_ms: srv3_install_stall_router_lease_limit_ms + 1,
+  )
+  match transition_stall_state_from_budget(budget: budget) {
+    TransitionStalled { transition_label: t, elapsed_ms: _, limit_ms: _ } =>
+      string_contains(s: t, pattern: "os-install-actuated-to-host-identity")
+    TransitionWithinBudget => false
+  }
 }
