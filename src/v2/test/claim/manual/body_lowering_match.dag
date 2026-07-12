@@ -283,6 +283,66 @@ fn body_lowering_match_first_arm_subtree_witness() -> Bool {
   }
 }
 
+fn body_lowering_tree_has_any_atom(root: Node) -> Bool {
+  match node_atom_identity_optional(node: root) {
+    Present { value: _ } => true
+    Absent =>
+      fold(root.children, init: false, f: fn(found, e) {
+        if found {
+          true
+        } else {
+          body_lowering_tree_has_any_atom(root: e.target)
+        }
+      })
+  }
+}
+
+fn body_lowering_match_arm_has_any_atom_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: captured } =>
+              match parse_subtree_find_production_captured(
+                root: captured,
+                emitted: ^dag_surface_match_arm
+              ) {
+                ParseSubtreeFound { captured: arm } =>
+                  body_lowering_tree_has_any_atom(root: arm)
+                ParseSubtreeAbsent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
+fn body_lowering_match_arm_has_kw_true_subtree_witness() -> Bool {
+  match body_lowering_parsed_tree(source: body_lowering_match_source) {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_match_expr(root: tree) {
+        Absent => false
+        Present { value: shell } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Present { value: captured } =>
+              match parse_subtree_find_production_captured(
+                root: captured,
+                emitted: ^dag_surface_match_arm
+              ) {
+                ParseSubtreeFound { captured: arm } =>
+                  body_lowering_tree_has_kw_true_atom(root: arm)
+                ParseSubtreeAbsent => false
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
 fn body_lowering_tree_has_kw_true_atom(root: Node) -> Bool {
   match node_atom_identity_optional(node: root) {
     Present { value: id } =>
