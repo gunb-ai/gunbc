@@ -18,8 +18,8 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional,
   parse_subtree_find_production_captured
 }
-import v2.std.algebra { list_append, list_snoc_item }
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
+import v2.std.algebra { list_append, list_snoc_item, length }
+import v2.std.collection { Absent, Cons, List, Optional, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.compilers.body_lowering { lower_binary_infix, lower_match }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
@@ -40,7 +40,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
-import v2.std.grammar { node_atom_identity_optional }
+import v2.std.integer { Int }
 import v2.std.node {
   Arrow,
   Atom,
@@ -63,6 +63,33 @@ import v2.std.node_query { find_named_child }
 data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into FLAG E one SugarKey table (general-body-producer-design §9) once Slices 0–1 receipts land; no permanent sibling hand-inlined arm. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained with typed diagnostic ^body_lowering_reason_wrapper_retained_emitted (general-body-producer-design Stage A frontier: lowered | wrapper-retained cause, counted — never silent shell accept)."
 
 data body_lowering_fold_dissolution_contract: String = "FLAG E dissolution DELETES this module — do NOT port its interim walker arms into the SugarKey table. The hand-authored families (body_lower_deep_unwrap*, body_lower_operand_ref*, body_lower_operator_tail/infix*, body_lower_postfix_projection*) are receipt scaffolding only; the row-selected GrammarRelationRow forward fold (general-body-producer-design §3) replaces them wholesale. Acceptance: this file is gone and coverage lives in forward rows + existing witnesses."
+
+type BodyLoweringInterimScaffoldDisposition
+  = SeedRetained { reason: Symbol, migration_trigger: Symbol }
+
+type BodyLoweringInterimScaffoldRow {
+  site: Symbol
+  disposition: BodyLoweringInterimScaffoldDisposition
+}
+
+data body_lowering_interim_scaffold_row_match_hand_walker: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
+  site: ^body_lower_try_match_from_node,
+  disposition: SeedRetained {
+    reason: ^body_lowering_match_interim_hand_walker_reason,
+    migration_trigger: ^migrate_when_general_body_producer_lands
+  }
+}
+
+fn body_lowering_interim_scaffold_rows() -> List<BodyLoweringInterimScaffoldRow> {
+  Cons {
+    head: body_lowering_interim_scaffold_row_match_hand_walker,
+    tail: Empty
+  }
+}
+
+fn body_lowering_interim_scaffold_seed_retained_count() -> Int {
+  length(xs: body_lowering_interim_scaffold_rows())
+}
 
 fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
