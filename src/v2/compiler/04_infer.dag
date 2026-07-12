@@ -14,7 +14,9 @@ import v2.std.collection {
   Map,
   Optional,
   Present,
-  list_at_optional
+  list_at_optional,
+  optional_absent,
+  optional_present
 }
 import v2.std.constraints {
   CanonicalGrounding,
@@ -471,11 +473,11 @@ fn infer_conj_edge_named_type_for_binding(edge: Edge, binding: Symbol) -> Option
   match edge.label {
     Named { name: sym } =>
       if sym == binding {
-        Present { value: edge.target }
+        optional_present(value: edge.target)
       } else {
-        Absent
+        optional_absent()
       }
-    Positional => Absent
+    Positional => optional_absent()
   }
 }
 
