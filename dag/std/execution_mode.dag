@@ -9,22 +9,6 @@ type ExecutionMode
   | Wet
   | Record
 
-fn execution_mode_is_hermetic(mode: ExecutionMode) -> Bool {
-  match mode {
-    Hermetic => true
-    Wet => false
-    Record => false
-  }
-}
-
-fn execution_mode_is_record(mode: ExecutionMode) -> Bool {
-  match mode {
-    Hermetic => false
-    Wet => false
-    Record => true
-  }
-}
-
 fn execution_mode_is_wet_dispatch(mode: ExecutionMode) -> Bool {
   match mode {
     Hermetic => false

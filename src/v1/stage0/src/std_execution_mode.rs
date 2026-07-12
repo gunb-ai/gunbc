@@ -32,22 +32,6 @@ pub enum ExecutionMode {
     Record,
 }
 
-pub fn execution_mode_is_hermetic(mode: ExecutionMode) -> bool {
-    match mode.clone() {
-        ExecutionMode::Hermetic => true,
-        ExecutionMode::Wet => false,
-        ExecutionMode::Record => false,
-    }
-}
-
-pub fn execution_mode_is_record(mode: ExecutionMode) -> bool {
-    match mode.clone() {
-        ExecutionMode::Hermetic => false,
-        ExecutionMode::Wet => false,
-        ExecutionMode::Record => true,
-    }
-}
-
 pub fn execution_mode_is_wet_dispatch(mode: ExecutionMode) -> bool {
     match mode.clone() {
         ExecutionMode::Hermetic => false,

@@ -14,7 +14,7 @@ import std.realization_schedule {
   runnable_forbids_corpus_co_residence,
   runnable_heavy_whole_tree_resolve,
 }
-import std.execution_mode { Hermetic, Wet, execution_mode_is_hermetic }
+import std.execution_mode { Hermetic, Wet, execution_mode_eq }
 
 fn witness_negligible_profile_is_not_heavy() -> Bool {
   !runnable_heavy_whole_tree_resolve(profile: runnable_resource_profile_negligible())
@@ -22,7 +22,7 @@ fn witness_negligible_profile_is_not_heavy() -> Bool {
 
 fn witness_negligible_profile_declares_hermetic() -> Bool {
   let p = runnable_resource_profile_negligible()
-  execution_mode_is_hermetic(mode: p.execution_mode)
+  execution_mode_eq(left: p.execution_mode, right: Hermetic)
 }
 
 fn witness_profile_eq_discriminates_execution_mode() -> Bool {
