@@ -121,6 +121,7 @@ import v2.extdeps.languages.rust {
   rust_selection_policy_node,
   rust_sg_rc_use_site_ownership_catalog,
   rust_source_text_authority,
+  rust_staging_lex,
   rust_target_model_bundle_core,
   rust_target_model_core_edges_with_operators,
   rust_type_expression_projection_bundle_node,
@@ -775,6 +776,55 @@ fn rust_match_target_model_staging() -> TargetModel {
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_match_source_text,
     runtime_row: rust_match_runtime_row()
+  }
+}
+
+data rust_classical_not_ingested_emit_host_main_suffix: String = "\n\nfn main() { let value = classical_not(1); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+fn rust_classical_not_ingested_host_transport_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^rust_host_transport_classical_not_ingested_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "Cargo.toml",
+        content: FixedText { text: rust_emit_host_cargo_manifest }
+      },
+      WorkspaceFile {
+        path: "src/main.rs",
+        content: EmittedWithSuffix { suffix: rust_classical_not_ingested_emit_host_main_suffix }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        tool: ^host_tool_cargo,
+        args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
+      }
+    ],
+    run: ProcessInvocation {
+      tool: ^host_tool_cargo,
+      args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn rust_classical_not_ingested_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_classical_not_ingested_host_transport_descriptor(),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn rust_classical_not_ingested_target_model_staging() -> TargetModel {
+  TargetModel {
+    bundle: rust_target_model_bundle_core(),
+    lex: rust_staging_lex(),
+    binding_spellings: rust_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_source_text_authority(),
+    runtime_row: rust_classical_not_ingested_runtime_row()
   }
 }
 
