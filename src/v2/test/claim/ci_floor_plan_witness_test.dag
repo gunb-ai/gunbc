@@ -32,7 +32,7 @@ import std.realization_schedule {
   ScheduleWitnessEntry, schedule_witness_entry_eq,
   CorpusWitnessKind, ExecutionWitnessKind
 }
-import std.execution_mode { execution_mode_is_hermetic }
+import std.execution_mode { Hermetic, execution_mode_eq }
 import v2.std.algebra { length, list_snoc_item, skip }
 import v2.std.collection { List }
 import std.types { Int }
@@ -288,7 +288,7 @@ fn witness_optin_emit_host_co_runs_corpus_without_serialization() -> Bool {
 fn discovery_batch_declares_hermetic(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
-      execution_mode_is_hermetic(mode: p.execution_mode)
+      execution_mode_eq(left: p.execution_mode, right: Hermetic)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
