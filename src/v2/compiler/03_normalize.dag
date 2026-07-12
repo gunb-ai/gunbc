@@ -33,7 +33,10 @@ import v2.std.compilers.sugar {
   apply_sugar,
   sugar_rule_for_key
 }
-import v2.compiler.body_lowering_fold { body_lower_finish }
+import v2.compiler.body_lowering_fold {
+  body_lower_finish,
+  body_lower_is_deferred_lower_emitted
+}
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
@@ -114,6 +117,22 @@ fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Nod
 }
 
 fn normalize_node(n: Node) -> Outcome<Node> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: emitted } =>
+      if body_lower_is_deferred_lower_emitted(emitted: emitted) {
+        match body_lower_finish(n: n, folded: n, cd: None) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: after_body, diagnostics: cd0 } =>
+            normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
+        }
+      } else {
+        normalize_node_fold_children(n: n)
+      }
+    Absent => normalize_node_fold_children(n: n)
+  }
+}
+
+fn normalize_node_fold_children(n: Node) -> Outcome<Node> {
   match fold(n.children, init: normalize_fold_init(n: n), f: fn(acc, e) {
     normalize_fold_step(acc: acc, edge: e, child: normalize_node(n: e.target))
   }) {
