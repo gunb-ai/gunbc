@@ -72,6 +72,12 @@ pub enum HoldReason {
     PsiPressure { avg10: f64 },
     /// Swap usage grew since the last sample — overshoot is landing in the buffer.
     SwapGrowth { delta: u64 },
+    /// A previously admitted worker has not yet paid its front-loaded admission cost
+    /// (its whole-tree index build): admitting more before that demand lands would let
+    /// the window outrun the memory signal (the slow-start overshoot that killed CI run
+    /// 29180195694 — 16 index builds admitted on skip-speed completions before any of
+    /// them allocated). Pacing arithmetic, not a memory event.
+    AwaitFirstCost { undigested: usize },
 }
 
 impl HoldReason {
@@ -90,10 +96,16 @@ impl HoldReason {
             HoldReason::SwapGrowth { delta } => {
                 format!("swap grew {delta} bytes since last sample")
             }
+            HoldReason::AwaitFirstCost { undigested } => {
+                format!("pacing: {undigested} admitted worker(s) yet to pay first cost")
+            }
         }
     }
     fn is_memory_creep(&self) -> bool {
-        !matches!(self, HoldReason::WindowFull { .. })
+        !matches!(
+            self,
+            HoldReason::WindowFull { .. } | HoldReason::AwaitFirstCost { .. }
+        )
     }
 }
 
@@ -119,9 +131,17 @@ struct GovCore {
     /// Episode edge for hold counting/logging: a hold "episode" spans consecutive held
     /// polls; it counts once and re-arms on the next successful admission.
     holding: bool,
+    /// Admitted workers that have not yet paid their front-loaded admission cost (the
+    /// whole-tree index build). Admission is paced to at most one outstanding, so the
+    /// ramp rate is the index-build rate — the demand-relevant clock — not the unit
+    /// completion rate.
+    undigested: usize,
+    /// Episode edge for pacing holds, symmetric with `holding`.
+    pacing_episode: bool,
     admissions: u64,
     forced_serial_admissions: u64,
     graceful_holds: u64,
+    pacing_holds: u64,
     hard_backoffs: u64,
     width_growths: u64,
     max_width_reached: usize,
@@ -137,9 +157,12 @@ impl GovCore {
             baseline_events_high: None,
             baseline_events_oom_kill: None,
             holding: false,
+            undigested: 0,
+            pacing_episode: false,
             admissions: 0,
             forced_serial_admissions: 0,
             graceful_holds: 0,
+            pacing_holds: 0,
             hard_backoffs: 0,
             width_growths: 0,
             max_width_reached: 0,
@@ -246,11 +269,13 @@ fn decide_admission(
     if core.active == 0 {
         let forced = creep.is_some();
         core.active = 1;
+        core.undigested += 1;
         core.admissions += 1;
         if forced {
             core.forced_serial_admissions += 1;
         }
         core.holding = false;
+        core.pacing_episode = false;
         core.max_width_reached = core.max_width_reached.max(core.active);
         return (
             AdmitDecision::Admit {
@@ -268,6 +293,18 @@ fn decide_admission(
             hard,
         );
     }
+    if core.undigested > 0 {
+        if !core.pacing_episode {
+            core.pacing_episode = true;
+            core.pacing_holds += 1;
+        }
+        return (
+            AdmitDecision::Hold(HoldReason::AwaitFirstCost {
+                undigested: core.undigested,
+            }),
+            hard,
+        );
+    }
     if let Some(reason) = creep {
         if !core.holding {
             core.holding = true;
@@ -276,8 +313,10 @@ fn decide_admission(
         return (AdmitDecision::Hold(reason), hard);
     }
     core.active += 1;
+    core.undigested += 1;
     core.admissions += 1;
     core.holding = false;
+    core.pacing_episode = false;
     core.max_width_reached = core.max_width_reached.max(core.active);
     (
         AdmitDecision::Admit {
@@ -296,6 +335,21 @@ fn note_completion(core: &mut GovCore, sig: &MemorySignals, limits: &GovernorLim
     if hard.is_none() && creep.is_none() && core.target_width < limits.max_width {
         core.target_width += 1;
         core.width_growths += 1;
+    }
+}
+
+/// A worker's front-loaded admission cost has landed (its index build finished): its
+/// demand is now visible to the creep signals, so admission pacing may pass the next one.
+fn note_first_cost(core: &mut GovCore) {
+    core.undigested = core.undigested.saturating_sub(1);
+}
+
+/// A worker released its slot. A release before the first cost was paid (error/panic/
+/// early retire) clears its pacing debt too — a dead worker must not freeze admissions.
+fn note_release(core: &mut GovCore, first_cost_paid: bool) {
+    core.active = core.active.saturating_sub(1);
+    if !first_cost_paid {
+        core.undigested = core.undigested.saturating_sub(1);
     }
 }
 
@@ -358,6 +412,12 @@ impl MemoryGovernor {
                 read_cgroup_u64(dir, "memory.max"),
                 format!("cgroup memory.max ({})", dir.display()),
             )
+        } else if let Some(avail) = mem_available_bytes() {
+            // No cgroup line binds: the kernel's own availability estimate is the honest
+            // pipe — it excludes the co-tenant baseline (runner agent, system services)
+            // that MemTotal would hand to the floor (CI run 29180195694: budget=MemTotal
+            // let demand reach physical RAM and starve the runner agent itself).
+            (Some(avail), "/proc/meminfo MemAvailable".to_string())
         } else {
             (mem_total_bytes(), "/proc/meminfo MemTotal".to_string())
         };
@@ -433,17 +493,23 @@ impl MemoryGovernor {
     }
 
     /// A worker finished one unit of work (a resolve-group, an entry-group): the additive
-    /// increase point.
-    pub fn note_unit_complete(&self) {
+    /// increase point. Reached through `AdmittedSlot::note_unit_complete` so the pacing
+    /// bookkeeping cannot be skipped.
+    fn note_unit_complete_growth(&self) {
         let sig = self.source.read();
         let mut core = self.core.lock().unwrap();
         note_completion(&mut core, &sig, &self.limits);
     }
 
-    /// A worker released its slot.
-    pub fn release(&self) {
+    fn note_first_cost_paid(&self) {
         let mut core = self.core.lock().unwrap();
-        core.active = core.active.saturating_sub(1);
+        note_first_cost(&mut core);
+    }
+
+    /// A worker released its slot.
+    fn release_slot(&self, first_cost_paid: bool) {
+        let mut core = self.core.lock().unwrap();
+        note_release(&mut core, first_cost_paid);
     }
 
     /// Multiplicative decrease drains through here: a worker between units retires when
@@ -466,7 +532,8 @@ impl MemoryGovernor {
         let core = self.core.lock().unwrap();
         format!(
             "[governor] receipt: budget={} source={} max_width_reached={} admissions={} \
-             width_growths={} graceful_holds={} hard_backoffs={} forced_serial={} peak_current={}",
+             width_growths={} graceful_holds={} pacing_holds={} hard_backoffs={} \
+             forced_serial={} peak_current={}",
             self.limits
                 .budget_bytes
                 .map(|b| b.to_string())
@@ -476,6 +543,7 @@ impl MemoryGovernor {
             core.admissions,
             core.width_growths,
             core.graceful_holds,
+            core.pacing_holds,
             core.hard_backoffs,
             core.forced_serial_admissions,
             if core.peak_current_bytes == 0 {
@@ -492,13 +560,17 @@ impl MemoryGovernor {
 /// `Arc` so it can ride into worker threads.
 pub struct AdmittedSlot {
     governor: std::sync::Arc<MemoryGovernor>,
+    first_cost_paid: bool,
 }
 
 impl AdmittedSlot {
     /// Wrap a slot that `try_admit`/`admit_blocking` ALREADY granted (the grant is what
     /// incremented `active`; this guard owns the matching release).
     pub fn from_admitted(governor: std::sync::Arc<MemoryGovernor>) -> AdmittedSlot {
-        AdmittedSlot { governor }
+        AdmittedSlot {
+            governor,
+            first_cost_paid: false,
+        }
     }
 
     /// Block until admitted, then wrap the slot.
@@ -509,13 +581,31 @@ impl AdmittedSlot {
         governor.admit_blocking(label);
         AdmittedSlot {
             governor: governor.clone(),
+            first_cost_paid: false,
         }
+    }
+
+    /// The worker's front-loaded admission cost is paid (its index build returned):
+    /// admission pacing may pass the next worker. Idempotent.
+    pub fn note_first_cost_paid(&mut self) {
+        if !self.first_cost_paid {
+            self.first_cost_paid = true;
+            self.governor.note_first_cost_paid();
+        }
+    }
+
+    /// One unit of work completed under this slot: the additive-increase point. Also
+    /// settles the first cost for slots whose first unit IS their front cost (gate
+    /// resolve-groups), so no caller can grow the window while still owing pacing debt.
+    pub fn note_unit_complete(&mut self) {
+        self.note_first_cost_paid();
+        self.governor.note_unit_complete_growth();
     }
 }
 
 impl Drop for AdmittedSlot {
     fn drop(&mut self) {
-        self.governor.release();
+        self.governor.release_slot(self.first_cost_paid);
     }
 }
 
@@ -610,11 +700,25 @@ pub fn read_cgroup_raw(dir: &Path, file: &str) -> Option<String> {
         .map(|s| s.trim().to_string())
 }
 
-/// Total physical RAM in bytes (`/proc/meminfo` MemTotal, kB→bytes) — the effective
-/// budget when no cgroup limit binds.
+/// Total physical RAM in bytes (`/proc/meminfo` MemTotal, kB→bytes) — the last-resort
+/// budget when no cgroup limit binds and MemAvailable is unreadable.
 pub fn mem_total_bytes() -> Option<u64> {
-    let s = std::fs::read_to_string("/proc/meminfo").ok()?;
-    let line = s.lines().find(|l| l.starts_with("MemTotal"))?;
+    meminfo_field_bytes_in(&std::fs::read_to_string("/proc/meminfo").ok()?, "MemTotal")
+}
+
+/// The kernel's estimate of allocatable memory without swapping (`/proc/meminfo`
+/// MemAvailable, kB→bytes), sampled at arm time — the honest budget on uncapped hosts.
+pub fn mem_available_bytes() -> Option<u64> {
+    meminfo_field_bytes_in(
+        &std::fs::read_to_string("/proc/meminfo").ok()?,
+        "MemAvailable",
+    )
+}
+
+fn meminfo_field_bytes_in(meminfo: &str, key: &str) -> Option<u64> {
+    let line = meminfo
+        .lines()
+        .find(|l| l.strip_prefix(key).is_some_and(|r| r.starts_with(':')))?;
     let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
     Some(kb.saturating_mul(1024))
 }
@@ -659,7 +763,9 @@ mod tests {
             AdmitDecision::Hold(HoldReason::WindowFull { .. })
         ));
         assert_eq!(core.graceful_holds, 0, "window-full is not a memory hold");
-        // A calm completion grows the window; the next admission fits.
+        // A calm completion grows the window; with the first worker's front cost paid,
+        // the next admission fits.
+        note_first_cost(&mut core);
         note_completion(&mut core, &calm(), &lim);
         assert_eq!(core.target_width, 2);
         assert_eq!(core.width_growths, 1);
@@ -672,6 +778,61 @@ mod tests {
         );
         assert_eq!(core.active, 2);
         assert_eq!(core.max_width_reached, 2);
+    }
+
+    #[test]
+    fn pacing_holds_admissions_until_first_cost_paid() {
+        let lim = limits(1_000_000, 8);
+        let mut core = GovCore::new();
+        // Worker 1 admitted; the window has room (a gate unit's calm completion grew it)
+        // but worker 1 has not paid its index build yet.
+        let (d, _) = decide_admission(&mut core, &calm(), &lim);
+        assert!(matches!(d, AdmitDecision::Admit { .. }));
+        core.target_width = 4;
+        let (d2, _) = decide_admission(&mut core, &calm(), &lim);
+        assert_eq!(
+            d2,
+            AdmitDecision::Hold(HoldReason::AwaitFirstCost { undigested: 1 }),
+            "calm signals must not outrun the un-landed admission cost"
+        );
+        let (d3, _) = decide_admission(&mut core, &calm(), &lim);
+        assert!(matches!(d3, AdmitDecision::Hold(_)));
+        assert_eq!(core.pacing_holds, 1, "one episode, not one per poll");
+        assert_eq!(core.graceful_holds, 0, "pacing is not a memory hold");
+        // The index build lands: the next admission passes and re-arms the episode.
+        note_first_cost(&mut core);
+        let (d4, _) = decide_admission(&mut core, &calm(), &lim);
+        assert!(matches!(d4, AdmitDecision::Admit { .. }));
+        assert_eq!(
+            core.undigested, 1,
+            "the new worker now owes its own first cost"
+        );
+        let (d5, _) = decide_admission(&mut core, &calm(), &lim);
+        assert!(matches!(
+            d5,
+            AdmitDecision::Hold(HoldReason::AwaitFirstCost { .. })
+        ));
+        assert_eq!(core.pacing_holds, 2);
+    }
+
+    #[test]
+    fn release_before_first_cost_clears_pacing_debt() {
+        let lim = limits(1_000_000, 8);
+        let mut core = GovCore::new();
+        let (d, _) = decide_admission(&mut core, &calm(), &lim);
+        assert!(matches!(d, AdmitDecision::Admit { .. }));
+        core.target_width = 4;
+        // Worker 1 dies before its index build returns (error/panic): its release must
+        // clear the pacing debt or admissions freeze behind a dead worker.
+        note_release(&mut core, false);
+        assert_eq!(core.active, 0);
+        assert_eq!(core.undigested, 0);
+        let (d2, _) = decide_admission(&mut core, &calm(), &lim);
+        assert!(matches!(d2, AdmitDecision::Admit { .. }));
+        // A digested worker's release does NOT touch the (absent) debt.
+        note_first_cost(&mut core);
+        note_release(&mut core, true);
+        assert_eq!(core.undigested, 0);
     }
 
     #[test]
@@ -692,9 +853,11 @@ mod tests {
         let (d2, _) = decide_admission(&mut core, &hot, &lim);
         assert!(matches!(d2, AdmitDecision::Hold(_)));
         assert_eq!(core.graceful_holds, 1, "one episode, not one per poll");
-        // Calm again: admit, episode re-arms, a second hot spell counts again.
+        // Calm again: admit, episode re-arms, a second hot spell counts again. (Settle
+        // the new worker's first cost so the hot poll reaches the creep arm, not pacing.)
         let (d3, _) = decide_admission(&mut core, &calm(), &lim);
         assert!(matches!(d3, AdmitDecision::Admit { .. }));
+        note_first_cost(&mut core);
         let (_, _) = decide_admission(&mut core, &hot, &lim);
         assert_eq!(core.graceful_holds, 2);
     }
@@ -732,9 +895,11 @@ mod tests {
             matches!(d, AdmitDecision::Admit { .. }),
             "absolute swap level alone does not hold"
         );
+        note_first_cost(&mut core);
         // Same level again: no growth, no hold.
         let (d2, _) = decide_admission(&mut core, &steady, &lim);
         assert!(matches!(d2, AdmitDecision::Admit { .. }));
+        note_first_cost(&mut core);
         // Now it grows by 100 MiB in one sample: actively creeping — hold.
         let grown = MemorySignals {
             swap_current_bytes: Some(600 * 1024 * 1024),
@@ -891,6 +1056,7 @@ mod tests {
             core: Mutex::new({
                 let mut c = GovCore::new();
                 c.graceful_holds = 3;
+                c.pacing_holds = 5;
                 c.hard_backoffs = 2;
                 c.forced_serial_admissions = 1;
                 c.admissions = 40;
@@ -901,6 +1067,7 @@ mod tests {
         };
         let line = gov.receipt_line();
         assert!(line.contains("graceful_holds=3"));
+        assert!(line.contains("pacing_holds=5"));
         assert!(line.contains("hard_backoffs=2"));
         assert!(line.contains("forced_serial=1"));
         assert!(line.contains("admissions=40"));
@@ -923,6 +1090,22 @@ mod tests {
         assert_eq!(memory_events_field(content, "oom_kill"), Some(1));
         // `oom` must not read the `oom_kill` line when only the latter exists.
         assert_eq!(memory_events_field("oom_kill 7\n", "oom"), None);
+    }
+
+    #[test]
+    fn meminfo_parse_reads_exact_keys() {
+        let content = "MemTotal:       53570453 kB\nMemFree:        1200000 kB\nMemAvailable:   45000000 kB\n";
+        assert_eq!(
+            meminfo_field_bytes_in(content, "MemTotal"),
+            Some(53570453 * 1024)
+        );
+        assert_eq!(
+            meminfo_field_bytes_in(content, "MemAvailable"),
+            Some(45000000 * 1024)
+        );
+        // Exact key match: `Mem` must not read the MemTotal line.
+        assert_eq!(meminfo_field_bytes_in(content, "Mem"), None);
+        assert_eq!(meminfo_field_bytes_in(content, "SwapTotal"), None);
     }
 
     #[test]
