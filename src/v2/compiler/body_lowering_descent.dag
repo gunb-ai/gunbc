@@ -10,8 +10,11 @@ import v2.std.cardinality {
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
+  Outcome,
   Unavailable,
-  node_locus
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
 }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Witness }
@@ -23,6 +26,14 @@ fn body_lower_descent_not_proven_diagnostic(n: Node) -> Diagnostic {
     reason: ^body_lowering_reason_descent_not_proven,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn body_lower_budget_outcome(remaining: Int, at: Node) -> Outcome<Int> {
+  if remaining <= 0 {
+    outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: at))
+  } else {
+    outcome_accepted(value: remaining)
   }
 }
 

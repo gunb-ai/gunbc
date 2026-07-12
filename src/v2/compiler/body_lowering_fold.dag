@@ -1,6 +1,7 @@
 module v2.compiler.body_lowering_fold
 
 import v2.compiler.body_lowering_descent {
+  body_lower_budget_outcome,
   body_lower_descent_not_proven_diagnostic
 }
 import std.algebra { Cons, Empty }
@@ -271,11 +272,11 @@ fn body_lower_operator_atom_optional(remaining: Int, node: Node) -> Optional<Nod
   }
 }
 
-fn body_lower_unwrap_captured(remaining: Int, shell: Node) -> Optional<Node> {
-  match remaining <= 0 {
-    true => Absent
-    false =>
-      parse_production_captured_child_optional(node: shell)
+fn body_lower_unwrap_captured(remaining: Int, shell: Node) -> Outcome<Optional<Node>> {
+  if remaining <= 0 {
+    outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: shell))
+  } else {
+    outcome_accepted(value: parse_production_captured_child_optional(node: shell))
   }
 }
 
@@ -765,21 +766,23 @@ fn body_lower_unwrap_optional_element(remaining: Int, node: Node) -> Node {
   }
 }
 
-fn body_lower_param_list_comma_spine_optional(remaining: Int, param_list_captured: Node) -> Optional<Node> {
-  match remaining <= 0 {
-    true => Absent
-    false =>
-      match sugar_sequence_pair_optional(node: param_list_captured) {
-      Absent => Absent
+fn body_lower_param_list_comma_spine_optional(remaining: Int, param_list_captured: Node) -> Outcome<Optional<Node>> {
+  if remaining <= 0 {
+    outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: param_list_captured))
+  } else {
+    match sugar_sequence_pair_optional(node: param_list_captured) {
+      Absent => outcome_accepted(value: optional_absent())
       Present { value: pair } =>
-      match sugar_sequence_pair_optional(node: pair.right) {
-        Absent => Absent
-        Present { value: inner } =>
-          Present {
-            value: body_lower_unwrap_optional_element(remaining: remaining - 1, node: inner.left)
-          }
-      }
-  }
+        match sugar_sequence_pair_optional(node: pair.right) {
+          Absent => outcome_accepted(value: optional_absent())
+          Present { value: inner } =>
+            outcome_accepted(
+              value: optional_present(
+                value: body_lower_unwrap_optional_element(remaining: remaining - 1, node: inner.left)
+              )
+            )
+        }
+    }
   }
 }
 
@@ -863,27 +866,41 @@ fn body_lower_return_type_after_arrow_walk(remaining: Int, node: Node) -> Option
   }
 }
 
-fn body_lower_domain_from_param_list(remaining: Int, param_list: Node) -> Optional<Node> {
-  match remaining <= 0 {
-    true => Absent
-    false =>
-      match body_lower_param_list_comma_spine_optional(remaining: remaining - 1, param_list_captured: param_list) {
-      Absent => Absent
-      Present { value: comma_spine } =>
-      let edges = body_lower_collect_param_edges(remaining: remaining - 1, sequence_capture: comma_spine)
-      if count(edges) == 0 {
-        Present {
-          value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
-        }
-      } else {
-        Present {
-          value: node_synthetic(
-            kind: TypeNode { connective: Conj },
-            children: edges
-          )
+fn body_lower_domain_from_param_list(remaining: Int, param_list: Node) -> Outcome<Optional<Node>> {
+  if remaining <= 0 {
+    outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: param_list))
+  } else {
+    bind_outcome(
+      o: body_lower_param_list_comma_spine_optional(remaining: remaining - 1, param_list_captured: param_list),
+      f: fn(comma_opt) {
+        match comma_opt {
+          Absent => outcome_accepted(value: optional_absent())
+          Present { value: comma_spine } =>
+            bind_outcome(
+              o: body_lower_budget_outcome(remaining: remaining - 1, at: comma_spine),
+              f: fn(edge_budget) {
+                let edges = body_lower_collect_param_edges(remaining: edge_budget, sequence_capture: comma_spine)
+                if count(edges) == 0 {
+                  outcome_accepted(
+                    value: optional_present(
+                      value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+                    )
+                  )
+                } else {
+                  outcome_accepted(
+                    value: optional_present(
+                      value: node_synthetic(
+                        kind: TypeNode { connective: Conj },
+                        children: edges
+                      )
+                    )
+                  )
+                }
+              }
+            )
         }
       }
-  }
+    )
   }
 }
 
@@ -954,11 +971,18 @@ fn body_lower_type_expr_after_arrow(remaining: Int, node: Node) -> Optional<Node
   }
 }
 
-fn body_lower_return_type_from_fn_captured(remaining: Int, captured: Node) -> Optional<Node> {
-  match remaining <= 0 {
-    true => Absent
-    false =>
-      body_lower_return_type_after_arrow_walk(remaining: remaining - 1, node: captured)
+fn body_lower_return_type_from_fn_captured(remaining: Int, captured: Node) -> Outcome<Optional<Node>> {
+  if remaining <= 0 {
+    outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: captured))
+  } else {
+    bind_outcome(
+      o: body_lower_budget_outcome(remaining: remaining - 1, at: captured),
+      f: fn(walk_budget) {
+        outcome_accepted(
+          value: body_lower_return_type_after_arrow_walk(remaining: walk_budget, node: captured)
+        )
+      }
+    )
   }
 }
 
