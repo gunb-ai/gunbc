@@ -1589,6 +1589,35 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
   }
 }
 
+fn body_lower_is_match_arm_navigate_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_pattern)
+    || (emitted == ^dag_surface_primary_expr)
+    || (emitted == ^dag_surface_match_arm_stmt_body)
+    || body_lower_is_pass_through_emitted(emitted: emitted)
+}
+
+fn body_lower_match_arm_from_comma_repeat_elem(repeat_elem: Node) -> Outcome<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Present { value: pair } =>
+      body_lower_wire_match_arm_capture(
+        arm_capture: body_lower_postfix_optional_unwrap(node: pair.right)
+      )
+    Absent =>
+      body_lower_wire_match_arm_capture(arm_capture: stripped)
+  }
+}
+
+fn body_lower_extract_comma_list_arm_head(node: Node) -> Outcome<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  match body_lower_wire_match_arm_capture(arm_capture: stripped) {
+    Rejected { diagnostics: _ } =>
+      body_lower_match_arm_from_comma_repeat_elem(repeat_elem: stripped)
+    Accepted { value: arm, diagnostics: d } =>
+      Accepted { value: arm, diagnostics: d }
+  }
+}
+
 fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: arm_capture)
   match parse_production_emitted_identity_optional(node: stripped) {
@@ -1599,7 +1628,7 @@ fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
             body_lower_wire_match_arm_capture(arm_capture: captured)
           Absent => body_lower_match_arm_navigation_reject(arm_capture: arm_capture)
         }
-      } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+      } else if body_lower_is_match_arm_navigate_emitted(emitted: emitted) {
         match parse_production_captured_child_optional(node: stripped) {
           Present { value: captured } =>
             body_lower_wire_match_arm_capture(arm_capture: captured)
@@ -1618,7 +1647,7 @@ fn body_lower_collect_match_arms_from_repeat_tail(repeat_capture: Node) -> Outco
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: head, diagnostics: _ } =>
-        match body_lower_wire_match_arm_capture(arm_capture: head) {
+        match body_lower_extract_comma_list_arm_head(node: head) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: arm, diagnostics: d } =>
             match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
@@ -1644,7 +1673,7 @@ fn body_lower_collect_match_arms(sequence_capture: Node) -> Outcome<List<Node>> 
   let unwrapped = body_lower_postfix_optional_unwrap(node: sequence_capture)
   match find_named_child(root: unwrapped, name: ^grammar_sequence_left_node_projection) {
     Accepted { value: first, diagnostics: _ } =>
-      match body_lower_wire_match_arm_capture(arm_capture: first) {
+      match body_lower_extract_comma_list_arm_head(node: first) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: arm, diagnostics: d } =>
           match find_named_child(root: unwrapped, name: ^grammar_sequence_right_node_projection) {
@@ -1664,7 +1693,7 @@ fn body_lower_collect_match_arms(sequence_capture: Node) -> Outcome<List<Node>> 
     Rejected { diagnostics: _ } =>
       match sugar_sequence_pair_optional(node: unwrapped) {
         Present { value: pair } =>
-          match body_lower_wire_match_arm_capture(arm_capture: pair.left) {
+          match body_lower_extract_comma_list_arm_head(node: pair.left) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: arm, diagnostics: d } =>
               match body_lower_after_comma_tail_optional(node: pair.right) {
@@ -1681,7 +1710,7 @@ fn body_lower_collect_match_arms(sequence_capture: Node) -> Outcome<List<Node>> 
               }
           }
         Absent =>
-          match body_lower_wire_match_arm_capture(arm_capture: unwrapped) {
+          match body_lower_extract_comma_list_arm_head(node: unwrapped) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: arm, diagnostics: d } =>
               Accepted { value: [arm], diagnostics: d }
