@@ -300,6 +300,10 @@ fn body_lowering_normalized_module_has_match_witness() -> Bool {
   body_lowering_normalized_module_has_match()
 }
 
+fn body_lowering_match_swapped_arms_normalize_accepts_witness() -> Bool {
+  body_lowering_match_swapped_arms_normalize_accepts()
+}
+
 fn body_lowering_match_first_arm_wires_witness() -> Bool {
   body_lowering_match_first_arm_wires()
 }
