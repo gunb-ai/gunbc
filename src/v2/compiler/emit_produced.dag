@@ -9,7 +9,6 @@ import v2.extdeps.languages.rust {
 }
 import v2.std.compilers.target_model { TargetModel }
 import extdeps.communication.medium { Medium }
-import v2.std.compilers.target_model { TargetModel }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.algebra { fold_list, list_append }
 import std.algebra { Empty }
