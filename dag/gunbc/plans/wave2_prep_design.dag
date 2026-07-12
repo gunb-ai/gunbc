@@ -54,7 +54,7 @@ fn section_2() -> List<MarkdownBlock> {
     ]),
     p(text: "**No v1 deletion in Wave 1.**"),
     h3(text: "2.2 Wave 2 flip sequencing — three bands"),
-    p(text: "Within the sweep-order prefix, flips group into three bands (not a flat serial list). Band A Wave-1-pre-flip readiness (`FlippableNow | BodyProducerGated | OtherGate`) lives on `v2.compiler.self_host.frontier` (`compiler_frontier_band_a_emit_readiness_roster`, witness `compiler_frontier_band_a_emit_readiness_holds`) — cite the carrier, do not transcribe counts here."),
+    p(text: "Within the sweep-order prefix, flips group into three bands (not a flat serial list). Band A Wave-1-pre-flip readiness (`FlippableNow | BodyProducerGated | OtherGate`) lives on `v2.compiler.self_host.frontier_band_a_emit_readiness` (`compiler_frontier_band_a_emit_readiness_roster`, witness `compiler_frontier_band_a_emit_readiness_holds`; wired into `compiler_frontier_census_holds` on `frontier`) — cite the carrier, do not transcribe counts here."),
     ul(items: [
       li(text: "**Band A — leaf emit modules** (`parse_engine_hooks`, `use_site_verdict`, `discovery_enumeration`, `self_host`, `materialization_carriers`, `07_target_carriers`): parallelizable after Wave 1 gate 4; receipt = cargo-green + behavioral-equivalence vs seed (NOT byte-identity). Classification on `compiler_frontier_band_a_emit_readiness_roster`."),
       li(text: "**Band B — body-lowering seam** (`fold_lowering` → `03_normalize`, serial): FLAG E row-fold **remains** (Slice 0 production-identity forward fold; `body_lowering_fold.dag` still interim until Slice 4 deletion); Stage A fn_decl → Arrow rows land (SymbolIndex-gated per general-body-producer Stage A note)."),
