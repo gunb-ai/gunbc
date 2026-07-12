@@ -1,6 +1,7 @@
 module gunbc.host_standup
 
 import std.types { List, String, NonEmptyStr, Bool, Int }
+import std.measure { millisecond }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.effects { IdempotencyEvidence }
@@ -397,7 +398,7 @@ fn host_standup_step_is_gap(step: HostStandupStep) -> Bool {
 fn host_standup_step_is_effective_gap(step: HostStandupStep) -> Bool {
   host_standup_step_is_effective_gap_at_actuation_verdict(
     step: step,
-    verdict: srv3_pre_install_actuation_verdict(elapsed_ms: 0),
+    verdict: srv3_pre_install_actuation_verdict(elapsed: millisecond(count: 0)),
   )
 }
 
@@ -499,7 +500,7 @@ fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
 
 fn host_standup_gap_count() -> Int {
   host_standup_gap_count_at_actuation_verdict(
-    verdict: srv3_pre_install_actuation_verdict(elapsed_ms: 0),
+    verdict: srv3_pre_install_actuation_verdict(elapsed: millisecond(count: 0)),
   )
 }
 

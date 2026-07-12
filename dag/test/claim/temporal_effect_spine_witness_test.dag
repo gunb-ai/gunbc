@@ -54,7 +54,11 @@ import gunbc.srv3_os_install_diagnostic {
   HangStallRouterLeaseAbsent,
   cause_fold_dominant_hang_stall,
 }
-import gunbc.host_standup_assimilation_deduction { srv3_os_install_to_host_identity_budget }
+import std.measure { millisecond, millisecond_count }
+import gunbc.host_standup_assimilation_deduction {
+  hang_budget_millisecond,
+  srv3_os_install_to_host_identity_budget,
+}
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -467,8 +471,8 @@ test fn decision_for_held_lease_verdict_grounds_each_observation_arm() -> Bool {
 test fn stall_budget_within_limit_preserves_apply_plan() -> Bool {
   let budget = EffectStallBudget {
     step_id: witness_step_serve,
-    limit_ms: srv3_install_hang_no_installer_progress_ms,
-    elapsed_ms: 600000,
+    limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_installer_progress_ms),
+    elapsed_ms: millisecond(count: 600000),
   }
   match stall_budget_verdict(budget: budget) {
     StallWithinBudget => true
@@ -486,8 +490,8 @@ test fn stall_budget_within_limit_preserves_apply_plan() -> Bool {
 test fn stall_budget_exceeded_refuses_not_widen() -> Bool {
   let budget = EffectStallBudget {
     step_id: witness_step_serve,
-    limit_ms: srv3_install_hang_no_installer_progress_ms,
-    elapsed_ms: srv3_install_hang_no_router_lease_ms,
+    limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_installer_progress_ms),
+    elapsed_ms: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
   }
   match stall_budget_verdict(budget: budget) {
     StallBudgetExceeded { step_id: sid, elapsed_ms: _, limit_ms: _ } => sid == witness_step_serve
@@ -523,9 +527,12 @@ test fn srv3_stall_budget_limits_match_runbook() -> Bool {
 }
 
 test fn transition_stall_state_past_budget_is_stalled_not_pending() -> Bool {
-  let budget = srv3_os_install_to_host_identity_budget(
-    elapsed_ms: srv3_install_hang_no_router_lease_ms + 1,
+  let past = millisecond(
+    count: millisecond_count(
+      m: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+    ) + 1,
   )
+  let budget = srv3_os_install_to_host_identity_budget(elapsed: past)
   match transition_stall_state_from_budget(budget: budget) {
     TransitionStalled { transition_label: t, elapsed_ms: _, limit_ms: _ } =>
       string_contains(s: t, pattern: "os-install-actuated-to-host-identity")

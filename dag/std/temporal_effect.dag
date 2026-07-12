@@ -1,6 +1,7 @@
 module std.temporal_effect
 
-import std.types { String, NonEmptyStr, Int, Bool, ContentHash, Timestamp, List, Milliseconds }
+import std.types { String, NonEmptyStr, Int, Bool, ContentHash, Timestamp, List }
+import std.measure { Millisecond, measure_le, millisecond_count }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -271,20 +272,20 @@ fn prior_receipt_for_step(
 
 type EffectStallBudget {
   step_id: NonEmptyStr
-  limit_ms: Milliseconds
-  elapsed_ms: Milliseconds
+  limit_ms: Millisecond
+  elapsed_ms: Millisecond
 }
 
 type StallBudgetVerdict
   = StallWithinBudget
   | StallBudgetExceeded {
       step_id: NonEmptyStr
-      elapsed_ms: Milliseconds
-      limit_ms: Milliseconds
+      elapsed_ms: Millisecond
+      limit_ms: Millisecond
     }
 
 fn stall_budget_verdict(budget: EffectStallBudget) -> StallBudgetVerdict {
-  if budget.elapsed_ms <= budget.limit_ms {
+  if measure_le(a: budget.elapsed_ms, b: budget.limit_ms) {
     StallWithinBudget
   } else {
     StallBudgetExceeded {
@@ -306,8 +307,8 @@ fn next_step_plan_on_stall_budget(
         step_id: sid,
         reason: concat(
           concat(
-            concat("stall budget exceeded elapsed_ms=", to_string(e)),
-            concat(" limit_ms=", to_string(l))
+            concat("stall budget exceeded elapsed_ms=", to_string(millisecond_count(m: e))),
+            concat(" limit_ms=", to_string(millisecond_count(m: l)))
           ),
           concat(" step=", sid)
         ),
@@ -317,20 +318,20 @@ fn next_step_plan_on_stall_budget(
 
 type EffectTransitionBudget {
   transition_label: NonEmptyStr
-  limit_ms: Milliseconds
-  elapsed_ms: Milliseconds
+  limit_ms: Millisecond
+  elapsed_ms: Millisecond
 }
 
 type TransitionStallState
   = TransitionWithinBudget
   | TransitionStalled {
       transition_label: NonEmptyStr
-      elapsed_ms: Milliseconds
-      limit_ms: Milliseconds
+      elapsed_ms: Millisecond
+      limit_ms: Millisecond
     }
 
 fn transition_stall_state_from_budget(budget: EffectTransitionBudget) -> TransitionStallState {
-  if budget.elapsed_ms <= budget.limit_ms {
+  if measure_le(a: budget.elapsed_ms, b: budget.limit_ms) {
     TransitionWithinBudget
   } else {
     TransitionStalled {

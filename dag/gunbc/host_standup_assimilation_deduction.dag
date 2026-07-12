@@ -1,6 +1,7 @@
 module gunbc.host_standup_assimilation_deduction
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Milliseconds }
+import std.measure { Millisecond, millisecond, millisecond_count }
 import std.disposition { Disposition, Terminal }
 import std.upsert_decision {
   ObservationVerdict,
@@ -95,11 +96,15 @@ data srv3_unreadable_lease_observation: DhcpLeaseTableObservation = LeaseTableUn
 
 data srv3_os_install_to_host_identity_transition: NonEmptyStr = "os-install-actuated-to-host-identity-converge" as NonEmptyStr
 
-fn srv3_os_install_to_host_identity_budget(elapsed_ms: Milliseconds) -> EffectTransitionBudget {
+fn hang_budget_millisecond(ms: Milliseconds) -> Millisecond {
+  millisecond(count: ms)
+}
+
+fn srv3_os_install_to_host_identity_budget(elapsed: Millisecond) -> EffectTransitionBudget {
   EffectTransitionBudget {
     transition_label: srv3_os_install_to_host_identity_transition,
-    limit_ms: srv3_install_hang_no_router_lease_ms,
-    elapsed_ms: elapsed_ms,
+    limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+    elapsed_ms: elapsed,
   }
 }
 
@@ -121,9 +126,9 @@ fn stall_failure_reason(stall: TransitionStallState) -> NonEmptyStr? {
         value: concat(
           concat(
             concat("transition stalled: ", t),
-            concat(" elapsed_ms=", to_string(e))
+            concat(" elapsed_ms=", to_string(millisecond_count(m: e)))
           ),
-          concat(" limit_ms=", to_string(l))
+          concat(" limit_ms=", to_string(millisecond_count(m: l)))
         ) as NonEmptyStr,
       }
   }
@@ -211,35 +216,35 @@ fn classify_os_install_actuation_upsert(
 
 fn srv3_deduce_os_install_to_host_identity_verdict(
   obs: DhcpLeaseTableObservation,
-  elapsed_ms: Milliseconds,
+  elapsed: Millisecond,
 ) -> ObservationVerdict {
   deduce_os_install_actuation_verdict(
     obs: obs,
     fleet_slot: operator_host_srv3,
     stall: transition_stall_state_from_budget(
-      budget: srv3_os_install_to_host_identity_budget(elapsed_ms: elapsed_ms),
+      budget: srv3_os_install_to_host_identity_budget(elapsed: elapsed),
     ),
   )
 }
 
-fn srv3_pre_install_actuation_verdict(elapsed_ms: Milliseconds) -> ObservationVerdict {
+fn srv3_pre_install_actuation_verdict(elapsed: Millisecond) -> ObservationVerdict {
   srv3_deduce_os_install_to_host_identity_verdict(
     obs: srv3_pre_install_lease_observation,
-    elapsed_ms: elapsed_ms,
+    elapsed: elapsed,
   )
 }
 
-fn srv3_post_install_actuation_verdict(elapsed_ms: Milliseconds) -> ObservationVerdict {
+fn srv3_post_install_actuation_verdict(elapsed: Millisecond) -> ObservationVerdict {
   srv3_deduce_os_install_to_host_identity_verdict(
     obs: srv3_post_install_lease_observation,
-    elapsed_ms: elapsed_ms,
+    elapsed: elapsed,
   )
 }
 
-fn srv3_unreadable_lease_actuation_verdict(elapsed_ms: Milliseconds) -> ObservationVerdict {
+fn srv3_unreadable_lease_actuation_verdict(elapsed: Millisecond) -> ObservationVerdict {
   srv3_deduce_os_install_to_host_identity_verdict(
     obs: srv3_unreadable_lease_observation,
-    elapsed_ms: elapsed_ms,
+    elapsed: elapsed,
   )
 }
 
@@ -252,10 +257,6 @@ fn deduce_os_install_actuated_satisfied(verdict: ObservationVerdict) -> Bool {
     Conflict => false
     Inaccessible => false
   }
-}
-
-fn deduce_host_identity_converge_reachable(verdict: ObservationVerdict) -> Bool {
-  deduce_os_install_actuated_satisfied(verdict: verdict)
 }
 
 fn stall_cause_boot_mode_legacy_probe(
