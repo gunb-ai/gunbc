@@ -890,6 +890,13 @@ fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
       match found {
         Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
         Absent =>
+          match parse_subtree_find_production_captured(
+            root: captured,
+            emitted: ^dag_surface_match_expr
+          ) {
+            ParseSubtreeFound { captured: match_capture } =>
+              body_lower_try_match_from_captured(captured: match_capture)
+            ParseSubtreeAbsent =>
           match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_binary_expr) {
             ParseSubtreeFound { captured: binary } =>
               body_lower_try_body_lowered(node: binary)
@@ -922,6 +929,7 @@ fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
                       }
                   }
               }
+          }
           }
       }
   }
