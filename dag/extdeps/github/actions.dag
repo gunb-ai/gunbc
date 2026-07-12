@@ -133,7 +133,9 @@ type RunnerSpec
 type RunnerLabel
   = UbuntuLatest
   | Ubuntu2404
+  | Ubuntu2404Arm
   | Ubuntu2204
+  | UbuntuSlim
   | MacosLatest
   | Macos14
   | WindowsLatest
