@@ -41,6 +41,8 @@ import v2.std.node {
   well_formed
 }
 
+data body_lowering_match_ident_arms_source: String = "module m\n\nfn f(a: Int) -> Int {\n  match a {\n    a => a\n  }\n}\n"
+
 data body_lowering_match_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => false,\n    false => true\n  }\n}\n"
 
 data body_lowering_match_swapped_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => true,\n    false => false\n  }\n}\n"
