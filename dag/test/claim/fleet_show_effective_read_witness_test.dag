@@ -101,7 +101,7 @@ fn witness_width_parse_empty_is_absent() -> Bool {
 
 fn witness_width_parse_count_is_typed() -> Bool {
   match parse_runner_width_active_count(raw: "10") {
-    Present { value: n } => n == declared_runner_count()
+    Present { value: n } => n == 10
     Absent => false
   }
 }
@@ -173,13 +173,15 @@ fn witness_srv1_01_per_slot_infinity_drifts() -> Bool {
   }
 }
 
-fn witness_srv1_width_converges_to_declared_count() -> Bool {
+data srv1_width_drift_note: String = "The 2026-07-03 srv1 snapshot (10 active runner units) CONVERGED against the pre-carve declaration; the 2026-07-11 slot re-carve (16GiB memory.max slots, gunbc.ci_floor_measurement live row) shrank declared_runner_count to floor(pool/16GiB) = 5, so the same observation now DRIFTS - and that drift is the real fact: the hosts still run the pre-carve width, the same oversubscription the falsifier exit-137 receipts located. The parse-typing claim above deliberately pins the literal (a parse fixture must not depend on a live-derived count - that fusion is why this witness went latent-red when the re-carve landed). Dissolve-on: a post-re-carve width readback replaces the fixture row and this witness flips back to asserting convergence."
+
+fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
   match runner_width_live_read_typed(row: gunbc_srv1_runner_width_fixture_row) {
     Present { value: read } =>
       runner_width_converge_verdict(
         observed: read.active_count,
         desired: declared_runner_count()
-      ) == VerdictConverged
+      ) == Drifted
     Absent => false
   }
 }
@@ -287,7 +289,7 @@ test fn fleet_show_effective_read_v0_knobs_ground() -> Bool {
     && witness_srv1_slice_cap_infinity_drifts_against_pool_budget()
     && witness_srv2_slice_cap_converges_to_pool_budget()
     && witness_srv1_01_per_slot_infinity_drifts()
-    && witness_srv1_width_converges_to_declared_count()
+    && witness_srv1_width_drifts_from_declared_count_after_recarve()
     && witness_srv2_width_drifts_from_declared_count()
     && witness_infinity_slice_read_is_read_observed_unbounded()
     && witness_infinity_slice_read_cannot_converge()

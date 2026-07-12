@@ -43,6 +43,7 @@ import gunbc.host_standup {
   OsInstallMechanismResolved,
   OsInstallActuated,
   HostConvergePolicyDerived,
+  HostIdentityConverge,
   ReachSecretsNetwork,
   RunnerDeploySlot,
   ComputeFabricEnroll,
@@ -70,12 +71,13 @@ fn spine_step_tag(step: HostStandupStep) -> Int {
     Prefix { phase: OsInstallMechanismResolved } => 1
     Prefix { phase: OsInstallActuated } => 2
     Prefix { phase: HostConvergePolicyDerived } => 3
-    Assimilation { phase: ReachSecretsNetwork } => 4
-    Assimilation { phase: RunnerDeploySlot } => 5
-    Assimilation { phase: ComputeFabricEnroll } => 6
-    Assimilation { phase: GreenPlaceReadiness } => 7
-    Assimilation { phase: SessionPlacementEnrollment } => 8
-    Assimilation { phase: StandupAssimilationComplete } => 9
+    Assimilation { phase: HostIdentityConverge } => 4
+    Assimilation { phase: ReachSecretsNetwork } => 5
+    Assimilation { phase: RunnerDeploySlot } => 6
+    Assimilation { phase: ComputeFabricEnroll } => 7
+    Assimilation { phase: GreenPlaceReadiness } => 8
+    Assimilation { phase: SessionPlacementEnrollment } => 9
+    Assimilation { phase: StandupAssimilationComplete } => 10
   }
 }
 
@@ -95,11 +97,11 @@ fn spine_tags_are_linear() -> Bool {
   ).ok
 }
 
-test fn host_standup_spine_is_ten_step_linear_prefix_then_p0_p5() -> Bool {
-  host_standup_spine_length() == 10
+test fn host_standup_spine_is_eleven_step_linear_prefix_then_p0_p5() -> Bool {
+  host_standup_spine_length() == 11
     && spine_tags_are_linear()
     && host_standup_gap_count() == 4
-    && host_standup_gap_ledger.length() == 10
+    && host_standup_gap_ledger.length() == 11
 }
 
 test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
