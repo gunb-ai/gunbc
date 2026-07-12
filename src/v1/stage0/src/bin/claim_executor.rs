@@ -843,9 +843,12 @@ fn render_slowest_witnesses(
         }
     }
 
+    // Call out the longest-running witnesses with the .dag box's hot styling (fire glyph + red
+    // timer). How many rows count as "hot" is a rendering policy owned by the .dag authority
+    // (`slowest_witness_default_hot_count`), not a magic constant here — Rust just feeds the rows.
     let value = run_in_context_with_args(
         &ctx,
-        "render_slowest_witnesses_box",
+        "render_slowest_witnesses_box_default",
         &[
             (Some("body".to_string()), str_list_value(&body_lines)),
             (Some("width".to_string()), Value::Int(width)),
