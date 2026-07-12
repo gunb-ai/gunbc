@@ -17,6 +17,9 @@ import gunbc.assimilate.bmc_bootstrap_provision {
   bmc_required_gcp_apis,
   bmc_assimilate_service_deps
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn api_required(name: String) -> Bool {
   fold(bmc_required_gcp_apis, init: false, f: (acc, a) => acc || a == name)

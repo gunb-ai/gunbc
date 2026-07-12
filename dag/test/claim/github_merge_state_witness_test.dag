@@ -5,6 +5,9 @@ import extdeps.github.merge_state {
   Clean,
   Blocked,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_merge_state_clean: MergeStateStatus = Clean
 data sample_merge_state_blocked: MergeStateStatus = Blocked

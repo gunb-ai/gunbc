@@ -84,6 +84,9 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import std.algebra { FreeMonoid }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn lazy_arm_atom(s: Symbol) -> Node {
   Node {

@@ -10,6 +10,9 @@ import extdeps.languages.rust.emit {
 }
 import extdeps.languages.python.emit { python_method_templates_flat }
 import extdeps.languages.go.emit { go_method_templates_flat }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data core_path: String = "src/v1/00_core.dag"
 data parse_path: String = "src/v1/02_parse.dag"

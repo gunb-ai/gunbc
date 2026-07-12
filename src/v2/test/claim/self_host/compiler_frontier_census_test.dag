@@ -18,6 +18,9 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_sweep_order_complete_holds
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn compiler_frontier_roster_count_matches_expected() -> Bool {
   compiler_frontier_roster_count() == compiler_frontier_module_count_expected

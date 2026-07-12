@@ -22,6 +22,9 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data dag_lex_stamp_source: String = "module v2.test.lexeme_probe\nimport v2.std.algebra { Cons, Empty }\n"
 

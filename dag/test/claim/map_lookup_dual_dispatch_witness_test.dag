@@ -2,6 +2,9 @@ module test.claim.map_lookup_dual_dispatch_witness_test
 
 import std.graph { CallGraph, GraphEdge, build_adjacency_views }
 import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn map_get_method_routes_through_dual_dispatch_chokepoint() -> Bool {
   let m = empty_map() |> map_insert("a", 10)

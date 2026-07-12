@@ -48,6 +48,9 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn pbf_parse_root() -> GrammarRoot {
   GrammarRoot {

@@ -24,6 +24,9 @@ import gunbc.runner_slot_enforcement {
   gunbc_runner_slot_enforcement_committed,
 }
 import gunbc.fleet_show_effective_read { gunbc_fleet_runner_slice_cap_show_effective_read }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_slot() -> NonEmptyStr {
   "actions-runner@srv1-01.service"

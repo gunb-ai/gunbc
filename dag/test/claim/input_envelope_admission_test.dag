@@ -17,6 +17,9 @@ import gunbc.ci_input_envelope {
   gunbc_ci_corpus_envelope,
 }
 import std.measure { Measure }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data test_envelope: InputEnvelope = BoundedInput {
   bounds: [

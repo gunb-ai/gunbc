@@ -4,6 +4,9 @@ import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.extdeps.runtimes.v2_evaluator { v2_eval_bool_literal_pin }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn medium_node_lossless() -> Medium<Node> {
   Medium { carried: v2_eval_bool_literal_pin, fidelity: Lossless }

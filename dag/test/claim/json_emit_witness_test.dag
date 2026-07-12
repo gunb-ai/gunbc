@@ -24,6 +24,9 @@ import extdeps.languages.json.grammar {
   json_number_lexeme,
   json_int_lexeme,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_json_cites_rfc8259() -> Bool {
   match extdeps_external_authority_anchor {

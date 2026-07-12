@@ -38,6 +38,9 @@ import tools.rust_stage0_gates {
 import v2.std.collection { List }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data redundancy_present_successor_locator: DeclarationRef = DeclarationRef {
   module_path: "std.disposition",

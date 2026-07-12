@@ -16,6 +16,9 @@ import v2.std.node {
 }
 import v2.std.node_query { node_labeled_child_edges }
 import v2.lens.wiring_liveness { wiring_input_is_wired }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn wl_atom(identity: Symbol) -> Node {
   Node {

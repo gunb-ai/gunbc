@@ -11,6 +11,9 @@ import extdeps.container.oci.types {
   image_config_goarch_label,
   parse_image_config_goarch,
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 type FilesystemReadResult { content: String }
 

@@ -29,6 +29,9 @@ import gunbc.gunbhub_serve_html { gunbhub_html_render_keystone_holds }
 import extdeps.http.server { http_content_type_wire_label }
 import std.markup { MarkupNode }
 import std.types { GET, POST }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_compose_ok_html(node: MarkupNode) -> String {
   match gunbhub_compose_body(node: node) {

@@ -24,6 +24,9 @@ import gunbc.host_effect {
   host_effect_identity_evidence,
 }
 import std.realization_reconcile { reconciliation_converged, NotConverged, Converged }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data mutation_gate_marker: String = "deploy-mutation-gate-marker-c4e2"
 

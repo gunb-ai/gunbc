@@ -36,6 +36,9 @@ import v2.std.node {
   SyntheticOccurrence,
   TypeNode
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn pa_qn_node(seg: Symbol) -> Node {
   fold_list_node(

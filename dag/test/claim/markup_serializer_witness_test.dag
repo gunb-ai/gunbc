@@ -7,6 +7,9 @@ import std.markup {
   unescape_text, unescape_attribute, unescape_url
 }
 import extdeps.languages.html_fragment { serialize_fragment }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_text_escaping_by_execution() -> Bool {
   escape_text(s: "a <b> & c") == "a &lt;b&gt; &amp; c"

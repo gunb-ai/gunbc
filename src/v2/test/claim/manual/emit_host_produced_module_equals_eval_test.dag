@@ -20,6 +20,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.runtime { EvaluationEnvironment, RuntimeValue }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data produced_module_two_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }\n\nfn add2(x: i32, y: i32) -> i32 { x + y }\n\n"
 

@@ -22,6 +22,9 @@ import extdeps.boards.asrock_rack {
   ProbePresent,
 }
 import extdeps.bmc.webui.nbd_proxy { VmSlotIndexEndpoint }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_live_bmc_host_is_grounded() -> Bool {
   asrock_srv3_live_bmc_host == "192.168.1.192"

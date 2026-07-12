@@ -27,6 +27,9 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_match_emit_swapped_source_text: String = "fn one_or_two() -> i32 { match (true) { true => 2, false => 1 } }"
 

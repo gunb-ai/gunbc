@@ -17,6 +17,9 @@ import gunbc.ci_oom_reclassify {
   host_boot_id_reset, clustering_signal_from_boot_id, clustering_is_present,
   reclassify_floor_failure, reclassify_floor_outcome
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn bare_137_outcome() -> FloorOutcome {
   classify_floor_exit(e: ExitFailure { code: 137, reason: "Process completed with exit code 137." })

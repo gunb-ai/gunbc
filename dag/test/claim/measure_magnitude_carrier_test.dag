@@ -20,6 +20,9 @@ import std.measure {
 }
 import std.types { Int }
 import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn measure_nat_magnitude_roundtrip_holds() -> Bool {
   byte_size_count(byte_size(42)) == 42

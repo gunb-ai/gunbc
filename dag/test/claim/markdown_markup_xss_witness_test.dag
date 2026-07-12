@@ -38,6 +38,9 @@ import std.markdown {
   UnorderedListBlock,
   markdown_document_to_fragment,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_readme_doc() -> MarkdownDocument {
   MarkdownDocument {

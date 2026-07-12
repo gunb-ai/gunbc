@@ -9,6 +9,9 @@ import v2.lens.extdeps_shape_transport_policy {
 import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_cargo_build_module }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data dead_param_cargo_build_service: String = "cargo.Build"
 data dead_param_cargo_build_operation: String = "Build"

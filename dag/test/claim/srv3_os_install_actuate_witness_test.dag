@@ -32,6 +32,9 @@ import gunbc.os_install_mechanism {
   VirtualMediaInstall,
   FirmwareUpdateThenVirtualMedia,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_actuator_plan_has_three_steps() -> Bool {
   srv3_os_install_actuator_step_count_is_three()

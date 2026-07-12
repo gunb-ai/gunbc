@@ -31,6 +31,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data python_add_emit_perturbed_source_text: String = "def add(a, b): return a + b"
 

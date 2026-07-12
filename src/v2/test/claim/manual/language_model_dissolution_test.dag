@@ -8,6 +8,9 @@ import v2.std.grammar { grammar_to_node, VoidGrammar }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.swift { swift_primitive_language_model }
 import v2.extdeps.languages.go { go_language_model }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn void_core_node() -> Node {
   model_core_first_primitive_substrate(core: bool_model_core())

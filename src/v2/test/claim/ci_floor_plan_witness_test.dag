@@ -36,6 +36,9 @@ import std.execution_mode { Hermetic, execution_mode_eq }
 import v2.std.algebra { length, list_snoc_item, skip }
 import v2.std.collection { List }
 import std.types { Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data corpus_sentinel: String = "__corpus__"
 

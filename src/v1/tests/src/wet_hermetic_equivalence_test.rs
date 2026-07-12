@@ -129,6 +129,7 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
         label: "outsider".into(),
         entry: "dag/test/claim/unrelated_witness_test.dag".into(),
         function: "witness_holds".into(),
+        reads_live_tree: true,
     };
     assert!(
         !is_governed_service_representative_row(&outsider, &prefix),

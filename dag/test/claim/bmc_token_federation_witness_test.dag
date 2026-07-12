@@ -18,6 +18,9 @@ import extdeps.cloud.gcp.iam {
   role_secretmanager_secret_accessor,
   role_secretmanager_secret_version_adder
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn binding_is_scoped(b: SecretAccessBinding) -> Bool {
   b.member == bmc_assimilator_sa_member()

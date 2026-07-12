@@ -69,6 +69,9 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Violates {

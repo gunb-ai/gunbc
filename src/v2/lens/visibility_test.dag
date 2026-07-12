@@ -7,6 +7,9 @@ import v2.lens.visibility {
   ModuleVisibilityFact, VisibilityLeak,
   scan_visibility_leaks, visibility_leak_count, visibility_clean
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data mod_public_api: QualifiedName = Cons { head: ^public_api, tail: Empty }
 data mod_private_impl: QualifiedName = Cons { head: ^private_impl, tail: Empty }

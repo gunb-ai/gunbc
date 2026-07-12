@@ -38,6 +38,9 @@ import v2.extdeps.languages.typescript {
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ts_import_canonical_source_text: String = "import { Cons, Empty } from \"v2/std/algebra\";"
 

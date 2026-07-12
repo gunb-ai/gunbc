@@ -13,6 +13,9 @@ import std.http_path {
   PathParamBinding,
   render_path_template,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn param_path(prefix: String, param_name: String) -> String {
   concat(prefix, "/", "{", param_name, "}")

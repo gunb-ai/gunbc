@@ -157,6 +157,51 @@ fn run_injected_diff_roster_with_mode(
 const FALSIFIER_CONTROL_REL: &str =
     "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag";
 
+const LIVE_TREE_DECLARED_REL: &str = "src/v2/test/fixture/floor_skip/live_tree_declared_test.dag";
+
+fn live_tree_declared_roster() -> Vec<(String, String)> {
+    let ws = workspace_root();
+    vec![(
+        ws.join(LIVE_TREE_DECLARED_REL)
+            .to_string_lossy()
+            .into_owned(),
+        "live_tree_declared_control_holds".to_string(),
+    )]
+}
+
+fn declared_live_tree_row_runs_on_unrelated_diff() {
+    chdir_workspace();
+    // The diff touches an UNRELATED fixture; a declared-ReadsLiveTree row must
+    // still RUN (its inputs are outside the diff, so no diff proves it unaffected).
+    let summary = run_injected_diff_roster(
+        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+        3,
+        &live_tree_declared_roster(),
+    );
+    assert_eq!(summary.total, 1);
+    assert_eq!(
+        summary.skipped, 0,
+        "a declared ReadsLiveTree row must never take the node-frontier skip"
+    );
+    assert_eq!(summary.passed, 1, "the live-tree row runs and is green");
+}
+
+fn declared_live_tree_row_never_predicted_unaffected() {
+    chdir_workspace();
+    let summary = run_injected_diff_roster_with_mode(
+        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+        3,
+        &live_tree_declared_roster(),
+        NodeFrontierSelectionMode::PredictOnly,
+    );
+    assert!(
+        summary.predicted_unaffected.is_empty(),
+        "predict-only must never predict a declared ReadsLiveTree row unaffected \
+         (live-tree rows never predict-skip)"
+    );
+    assert_eq!(summary.passed, 1);
+}
+
 fn falsifier_control_roster(function: &str) -> Vec<(String, String)> {
     let ws = workspace_root();
     vec![(
@@ -563,6 +608,14 @@ fn main() -> ExitCode {
         (
             "predict_only_red_predicted_affected_is_not_divergence",
             predict_only_red_predicted_affected_is_not_divergence,
+        ),
+        (
+            "declared_live_tree_row_runs_on_unrelated_diff",
+            declared_live_tree_row_runs_on_unrelated_diff,
+        ),
+        (
+            "declared_live_tree_row_never_predicted_unaffected",
+            declared_live_tree_row_never_predicted_unaffected,
         ),
         (
             "node_precise_referenced_runs_orphan_skips_by_execution",

@@ -4,6 +4,7 @@
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion};
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -135,6 +136,248 @@ pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
         cycle_set_str: v1_rt::rc_empty_map::<String, bool>(),
         variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeEnvCacheMergeConflict {
+    pub name: String,
+    pub import_path: String,
+    pub existing_site: String,
+    pub incoming_site: String,
+    pub span: Rc<SourceSpan>,
+    pub same_tree: bool,
+}
+
+pub fn source_tree_partition_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Tree partition for the binding-fork ledger (lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). Tree does NOT decide refuse-vs-ledger anymore - it only LABELS the dissolution partition of an already-ledgered fork: same-tree (both decls under one tree, incl. dag-vs-dag across dirs) = a homonym/fork to consolidate within that tree; cross-tree (dag/ vs src/v2/) = the v1-seed-vs-v2 whole-file duplication the namespace census named; kernel-synthetic sites (<kernel:...>) are their own tree = the kernel-shadow class. ALL of these are LEDGERED (pre-existing forks already resolved on main by overlay-wins; refusing retroactively would regress working resolution), keeping the pre-guard import-order winner. Refusal is reserved for forks a PR NEWLY introduces (the novelty gate, a separate follow-up comparing this ledger to a drift-gated baseline). Partition on tree, never dir.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn source_tree_of(file: String) -> String {
+    if v1_rt::contains(file.clone(), "<kernel:".to_string()) {
+        "kernel".to_string()
+    } else {
+        if v1_rt::contains(file.clone(), "src/v2".to_string()) {
+            "src/v2".to_string()
+        } else {
+            if v1_rt::contains(file.clone(), "src/v1".to_string()) {
+                "src/v1".to_string()
+            } else {
+                if v1_rt::contains(file.clone(), "dag/".to_string()) {
+                    "dag".to_string()
+                } else {
+                    "other".to_string()
+                }
+            }
+        }
+    }
+}
+
+pub fn conflict_is_cross_tree(c: Rc<TypeEnvCacheMergeConflict>) -> bool {
+    (source_tree_of(c.existing_site.clone()) != source_tree_of(c.incoming_site.clone()))
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GuardedTypeEnvCacheMerge {
+    pub cache: Rc<TypeEnvCache>,
+    pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+}
+
+pub fn guarded_cache_union_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cross-parent cache union (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A name reachable from two PEER imports with different bindings is a binding FORK. The union is order-INDEPENDENT by construction: keys present in both sides carrying the SAME binding (declaration-site span fast path, structural fallback) are SKIPPED (also the retained-bytes fix - the unguarded merge materialized a fresh O(|ancestry|) HAMT per module via rc_map_merge path-copy, the measured ~16.3MiB/module residency class); keys carrying DIFFERENT bindings are recorded as a typed, located conflict AND resolved by the pre-cut import-order overlay-wins winner (behavior-preserving: main already resolves these by overlay-wins, so refusing retroactively would regress working resolution, NOT close a fail-open). These conflicts are LEDGERED (out-of-band binding_forks channel, partitioned by tree for dissolution), never diagnostics; refusal is reserved for forks a PR NEWLY introduces (the separate novelty gate). Positional layers keep overlay-wins outside the guard: the kernel scope layer (merge_type_env_cache below) and locals-over-ancestry are lexical nearest-wins from the containment ruling, not peer-merge forks.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn binding_same_authority(a: Rc<TypeBinding>, b: Rc<TypeBinding>) -> bool {
+    if (a.resolved.clone().span.clone() == b.resolved.clone().span.clone()) {
+        true
+    } else {
+        (a.clone() == b.clone())
+    }
+}
+
+pub fn guarded_union_str_bindings(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+    import_path: String,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<GuardedStrBindingsUnion> {
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        Rc::new(GuardedStrBindingsUnion {
+            bindings: acc.clone(),
+            conflicts: conflicts.clone(),
+        }),
+        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(
+            &overlay,
+            name.clone(),
+        ) {
+            None => state.clone(),
+            Some(incoming) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
+                None => Rc::new(GuardedStrBindingsUnion {
+                    bindings: v1_rt::rc_map_insert(
+                        state.bindings.clone(),
+                        name.clone(),
+                        incoming.clone(),
+                    ),
+                    conflicts: state.conflicts.clone(),
+                }),
+                Some(existing) => {
+                    if binding_same_authority(existing.clone(), incoming.clone()) {
+                        state.clone()
+                    } else {
+                        Rc::new(GuardedStrBindingsUnion {
+                            bindings: v1_rt::rc_map_insert(
+                                state.bindings.clone(),
+                                name.clone(),
+                                incoming.clone(),
+                            ),
+                            conflicts: v1_rt::concat(
+                                state.conflicts.clone(),
+                                Rc::new(vec![Rc::new(TypeEnvCacheMergeConflict {
+                                    name: name.clone(),
+                                    import_path: import_path.clone(),
+                                    existing_site: existing
+                                        .resolved
+                                        .clone()
+                                        .span
+                                        .clone()
+                                        .file
+                                        .clone(),
+                                    incoming_site: incoming
+                                        .resolved
+                                        .clone()
+                                        .span
+                                        .clone()
+                                        .file
+                                        .clone(),
+                                    span: incoming.resolved.clone().span.clone(),
+                                    same_tree: (source_tree_of(
+                                        existing.resolved.clone().span.clone().file.clone(),
+                                    ) == source_tree_of(
+                                        incoming.resolved.clone().span.clone().file.clone(),
+                                    )),
+                                })]),
+                            ),
+                        })
+                    }
+                }
+            },
+        },
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GuardedStrBindingsUnion {
+    pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+}
+
+pub fn union_deps_map_skip_equal(
+    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
+    overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        acc.clone(),
+        |m: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
+            &overlay,
+            name.clone(),
+        ) {
+            None => m.clone(),
+            Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
+                None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+                Some(existing) => {
+                    if (existing.clone() == incoming.clone()) {
+                        m.clone()
+                    } else {
+                        v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
+                    }
+                }
+            },
+        },
+    )
+}
+
+pub fn union_bool_set_skip_equal(
+    acc: Rc<HashMap<String, bool>>,
+    overlay: Rc<HashMap<String, bool>>,
+) -> Rc<HashMap<String, bool>> {
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        acc.clone(),
+        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&m, name.clone()) {
+            Some(_) => m.clone(),
+            None => match v1_rt::map_get(&overlay, name.clone()) {
+                Some(v) => v1_rt::rc_map_insert(m.clone(), name.clone(), v.clone()),
+                None => m.clone(),
+            },
+        },
+    )
+}
+
+pub fn union_variant_locals_skip_equal(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        acc.clone(),
+        |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+            &overlay,
+            name.clone(),
+        ) {
+            None => m.clone(),
+            Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
+                None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+                Some(existing) => {
+                    if binding_same_authority(existing.clone(), incoming.clone()) {
+                        m.clone()
+                    } else {
+                        v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
+                    }
+                }
+            },
+        },
+    )
+}
+
+pub fn merge_type_env_cache_guarded(
+    base: Rc<TypeEnvCache>,
+    overlay: Rc<TypeEnvCache>,
+    import_path: String,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<GuardedTypeEnvCacheMerge> {
+    {
+        let str_union = guarded_union_str_bindings(
+            base.str_bindings.clone(),
+            overlay.str_bindings.clone(),
+            import_path.clone(),
+            conflicts.clone(),
+        );
+        Rc::new(GuardedTypeEnvCacheMerge {
+            cache: Rc::new(TypeEnvCache {
+                deps_map: union_deps_map_skip_equal(
+                    base.deps_map.clone(),
+                    overlay.deps_map.clone(),
+                ),
+                str_bindings: str_union.bindings.clone(),
+                cycle_set_str: union_bool_set_skip_equal(
+                    base.cycle_set_str.clone(),
+                    overlay.cycle_set_str.clone(),
+                ),
+                variant_locals: union_variant_locals_skip_equal(
+                    base.variant_locals.clone(),
+                    overlay.variant_locals.clone(),
+                ),
+            }),
+            conflicts: str_union.conflicts.clone(),
+        })
+    }
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {

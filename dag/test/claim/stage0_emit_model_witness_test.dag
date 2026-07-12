@@ -6,6 +6,9 @@ import gunbc.stage0_emit_model {
   is_generated_stage0_file,
   generated_stage0_file_count
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_generated_roster_count() -> Bool {
   generated_stage0_file_count() == 92

@@ -15,6 +15,9 @@ import v2.lens.affected_set {
   repo_process_universe_from
 }
 import gunbc.ci_spec { Gate, gunbc_ci_gates, gunbc_ci_regen_floor_gates, gunbc_ci_emit_determinism_floor_gates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b

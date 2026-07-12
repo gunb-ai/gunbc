@@ -60,6 +60,8 @@ The smallest sound increment, pure construction-side and near-free, lives one le
 
 **Execution (DESIGN §6, on merge):** these slices fan out to dependent workers in this order — item 2 (compile-time lens, the wall) is the spine; item 3 (opaque-residue generator) and the item-1 follow-up confirmation gate on the realization lane; item 4 (runtime preflight) is last and shrinks over time.
 
+Related: [witness subject-execution audit — spec-without-execution census](witness-subject-execution-audit.md) — the census of witnesses whose subjects never execute; the same coverage-by-illusion class this preflight makes unwritable for modeled realizations.
+
 ## Dissolution trigger (DESIGN §6)
 
 Delete this doc when: (a) the wiring-liveness oracle is a single carrier shared with the cache-purity oracle (one perturbation kernel, two readings — not two representations); (b) the static-reach lens covers every `.dag`-modeled input→output relation; and (c) the preflight runs over the affected frontier ahead of interpreter execution, fail-closed on a dead wire — at which point "a declared input wired into nothing" is unwritable for modeled realizations and caught-before-firing for the opaque residue, and this tracker is redundant.

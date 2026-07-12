@@ -45,6 +45,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emit_ingest_python_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(

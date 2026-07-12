@@ -28,6 +28,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data scheduler_build_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^scheduler_build_symbol } },

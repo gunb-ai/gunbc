@@ -17,6 +17,9 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.witness { Holds }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data disj_floor_arm_a: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^disj_floor_arm_a_atom } },

@@ -31,6 +31,9 @@ import v2.std.node {
 }
 import v2.std.node_query { find_named_child }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn ts_arc1_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(

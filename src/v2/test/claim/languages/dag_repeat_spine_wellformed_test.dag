@@ -15,6 +15,9 @@ import v2.std.node {
   TypeNode,
   well_formed,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn normalizes(src: String) -> Bool {
   let lm = dag_language_model()

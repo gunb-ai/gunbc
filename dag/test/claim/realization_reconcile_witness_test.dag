@@ -8,6 +8,9 @@ import std.realization {
   reconcile,
 }
 import std.realization_schedule { cost_account_predicted_zero }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn is_share(m: Materialization) -> Bool {
   match m {

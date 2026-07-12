@@ -29,6 +29,9 @@ import v2.extdeps.languages.typescript {
   ts_lex
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ts_closure_emit_canonical_source_text: String = "function (acc, h) { acc + h }"
 

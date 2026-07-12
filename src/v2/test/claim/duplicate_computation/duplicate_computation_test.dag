@@ -19,6 +19,9 @@ import v2.std.algebra { list_append, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data synthetic_compile_key: String = "gunbc compile --source-root dag --target rust"
 data synthetic_other_key: String = "cargo build -p v1-compiler --release --bin gunbc"

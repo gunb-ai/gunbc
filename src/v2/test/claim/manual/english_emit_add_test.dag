@@ -47,6 +47,9 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data english_emit_add_emitted_root: Node = english_add_fn_emitted_node()
 

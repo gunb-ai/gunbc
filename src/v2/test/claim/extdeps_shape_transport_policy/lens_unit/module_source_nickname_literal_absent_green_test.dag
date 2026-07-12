@@ -8,6 +8,9 @@ import v2.lens.extdeps_shape_transport_policy.module_refs {
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data exempt_unknown_path: String = "fictional/unknown_path.dag"
 data exempt_ci_yml: String = "ci.yml"

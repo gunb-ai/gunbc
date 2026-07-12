@@ -18,6 +18,9 @@ import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn gha_fold_oracle_job(job: Job) -> String {
   serialize_yaml(v: job_yaml(job: job))

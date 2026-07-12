@@ -9,6 +9,9 @@ import gunbc.fleet_host_budget {
   session_pool_bytes,
   gunbc_runner_pool_budget,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn declared_runner_count_is_five() -> Bool {
   declared_runner_count() == 5

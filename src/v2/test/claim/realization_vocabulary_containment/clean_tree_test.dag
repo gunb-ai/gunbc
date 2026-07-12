@@ -6,6 +6,9 @@ import v2.lens.realization_vocabulary_containment {
   realization_vocab_containment_clean_live
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 test fn realization_vocab_clean_tree_holds() -> Bool {
   realization_vocab_containment_clean_live(scan_roots: realization_vocab_consumer_scan_roots)

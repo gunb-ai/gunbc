@@ -5,6 +5,9 @@ import std.access { AccessRequest, AccessDecision, Permit, Deny, AccessPolicy }
 import product.network_topology {
   NetworkLocality, Loopback, Lan, Internet, WslNat, WslBridged, DockerBridge, TailscaleOverlay
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn decision_is_permit(d: AccessDecision) -> Bool {
   match d { Permit => true  Deny { reason: _ } => false }

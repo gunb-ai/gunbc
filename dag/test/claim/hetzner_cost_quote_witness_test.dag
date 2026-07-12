@@ -12,6 +12,9 @@ import gunbc.ci_fleet {
   Metered,
   DeveloperAttention,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn hetzner_cax41_hourly_micros() -> Nat {
   cost_estimate_unit_price_micros(

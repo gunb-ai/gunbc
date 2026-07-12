@@ -14,7 +14,14 @@ import std.realization_schedule {
   runnable_forbids_corpus_co_residence,
   runnable_heavy_whole_tree_resolve,
 }
+<<<<<<< HEAD
 import std.execution_mode { Hermetic, Wet, execution_mode_eq }
+=======
+import std.measure { byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+>>>>>>> origin/main
 
 fn witness_negligible_profile_is_not_heavy() -> Bool {
   !runnable_heavy_whole_tree_resolve(profile: runnable_resource_profile_negligible())

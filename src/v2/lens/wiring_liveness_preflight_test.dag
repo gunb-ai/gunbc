@@ -17,6 +17,9 @@ import v2.lens.wiring_liveness_preflight {
   FrontierWiringObligation,
   preflight_reexec_frontier
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn wlp_atom(identity: Symbol) -> Node {
   Node {

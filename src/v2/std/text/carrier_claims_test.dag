@@ -21,6 +21,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data text_witness_char_a: Char = Succ { prev: Zero }
 data text_witness_char_b: Char = Succ { prev: Succ { prev: Zero } }

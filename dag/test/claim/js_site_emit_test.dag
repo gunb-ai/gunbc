@@ -20,6 +20,9 @@ import gunbc.gunbhub_serve { gunbhub_hostile_page }
 import extdeps.languages.html { EmitOk, EmitRejected }
 import extdeps.languages.react_jsx { JsxOk, JsxRejected }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn js_site_hostile_page() -> JsSitePage {
   JsSitePage {

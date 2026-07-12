@@ -15,6 +15,9 @@ import v2.lens.cost {
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn leaf(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])

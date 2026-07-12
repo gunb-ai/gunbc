@@ -8,6 +8,9 @@ import v2.lens.extdeps_shape_transport_policy {
 import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_github_gists_module }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data clean_gist_create_service: String = "github.Gist"
 data clean_gist_create_operation: String = "Create"

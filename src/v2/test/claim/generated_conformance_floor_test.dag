@@ -55,6 +55,9 @@ import v2.test.generated.testgen_category_wishlist {
   pending_non_tautological_generator_count_is_three,
   dispatched_non_tautological_generator_count_is_four
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn generated_claim_emitted(o: Outcome<TestClaim>) -> Bool {
   match o {

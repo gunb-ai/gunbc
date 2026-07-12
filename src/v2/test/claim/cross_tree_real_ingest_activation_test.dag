@@ -25,6 +25,9 @@ import v2.std.cross_tree.resolution {
 }
 import v2.std.logic { Bool }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ct_real_v2_subject_source: Medium<String> = Medium {
   carried: "module v2.ct_real_subject\n",

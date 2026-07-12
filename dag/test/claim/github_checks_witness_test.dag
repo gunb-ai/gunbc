@@ -16,6 +16,9 @@ import extdeps.github.checks {
   check_status_wire_label,
   check_conclusion_wire_label,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sample_check_output: CheckOutput = CheckOutput {
   title: "CI passed",
   summary: "All checks green",

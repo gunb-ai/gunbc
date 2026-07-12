@@ -16,6 +16,9 @@ import std.pareto {
   any_dominates,
   on_pareto_front
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn compare_axes(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> List<AxisComparison> {
   [

@@ -8,6 +8,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data semantic_witness_golden: String = concat(rust_enum_derives, "\nenum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }")
 
