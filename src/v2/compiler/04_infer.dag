@@ -43,12 +43,15 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool, bool_node }
 import v2.std.node {
+  Arrow,
   Atom,
   Branch,
   ComputationNode,
+  Conj,
   Edge,
   Loop,
   Match,
+  Named,
   Node,
   NodeFold,
   Symbol,
@@ -457,14 +460,86 @@ fn infer_branch_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
-fn infer_branch_operand_resolved_type(node: Node, facts: InferredFacts) -> Node {
+fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
+    _ => Absent
+  }
+}
+
+fn infer_conj_edge_named_type_for_binding(edge: Edge, binding: Symbol) -> Optional<Node> {
+  match edge.label {
+    Named { name: sym } =>
+      if sym == binding {
+        Present { value: edge.target }
+      } else {
+        Absent
+      }
+    Positional => Absent
+  }
+}
+
+fn infer_conj_named_type_for_binding(domain: Node, binding: Symbol) -> Optional<Node> {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      fold(domain.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => infer_conj_edge_named_type_for_binding(edge: e, binding: binding)
+        }
+      })
+    _ => Absent
+  }
+}
+
+fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional<Node> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Present { value: domain } =>
+          infer_conj_named_type_for_binding(domain: domain, binding: binding)
+        Absent => Absent
+      }
+    _ => Absent
+  }
+}
+
+fn infer_find_arrow_domain_type_in_tree(root: Node, binding: Symbol) -> Optional<Node> {
+  match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
+    Present { value: ty } => Present { value: ty }
+    Absent =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => infer_find_arrow_domain_type_in_tree(root: e.target, binding: binding)
+        }
+      })
+  }
+}
+
+fn infer_branch_operand_resolved_type_in_tree(
+  node: Node,
+  facts: InferredFacts,
+  tree: Node,
+) -> Node {
   if infer_branch_is_bool_literal_atom(node: node) {
     bool_node()
   } else if infer_branch_is_int_literal_atom(node: node) {
     infer_branch_int_binding_type_node()
   } else {
-    inferred_facts_resolved_type(facts: facts)
+    match infer_atom_binding_sym(node: node) {
+      Present { value: binding } =>
+        match infer_find_arrow_domain_type_in_tree(root: tree, binding: binding) {
+          Present { value: domain_ty } => domain_ty
+          Absent => inferred_facts_resolved_type(facts: facts)
+        }
+      Absent => inferred_facts_resolved_type(facts: facts)
+    }
   }
+}
+
+fn infer_branch_operand_resolved_type(node: Node, facts: InferredFacts) -> Node {
+  infer_branch_operand_resolved_type_in_tree(node: node, facts: facts, tree: node)
 }
 
 fn infer_branch_canonical_grounding(node: Node, unified_type: Node) -> CanonicalGrounding {
@@ -796,6 +871,7 @@ fn infer_match_bool(
   node: Node,
   partials: List<Node>,
   entries: List<InferredFactsEntry>,
+  tree: Node,
 ) -> Outcome<InferredFacts> {
   let positional_targets = node_positional_child_targets(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
@@ -816,9 +892,10 @@ fn infer_match_bool(
                     match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
                       Rejected { diagnostics: r } => Rejected { diagnostics: r }
                       Accepted { value: _, diagnostics: cd } =>
-                        let scrutinee_type = infer_branch_operand_resolved_type(
+                        let scrutinee_type = infer_branch_operand_resolved_type_in_tree(
                           node: scrutinee_target,
-                          facts: scrutinee_facts
+                          facts: scrutinee_facts,
+                          tree: tree
                         )
                         if infer_branch_type_is_bool(type_node: scrutinee_type) {
                           infer_match_bool_arm_rows_accept(
@@ -1061,8 +1138,9 @@ fn infer_gather_match_row_on_entries(
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
   partials: List<Node>,
+  tree: Node,
 ) -> InferGatherFoldAcc {
-  match infer_match_bool(node: node, partials: partials, entries: entries) {
+  match infer_match_bool(node: node, partials: partials, entries: entries, tree: tree) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -1228,6 +1306,7 @@ fn infer_gather_fold_step(
   edge: Edge,
   child: InferGatherFoldAcc,
   partials: List<Node>,
+  tree: Node,
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
@@ -1259,7 +1338,8 @@ fn infer_gather_fold_step(
         node: acc.node,
         entries: merged_entries,
         pending: merged_pending,
-        partials: partials
+        partials: partials,
+        tree: tree
       )
     } else if acc.await_loop_row && children_remaining == 0 {
       infer_gather_loop_row_on_entries(
@@ -1282,13 +1362,13 @@ fn infer_gather_fold_step(
   }
 }
 
-fn infer_gather_fold_algebra(partials: List<Node>) -> NodeFold<InferGatherFoldAcc> {
+fn infer_gather_fold_algebra(partials: List<Node>, tree: Node) -> NodeFold<InferGatherFoldAcc> {
   NodeFold {
     init: fn(n0) {
       infer_gather_fold_init(n: n0, partials: partials)
     },
     step: fn(acc, e, child) {
-      infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials)
+      infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials, tree: tree)
     }
   }
 }
@@ -1300,7 +1380,7 @@ fn infer_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
 fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
   infer_gather_acc_to_outcome(
-    acc: fold_node(n: tree, algebra: infer_gather_fold_algebra(partials: partials))
+    acc: fold_node(n: tree, algebra: infer_gather_fold_algebra(partials: partials, tree: tree))
   )
 }
 fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
