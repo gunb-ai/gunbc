@@ -7699,7 +7699,10 @@ impl ShardStyle {
             );
         } else {
             let glyph = if passed { "PASS" } else { "FAIL" };
-            eprintln!("  s{} {glyph} {function} ({entry}) {ms:.1}ms", self.shard_id);
+            eprintln!(
+                "  s{} {glyph} {function} ({entry}) {ms:.1}ms",
+                self.shard_id
+            );
         }
     }
 }
