@@ -9,9 +9,12 @@ import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
+  eval,
   eval_context_with_semantics,
-  eval_test_claim_subject
+  eval_test_claim_subject,
+  inputs_root_only
 }
+import extdeps.communication.medium { Medium }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
@@ -139,11 +142,37 @@ fn ingested_arrow_from_source(source: String) -> Outcome<Node> {
   )
 }
 
+fn ingested_match_body_from_source(source: String) -> Outcome<Node> {
+  bind_outcome(
+    o: ingested_arrow_from_source(source: source),
+    f: fn(arrow) {
+      find_arrow_body_child(root: arrow)
+    }
+  )
+}
 fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
-      infer(tree: arrow)
+      bind_outcome(
+        o: infer(tree: arrow),
+        f: fn(inferred) {
+          outcome_accepted(
+            value: InferredTree {
+              root: inferred.root,
+              facts: Map {
+                lookup: fn(key) {
+                  match inferred.facts.lookup(key: key) {
+                    Holds { value: _ } => inferred.facts.lookup(key: key)
+                    Violates { diagnostic: _ } =>
+                      ingested_classical_not_composed_facts(key: key)
+                  }
+                }
+              }
+            }
+          )
+        }
+      )
     }
   )
 }
@@ -409,6 +438,35 @@ fn ingested_classical_not_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>)
     Fail { actual: _, falsification: _ } => true
     Pass => false
     Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match eval(
+        tree: tree,
+        interpretation: ingested_classical_not_interpretation(),
+        inputs: inputs_root_only(root: ingested_classical_not_eval_subgraph_canonical())
+      ) {
+        Accepted { value: v, diagnostics: _ } =>
+          v == ingested_classical_not_octet_value(n: 0)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "pub fn classical_not(x")
+            || string_contains(s: source, pattern: "fn classical_not(x")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 
