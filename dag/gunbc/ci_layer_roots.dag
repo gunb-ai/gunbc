@@ -26,7 +26,6 @@ data witness_exclusion_substrings: List<String> = [
   "test/claim/enforcement/",
   "enforcement_live_witness_test.dag",
   "lever_a_local_receipt_witness",
-<<<<<<< HEAD
   "host_effect_apply_witness_test.dag",
   "deploy_access_privilege_witness_test.dag",
   "ci_deploy_observed_wet_test.dag",
@@ -46,7 +45,8 @@ data witness_exclusion_substrings: List<String> = [
   "infer_semantics_witness_test.dag",
   "dag_compile_clean_shard_a_witness_test.dag",
   "dag_compile_clean_shard_totality_witness_test.dag",
-  "dag_compile_clean_seam_witness_test.dag"
+  "dag_compile_clean_seam_witness_test.dag",
+  "test/fixture/floor_skip/"
 ]
 
 data wet_integration_offline_note: String = "Four wet-integration entries above (host_effect_apply, deploy_access_privilege, ci_deploy_observed_wet, random_bytes_csprng) are OFFLINE per the hermetic-floor posture (operator 2026-07-11: integration-style witnesses must not run regularly; CI runs hermetic/mocked behavior checks). Each performs genuinely live host effects the hermetic envelope refuses by construction: host_effect_apply drives real LocalShell/SSH host effects (the 133s row atop the slow-witness census), deploy_access_privilege applies privileged shell mutations through fixture actors, ci_deploy_observed_wet shells whoami + sudo -n, random_bytes_csprng reads host entropy. Hermetic duals stay discovered where they exist (the ci_deploy split keeps the pure half; deploy_access_check(access, actor) is the mock-shaped dual). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> per file. Dissolve-on: the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget — then these four enroll there as declared execution rows and the exclusion rows delete."
@@ -97,9 +97,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_totality_holds_on_live_tree"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag", f: "cross_shard_seam_algebra_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag", f: "cross_shard_seam_preservation_holds_on_live_tree")
-=======
-  "test/fixture/floor_skip/"
->>>>>>> origin/main
 ]
 
 data floor_skip_control_fixture_exclusion_note: String = "test/fixture/floor_skip/ is excluded from tree-wide discovery at DIR grain (parent ruling 2026-07-11: a fixture that WANTS witness enrollment is mis-homed by definition, and file-grain exclusion invites the next control fixture to repeat the landmine). These fixtures exist to be driven by floor_skip_discovery_witness's explicit rosters, not as corpus witnesses: falsifier_divergence_control_test.dag carries a BY-DESIGN red row (falsifier_red_control_holds returns false to prove the divergence attribution channel), so any completed full-corpus run - the nightly falsifier, or a PR whose diff touches its import closure - would red on a row whose red is the control's specification, and a permanent by-design divergence would also make the falsifier's 8-clean-window retirement criterion unsatisfiable; live_tree_declared_test.dag declares ReadsLiveTree as a control, so as a corpus row it would be a permanent never-skip cost with no enforcement value. Genuine corpus witnesses that were mis-homed here have been re-homed under test/claim/ (provenance_fail_closed_contract_test, live_tree_collision_test). Explicit-roster runs (the floor_skip bin) are unaffected: witness exclusions apply to discovery only."
