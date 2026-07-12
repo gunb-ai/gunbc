@@ -1,0 +1,44 @@
+module v2.test.claim.body_lowering_descent_bound
+
+import std.termination { Strict }
+import v2.compiler.body_lowering_descent {
+  body_lower_descent_evidence,
+  body_lower_descent_termination_proof
+}
+import v2.std.cardinality { structural_node_size_termination_proof }
+import v2.compiler.body_lowering_fold { body_lower_after_children }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, TypeNode, node_synthetic }
+
+data body_lowering_descent_bound_note: String = "Discriminating witness for #6459 eval-cost wedge: body_lowering_fold walkers budget remaining steps to node_subtree_count(folded). Exhaustion is a typed, located refusal (^body_lowering_reason_descent_not_proven), never silent widen or unbounded retry. Green: DescentEvidence is Strict on structural_node_size; remaining=0 refuses with the descent reason. RED control: remaining>0 on a pass-through shell accepts (not a descent refusal)."
+
+fn witness_descent_budget_exhaustion_refuses() -> Bool {
+  let shell = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_after_children(remaining: 0, folded: shell) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn witness_descent_budget_positive_not_exhausted() -> Bool {
+  let shell = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_after_children(remaining: 1, folded: shell) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn body_lowering_descent_evidence_strict_holds() -> Bool {
+  body_lower_descent_evidence() == Strict
+}
+
+test fn body_lowering_descent_termination_proof_holds() -> Bool {
+  body_lower_descent_termination_proof() == structural_node_size_termination_proof()
+}
+
+test fn body_lowering_descent_budget_refusal_holds() -> Bool {
+  witness_descent_budget_exhaustion_refuses()
+    && witness_descent_budget_positive_not_exhausted()
+}

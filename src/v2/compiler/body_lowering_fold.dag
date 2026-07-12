@@ -95,7 +95,7 @@ fn body_lowering_interim_scaffold_seed_retained_count() -> Int {
   length(xs: body_lowering_interim_scaffold_rows())
 }
 
-fn body_lower_diagnostic(remaining: Int, reason: Symbol, n: Node) -> Diagnostic {
+fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
     at: node_locus(node: n),
@@ -103,15 +103,12 @@ fn body_lower_diagnostic(remaining: Int, reason: Symbol, n: Node) -> Diagnostic 
   }
 }
 
-fn body_lower_wrapper_retained_diagnostic(remaining: Int, n: Node) -> Diagnostic {
+fn body_lower_wrapper_retained_diagnostic(n: Node) -> Diagnostic {
   body_lower_diagnostic(reason: ^body_lowering_reason_wrapper_retained_emitted, n: n)
 }
 
-fn body_lower_canonical_type_binding_optional(remaining: Int, sym: Symbol) -> Optional<Symbol> {
-  match remaining <= 0 {
-    true => Absent
-    false =>
-if sym == dag_int_type_binding() {
+fn body_lower_canonical_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
+  if sym == dag_int_type_binding() {
     optional_present(value: sym)
   } else if symbol_lexeme(sym: sym) == "Int" {
     optional_present(value: dag_int_type_binding())
@@ -120,10 +117,9 @@ if sym == dag_int_type_binding() {
   } else {
     optional_absent()
   }
-  }
 }
 
-fn body_lower_resolved_type_binding(remaining: Int, sym: Symbol) -> Symbol {
+fn body_lower_resolved_type_binding(sym: Symbol) -> Symbol {
   match body_lower_canonical_type_binding_optional(sym: sym) {
     Present { value: canonical } => canonical
     Absent => sym
@@ -150,23 +146,16 @@ Accepted {
 }
 }
 
-fn body_lower_is_core_substrate(remaining: Int, node: Node) -> Bool {
-  match remaining <= 0 {
-    true => false
-    false =>
-match node.kind {
+fn body_lower_is_core_substrate(node: Node) -> Bool {
+  match node.kind {
     TypeNode { connective: Arrow } => true
     ComputationNode { behavior: _ } => true
     _ => false
   }
-  }
 }
 
-fn body_lower_is_pass_through_emitted(remaining: Int, emitted: Symbol) -> Bool {
-  match remaining <= 0 {
-    true => false
-    false =>
-(emitted == ^dag_surface_expr)
+fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_expr)
     || (emitted == ^dag_surface_binary_expr)
     || (emitted == ^dag_surface_unary_expr)
     || (emitted == ^dag_surface_postfix_expr)
@@ -174,25 +163,17 @@ fn body_lower_is_pass_through_emitted(remaining: Int, emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_stmt)
     || (emitted == ^dag_surface_stmt_seq)
     || (emitted == ^dag_surface_arg)
-  }
 }
 
-fn body_lower_is_deferred_lower_emitted(remaining: Int, emitted: Symbol) -> Bool {
-  match remaining <= 0 {
-    true => false
-    false =>
-(emitted == ^dag_surface_fn_body)
+fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_fn_body)
     || (emitted == ^dag_surface_pattern)
     || (emitted == ^dag_surface_match_arm)
     || (emitted == ^dag_surface_match_arm_stmt_body)
-  }
 }
 
-fn body_lower_is_metadata_preserved_emitted(remaining: Int, emitted: Symbol) -> Bool {
-  match remaining <= 0 {
-    true => false
-    false =>
-(emitted == ^dag_surface_module)
+fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_module)
     || (emitted == ^dag_surface_module_header)
     || (emitted == ^dag_surface_import_decl)
     || (emitted == ^dag_surface_qualified_name)
@@ -203,7 +184,6 @@ fn body_lower_is_metadata_preserved_emitted(remaining: Int, emitted: Symbol) -> 
     || (emitted == ^dag_surface_type_decl)
     || (emitted == ^dag_surface_data_decl)
     || (emitted == ^dag_surface_import_block)
-  }
 }
 
 fn body_lower_param_ref_atom(identity: Symbol) -> Node {
@@ -1743,18 +1723,14 @@ let stripped = body_lower_unwrap_surface_shell(remaining: remaining - 1, node: n
 }
 }
 
-fn body_lower_match_arm_wire(remaining: Int, pat_node: Node, body: Node) -> Node {
-  match remaining <= 0 {
-    true => pat_node
-    false =>
-node_synthetic(
+fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
+  node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: match_arm_pattern }, target: pat_node },
       Edge { label: Named { name: match_arm_body }, target: body }
     ]
   )
-  }
 }
 
 fn body_lower_pattern_leaf_atom_optional(remaining: Int, node: Node) -> Optional<Node> {
