@@ -596,12 +596,11 @@ fn body_lower_typed_param_from_comma_seq(remaining: Int, sequence_capture: Node)
   }
 }
 
-fn body_lower_collect_param_edges_from_repeat_tail(remaining: Int, repeat_capture: Node) -> List<Edge> {
-  match remaining <= 0 {
-    true => []
-    false =>
-      if is_empty_conj_root(n: repeat_capture) {
-      Empty
+fn body_lower_collect_param_edges_from_repeat_tail(remaining: Int, repeat_capture: Node) -> Outcome<List<Edge>> {
+  if remaining <= 0 {
+    outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: repeat_capture))
+  } else if is_empty_conj_root(n: repeat_capture) {
+    outcome_accepted(value: Empty)
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: head_sequence, diagnostics: _ } =>
@@ -612,11 +611,16 @@ fn body_lower_collect_param_edges_from_repeat_tail(remaining: Int, repeat_captur
               name: ^grammar_sequence_right_node_projection
             ) {
               Accepted { value: tail, diagnostics: _ } =>
-                list_append(
-                  left: [edge],
-                  right: body_lower_collect_param_edges_from_repeat_tail(remaining: remaining - 1, repeat_capture: tail)
+                bind_outcome(
+                  o: body_lower_collect_param_edges_from_repeat_tail(
+                    remaining: remaining - 1,
+                    repeat_capture: tail
+                  ),
+                  f: fn(rest) {
+                    outcome_accepted(value: list_append(left: [edge], right: rest))
+                  }
                 )
-              Rejected { diagnostics: _ } => [edge]
+              Rejected { diagnostics: _ } => outcome_accepted(value: [edge])
             }
           Absent =>
             match find_named_child(
@@ -624,65 +628,74 @@ fn body_lower_collect_param_edges_from_repeat_tail(remaining: Int, repeat_captur
               name: ^grammar_sequence_right_node_projection
             ) {
               Accepted { value: tail, diagnostics: _ } =>
-                body_lower_collect_param_edges_from_repeat_tail(remaining: remaining - 1, repeat_capture: tail)
-              Rejected { diagnostics: _ } => Empty
+                body_lower_collect_param_edges_from_repeat_tail(
+                  remaining: remaining - 1,
+                  repeat_capture: tail
+                )
+              Rejected { diagnostics: _ } => outcome_accepted(value: Empty)
             }
         }
-      Rejected { diagnostics: _ } => Empty
+      Rejected { diagnostics: _ } => outcome_accepted(value: Empty)
     }
-  }
   }
 }
 
-fn body_lower_collect_param_edges(remaining: Int, sequence_capture: Node) -> List<Edge> {
-  match remaining <= 0 {
-    true => []
-    false =>
-      match find_named_child(root: sequence_capture, name: ^grammar_sequence_left_node_projection) {
+fn body_lower_collect_param_edges(remaining: Int, sequence_capture: Node) -> Outcome<List<Edge>> {
+  if remaining <= 0 {
+    outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: sequence_capture))
+  } else {
+    match find_named_child(root: sequence_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: first, diagnostics: _ } =>
-      let first_edges = match body_lower_typed_param_edge(remaining: remaining - 1, param_capture: first) {
-        Present { value: edge } => [edge]
-        Absent => Empty
-      }
-      match find_named_child(root: sequence_capture, name: ^grammar_sequence_right_node_projection) {
-        Accepted { value: outer_right, diagnostics: _ } =>
-          match find_named_child(root: outer_right, name: ^grammar_sequence_left_node_projection) {
-            Accepted { value: repeat_capture, diagnostics: _ } =>
-              list_append(
-                left: first_edges,
-                right: body_lower_collect_param_edges_from_repeat_tail(remaining: remaining - 1, repeat_capture: repeat_capture
+        let first_edges = match body_lower_typed_param_edge(remaining: remaining - 1, param_capture: first) {
+          Present { value: edge } => [edge]
+          Absent => Empty
+        }
+        match find_named_child(root: sequence_capture, name: ^grammar_sequence_right_node_projection) {
+          Accepted { value: outer_right, diagnostics: _ } =>
+            match find_named_child(root: outer_right, name: ^grammar_sequence_left_node_projection) {
+              Accepted { value: repeat_capture, diagnostics: _ } =>
+                bind_outcome(
+                  o: body_lower_collect_param_edges_from_repeat_tail(
+                    remaining: remaining - 1,
+                    repeat_capture: repeat_capture
+                  ),
+                  f: fn(rest) {
+                    outcome_accepted(value: list_append(left: first_edges, right: rest))
+                  }
                 )
-              )
-            Rejected { diagnostics: _ } => first_edges
-          }
-        Rejected { diagnostics: _ } => first_edges
-      }
+              Rejected { diagnostics: _ } => outcome_accepted(value: first_edges)
+            }
+          Rejected { diagnostics: _ } => outcome_accepted(value: first_edges)
+        }
       Rejected { diagnostics: _ } =>
-      match body_lower_typed_param_edge(remaining: remaining - 1, param_capture: sequence_capture) {
-        Present { value: edge } => [edge]
-        Absent =>
-          match sugar_sequence_pair_optional(node: sequence_capture) {
-            Absent => Empty
-            Present { value: pair } =>
-              match body_lower_typed_param_edge(remaining: remaining - 1, param_capture: pair.left) {
-                Present { value: edge } =>
-                  match body_lower_after_comma_tail_optional(remaining: remaining - 1, node: pair.right) {
-                    Present { value: tail } =>
-                      list_append(
-                        left: [edge],
-                        right: body_lower_collect_param_edges(remaining: remaining - 1, sequence_capture: tail)
-                      )
-                    Absent => [edge]
-                  }
-                Absent =>
-                  match body_lower_after_comma_tail_optional(remaining: remaining - 1, node: pair.right) {
-                    Present { value: tail } => body_lower_collect_param_edges(remaining: remaining - 1, sequence_capture: tail)
-                    Absent => Empty
-                  }
-              }
-          }
-      }
-  }
+        match body_lower_typed_param_edge(remaining: remaining - 1, param_capture: sequence_capture) {
+          Present { value: edge } => outcome_accepted(value: [edge])
+          Absent =>
+            match sugar_sequence_pair_optional(node: sequence_capture) {
+              Absent => outcome_accepted(value: Empty)
+              Present { value: pair } =>
+                match body_lower_typed_param_edge(remaining: remaining - 1, param_capture: pair.left) {
+                  Present { value: edge } =>
+                    match body_lower_after_comma_tail_optional(remaining: remaining - 1, node: pair.right) {
+                      Present { value: tail } =>
+                        bind_outcome(
+                          o: body_lower_collect_param_edges(remaining: remaining - 1, sequence_capture: tail),
+                          f: fn(rest) {
+                            outcome_accepted(value: list_append(left: [edge], right: rest))
+                          }
+                        )
+                      Absent => outcome_accepted(value: [edge])
+                    }
+                  Absent =>
+                    match body_lower_after_comma_tail_optional(remaining: remaining - 1, node: pair.right) {
+                      Present { value: tail } =>
+                        body_lower_collect_param_edges(remaining: remaining - 1, sequence_capture: tail)
+                      Absent => outcome_accepted(value: Empty)
+                    }
+                }
+            }
+        }
+    }
   }
 }
 
@@ -936,23 +949,27 @@ fn body_lower_domain_from_param_list(remaining: Int, param_list: Node) -> Outcom
             bind_outcome(
               o: body_lower_budget_outcome(remaining: remaining - 1, at: comma_spine),
               f: fn(edge_budget) {
-                let edges = body_lower_collect_param_edges(remaining: edge_budget, sequence_capture: comma_spine)
-                if count(edges) == 0 {
-                  outcome_accepted(
-                    value: optional_present(
-                      value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
-                    )
-                  )
-                } else {
-                  outcome_accepted(
-                    value: optional_present(
-                      value: node_synthetic(
-                        kind: TypeNode { connective: Conj },
-                        children: edges
+                bind_outcome(
+                  o: body_lower_collect_param_edges(remaining: edge_budget, sequence_capture: comma_spine),
+                  f: fn(edges) {
+                    if count(edges) == 0 {
+                      outcome_accepted(
+                        value: optional_present(
+                          value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+                        )
                       )
-                    )
-                  )
-                }
+                    } else {
+                      outcome_accepted(
+                        value: optional_present(
+                          value: node_synthetic(
+                            kind: TypeNode { connective: Conj },
+                            children: edges
+                          )
+                        )
+                      )
+                    }
+                  }
+                )
               }
             )
         }

@@ -8,6 +8,7 @@ import v2.compiler.body_lowering_descent {
 import v2.std.cardinality { structural_node_size_termination_proof }
 import v2.compiler.body_lowering_fold {
   body_lower_after_children,
+  body_lower_collect_param_edges,
   body_lower_domain_from_param_list,
   body_lower_return_type_from_fn_captured,
   body_lower_unwrap_captured
@@ -62,6 +63,15 @@ fn witness_descent_return_type_fn_captured_refuses() -> Bool {
   }
 }
 
+fn witness_descent_collect_param_edges_refuses() -> Bool {
+  let comma_spine = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_collect_param_edges(remaining: 0, sequence_capture: comma_spine) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
 test fn body_lowering_descent_evidence_strict_holds() -> Bool {
   body_lower_descent_evidence() == Strict
 }
@@ -76,4 +86,5 @@ test fn body_lowering_descent_budget_refusal_holds() -> Bool {
     && witness_descent_fn_decl_optional_chain_refuses()
     && witness_descent_domain_param_list_refuses()
     && witness_descent_return_type_fn_captured_refuses()
+    && witness_descent_collect_param_edges_refuses()
 }
