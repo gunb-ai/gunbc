@@ -44,6 +44,9 @@ import v2.std.node { Conj, Disj, Node, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Violates, Witness }
 import v2.std.algebra { free_monoid_type_node }
 import v2.std.compilers.target_model { char_kernel_type_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rust_literal_bind_facts_miss(key: Node) -> Witness<InferredFacts> {
   Violates {

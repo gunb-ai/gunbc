@@ -15,6 +15,9 @@ import std.materialization_ladder {
   value_verdict_is_shared_by_reference,
   value_verdict_is_refused_needing_reference
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn live_floor_gates() -> List<Gate> {
   project_ci_floor_gates(roster: commit_gate_roster)

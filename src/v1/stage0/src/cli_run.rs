@@ -2189,7 +2189,7 @@ fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &s
 /// `v2.workflow.affected_set_floor_runner` is the general per-entry authority.
 fn entry_eligible_for_discovery_skip_before_resolve(
     skip_enabled: bool,
-    entry_content: &str,
+    reads_live_tree: bool,
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
@@ -2199,7 +2199,12 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if !skip_enabled {
         return Ok(false);
     }
-    if entry_text_indicates_live_host_scan(entry_content) {
+    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
+    // `ReadsLiveTree` entry reads state outside its resolved closure, so the diff
+    // cannot bound its inputs — it never predict-skips. Replaces the deleted
+    // entry-text classifier (`entry_text_indicates_live_host_scan`); the disposition
+    // is entry-grain, parsed onto every DiscoveryRow of the entry.
+    if reads_live_tree {
         return Ok(false);
     }
     if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
@@ -4964,6 +4969,10 @@ pub struct DiscoveryRow {
     pub label: String,
     pub entry: String,
     pub function: String,
+    /// Declared live-tree disposition of this row's ENTRY file (`v2.std.live_tree`):
+    /// `true` = ReadsLiveTree (undeclared defaults here, fail-closed — never
+    /// predict-skip), `false` = declared SubstrateInputsOnly (selection-eligible).
+    pub reads_live_tree: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5452,6 +5461,8 @@ fn build_floor_lens_hygiene_graph(
     let excludes: Vec<String> = exclude_substrings.to_vec();
     let mut rows: Vec<DiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
+    let mut entry_dispositions: std::collections::BTreeMap<String, bool> =
+        std::collections::BTreeMap::new();
     for scan_dir in scan_dirs {
         let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
         for rec in discovery.records {
@@ -5472,10 +5483,19 @@ fn build_floor_lens_hygiene_graph(
                         .strip_prefix("unified_claim_")
                         .unwrap_or(&rec.decl_name)
                         .to_string();
+                    let reads_live_tree = match entry_dispositions.get(&witness_entry) {
+                        Some(d) => *d,
+                        None => {
+                            let d = read_entry_live_tree_disposition(&witness_entry)?;
+                            entry_dispositions.insert(witness_entry.clone(), d);
+                            d
+                        }
+                    };
                     rows.push(DiscoveryRow {
                         label,
                         entry: witness_entry,
                         function: witness_function,
+                        reads_live_tree,
                     });
                 }
             }
@@ -5529,12 +5549,21 @@ fn build_floor_lens_hygiene_graph(
                     sidecar_violations[i].push(entry.clone());
                 }
                 if rule.emit_discovery && entry.ends_with(rule.required_suffix) {
+                    let reads_live_tree = match entry_dispositions.get(&entry) {
+                        Some(d) => *d,
+                        None => {
+                            let d = parse_entry_live_tree_disposition(&entry, &content)?;
+                            entry_dispositions.insert(entry.clone(), d);
+                            d
+                        }
+                    };
                     for name in names {
                         if seen.insert((entry.clone(), name.clone())) {
                             rows.push(DiscoveryRow {
                                 label: name.clone(),
                                 entry: entry.clone(),
                                 function: name.clone(),
+                                reads_live_tree,
                             });
                         }
                     }
@@ -6262,8 +6291,6 @@ struct FloorDiffEdits {
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
 const ENTRY_SELECTION_ENTRY: &str = "src/v2/lens/affected_set/entry_selection.dag";
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
-// Keep in sync with `floor_host_scaffold_witness_marker` in affected_set_floor_runner.dag.
-const FLOOR_HOST_SCAFFOLD_WITNESS_MARKER: &str = "floor:host_scaffold";
 
 // `entry_file_touched_via_dependency_view` (the fn-arrow DependencyView wrapper) was
 // deleted here 2026-07-10 (operator fork (c)): its substrate-not-whole-tree arm returned
@@ -6417,77 +6444,42 @@ fn call_floor_kernel_would_skip(
     }
 }
 
-fn call_floor_kernel_precompute_would_skip(
+fn live_tree_disposition_value(
     ctx: &v1_interpreter::InterpContext,
-    changed_paths: &[String],
-    frontier_node_count: usize,
-    edited_test_fn_count: usize,
-    touched_entry_file_count: usize,
-) -> Result<bool, String> {
-    if !ctx
-        .item_registry
-        .contains_key("floor_kernel_precompute_would_skip")
-    {
-        return Err(
-            "floor_kernel_precompute_would_skip missing from floor runner context".to_string(),
-        );
-    }
-    let paths: Vec<v1_interpreter::Value> = changed_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
-    let args = [
-        (
-            Some("changed_paths".to_string()),
-            list_value_from_vec(paths),
-        ),
-        (
-            Some("frontier_node_count".to_string()),
-            v1_interpreter::Value::Int(frontier_node_count as i64),
-        ),
-        (
-            Some("edited_test_fn_count".to_string()),
-            v1_interpreter::Value::Int(edited_test_fn_count as i64),
-        ),
-        (
-            Some("touched_entry_file_count".to_string()),
-            v1_interpreter::Value::Int(touched_entry_file_count as i64),
-        ),
-    ];
-    match v1_interpreter::run_in_context_with_args(
-        ctx,
-        "floor_kernel_precompute_would_skip",
-        &args,
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
-        Ok(other) => Err(format!(
-            "floor_kernel_precompute_would_skip returned `{}`, expected Bool",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!("floor_kernel_precompute_would_skip: {e}")),
+    reads_live_tree: bool,
+) -> v1_interpreter::Value {
+    v1_interpreter::Value::Variant {
+        type_name: ctx.sym("LiveTreeDisposition"),
+        variant_name: ctx.sym(if reads_live_tree {
+            "ReadsLiveTree"
+        } else {
+            "SubstrateInputsOnly"
+        }),
+        fields: Rc::new(Vec::new()),
     }
 }
 
-fn call_floor_host_scaffold_would_skip(
+fn call_floor_row_would_skip(
     ctx: &v1_interpreter::InterpContext,
+    reads_live_tree: bool,
     changed_paths: &[String],
     frontier_nodes: &[v1_interpreter::Value],
     touches_frontier: bool,
     function_edited: bool,
     entry_file_touched: bool,
 ) -> Result<bool, String> {
-    if !ctx
-        .item_registry
-        .contains_key("floor_host_scaffold_would_skip")
-    {
-        return Err("floor_host_scaffold_would_skip missing from floor runner context".to_string());
+    if !ctx.item_registry.contains_key("floor_row_would_skip") {
+        return Err("floor_row_would_skip missing from floor runner context".to_string());
     }
     let paths: Vec<v1_interpreter::Value> = changed_paths
         .iter()
         .map(|s| v1_interpreter::Value::Str(s.clone()))
         .collect();
     let args = [
+        (
+            Some("reads_live_tree".to_string()),
+            live_tree_disposition_value(ctx, reads_live_tree),
+        ),
         (
             Some("changed_paths".to_string()),
             list_value_from_vec(paths),
@@ -6509,23 +6501,19 @@ fn call_floor_host_scaffold_would_skip(
             v1_interpreter::Value::Bool(entry_file_touched),
         ),
     ];
-    match v1_interpreter::run_in_context_with_args(
-        ctx,
-        "floor_host_scaffold_would_skip",
-        &args,
-        false,
-    ) {
+    match v1_interpreter::run_in_context_with_args(ctx, "floor_row_would_skip", &args, false) {
         Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
         Ok(other) => Err(format!(
-            "floor_host_scaffold_would_skip returned `{}`, expected Bool",
+            "floor_row_would_skip returned `{}`, expected Bool",
             ctx.format_value(&other)
         )),
-        Err(e) => Err(format!("floor_host_scaffold_would_skip: {e}")),
+        Err(e) => Err(format!("floor_row_would_skip: {e}")),
     }
 }
 
-fn call_floor_host_scaffold_precompute_would_skip(
+fn call_floor_row_precompute_would_skip(
     ctx: &v1_interpreter::InterpContext,
+    live_row_count: usize,
     changed_paths: &[String],
     frontier_node_count: usize,
     edited_test_fn_count: usize,
@@ -6533,11 +6521,10 @@ fn call_floor_host_scaffold_precompute_would_skip(
 ) -> Result<bool, String> {
     if !ctx
         .item_registry
-        .contains_key("floor_host_scaffold_precompute_would_skip")
+        .contains_key("floor_row_precompute_would_skip")
     {
         return Err(
-            "floor_host_scaffold_precompute_would_skip missing from floor runner context"
-                .to_string(),
+            "floor_row_precompute_would_skip missing from floor runner context".to_string(),
         );
     }
     let paths: Vec<v1_interpreter::Value> = changed_paths
@@ -6545,6 +6532,10 @@ fn call_floor_host_scaffold_precompute_would_skip(
         .map(|s| v1_interpreter::Value::Str(s.clone()))
         .collect();
     let args = [
+        (
+            Some("live_row_count".to_string()),
+            v1_interpreter::Value::Int(live_row_count as i64),
+        ),
         (
             Some("changed_paths".to_string()),
             list_value_from_vec(paths),
@@ -6564,81 +6555,108 @@ fn call_floor_host_scaffold_precompute_would_skip(
     ];
     match v1_interpreter::run_in_context_with_args(
         ctx,
-        "floor_host_scaffold_precompute_would_skip",
+        "floor_row_precompute_would_skip",
         &args,
         false,
     ) {
         Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
         Ok(other) => Err(format!(
-            "floor_host_scaffold_precompute_would_skip returned `{}`, expected Bool",
+            "floor_row_precompute_would_skip returned `{}`, expected Bool",
             ctx.format_value(&other)
         )),
-        Err(e) => Err(format!("floor_host_scaffold_precompute_would_skip: {e}")),
+        Err(e) => Err(format!("floor_row_precompute_would_skip: {e}")),
     }
 }
 
-fn entry_text_indicates_live_host_scan(text: &str) -> bool {
-    text.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER)
-        || text.contains("layer_import_facts")
-        || text.contains("_live(")
-        || text.contains("_facts_live(")
-        || text.contains("filesystem_read")
-}
-
-fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> bool {
-    // Fail-closed (file-wide): any live-tree scan signal anywhere in the entry
-    // classifies every witness in that file as host-scaffold — nested helper
-    // chains (test → helper_a → helper_b → _live) cannot fall back to kernel-skip.
-    if entry_text_indicates_live_host_scan(entry_content) {
-        return true;
-    }
-    let decl_needle = format!("test fn {function}");
-    if let Some(start) = entry_content.find(&decl_needle) {
-        let decl_tail =
-            &entry_content[start..entry_content.len().min(start + decl_needle.len() + 120)];
-        if decl_tail.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER) {
-            return true;
+// TOMBSTONE (ROADMAP `2-host-scaffold-classifier-defork`, resolved 2026-07-11): the
+// Rust entry-text classifier (`witness_test_fn_uses_live_host_scan` +
+// `entry_text_indicates_live_host_scan` + the `floor:host_scaffold` marker) lived here.
+// It is dissolved into the substrate-declared `reads_live_tree` disposition: each
+// witness entry file declares `data live_tree_disposition: LiveTreeDisposition = ...`
+// (`v2.std.live_tree`); undeclared = ReadsLiveTree = never predict-skip (fail-closed).
+// Declaration grade also closes the former cross-file deficit that was documented here
+// (a live read hidden behind an import was invisible to entry-text scanning): the
+// entry's own row asserts the fact for the whole evaluation, wherever the read hides.
+// A row that DECLARES SubstrateInputsOnly while actually reading live state is not
+// re-checked by any text scan — the nightly affected-set falsifier (predict-only cold
+// run) is the enforcement; a lying row surfaces as a counted divergence within one
+// cadence window. Call-reachability-grade classification (fn-arrow DependencyView over
+// lowered bodies) remains the later lane that re-derives these declarations.
+fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool, String> {
+    let mut declared: Option<bool> = None;
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let Some(rest) = trimmed.strip_prefix("data live_tree_disposition") else {
+            continue;
+        };
+        // Word boundary: a sibling row like `data live_tree_disposition_note: String`
+        // is a different declaration, not a malformed disposition row.
+        if rest
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        {
+            continue;
         }
+        let malformed = |detail: &str| {
+            format!(
+                "entry {entry} declares a malformed `live_tree_disposition` row ({detail}); \
+                 expected `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree | \
+                 SubstrateInputsOnly` — no silent reclassification"
+            )
+        };
+        let rest = rest.trim_start();
+        let Some(rest) = rest.strip_prefix(':') else {
+            return Err(malformed("missing `:` after the declaration name"));
+        };
+        let rest = rest.trim_start();
+        let Some(rest) = rest.strip_prefix("LiveTreeDisposition") else {
+            return Err(malformed("type annotation is not `LiveTreeDisposition`"));
+        };
+        let rest = rest.trim_start();
+        let Some(rest) = rest.strip_prefix('=') else {
+            return Err(malformed("missing `=` initializer"));
+        };
+        let live = match rest.trim() {
+            "ReadsLiveTree" => true,
+            "SubstrateInputsOnly" => false,
+            other => {
+                return Err(malformed(&format!("unknown variant `{other}`")));
+            }
+        };
+        if declared.is_some() {
+            return Err(malformed("declared more than once in one entry"));
+        }
+        declared = Some(live);
     }
-    false
+    // Undeclared = ReadsLiveTree: a row must DECLARE it does not read the live
+    // tree to become selection-eligible (fail-closed).
+    Ok(declared.unwrap_or(true))
 }
 
-// DECLARED DEFICIT — cross-file live-scan classification (eager-ram-612's finding,
-// 2026-07-10): the scan above reads only the ENTRY file's text, so a live read behind
-// an import (entry → helper module whose fn calls `filesystem_read`) is invisible and
-// the witness stays selection-eligible. Closing it at text grade was TRIED and refuted
-// by execution (2026-07-10): scanning the entry's import closure for the same signal
-// substrings classifies essentially the whole corpus host-scaffold, because
-// `dag/std/primitives.dag` — in virtually every closure — DECLARES the live intrinsics,
-// and plan-doc prose mentions them; that zeroed every predict-skip (0 skips on an empty
-// diff), which is the §5 corpus-denominated absorbing fallback this channel just had
-// removed, and it broke the pinned empty-diff-skips ruling (2026-07-05). The sound fix
-// is decl-grain call reachability — "does THIS test fn transitively CALL a live
-// intrinsic" — which is the fn-arrow DependencyView machinery (see
-// `entry_file_touched_grain_interim_note` in entry_selection.dag); text cannot separate
-// a call from a declaration or prose. Until then the exposure is bounded the same way
-// every selection deficit is: an undeclared host-scaffold witness that wrongly
-// predict-skips surfaces in the nightly affected-set falsifier as a COUNTED divergence
-// within one cadence window, and authors can classify a witness explicitly with the
-// `floor:host_scaffold` marker at the entry.
-fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
-    std::fs::read_to_string(entry).map_err(|e| {
+fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
+    let content = std::fs::read_to_string(entry).map_err(|e| {
         format!(
-            "failed to read entry {entry} for host-scaffold classification: {e} — a \
+            "failed to read entry {entry} for live-tree disposition: {e} — a \
              discovered roster row's file must be readable; no silent reclassification"
         )
-    })
+    })?;
+    parse_entry_live_tree_disposition(entry, &content)
+}
+
+fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
+    rows.iter().filter(|r| r.reads_live_tree).count()
 }
 
 /// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
 /// when import-closure `entry_file_touched` is false and no declaration-level edit
 /// targets this entry, every kernel witness in the entry would skip — receipt:
 /// `green_skip_for_file_outside_import_closure` (diff outside import closure → empty
-/// frontier / no touch). Host-scaffold entries are excluded (changed_paths can select
-/// them without import-closure overlap). Data-item edits land in `overlapping_data_items`
-/// (not `touched_entry_files`); any edited data-item file in the entry import closure
-/// must resolve so `rerun_frontier_nodes_for_entry` can discriminate referenced nodes
-/// (`red_node_frontier_fires_for_referenced_data_item`).
+/// frontier / no touch). Live-tree entries are excluded (`reads_live_tree`: their inputs
+/// are outside the resolved closure, so the diff cannot bound them). Data-item edits land
+/// in `overlapping_data_items` (not `touched_entry_files`); any edited data-item file in
+/// the entry import closure must resolve so `rerun_frontier_nodes_for_entry` can
+/// discriminate referenced nodes (`red_node_frontier_fires_for_referenced_data_item`).
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): pre-resolve skip for rows
 // provably outside all three skip axes without loading the resolved graph. Dissolves at
 // Step 5 (`docs/plans/affected-set-precompute-pruning.md`) when the Rust parallel
@@ -6646,12 +6664,19 @@ fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
 // `floor_witness_run_disposition` query owns the same predicate end-to-end.
 fn entry_qualifies_for_skip_without_resolve(
     entry_path: &str,
-    row_functions: &[&str],
+    reads_live_tree: bool,
     facts: &ModuleGraphFactsLive,
     declared_paths: &HashSet<String>,
     touched_entry_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<bool, String> {
+    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
+    // `ReadsLiveTree` entry never predict-skips. Replaces the deleted entry-text
+    // classifier's per-function `witness_test_fn_uses_live_host_scan` scan; the
+    // disposition is entry-grain, so one flag decides the whole entry.
+    if reads_live_tree {
+        return Ok(false);
+    }
     if diff_edits
         .edited_test_fns
         .iter()
@@ -6691,16 +6716,6 @@ fn entry_qualifies_for_skip_without_resolve(
             return Ok(false);
         }
     }
-    let content = read_entry_content_for_host_scaffold(entry_path)?;
-    if entry_text_indicates_live_host_scan(&content) {
-        return Ok(false);
-    }
-    if row_functions
-        .iter()
-        .any(|func| witness_test_fn_uses_live_host_scan(&content, func))
-    {
-        return Ok(false);
-    }
     Ok(true)
 }
 
@@ -6711,18 +6726,18 @@ fn discovery_entry_fast_skip_without_resolve(
     touched_entry_paths: &[String],
     diff_edits: &FloorDiffEdits,
 ) -> Result<HashSet<String>, String> {
-    let mut by_entry: HashMap<String, Vec<&str>> = HashMap::new();
+    // Entry-grain disposition: OR the rows' `reads_live_tree` per entry (they agree by
+    // construction — one declaration per entry file — but OR fails closed if they ever diverge).
+    let mut by_entry: HashMap<String, bool> = HashMap::new();
     for row in rows {
-        by_entry
-            .entry(row.entry.clone())
-            .or_default()
-            .push(row.function.as_str());
+        let live = by_entry.entry(row.entry.clone()).or_insert(false);
+        *live = *live || row.reads_live_tree;
     }
     let mut fast = HashSet::new();
-    for (entry, funcs) in by_entry {
+    for (entry, reads_live_tree) in by_entry {
         if entry_qualifies_for_skip_without_resolve(
             &entry,
-            &funcs,
+            reads_live_tree,
             facts,
             declared_paths,
             touched_entry_paths,
@@ -6752,16 +6767,6 @@ fn augment_closure_modules_from_import_facts(
             out.insert(node.module.clone());
         }
     }
-}
-
-fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> Result<bool, String> {
-    for row in rows {
-        let content = read_entry_content_for_host_scaffold(&row.entry)?;
-        if witness_test_fn_uses_live_host_scan(&content, &row.function) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 fn parse_unified_diff_departed_paths(diff_text: &str) -> HashSet<String> {
@@ -7108,6 +7113,7 @@ pub fn run_discovery_corpus_with_options(
                 label: function.clone(),
                 entry: entry.clone(),
                 function: function.clone(),
+                reads_live_tree: read_entry_live_tree_disposition(entry)?,
             });
         }
     }
@@ -7247,26 +7253,17 @@ pub fn run_discovery_corpus_with_options(
         None
     };
     let skip_precompute = if skip_enabled {
-        let host_scaffold_corpus = discovery_rows_include_host_scaffold(&rows)?;
+        let live_row_count = discovery_rows_live_tree_count(&rows);
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
-                let precompute = if host_scaffold_corpus {
-                    call_floor_host_scaffold_precompute_would_skip(
-                        ctx,
-                        &changed_paths,
-                        diff_edits.overlapping_data_items.len(),
-                        diff_edits.edited_test_fns.len(),
-                        diff_edits.touched_entry_files.len(),
-                    )
-                } else {
-                    call_floor_kernel_precompute_would_skip(
-                        ctx,
-                        &changed_paths,
-                        diff_edits.overlapping_data_items.len(),
-                        diff_edits.edited_test_fns.len(),
-                        diff_edits.touched_entry_files.len(),
-                    )
-                };
+                let precompute = call_floor_row_precompute_would_skip(
+                    ctx,
+                    live_row_count,
+                    &changed_paths,
+                    diff_edits.overlapping_data_items.len(),
+                    diff_edits.edited_test_fns.len(),
+                    diff_edits.touched_entry_files.len(),
+                );
                 match precompute {
                     Ok(skip) => skip,
                     Err(msg) => {
@@ -7519,7 +7516,6 @@ fn run_discovery_rows(
     let mut current_entry_touches = true;
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_file_touched = true;
-    let mut current_entry_content: String = String::new();
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
@@ -7565,10 +7561,9 @@ fn run_discovery_rows(
             continue;
         }
         if current_entry.as_deref() != Some(row.entry.as_str()) {
-            current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
             if entry_eligible_for_discovery_skip_before_resolve(
                 skip_enabled,
-                &current_entry_content,
+                row.reads_live_tree,
                 &row.entry,
                 &index.module_graph_facts,
                 &module_graph_declared_paths,
@@ -7622,29 +7617,17 @@ fn run_discovery_rows(
             });
         let entry_file_touched = skip_enabled && current_entry_file_touched;
         let would_skip = if skip_enabled {
-            let host_scaffold_witness =
-                witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
             match floor_runner_ctx {
                 Some(runner_ctx) => {
-                    let skip = if host_scaffold_witness {
-                        call_floor_host_scaffold_would_skip(
-                            runner_ctx,
-                            changed_paths,
-                            &current_entry_frontier_nodes,
-                            current_entry_touches,
-                            function_edited,
-                            entry_file_touched,
-                        )
-                    } else {
-                        call_floor_kernel_would_skip(
-                            runner_ctx,
-                            changed_paths,
-                            &current_entry_frontier_nodes,
-                            current_entry_touches,
-                            function_edited,
-                            entry_file_touched,
-                        )
-                    };
+                    let skip = call_floor_row_would_skip(
+                        runner_ctx,
+                        row.reads_live_tree,
+                        changed_paths,
+                        &current_entry_frontier_nodes,
+                        current_entry_touches,
+                        function_edited,
+                        entry_file_touched,
+                    );
                     match skip {
                         Ok(skip) => skip,
                         Err(msg) => {
@@ -7908,62 +7891,61 @@ new file mode 100644
     }
 
     #[test]
-    fn witness_test_fn_uses_live_host_scan_detects_live_calls() {
-        let source = "module m\n\ntest fn clean_tree_holds() -> Bool {\n  realization_vocab_containment_clean_live(scan_roots: roots)\n}\n\ntest fn pure_holds() -> Bool { true }\n";
-        assert!(super::witness_test_fn_uses_live_host_scan(
-            source,
-            "clean_tree_holds"
-        ));
-        // File-wide fail-closed: sibling witnesses in the same entry also run.
-        assert!(super::witness_test_fn_uses_live_host_scan(
-            source,
-            "pure_holds"
-        ));
+    fn live_tree_disposition_declared_substrate_only_is_selection_eligible() {
+        let source = "module m\n\nimport v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn pure_holds() -> Bool { true }\n";
+        assert!(!super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
     }
 
     #[test]
-    fn witness_test_fn_uses_live_host_scan_pure_entry_stays_kernel_eligible() {
-        let source = "module m\n\ntest fn pure_holds() -> Bool { true }\n\ntest fn also_pure() -> Bool { false }\n";
-        assert!(!super::witness_test_fn_uses_live_host_scan(
-            source,
-            "pure_holds"
-        ));
-        assert!(!super::witness_test_fn_uses_live_host_scan(
-            source,
-            "also_pure"
-        ));
+    fn live_tree_disposition_declared_reads_live_tree_is_live() {
+        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\n\ntest fn live_holds() -> Bool { true }\n";
+        assert!(super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
     }
 
     #[test]
-    fn witness_test_fn_uses_live_host_scan_detects_declared_marker() {
-        let source =
-            "module m\n\ntest fn marked_holds() -> Bool { // floor:host_scaffold\n  true\n}\n";
-        assert!(super::witness_test_fn_uses_live_host_scan(
-            source,
-            "marked_holds"
-        ));
+    fn live_tree_disposition_undeclared_defaults_live_fail_closed() {
+        // Undeclared = ReadsLiveTree even when the entry text LOOKS pure — a row
+        // must declare SubstrateInputsOnly to become selection-eligible.
+        let source = "module m\n\ntest fn pure_holds() -> Bool { true }\n";
+        assert!(super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
     }
 
     #[test]
-    fn witness_test_fn_uses_live_host_scan_follows_same_file_helper() {
-        let source = "module m\n\nfn helper_holds() -> Bool {\n  layer_import_facts(std_roots: [], extdeps_roots: [])\n}\n\ntest fn witness_holds() -> Bool {\n  helper_holds()\n}\n";
-        assert!(super::witness_test_fn_uses_live_host_scan(
-            source,
-            "witness_holds"
-        ));
+    fn live_tree_disposition_sibling_named_row_is_not_the_declaration() {
+        // `live_tree_disposition_note` shares the prefix but is a different decl —
+        // it must neither classify the entry nor trip the malformed-row refusal.
+        let source = "module m\n\ndata live_tree_disposition_note: String = \"doc row\"\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n";
+        assert!(!super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
+        let note_only = "module m\n\ndata live_tree_disposition_note: String = \"doc row\"\n";
+        assert!(
+            super::parse_entry_live_tree_disposition("m_test.dag", note_only).unwrap(),
+            "a note-only entry stays undeclared = ReadsLiveTree"
+        );
     }
 
     #[test]
-    fn witness_test_fn_uses_live_host_scan_follows_nested_same_file_helper() {
-        let source = "module m\n\nfn helper_b() -> Bool {\n  realization_vocab_containment_clean_live(scan_roots: roots)\n}\n\nfn helper_a() -> Bool {\n  helper_b()\n}\n\ntest fn witness_holds() -> Bool {\n  helper_a()\n}\n";
-        assert!(super::witness_test_fn_uses_live_host_scan(
-            source,
-            "witness_holds"
-        ));
+    fn live_tree_disposition_malformed_variant_refuses() {
+        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = MaybeLive\n";
+        let err = super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap_err();
+        assert!(err.contains("unknown variant"), "got: {err}");
     }
 
     #[test]
-    fn host_scaffold_witness_not_skipped_on_unrelated_diff() {
+    fn live_tree_disposition_wrong_type_annotation_refuses() {
+        let source = "module m\n\ndata live_tree_disposition: Bool = true\n";
+        let err = super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap_err();
+        assert!(err.contains("type annotation"), "got: {err}");
+    }
+
+    #[test]
+    fn live_tree_disposition_duplicate_declaration_refuses() {
+        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n";
+        let err = super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap_err();
+        assert!(err.contains("more than once"), "got: {err}");
+    }
+
+    #[test]
+    fn live_tree_declared_row_not_skipped_on_unrelated_diff() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = vec![
@@ -7976,24 +7958,39 @@ new file mode 100644
         let runner_ctx =
             super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
         let entry = "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag";
-        let content = std::fs::read_to_string(entry).expect("clean_tree readable");
-        assert!(super::witness_test_fn_uses_live_host_scan(
-            &content,
-            "realization_vocab_clean_tree_holds"
-        ));
+        assert!(
+            super::read_entry_live_tree_disposition(entry).expect("clean_tree readable"),
+            "the live-scan witness entry must declare (or default to) ReadsLiveTree"
+        );
         let changed_paths = vec!["src/v2/lens/affected_set.dag".to_string()];
-        let skip = super::call_floor_host_scaffold_would_skip(
+        let skip = super::call_floor_row_would_skip(
             &runner_ctx,
+            true,
             &changed_paths,
             &[],
             false,
             false,
             false,
         )
-        .expect("host scaffold skip");
+        .expect("live-tree row skip");
         assert!(
             !skip,
-            "host-scaffold witness must not skip on unrelated node-frontier diff"
+            "a ReadsLiveTree row must not skip on unrelated node-frontier diff"
+        );
+        let kernel_skip = super::call_floor_row_would_skip(
+            &runner_ctx,
+            false,
+            &changed_paths,
+            &[],
+            false,
+            false,
+            false,
+        )
+        .expect("substrate-only row skip");
+        assert!(
+            kernel_skip,
+            "the same unrelated diff must skip a declared SubstrateInputsOnly row \
+             (discriminating control: the disposition is what flips the decision)"
         );
     }
 
@@ -8107,16 +8104,19 @@ mod floor_witness_a_prove {
                 label: "floor_disc_witness_a".into(),
                 entry: fixture_abs.to_string(),
                 function: "floor_disc_witness_a_only_holds".into(),
+                reads_live_tree: false,
             },
             DiscoveryRow {
                 label: "floor_disc_witness_b".into(),
                 entry: fixture_abs.to_string(),
                 function: "floor_disc_witness_b_only_holds".into(),
+                reads_live_tree: false,
             },
             DiscoveryRow {
                 label: "floor_disc_witness_transitive".into(),
                 entry: fixture_abs.to_string(),
                 function: "floor_disc_witness_transitive_holds".into(),
+                reads_live_tree: false,
             },
         ]
     }
@@ -9116,16 +9116,11 @@ mod node_frontier_plumbing_controls {
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-        let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
-        let funcs: Vec<String> = scan_test_decl_lines(&content)
-            .into_iter()
-            .map(|(name, _)| name)
-            .collect();
-        let func_refs: Vec<&str> = funcs.iter().map(|s| s.as_str()).collect();
+        // Substrate-only fixture (reads_live_tree=false) → eligible when unaffected.
         assert!(
             super::entry_qualifies_for_skip_without_resolve(
                 &fixture_abs,
-                &func_refs,
+                false,
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
@@ -9133,6 +9128,38 @@ mod node_frontier_plumbing_controls {
             )
             .expect("qualify"),
             "unaffected entry must qualify for skip-before-resolve when diff is outside import closure"
+        );
+    }
+
+    // Discriminating RED control (§5 never-skip tooth): a `ReadsLiveTree` entry must NEVER
+    // qualify for skip-before-resolve, even in the exact unaffected-diff case that WOULD skip
+    // a substrate-only entry. If the `reads_live_tree` guard in
+    // `entry_qualifies_for_skip_without_resolve` is removed/bypassed, this goes red — the
+    // fail-open (a live-tree witness predicted-skipped → never runs → false green) is caught.
+    #[test]
+    fn live_tree_entry_never_qualifies_for_skip_without_resolve() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = abs(&ws, FIXTURE);
+        // Same unaffected diff as the eligible test above (outside the import closure).
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        assert!(
+            !super::entry_qualifies_for_skip_without_resolve(
+                &fixture_abs,
+                true,
+                &index.module_graph_facts,
+                &declared,
+                &touched_paths,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "a ReadsLiveTree entry must NOT qualify for skip-before-resolve even when the diff is outside its import closure (never predict-skip)"
         );
     }
 
@@ -9160,16 +9187,10 @@ mod node_frontier_plumbing_controls {
         );
         let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-        let content = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
-        let funcs: Vec<String> = scan_test_decl_lines(&content)
-            .into_iter()
-            .map(|(name, _)| name)
-            .collect();
-        let func_refs: Vec<&str> = funcs.iter().map(|s| s.as_str()).collect();
         assert!(
             !super::entry_qualifies_for_skip_without_resolve(
                 &fixture_abs,
-                &func_refs,
+                false,
                 &index.module_graph_facts,
                 &declared,
                 &touched_paths,
@@ -10090,6 +10111,7 @@ mod inert_lens_hygiene_tests {
             label: function.to_string(),
             entry: entry.to_string(),
             function: function.to_string(),
+            reads_live_tree: false,
         }
     }
 

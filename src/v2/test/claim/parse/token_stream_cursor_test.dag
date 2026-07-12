@@ -18,6 +18,9 @@ import v2.std.compilers.lexing {
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.node { Symbol }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn tsc_token(class: Symbol, lexeme: String) -> Token {
   Token { class: class, lexeme: lexeme, file: ^tsc_file, start: 0, end: 1 }

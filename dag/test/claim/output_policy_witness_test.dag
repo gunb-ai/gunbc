@@ -22,6 +22,9 @@ import gunbc.output_policy {
   resolve_verbosity,
   shell_trace_summary_max_columns
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn dec_is(d: OutputDecision, suppressed: Bool, condensed: Bool, full: Bool) -> Bool {
   match d {

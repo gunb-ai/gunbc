@@ -30,6 +30,9 @@ import product.hardware_selection {
   cost_micros_per_gib,
   bandwidth_per_watt
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data altra8: Platform = Platform {
   label: "altra-8ch-ddr4-3200",

@@ -11,6 +11,9 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data perturb_red_scan_roots: List<String> = [
   "src/v2/test/fixture/medium_structure_scan/perturb_red"

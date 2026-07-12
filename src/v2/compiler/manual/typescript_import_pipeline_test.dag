@@ -33,6 +33,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ts_import_pipeline_source: String = "module v2.test.import_pipeline\nimport v2.std.algebra { Cons, Empty }\n"
 data ts_import_pipeline_canonical_text: String = "import { Cons, Empty } from \"v2/std/algebra\";"

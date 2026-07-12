@@ -15,6 +15,9 @@ import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data target_carriers_probe_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 

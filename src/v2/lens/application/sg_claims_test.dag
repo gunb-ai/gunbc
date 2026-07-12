@@ -24,6 +24,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data lens_application_synthesis_root_path: Path = Path { steps: [] }
 
 data lens_application_synthesis_root_declaration: DeclarationId = DeclarationId {

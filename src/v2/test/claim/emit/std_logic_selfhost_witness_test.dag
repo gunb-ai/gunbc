@@ -19,6 +19,9 @@ import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outc
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Disj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data std_logic_bool_enum_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
 

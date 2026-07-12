@@ -27,6 +27,9 @@ import extdeps.realization.reconcile_in_process {
   typed_module_cache_id,
 }
 import extdeps.realization.resolved_graph { resolved_graph_cache_facts, resolved_graph_cache_id }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data shared_subject_digest: ContentHash = "reconcile-in-process-witness-shared-subject-digest"
 

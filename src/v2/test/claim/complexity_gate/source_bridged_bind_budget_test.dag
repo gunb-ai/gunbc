@@ -19,6 +19,9 @@ import v2.test.complexity_gate.subject_complexity_budget_roster {
   complexity_budget_row_source_bridged_bind,
   complexity_declared_budget_for_row
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn source_bridged_bind_cost_lens_holds(body: Node) -> Bool {
   match cost_lens(n: body) {

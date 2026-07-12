@@ -12,6 +12,9 @@ import v2.extdeps.languages.go { go_target_model }
 import v2.extdeps.languages.typescript { ts_target_model }
 import v2.extdeps.languages.cpp { cpp_target_model }
 import v2.extdeps.languages.java { java_target_model }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type EmitHostTargetCoverageRow {
   target: TargetModel

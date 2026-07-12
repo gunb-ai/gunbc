@@ -11,6 +11,9 @@ import gunbc.srv3_os_install_actuate_scope {
   srv3_os_install_actuate_is_actuator_prep_not_install_solved,
 }
 import gunbc.os_install { fleet_install_server_specs }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_autoinstall_seed_gap_is_explicitly_fail_closed() -> Bool {
   match srv3_autoinstall_seed_delivery_refusal() {

@@ -7,6 +7,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data semantic_bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
 

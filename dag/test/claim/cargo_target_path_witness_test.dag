@@ -19,6 +19,9 @@ import extdeps.cargo {
   rust_edition_str,
   default_rust_edition
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn render(parts: FilePathParts) -> String {
   fold(parts.segments, init: "", f: fn(acc, seg) {

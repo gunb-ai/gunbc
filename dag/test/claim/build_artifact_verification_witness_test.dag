@@ -12,6 +12,9 @@ import tools.build_step_transport {
   witness_nonempty_executable_accepted_by_execution
 }
 import gunbc.ci_spec { ci_floor_build_verify_script }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn probe_artifact() -> BuildArtifact {
   BuildArtifact {

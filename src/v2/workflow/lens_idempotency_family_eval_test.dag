@@ -27,6 +27,9 @@ import v2.test.lens_idempotency.write_effect { idempotency_claim_tree }
 import v2.test.lens_idempotency.family_receipt {
   lens_idempotency_runtime_value_rows
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn idempotency_control_empty_resolves() -> Bool {
   match idempotency_witness(tree: idempotency_claim_tree(), dependencies: []) {

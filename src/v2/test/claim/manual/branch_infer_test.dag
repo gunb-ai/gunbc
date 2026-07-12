@@ -34,6 +34,9 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_infer_atom(s: Symbol) -> Node {
   Node {

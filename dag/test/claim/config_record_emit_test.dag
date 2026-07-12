@@ -10,6 +10,9 @@ import std.serialize {
 }
 import std.layout { render, LayoutProtocol }
 import gunbc.runner_deploy_emit { manifest_record_knobs }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data flat_proto: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 

@@ -10,6 +10,9 @@ import gunbc.srv3_os_install_actuator_toolchain_ensure {
   os_install_actuator_toolchain_ensure_dissolution_trigger,
 }
 import extdeps.tools.websocat { websocat_install_path }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_actuator_toolchain_ensure_uses_github_release_for_websocat() -> Bool {
   os_install_actuator_toolchain_ensure_script_uses_github_release_not_apt_for_websocat()

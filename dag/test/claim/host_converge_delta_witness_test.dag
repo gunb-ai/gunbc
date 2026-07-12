@@ -35,6 +35,9 @@ import gunbc.host_converge_delta {
   host_converge_knob_verdict,
   host_converge_three_way_entry_count,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_srv2_host() -> RunnerHostDeployment {
   RunnerHostDeployment {

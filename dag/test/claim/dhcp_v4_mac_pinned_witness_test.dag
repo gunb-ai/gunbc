@@ -8,6 +8,9 @@ import extdeps.dhcp.v4 {
   DynamicLease,
   StaticReservation,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn dhcp_mac_pinned_static_reservation_not_contradictory() -> Bool {
   dhcp_mac_pinned_reservation_not_contradictory(

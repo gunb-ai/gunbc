@@ -21,6 +21,9 @@ import v2.lens.enforcement.grammar_coverage {
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data cc_witness_smoke_paths: List<String> = [
   "dag/std/logic.dag"

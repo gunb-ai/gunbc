@@ -7,6 +7,9 @@ import v2.lens.extdeps_external_authority.module_refs {
   extdeps_fixture_clean_https_module
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn clean_https_anchor_live_is_green_holds() -> Bool {
   extdeps_external_authority_clean_for_module(module: extdeps_fixture_clean_https_module)

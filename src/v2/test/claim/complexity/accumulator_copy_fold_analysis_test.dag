@@ -20,6 +20,9 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
 

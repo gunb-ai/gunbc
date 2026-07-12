@@ -19,6 +19,9 @@ import std.effects {
   ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
   is_idempotent_effect, create_effect_is_dedupable, create_double_init_collapsible,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type ReadonlyGetCase {
   name: String

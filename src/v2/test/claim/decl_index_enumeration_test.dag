@@ -11,6 +11,9 @@ import v2.std.decl_index {
   logical_qualified_name_from_module
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn decl_facts_nonempty_over_witness_roots() -> Bool {
   return decl_facts_count(pool_roots: witness_layer_roots) > 500

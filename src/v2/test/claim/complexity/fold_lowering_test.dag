@@ -33,6 +33,9 @@ import v2.std.node {
   well_formed
 }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data fold_lowering_witness_note: String = "Grounds the un-forked fold->Loop desugaring (v2.compiler.fold_lowering) by execution on REAL source, end-to-end through the census ingest (tokenize -> parse_module -> normalize). A surface fold parses as an ordinary call; after the StampLexeme grammar fix its callee carries its NAME (^fold) as an atom identity and the collection likewise (^xs) — the survival sub-facts are the RED control that a grammar regression (head stamped as the token class) breaks. The located fold-call subtree (the first primary_expr capture — the outermost fn-body expression) desugars to the canonical seam Loop, and the kept loop_multiplicity derives PROVEN termination from the fold-iteration measure — the same real derivation the foundation's loop witnesses use, now reached from a real parsed fold call rather than a hand-built loop. Two fail-closed red controls: a non-fold call (head ^g) refuses (never desugars a foreign call), and a fold call carrying no fn-literal iteration body refuses (never fabricates a loop). This is the desugaring the whole-tree body producer will run on every located fold call once corpus walking is affordable; the shape it emits is exactly what the accumulator-copy rule (M3) will key on."
 

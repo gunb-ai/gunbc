@@ -115,7 +115,7 @@ A witness runs when `touches_frontier || function_edited || entry_file_touched`;
 
 **Seam shape:** the `.dag` query result (`RerunNodeSet`) crosses the realization boundary once at floor entry — the same point `collect_frontier_seeds_from_diff_line_ranges` is called today. One query evaluation, two consumers, zero parallel impls.
 
-**Host-scaffold witness classifier (ROADMAP `2-host-scaffold-classifier-defork`, #6224):** live-tree witnesses must never take node-frontier skip (`floor_host_scaffold_would_skip` → `false`). Interim classification is the `floor:host_scaffold` marker plus the Rust `witness_test_fn_uses_live_host_scan` scaffold in `cli_run.rs` (conservative, fail-closed). **Dissolve-on:** `reads_live_tree` disposition on `TestClaim` rows — delete the text classifier when the substrate carries the fact.
+**Host-scaffold witness classifier (ROADMAP `2-host-scaffold-classifier-defork`, #6224 → dissolved #6479):** live-tree witnesses must never take node-frontier skip. The interim `floor:host_scaffold` marker and the Rust `witness_test_fn_uses_live_host_scan` text classifier are DELETED (2026-07-11): the substrate now carries the fact as a declared `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree | SubstrateInputsOnly` row in each witness ENTRY FILE (`v2.std.live_tree`), entry grain — undeclared defaults to ReadsLiveTree (fail-closed, never predict-skip). Placement note: the disposition lives on the entry, not on `TestClaim`/`BoolWitness` claim rows — a claim row asserting a foreign entry's liveness would be a second carrier of the same fact (§3). The nightly affected-set falsifier is the enforcement for a lying declaration; call-reachability-grade re-derivation is the later lane.
 
 ---
 

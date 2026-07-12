@@ -36,6 +36,9 @@ import v2.test.manual.add_body_emit_typescript {
   add_body_ts_emit_from_producer_tree,
   add_body_ts_producer_inferred_tree
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn program_partition_node_list_member_seen(seen: List<Node>, needle: Node) -> Bool {
   any(xs: seen, predicate: fn(member) { member == needle })

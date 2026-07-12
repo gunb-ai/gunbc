@@ -43,6 +43,9 @@ import gunbc.os_install_deduction {
   runtime_verdict_from_kvm_attestation,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
   autoinstall_version: 1,

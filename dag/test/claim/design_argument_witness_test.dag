@@ -6,6 +6,9 @@ import std.syllogism {
   argument_has_no_orphan, argument_is_acyclic,
   argument_axiom_set_is_closed, argument_form_is_valid, argument_is_non_vacuous
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn design_s1_argument_form_is_valid() -> Bool {
   argument_form_is_valid(design_section_1_argument)

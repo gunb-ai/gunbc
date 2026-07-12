@@ -7,6 +7,9 @@ import extdeps.realization.cache_purity {
   cache_purity_verdict,
 }
 import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_violation() -> CachePurityViolation {
   CachePurityViolation {

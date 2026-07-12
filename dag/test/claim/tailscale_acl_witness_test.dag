@@ -16,6 +16,9 @@ import extdeps.tailscale.acl {
 }
 import gunbc.tailscale_acl_emit { expected_tailscale_acl_json }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data tailscale_acl_reference_fixture_path: String = "dag/test/fixture/tailscale_acl_reference.json"
 

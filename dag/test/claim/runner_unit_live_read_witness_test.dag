@@ -43,6 +43,9 @@ import gunbc.runner_unit_live_read {
   fixture_live_read,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_host() -> String {
   "srv1"

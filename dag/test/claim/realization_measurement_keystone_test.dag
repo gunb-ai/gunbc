@@ -21,6 +21,9 @@ import gunbc.fleet_intent {
 }
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.measure { ByteSize, byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_subject: ContentHash = "witness-subject-realization-measurement-keystone"
 data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"

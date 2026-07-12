@@ -8,6 +8,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.text { String }
 import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import v2.std.verification {
   TestClaim,
   test_claim_evaluation_node_touches_frontier,
@@ -36,9 +37,8 @@ type FloorWitnessRow {
   label: String
   entry: String
   function: String
+  reads_live_tree: LiveTreeDisposition
 }
-
-data floor_host_scaffold_witness_marker: String = "floor:host_scaffold"
 
 type FloorDiffLineTouch {
   path: String
@@ -163,14 +163,25 @@ fn floor_kernel_would_skip(
   }
 }
 
-fn floor_host_scaffold_would_skip(
+fn floor_row_would_skip(
+  reads_live_tree: LiveTreeDisposition,
   changed_paths: List<String>,
   frontier_nodes: List<Node>,
   touches_frontier: Bool,
   function_edited: Bool,
   entry_file_touched: Bool
 ) -> Bool {
-  false
+  match reads_live_tree {
+    ReadsLiveTree => false
+    SubstrateInputsOnly =>
+      floor_kernel_would_skip(
+        changed_paths: changed_paths,
+        frontier_nodes: frontier_nodes,
+        touches_frontier: touches_frontier,
+        function_edited: function_edited,
+        entry_file_touched: entry_file_touched
+      )
+  }
 }
 
 fn floor_precompute_would_skip(
@@ -210,13 +221,25 @@ fn floor_kernel_precompute_would_skip(
   }
 }
 
-fn floor_host_scaffold_precompute_would_skip(
+data floor_live_tree_row_policy_note: String = "A witness row whose entry declares (or fail-closed defaults to) ReadsLiveTree has inputs outside the diff-derived affected set, so no diff can prove it unaffected: it never skips and, corpus-wide, its presence pins the whole-tree precompute. The declaration authority is the entry file's `data live_tree_disposition: LiveTreeDisposition` row (see v2.std.live_tree); the executor passes each row's declared disposition here rather than classifying text (the witness_test_fn_uses_live_host_scan scaffold and the floor:host_scaffold marker are deleted)."
+
+fn floor_row_precompute_would_skip(
+  live_row_count: Int,
   changed_paths: List<String>,
   frontier_node_count: Int,
   edited_test_fn_count: Int,
   touched_entry_file_count: Int
 ) -> Bool {
-  false
+  if live_row_count > 0 {
+    false
+  } else {
+    floor_kernel_precompute_would_skip(
+      changed_paths: changed_paths,
+      frontier_node_count: frontier_node_count,
+      edited_test_fn_count: edited_test_fn_count,
+      touched_entry_file_count: touched_entry_file_count
+    )
+  }
 }
 
 fn floor_witness_eval_nodes_from_claims(claims: List<TestClaim>) -> List<Node> {

@@ -27,6 +27,9 @@ import extdeps.languages.html {
   canonical_html_spellings,
   html_markup_medium,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn em_hi() -> MarkupNode {
   ElementNode { tag: "em", attrs: [], children: [ TextNode { text: "hi" } ] }

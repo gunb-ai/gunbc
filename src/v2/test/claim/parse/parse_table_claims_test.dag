@@ -46,6 +46,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn parse_table_token(class: Symbol) -> Token {
   Token { class: class, lexeme: Empty, file: class, start: 0, end: 0 }
 }

@@ -1,6 +1,9 @@
 module test.claim.unicode_ident_xid_grounding
 
 import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn unicode_ident_xid_grounding_holds() -> Bool {
   let e_acute_start = is_xid_start(ch: 233)

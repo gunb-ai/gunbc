@@ -10,6 +10,9 @@ import v2.lens.inert_carrier {
   count_stale_roster,
   empty_inert_carrier_names
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data roster_one: List<String> = ["KnownEntry"]
 data names_with_unknown: List<String> = ["UnknownEntry"]

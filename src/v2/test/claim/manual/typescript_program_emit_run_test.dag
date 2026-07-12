@@ -8,6 +8,9 @@ import v2.std.compilers.target_model {
 }
 import v2.extdeps.languages.typescript { ts_target_atom_realization_catalog }
 import v2.test.manual.typescript_add_emit_translate { anchor_typescript_add_emit_accepts }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn ts_program_emit_add_source() -> String {
   match anchor_typescript_add_emit_accepts() {

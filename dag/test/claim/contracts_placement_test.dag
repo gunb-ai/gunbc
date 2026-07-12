@@ -4,6 +4,9 @@ import std.logic { Bool }
 import extdeps.llm.llm_contracts { llm_snake_wire_contract }
 import extdeps.llm.anthropic_contracts { anthropic_chat_message_wire_contract, wire_contract }
 import extdeps.github.pulls_contracts { pull_request_state_wire_contract, review_state_wire_contract }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn anthropic_chat_message_contract_targets_correct_coproduct() -> Bool {
   anthropic_chat_message_wire_contract.coproduct.decl_name == "AnthropicChatMessage"

@@ -7,6 +7,9 @@ import v2.lens.fact_cardinality {
   fact_cardinality_cross_tree_variant_mismatch
 }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data synthetic_unified_dag: FactCardinalityDeclFact = FactCardinalityDeclFact {
   rel_path_decl_key: "std/algebra.dag:Lattice",

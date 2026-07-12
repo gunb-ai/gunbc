@@ -30,6 +30,9 @@ import std.cache_interface {
   realize_route,
   classify_write,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_store_id: CacheInterfaceId = "realize-kernel-witness-store"
 data subject_digest_a: ContentHash = "realize-kernel-witness-subject-a"

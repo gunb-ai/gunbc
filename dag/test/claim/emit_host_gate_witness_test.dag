@@ -9,6 +9,9 @@ import tools.emit_host_fixtures {
   stdout_byte_count,
   ts_signed_i32_le_byte_count
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nonempty(s: String) -> Bool {
   s != ""

@@ -44,6 +44,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> Outcome<Node> {
   bind_outcome(

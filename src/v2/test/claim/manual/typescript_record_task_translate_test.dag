@@ -54,6 +54,9 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data typescript_record_task_emitted_root: Node = ts_task_type_alias_emitted()
 
 fn typescript_record_task_target_model_for_emit() -> Witness<TargetModel> {

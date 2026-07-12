@@ -5,6 +5,9 @@ import v2.std.algebra { fold_list, list_append }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import std.realization_schedule { ScheduleWitnessEntry }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn build_reversed() -> List<Int> {
   fold_list(xs: [1, 2], empty: Empty, cons: fn(acc, item) {

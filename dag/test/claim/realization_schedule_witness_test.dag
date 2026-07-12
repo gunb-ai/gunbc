@@ -12,6 +12,9 @@ import std.realization_schedule {
   cost_account_predicted_zero,
 }
 import std.types { ContentHash }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data synthetic_target: ContentHash = "realization-schedule-witness-v1"
 data compile_gate_fn: String = "dag_compile_clean_gate_passes"

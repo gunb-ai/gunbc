@@ -23,6 +23,9 @@ import v2.test.claim.symbol_index.containment {
   si_index,
   si_module_qn
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn policy_pilot_namespace() -> Namespace {
   Namespace {

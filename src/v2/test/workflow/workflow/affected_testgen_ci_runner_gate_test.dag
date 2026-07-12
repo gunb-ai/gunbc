@@ -10,6 +10,9 @@ import v2.test.workflow.affected_testgen_ci_runner {
   affected_testgen_selects_one_generated_claim_holds,
   affected_testgen_unrelated_diff_selects_no_claims_holds
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test data witness_affected_testgen_generator_emits_expected_claim_green: Bool = affected_testgen_generator_emits_expected_claim_holds()
 

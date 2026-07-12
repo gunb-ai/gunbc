@@ -76,6 +76,9 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data emit_complement_eval_subgraph_node: Node = dag_complement_eval_subgraph_fixture
 

@@ -12,6 +12,9 @@ import v2.test.workflow.host_source_root_ingest_manifest {
   host_source_root_ingest_content_hash,
   host_source_root_ingest_coverage_receipt
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn program_assembly_real_ingest_module_roots_parse_holds() -> Bool {
   match module_roots_from_source_root_ingest(

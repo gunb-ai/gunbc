@@ -18,6 +18,9 @@ import extdeps.storage.types {
 }
 import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog }
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_wd_device: StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,

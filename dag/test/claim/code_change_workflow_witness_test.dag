@@ -21,6 +21,9 @@ import extdeps.github.pulls {
 }
 import extdeps.github.github { GitHubUser, User }
 import std.types { CommitSha, NonEmptyStr, Timestamp }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_repo: NonEmptyStr = "gunb-ai/gunbc"
 data witness_pr_url: NonEmptyStr = "https://github.com/gunb-ai/gunbc/pull/1"

@@ -30,6 +30,9 @@ import extdeps.bmc.types {
   redfish_boot_target_wire,
   redfish_boot_override_enabled_wire,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
   match network_uefi_bootloader_artifact(arch: srv3_os_install_plan.host_architecture) {

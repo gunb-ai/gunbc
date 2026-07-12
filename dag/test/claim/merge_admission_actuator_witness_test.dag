@@ -18,6 +18,9 @@ import gunbc.ci_failure_class {
   gating_is_enforced,
 }
 import std.types { ContentHash }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data scenario_base_b0: ContentHash = "merge-admission-witness-base-b0"
 data scenario_base_b1: ContentHash = "merge-admission-witness-base-b1"

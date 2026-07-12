@@ -32,6 +32,9 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type ComplexityProjectionClaim {
   input_cost: SymbolicCost
   expected_complexity: ComplexityBound

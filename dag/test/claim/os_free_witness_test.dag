@@ -6,6 +6,9 @@ import extdeps.os.free {
   SwapStats,
 }
 import std.measure { ByteSize, byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn free_output_witnesses() -> Bool {
   let memory_stats = MemoryStats {
