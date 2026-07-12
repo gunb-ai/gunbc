@@ -6,7 +6,11 @@ import v2.compiler.body_lowering_descent {
   body_lower_descent_termination_proof
 }
 import v2.std.cardinality { structural_node_size_termination_proof }
-import v2.compiler.body_lowering_fold { body_lower_after_children }
+import v2.compiler.body_lowering_fold {
+  body_lower_after_children,
+  body_lower_domain_from_param_list,
+  body_lower_unwrap_captured
+}
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, TypeNode, node_synthetic }
@@ -30,6 +34,24 @@ fn witness_descent_budget_positive_not_exhausted() -> Bool {
   }
 }
 
+fn witness_descent_fn_decl_optional_chain_refuses() -> Bool {
+  let shell = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_unwrap_captured(remaining: 0, shell: shell) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn witness_descent_domain_param_list_refuses() -> Bool {
+  let param_list = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  match body_lower_domain_from_param_list(remaining: 0, param_list: param_list) {
+    Rejected { diagnostics: ne } =>
+      ne.head.reason == ^body_lowering_reason_descent_not_proven
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
 test fn body_lowering_descent_evidence_strict_holds() -> Bool {
   body_lower_descent_evidence() == Strict
 }
@@ -41,4 +63,6 @@ test fn body_lowering_descent_termination_proof_holds() -> Bool {
 test fn body_lowering_descent_budget_refusal_holds() -> Bool {
   witness_descent_budget_exhaustion_refuses()
     && witness_descent_budget_positive_not_exhausted()
+    && witness_descent_fn_decl_optional_chain_refuses()
+    && witness_descent_domain_param_list_refuses()
 }

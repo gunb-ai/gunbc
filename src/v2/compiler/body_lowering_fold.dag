@@ -766,23 +766,31 @@ fn body_lower_unwrap_optional_element(remaining: Int, node: Node) -> Node {
   }
 }
 
-fn body_lower_param_list_comma_spine_optional(remaining: Int, param_list_captured: Node) -> Outcome<Optional<Node>> {
+fn body_lower_param_list_comma_spine_optional(remaining: Int, param_list_captured: Node) -> Optional<Node> {
+  match remaining <= 0 {
+    true => Absent
+    false =>
+      match sugar_sequence_pair_optional(node: param_list_captured) {
+        Absent => Absent
+        Present { value: pair } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => Absent
+            Present { value: inner } =>
+              Present {
+                value: body_lower_unwrap_optional_element(remaining: remaining - 1, node: inner.left)
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_param_list_comma_spine_budgeted(remaining: Int, param_list_captured: Node) -> Outcome<Optional<Node>> {
   if remaining <= 0 {
     outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: param_list_captured))
   } else {
-    match sugar_sequence_pair_optional(node: param_list_captured) {
-      Absent => outcome_accepted(value: optional_absent())
-      Present { value: pair } =>
-        match sugar_sequence_pair_optional(node: pair.right) {
-          Absent => outcome_accepted(value: optional_absent())
-          Present { value: inner } =>
-            outcome_accepted(
-              value: optional_present(
-                value: body_lower_unwrap_optional_element(remaining: remaining - 1, node: inner.left)
-              )
-            )
-        }
-    }
+    outcome_accepted(
+      value: body_lower_param_list_comma_spine_optional(remaining: remaining, param_list_captured: param_list_captured)
+    )
   }
 }
 
@@ -871,7 +879,7 @@ fn body_lower_domain_from_param_list(remaining: Int, param_list: Node) -> Outcom
     outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: param_list))
   } else {
     bind_outcome(
-      o: body_lower_param_list_comma_spine_optional(remaining: remaining - 1, param_list_captured: param_list),
+      o: body_lower_param_list_comma_spine_budgeted(remaining: remaining - 1, param_list_captured: param_list),
       f: fn(comma_opt) {
         match comma_opt {
           Absent => outcome_accepted(value: optional_absent())
@@ -1221,47 +1229,62 @@ fn body_lower_fn_decl_to_arrow(remaining: Int, shell: Node) -> Outcome<Node> {
   if remaining <= 0 {
     outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: shell))
   } else {
-    match body_lower_unwrap_captured(remaining: remaining - 1, shell: shell) {
-    Absent => body_lower_wrapper_retained_shell(remaining: remaining - 1, shell: shell)
-    Present { value: captured } =>
-      match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
-        ParseSubtreeAbsent => body_lower_wrapper_retained_shell(remaining: remaining - 1, shell: shell)
-        ParseSubtreeFound { captured: param_list } =>
-          match body_lower_domain_from_param_list(remaining: remaining - 1, param_list: param_list) {
-            Absent => body_lower_wrapper_retained_shell(remaining: remaining - 1, shell: shell)
-            Present { value: domain } =>
-              match body_lower_body_from_fn_captured(remaining: remaining - 1, captured: captured) {
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                Accepted { value: body_opt, diagnostics: bd0 } =>
-                  match body_opt {
-                    Absent => body_lower_wrapper_retained_shell(remaining: remaining - 1, shell: shell)
-                    Present { value: body } =>
-                      match body_lower_reify_transform_body(remaining: remaining - 1, body: body) {
-                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                        Accepted { value: reified_body, diagnostics: bd } =>
-                          match body_lower_return_type_from_fn_captured(remaining: remaining - 1, captured: captured) {
-                            Absent => body_lower_wrapper_retained_shell(remaining: remaining - 1, shell: shell)
-                            Present { value: return_type } =>
-                              outcome_accepted(
-                                value: node_synthetic(
-                                  kind: TypeNode { connective: Arrow },
-                                  children: [
-                                    Edge { label: Positional, target: domain },
-                                    Edge { label: Positional, target: return_type },
-                                    Edge { label: Positional, target: return_type },
-                                    Edge { label: Named { name: ^arrow_body_edge }, target: reified_body }
-                                  ]
-                                ),
-                                diagnostics: diagnostics_merge(outer: bd0, inner: bd)
-                              )
-                          }
-                      }
+    bind_outcome(
+      o: body_lower_unwrap_captured(remaining: remaining - 1, shell: shell),
+      f: fn(captured_opt) {
+        match captured_opt {
+          Absent => body_lower_wrapper_retained_shell(remaining: remaining - 1, shell: shell)
+          Present { value: captured } =>
+            match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
+              ParseSubtreeAbsent => body_lower_wrapper_retained_shell(remaining: remaining - 1, shell: shell)
+              ParseSubtreeFound { captured: param_list } =>
+                bind_outcome(
+                  o: body_lower_domain_from_param_list(remaining: remaining - 1, param_list: param_list),
+                  f: fn(domain_opt) {
+                    match domain_opt {
+                      Absent => body_lower_wrapper_retained_shell(remaining: remaining - 1, shell: shell)
+                      Present { value: domain } =>
+                        match body_lower_body_from_fn_captured(remaining: remaining - 1, captured: captured) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: body_opt, diagnostics: bd0 } =>
+                            match body_opt {
+                              Absent => body_lower_wrapper_retained_shell(remaining: remaining - 1, shell: shell)
+                              Present { value: body } =>
+                                match body_lower_reify_transform_body(remaining: remaining - 1, body: body) {
+                                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                  Accepted { value: reified_body, diagnostics: bd } =>
+                                    bind_outcome(
+                                      o: body_lower_return_type_from_fn_captured(remaining: remaining - 1, captured: captured),
+                                      f: fn(return_opt) {
+                                        match return_opt {
+                                          Absent => body_lower_wrapper_retained_shell(remaining: remaining - 1, shell: shell)
+                                          Present { value: return_type } =>
+                                            outcome_accepted(
+                                              value: node_synthetic(
+                                                kind: TypeNode { connective: Arrow },
+                                                children: [
+                                                  Edge { label: Positional, target: domain },
+                                                  Edge { label: Positional, target: return_type },
+                                                  Edge { label: Positional, target: return_type },
+                                                  Edge { label: Named { name: ^arrow_body_edge }, target: reified_body }
+                                                ]
+                                              ),
+                                              diagnostics: diagnostics_merge(outer: bd0, inner: bd)
+                                            )
+                                        }
+                                      }
+                                    )
+                                }
+                            }
+                        }
+                    }
                   }
-              }
-          }
+                )
+            }
+        }
       }
-    }
-}
+    )
+  }
 }
 
 fn body_lower_literal_bool_atom_optional(remaining: Int, node: Node) -> Optional<Node> {
@@ -1315,13 +1338,18 @@ fn body_lower_unwrap_pass_through(remaining: Int, shell: Node) -> Outcome<Node> 
   if remaining <= 0 {
     outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: shell))
   } else {
-    match body_lower_unwrap_captured(remaining: remaining - 1, shell: shell) {
-    Absent =>
-      outcome_rejected(
-        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-      )
-    Present { value: captured } => outcome_accepted(value: captured)
-    }
+    bind_outcome(
+      o: body_lower_unwrap_captured(remaining: remaining - 1, shell: shell),
+      f: fn(captured_opt) {
+        match captured_opt {
+          Absent =>
+            outcome_rejected(
+              d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+            )
+          Present { value: captured } => outcome_accepted(value: captured)
+        }
+      }
+    )
 }
 }
 
@@ -2396,11 +2424,16 @@ fn body_lower_try_match_from_node(remaining: Int, node: Node) -> Outcome<Optiona
     match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_match_expr {
-        match body_lower_unwrap_captured(remaining: remaining - 1, shell: node) {
-          Present { value: captured } =>
-            body_lower_try_match_from_captured(remaining: remaining - 1, captured: captured)
-          Absent => outcome_accepted(value: optional_absent())
-        }
+        bind_outcome(
+          o: body_lower_unwrap_captured(remaining: remaining - 1, shell: node),
+          f: fn(captured_opt) {
+            match captured_opt {
+              Present { value: captured } =>
+                body_lower_try_match_from_captured(remaining: remaining - 1, captured: captured)
+              Absent => outcome_accepted(value: optional_absent())
+            }
+          }
+        )
       } else {
         outcome_accepted(value: optional_absent())
       }
@@ -2419,25 +2452,30 @@ fn body_lower_match_expr(remaining: Int, shell: Node) -> Outcome<Node> {
   if remaining <= 0 {
     outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: shell))
   } else {
-    match body_lower_unwrap_captured(remaining: remaining - 1, shell: shell) {
-    Absent =>
-      outcome_rejected(
-        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-      )
-    Present { value: captured } =>
-      match body_lower_try_match_from_captured(remaining: remaining - 1, captured: captured) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: lowered_opt, diagnostics: d } =>
-          match lowered_opt {
-            Present { value: lowered } =>
-              Accepted { value: lowered, diagnostics: d }
-            Absent =>
-              outcome_rejected(
-                d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-              )
-          }
+    bind_outcome(
+      o: body_lower_unwrap_captured(remaining: remaining - 1, shell: shell),
+      f: fn(captured_opt) {
+        match captured_opt {
+          Absent =>
+            outcome_rejected(
+              d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+            )
+          Present { value: captured } =>
+            match body_lower_try_match_from_captured(remaining: remaining - 1, captured: captured) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: lowered_opt, diagnostics: d } =>
+                match lowered_opt {
+                  Present { value: lowered } =>
+                    Accepted { value: lowered, diagnostics: d }
+                  Absent =>
+                    outcome_rejected(
+                      d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+                    )
+                }
+            }
+        }
       }
-    }
+    )
 }
 }
 
@@ -2445,47 +2483,52 @@ fn body_lower_postfix_expr(remaining: Int, shell: Node) -> Outcome<Node> {
   if remaining <= 0 {
     outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: shell))
   } else {
-    match body_lower_unwrap_captured(remaining: remaining - 1, shell: shell) {
-    Absent =>
-      outcome_rejected(
-        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-      )
-    Present { value: captured } =>
-      match body_lower_pattern_first_atom_optional(remaining: remaining - 1, node: captured) {
-        Present { value: atom } => outcome_accepted(value: atom)
-        Absent =>
-      match body_lower_try_postfix_projection(remaining: remaining - 1, node: captured) {
-        Rejected { diagnostics: r } =>
-          match body_lower_literal_bool_atom_optional(remaining: remaining - 1, node: captured) {
-            Present { value: lit } => outcome_accepted(value: lit)
-            Absent =>
-              match body_lower_pattern_first_atom_optional(remaining: remaining - 1, node: captured) {
-                Present { value: atom } => outcome_accepted(value: atom)
-                Absent => Rejected { diagnostics: r }
-              }
-          }
-        Accepted { value: found, diagnostics: d } =>
-          match found {
-            Present { value: transform } =>
-              Accepted { value: transform, diagnostics: d }
-            Absent =>
-              match body_lower_try_infix_transform(remaining: remaining - 1, node: captured) {
-                Present { value: transform } => outcome_accepted(value: transform)
-                Absent =>
-                  match body_lower_try_fold_loop(remaining: remaining - 1, node: captured) {
-                    Rejected { diagnostics: _ } =>
-                      body_lower_try_operand_or_reject(remaining: remaining - 1, shell: shell, captured: captured)
-                    Accepted { value: fold_result, diagnostics: _ } =>
-                      match fold_result {
-                        Present { value: loop_node } => outcome_accepted(value: loop_node)
-                        Absent => body_lower_try_operand_or_reject(remaining: remaining - 1, shell: shell, captured: captured)
-                      }
-                  }
-              }
-          }
+    bind_outcome(
+      o: body_lower_unwrap_captured(remaining: remaining - 1, shell: shell),
+      f: fn(captured_opt) {
+        match captured_opt {
+          Absent =>
+            outcome_rejected(
+              d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+            )
+          Present { value: captured } =>
+            match body_lower_pattern_first_atom_optional(remaining: remaining - 1, node: captured) {
+              Present { value: atom } => outcome_accepted(value: atom)
+              Absent =>
+                match body_lower_try_postfix_projection(remaining: remaining - 1, node: captured) {
+                  Rejected { diagnostics: r } =>
+                    match body_lower_literal_bool_atom_optional(remaining: remaining - 1, node: captured) {
+                      Present { value: lit } => outcome_accepted(value: lit)
+                      Absent =>
+                        match body_lower_pattern_first_atom_optional(remaining: remaining - 1, node: captured) {
+                          Present { value: atom } => outcome_accepted(value: atom)
+                          Absent => Rejected { diagnostics: r }
+                        }
+                    }
+                  Accepted { value: found, diagnostics: d } =>
+                    match found {
+                      Present { value: transform } =>
+                        Accepted { value: transform, diagnostics: d }
+                      Absent =>
+                        match body_lower_try_infix_transform(remaining: remaining - 1, node: captured) {
+                          Present { value: transform } => outcome_accepted(value: transform)
+                          Absent =>
+                            match body_lower_try_fold_loop(remaining: remaining - 1, node: captured) {
+                              Rejected { diagnostics: _ } =>
+                                body_lower_try_operand_or_reject(remaining: remaining - 1, shell: shell, captured: captured)
+                              Accepted { value: fold_result, diagnostics: _ } =>
+                                match fold_result {
+                                  Present { value: loop_node } => outcome_accepted(value: loop_node)
+                                  Absent => body_lower_try_operand_or_reject(remaining: remaining - 1, shell: shell, captured: captured)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
       }
-      }
-    }
+    )
 }
 }
 
@@ -2493,47 +2536,52 @@ fn body_lower_primary_expr(remaining: Int, shell: Node) -> Outcome<Node> {
   if remaining <= 0 {
     outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: shell))
   } else {
-    match body_lower_unwrap_captured(remaining: remaining - 1, shell: shell) {
-    Absent =>
-      outcome_rejected(
-        d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
-      )
-    Present { value: captured } =>
-      match body_lower_pattern_first_atom_optional(remaining: remaining - 1, node: captured) {
-        Present { value: atom } => outcome_accepted(value: atom)
-        Absent =>
-      match body_lower_try_postfix_projection(remaining: remaining - 1, node: captured) {
-        Rejected { diagnostics: r } =>
-          match body_lower_literal_bool_atom_optional(remaining: remaining - 1, node: captured) {
-            Present { value: lit } => outcome_accepted(value: lit)
-            Absent =>
-              match body_lower_pattern_first_atom_optional(remaining: remaining - 1, node: captured) {
-                Present { value: atom } => outcome_accepted(value: atom)
-                Absent => Rejected { diagnostics: r }
-              }
-          }
-        Accepted { value: found, diagnostics: d } =>
-          match found {
-            Present { value: transform } =>
-              Accepted { value: transform, diagnostics: d }
-            Absent =>
-              match body_lower_try_infix_transform(remaining: remaining - 1, node: captured) {
-                Present { value: transform } => outcome_accepted(value: transform)
-                Absent =>
-                  match body_lower_try_fold_loop(remaining: remaining - 1, node: captured) {
-                    Rejected { diagnostics: _ } =>
-                      body_lower_try_operand_or_reject(remaining: remaining - 1, shell: shell, captured: captured)
-                    Accepted { value: fold_result, diagnostics: _ } =>
-                      match fold_result {
-                        Present { value: loop_node } => outcome_accepted(value: loop_node)
-                        Absent => body_lower_try_operand_or_reject(remaining: remaining - 1, shell: shell, captured: captured)
-                      }
-                  }
-              }
-          }
+    bind_outcome(
+      o: body_lower_unwrap_captured(remaining: remaining - 1, shell: shell),
+      f: fn(captured_opt) {
+        match captured_opt {
+          Absent =>
+            outcome_rejected(
+              d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
+            )
+          Present { value: captured } =>
+            match body_lower_pattern_first_atom_optional(remaining: remaining - 1, node: captured) {
+              Present { value: atom } => outcome_accepted(value: atom)
+              Absent =>
+                match body_lower_try_postfix_projection(remaining: remaining - 1, node: captured) {
+                  Rejected { diagnostics: r } =>
+                    match body_lower_literal_bool_atom_optional(remaining: remaining - 1, node: captured) {
+                      Present { value: lit } => outcome_accepted(value: lit)
+                      Absent =>
+                        match body_lower_pattern_first_atom_optional(remaining: remaining - 1, node: captured) {
+                          Present { value: atom } => outcome_accepted(value: atom)
+                          Absent => Rejected { diagnostics: r }
+                        }
+                    }
+                  Accepted { value: found, diagnostics: d } =>
+                    match found {
+                      Present { value: transform } =>
+                        Accepted { value: transform, diagnostics: d }
+                      Absent =>
+                        match body_lower_try_infix_transform(remaining: remaining - 1, node: captured) {
+                          Present { value: transform } => outcome_accepted(value: transform)
+                          Absent =>
+                            match body_lower_try_fold_loop(remaining: remaining - 1, node: captured) {
+                              Rejected { diagnostics: _ } =>
+                                body_lower_try_operand_or_reject(remaining: remaining - 1, shell: shell, captured: captured)
+                              Accepted { value: fold_result, diagnostics: _ } =>
+                                match fold_result {
+                                  Present { value: loop_node } => outcome_accepted(value: loop_node)
+                                  Absent => body_lower_try_operand_or_reject(remaining: remaining - 1, shell: shell, captured: captured)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
       }
-      }
-    }
+    )
 }
 }
 
