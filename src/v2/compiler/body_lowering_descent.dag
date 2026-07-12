@@ -1,0 +1,82 @@
+module v2.compiler.body_lowering_descent
+
+import std.termination { DescentEvidence, Strict }
+import v2.std.cardinality {
+  RankingDimension,
+  TerminationProof,
+  structural_node_size_dimension,
+  structural_node_size_termination_proof
+}
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Node, node_subtree_count }
+import v2.std.witness { Holds, Witness }
+
+data body_lowering_descent_note: String = "Structural descent bound for the interim body_lowering_fold walkers (general-body-producer-design §4 bounded fold; eval-cost wedge #6459). Each body_lower_finish call budgets remaining steps to node_subtree_count(folded) — the same structural_node_size measure fold_node already names (v2.std.cardinality.measure_descent_fact_structural_node_size). Every recursive walker step consumes one unit; exhaustion is a typed, located refusal (^body_lowering_reason_descent_not_proven), never silent widen or unbounded retry. DescentEvidence is Strict on the structural_node_size authority; DescentUnknown is the honest bottom when the budget cannot be shown."
+
+type BodyLowerDescentCtx {
+  remaining: Int
+  at: Node
+  refused: Bool
+}
+
+fn body_lower_descent_init(root: Node) -> BodyLowerDescentCtx {
+  BodyLowerDescentCtx {
+    remaining: node_subtree_count(n: root),
+    at: root,
+    refused: false
+  }
+}
+
+fn body_lower_descent_enter(ctx: BodyLowerDescentCtx, at: Node) -> BodyLowerDescentCtx {
+  if ctx.refused {
+    BodyLowerDescentCtx { remaining: ctx.remaining, at: at, refused: true }
+  } else if ctx.remaining <= 0 {
+    BodyLowerDescentCtx { remaining: 0, at: at, refused: true }
+  } else {
+    BodyLowerDescentCtx { remaining: ctx.remaining - 1, at: at, refused: false }
+  }
+}
+
+fn body_lower_descent_not_proven_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^body_lowering_reason_descent_not_proven,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn body_lower_descent_refuse_outcome(ctx: BodyLowerDescentCtx) -> Outcome<Node> {
+  outcome_rejected(d: body_lower_descent_not_proven_diagnostic(n: ctx.at))
+}
+
+fn body_lower_descent_guard_outcome(ctx: BodyLowerDescentCtx) -> Outcome<BodyLowerDescentCtx> {
+  if ctx.refused {
+    body_lower_descent_refuse_outcome(ctx: ctx)
+  } else {
+    outcome_accepted(value: ctx)
+  }
+}
+
+fn body_lower_descent_evidence() -> DescentEvidence {
+  Strict
+}
+
+fn body_lower_descent_termination_proof() -> TerminationProof {
+  structural_node_size_termination_proof()
+}
+
+fn body_lower_descent_witness() -> Witness<TerminationProof> {
+  Holds { value: body_lower_descent_termination_proof() }
+}
+
+fn body_lower_descent_dimension() -> RankingDimension {
+  structural_node_size_dimension()
+}
