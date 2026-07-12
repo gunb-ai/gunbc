@@ -33,8 +33,8 @@ fn witness_fleet_target_projects_fleet_derivation() -> Bool {
   ci_runner_target_spec(target: FleetSelfHosted) == gunbc_ci_runner_spec()
 }
 
-fn witness_selected_target_projects_ubicloud() -> Bool {
-  gunbc_ci_selected_runner_spec() == ci_runner_target_spec(target: UbicloudRunner { row: ubicloud_standard_16_arm_catalog })
+fn witness_selected_target_projects_fleet() -> Bool {
+  gunbc_ci_selected_runner_spec() == ci_runner_target_spec(target: FleetSelfHosted)
 }
 
 fn witness_ubicloud_target_projects_catalog_label() -> Bool {
@@ -53,7 +53,7 @@ fn witness_github_private_target_projects_hosted_scalar_variant() -> Bool {
 
 fn witness_runner_yaml_forms_discriminate_hosted_vs_label_routed() -> Bool {
   let hosted = runner_yaml(spec: ci_runner_target_spec(target: GithubHostedRunner { row: github_hosted_ubuntu_2404_arm_private_catalog }))
-  let label_routed = runner_yaml(spec: gunbc_ci_selected_runner_spec())
+  let label_routed = runner_yaml(spec: ci_runner_target_spec(target: UbicloudRunner { row: ubicloud_standard_16_arm_catalog }))
   hosted == yaml_string(s: "ubuntu-24.04-arm")
     && label_routed == string_list_flow(items: ["ubicloud-standard-16-arm"])
     && hosted != string_list_flow(items: ["ubuntu-24.04-arm"])
@@ -93,17 +93,17 @@ fn witness_github_visibility_axis_discriminates() -> Bool {
   private_bytes < public_bytes
 }
 
-fn witness_selected_regime_is_whole_machine_catalog_ram() -> Bool {
+fn witness_selected_regime_is_slot_carved() -> Bool {
   match ci_runner_target_memory_regime(target: selected_ci_runner_target()) {
-    SlotCarved { desired: _ } => false
-    WholeMachine { ram: r } => byte_size_count(b: r) == 48000000000
+    SlotCarved { desired: _ } => true
+    WholeMachine { ram: _ } => false
   }
 }
 
 test fn ci_runner_target_witnesses() -> Bool {
   witness_fleet_target_projects_fleet_derivation()
-    && witness_selected_target_projects_ubicloud()
-    && witness_selected_regime_is_whole_machine_catalog_ram()
+    && witness_selected_target_projects_fleet()
+    && witness_selected_regime_is_slot_carved()
     && witness_ubicloud_target_projects_catalog_label()
     && witness_github_private_target_projects_hosted_scalar_variant()
     && witness_runner_yaml_forms_discriminate_hosted_vs_label_routed()
