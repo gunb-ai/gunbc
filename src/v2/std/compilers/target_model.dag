@@ -5888,9 +5888,7 @@ fn concrete_syntax_tokens_extend(
   acc: List<ConcreteSyntaxToken>,
   more: List<ConcreteSyntaxToken>
 ) -> List<ConcreteSyntaxToken> {
-  fold_list(xs: more, empty: acc, cons: fn(a, item) {
-    list_snoc_item(xs: a, item: item)
-  })
+  list_append(left: acc, right: more)
 }
 
 fn concrete_syntax_tokens_snoc_fixed(

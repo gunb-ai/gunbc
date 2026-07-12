@@ -587,6 +587,244 @@ fn ingested_body_tokens_match_golden(body_tokens: List<ConcreteSyntaxToken>) -> 
     && ingested_body_tokens_match_golden_at(body_tokens: body_tokens, index: 12)
 }
 
+fn ingested_token_is_param_x_binding(token: ConcreteSyntaxToken) -> Bool {
+  match token {
+    BoundToken { token_class: ca, binding: ba } =>
+      (ca == ^rust_token_ident) && (ba == ^dag_binding_param_x)
+    FixedToken { token_class: _ } => false
+  }
+}
+
+fn ingested_token_is_rparen(token: ConcreteSyntaxToken) -> Bool {
+  match token {
+    FixedToken { token_class: ca } => ca == ^rust_token_rparen
+    BoundToken { token_class: _, binding: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_tokens_all_match_golden_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  ingested_body_tokens_match_golden(body_tokens: body_tokens)
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_is_rparen_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } => ingested_token_is_rparen(token: t2)
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_serialize_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } =>
+                      match serialize_concrete_syntax_tokens_to_source_string(
+                        target: target,
+                        tokens: [t2]
+                      ) {
+                        Accepted { value: _, diagnostics: _ } => true
+                        Rejected { diagnostics: _ } => false
+                      }
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_is_x_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: t2 } => ingested_token_is_param_x_binding(token: t2)
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token2_present_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 2) {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_debug_body_token012_serialize_holds() -> Bool {
+  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      let target = rust_target_model_staging()
+      match target_project_arrow_body_to_value_expression(
+        arrow: arrow,
+        target: target,
+        handle_transform: fn(_a, _b, _t) {
+          Rejected { diagnostics: None }
+        }
+      ) {
+        Accepted { value: expr, diagnostics: _ } =>
+          match target_value_expression_projection_from_target(target: target) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: projection, diagnostics: _ } =>
+              match target_value_expression_tokens_from_target(
+                expr: expr,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: body_tokens, diagnostics: _ } =>
+                  match list_at_optional(xs: body_tokens, index: 0) {
+                    Absent => false
+                    Present { value: t0 } =>
+                      match list_at_optional(xs: body_tokens, index: 1) {
+                        Absent => false
+                        Present { value: t1 } =>
+                          match list_at_optional(xs: body_tokens, index: 2) {
+                            Absent => false
+                            Present { value: t2 } =>
+                              match serialize_concrete_syntax_tokens_to_source_string(
+                                target: target,
+                                tokens: [t0, t1, t2]
+                              ) {
+                                Accepted { value: _, diagnostics: _ } => true
+                                Rejected { diagnostics: _ } => false
+                              }
+                          }
+                      }
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn ingested_classical_not_debug_body_token2_holds() -> Bool {
   match ingested_arrow_from_source(source: ingested_classical_not_source) {
     Accepted { value: arrow, diagnostics: _ } =>
