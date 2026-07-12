@@ -1704,7 +1704,12 @@ fn disable_floor_compile_clean_lazy_install_for_test() {
 fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
     let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
+    let ok =
+        !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty();
+    if !ok {
+        eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
+    }
+    ok
 }
 
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
