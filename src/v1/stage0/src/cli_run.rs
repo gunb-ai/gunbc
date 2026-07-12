@@ -3290,7 +3290,10 @@ fn reconcile_with_typed_cache(
         acc
     });
     let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
-    if total_fork_count > 0 {
+    // Per-resolve §3 fork census — opt-in. The floor resolves once per entry, so an
+    // unconditional print streams one census line per entry (hundreds per run). The count is
+    // recomputed from source on demand; gate the narration behind the floor verbose flag.
+    if total_fork_count > 0 && floor_verbose() {
         eprintln!(
             "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
         );
@@ -7368,6 +7371,12 @@ pub fn run_discovery_corpus_with_options(
             }
         }
     };
+    eprintln_affected_set_categorization(
+        options.node_frontier_selection,
+        &rows,
+        &index,
+        &diff_edits,
+    );
     let capped_width = if options.spawn_width_cap > 0 {
         parallel_width.min(options.spawn_width_cap)
     } else {
@@ -7542,6 +7551,73 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     merged
 }
 
+/// Per-witness selection detail (the `SKIP`/`SKIP-RESOLVE`/`PREDICT` lines and the
+/// per-resolve `[binding-fork-ledger]` census) is opt-in. The default floor output is the
+/// upfront `[affected-set]` categorization plus the final `[measurement]` tally — a wide
+/// corpus otherwise streams one skip line per unaffected witness (~1.7k lines), drowning the
+/// signal. The counts survive on `DiscoverySummary`; only the per-row narration is gated.
+fn floor_verbose() -> bool {
+    std::env::var("GUNBC_FLOOR_VERBOSE")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+/// One upfront line categorizing the corpus before any witness runs — the operator-facing
+/// "N skipped, M impacted, running X" read of the affected-set selection. The skip count here
+/// is the cheap import-closure disposition (entry-grain, no resolve); the finer per-node
+/// frontier decision runs the affected closure down further, so `[measurement]` at the end
+/// reports the exact ran/skipped tally. Print-only: the authoritative decision (and its
+/// fail-closed refusal on a provenance gap) still happens per-shard in `run_discovery_rows`.
+fn eprintln_affected_set_categorization(
+    selection: NodeFrontierSelectionMode,
+    rows: &[DiscoveryRow],
+    index: &MultiEntryIndex,
+    diff_edits: &FloorDiffEdits,
+) {
+    let total = rows.len();
+    let entries = rows
+        .iter()
+        .map(|r| r.entry.as_str())
+        .collect::<HashSet<&str>>()
+        .len();
+    match selection {
+        NodeFrontierSelectionMode::Off => {
+            eprintln!(
+                "[affected-set] selection off — running all {total} witness(es) across {entries} entr(y/ies)"
+            );
+        }
+        NodeFrontierSelectionMode::PredictOnly => {
+            eprintln!(
+                "[affected-set] predict-only — running all {total} witness(es) cold across {entries} entr(y/ies); node-frontier predictions recorded, divergences counted"
+            );
+        }
+        NodeFrontierSelectionMode::Applied => {
+            let declared_paths = index.module_graph_facts.declared_repo_paths();
+            let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+            match discovery_entry_fast_skip_without_resolve(
+                rows,
+                &index.module_graph_facts,
+                &declared_paths,
+                &touched,
+                diff_edits,
+            ) {
+                Ok(fast) => {
+                    let skipped = rows.iter().filter(|r| fast.contains(&r.entry)).count();
+                    let candidates = total - skipped;
+                    eprintln!(
+                        "[affected-set] {total} witness(es) across {entries} entr(y/ies) · {skipped} unaffected (import-closure, skipped without resolve) · {candidates} in the affected closure (resolving to decide node-frontier)"
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[affected-set] {total} witness(es) across {entries} entr(y/ies) · upfront import-closure categorization unavailable ({e}); per-shard selection is authoritative"
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
@@ -7603,7 +7679,7 @@ fn run_discovery_rows(
     } else {
         HashSet::new()
     };
-    if !entry_fast_skip.is_empty() {
+    if !entry_fast_skip.is_empty() && floor_verbose() {
         eprintln!(
             "run_discovery_corpus: skip-before-resolve fast path for {} entr(y/ies) (import-closure unaffected, no declaration edits, no data-item edits in closure, no host-scaffold)",
             entry_fast_skip.len()
@@ -7627,10 +7703,12 @@ fn run_discovery_rows(
                 ctx = None;
             }
             summary.skipped += 1;
-            eprintln!(
-                "SKIP [assumed-green node-frontier] {} ({})",
-                row.function, row.entry
-            );
+            if floor_verbose() {
+                eprintln!(
+                    "SKIP [assumed-green node-frontier] {} ({})",
+                    row.function, row.entry
+                );
+            }
             continue;
         }
         if current_entry.as_deref() != Some(row.entry.as_str()) {
@@ -7643,10 +7721,12 @@ fn run_discovery_rows(
                 changed_paths,
                 diff_edits,
             )? {
-                eprintln!(
-                    "SKIP-RESOLVE [unaffected import-closure] {} (cold entry resolve elided)",
-                    row.entry
-                );
+                if floor_verbose() {
+                    eprintln!(
+                        "SKIP-RESOLVE [unaffected import-closure] {} (cold entry resolve elided)",
+                        row.entry
+                    );
+                }
                 collect_import_closure_module_names_from_facts(
                     &row.entry,
                     &index.module_graph_facts,
@@ -7722,10 +7802,12 @@ fn run_discovery_rows(
             match selection {
                 NodeFrontierSelectionMode::Applied => {
                     summary.skipped += 1;
-                    eprintln!(
-                        "SKIP [assumed-green node-frontier] {} ({})",
-                        row.function, row.entry
-                    );
+                    if floor_verbose() {
+                        eprintln!(
+                            "SKIP [assumed-green node-frontier] {} ({})",
+                            row.function, row.entry
+                        );
+                    }
                     continue;
                 }
                 NodeFrontierSelectionMode::PredictOnly => {
@@ -7733,10 +7815,12 @@ fn run_discovery_rows(
                     summary
                         .predicted_unaffected
                         .push((row.entry.clone(), row.function.clone()));
-                    eprintln!(
-                        "PREDICT [unaffected node-frontier] {} ({})",
-                        row.function, row.entry
-                    );
+                    if floor_verbose() {
+                        eprintln!(
+                            "PREDICT [unaffected node-frontier] {} ({})",
+                            row.function, row.entry
+                        );
+                    }
                 }
                 // would_skip is only computed when selection is enabled.
                 NodeFrontierSelectionMode::Off => {}
