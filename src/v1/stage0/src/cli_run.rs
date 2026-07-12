@@ -7575,6 +7575,22 @@ fn floor_verbose() -> bool {
         .unwrap_or(false)
 }
 
+/// Wall-clock stamp `HH:MM:SS.mmm` (UTC) prefixed on the live floor lines so the stream reads as
+/// a timeline and correlates with CI's wall-clock log — dependency-free (no chrono): seconds
+/// since the epoch reduced to a 24h clock, plus millis.
+fn floor_ts() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    let millis = now.subsec_millis();
+    let h = (secs / 3600) % 24;
+    let m = (secs / 60) % 60;
+    let s = secs % 60;
+    format!("{h:02}:{m:02}:{s:02}.{millis:03}")
+}
+
 /// One upfront line categorizing the corpus before any witness runs — the operator-facing
 /// "N skipped, M impacted, running X" read of the affected-set selection. The skip count here
 /// is the cheap import-closure disposition (entry-grain, no resolve); the finer per-node
@@ -7593,15 +7609,16 @@ fn eprintln_affected_set_categorization(
         .map(|r| r.entry.as_str())
         .collect::<HashSet<&str>>()
         .len();
+    let ts = floor_ts();
     match selection {
         NodeFrontierSelectionMode::Off => {
             eprintln!(
-                "[affected-set] selection off — running all {total} witness(es) across {entries} entr(y/ies)"
+                "{ts} [affected-set] selection off — running all {total} witness(es) across {entries} entr(y/ies)"
             );
         }
         NodeFrontierSelectionMode::PredictOnly => {
             eprintln!(
-                "[affected-set] predict-only — running all {total} witness(es) cold across {entries} entr(y/ies); node-frontier predictions recorded, divergences counted"
+                "{ts} [affected-set] predict-only — running all {total} witness(es) cold across {entries} entr(y/ies); node-frontier predictions recorded, divergences counted"
             );
         }
         NodeFrontierSelectionMode::Applied => {
@@ -7618,12 +7635,12 @@ fn eprintln_affected_set_categorization(
                     let skipped = rows.iter().filter(|r| fast.contains(&r.entry)).count();
                     let candidates = total - skipped;
                     eprintln!(
-                        "[affected-set] {total} witness(es) across {entries} entr(y/ies) · {skipped} unaffected (import-closure, skipped without resolve) · {candidates} in the affected closure (resolving to decide node-frontier)"
+                        "{ts} [affected-set] {total} witness(es) across {entries} entr(y/ies) · {skipped} unaffected (import-closure, skipped without resolve) · {candidates} in the affected closure (resolving to decide node-frontier)"
                     );
                 }
                 Err(e) => {
                     eprintln!(
-                        "[affected-set] {total} witness(es) across {entries} entr(y/ies) · upfront import-closure categorization unavailable ({e}); per-shard selection is authoritative"
+                        "{ts} [affected-set] {total} witness(es) across {entries} entr(y/ies) · upfront import-closure categorization unavailable ({e}); per-shard selection is authoritative"
                     );
                 }
             }
