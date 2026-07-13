@@ -97,6 +97,7 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence,
   is_empty_conj_root,
+  OccurrenceId,
 }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
@@ -145,6 +146,7 @@ import v2.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
   Outcome,
   Rejected,
   Unavailable,
@@ -153,6 +155,14 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
+import v2.std.integer {
+  decimal_digits_to_magnitude,
+  integer_decimal_magnitude_node,
+  integer_decimal_magnitude_node_to_int,
+  integer_string_to_decimal_digits_optional,
+  Int
+}
+import v2.std.text { String }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
 import v2.extdeps.languages.fidelity {
   DeclaredNormalized,
@@ -2373,7 +2383,7 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
       right: dag_grammar_primary_ident_suffix_expr()
     ),
     right: dag_grammar_choice(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_int_literal),
+      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
       right: dag_grammar_choice(
         left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
         right: dag_grammar_choice(
@@ -2513,7 +2523,7 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
       right: dag_grammar_choice(
         left: dag_grammar_terminal(token_class: ^dag_token_kw_false),
         right: dag_grammar_choice(
-          left: dag_grammar_terminal_lexeme(token_class: ^dag_token_int_literal),
+          left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
           right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
         )
       )
@@ -4194,6 +4204,52 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
     _ => false
+  }
+}
+
+fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: OccurrenceId) -> Outcome<Node> {
+  match integer_string_to_decimal_digits_optional(s: lexeme) {
+    Present { value: digits } =>
+      outcome_accepted(
+        value: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
+          children: [
+            Edge {
+              label: Named { name: ^integer_literal_magnitude_field },
+              target: integer_decimal_magnitude_node(
+                magnitude: decimal_digits_to_magnitude(digits: digits)
+              )
+            }
+          ],
+          occurrence_id: occurrence_id
+        }
+      )
+    Absent =>
+      outcome_rejected(
+        d: Diagnostic {
+          reason: ^dag_int_literal_lexeme_invalid,
+          at: port_locus(port: ^dag_int_literal_lexeme_invalid),
+          correction: None
+        }
+      )
+  }
+}
+
+fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
+  if dag_node_is_int_literal_atom(node: node) {
+    match find_named_child(root: node, name: ^integer_literal_magnitude_field) {
+      Accepted { value: magnitude_node, diagnostics: _ } =>
+        integer_decimal_magnitude_node_to_int(node: magnitude_node)
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
+  } else {
+    outcome_rejected(
+      d: Diagnostic {
+        reason: ^dag_int_literal_lexeme_invalid,
+        at: node_locus(node: node),
+        correction: None
+      }
+    )
   }
 }
 

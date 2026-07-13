@@ -13,6 +13,7 @@ import v2.extdeps.languages.dag {
   dag_binding_branded_atom_identity,
   dag_int_type_binding,
   dag_lex_token_symbol,
+  dag_node_is_int_literal_atom,
   dag_match_arm_node,
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
@@ -259,6 +260,8 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
               if dag_lex_token_symbol(sym: id) {
                 if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
                   optional_present(value: body_lower_param_ref_atom(identity: id))
+                } else if dag_node_is_int_literal_atom(node: node) {
+                  optional_present(value: node)
                 } else {
                   optional_absent()
                 }
@@ -1267,6 +1270,8 @@ fn body_lower_literal_bool_atom_optional(node: Node) -> Optional<Node> {
     Present { value: id } =>
       if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
         optional_present(value: body_lower_param_ref_atom(identity: id))
+      } else if dag_node_is_int_literal_atom(node: node) {
+        optional_present(value: node)
       } else {
         optional_absent()
       }
@@ -1280,6 +1285,20 @@ fn body_lower_literal_bool_atom_optional(node: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_literal_int_atom_optional(node: Node) -> Optional<Node> {
+  let unwrapped = body_lower_deep_unwrap_optional(node: node)
+  if dag_node_is_int_literal_atom(node: unwrapped) {
+    optional_present(value: unwrapped)
+  } else {
+    fold(node.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => body_lower_literal_int_atom_optional(node: e.target)
+      }
+    })
+  }
+}
+
 fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node> {
   match body_lower_operand_ref_optional(node: captured) {
     Present { value: operand } => outcome_accepted(value: operand)
@@ -1287,15 +1306,19 @@ fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node
       match body_lower_literal_bool_atom_optional(node: captured) {
         Present { value: lit } => outcome_accepted(value: lit)
         Absent =>
-          match body_lower_pattern_first_atom_optional(node: captured) {
-            Present { value: pat_atom } => outcome_accepted(value: pat_atom)
+          match body_lower_literal_int_atom_optional(node: captured) {
+            Present { value: lit } => outcome_accepted(value: lit)
             Absent =>
-              outcome_rejected(
-                d: body_lower_diagnostic(
-                  reason: ^body_lowering_reason_unsupported_form,
-                  n: shell
-                )
-              )
+              match body_lower_pattern_first_atom_optional(node: captured) {
+                Present { value: pat_atom } => outcome_accepted(value: pat_atom)
+                Absent =>
+                  outcome_rejected(
+                    d: body_lower_diagnostic(
+                      reason: ^body_lowering_reason_unsupported_form,
+                      n: shell
+                    )
+                  )
+              }
           }
       }
   }
@@ -1702,6 +1725,8 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
               if dag_lex_token_symbol(sym: id) {
                 if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
                   optional_present(value: body_lower_param_ref_atom(identity: id))
+                } else if dag_node_is_int_literal_atom(node: node) {
+                  optional_present(value: node)
                 } else {
                   optional_absent()
                 }

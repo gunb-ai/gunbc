@@ -7,6 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
   dag_fn_decl_param_binding_atoms,
   dag_language_model_canonical_symbols,
+  dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
@@ -417,6 +418,9 @@ fn try_symbol_index_atom_identity(ctx: ResolveContext, name: Symbol) -> Optional
 }
 
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
+  if dag_node_is_int_literal_atom(node: n) {
+    Accepted { value: n, diagnostics: None }
+  } else {
   match lookup_chain_for_policy(ctx: ctx, name: identity) {
     Accepted { value: found, diagnostics: pending } => match found {
       Present { value: canonical } =>
@@ -451,6 +455,7 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
         }
     }
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
   }
 }
 

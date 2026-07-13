@@ -2,10 +2,12 @@ module v2.std.integer
 
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { AbelianGroup, fold_list, fold_list_node, Group, length, Magma, Monoid, OrderedRing, Ordering, Ring, Semigroup }
-import v2.std.collection { List }
-import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, Unavailable }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, Unavailable }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence, is_empty_conj_root }
+import v2.std.node_query { find_named_child }
 import v2.std.machine {
+  Byte,
   MachineWidth,
   PointerWidth,
   Word8,
@@ -15,6 +17,7 @@ import v2.std.machine {
   Word128
 }
 import v2.std.nat { Nat }
+import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 type GroupCompletion<M>
 type Int = GroupCompletion<Nat>
 type UInt = Nat
@@ -928,5 +931,259 @@ fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
     }
   } else {
     Accepted { value: a % b, diagnostics: None }
+  }
+}
+
+fn integer_ascii_digit_zero_code() -> Char {
+  48
+}
+
+fn integer_char_code_to_decimal_digit_optional(c: Char) -> Optional<DecimalDigit> {
+  if c == integer_ascii_digit_zero_code() {
+    optional_present(value: D0)
+  } else if c == integer_ascii_digit_zero_code() + 1 {
+    optional_present(value: D1)
+  } else if c == integer_ascii_digit_zero_code() + 2 {
+    optional_present(value: D2)
+  } else if c == integer_ascii_digit_zero_code() + 3 {
+    optional_present(value: D3)
+  } else if c == integer_ascii_digit_zero_code() + 4 {
+    optional_present(value: D4)
+  } else if c == integer_ascii_digit_zero_code() + 5 {
+    optional_present(value: D5)
+  } else if c == integer_ascii_digit_zero_code() + 6 {
+    optional_present(value: D6)
+  } else if c == integer_ascii_digit_zero_code() + 7 {
+    optional_present(value: D7)
+  } else if c == integer_ascii_digit_zero_code() + 8 {
+    optional_present(value: D8)
+  } else if c == integer_ascii_digit_zero_code() + 9 {
+    optional_present(value: D9)
+  } else {
+    optional_absent()
+  }
+}
+
+fn integer_string_to_decimal_digits_step(
+  s: String,
+  acc: FreeMonoid<DecimalDigit>
+) -> Optional<FreeMonoid<DecimalDigit>> {
+  match string_head(s: s) {
+    CharAbsent => optional_present(value: acc)
+    CharFound { value: c } =>
+      match integer_char_code_to_decimal_digit_optional(c: c) {
+        Present { value: d } =>
+          integer_string_to_decimal_digits_step(
+            s: string_tail(s: s),
+            acc: Cons { head: d, tail: acc }
+          )
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn integer_string_to_decimal_digits_optional(s: String) -> Optional<FreeMonoid<DecimalDigit>> {
+  integer_string_to_decimal_digits_step(s: s, acc: Empty)
+}
+
+fn integer_decimal_nonzero_magnitude_to_int(m: DecimalNonZeroMagnitude) -> Int {
+  fold_list(
+    xs: m.tail,
+    empty: decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: m.lead)),
+    cons: fn(acc, d) {
+      int_add(a: int_mul(a: acc, b: 10), b: decimal_digit_value(d: d))
+    }
+  )
+}
+
+fn integer_decimal_magnitude_to_int(m: DecimalMagnitude) -> Int {
+  match m {
+    DecimalZero => 0
+    DecimalNonZero { magnitude } =>
+      integer_decimal_nonzero_magnitude_to_int(m: magnitude)
+  }
+}
+
+fn integer_lexeme_to_int_optional(lexeme: String) -> Optional<Int> {
+  match integer_string_to_decimal_digits_optional(s: lexeme) {
+    Present { value: digits } =>
+      optional_present(
+        value: integer_decimal_magnitude_to_int(
+          m: decimal_digits_to_magnitude(digits: digits)
+        )
+      )
+    Absent => optional_absent()
+  }
+}
+
+fn integer_u8_unit_to_bit(value: Int, shift: Int) -> Bool {
+  (value / shift) % 2 == 1
+}
+
+fn integer_u8_to_byte(value: Int) -> Byte {
+  Byte {
+    bits: [
+      integer_u8_unit_to_bit(value: value, shift: 1),
+      integer_u8_unit_to_bit(value: value, shift: 2),
+      integer_u8_unit_to_bit(value: value, shift: 4),
+      integer_u8_unit_to_bit(value: value, shift: 8),
+      integer_u8_unit_to_bit(value: value, shift: 16),
+      integer_u8_unit_to_bit(value: value, shift: 32),
+      integer_u8_unit_to_bit(value: value, shift: 64),
+      integer_u8_unit_to_bit(value: value, shift: 128)
+    ]
+  }
+}
+
+fn integer_int_to_signed_i32_le_bytes(value: Int) -> List<Byte> {
+  [
+    integer_u8_to_byte(value: value % 256),
+    integer_u8_to_byte(value: (value / 256) % 256),
+    integer_u8_to_byte(value: (value / 65536) % 256),
+    integer_u8_to_byte(value: (value / 16777216) % 256)
+  ]
+}
+
+fn integer_byte_bit_at(b: Byte, shift: Int) -> Int {
+  match list_at_optional(xs: b.bits, index: shift) {
+    Present { value: bit } => if bit { 1 } else { 0 }
+    Absent => 0
+  }
+}
+
+fn integer_u8_from_byte(b: Byte) -> Int {
+  integer_byte_bit_at(b: b, shift: 0)
+    + 2 * integer_byte_bit_at(b: b, shift: 1)
+    + 4 * integer_byte_bit_at(b: b, shift: 2)
+    + 8 * integer_byte_bit_at(b: b, shift: 3)
+    + 16 * integer_byte_bit_at(b: b, shift: 4)
+    + 32 * integer_byte_bit_at(b: b, shift: 5)
+    + 64 * integer_byte_bit_at(b: b, shift: 6)
+    + 128 * integer_byte_bit_at(b: b, shift: 7)
+}
+
+fn integer_decimal_digit_from_tag_atom(id: Symbol) -> Optional<DecimalDigit> {
+  if id == ^integer_tag_digit_0 {
+    optional_present(value: D0)
+  } else if id == ^integer_tag_digit_1 {
+    optional_present(value: D1)
+  } else if id == ^integer_tag_digit_2 {
+    optional_present(value: D2)
+  } else if id == ^integer_tag_digit_3 {
+    optional_present(value: D3)
+  } else if id == ^integer_tag_digit_4 {
+    optional_present(value: D4)
+  } else if id == ^integer_tag_digit_5 {
+    optional_present(value: D5)
+  } else if id == ^integer_tag_digit_6 {
+    optional_present(value: D6)
+  } else if id == ^integer_tag_digit_7 {
+    optional_present(value: D7)
+  } else if id == ^integer_tag_digit_8 {
+    optional_present(value: D8)
+  } else if id == ^integer_tag_digit_9 {
+    optional_present(value: D9)
+  } else {
+    optional_absent()
+  }
+}
+
+fn integer_decimal_digit_from_node_optional(node: Node) -> Optional<DecimalDigit> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      integer_decimal_digit_from_tag_atom(id: id)
+    _ => optional_absent()
+  }
+}
+
+fn integer_fold_list_node_digits_optional(node: Node) -> Optional<FreeMonoid<DecimalDigit>> {
+  if is_empty_conj_root(n: node) {
+    optional_present(value: Empty)
+  } else {
+    match find_named_child(root: node, name: ^fold_list_node_head) {
+      Accepted { value: head_node, diagnostics: _ } =>
+        match integer_decimal_digit_from_node_optional(node: head_node) {
+          Present { value: digit } =>
+            match find_named_child(root: node, name: ^fold_list_node_tail) {
+              Accepted { value: tail_node, diagnostics: _ } =>
+                match integer_fold_list_node_digits_optional(node: tail_node) {
+                  Present { value: tail_digits } =>
+                    optional_present(value: Cons { head: digit, tail: tail_digits })
+                  Absent => optional_absent()
+                }
+              Rejected { diagnostics: _ } => optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      Rejected { diagnostics: _ } => optional_absent()
+    }
+  }
+}
+
+fn integer_decimal_magnitude_node_to_int(node: Node) -> Outcome<Int> {
+  match integer_fold_list_node_digits_optional(node: node) {
+    Present { value: digits } =>
+      outcome_accepted(
+        value: integer_decimal_magnitude_to_int(
+          m: decimal_digits_to_magnitude(digits: digits)
+        )
+      )
+    Absent =>
+      outcome_rejected(
+        d: integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: node)
+      )
+  }
+}
+
+fn integer_signed_i32_le_bytes_to_int(bytes: List<Byte>) -> Outcome<Int> {
+  if length(xs: bytes) == 4 {
+    match list_at_optional(xs: bytes, index: 0) {
+      Present { value: b0 } =>
+        match list_at_optional(xs: bytes, index: 1) {
+          Present { value: b1 } =>
+            match list_at_optional(xs: bytes, index: 2) {
+              Present { value: b2 } =>
+                match list_at_optional(xs: bytes, index: 3) {
+                  Present { value: b3 } =>
+                    outcome_accepted(
+                      value: integer_u8_from_byte(b: b0)
+                        + 256 * integer_u8_from_byte(b: b1)
+                        + 65536 * integer_u8_from_byte(b: b2)
+                        + 16777216 * integer_u8_from_byte(b: b3)
+                    )
+                  Absent =>
+                    outcome_rejected(
+                      d: integer_standard_integer_type_decode_invalid_diagnostic(
+                        source_carrier: integer_inhabitant_atom(id: ^integer_tag_digit_0)
+                      )
+                    )
+                }
+              Absent =>
+                outcome_rejected(
+                  d: integer_standard_integer_type_decode_invalid_diagnostic(
+                    source_carrier: integer_inhabitant_atom(id: ^integer_tag_digit_0)
+                  )
+                )
+            }
+          Absent =>
+            outcome_rejected(
+              d: integer_standard_integer_type_decode_invalid_diagnostic(
+                source_carrier: integer_inhabitant_atom(id: ^integer_tag_digit_0)
+              )
+            )
+        }
+      Absent =>
+        outcome_rejected(
+          d: integer_standard_integer_type_decode_invalid_diagnostic(
+            source_carrier: integer_inhabitant_atom(id: ^integer_tag_digit_0)
+          )
+        )
+    }
+  } else {
+    outcome_rejected(
+      d: integer_standard_integer_type_decode_invalid_diagnostic(
+        source_carrier: integer_inhabitant_atom(id: ^integer_tag_digit_0)
+      )
+    )
   }
 }
