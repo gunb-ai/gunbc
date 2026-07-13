@@ -12228,22 +12228,6 @@ mod nfr_tests {
     }
 
     #[test]
-    fn nfr_list_unrostered_live_sites() {
-        let roster: std::collections::BTreeSet<&str> =
-            NON_FOLD_RESIDUE_ROSTER.iter().copied().collect();
-        for s in non_fold_residue_live_sites() {
-            if !roster.contains(s.as_str()) {
-                eprintln!("unrostered live site: {s}");
-            }
-        }
-        eprintln!(
-            "counts: unrostered={} stale={}",
-            non_fold_residue_unrostered_count(),
-            non_fold_residue_stale_roster_count()
-        );
-    }
-
-    #[test]
     fn coproduct_index_finds_sums_not_records() {
         let f = files(&[(
             "t.dag",
