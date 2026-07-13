@@ -1,0 +1,59 @@
+module v2.test.long.compile_door_ledger
+
+import v2.std.algebra { fold_list }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.workflow.compile_door_ledger {
+  DoorCompiled,
+  DoorLedgerRow,
+  DoorRefused,
+  door_ledger,
+  ledger_all_compiled,
+  ledger_cause_count,
+  ledger_refused_count
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data compile_door_ledger_witness_note: String = "PR-2 ledger receipts: the door_real_module_probe receipts re-pinned THROUGH the ledger machinery (one typed counted row per subject path, shared module-graph census, per-row import closure fed into the door ingest). Pinned counts are the burn-down baseline: when a cause zeroes (fact_density calibration lands, resolve grows generics, the namespace migration flips), the matching assertion here goes red and the ledger's flip-trigger table advances — that is their job, same contract as the probe receipts."
+
+data ledger_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn two_module_rows() -> List<DoorLedgerRow> {
+  door_ledger(
+    paths: ["dag/std/determinism.dag", "dag/std/error_primitives.dag"],
+    pool_roots: ledger_pool_roots
+  )
+}
+
+test fn ledger_counts_frontier_causes_over_import_free_modules() -> Bool {
+  let rows = two_module_rows()
+  ledger_refused_count(rows: rows) == 2
+    && ledger_cause_count(rows: rows, reason: ^fact_density_hollow_alias_locus) == 1
+    && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 1
+    && ledger_all_compiled(rows: rows) == false
+}
+
+fn bit_module_rows() -> List<DoorLedgerRow> {
+  door_ledger(paths: ["dag/std/bit.dag"], pool_roots: ledger_pool_roots)
+}
+
+fn bit_first_disposition() -> Symbol {
+  fold_list(
+    xs: bit_module_rows(),
+    empty: ^BIT_EMPTY_ROWS,
+    cons: fn(acc, row) {
+      match row.outcome {
+        DoorCompiled => ^BIT_DOOR_COMPILED
+        DoorRefused { reason: r } => r
+      }
+    }
+  )
+}
+
+test fn ledger_feeds_import_closure_through_the_door() -> Bool {
+  bit_first_disposition()
+}

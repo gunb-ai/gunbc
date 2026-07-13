@@ -63,7 +63,7 @@ fn module_graph_facts(pool_roots: List<String>) -> ModuleGraphFacts {
   }
 }
 
-fn collect_import_decl_nodes(n: Node, acc: List<Node>) -> List<Node> {
+fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
   let here = match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } =>
       if id == ^dag_surface_import_decl { Cons { head: n, tail: acc } } else { acc }
@@ -212,12 +212,11 @@ fn cause_count_bump(counts: List<CauseCount>, reason: Symbol) -> List<CauseCount
     xs: counts,
     empty: CauseBumpState { rows: Empty, found: false },
     cons: fn(state, row) {
-      let bumped =
-        if row.reason == reason {
-          CauseCount { reason: row.reason, count: row.count + 1 }
-        } else {
-          row
-        }
+      let bumped = if row.reason == reason {
+        CauseCount { reason: row.reason, count: row.count + 1 }
+      } else {
+        row
+      }
       CauseBumpState {
         rows: Cons { head: bumped, tail: state.rows },
         found: state.found || (row.reason == reason)
