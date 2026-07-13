@@ -71,6 +71,8 @@ fn count_receipts_with_blocker(
   )
 }
 
+data frontier_probe_survey_has_unclassified_dispatch_note: String = "frontier_probe_survey_has_unclassified survives predicate dissolution because it is the existential UnknownProbeCause witness gate (any receipt still in the host-deferred / unclassified bucket), not a variant nickname for a single arm. The long-lane survey witness requires !has_unclassified before roster binding; dissolves when measured receipts eliminate the host UnknownProbeCause residue or the gate reads a typed survey-completeness carrier."
+
 fn frontier_probe_survey_has_unclassified(xs: List<FrontierProbeReceipt>) -> Bool {
   fold_list(
     xs: xs,
@@ -142,20 +144,6 @@ fn frontier_gap_clustering_from_receipts(
       distinct_located_reason_count: module_count,
       module_count: module_count
     }
-  }
-}
-
-fn frontier_gap_clustering_is_common_root(verdict: FrontierGapClusterVerdict) -> Bool {
-  match verdict {
-    CommonRoot {
-      dominant_located_reason: _,
-      dominant_module_count: _,
-      module_count: _
-    } => true
-    HeterogeneousGaps {
-      distinct_located_reason_count: _,
-      module_count: _
-    } => false
   }
 }
 

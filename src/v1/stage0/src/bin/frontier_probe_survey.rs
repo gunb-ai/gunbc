@@ -16,6 +16,9 @@ const PROBE_RECEIPT_FN: &str = "frontier_probe_entry_receipt";
 const WITNESS_LAYER_ROOTS: &[&str] = &["dag", "src/v2"];
 const FRONTIER_SWEEP_ORDER_ENTRY: &str = "src/v2/compiler/self_host/frontier.dag";
 const SWEEP_ORDER_DATA: &str = "compiler_frontier_sweep_order";
+const HOST_REASON_SYMBOLS_ENTRY: &str = "src/v2/compiler/self_host/frontier_probe_types.dag";
+const HOST_RUNTIME_ERROR_REASON_DATA: &str = "frontier_probe_survey_host_runtime_error_reason";
+const HOST_OOM_OR_BUDGET_REASON_DATA: &str = "frontier_probe_survey_host_oom_or_budget_reason";
 
 fn free_monoid_elems<'a>(value: &'a Value, ctx: &InterpContext) -> Result<Vec<&'a Value>, String> {
     let mut out = Vec::new();
@@ -90,6 +93,11 @@ struct ProbeReceiptRow {
     probe_error: Option<String>,
 }
 
+struct HostFailureReasons {
+    runtime_error: String,
+    oom_or_budget: String,
+}
+
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
         Some(v) => Ok(v.clone()),
@@ -108,7 +116,7 @@ fn symbol_to_manifest(sym: &str) -> String {
     }
 }
 
-fn value_symbol_name(_ctx: &InterpContext, value: &Value) -> Result<String, String> {
+fn value_symbol_name(ctx: &InterpContext, value: &Value) -> Result<String, String> {
     match value {
         Value::Str(s) => Ok(symbol_to_manifest(s)),
         other => Err(format!(
@@ -116,6 +124,40 @@ fn value_symbol_name(_ctx: &InterpContext, value: &Value) -> Result<String, Stri
             other.type_label_public()
         )),
     }
+}
+
+fn load_symbol_data_from_entry(
+    source_roots: &[String],
+    entry: &str,
+    data_name: &str,
+) -> Result<String, String> {
+    let mut roots: Vec<String> = WITNESS_LAYER_ROOTS
+        .iter()
+        .map(|r| r.to_string())
+        .collect();
+    roots.extend(source_roots.iter().cloned());
+    let (graph, source_indices) =
+        resolve_entry_graph(&roots, entry).map_err(|e| format!("{e}"))?;
+    let ctx = InterpContext::new(&graph, source_indices, ExecutionMode::Hermetic);
+    let value = v1_interpreter::run_in_context(&ctx, data_name, true)
+        .map_err(|e| format!("read {data_name}: {e}"))?;
+    let sym = value_symbol_name(&ctx, &value)?;
+    Ok(sym.trim_start_matches('^').to_string())
+}
+
+fn load_host_failure_reasons(source_roots: &[String]) -> Result<HostFailureReasons, String> {
+    Ok(HostFailureReasons {
+        runtime_error: load_symbol_data_from_entry(
+            source_roots,
+            HOST_REASON_SYMBOLS_ENTRY,
+            HOST_RUNTIME_ERROR_REASON_DATA,
+        )?,
+        oom_or_budget: load_symbol_data_from_entry(
+            source_roots,
+            HOST_REASON_SYMBOLS_ENTRY,
+            HOST_OOM_OR_BUDGET_REASON_DATA,
+        )?,
+    })
 }
 
 fn variant_name(ctx: &InterpContext, value: &Value) -> Result<String, String> {
@@ -417,6 +459,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         module_paths.len()
     );
 
+    let host_failure_reasons = load_host_failure_reasons(&source_roots).map_err(|msg| {
+        eprintln!("frontier_probe_survey: {msg}");
+        ExitCode::from(1)
+    })?;
+
     let mut rows: Vec<ProbeReceiptRow> = Vec::new();
     for module_path in &module_paths {
         eprintln!("frontier_probe_survey: probing {module_path}");
@@ -429,12 +476,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                 rows.push(row);
             }
             Err(msg) => {
-                // Symbols must stay aligned with frontier_blocker_is_probe_survey_host_reason
-                // in v2.compiler.self_host.frontier_probe_types (single reason-table authority).
                 let cause = if msg.contains("EvalBudgetExceeded") || msg.contains("OOM") {
-                    "frontier_probe_oom_or_budget"
+                    host_failure_reasons.oom_or_budget.as_str()
                 } else {
-                    "frontier_probe_runtime_error"
+                    host_failure_reasons.runtime_error.as_str()
                 };
                 eprintln!("frontier_probe_survey: {module_path}: {msg} -> Unknown({cause})");
                 rows.push(unknown_probe_row(module_path, cause));

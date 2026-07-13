@@ -59,10 +59,24 @@ fn frontier_blocker_is_realization_reason(reason: Symbol) -> Bool {
 
 data frontier_probe_survey_host_unknown_reason_scaffold_note: String = "Seed `frontier_probe_survey` bin emits UnknownProbeCause with these located_reason symbols when per-module probe fails or emit-accept is unverified; not classified by frontier_classify_rejection_reason (assemble/emit diagnostics only). Dissolves with the P5 bin."
 
+data frontier_blocker_is_probe_survey_host_reason_dispatch_note: String = "frontier_blocker_is_probe_survey_host_reason is the reason-table authority for P5 seed-bin UnknownProbeCause symbols (^frontier_probe_runtime_error, ^frontier_probe_oom_or_budget, ^probe_emit_accept_self_host_bar_unbound). Wired through frontier_classify_rejection_reason and frontier_probe_survey_host_failure_reason; the seed bin reads the latter at runtime — no parallel Rust symbol strings. Dissolves with the P5 bin scaffold."
+
 fn frontier_blocker_is_probe_survey_host_reason(reason: Symbol) -> Bool {
-  reason == ^frontier_probe_oom_or_budget
-    || reason == ^frontier_probe_runtime_error
+  reason == frontier_probe_survey_host_runtime_error_reason
+    || reason == frontier_probe_survey_host_oom_or_budget_reason
     || reason == ^probe_emit_accept_self_host_bar_unbound
+}
+
+data frontier_probe_survey_host_runtime_error_reason: Symbol = ^frontier_probe_runtime_error
+
+data frontier_probe_survey_host_oom_or_budget_reason: Symbol = ^frontier_probe_oom_or_budget
+
+fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> Symbol {
+  if is_oom_or_budget {
+    frontier_probe_survey_host_oom_or_budget_reason
+  } else {
+    frontier_probe_survey_host_runtime_error_reason
+  }
 }
 
 fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
@@ -72,6 +86,8 @@ fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
     EmitSurfaceGap
   } else if frontier_blocker_is_realization_reason(reason: reason) {
     RealizationGap
+  } else if frontier_blocker_is_probe_survey_host_reason(reason: reason) {
+    UnknownProbeCause { reason: reason }
   } else {
     UnknownProbeCause { reason: reason }
   }
