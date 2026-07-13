@@ -1,20 +1,50 @@
 module v2.test.claim.complexity.floor_runner_probe
 
-import v2.lens.complexity_accumulator_copy.roster_gate { ingest_findings }
-import v2.std.collection { Absent, Present }
+import extdeps.filesystem.filesystem_io
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-fn ingests(path: String) -> Bool {
-  match ingest_findings(path: path) {
-    Absent => false
-    Present { value: _ } => true
+fn stage_of(path: String) -> String {
+  let source_text = filesystem_read(path: path).content
+  let lm = dag_language_model()
+  let at = port_locus(port: ^probe_port)
+  match lm.grammar {
+    VoidGrammar => "void_grammar"
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => "grammar_validate_rejected"
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: source_text, file: ^probe_subject, rules: lm.lex) {
+            Rejected { diagnostics: _ } => "tokenize_rejected"
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => "parse_rejected"
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => "normalize_rejected"
+                    Accepted { value: _, diagnostics: _ } => "ok"
+                  }
+              }
+          }
+      }
   }
 }
 
-test fn ingest_change_dag() -> Bool { ingests(path: "dag/std/change.dag") }
-test fn ingest_floor_runner() -> Bool { ingests(path: "src/v2/workflow/affected_set_floor_runner.dag") }
-test fn ingest_affected_selection() -> Bool { ingests(path: "src/v2/workflow/affected_set_selection.dag") }
-test fn ingest_witness_cost_locality() -> Bool { ingests(path: "src/v2/lens/witness_cost_locality.dag") }
-test fn ingest_roster_gate() -> Bool { ingests(path: "src/v2/lens/complexity_accumulator_copy/roster_gate.dag") }
-test fn ingest_ci_floor_plan() -> Bool { ingests(path: "src/v2/workflow/ci_floor_plan.dag") }
+test fn change_stage_ok() -> Bool { stage_of(path: "dag/std/change.dag") == "ok" }
+test fn change_stage_tokenize() -> Bool { stage_of(path: "dag/std/change.dag") == "tokenize_rejected" }
+test fn change_stage_parse() -> Bool { stage_of(path: "dag/std/change.dag") == "parse_rejected" }
+test fn change_stage_normalize() -> Bool { stage_of(path: "dag/std/change.dag") == "normalize_rejected" }
+test fn floor_stage_parse() -> Bool { stage_of(path: "src/v2/workflow/affected_set_floor_runner.dag") == "parse_rejected" }
+test fn floor_stage_tokenize() -> Bool { stage_of(path: "src/v2/workflow/affected_set_floor_runner.dag") == "tokenize_rejected" }
+test fn floor_stage_normalize() -> Bool { stage_of(path: "src/v2/workflow/affected_set_floor_runner.dag") == "normalize_rejected" }
