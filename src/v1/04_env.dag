@@ -130,7 +130,9 @@ fn binding_same_authority(a: TypeBinding, b: TypeBinding) -> Bool {
   }
 }
 
-fn guarded_union_str_bindings(
+data union_base_choice_note: String = "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across four maps). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for str_bindings/deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing."
+
+fn guarded_union_str_bindings_into_acc(
   acc: Map<String, TypeBinding>,
   overlay: Map<String, TypeBinding>,
   import_path: String,
@@ -159,12 +161,54 @@ fn guarded_union_str_bindings(
   )
 }
 
+fn guarded_union_str_bindings_into_overlay(
+  acc: Map<String, TypeBinding>,
+  overlay: Map<String, TypeBinding>,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedStrBindingsUnion {
+  fold(acc |> map_keys, init: GuardedStrBindingsUnion { bindings: overlay, conflicts: conflicts }, f: (state, name) =>
+    match map_get(acc, name) {
+      Absent => state
+      Present { value: accumulated } =>
+        match map_get(state.bindings, name) {
+          Absent => GuardedStrBindingsUnion {
+            bindings: map_insert(state.bindings, name, accumulated),
+            conflicts: state.conflicts
+          }
+          Present { value: incoming } =>
+            if binding_same_authority(a: accumulated, b: incoming) {
+              state
+            } else {
+              GuardedStrBindingsUnion {
+                bindings: state.bindings,
+                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: accumulated.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: accumulated.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) }])
+              }
+            }
+        }
+    }
+  )
+}
+
+fn guarded_union_str_bindings(
+  acc: Map<String, TypeBinding>,
+  overlay: Map<String, TypeBinding>,
+  import_path: String,
+  conflicts: List<TypeEnvCacheMergeConflict>
+) -> GuardedStrBindingsUnion {
+  if (acc |> count) >= (overlay |> count) {
+    guarded_union_str_bindings_into_acc(acc: acc, overlay: overlay, import_path: import_path, conflicts: conflicts)
+  } else {
+    guarded_union_str_bindings_into_overlay(acc: acc, overlay: overlay, import_path: import_path, conflicts: conflicts)
+  }
+}
+
 type GuardedStrBindingsUnion {
   bindings: Map<String, TypeBinding>
   conflicts: List<TypeEnvCacheMergeConflict>
 }
 
-fn union_deps_map_skip_equal(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
+fn union_deps_map_into_acc(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
   fold(overlay |> map_keys, init: acc, f: (m, name) =>
     match map_get(overlay, name) {
       Absent => m
@@ -177,7 +221,28 @@ fn union_deps_map_skip_equal(acc: Map<String, List<String>>, overlay: Map<String
   )
 }
 
-fn union_bool_set_skip_equal(acc: Map<String, Bool>, overlay: Map<String, Bool>) -> Map<String, Bool> {
+fn union_deps_map_into_overlay(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
+  fold(acc |> map_keys, init: overlay, f: (m, name) =>
+    match map_get(acc, name) {
+      Absent => m
+      Present { value: accumulated } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, accumulated)
+          Present { value: _incoming } => m
+        }
+    }
+  )
+}
+
+fn union_deps_map_skip_equal(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
+  if (acc |> count) >= (overlay |> count) {
+    union_deps_map_into_acc(acc: acc, overlay: overlay)
+  } else {
+    union_deps_map_into_overlay(acc: acc, overlay: overlay)
+  }
+}
+
+fn union_bool_set_into_acc(acc: Map<String, Bool>, overlay: Map<String, Bool>) -> Map<String, Bool> {
   fold(overlay |> map_keys, init: acc, f: (m, name) =>
     match map_get(m, name) {
       Present { value: _ } => m
@@ -190,7 +255,28 @@ fn union_bool_set_skip_equal(acc: Map<String, Bool>, overlay: Map<String, Bool>)
   )
 }
 
-fn union_variant_locals_skip_equal(acc: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+fn union_bool_set_into_overlay(acc: Map<String, Bool>, overlay: Map<String, Bool>) -> Map<String, Bool> {
+  fold(acc |> map_keys, init: overlay, f: (m, name) =>
+    match map_get(acc, name) {
+      Absent => m
+      Present { value: accumulated } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, accumulated)
+          Present { value: incoming } => if incoming == accumulated { m } else { map_insert(m, name, accumulated) }
+        }
+    }
+  )
+}
+
+fn union_bool_set_skip_equal(acc: Map<String, Bool>, overlay: Map<String, Bool>) -> Map<String, Bool> {
+  if (acc |> count) >= (overlay |> count) {
+    union_bool_set_into_acc(acc: acc, overlay: overlay)
+  } else {
+    union_bool_set_into_overlay(acc: acc, overlay: overlay)
+  }
+}
+
+fn union_variant_locals_into_acc(acc: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
   fold(overlay |> map_keys, init: acc, f: (m, name) =>
     match map_get(overlay, name) {
       Absent => m
@@ -201,6 +287,27 @@ fn union_variant_locals_skip_equal(acc: Map<String, TypeBinding>, overlay: Map<S
         }
     }
   )
+}
+
+fn union_variant_locals_into_overlay(acc: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(acc |> map_keys, init: overlay, f: (m, name) =>
+    match map_get(acc, name) {
+      Absent => m
+      Present { value: accumulated } =>
+        match map_get(m, name) {
+          Absent => map_insert(m, name, accumulated)
+          Present { value: _incoming } => m
+        }
+    }
+  )
+}
+
+fn union_variant_locals_skip_equal(acc: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  if (acc |> count) >= (overlay |> count) {
+    union_variant_locals_into_acc(acc: acc, overlay: overlay)
+  } else {
+    union_variant_locals_into_overlay(acc: acc, overlay: overlay)
+  }
 }
 
 fn merge_type_env_cache_guarded(
@@ -340,12 +447,22 @@ fn is_inductive_field(env: TypeEnv, type_name: String, variant_name: String, fie
     |> any(f => f.variant_name == variant_name && f.field_name == field_name)
 }
 
+data put_inductive_field_guard_note: String = "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (DESIGN §5 - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count."
+
+fn append_inductive_field_absent(existing: List<InductiveField>, incoming: InductiveField) -> List<InductiveField> {
+  if existing |> any(f => inductive_field_key(f: f) == inductive_field_key(f: incoming)) {
+    existing
+  } else {
+    concat(existing, [incoming])
+  }
+}
+
 fn put_inductive_field(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape) -> Map<String, List<InductiveField>> {
   let existing = match map_get(fields, type_name) {
     Present { value: fs } => fs
     Absent => []
   }
-  map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }]))
+  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }))
 }
 
 fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Map<String, List<InductiveField>> {
@@ -353,7 +470,7 @@ fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_nam
     Present { value: fs } => fs
     Absent => []
   }
-  map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }]))
+  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }))
 }
 
 data merge_inductive_fields_dedupe_note: String = "Set-semantics merge (v1-run-stability-throughline M1b + M1b-2, M0 receipt 2026-07-13): a type's inductive fields are a SET of (variant, field, shape, element) facts - multiplicity carries no information. The unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG (measured 409,240,584 retained InductiveField slots corpus-wide, ~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types), and even skip-if-equal alone left 95,050,553 slots because differing lists carried baked-in duplicate multiplicities (worst module still 4.1M at ~3k dupes/type). So the merge appends ONLY fields not already present (identity = variant|field|shape|element; type_name is the map key): equal or subset incoming lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never concat-with-empty), and every list is duplicate-free by induction (local collection is duplicate-free; merges never append a present fact). Genuinely new fields still append in the pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2); receipts on the throughline doc."
