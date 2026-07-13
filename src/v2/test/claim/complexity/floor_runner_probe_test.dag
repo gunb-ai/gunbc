@@ -1,20 +1,49 @@
 module v2.test.claim.complexity.floor_runner_probe
 
-import v2.lens.complexity_accumulator_copy.roster_gate { file_suspect_count, file_refusal_count }
+import v2.lens.complexity_accumulator_copy.roster_gate { file_suspect_count, file_refusal_count, ingest_findings }
+import v2.lens.complexity_accumulator_copy.analyze { findings_have_refusal_cause }
+import v2.std.collection { Absent, Present }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
 
-test fn floor_runner_has_suspect() -> Bool {
-  file_suspect_count(path: "src/v2/workflow/affected_set_floor_runner.dag") > 0
-}
+data floor_path: String = "src/v2/workflow/affected_set_floor_runner.dag"
 
-test fn floor_runner_refusals_le_30() -> Bool {
-  file_refusal_count(path: "src/v2/workflow/affected_set_floor_runner.dag") <= 30
-}
-
-test fn floor_runner_refusals_le_2() -> Bool {
-  file_refusal_count(path: "src/v2/workflow/affected_set_floor_runner.dag") <= 2
+test fn floor_runner_zero_suspects() -> Bool {
+  file_suspect_count(path: floor_path) == 0
 }
 
 test fn floor_runner_refusals_eq_0() -> Bool {
-  file_refusal_count(path: "src/v2/workflow/affected_set_floor_runner.dag") == 0
+  file_refusal_count(path: floor_path) == 0
+}
+
+test fn floor_runner_refusals_eq_1() -> Bool {
+  file_refusal_count(path: floor_path) == 1
+}
+
+test fn floor_runner_refusals_eq_2() -> Bool {
+  file_refusal_count(path: floor_path) == 2
+}
+
+fn floor_findings_have_cause(cause: Symbol) -> Bool {
+  match ingest_findings(path: floor_path) {
+    Absent => false
+    Present { value: fs } => findings_have_refusal_cause(fs: fs, cause: cause)
+  }
+}
+
+test fn floor_cause_fold_accumulator_unread() -> Bool {
+  floor_findings_have_cause(cause: ^fold_accumulator_unread)
+}
+
+test fn floor_cause_copied_port_name_may_alias() -> Bool {
+  floor_findings_have_cause(cause: ^copied_port_name_may_alias)
+}
+
+test fn floor_cause_combiner_unregistered_carrier_reaches() -> Bool {
+  floor_findings_have_cause(cause: ^combiner_unregistered_carrier_reaches)
+}
+
+test fn floor_cause_call_head_unreadable() -> Bool {
+  floor_findings_have_cause(cause: ^call_head_unreadable)
 }
