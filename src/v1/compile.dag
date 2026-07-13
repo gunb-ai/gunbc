@@ -93,14 +93,16 @@ fn build_recursion_context(typed: ResolvedGraph) -> RecursionContext {
   RecursionContext {}
 }
 
+fn module_ownership_proofs(m: TypedModule) -> List<OwnershipProof> {
+  m.items |> filter(item => item.body != Absent) |> map(item =>
+    analyze_ownership(func_name: authored_name_at(source_indices: m.type_env.source_indices, node: item), params: item.params, body: item.body.value, si: m.type_env.source_indices)
+  )
+}
+
 fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
   typed.modules
     |> filter(m => m.items |> any(item => item.body != Absent))
-    |> flat_map(m =>
-      m.items |> filter(item => item.body != Absent) |> map(item =>
-        analyze_ownership(func_name: authored_name_at(source_indices: m.type_env.source_indices, node: item), params: item.params, body: item.body.value, si: m.type_env.source_indices)
-      )
-    )
+    |> flat_map(m => module_ownership_proofs(m: m))
 }
 
 fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
