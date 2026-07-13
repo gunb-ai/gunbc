@@ -718,6 +718,12 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() -> Result<(), String
 
 fn filesystem_read_hermetic_without_fixture_fails_closed() -> Result<(), String> {
     let ws = workspace_root();
+    // Contract after the checkout-input carve-out (§3 single-authority split): a hermetic
+    // `filesystem_read` of a CHECKOUT path is a real input read (the commit is the input —
+    // covered green by filesystem_read_record_then_hermetic_replay_holds, which round-trips
+    // dag/std/filesystem.dag). A read of HOST STATE the carve-out does NOT confirm as a
+    // committed input — here a `target/` build-artifact path — must still fail closed with no
+    // fixture and no mock_response: no silent disk read of non-deterministic host state.
     let hermetic = run_claim_batch(&[
         "--source-root",
         ws.to_str().unwrap(),
@@ -728,12 +734,12 @@ fn filesystem_read_hermetic_without_fixture_fails_closed() -> Result<(), String>
             .to_str()
             .unwrap(),
         "--function",
-        "witness_read_via_builtin_roundtrip",
+        "witness_read_host_state_fails_closed",
         "--hermetic",
     ])?;
     ensure!(
         !hermetic.status.success(),
-        "filesystem_read in Hermetic without fixture store must fail closed (no silent disk read)"
+        "filesystem_read of host state in Hermetic without fixture store must fail closed (no silent disk read)"
     );
     let combined = combined_output(&hermetic);
     ensure!(

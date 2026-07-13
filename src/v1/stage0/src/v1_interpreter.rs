@@ -4918,24 +4918,28 @@ fn eval_service_call(
         // artifacts are not commit-deterministic), or an unresolvable path each
         // refuse with a typed diagnostic — never a canned response.
         if service_name == "Filesystem" && op_name == "Read" {
-            let path_arg = param_env.lookup(ctx.sym("path")).and_then(|v| match v {
-                Value::Str(s) => Some(s.clone()),
-                _ => None,
-            });
-            let requested = path_arg.ok_or_else(|| InterpError::TypeError {
-                msg: "hermetic checkout read: Filesystem.Read requires a string `path` argument"
-                    .to_string(),
-            })?;
-            return match hermetic_checkout_read_disposition(&requested) {
-                Ok(()) => dispatch_service_wet(service_node, op_node, transport, &param_env, ctx),
-                Err(reason) => Err(InterpError::TypeError {
-                    msg: format!(
-                        "hermetic mode: Filesystem.Read of `{requested}` refused — {reason} \
-                         (only read-only paths under the injected checkout root are hermetic \
-                         inputs; declare the runnable Wet if it must observe host state)"
-                    ),
-                }),
-            };
+            // Single-authority split (§3): a Filesystem.Read whose path the disposition
+            // CONFIRMS is a committed checkout input reads directly — the commit is the run's
+            // deterministic input, so this is input access, not a host effect, and it needs no
+            // fixture. Everything the disposition cannot confirm — a recorded fixture's
+            // scratch path, a `target/`/`.git` build artifact, an out-of-root or absent path —
+            // is NOT decided here: it FALLS THROUGH to the fixture-store / published-mock /
+            // fail-closed machinery below, which owns non-deterministic host state. So the
+            // carve-out intercepts only what it is sure about; it never pre-empts the
+            // recorded-fixture mechanism (record/replay/staleness) nor widens a host-state read
+            // into a refusal that belongs to the mock layer. Checkout inputs are read from the
+            // commit; host state is mocked or fails closed — no path is served by both.
+            let confirmed_checkout_input = param_env
+                .lookup(ctx.sym("path"))
+                .and_then(|v| match v {
+                    Value::Str(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .map(|requested| hermetic_checkout_read_disposition(&requested).is_ok())
+                .unwrap_or(false);
+            if confirmed_checkout_input {
+                return dispatch_service_wet(service_node, op_node, transport, &param_env, ctx);
+            }
         }
         let published = ctx.published_mock_keys()?;
         let governed = ctx.governed_services()?;
