@@ -3,7 +3,7 @@ module v2.std.integer
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { AbelianGroup, TailAbsent, TailFound, fold_list, fold_list_node, Group, length, Magma, Monoid, OrderedRing, Ordering, Ring, Semigroup }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
-import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, Unavailable }
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, port_locus, Unavailable }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
 import v2.std.machine {
@@ -101,6 +101,14 @@ fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node)
   Diagnostic {
     reason: ^integer_standard_integer_type_decode_invalid,
     at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn integer_signed_i32_le_decode_invalid_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^integer_standard_integer_type_decode_invalid,
+    at: port_locus(port: ^integer_signed_i32_le_decode_invalid),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -1213,38 +1221,18 @@ fn integer_signed_i32_le_bytes_to_int(bytes: List<Byte>) -> Outcome<Int> {
                       )
                     )
                   Absent =>
-                    outcome_rejected(
-                      d: integer_standard_integer_type_decode_invalid_diagnostic(
-                        source_carrier: integer_inhabitant_atom(id: ^integer_tag_digit_0)
-                      )
-                    )
+                    outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
                 }
               Absent =>
-                outcome_rejected(
-                  d: integer_standard_integer_type_decode_invalid_diagnostic(
-                    source_carrier: integer_inhabitant_atom(id: ^integer_tag_digit_0)
-                  )
-                )
+                outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
             }
           Absent =>
-            outcome_rejected(
-              d: integer_standard_integer_type_decode_invalid_diagnostic(
-                source_carrier: integer_inhabitant_atom(id: ^integer_tag_digit_0)
-              )
-            )
+            outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
         }
       Absent =>
-        outcome_rejected(
-          d: integer_standard_integer_type_decode_invalid_diagnostic(
-            source_carrier: integer_inhabitant_atom(id: ^integer_tag_digit_0)
-          )
-        )
+        outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
     }
   } else {
-    outcome_rejected(
-      d: integer_standard_integer_type_decode_invalid_diagnostic(
-        source_carrier: integer_inhabitant_atom(id: ^integer_tag_digit_0)
-      )
-    )
+    outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
   }
 }
