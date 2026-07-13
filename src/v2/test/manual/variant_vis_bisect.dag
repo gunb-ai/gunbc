@@ -1,0 +1,54 @@
+module v2.test.manual.variant_vis_bisect
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly {
+  assemble_program_from_ingest,
+  module_roots_from_source_root_ingest
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data src: String = "module variant_vis_pilot\n\ntype Classical = Yes | No\n\nfn flip(a: Classical) -> Classical { match a { Yes => No, No => Yes } }\n"
+
+fn ingest() -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: Artifact { kind: SourceFile, id: ^bisect_art, file_path: "src/v2/pilot/variant_vis.dag" },
+      compilation_unit: ^bisect_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^variant_vis_pilot, tail: Empty } },
+    imports: Empty
+  }
+}
+
+test fn bisect_normalize_parses_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ingest(), lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bisect_resolve_accepts_holds() -> Bool {
+  match assemble_program_from_ingest(ingest: ingest(), admission: admission(), lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
