@@ -2,7 +2,7 @@ module v1.compiler.infer_env
 
 import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
 import std.types { SourceSpan }
-import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
+import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
@@ -356,7 +356,21 @@ fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_nam
   map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }]))
 }
 
-data merge_inductive_fields_dedupe_note: String = "Skip-if-equal on identical lists (v1-run-stability-throughline M1b, M0 receipt 2026-07-13): the unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG - two parents carrying the SAME inherited list for a type re-concatenated it at every module, measured at 409,240,584 retained InductiveField slots corpus-wide (~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types). An identical incoming list adds no information - a type's inductive fields are a set of (type, variant, field, shape, element) facts - so equal lists SKIP (also the sharing fast path: absent keys insert the incoming list Rc directly, never concat-with-empty). Genuinely differing lists still concat in the pre-cut order (behavior-preserving for cross-module field extensions). Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2)."
+data merge_inductive_fields_dedupe_note: String = "Set-semantics merge (v1-run-stability-throughline M1b + M1b-2, M0 receipt 2026-07-13): a type's inductive fields are a SET of (variant, field, shape, element) facts - multiplicity carries no information. The unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG (measured 409,240,584 retained InductiveField slots corpus-wide, ~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types), and even skip-if-equal alone left 95,050,553 slots because differing lists carried baked-in duplicate multiplicities (worst module still 4.1M at ~3k dupes/type). So the merge appends ONLY fields not already present (identity = variant|field|shape|element; type_name is the map key): equal or subset incoming lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never concat-with-empty), and every list is duplicate-free by induction (local collection is duplicate-free; merges never append a present fact). Genuinely new fields still append in the pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2); receipts on the throughline doc."
+
+fn recursion_shape_key(shape: RecursionShape) -> String {
+  match shape {
+    DirectRecursion => "direct"
+    ListRecursion => "list"
+    OptionalRecursion => "optional"
+    SetRecursion => "set"
+    MapValueRecursion => "map_value"
+  }
+}
+
+fn inductive_field_key(f: InductiveField) -> String {
+  concat(concat(concat(concat(concat(concat(f.variant_name, "|"), f.field_name), "|"), recursion_shape_key(shape: f.shape)), "|"), f.element_type)
+}
 
 fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
   right |> map_keys |> fold(init: left, f: (acc, type_name) =>
@@ -367,7 +381,13 @@ fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<St
             if existing == incoming {
               acc
             } else {
-              map_insert(acc, type_name, concat(existing, incoming))
+              let seen = existing |> fold(init: empty_set(), f: (s, f) => set_insert(s, inductive_field_key(f: f)))
+              let additions = incoming |> filter(f => set_contains(seen, inductive_field_key(f: f)) == false)
+              if additions |> count == 0 {
+                acc
+              } else {
+                map_insert(acc, type_name, concat(existing, additions))
+              }
             }
           Absent => map_insert(acc, type_name, incoming)
         }
