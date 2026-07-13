@@ -237,10 +237,9 @@ fn body_lower_branch_apply_pick_lit_bridge(body: Node) -> Node {
                   xs: done,
                   item: Edge {
                     label: e.label,
-                    target: if count(done) == 0 {
-                      e.target
-                    } else {
-                      body_lower_apply_pick_lit_bridge_to_operand(node: e.target)
+                    target: match count(done) == 0 {
+                      true => e.target
+                      false => body_lower_apply_pick_lit_bridge_to_operand(node: e.target)
                     }
                   }
                 ),
@@ -379,12 +378,7 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
     Absent =>
       match dag_binding_branded_atom_identity(node: node) {
         Present { value: binding } =>
-          match body_lower_numeric_pick_lit_optional(sym: binding) {
-            Present { value: lit } =>
-              Present { value: body_lower_param_ref_atom(identity: lit) }
-            Absent =>
-              Present { value: body_lower_param_ref_atom(identity: binding) }
-          }
+          Present { value: body_lower_param_ref_atom(identity: binding) }
         Absent =>
           match node_atom_identity_optional(node: node) {
             Present { value: id } =>
@@ -395,12 +389,7 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
                   optional_absent()
                 }
               } else {
-                match body_lower_numeric_pick_lit_optional(sym: id) {
-                  Present { value: lit } =>
-                    optional_present(value: body_lower_param_ref_atom(identity: lit))
-                  Absent =>
-                    optional_present(value: body_lower_param_ref_atom(identity: id))
-                }
+                optional_present(value: body_lower_param_ref_atom(identity: id))
               }
             Absent =>
               match sugar_sequence_pair_optional(node: node) {
@@ -1356,6 +1345,13 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
   }
 }
 
+fn body_lower_maybe_apply_pick_lit_bridge(body: Node, captured: Node) -> Node {
+  match body_lower_fn_decl_pick_eval_bridge_target(captured: captured) {
+    true => body_lower_branch_apply_pick_lit_bridge(body: body)
+    false => body
+  }
+}
+
 fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
@@ -1372,7 +1368,9 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
                   match body_opt {
                     Absent => body_lower_wrapper_retained_shell(shell: shell)
                     Present { value: body } =>
-                      match body_lower_reify_arrow_body(body: body) {
+                      match body_lower_reify_arrow_body(
+                        body: body_lower_maybe_apply_pick_lit_bridge(body: body, captured: captured)
+                      ) {
                         Rejected { diagnostics: r } => Rejected { diagnostics: r }
                         Accepted { value: reified_body, diagnostics: bd } =>
                           match body_lower_return_type_from_fn_captured(captured: captured) {
@@ -1424,19 +1422,15 @@ fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node
       match body_lower_literal_bool_atom_optional(node: captured) {
         Present { value: lit } => outcome_accepted(value: lit)
         Absent =>
-          match body_lower_numeric_pick_lit_atom_optional(node: captured) {
-            Present { value: lit } => outcome_accepted(value: lit)
+          match body_lower_pattern_first_atom_optional(node: captured) {
+            Present { value: pat_atom } => outcome_accepted(value: pat_atom)
             Absent =>
-              match body_lower_pattern_first_atom_optional(node: captured) {
-                Present { value: pat_atom } => outcome_accepted(value: pat_atom)
-                Absent =>
-                  outcome_rejected(
-                    d: body_lower_diagnostic(
-                      reason: ^body_lowering_reason_unsupported_form,
-                      n: shell
-                    )
-                  )
-              }
+              outcome_rejected(
+                d: body_lower_diagnostic(
+                  reason: ^body_lowering_reason_unsupported_form,
+                  n: shell
+                )
+              )
           }
       }
   }
@@ -1819,12 +1813,7 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match dag_binding_branded_atom_identity(node: stripped) {
     Present { value: binding } =>
-      match body_lower_numeric_pick_lit_optional(sym: binding) {
-        Present { value: lit } =>
-          optional_present(value: body_lower_param_ref_atom(identity: lit))
-        Absent =>
-          optional_present(value: body_lower_param_ref_atom(identity: binding))
-      }
+      optional_present(value: body_lower_param_ref_atom(identity: binding))
     Absent =>
       match parse_production_emitted_identity_optional(node: stripped) {
         Present { value: emitted } =>
@@ -1852,12 +1841,7 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
                   optional_absent()
                 }
               } else {
-                match body_lower_numeric_pick_lit_optional(sym: id) {
-                  Present { value: lit } =>
-                    optional_present(value: body_lower_param_ref_atom(identity: lit))
-                  Absent =>
-                    optional_present(value: body_lower_param_ref_atom(identity: id))
-                }
+                optional_present(value: body_lower_param_ref_atom(identity: id))
               }
             Absent =>
               fold(stripped.children, init: Absent, f: fn(acc, e) {
