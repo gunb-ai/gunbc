@@ -1,0 +1,294 @@
+module v2.workflow.compile_door_ledger
+
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.compile { compile_source_root_ingest_with_admission }
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  dag_language_model,
+  parse_production_emitted_identity_optional,
+  parse_qualified_name_segments_from_capture,
+  parse_subtree_find_production_captured,
+  qualified_name_from_module_node
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.algebra { fold_list, length, list_reverse }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
+
+data compile_door_ledger_law: String = "The PR-2 transport core: the AuditOnly stopped-line ledger over the v2 compile door (DESIGN 5 factory model; sharp-bee-290 contract 2026-07-13; mandated by the milestone-1 receipts in v2.test.long.door_real_module_probe — the door's pre-existing roster and resolve red real modules today, so Blocking is impossible until causes zero). Each subject path gets ONE typed row: DoorCompiled, or DoorRefused with the rejection's head reason — located, counted, NEVER absorbed into a widened rerun or a silent skip. The cause histogram over the affected set is the burn-down list toward v2-compiles-the-repo; a cause reaching zero is the named flip-to-Blocking trigger for its lens/stage (flip rows are enrolled per-cause by their OWNING lane: fact_density calibration = this lane; resolve generics = shared self-host critical path; import/ambiguity causes = namespace migration, counted here with NO trigger per the nimble-boar-198 contract)."
+
+data derive_admission_scaffold_note: String = "derive_module_admission is a SCAFFOLD with a named dissolution: it reads the subject's module QN and import decls off the parsed tree to build the Admission the door's resolve requires. It dies with imports themselves at the namespace migration's Rule-1 end-state (deps from container.member references; import grammar deleted — nimble-boar-198 lane); at that flip the door's resolve takes the containment tree and this derivation (plus the double-parse it forces: once here for admission, once inside the door) is deleted, not migrated. Fail-closed: a module whose QN or any import decl cannot be read yields DoorRefused with the projection reason — never a fabricated empty admission."
+
+type DoorOutcomeKind
+  = DoorCompiled
+  | DoorRefused { reason: Symbol }
+
+type DoorLedgerRow {
+  module_path: String
+  outcome: DoorOutcomeKind
+}
+
+type CauseCount {
+  reason: Symbol
+  count: Int
+}
+
+type ParsedModule
+  = ModuleParseRefused { reason: Symbol }
+  | ModuleParsed { root: Node }
+
+fn parse_module_source(source_text: String) -> ParsedModule {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^compile_door_ledger_grammar_port)
+  match lm.grammar {
+    VoidGrammar => ModuleParseRefused { reason: ^compile_door_ledger_void_grammar }
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: d } => ModuleParseRefused { reason: d.head.reason }
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(
+            text: source_text,
+            file: ^compile_door_ledger_subject,
+            rules: lm.lex
+          ) {
+            Rejected { diagnostics: d } => ModuleParseRefused { reason: d.head.reason }
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: d } => ModuleParseRefused { reason: d.head.reason }
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: d } => ModuleParseRefused { reason: d.head.reason }
+                    Accepted { value: tree, diagnostics: _ } =>
+                      ModuleParsed { root: tree }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn collect_import_nodes_into(n: Node, acc: List<Node>) -> List<Node> {
+  let here = match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == ^dag_surface_import_decl {
+        Cons { head: n, tail: acc }
+      } else {
+        acc
+      }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) {
+    collect_import_nodes_into(n: e.target, acc: a)
+  })
+}
+
+type ImportTargetsRead
+  = ImportTargetsRefused { reason: Symbol }
+  | ImportTargetsRead { imports: FreeMonoid<Import> }
+
+fn import_target_of(import_node: Node) -> Optional<QualifiedName> {
+  match parse_subtree_find_production_captured(
+    root: import_node,
+    emitted: ^dag_surface_qualified_name
+  ) {
+    ParseSubtreeAbsent => Absent
+    ParseSubtreeFound { captured: qn_capture } =>
+      match parse_qualified_name_segments_from_capture(
+        qn_capture: qn_capture,
+        root: import_node
+      ) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: segments, diagnostics: _ } => Present { value: segments }
+      }
+  }
+}
+
+fn collect_import_targets(root: Node) -> ImportTargetsRead {
+  let read = fold_list(
+    xs: list_reverse(xs: collect_import_nodes_into(n: root, acc: Empty)),
+    empty: ImportTargetsRead { imports: Empty },
+    cons: fn(acc, import_node) {
+      match acc {
+        ImportTargetsRefused { reason: r } => ImportTargetsRefused { reason: r }
+        ImportTargetsRead { imports: prior } =>
+          match import_target_of(import_node: import_node) {
+            Absent => ImportTargetsRefused { reason: ^compile_door_ledger_import_unreadable }
+            Present { value: target } =>
+              ImportTargetsRead {
+                imports: Cons {
+                  head: Import { target: target, visibility: ImportVisible },
+                  tail: prior
+                }
+              }
+          }
+      }
+    }
+  )
+  match read {
+    ImportTargetsRefused { reason: r } => ImportTargetsRefused { reason: r }
+    ImportTargetsRead { imports: rev } => ImportTargetsRead { imports: list_reverse(xs: rev) }
+  }
+}
+
+type AdmissionDerivation
+  = AdmissionRefused { reason: Symbol }
+  | AdmissionDerived { admission: Admission }
+
+fn derive_module_admission(root: Node) -> AdmissionDerivation {
+  match qualified_name_from_module_node(root: root) {
+    Rejected { diagnostics: d } => AdmissionRefused { reason: d.head.reason }
+    Accepted { value: subject_name, diagnostics: _ } =>
+      match collect_import_targets(root: root) {
+        ImportTargetsRefused { reason: r } => AdmissionRefused { reason: r }
+        ImportTargetsRead { imports: imports } =>
+          AdmissionDerived {
+            admission: Admission {
+              subject: ResolutionSubject { name: subject_name },
+              imports: imports
+            }
+          }
+      }
+  }
+}
+
+fn ledger_ingest_row(path: String, source_text: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source_text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^compile_door_ledger_subject, file_path: path },
+    compilation_unit: ^compile_door_ledger_subject,
+    source_root: DagTree
+  }
+}
+
+fn door_ledger_row(path: String) -> DoorLedgerRow {
+  let source_text = filesystem_read(path: path).content
+  match parse_module_source(source_text: source_text) {
+    ModuleParseRefused { reason: r } =>
+      DoorLedgerRow { module_path: path, outcome: DoorRefused { reason: r } }
+    ModuleParsed { root: root } =>
+      match derive_module_admission(root: root) {
+        AdmissionRefused { reason: r } =>
+          DoorLedgerRow { module_path: path, outcome: DoorRefused { reason: r } }
+        AdmissionDerived { admission: admission } =>
+          match compile_source_root_ingest_with_admission(
+            ingest: Cons {
+              head: ledger_ingest_row(path: path, source_text: source_text),
+              tail: Empty
+            },
+            admission: admission,
+            target: rust_target_model()
+          ) {
+            Accepted { value: _, diagnostics: _ } =>
+              DoorLedgerRow { module_path: path, outcome: DoorCompiled }
+            Rejected { diagnostics: d } =>
+              DoorLedgerRow { module_path: path, outcome: DoorRefused { reason: d.head.reason } }
+          }
+      }
+  }
+}
+
+fn door_ledger(paths: List<String>) -> List<DoorLedgerRow> {
+  fold_list(
+    xs: list_reverse(xs: paths),
+    empty: Empty,
+    cons: fn(acc, path) {
+      Cons { head: door_ledger_row(path: path), tail: acc }
+    }
+  )
+}
+
+fn cause_count_bump(counts: List<CauseCount>, reason: Symbol) -> List<CauseCount> {
+  let bumped = fold_list(
+    xs: counts,
+    empty: Empty,
+    cons: fn(acc, row) {
+      Cons {
+        head:
+          if row.reason == reason {
+            CauseCount { reason: row.reason, count: row.count + 1 }
+          } else {
+            row
+          },
+        tail: acc
+      }
+    }
+  )
+  let present = fold_list(
+    xs: counts,
+    empty: false,
+    cons: fn(seen, row) { seen || (row.reason == reason) }
+  )
+  if present {
+    list_reverse(xs: bumped)
+  } else {
+    fold_list(
+      xs: Cons { head: CauseCount { reason: reason, count: 1 }, tail: Empty },
+      empty: counts,
+      cons: fn(acc, row) { list_snoc_item(xs: acc, item: row) }
+    )
+  }
+}
+
+fn ledger_cause_histogram(rows: List<DoorLedgerRow>) -> List<CauseCount> {
+  fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match row.outcome {
+        DoorCompiled => acc
+        DoorRefused { reason: r } => cause_count_bump(counts: acc, reason: r)
+      }
+    }
+  )
+}
+
+fn ledger_compiled_count(rows: List<DoorLedgerRow>) -> Int {
+  fold_list(
+    xs: rows,
+    empty: 0,
+    cons: fn(acc, row) {
+      match row.outcome {
+        DoorCompiled => acc + 1
+        DoorRefused { reason: _ } => acc
+      }
+    }
+  )
+}
+
+fn ledger_refused_count(rows: List<DoorLedgerRow>) -> Int {
+  length(xs: rows) - ledger_compiled_count(rows: rows)
+}
+
+fn ledger_cause_count(rows: List<DoorLedgerRow>, reason: Symbol) -> Int {
+  fold_list(
+    xs: ledger_cause_histogram(rows: rows),
+    empty: 0,
+    cons: fn(acc, row) {
+      if row.reason == reason { row.count } else { acc }
+    }
+  )
+}
+
+fn ledger_all_compiled(rows: List<DoorLedgerRow>) -> Bool {
+  ledger_refused_count(rows: rows) == 0
+}
