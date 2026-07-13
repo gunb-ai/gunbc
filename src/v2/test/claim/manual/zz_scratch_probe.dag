@@ -215,3 +215,7 @@ fn probe_stage_node() -> String {
 fn probe_stage_target_model() -> String {
   probe_normalize_stage(path: "src/v2/std/compilers/target_model.dag")
 }
+
+fn probe_dump_match() -> String {
+  probe_dump_parse(path: "/tmp/claude-1000/-home-briansrls--worktrees-gunbc-clever-hawk-862/6b3d8809-edba-4a2d-ad47-a3b064ed4552/scratchpad/zz_match.dag")
+}
