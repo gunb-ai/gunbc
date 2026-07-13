@@ -1,0 +1,30 @@
+module v2.test.long.gate_trisect
+
+import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
+import v2.std.diagnostic { Accepted, Diagnostics, None, Rejected, Some }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn gate_on_fixture_accepts_none() -> Bool {
+  match accumulator_copy_compile_gate(node: fixture_add_resolved_tree()) {
+    Accepted { value: _, diagnostics: None } => true
+    _ => false
+  }
+}
+
+test fn gate_on_fixture_accepts_some() -> Bool {
+  match accumulator_copy_compile_gate(node: fixture_add_resolved_tree()) {
+    Accepted { value: _, diagnostics: Some { diagnostics: _ } } => true
+    _ => false
+  }
+}
+
+test fn gate_on_fixture_rejects() -> Bool {
+  match accumulator_copy_compile_gate(node: fixture_add_resolved_tree()) {
+    Rejected { diagnostics: _ } => true
+    _ => false
+  }
+}
