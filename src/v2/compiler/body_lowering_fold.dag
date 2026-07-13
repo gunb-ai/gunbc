@@ -2368,5 +2368,13 @@ fn body_lower_finish_wrapper_retained(folded: Node, cd: Diagnostics) -> Outcome<
 }
 
 fn body_lower_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
-  Accepted { value: folded, diagnostics: cd }
+  match body_lower_after_children(folded: folded) {
+    Rejected { diagnostics: _ } =>
+      body_lower_finish_wrapper_retained(folded: folded, cd: cd)
+    Accepted { value: lowered, diagnostics: d } =>
+      Accepted {
+        value: lowered,
+        diagnostics: diagnostics_merge(outer: cd, inner: d)
+      }
+  }
 }

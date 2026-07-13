@@ -219,3 +219,36 @@ fn probe_stage_target_model() -> String {
 fn probe_dump_match() -> String {
   probe_dump_parse(path: "/tmp/claude-1000/-home-briansrls--worktrees-gunbc-clever-hawk-862/6b3d8809-edba-4a2d-ad47-a3b064ed4552/scratchpad/zz_match.dag")
 }
+
+fn probe_parse_only(path: String) -> String {
+  let lm = dag_language_model()
+  let source = filesystem_read(path: path).content
+  match lm.grammar {
+    VoidGrammar => "void"
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: port_locus(port: ^probe_locus)) {
+        Rejected { diagnostics: _ } => "ginvalid"
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: source, file: ^probe_file2, rules: lm.lex) {
+            Rejected { diagnostics: _ } => "tokfail"
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => "parsefail"
+                Accepted { value: artifact, diagnostics: _ } => "PARSED_OK"
+              }
+          }
+      }
+  }
+}
+
+fn probe_parse_node() -> String {
+  probe_parse_only(path: "src/v2/std/node.dag")
+}
+
+fn probe_parse_refinement() -> String {
+  probe_parse_only(path: "src/v2/std/refinement.dag")
+}
