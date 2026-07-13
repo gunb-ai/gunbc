@@ -1,12 +1,5 @@
 module v2.std.node
 
-import v2.std.collection {
-  Optional,
-  optional_absent,
-  optional_present,
-  optional_prefer_first_present,
-}
-
 type Symbol
 type Hash
 
@@ -237,28 +230,32 @@ fn node_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
-fn node_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
+type IntLiteralMagnitudeLookup
+  = IntLiteralMagnitudeFound { target: Node }
+  | IntLiteralMagnitudeAbsent
+
+fn node_int_literal_magnitude_edge_target_lookup(edge: Edge) -> IntLiteralMagnitudeLookup {
   match edge {
     Edge { label: Named { name: field }, target: magnitude } =>
       if field == ^integer_literal_magnitude_field {
-        optional_present(value: magnitude)
+        IntLiteralMagnitudeFound { target: magnitude }
       } else {
-        optional_absent()
+        IntLiteralMagnitudeAbsent
       }
-    Edge { label: Positional, target: _ } => optional_absent()
+    Edge { label: Positional, target: _ } => IntLiteralMagnitudeAbsent
   }
 }
 
-fn node_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
+fn node_int_literal_magnitude_node_lookup(node: Node) -> IntLiteralMagnitudeLookup {
   if node_is_int_literal_atom(node: node) {
-    fold(node.children, init: optional_absent(), f: fn(acc, edge) {
-      optional_prefer_first_present(
-        left: acc,
-        right: node_int_literal_magnitude_edge_target_optional(edge: edge),
-      )
+    fold(node.children, init: IntLiteralMagnitudeAbsent, f: fn(acc, edge) {
+      match acc {
+        IntLiteralMagnitudeFound { target: _ } => acc
+        IntLiteralMagnitudeAbsent => node_int_literal_magnitude_edge_target_lookup(edge: edge)
+      }
     })
   } else {
-    optional_absent()
+    IntLiteralMagnitudeAbsent
   }
 }
 

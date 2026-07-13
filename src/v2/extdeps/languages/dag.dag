@@ -97,7 +97,9 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence,
   is_empty_conj_root,
-  node_int_literal_magnitude_node_optional,
+  IntLiteralMagnitudeAbsent,
+  IntLiteralMagnitudeFound,
+  node_int_literal_magnitude_node_lookup,
   node_is_int_literal_atom,
   OccurrenceId,
 }
@@ -4258,7 +4260,10 @@ fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> 
 }
 
 fn dag_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
-  node_int_literal_magnitude_node_optional(node: node)
+  match node_int_literal_magnitude_node_lookup(node: node) {
+    IntLiteralMagnitudeFound { target: magnitude } => optional_present(value: magnitude)
+    IntLiteralMagnitudeAbsent => optional_absent()
+  }
 }
 
 fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
