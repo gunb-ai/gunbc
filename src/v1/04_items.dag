@@ -1,6 +1,19 @@
 module v1.compiler.infer_items
 
 import std.types { SourceSpan }
+import std.interface_summary {
+  InterfaceSummary,
+  ExportEntry,
+  ExportFn,
+  ExportType,
+  ExportData,
+  ExportService,
+  ExportKind,
+  SignatureFingerprint,
+  signature_contract,
+  contract_absent,
+  interface_summary_rollup
+}
 import v1.std.core {
   Node, ErrorNode,
   make_param_node, param_node_name_at, param_node_type_expr,
@@ -38,11 +51,18 @@ type ItemInfo {
   has_non_tail_self_call: Bool
 }
 
+type ModuleInterface {
+  summary: InterfaceSummary
+  env: TypeEnv
+  cache: TypeEnvCache
+}
+
 type TypedModule {
   module: Node
   items: List<Node>
   type_env: TypeEnv
   type_env_cache: TypeEnvCache
+  interface: ModuleInterface
   func_env: ResolvedFuncEnv
   item_registry: Map<String, ItemInfo>
 }
