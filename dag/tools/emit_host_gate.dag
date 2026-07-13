@@ -1,12 +1,41 @@
 module tools.emit_host_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
 import tools.emit_host_transport {
   run_rust_smoke,
   run_python_smoke,
   run_go_smoke,
   run_ts_smoke,
   run_node_http_serve_smoke
+}
+
+data per_smoke_verdict_note: String = "The gate previously folded five smoke Bools into one refusal whose reason named no smoke — and the claim wrapper (emit_host_gate_passes = exit_ok(run_spec_gate)) discards the reason entirely, so a floor failure surfaced as bare Bool(false) and locating the failing language took log archaeology (receipt: the 2026-07-13 srv3 reprovisioning reds — five runs of forensics to name the ts/go/node toolchain gap, operator-signed fix same day). The failure arm now narrates the per-smoke verdict line through the same typed shell transport the smokes ride (visible in the claim executor's shell narration, adjacent to the FAIL row) AND carries it as the refusal reason for the ProcessExit path. Narration is failure-arm-only (the floor log stays quiet on green, matching the typecheck-attribution threshold precedent); a refused echo is disclosed inside the reason, never silently dropped."
+
+fn smoke_verdict(name: String, ok: Bool) -> String {
+  concat(name, if ok { "=pass" } else { "=FAIL" })
+}
+
+fn join_space(parts: List<String>) -> String {
+  fold(parts, init: "", f: (acc, p) => match acc { "" => p _ => concat(acc, concat(" ", p)) })
+}
+
+fn smoke_verdict_line(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bool) -> String {
+  concat("emit-host smoke verdicts: ", join_space(parts: [
+    smoke_verdict(name: "rust", ok: rust),
+    smoke_verdict(name: "python", ok: python),
+    smoke_verdict(name: "go", ok: go),
+    smoke_verdict(name: "ts", ok: ts),
+    smoke_verdict(name: "node_http", ok: node_http)
+  ]))
+}
+
+fn gate_failure_exit(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bool) -> ProcessExit {
+  let verdicts = smoke_verdict_line(rust: rust, python: python, go: go, ts: ts, node_http: node_http)
+  let narrated = shell.Exec.Run(script: concat("echo \"", concat(verdicts, "\" >&2")))
+  exit_failure(
+    reason: if narrated.success { verdicts } else { concat(verdicts, " (verdict echo refused)") }
+  )
 }
 
 func run_emit_host_gate_body() -> ProcessExit {
@@ -18,9 +47,7 @@ func run_emit_host_gate_body() -> ProcessExit {
   return if rust && python && go && ts && node_http {
     ExitSuccess
   } else {
-    exit_failure(
-      reason: "emit host gate failed: one or more of rust/python/go/typescript/node-http MVP smoke rows"
-    )
+    gate_failure_exit(rust: rust, python: python, go: go, ts: ts, node_http: node_http)
   }
 }
 
