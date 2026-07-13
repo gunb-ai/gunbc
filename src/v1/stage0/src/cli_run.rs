@@ -12052,6 +12052,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
+    "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_choose_branch",
     "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_value_as_int",
     "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
     "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
@@ -12433,18 +12434,6 @@ mod nfr_tests {
             .iter()
             .map(|(p, c)| (p.to_string(), c.to_string()))
             .collect()
-    }
-
-    #[test]
-    fn dump_unrostered_nfr_once() {
-        let mut u = Vec::new();
-        for s in non_fold_residue_live_sites() {
-            if !non_fold_residue_site_is_rostered(s) {
-                u.push(s.clone());
-            }
-        }
-        eprintln!("UNROSTERED: {:?}", u);
-        eprintln!("STALE: {}", non_fold_residue_stale_roster_count());
     }
 
     #[test]
