@@ -3963,7 +3963,10 @@ pub fn whole_tree_ancestry_retention_probe(
     for m in graph.modules.iter() {
         let te = &m.type_env;
         let tec = &m.type_env_cache;
-        tallies[0].add(Rc::as_ptr(&tec.str_bindings) as usize, tec.str_bindings.len());
+        tallies[0].add(
+            Rc::as_ptr(&tec.str_bindings) as usize,
+            tec.str_bindings.len(),
+        );
         tallies[1].add(Rc::as_ptr(&tec.deps_map) as usize, tec.deps_map.len());
         tallies[2].add(
             Rc::as_ptr(&tec.cycle_set_str) as usize,
@@ -4053,9 +4056,9 @@ pub fn whole_tree_ancestry_retention_probe(
     }
 
     match peak_rss_vhwm_bytes() {
-        Some(bytes) => eprintln!(
-            "[ancestry] peak RSS: {bytes} bytes (VmHWM) modules={modules_resolved}"
-        ),
+        Some(bytes) => {
+            eprintln!("[ancestry] peak RSS: {bytes} bytes (VmHWM) modules={modules_resolved}")
+        }
         None => eprintln!("[ancestry] peak RSS: unavailable (no /proc/self/status)"),
     }
     Ok(())
