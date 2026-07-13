@@ -429,6 +429,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                 rows.push(row);
             }
             Err(msg) => {
+                // Symbols must stay aligned with frontier_blocker_is_probe_survey_host_reason
+                // in v2.compiler.self_host.frontier_probe_types (single reason-table authority).
                 let cause = if msg.contains("EvalBudgetExceeded") || msg.contains("OOM") {
                     "frontier_probe_oom_or_budget"
                 } else {

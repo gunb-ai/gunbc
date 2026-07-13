@@ -57,6 +57,14 @@ fn frontier_blocker_is_realization_reason(reason: Symbol) -> Bool {
     || reason == ^emit_host_run_transport_unrealized
 }
 
+data frontier_probe_survey_host_unknown_reason_scaffold_note: String = "Seed `frontier_probe_survey` bin emits UnknownProbeCause with these located_reason symbols when per-module probe fails or emit-accept is unverified; not classified by frontier_classify_rejection_reason (assemble/emit diagnostics only). Dissolves with the P5 bin."
+
+fn frontier_blocker_is_probe_survey_host_reason(reason: Symbol) -> Bool {
+  reason == ^frontier_probe_oom_or_budget
+    || reason == ^frontier_probe_runtime_error
+    || reason == ^probe_emit_accept_self_host_bar_unbound
+}
+
 fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
   if frontier_blocker_is_name_resolution_reason(reason: reason) {
     NameResolutionGap

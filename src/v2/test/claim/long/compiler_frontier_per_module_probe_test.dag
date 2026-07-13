@@ -33,6 +33,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data compiler_frontier_per_module_probe_note: String = "Fixture-FREE per-module emit-frontier probe over all 27 compiler modules via frontier_probe_survey bin (real ingest, no injected derisk fixtures). Validates roster blocker classes against execution-measured receipts; answers common-root (blocker-class clustering) vs heterogeneous located-reason gaps. Local recipe: frontier_probe_survey --source-root src/v2 --emit-survey-manifest target/frontier-probe-survey/host_frontier_probe_survey_manifest.dag then claim_batch --source-root src/v2 --source-root dag --source-root target/frontier-probe-survey --entry src/v2/test/claim/long/compiler_frontier_per_module_probe_test.dag --function compiler_frontier_per_module_probe_survey_holds"
 
+data compiler_frontier_wave2_self_emit_ready_zero_note: String = "ready_count == 0 in wave2 sizing witnesses is green-by-construction on this probe slice: frontier_probe_emit_from_ingest never returns SelfEmitReady (emit-accept → UnknownProbeCause{^probe_emit_accept_self_host_bar_unbound}). Not a discriminating SelfEmitReady RED until the fixture-free emit→compile→run→equivalent bar is inhabited; honest deferral per ^probe_emit_accept_self_host_bar_unbound, not fabrication."
+
 test fn compiler_frontier_per_module_probe_survey_holds() -> Bool {
   compiler_frontier_roster_matches_survey_holds(survey: host_frontier_probe_survey)
     && (host_frontier_probe_survey_module_count == compiler_frontier_module_count_expected)
