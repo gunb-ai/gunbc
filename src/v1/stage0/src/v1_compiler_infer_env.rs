@@ -590,6 +590,15 @@ pub fn put_inductive_field_cross(
     }
 }
 
+pub fn merge_inductive_fields_dedupe_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Skip-if-equal on identical lists (v1-run-stability-throughline M1b, M0 receipt 2026-07-13): the unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG - two parents carrying the SAME inherited list for a type re-concatenated it at every module, measured at 409,240,584 retained InductiveField slots corpus-wide (~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types). An identical incoming list adds no information - a type's inductive fields are a set of (type, variant, field, shape, element) facts - so equal lists SKIP (also the sharing fast path: absent keys insert the incoming list Rc directly, never concat-with-empty). Genuinely differing lists still concat in the pre-cut order (behavior-preserving for cross-module field extensions). Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn merge_inductive_fields(
     left: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     right: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
@@ -598,17 +607,20 @@ pub fn merge_inductive_fields(
         left.clone(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| {
             match v1_rt::map_get(&right, type_name.clone()) {
-                Some(incoming) => {
-                    let existing = match v1_rt::map_get(&acc, type_name.clone()) {
-                        Some(fs) => fs.clone(),
-                        None => Rc::new(vec![]),
-                    };
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        type_name.clone(),
-                        v1_rt::concat(existing.clone(), incoming.clone()),
-                    )
-                }
+                Some(incoming) => match v1_rt::map_get(&acc, type_name.clone()) {
+                    Some(existing) => {
+                        if (existing.clone() == incoming.clone()) {
+                            acc.clone()
+                        } else {
+                            v1_rt::rc_map_insert(
+                                acc.clone(),
+                                type_name.clone(),
+                                v1_rt::concat(existing.clone(), incoming.clone()),
+                            )
+                        }
+                    }
+                    None => v1_rt::rc_map_insert(acc.clone(), type_name.clone(), incoming.clone()),
+                },
                 None => acc.clone(),
             }
         },
