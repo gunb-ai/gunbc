@@ -12058,6 +12058,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
     "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
     "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    "src/v2/std/node.dag::locally_well_formed",
     "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
     "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
     "src/v2/lens/complexity.dag::complexity_bound_dominates",
