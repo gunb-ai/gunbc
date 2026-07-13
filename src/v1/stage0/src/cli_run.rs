@@ -2284,6 +2284,7 @@ struct DiscoveryEntryResolve {
     touches_frontier: bool,
     entry_file_touched: bool,
     resolve_nanos: u128,
+    stage_nanos: ResolveStageNanos,
 }
 
 fn resolve_discovery_entry_for_corpus_row(
@@ -2309,6 +2310,8 @@ fn resolve_discovery_entry_for_corpus_row(
     let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)
         .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
     let resolve_nanos = resolve_started.elapsed().as_nanos();
+    // Same thread, immediately after the resolve that filled it: this entry's split.
+    let stage_nanos = resolve_stage_slot_snapshot();
     collect_typed_module_names(
         graph.modules.iter().cloned(),
         &source_indices,
@@ -2349,6 +2352,7 @@ fn resolve_discovery_entry_for_corpus_row(
         touches_frontier,
         entry_file_touched,
         resolve_nanos,
+        stage_nanos,
     })
 }
 
@@ -3039,9 +3043,7 @@ fn resolve_entry_with_parse_cache(
     // accumulated into the slot during this call (typecheck computes + parent envs).
     let reconcile_total = reconcile_started.elapsed().as_nanos();
     resolve_stage_slot_add(|s| {
-        s.reconcile_assembly += reconcile_total.saturating_sub(
-            s.typecheck_compute + s.parent_envs,
-        );
+        s.reconcile_assembly += reconcile_total.saturating_sub(s.typecheck_compute + s.parent_envs);
     });
 
     for d in typed.diagnostics.iter() {
@@ -3061,6 +3063,7 @@ fn resolve_entry_with_parse_cache(
         return Err(msgs.join("\n"));
     }
 
+    let ownership_started = std::time::Instant::now();
     let ownership = v1_compiler_compile::extract_ownership_proofs(typed.clone());
     let ownership_diags = v1_compiler_compile::ownership_diagnostics(ownership);
     if ownership_diags
@@ -3069,6 +3072,7 @@ fn resolve_entry_with_parse_cache(
     {
         return Err(format_error_nodes(&ownership_diags, &source_indices));
     }
+    resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
@@ -3295,11 +3299,13 @@ fn reconcile_with_typed_cache(
     for batch in &schedule {
         for &slot in batch {
             let resolved = closure_modules[slot].clone();
+            let parent_envs_started = std::time::Instant::now();
             let parent_result = v1_compiler_infer::collect_parent_envs(
                 resolved.clone(),
                 module_index.clone(),
                 source_indices.clone(),
             );
+            resolve_stage_slot_add(|s| s.parent_envs += parent_envs_started.elapsed().as_nanos());
             let mod_name = closure_names[slot].clone();
             // Collision-honesty guard (union-resolve receipt §6.3): the typed cache is keyed by
             // authored name and shared across every co-resident entry, so a name that resolves
@@ -3335,7 +3341,9 @@ fn reconcile_with_typed_cache(
                     // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
                     // parse+resolve+normalize). Threshold keeps the floor log quiet;
                     // anything over it is a pathology-lane candidate by name.
-                    let module_tc_ms = module_tc_started.elapsed().as_millis();
+                    let module_tc_elapsed = module_tc_started.elapsed();
+                    resolve_stage_slot_add(|s| s.typecheck_compute += module_tc_elapsed.as_nanos());
+                    let module_tc_ms = module_tc_elapsed.as_millis();
                     if module_tc_ms >= 2_000 {
                         eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
                     }
@@ -5431,6 +5439,10 @@ pub struct EntryResolveReceipt {
     pub entry: String,
     pub closure_subject: String,
     pub resolve_nanos: u128,
+    /// Stage attribution of `resolve_nanos` (load/parse/resolve/normalize/
+    /// typecheck/parent-envs/assembly/ownership); the lump minus
+    /// `stage_nanos.attributed_total()` is the unattributed residue.
+    pub stage_nanos: ResolveStageNanos,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5468,6 +5480,8 @@ pub struct DiscoverySummary {
     pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
     pub total_resolve_nanos: u128,
+    /// Run-total stage attribution of `total_resolve_nanos` (per-entry rows summed).
+    pub total_stage_nanos: ResolveStageNanos,
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
     pub total_measured_nanos: u128,
     /// Distinct modules in this shard's union closure — the union of authored module names across
@@ -8114,6 +8128,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         witness_outcomes: Vec::new(),
         entry_resolve_receipts: Vec::new(),
         total_resolve_nanos: 0,
+        total_stage_nanos: ResolveStageNanos::default(),
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
@@ -8132,6 +8147,9 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
             .entry_resolve_receipts
             .extend(summary.entry_resolve_receipts);
         merged.total_resolve_nanos += summary.total_resolve_nanos;
+        merged
+            .total_stage_nanos
+            .accumulate(&summary.total_stage_nanos);
         merged
             .performance_receipts
             .extend(summary.performance_receipts);
@@ -8362,6 +8380,7 @@ fn run_discovery_rows(
         witness_outcomes: Vec::with_capacity(rows.len()),
         entry_resolve_receipts: Vec::new(),
         total_resolve_nanos: 0,
+        total_stage_nanos: ResolveStageNanos::default(),
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
@@ -8476,10 +8495,12 @@ fn run_discovery_rows(
                     &mut closure_modules,
                 )?;
                 summary.total_resolve_nanos += resolved.resolve_nanos;
+                summary.total_stage_nanos.accumulate(&resolved.stage_nanos);
                 summary.entry_resolve_receipts.push(EntryResolveReceipt {
                     entry: row.entry.clone(),
                     closure_subject: resolved.closure_subject.clone(),
                     resolve_nanos: resolved.resolve_nanos,
+                    stage_nanos: resolved.stage_nanos,
                 });
                 current_closure_subject = Some(resolved.closure_subject);
                 current_entry_frontier_nodes = resolved.frontier_nodes;
@@ -8568,10 +8589,12 @@ fn run_discovery_rows(
                 &mut closure_modules,
             )?;
             summary.total_resolve_nanos += resolved.resolve_nanos;
+            summary.total_stage_nanos.accumulate(&resolved.stage_nanos);
             summary.entry_resolve_receipts.push(EntryResolveReceipt {
                 entry: row.entry.clone(),
                 closure_subject: resolved.closure_subject.clone(),
                 resolve_nanos: resolved.resolve_nanos,
+                stage_nanos: resolved.stage_nanos,
             });
             current_closure_subject = Some(resolved.closure_subject);
             current_entry_frontier_nodes = resolved.frontier_nodes;
@@ -11427,6 +11450,7 @@ mod witness_timing_attribution_tests {
     use super::{
         compute_witness_timing_rows, merge_discovery_summaries, top_n_slowest_witnesses,
         ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
+        ResolveStageNanos,
     };
     use crate::v1_interpreter::PerformanceReceipt;
 
@@ -11461,14 +11485,17 @@ mod witness_timing_attribution_tests {
                     entry: "a.dag".to_string(),
                     closure_subject: "subj-a".to_string(),
                     resolve_nanos: 100,
+                    stage_nanos: ResolveStageNanos::default(),
                 },
                 EntryResolveReceipt {
                     entry: "b.dag".to_string(),
                     closure_subject: "subj-b".to_string(),
                     resolve_nanos: 200,
+                    stage_nanos: ResolveStageNanos::default(),
                 },
             ],
             total_resolve_nanos: 300,
+            total_stage_nanos: ResolveStageNanos::default(),
             performance_receipts: vec![
                 PerformanceReceipt {
                     subject_key: "subj-a".to_string(),
