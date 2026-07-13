@@ -1,8 +1,7 @@
 module v2.workflow.affected_set_floor_runner
 
 import gunbc.ci_spec { gunbc_ci_spec, DiffPolicy }
-import std.algebra { Empty }
-import v2.std.algebra { any, fold_list, length, list_append }
+import v2.std.algebra { any, length, list_flat_map }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
@@ -243,11 +242,5 @@ fn floor_row_precompute_would_skip(
 }
 
 fn floor_witness_eval_nodes_from_claims(claims: List<TestClaim>) -> List<Node> {
-  fold_list(
-    xs: claims,
-    empty: Empty,
-    cons: fn(acc, claim) {
-      list_append(left: acc, right: test_claim_evaluation_nodes(c: claim))
-    }
-  )
+  list_flat_map(xs: claims, f: fn(claim) { test_claim_evaluation_nodes(c: claim) })
 }
