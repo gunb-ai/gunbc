@@ -2154,20 +2154,20 @@ fn body_lower_materialize_int_literal_operand_optional(node: Node) -> Optional<N
             Absent =>
               match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
                 Present { value: id } =>
-                  if dag_node_is_int_literal_atom(node: body_lower_deep_unwrap_optional(node: node)) {
-                    optional_absent()
-                  } else {
-                    match integer_string_to_decimal_digits_optional(s: symbol_lexeme(sym: id)) {
-                      Present { value: _ } =>
-                        match dag_int_literal_node_from_lexeme(
-                          lexeme: symbol_lexeme(sym: id),
-                          occurrence_id: node.occurrence_id
-                        ) {
-                          Accepted { value: lit, diagnostics: _ } => Present { value: lit }
-                          Rejected { diagnostics: _ } => optional_absent()
-                        }
-                      Absent => optional_absent()
-                    }
+                  match dag_node_is_int_literal_atom(node: body_lower_deep_unwrap_optional(node: node)) {
+                    true => optional_absent()
+                    false =>
+                      match integer_string_to_decimal_digits_optional(s: symbol_lexeme(sym: id)) {
+                        Present { value: _ } =>
+                          match dag_int_literal_node_from_lexeme(
+                            lexeme: symbol_lexeme(sym: id),
+                            occurrence_id: node.occurrence_id
+                          ) {
+                            Accepted { value: lit, diagnostics: _ } => optional_present(value: lit)
+                            Rejected { diagnostics: _ } => optional_absent()
+                          }
+                        Absent => optional_absent()
+                      }
                   }
                 Absent => optional_absent()
               }
