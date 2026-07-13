@@ -72,10 +72,7 @@ fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>
 }
 
 fn load_compiler_frontier_sweep_order(source_roots: &[String]) -> Result<Vec<String>, String> {
-    let mut roots: Vec<String> = WITNESS_LAYER_ROOTS
-        .iter()
-        .map(|r| r.to_string())
-        .collect();
+    let mut roots: Vec<String> = WITNESS_LAYER_ROOTS.iter().map(|r| r.to_string()).collect();
     roots.extend(source_roots.iter().cloned());
     let (graph, source_indices) =
         resolve_entry_graph(&roots, FRONTIER_SWEEP_ORDER_ENTRY).map_err(|e| format!("{e}"))?;
@@ -131,13 +128,9 @@ fn load_symbol_data_from_entry(
     entry: &str,
     data_name: &str,
 ) -> Result<String, String> {
-    let mut roots: Vec<String> = WITNESS_LAYER_ROOTS
-        .iter()
-        .map(|r| r.to_string())
-        .collect();
+    let mut roots: Vec<String> = WITNESS_LAYER_ROOTS.iter().map(|r| r.to_string()).collect();
     roots.extend(source_roots.iter().cloned());
-    let (graph, source_indices) =
-        resolve_entry_graph(&roots, entry).map_err(|e| format!("{e}"))?;
+    let (graph, source_indices) = resolve_entry_graph(&roots, entry).map_err(|e| format!("{e}"))?;
     let ctx = InterpContext::new(&graph, source_indices, ExecutionMode::Hermetic);
     let value = v1_interpreter::run_in_context(&ctx, data_name, true)
         .map_err(|e| format!("read {data_name}: {e}"))?;
@@ -246,8 +239,8 @@ fn write_probe_overlay_manifest(module_path: &str, ingest_manifest: &Path) -> Re
     let append = format!(
         "\nimport v2.std.text {{ String }}\n\ndata frontier_probe_entry_module_path: String = \"{escaped}\"\n"
     );
-    let mut body = fs::read_to_string(ingest_manifest)
-        .map_err(|e| format!("read ingest manifest: {e}"))?;
+    let mut body =
+        fs::read_to_string(ingest_manifest).map_err(|e| format!("read ingest manifest: {e}"))?;
     if body.contains("frontier_probe_entry_module_path") {
         return Ok(());
     }
@@ -277,25 +270,21 @@ fn run_probe_for_module(
         .first()
         .cloned()
         .unwrap_or_else(|| "src/v2".to_string());
-    let records =
-        discover_source_root_reads_for_entry(&[discover_root], module_path, &exclude)?;
-    let entry_source = fs::read_to_string(module_path)
-        .map_err(|e| format!("read entry {module_path}: {e}"))?;
+    let records = discover_source_root_reads_for_entry(&[discover_root], module_path, &exclude)?;
+    let entry_source =
+        fs::read_to_string(module_path).map_err(|e| format!("read entry {module_path}: {e}"))?;
     let admission = parse_source_root_entry_admission(&entry_source)?;
     let ingest_manifest = overlay_dir.join("host_source_root_ingest_manifest.dag");
     emit_source_root_ingest_manifest(&ingest_manifest, &records, Some(&admission))?;
     write_probe_overlay_manifest(module_path, &ingest_manifest)?;
 
-    let mut roots: Vec<String> = WITNESS_LAYER_ROOTS
-        .iter()
-        .map(|r| r.to_string())
-        .collect();
+    let mut roots: Vec<String> = WITNESS_LAYER_ROOTS.iter().map(|r| r.to_string()).collect();
     roots.push(overlay_dir.to_string_lossy().into_owned());
 
     let (graph, source_indices) = resolve_entry_graph(&roots, PROBE_ENTRY)?;
     let ctx = InterpContext::new(&graph, source_indices, ExecutionMode::Hermetic);
-    let value = v1_interpreter::run_in_context(&ctx, PROBE_RECEIPT_FN, true)
-        .map_err(|e| format!("{e}"))?;
+    let value =
+        v1_interpreter::run_in_context(&ctx, PROBE_RECEIPT_FN, true).map_err(|e| format!("{e}"))?;
     extract_probe_receipt(&value, &ctx)
 }
 
@@ -334,8 +323,11 @@ fn emit_survey_manifest(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), Str
 
 fn emit_tsv(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
     let mut out = fs::File::create(path).map_err(|e| format!("create tsv: {e}"))?;
-    writeln!(out, "module\tself_emit_ready\tblocker_class\tlocated_stage\tlocated_reason\tprobe_error")
-        .map_err(|e| format!("write tsv header: {e}"))?;
+    writeln!(
+        out,
+        "module\tself_emit_ready\tblocker_class\tlocated_stage\tlocated_reason\tprobe_error"
+    )
+    .map_err(|e| format!("write tsv header: {e}"))?;
     for row in rows {
         let self_emit = if row.blocker_variant == "SelfEmitReady" {
             "yes"

@@ -2,6 +2,13 @@
 // Source module: v1.compiler.infer_items
 
 use self::ItemKind::*;
+use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
+pub use crate::std_interface_summary::{
+    contract_absent, interface_summary_rollup, signature_contract,
+};
+pub use crate::std_interface_summary::{
+    ExportEntry, ExportKind, InterfaceSummary, SignatureFingerprint,
+};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
@@ -53,11 +60,19 @@ pub struct ItemInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleInterface {
+    pub summary: Rc<InterfaceSummary>,
+    pub env: Rc<TypeEnv>,
+    pub cache: Rc<TypeEnvCache>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
     pub module: Rc<Node>,
     pub items: Rc<Vec<Rc<Node>>>,
     pub type_env: Rc<TypeEnv>,
     pub type_env_cache: Rc<TypeEnvCache>,
+    pub interface: Rc<ModuleInterface>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 }

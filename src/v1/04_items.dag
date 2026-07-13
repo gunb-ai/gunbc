@@ -9,9 +9,7 @@ import std.interface_summary {
   ExportData,
   ExportService,
   ExportKind,
-  SignatureFingerprint,
   signature_contract,
-  contract_absent,
   interface_summary_rollup
 }
 import v1.std.core {
