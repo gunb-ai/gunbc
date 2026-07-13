@@ -1,83 +1,70 @@
 module v2.test.manual.zz_scratch_probe
 
-import v2.compiler.parse { parse_module }
+import extdeps.filesystem.filesystem_io
+import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
+import v2.compiler.normalize { normalize }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  ParseSubtreeAbsent,
-  ParseSubtreeFound,
-  dag_language_model,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional,
-  parse_subtree_find_production_captured
-}
-import std.algebra { Cons, Empty }
-import v2.std.algebra { list_snoc_item }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { node_atom_identity_optional }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.node { Atom, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_lexeme, token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.logic { Bool }
+import v2.std.text { String }
 
-data probe_source: String = "module p\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
-
-fn probe_parsed_tree() -> Optional<Node> {
+fn probe_normalize_stage(path: String) -> String {
   let lm = dag_language_model()
-  match tokenize(text: probe_source, file: ^probe_file, rules: lm.lex) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+  let source = filesystem_read(path: path).content
+  match lm.grammar {
+    VoidGrammar => "void_grammar"
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: port_locus(port: ^probe_locus)) {
+        Rejected { diagnostics: _ } => "grammar_invalid"
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: source, file: ^probe_file2, rules: lm.lex) {
+            Rejected { diagnostics: _ } => "tokenize_fail"
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => "parse_fail"
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: nd } => concat("normalize_REJECT: ", symbol_lexeme(sym: nd.head.reason))
+                    Accepted { value: _, diagnostics: _ } => "OK"
+                  }
+              }
+          }
       }
   }
 }
 
-fn probe_find_emitted(root: Node, target: Symbol) -> Optional<Node> {
-  match parse_subtree_find_production_captured(root: root, emitted: target) {
-    ParseSubtreeFound { captured: c } => Present { value: c }
-    ParseSubtreeAbsent => Absent
-  }
+fn probe_normalize_file(path: String) -> Bool {
+  probe_normalize_stage(path: path) == "OK"
 }
 
-fn probe_child_label(e: Edge) -> String {
-  match e.label {
-    Named { name: n } => symbol_lexeme(sym: n)
-    Positional => "."
-  }
+fn probe_normalize_target_model() -> Bool {
+  probe_normalize_file(path: "src/v2/std/compilers/target_model.dag")
 }
 
-fn probe_kind_tag(n: Node) -> String {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      concat("atom:", symbol_lexeme(sym: id))
-    TypeNode { connective: _ } =>
-      match parse_production_emitted_identity_optional(node: n) {
-        Present { value: pid } => concat("prod:", symbol_lexeme(sym: pid))
-        Absent => "Conj"
-      }
-    ComputationNode { behavior: _ } => "COMP"
-  }
+fn probe_normalize_node_dag() -> Bool {
+  probe_normalize_file(path: "src/v2/std/node.dag")
 }
 
-fn probe_dump(n: Node, depth: Int) -> String {
-  let tag = probe_kind_tag(n: n)
-  if depth <= 0 {
-    concat(tag, "~")
-  } else {
-    let kids = fold(n.children, init: "", f: fn(acc, e) {
-      concat(acc, concat(" ", concat(probe_child_label(e: e), concat("=", concat(probe_dump(n: e.target, depth: depth - 1), ";")))))
-    })
-    concat(tag, concat("(", concat(kids, ")")))
-  }
+fn probe_normalize_collection() -> Bool {
+  probe_normalize_file(path: "src/v2/std/collection.dag")
 }
 
-fn probe_fn_body_dump() -> String {
-  match probe_parsed_tree() {
-    Absent => "NO_PARSE"
-    Present { value: tree } =>
-      match probe_find_emitted(root: tree, target: ^dag_surface_binary_expr) {
-        Absent => "NO_BINARY"
-        Present { value: body } => probe_dump(n: body, depth: 18)
-      }
-  }
+fn probe_normalize_refinement() -> Bool {
+  probe_normalize_file(path: "src/v2/std/refinement.dag")
+}
+
+fn probe_stage_collection() -> Bool {
+  probe_normalize_stage(path: "src/v2/std/collection.dag") == "OK"
+}
+
+fn probe_stage_collection_str() -> String {
+  probe_normalize_stage(path: "src/v2/std/collection.dag")
 }
