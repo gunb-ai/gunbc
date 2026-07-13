@@ -315,6 +315,11 @@ fn emit_tsv(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
     Ok(())
 }
 
+// Diagnostic stderr histogram only — NOT the Wave-2 sizing verdict authority.
+// Canonical clustering: `frontier_gap_clustering_from_receipts` in
+// `v2.compiler.self_host.frontier_probe_survey` (witness:
+// `compiler_frontier_gap_clustering_common_root_at_blocker_class_holds`).
+// Deletes with the seed `frontier_probe_survey` bin (P5 scaffold).
 fn cluster_summary(rows: &[ProbeReceiptRow]) -> String {
     use std::collections::BTreeMap;
     let mut by_reason: BTreeMap<String, usize> = BTreeMap::new();
@@ -335,17 +340,10 @@ fn cluster_summary(rows: &[ProbeReceiptRow]) -> String {
     for (k, v) in &by_reason {
         lines.push(format!("  {v}\t{k}"));
     }
-    let distinct_reasons = by_reason.len();
-    let dominant = by_reason.values().max().copied().unwrap_or(0);
-    let verdict = if distinct_reasons <= 3 && dominant >= rows.len().saturating_sub(3) {
-        "COMMON_ROOT_LIKELY — few distinct located_reason clusters dominate"
-    } else if distinct_reasons >= rows.len() / 2 {
-        "HETEROGENEOUS_GAPS — many distinct located roots"
-    } else {
-        "MIXED — moderate clustering; inspect located_reason histogram"
-    };
-    lines.push(format!("distinct located_reasons: {distinct_reasons}"));
-    lines.push(format!("verdict: {verdict}"));
+    lines.push(format!("distinct located_reasons: {}", by_reason.len()));
+    lines.push(
+        "verdict: (see frontier_gap_clustering_from_receipts on emitted manifest)".to_string(),
+    );
     lines.join("\n")
 }
 
