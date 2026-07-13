@@ -20,7 +20,9 @@ import tools.host_prelude { toolchain_provision_shell_exec }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 
-data typed_smoke_doc: String = "run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each step, so per the shell-emission-model rule they are typed service operations (shell.Mktemp/Mkdir/Remove, Filesystem.Write for the heredoc bodies, cargo.Build.BuildManifest, python.Interpreter.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable output could pass a count check with wrong content; the expected string is built in-substrate from the same stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked the tempdir on mid-script failure)."
+data typed_smoke_doc: String = "run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each step, so per the shell-emission-model rule they are typed service operations (shell.Mktemp/Mkdir/Remove, Filesystem.Write for the heredoc bodies, cargo.Build.BuildManifest, python.Interpreter.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable output could pass a count check with wrong content; the expected string is built in-substrate from the same stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked the tempdir on mid-script failure). run_go_smoke, run_ts_smoke, and run_node_http_serve_smoke provision missing toolchains under WORKDIR before the smoke body (go.dev tarball; nodejs.org official linux tarball — npx ships in the same bin/) so self-hosted runners without a fleet-wide node install still pass emit_host_gate_passes."
+
+data emit_host_node_bootstrap_script: String = "if ! command -v node >/dev/null 2>&1; then\n  NODEBOOT=\"$WORKDIR/nodeboot\"\n  mkdir -p \"$NODEBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) NODEARCH=arm64 ;; x86_64|amd64) NODEARCH=x64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://nodejs.org/dist/v22.22.3/node-v22.22.3-linux-${NODEARCH}.tar.xz\" | tar -xJ -C \"$NODEBOOT\" --strip-components=1\n  PATH=\"$NODEBOOT/bin:$PATH\"\n  export PATH\nfi\n"
 
 fn expected_stdout_nul_run() -> String {
   repeat_string(s: from_code_point(0), n: byte_size_count(stdout_byte_count))
@@ -61,12 +63,12 @@ fn run_go_smoke() -> Bool {
 
 fn run_ts_smoke() -> Bool {
   let expected = byte_size_count(ts_signed_i32_le_byte_count)
-  let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v npx >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y -p typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
+  let script = "set -e\nWORKDIR=$(mktemp -d)\n{emit_host_node_bootstrap_script}command -v node >/dev/null 2>&1\ncommand -v npx >/dev/null 2>&1\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y -p typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
   toolchain_provision_shell_exec(script: script)
 }
 
 fn run_node_http_serve_smoke() -> Bool {
   let server_source = gunbhub_node_http_server_source()
-  let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v curl >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/server.js\" <<'GUNBC_EOF'\n{server_source}\nGUNBC_EOF\nPORT=18471\nHOST=127.0.0.1 PORT=$PORT node \"$WORKDIR/server.js\" &\nSERVER_PID=$!\ntrap 'kill $SERVER_PID 2>/dev/null; rm -rf \"$WORKDIR\"' EXIT\nfor i in 1 2 3 4 5; do\n  sleep 0.3\n  if curl -sf http://127.0.0.1:$PORT/ >/dev/null 2>&1; then break; fi\ndone\nSTATUS=$(curl -s -o /dev/null -w '%\{http_code\}' http://127.0.0.1:$PORT/)\ntest \"$STATUS\" -eq 200"
+  let script = "set -e\nWORKDIR=$(mktemp -d)\n{emit_host_node_bootstrap_script}command -v node >/dev/null 2>&1\ncommand -v curl >/dev/null 2>&1\ncat > \"$WORKDIR/server.js\" <<'GUNBC_EOF'\n{server_source}\nGUNBC_EOF\nPORT=18471\nHOST=127.0.0.1 PORT=$PORT node \"$WORKDIR/server.js\" &\nSERVER_PID=$!\ntrap 'kill $SERVER_PID 2>/dev/null; rm -rf \"$WORKDIR\"' EXIT\nfor i in 1 2 3 4 5; do\n  sleep 0.3\n  if curl -sf http://127.0.0.1:$PORT/ >/dev/null 2>&1; then break; fi\ndone\nSTATUS=$(curl -s -o /dev/null -w '%\{http_code\}' http://127.0.0.1:$PORT/)\ntest \"$STATUS\" -eq 200"
   toolchain_provision_shell_exec(script: script)
 }
