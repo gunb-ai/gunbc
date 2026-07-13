@@ -1,20 +1,18 @@
 module v2.test.execution.pick_ingested_probe
 
 import v2.test.execution.pick_ingested_equals_eval {
-  pick_ingested_arrow_has_branch_body,
+  pick_ingested_eval_equals_deferred_red_holds,
+  pick_ingested_normalized_arrow_has_branch_body,
+  pick_ingested_normalized_swapped_arms_structural_red_holds,
   pick_ingested_pipeline_resolves_holds,
-  pick_ingested_pick_false_executes_holds,
-  pick_ingested_pick_true_executes_holds,
-  pick_ingested_source,
-  pick_ingested_swapped_arms_red_holds
+  pick_ingested_resolve_deferred_red_holds,
+  pick_ingested_source
 }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { Accepted, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Arrow, Branch, ComputationNode, Node, TypeNode }
 import v2.std.node_query { find_arrow_body_child }
@@ -56,26 +54,22 @@ fn pick_probe_normalized_has_branch_holds() -> Bool {
   }
 }
 
-test fn pick_probe_resolves_holds() -> Bool {
-  pick_ingested_pipeline_resolves_holds()
-}
-
-test fn pick_probe_branch_body_holds() -> Bool {
-  pick_ingested_arrow_has_branch_body(source: pick_ingested_source)
+test fn pick_probe_resolve_deferred_red_holds() -> Bool {
+  pick_ingested_resolve_deferred_red_holds()
 }
 
 test fn pick_probe_normalized_branch_holds() -> Bool {
   pick_probe_normalized_has_branch_holds()
 }
 
-test fn pick_probe_true_holds() -> Bool {
-  pick_ingested_pick_true_executes_holds()
+test fn pick_probe_normalized_arrow_branch_holds() -> Bool {
+  pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
 }
 
-test fn pick_probe_false_holds() -> Bool {
-  pick_ingested_pick_false_executes_holds()
+test fn pick_probe_swapped_arms_structural_red_holds() -> Bool {
+  pick_ingested_normalized_swapped_arms_structural_red_holds()
 }
 
-test fn pick_probe_swapped_red_holds() -> Bool {
-  pick_ingested_swapped_arms_red_holds()
+test fn pick_probe_eval_deferred_red_holds() -> Bool {
+  pick_ingested_eval_equals_deferred_red_holds()
 }

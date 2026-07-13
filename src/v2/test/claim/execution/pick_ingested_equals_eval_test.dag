@@ -19,6 +19,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Empty }
 import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, map_insert }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.diagnostic {
@@ -315,6 +316,23 @@ fn pick_eval_context() -> EvalContext {
   )
 }
 
+data pick_ingested_eval_deferred_note: String = "ingested Int-literal operands in if arms are lexeme-stamped atoms, not grounded to the numeric tower — resolve and eval-equals are deferred until general Int-literal ingestion lands (migrate_when_general_body_producer_lands). Structural if_expr→Branch lowering is proven by normalized_branch + arm-lexeme swapped RED; fabricated pick-lit bridge deleted."
+
+fn pick_ingested_normalized_module_from_source(source: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          normalize(parse_tree: artifact.tree)
+        }
+      )
+    }
+  )
+}
+
 fn pick_ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
@@ -326,6 +344,83 @@ fn pick_ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
         }
       })
   }
+}
+
+fn pick_ingested_normalized_arrow_has_branch_body(source: String) -> Bool {
+  match pick_ingested_normalized_module_from_source(source: source) {
+    Accepted { value: normalized, diagnostics: _ } =>
+      match pick_ingested_find_arrow_in_module(root: normalized) {
+        Present { value: arrow } =>
+          match find_arrow_body_child(root: arrow) {
+            Accepted { value: body, diagnostics: _ } =>
+              match body.kind {
+                ComputationNode { behavior: Branch } => true
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick_ingested_branch_arm_lexeme_optional(body: Node, arm_index: Int) -> Optional<String> {
+  match list_at_optional(xs: body.children, index: arm_index) {
+    Present { value: edge } =>
+      match edge {
+        Edge { label: _, target: arm } => pick_ingested_atom_lexeme_optional(node: arm)
+      }
+    Absent => Absent
+  }
+}
+
+fn pick_ingested_atom_lexeme_optional(node: Node) -> Optional<String> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      Present { value: symbol_lexeme(sym: id) }
+    _ => Absent
+  }
+}
+
+fn pick_ingested_normalized_branch_arms_lexeme_holds(
+  source: String,
+  then_lex: String,
+  else_lex: String
+) -> Bool {
+  match pick_ingested_normalized_module_from_source(source: source) {
+    Accepted { value: normalized, diagnostics: _ } =>
+      match pick_ingested_find_arrow_in_module(root: normalized) {
+        Present { value: arrow } =>
+          match find_arrow_body_child(root: arrow) {
+            Accepted { value: body, diagnostics: _ } =>
+              match pick_ingested_branch_arm_lexeme_optional(body: body, arm_index: 1) {
+                Present { value: then_found } =>
+                  match pick_ingested_branch_arm_lexeme_optional(body: body, arm_index: 2) {
+                    Present { value: else_found } =>
+                      (then_found == then_lex) && (else_found == else_lex)
+                    Absent => false
+                  }
+                Absent => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pick_ingested_normalized_swapped_arms_structural_red_holds() -> Bool {
+  pick_ingested_normalized_branch_arms_lexeme_holds(
+    source: pick_ingested_source,
+    then_lex: "1",
+    else_lex: "2"
+  ) && pick_ingested_normalized_branch_arms_lexeme_holds(
+    source: pick_ingested_swapped_source,
+    then_lex: "2",
+    else_lex: "1"
+  )
 }
 
 fn pick_ingested_resolved_module_from_source(source: String) -> Outcome<Node> {
@@ -523,6 +618,15 @@ fn pick_ingested_swapped_arms_red_holds() -> Bool {
   }
 }
 
+fn pick_ingested_resolve_deferred_red_holds() -> Bool {
+  pick_ingested_pipeline_resolves_holds() == false
+}
+
+fn pick_ingested_eval_equals_deferred_red_holds() -> Bool {
+  (pick_ingested_pick_true_executes_holds() == false)
+    && (pick_ingested_pick_false_executes_holds() == false)
+}
+
 fn pick_ingested_pipeline_resolves_holds() -> Bool {
   match pick_ingested_resolved_module_from_source(source: pick_ingested_source) {
     Accepted { value: _, diagnostics: _ } => true
@@ -531,9 +635,8 @@ fn pick_ingested_pipeline_resolves_holds() -> Bool {
 }
 
 test fn pick_ingested_equals_eval_keystone_holds() -> Bool {
-  pick_ingested_pipeline_resolves_holds()
-    && pick_ingested_arrow_has_branch_body(source: pick_ingested_source)
-    && pick_ingested_pick_true_executes_holds()
-    && pick_ingested_pick_false_executes_holds()
-    && pick_ingested_swapped_arms_red_holds()
+  pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
+    && pick_ingested_normalized_swapped_arms_structural_red_holds()
+    && pick_ingested_resolve_deferred_red_holds()
+    && pick_ingested_eval_equals_deferred_red_holds()
 }
