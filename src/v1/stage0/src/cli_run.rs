@@ -5336,11 +5336,25 @@ pub struct DiscoveryWitnessOutcome {
     pub outcome: ClaimOutcome,
 }
 
+/// A witness row excluded from discovery enrollment (exclusion substring, long lane, …).
+/// Counted and logged at roster build — never a silent skip (§5 deferred-and-detected).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeferredDiscoveryRow {
+    pub entry: String,
+    pub function: String,
+    /// Which exclusion substring matched (`witness_exclusion_substrings` authority).
+    pub exclude_reason: String,
+    /// Entry-grain live-tree disposition (`v2.std.live_tree`); undeclared = true.
+    pub reads_live_tree: bool,
+}
+
 #[derive(Debug)]
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
     pub skipped: usize,
+    /// Witness rows excluded from discovery at scan time — counted, typed, observable.
+    pub deferred_rows: Vec<DeferredDiscoveryRow>,
     /// PredictOnly mode: rows the selection predicted unaffected (they still ran).
     pub predicted_unaffected: Vec<(String, String)>,
     /// PredictOnly mode: predicted-unaffected rows whose cold run was red — each line is a
@@ -5648,9 +5662,108 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
 }
 
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
+    matching_discovery_exclusion_substring(path).is_some()
+}
+
+fn matching_discovery_exclusion_substring(path: &str) -> Option<String> {
     witness_exclusion_substrings()
         .iter()
-        .any(|sub| path.contains(sub.as_str()))
+        .find(|sub| path.contains(sub.as_str()))
+        .cloned()
+}
+
+/// Scan `*_test.dag` witnesses excluded from discovery by `exclude_substrings` and return
+/// counted, typed rows for the floor receipt (§5: deferred-and-detected, never silent).
+pub fn collect_deferred_discovery_rows(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<Vec<DeferredDiscoveryRow>, String> {
+    if exclude_substrings.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out: Vec<DeferredDiscoveryRow> = Vec::new();
+    let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        dag_files.sort();
+        for path in dag_files {
+            let entry = path.to_string_lossy().into_owned();
+            let rel = repo_relative_dag_path(&entry);
+            if !rel.ends_with("_test.dag") {
+                continue;
+            }
+            let Some(exclude_reason) = exclude_substrings
+                .iter()
+                .find(|sub| rel.contains(sub.as_str()))
+                .cloned()
+            else {
+                continue;
+            };
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read deferred discovery entry {rel}: {e}"))?;
+            let reads_live_tree = parse_entry_live_tree_disposition(&rel, &content)?;
+            for (function, _) in scan_test_decl_lines(&content) {
+                if seen.insert((rel.clone(), function.clone())) {
+                    out.push(DeferredDiscoveryRow {
+                        entry: rel.clone(),
+                        function,
+                        exclude_reason: exclude_reason.clone(),
+                        reads_live_tree,
+                    });
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| {
+        a.entry
+            .cmp(&b.entry)
+            .then_with(|| a.function.cmp(&b.function))
+    });
+    Ok(out)
+}
+
+fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
+    if rows.is_empty() {
+        return;
+    }
+    let live = rows.iter().filter(|r| r.reads_live_tree).count();
+    let ts = floor_ts();
+    eprintln!(
+        "{ts} [deferred-discovery] {} witness row(s) excluded from per-PR discovery \
+         ({} declare ReadsLiveTree) — counted, not silent; run via long-lane / local recipe",
+        rows.len(),
+        live
+    );
+    for row in rows.iter().take(8) {
+        eprintln!(
+            "{ts} [deferred-discovery]   {} ({}) reason={}",
+            row.function, row.entry, row.exclude_reason
+        );
+    }
+    if rows.len() > 8 {
+        eprintln!(
+            "{ts} [deferred-discovery]   … and {} more deferred row(s)",
+            rows.len() - 8
+        );
+    }
+}
+
+/// §5 never-skip tooth: a `ReadsLiveTree` row must never take node-frontier selection skip.
+fn refuse_reads_live_tree_selection_skip(
+    row: &DiscoveryRow,
+    skip_kind: &str,
+) -> Result<(), String> {
+    if row.reads_live_tree {
+        return Err(format!(
+            "NEVER-SKIP REFUSAL cause=ReadsLiveTreeSelectionSkip rows=1 — \
+             `{skip_kind}` would skip {} ({}) but the entry declares (or fail-closed \
+             defaults to) ReadsLiveTree; a live-tree witness must run or refuse loudly, \
+             never be silently selected out (§5; masks memo-wedge class defects when skipped)",
+            row.function, row.entry
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -7466,6 +7579,12 @@ pub fn run_discovery_corpus_with_options(
     if rows.is_empty() {
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
+    let deferred_rows = if options.explicit_roster_only || scan_dirs.is_empty() {
+        Vec::new()
+    } else {
+        collect_deferred_discovery_rows(source_roots, &options.exclude_substrings)?
+    };
+    eprintln_deferred_discovery_rows(&deferred_rows);
     set_phase(FloorPhase::Discovery, "discovery-roster");
     let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
     // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
@@ -7685,7 +7804,7 @@ pub fn run_discovery_corpus_with_options(
                 "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
-            return Ok(summary);
+            return Ok(attach_deferred_discovery_rows(summary, deferred_rows));
         }
         DiscoveryWidthPolicy::Adaptive(governor) => governor,
     };
@@ -7842,7 +7961,18 @@ pub fn run_discovery_corpus_with_options(
              worker error — scheduler invariant violated; refusing a partial corpus"
         ));
     }
-    Ok(merge_discovery_summaries(summaries))
+    Ok(attach_deferred_discovery_rows(
+        merge_discovery_summaries(summaries),
+        deferred_rows,
+    ))
+}
+
+fn attach_deferred_discovery_rows(
+    mut summary: DiscoverySummary,
+    deferred_rows: Vec<DeferredDiscoveryRow>,
+) -> DiscoverySummary {
+    summary.deferred_rows = deferred_rows;
+    summary
 }
 
 /// Contiguous same-entry row groups, order-preserving: the unit a pool worker pulls (rows
@@ -7873,6 +8003,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         total: 0,
         passed: 0,
         skipped: 0,
+        deferred_rows: Vec::new(),
         predicted_unaffected: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
@@ -8120,6 +8251,7 @@ fn run_discovery_rows(
         total: rows.len(),
         passed: 0,
         skipped: 0,
+        deferred_rows: Vec::new(),
         predicted_unaffected: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
@@ -8177,6 +8309,7 @@ fn run_discovery_rows(
         // Applied only: PredictOnly must resolve + run cold and record via the post-resolve
         // would_skip path (falsifier semantics — docs/plans/affected-set-differential-falsifier.md).
         if selection == NodeFrontierSelectionMode::Applied && entry_fast_skip.contains(&row.entry) {
+            refuse_reads_live_tree_selection_skip(&row, "skip-before-resolve-fast-path")?;
             if current_entry.as_deref() != Some(row.entry.as_str()) {
                 augment_closure_modules_from_import_facts(
                     &row.entry,
@@ -8290,6 +8423,7 @@ fn run_discovery_rows(
             false
         };
         if would_skip {
+            refuse_reads_live_tree_selection_skip(&row, "node-frontier-selection")?;
             match selection {
                 NodeFrontierSelectionMode::Applied => {
                     summary.skipped += 1;
@@ -9828,6 +9962,57 @@ mod node_frontier_plumbing_controls {
         );
     }
 
+    // §5 prove-the-refusal-fires: layer-3 backstop is by-design hard to reach in integration
+    // (the .dag model + entry_qualifies_for_skip_without_resolve gate first) — direct RED.
+    #[test]
+    fn refuse_reads_live_tree_selection_skip_fires_red_on_live_tree_row() {
+        let live = super::DiscoveryRow {
+            label: "live".to_string(),
+            entry: "e.dag".to_string(),
+            function: "live_holds".to_string(),
+            reads_live_tree: true,
+        };
+        let err = super::refuse_reads_live_tree_selection_skip(&live, "test")
+            .expect_err("ReadsLiveTree row must refuse selection skip");
+        assert!(err.contains("ReadsLiveTreeSelectionSkip"));
+        let substrate = super::DiscoveryRow {
+            reads_live_tree: false,
+            ..live
+        };
+        super::refuse_reads_live_tree_selection_skip(&substrate, "test")
+            .expect("SubstrateInputsOnly row may proceed to skip evaluation");
+    }
+
+    // §5 deferred-discovery receipt: long-lane witnesses (s1_closure class) are excluded
+    // from per-PR discovery but must be COUNTED in the floor log — never a silent skip.
+    #[test]
+    fn deferred_discovery_counts_long_lane_s1_closure_reads_live_tree() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let excludes = super::witness_exclusion_substrings();
+        let deferred =
+            super::collect_deferred_discovery_rows(&roots, &excludes).expect("deferred scan");
+        let s1 = deferred
+            .iter()
+            .find(|r| r.function == "s1_closure_parses_holds")
+            .expect("s1_closure_parses_holds must appear in deferred-discovery receipt");
+        assert!(
+            s1.reads_live_tree,
+            "s1_closure declares ReadsLiveTree — deferred row must carry the disposition"
+        );
+        assert!(
+            s1.entry.contains("test/claim/long/"),
+            "s1_closure lives in the long lane: got {}",
+            s1.entry
+        );
+        assert!(
+            s1.exclude_reason.contains("test/claim/long/"),
+            "exclude reason must name the long-lane substring: got {}",
+            s1.exclude_reason
+        );
+    }
+
     // RED guard: data-item edits in the entry import closure must not fast-skip — the
     // node-frontier machinery needs resolve to discriminate referenced nodes.
     #[test]
@@ -11146,6 +11331,7 @@ mod witness_timing_attribution_tests {
             total: 3,
             passed: 3,
             skipped: 0,
+            deferred_rows: Vec::new(),
             predicted_unaffected: Vec::new(),
             divergences: Vec::new(),
             failures: Vec::new(),
