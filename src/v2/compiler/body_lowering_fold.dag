@@ -234,7 +234,7 @@ fn body_lower_find_captured(root: Node, emitted: Symbol) -> ParseSubtreeFind {
 }
 
 fn body_lower_int_literal_with_magnitude_optional(node: Node) -> Optional<Node> {
-  let unwrapped = body_lower_deep_unwrap_optional(node: node)
+  let unwrapped = body_lower_deep_unwrap_for_int_literal(node: node)
   if dag_node_is_int_literal_atom(node: unwrapped) {
     match dag_int_literal_magnitude_node_optional(node: unwrapped) {
       Present { value: _ } => optional_present(value: unwrapped)
@@ -751,6 +751,14 @@ fn body_lower_deep_unwrap_optional(node: Node) -> Node {
     Accepted { value: child, diagnostics: _ } =>
       body_lower_deep_unwrap_optional(node: child)
     Rejected { diagnostics: _ } => node
+  }
+}
+
+fn body_lower_deep_unwrap_for_int_literal(node: Node) -> Node {
+  match parse_production_captured_child_optional(node: node) {
+    Present { value: captured } =>
+      body_lower_deep_unwrap_for_int_literal(node: captured)
+    Absent => body_lower_deep_unwrap_optional(node: node)
   }
 }
 
@@ -2160,10 +2168,12 @@ fn body_lower_materialize_int_literal_operand_optional(node: Node) -> Optional<N
             Present { value: captured } =>
               body_lower_materialize_int_literal_operand_optional(node: captured)
             Absent =>
-              match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+              let deep = body_lower_deep_unwrap_for_int_literal(node: node)
+              match node_atom_identity_optional(node: deep) {
                 Present { value: id } =>
-                  match dag_node_is_int_literal_atom(node: body_lower_deep_unwrap_optional(node: node)) {
-                    true => optional_absent()
+                  match dag_node_is_int_literal_atom(node: deep) {
+                    true =>
+                      body_lower_int_literal_with_magnitude_optional(node: deep)
                     false =>
                       match integer_string_to_decimal_digits_optional(s: symbol_lexeme(sym: id)) {
                         Present { value: _ } =>
@@ -2196,10 +2206,16 @@ fn body_lower_arm_operand_resolved_optional(arm: Node) -> Optional<Node> {
               match body_lower_materialize_int_literal_operand_optional(node: op) {
                 Present { value: lit } => Present { value: lit }
                 Absent =>
-                  if dag_node_is_int_literal_atom(node: body_lower_deep_unwrap_optional(node: op)) {
-                    optional_absent()
-                  } else {
-                    optional_present(value: op)
+                  match body_lower_int_literal_with_magnitude_optional(node: op) {
+                    Present { value: lit } => Present { value: lit }
+                    Absent =>
+                      if dag_node_is_int_literal_atom(
+                        node: body_lower_deep_unwrap_for_int_literal(node: op)
+                      ) {
+                        optional_absent()
+                      } else {
+                        optional_present(value: op)
+                      }
                   }
               }
             Absent => optional_absent()
