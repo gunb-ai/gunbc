@@ -107,7 +107,6 @@ pub use crate::v1_compiler_infer_types::{
     resolved_type, structural_carrier_template_name, template_return_has_variables,
     template_return_is_receiver_self,
 };
-pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
