@@ -1023,7 +1023,7 @@ fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt 
 }
 
 fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
-  match subterm_at(root: dag, p: path) {
+  match subterm_at(root: dag, path: path) {
     Accepted { value: current, diagnostics: _ } =>
       if content_hash(n: current) == content_hash(n: replacement) {
         match canonical_boundary_exclusion_receipt(node: current, h: content_hash(n: current)) {

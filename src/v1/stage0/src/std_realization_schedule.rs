@@ -8,6 +8,9 @@ use self::RunnableMemoryClass::*;
 use self::ScheduleLensViolation::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
+pub use crate::std_execution_mode::execution_mode_eq;
+pub use crate::std_execution_mode::ExecutionMode;
+use crate::std_execution_mode::ExecutionMode::Hermetic;
 use crate::std_lens_verdict::LensVerdict::{Holds, Violation};
 use crate::std_lens_verdict::LensVerdictLocus::ModuleWholeFile;
 pub use crate::std_lens_verdict::{LensVerdict, LensVerdictDiagnostic, LensVerdictLocus};
@@ -124,84 +127,59 @@ pub struct ScheduleWitnessEntry {
     pub kind: WitnessKind,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RunnableMemoryPeak {
-    pub predicted_peak: ByteSize,
+pub fn runnable_memory_class_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Memory class is a structural marker, not a quantity (operator ruling 2026-07-12): the former RunnableMemoryPeak predicted_peak bytes were hand-edited calibration constants — pins freezing derivations, the July OOM regime's root — and the width folds that consumed them are retired. Realization concurrency is now governed adaptively at run time (v1_compiler::memory_governor: AIMD admission against the slot's own cgroup budget, graceful back-off on creep, counted receipts), so the model keeps only the honest structural fact: Negligible vs Substantial residency, which co-residence structure keys on. Quantified per-runnable demand returns when it is derivable from the graph (CostAccount.space measured/derived), not as authored literals.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum RunnableMemoryClass {
     RunnableMemoryNegligible,
-    RunnableMemorySubstantial { peak: Rc<RunnableMemoryPeak> },
+    RunnableMemorySubstantial,
 }
-impl RunnableMemoryClass {
-    pub fn peak(&self) -> Rc<RunnableMemoryPeak> {
-        match self {
-            RunnableMemoryClass::RunnableMemoryNegligible => panic!("no peak on unit variant"),
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: __val, .. } => __val.clone(),
-        }
+
+pub fn runnable_profile_execution_mode_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "execution_mode is the runnable's declared effect envelope (operator posture 2026-07-11): the runner binds the injector the profile declares — Hermetic replays published mocks/recorded fixtures and refuses unmocked effects with typed diagnostics, Wet dispatches live transports, Record dispatches and captures fixtures. The declaration lives on the profile so every runnable kind (gate claim, discovery batch, execution batch) carries it uniformly, beside its resource siblings (spawns_host_compiler is already an effect-class fact). Fail-closed default: runnable_resource_profile_negligible declares Hermetic, so an undeclared-envelope runnable cannot silently reach live effects — it refuses, loudly, at the effect boundary. Future hardening (named trigger, not built here): an OS-level harness that fail-closes on sensed bypasses (shell spawn / network / out-of-root disk IO) beneath the interpreter seam.".to_string()
+        };
     }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableResourceProfile {
     pub heavy_whole_tree_resolve: bool,
     pub spawns_host_compiler: bool,
-    pub memory: Rc<RunnableMemoryClass>,
+    pub memory: RunnableMemoryClass,
+    pub execution_mode: ExecutionMode,
 }
 
-pub fn runnable_memory_negligible() -> Rc<RunnableMemoryClass> {
-    Rc::new(RunnableMemoryClass::RunnableMemoryNegligible)
+pub fn runnable_memory_negligible() -> RunnableMemoryClass {
+    RunnableMemoryClass::RunnableMemoryNegligible
 }
 
-pub fn runnable_memory_substantial(predicted_peak: ByteSize) -> Rc<RunnableMemoryClass> {
-    Rc::new(RunnableMemoryClass::RunnableMemorySubstantial {
-        peak: Rc::new(RunnableMemoryPeak {
-            predicted_peak: predicted_peak.clone(),
-        }),
-    })
+pub fn runnable_memory_substantial() -> RunnableMemoryClass {
+    RunnableMemoryClass::RunnableMemorySubstantial
 }
 
-pub fn runnable_memory_class_eq(
-    left: Rc<RunnableMemoryClass>,
-    right: Rc<RunnableMemoryClass>,
-) -> bool {
-    match (*left.clone()).clone() {
-        RunnableMemoryClass::RunnableMemoryNegligible => match (*right.clone()).clone() {
+pub fn runnable_memory_class_eq(left: RunnableMemoryClass, right: RunnableMemoryClass) -> bool {
+    match left.clone() {
+        RunnableMemoryClass::RunnableMemoryNegligible => match right.clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => true,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: _, .. } => false,
+            RunnableMemoryClass::RunnableMemorySubstantial => false,
         },
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: lp, .. } => {
-            match (*right.clone()).clone() {
-                RunnableMemoryClass::RunnableMemoryNegligible => false,
-                RunnableMemoryClass::RunnableMemorySubstantial { peak: rp, .. } => {
-                    (byte_size_count(lp.predicted_peak.clone())
-                        == byte_size_count(rp.predicted_peak.clone()))
-                }
-            }
-        }
-    }
-}
-
-pub fn runnable_memory_substantial_sum(
-    left: Rc<RunnableMemoryClass>,
-    right: Rc<RunnableMemoryClass>,
-) -> Rc<RunnableMemoryClass> {
-    {
-        let left_count = match (*left.clone()).clone() {
-            RunnableMemoryClass::RunnableMemoryNegligible => 0,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-                byte_size_count(p.predicted_peak.clone())
-            }
-        };
-        let right_count = match (*right.clone()).clone() {
-            RunnableMemoryClass::RunnableMemoryNegligible => 0,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-                byte_size_count(p.predicted_peak.clone())
-            }
-        };
-        runnable_memory_substantial(byte_size((left_count.clone() + right_count.clone())))
+        RunnableMemoryClass::RunnableMemorySubstantial => match right.clone() {
+            RunnableMemoryClass::RunnableMemoryNegligible => false,
+            RunnableMemoryClass::RunnableMemorySubstantial => true,
+        },
     }
 }
 
@@ -209,9 +187,10 @@ pub fn runnable_resource_profile_eq(
     left: Rc<RunnableResourceProfile>,
     right: Rc<RunnableResourceProfile>,
 ) -> bool {
-    (((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
+    ((((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
         && (left.spawns_host_compiler.clone() == right.spawns_host_compiler.clone()))
         && runnable_memory_class_eq(left.memory.clone(), right.memory.clone()))
+        && execution_mode_eq(left.execution_mode.clone(), right.execution_mode.clone()))
 }
 
 pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
@@ -219,37 +198,33 @@ pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: false,
         memory: runnable_memory_negligible(),
+        execution_mode: ExecutionMode::Hermetic,
     })
 }
 
 pub fn runnable_resource_profile(
     heavy_whole_tree_resolve: bool,
     spawns_host_compiler: bool,
-    memory: Rc<RunnableMemoryClass>,
+    memory: RunnableMemoryClass,
+    execution_mode: ExecutionMode,
 ) -> Rc<RunnableResourceProfile> {
     Rc::new(RunnableResourceProfile {
         heavy_whole_tree_resolve: heavy_whole_tree_resolve.clone(),
         spawns_host_compiler: spawns_host_compiler.clone(),
         memory: memory.clone(),
+        execution_mode: execution_mode.clone(),
     })
 }
 
 pub fn runnable_excludes_corpus_co_residence(profile: Rc<RunnableResourceProfile>) -> bool {
-    match (*profile.memory.clone()).clone() {
+    match profile.memory.clone() {
         RunnableMemoryClass::RunnableMemoryNegligible => false,
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: _, .. } => true,
+        RunnableMemoryClass::RunnableMemorySubstantial => true,
     }
 }
 
 pub fn runnable_heavy_whole_tree_resolve(profile: Rc<RunnableResourceProfile>) -> bool {
     profile.heavy_whole_tree_resolve.clone()
-}
-
-pub fn runnable_predicted_space(profile: Rc<RunnableResourceProfile>) -> ByteSize {
-    match (*profile.memory.clone()).clone() {
-        RunnableMemoryClass::RunnableMemoryNegligible => byte_size(0),
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => p.predicted_peak.clone(),
-    }
 }
 
 pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
@@ -322,7 +297,6 @@ pub enum Runnable {
         node_frontier_selection: NodeFrontierSelection,
         exclude_substrings: Rc<Vec<String>>,
         discovery_scope_dirs: Rc<Vec<String>>,
-        spawn_width_cap: i64,
         profile: Rc<RunnableResourceProfile>,
     },
     RunnableKernelWorkload {
@@ -598,7 +572,6 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
             node_frontier_selection: lskip,
             exclude_substrings: lex2,
             discovery_scope_dirs: lsc,
-            spawn_width_cap: lwc,
             profile: lp,
             ..
         } => match (*right.clone()).clone() {
@@ -610,17 +583,15 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                 node_frontier_selection: rskip,
                 exclude_substrings: rex2,
                 discovery_scope_dirs: rsc,
-                spawn_width_cap: rwc,
                 profile: rp,
                 ..
             } => {
-                (((((((string_list_eq(lsr.clone(), rsr.clone())
+                ((((((string_list_eq(lsr.clone(), rsr.clone())
                     && string_list_eq(lsd.clone(), rsd.clone()))
                     && schedule_witness_entry_list_eq(lex.clone(), rex.clone()))
                     && node_frontier_selection_eq(lskip.clone(), rskip.clone()))
                     && string_list_eq(lex2.clone(), rex2.clone()))
                     && string_list_eq(lsc.clone(), rsc.clone()))
-                    && (lwc.clone() == rwc.clone()))
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
             Runnable::RunnableKernelWorkload {
@@ -707,6 +678,10 @@ pub struct Measured;
 pub struct CorpusWitnessKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RunnableMemoryNegligible;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RunnableMemorySubstantial;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SelectionOff;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

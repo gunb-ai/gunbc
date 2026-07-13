@@ -15,10 +15,8 @@ data inert_carrier_roster: List<String> = [
   "FloorWitnessRow",
   "FreeOutput",
   "GitCliReportedVersion",
-  "MergeStateStatus",
   "ProcMeminfo",
   "ReactHookSite",
-  "SecretValue",
   "SystemdUnitStatus"
 ]
 

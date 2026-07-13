@@ -37,5 +37,5 @@ fn witness_token_stream_content_hash_tiny() -> Optional<Hash> {
 }
 
 fn witness_token_stream_content_hash_small() -> Optional<Hash> {
-  token_stream_content_hash_for_path(path: "src/v2/std/execution_mode.dag")
+  token_stream_content_hash_for_path(path: "dag/std/execution_mode.dag")
 }

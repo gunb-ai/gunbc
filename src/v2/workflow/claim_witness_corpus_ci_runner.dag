@@ -247,7 +247,7 @@ data corpus_ci_gate_row_witness_rust_wire_serde_naming_discriminates: ClaimWitne
 
 data corpus_ci_gate_row_cwc_nary_coproduct_normalize: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "n-ary coproduct type-alias RHS folds to kernel Disj",
-  entry: "src/v2/test/claim/manual/cwc_resolution_probe_test.dag",
+  entry: "src/v2/test/claim/long/cwc_resolution_probe_test.dag",
   function: "cwc_nary_coproduct_normalize_boundary_holds",
   expected: ExpectPass
 }

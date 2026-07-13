@@ -26,6 +26,7 @@ import v2.std.node {
   Match,
   Node,
   TypeNode,
+  node_subtree_count,
   node_synthetic
 }
 import v2.std.verification {
@@ -112,21 +113,25 @@ fn body_lowering_match_lowers_to_match() -> Bool {
       match body_lowering_find_match_expr(root: tree) {
         Absent => false
         Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match body_lower_try_match_from_captured(captured: captured) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: lowered_opt, diagnostics: _ } =>
-                  match lowered_opt {
-                    Present { value: lowered } =>
-                      match lowered.kind {
-                        ComputationNode { behavior: Match } => true
-                        _ => false
+          match body_lower_unwrap_captured(remaining: node_subtree_count(n: shell), shell: shell) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: captured_opt, diagnostics: _ } =>
+              match captured_opt {
+                Present { value: captured } =>
+                  match body_lower_try_match_from_captured(remaining: node_subtree_count(n: captured), captured: captured) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: lowered_opt, diagnostics: _ } =>
+                      match lowered_opt {
+                        Present { value: lowered } =>
+                          match lowered.kind {
+                            ComputationNode { behavior: Match } => true
+                            _ => false
+                          }
+                        Absent => false
                       }
-                    Absent => false
                   }
+                Absent => false
               }
-            Absent => false
           }
       }
   }
@@ -173,17 +178,21 @@ fn body_lowering_match_arms_found() -> Bool {
       match body_lowering_find_match_expr(root: tree) {
         Absent => false
         Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match body_lower_match_arms_optional(captured: captured) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: arms_opt, diagnostics: _ } =>
-                  match arms_opt {
-                    Present { value: arms } => length(xs: arms) > 0
-                    Absent => false
+          match body_lower_unwrap_captured(remaining: node_subtree_count(n: shell), shell: shell) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: captured_opt, diagnostics: _ } =>
+              match captured_opt {
+                Present { value: captured } =>
+                  match body_lower_match_arms_optional(remaining: node_subtree_count(n: captured), captured: captured) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: arms_opt, diagnostics: _ } =>
+                      match arms_opt {
+                        Present { value: arms } => length(xs: arms) > 0
+                        Absent => false
+                      }
                   }
+                Absent => false
               }
-            Absent => false
           }
       }
   }
@@ -196,31 +205,39 @@ fn body_lowering_match_first_arm_wires() -> Bool {
       match body_lowering_find_match_expr(root: tree) {
         Absent => false
         Present { value: shell } =>
-          match body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(
-                root: captured,
-                emitted: ^dag_surface_match_arm
-              ) {
-                ParseSubtreeFound { captured: arm } =>
-                  match body_lower_wire_match_arm_capture(arm_capture: arm) {
-                    Accepted { value: _, diagnostics: _ } => true
-                    Rejected { diagnostics: _ } => false
+          match body_lower_unwrap_captured(remaining: node_subtree_count(n: shell), shell: shell) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: captured_opt, diagnostics: _ } =>
+              match captured_opt {
+                Present { value: captured } =>
+                  match parse_subtree_find_production_captured(
+                    root: captured,
+                    emitted: ^dag_surface_match_arm
+                  ) {
+                    ParseSubtreeFound { captured: arm } =>
+                      match body_lower_wire_match_arm_capture(remaining: node_subtree_count(n: arm), arm_capture: arm) {
+                        Accepted { value: _, diagnostics: _ } => true
+                        Rejected { diagnostics: _ } => false
+                      }
+                    ParseSubtreeAbsent => false
                   }
-                ParseSubtreeAbsent => false
+                Absent => false
               }
-            Absent => false
           }
       }
   }
 }
 
+data unnavigable_arm_budget_note: String = "The step budget carries slack past the synthetic arm's own subtree count (1) so the walk reaches arm navigation and refuses with the pinned ^body_lowering_reason_match_arm_navigation_refused — an exact-count budget exhausts first and the witness would assert the wrong refusal (^body_lowering_reason_descent_not_proven)."
+
 fn body_lowering_match_unnavigable_arm_refuses() -> Bool {
+  let unnavigable_arm = node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: Empty
+  )
   match body_lower_wire_match_arm_capture(
-    arm_capture: node_synthetic(
-      kind: TypeNode { connective: Conj },
-      children: Empty
-    )
+    remaining: node_subtree_count(n: unnavigable_arm) + 8,
+    arm_capture: unnavigable_arm
   ) {
     Rejected { diagnostics: d } =>
       d.head.reason == ^body_lowering_reason_match_arm_navigation_refused

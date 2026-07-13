@@ -15,7 +15,6 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-type FilesystemReadResult { content: String }
 
 data std_types_path: String = "dag/std/types.dag"
 data cpu_types_path: String = "dag/extdeps/cpu/types.dag"
