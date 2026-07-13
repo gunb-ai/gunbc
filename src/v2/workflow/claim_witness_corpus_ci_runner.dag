@@ -77,6 +77,20 @@ data corpus_ci_gate_row_add_arrow_eval_keystone: ClaimWitnessCorpusClaimRunRow =
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_pick_ingested_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "pick ingested if_expr Branch eval keystone (1/2)",
+  entry: "src/v2/test/claim/execution/pick_ingested_structural_lowering_test.dag",
+  function: "pick_ingested_equals_eval_keystone_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_pick2_ingested_eval_generality: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "pick2 ingested if_expr Branch eval generality (3/4)",
+  entry: "src/v2/test/claim/execution/pick_ingested_structural_lowering_test.dag",
+  function: "pick2_ingested_equals_eval_generality_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_branch_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "branch eval by execution keystone",
   entry: "src/v2/test/claim/manual/branch_eval_by_execution_test.dag",
@@ -509,6 +523,8 @@ data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_dag_add_emit_ingest_round_trip,
   corpus_ci_gate_row_english_emit_ingest_round_trip,
   corpus_ci_gate_row_add_arrow_eval_keystone,
+  corpus_ci_gate_row_pick_ingested_eval_keystone,
+  corpus_ci_gate_row_pick2_ingested_eval_generality,
   corpus_ci_gate_row_branch_eval_keystone,
   corpus_ci_gate_row_branch_if_then_else_round_trip_keystone,
   corpus_ci_gate_row_branch_if_then_else_emit_keystone,
