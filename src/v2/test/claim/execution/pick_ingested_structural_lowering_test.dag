@@ -20,7 +20,7 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   dag_node_is_int_literal_atom
 }
-import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional }
+import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, optional_present }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.diagnostic {
@@ -160,14 +160,31 @@ fn pick_ingested_normalized_arrow_has_branch_body(source: String) -> Bool {
   }
 }
 
+fn pick_ingested_int_literal_node_optional(node: Node) -> Optional<Node> {
+  if dag_node_is_int_literal_atom(node: node) {
+    optional_present(value: node)
+  } else {
+    fold(node.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => pick_ingested_int_literal_node_optional(node: e.target)
+      }
+    })
+  }
+}
+
 fn pick_ingested_branch_arm_magnitude_optional(body: Node, arm_index: Int) -> Optional<Int> {
   match list_at_optional(xs: body.children, index: arm_index) {
     Present { value: edge } =>
       match edge {
         Edge { label: _, target: arm } =>
-          match dag_int_literal_magnitude_int_from_node(node: arm) {
-            Accepted { value: magnitude, diagnostics: _ } => Present { value: magnitude }
-            Rejected { diagnostics: _ } => Absent
+          match pick_ingested_int_literal_node_optional(node: arm) {
+            Present { value: literal } =>
+              match dag_int_literal_magnitude_int_from_node(node: literal) {
+                Accepted { value: magnitude, diagnostics: _ } => Present { value: magnitude }
+                Rejected { diagnostics: _ } => Absent
+              }
+            Absent => Absent
           }
       }
     Absent => Absent
@@ -464,4 +481,16 @@ test fn pick2_ingested_equals_eval_generality_holds() -> Bool {
   pick2_ingested_pick_true_executes_holds()
     && pick2_ingested_pick_false_executes_holds()
     && pick2_ingested_swapped_arms_red_holds()
+}
+
+test fn _debug_pick_ingested_normalized_swapped_arms_structural_red_holds() -> Bool {
+  pick_ingested_normalized_swapped_arms_structural_red_holds()
+}
+
+test fn _debug_pick_ingested_pick_true_executes_holds() -> Bool {
+  pick_ingested_pick_true_executes_holds()
+}
+
+test fn _debug_pick_ingested_pick_false_executes_holds() -> Bool {
+  pick_ingested_pick_false_executes_holds()
 }

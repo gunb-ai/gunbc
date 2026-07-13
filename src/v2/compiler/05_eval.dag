@@ -93,6 +93,7 @@ import v2.std.node {
   byte_offset_cache_key,
   fold_node,
   is_positional,
+  node_for_structural_equality,
   well_formed,
   SyntheticOccurrence
 }
@@ -1144,7 +1145,7 @@ fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
     ),
     f: fn(e) {
       Accepted {
-        value: EnvironmentBindingKey { declaration: e.target },
+        value: eval_environment_binding_key(declaration: e.target),
         diagnostics: None
       }
     }
@@ -1176,9 +1177,17 @@ fn eval_binding_key_node(sym: Symbol) -> Node {
   symbol_atom_node(sym: sym)
 }
 
+fn eval_environment_binding_key(declaration: Node) -> EnvironmentBindingKey {
+  EnvironmentBindingKey {
+    declaration: node_for_structural_equality(n: declaration)
+  }
+}
+
 fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   eval_witness_outcome(
-    witness: environment.bindings.lookup(EnvironmentBindingKey { declaration: node })
+    witness: environment.bindings.lookup(
+      eval_environment_binding_key(declaration: node)
+    )
   )
 }
 
@@ -1212,7 +1221,9 @@ fn eval_bind_param_edge_step(
               ),
               f: fn(value) {
                 bind.bind_value(
-                  EnvironmentBindingKey { declaration: eval_binding_key_node(sym: binding_id) },
+                  eval_environment_binding_key(
+                    declaration: eval_binding_key_node(sym: binding_id)
+                  ),
                   value,
                   env
                 )

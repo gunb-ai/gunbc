@@ -43,7 +43,15 @@ import v2.std.model_core {
   ResourceAccess,
   bool_model_core
 }
-import v2.std.node { Atom, Edge, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node {
+  Atom,
+  Edge,
+  Node,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence,
+  node_for_structural_equality
+}
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.runtime {
   AllocationSemantics,
@@ -379,7 +387,13 @@ fn v2_eval_bind_value(
 ) -> Outcome<EvaluationEnvironment> {
   Accepted {
     value: EvaluationEnvironment {
-      bindings: map_insert(m: env.bindings, key: key, value: value)
+      bindings: map_insert(
+        m: env.bindings,
+        key: EnvironmentBindingKey {
+          declaration: node_for_structural_equality(n: key.declaration)
+        },
+        value: value
+      )
     },
     diagnostics: None
   }
