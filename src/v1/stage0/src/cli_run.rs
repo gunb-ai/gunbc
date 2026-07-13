@@ -2695,6 +2695,18 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
+    // Per-module memo for the two per-entry recomputations the resolve-split receipt
+    // priced at ~15% of whole-corpus resolve (normalize 8% + ownership 7% — the
+    // "Track A denomination receipt", docs/plans/v1-run-stability-throughline.md §1).
+    // Normalize diagnostics are a pure function of the parsed module node
+    // (v1.compiler.normalize.normalize_module_diagnostics) and ownership diagnostics
+    // a pure function of the typed module (v1.compiler.compile.module_ownership_proofs)
+    // — both stable per declaring-file path within one process, the same in-process
+    // source-stability contract parse_cache and typed_module_cache already ride
+    // (module_source_identity walls name↔file divergence loud). Keyed by the module's
+    // declaring file (span.file, the parse_cache key's own identity).
+    normalize_diag_cache: RefCell<HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+    ownership_diag_cache: RefCell<HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
@@ -2758,6 +2770,8 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
         typed_module_cache: RefCell::new(HashMap::new()),
         module_source_identity: RefCell::new(HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
+        normalize_diag_cache: RefCell::new(HashMap::new()),
+        ownership_diag_cache: RefCell::new(HashMap::new()),
     }
 }
 
@@ -2777,6 +2791,8 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         typed_module_cache: RefCell::new(HashMap::new()),
         module_source_identity: RefCell::new(HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
+        normalize_diag_cache: RefCell::new(HashMap::new()),
+        ownership_diag_cache: RefCell::new(HashMap::new()),
     }
 }
 
@@ -3019,21 +3035,47 @@ fn resolve_entry_with_parse_cache(
     resolve_stage_slot_add(|s| s.resolve += resolve_started.elapsed().as_nanos());
 
     let normalize_started = std::time::Instant::now();
-    let norm = v1_compiler_normalize::normalize_graph(graph.clone(), source_indices.clone());
+    // Per-module memo (normalize_diag_cache): normalize is diagnostics-only — the
+    // authority passes the graph through unchanged (v1.compiler.normalize
+    // `NormalizeResult { graph: graph, .. }`) — and its per-module row
+    // `normalize_module_diagnostics` is a pure function of the parsed module node,
+    // so an entry pays only for modules this process has not normalized before
+    // (resolve-split receipt: normalize was 8% of whole-corpus resolve, recomputed
+    // per entry at zero marginal information).
+    let mut norm_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
+    for m in graph.modules.iter() {
+        let key = m.module.span.file.clone();
+        let cached = index.normalize_diag_cache.borrow().get(&key).cloned();
+        let module_diags = match cached {
+            Some(hit) => hit,
+            None => {
+                let computed = v1_compiler_normalize::normalize_module_diagnostics(
+                    m.clone(),
+                    source_indices.clone(),
+                );
+                index
+                    .normalize_diag_cache
+                    .borrow_mut()
+                    .insert(key, computed.clone());
+                computed
+            }
+        };
+        norm_diag_vec.extend(module_diags.iter().cloned());
+    }
+    let norm_diags = Rc::new(norm_diag_vec);
 
-    if norm
-        .diagnostics
+    if norm_diags
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&norm.diagnostics, &source_indices));
+        return Err(format_error_nodes(&norm_diags, &source_indices));
     }
     resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
     set_phase(FloorPhase::Typecheck, entry_file);
     let reconcile_started = std::time::Instant::now();
     let typed = reconcile_with_typed_cache(
-        norm.graph.clone(),
+        graph.clone(),
         source_indices.clone(),
         global_table,
         &index.typed_module_cache,
@@ -3064,8 +3106,33 @@ fn resolve_entry_with_parse_cache(
     }
 
     let ownership_started = std::time::Instant::now();
-    let ownership = v1_compiler_compile::extract_ownership_proofs(typed.clone());
-    let ownership_diags = v1_compiler_compile::ownership_diagnostics(ownership);
+    // Per-module memo (ownership_diag_cache): ownership proofs are a pure per-module
+    // map (v1.compiler.compile `module_ownership_proofs`; the authority's graph fold
+    // is exactly this row flat_mapped in module order) and `ownership_diagnostics`
+    // distributes over per-module concatenation, so the diagnostic list assembled in
+    // `typed.modules` order is identical to the graph-grain computation — a module
+    // with no bodied items contributes the same empty row the authority's filter
+    // skips. First-touch per module; the per-entry graph-grain rerun (7% of
+    // whole-corpus resolve in the resolve-split receipt) collapses to cache reads.
+    let mut ownership_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
+    for m in typed.modules.iter() {
+        let key = m.module.span.file.clone();
+        let cached = index.ownership_diag_cache.borrow().get(&key).cloned();
+        let module_diags = match cached {
+            Some(hit) => hit,
+            None => {
+                let proofs = v1_compiler_compile::module_ownership_proofs(m.clone());
+                let computed = v1_compiler_compile::ownership_diagnostics(proofs);
+                index
+                    .ownership_diag_cache
+                    .borrow_mut()
+                    .insert(key, computed.clone());
+                computed
+            }
+        };
+        ownership_diag_vec.extend(module_diags.iter().cloned());
+    }
+    let ownership_diags = Rc::new(ownership_diag_vec);
     if ownership_diags
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
@@ -11900,6 +11967,13 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
     "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
+    // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
+    // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
+    // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
+    // (third instance of the masking class receipted on #6530). Declared here so the ratchet
+    // re-arms; burns down with the frontier probe's fold migration. (#6533's other wildcard
+    // fn, compiler_frontier_probe_entry_test.dag, is outside the scan universe — no row.)
+    "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.

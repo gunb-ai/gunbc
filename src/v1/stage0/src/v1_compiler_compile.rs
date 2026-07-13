@@ -191,6 +191,32 @@ pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
     RecursionContext {}
 }
 
+pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for item in Rc::new({
+            let mut __result = Vec::new();
+            for item in m.items.clone().iter().cloned() {
+                if (item.body.clone() != None) {
+                    __result.push(item);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(analyze_ownership(
+                authored_name_at(m.type_env.clone().source_indices.clone(), item.clone()),
+                item.params.clone(),
+                item.body.clone().clone().unwrap(),
+                m.type_env.clone().source_indices.clone(),
+            ));
+        }
+        __result
+    })
+}
+
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -215,36 +241,7 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
         .iter()
         .cloned()
         {
-            __result.extend(
-                (*Rc::new({
-                    let mut __result = Vec::new();
-                    for item in Rc::new({
-                        let mut __result = Vec::new();
-                        for item in m.items.clone().iter().cloned() {
-                            if (item.body.clone() != None) {
-                                __result.push(item);
-                            }
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    {
-                        __result.push(analyze_ownership(
-                            authored_name_at(
-                                m.type_env.clone().source_indices.clone(),
-                                item.clone(),
-                            ),
-                            item.params.clone(),
-                            item.body.clone().clone().unwrap(),
-                            m.type_env.clone().source_indices.clone(),
-                        ));
-                    }
-                    __result
-                }))
-                .iter()
-                .cloned(),
-            );
+            __result.extend((*module_ownership_proofs(m.clone())).iter().cloned());
         }
         __result
     })
