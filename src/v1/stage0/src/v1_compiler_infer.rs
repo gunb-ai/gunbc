@@ -21,12 +21,8 @@ pub use crate::std_induction::{
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
-pub use crate::std_interface_summary::{
-    contract_absent, interface_summary_rollup, signature_contract,
-};
-pub use crate::std_interface_summary::{
-    ExportEntry, ExportKind, InterfaceSummary, SignatureFingerprint,
-};
+pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
+pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,

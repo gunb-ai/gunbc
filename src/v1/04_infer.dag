@@ -6983,7 +6983,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     let import_parents = flat_map(module_imports(n: m.module), imp =>
       let path = import_module_path_at(imp: imp, source_indices: source_indices)
       match map_get(index, path) {
-        Present { value: parent } => [interface_env_for_import(module_path: path, parent_env: parent.interface.env)]
+        Present { value: parent } => [interface_env_for_import(module_path: path, parent_env: parent.type_env)]
         Absent => []
       }
     )

@@ -3,12 +3,8 @@
 
 use self::ItemKind::*;
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
-pub use crate::std_interface_summary::{
-    contract_absent, interface_summary_rollup, signature_contract,
-};
-pub use crate::std_interface_summary::{
-    ExportEntry, ExportKind, InterfaceSummary, SignatureFingerprint,
-};
+pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
+pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
