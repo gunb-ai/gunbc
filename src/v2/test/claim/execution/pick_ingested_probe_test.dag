@@ -1,11 +1,11 @@
 module v2.test.execution.pick_ingested_probe
 
 import v2.test.execution.pick_ingested_structural_lowering {
-  pick_ingested_eval_equals_deferred_red_holds,
   pick_ingested_normalized_arrow_has_branch_body,
   pick_ingested_normalized_swapped_arms_structural_red_holds,
+  pick_ingested_pick_false_executes_holds,
+  pick_ingested_pick_true_executes_holds,
   pick_ingested_pipeline_resolves_holds,
-  pick_ingested_resolve_deferred_red_holds,
   pick_ingested_source
 }
 import v2.compiler.normalize { normalize }
@@ -54,8 +54,8 @@ fn pick_probe_normalized_has_branch_holds() -> Bool {
   }
 }
 
-test fn pick_probe_resolve_deferred_red_holds() -> Bool {
-  pick_ingested_resolve_deferred_red_holds()
+test fn pick_probe_pipeline_resolves_holds() -> Bool {
+  pick_ingested_pipeline_resolves_holds()
 }
 
 test fn pick_probe_normalized_branch_holds() -> Bool {
@@ -70,6 +70,7 @@ test fn pick_probe_swapped_arms_structural_red_holds() -> Bool {
   pick_ingested_normalized_swapped_arms_structural_red_holds()
 }
 
-test fn pick_probe_eval_deferred_red_holds() -> Bool {
-  pick_ingested_eval_equals_deferred_red_holds()
+test fn pick_probe_eval_equals_holds() -> Bool {
+  pick_ingested_pick_true_executes_holds()
+    && pick_ingested_pick_false_executes_holds()
 }

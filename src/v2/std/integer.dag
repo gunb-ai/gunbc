@@ -1046,12 +1046,31 @@ fn integer_u8_to_byte(value: Int) -> Byte {
   }
 }
 
+fn integer_i32_modulus() -> Int {
+  int_mul(a: 65536, b: 65536)
+}
+
+fn integer_int_normalize_i32_wire_unsigned(value: Int) -> Int {
+  if value < 0 {
+    integer_int_normalize_i32_wire_unsigned(
+      value: int_add(a: value, b: integer_i32_modulus())
+    )
+  } else if value >= integer_i32_modulus() {
+    integer_int_normalize_i32_wire_unsigned(
+      value: int_add(a: value, b: int_negate(a: integer_i32_modulus()))
+    )
+  } else {
+    value
+  }
+}
+
 fn integer_int_to_signed_i32_le_bytes(value: Int) -> List<Byte> {
+  let wire = integer_int_normalize_i32_wire_unsigned(value: value)
   [
-    integer_u8_to_byte(value: value % 256),
-    integer_u8_to_byte(value: (value / 256) % 256),
-    integer_u8_to_byte(value: (value / 65536) % 256),
-    integer_u8_to_byte(value: (value / 16777216) % 256)
+    integer_u8_to_byte(value: wire % 256),
+    integer_u8_to_byte(value: (wire / 256) % 256),
+    integer_u8_to_byte(value: (wire / 65536) % 256),
+    integer_u8_to_byte(value: (wire / 16777216) % 256)
   ]
 }
 
@@ -1088,13 +1107,18 @@ fn integer_u8_from_byte(b: Byte) -> Int {
 }
 
 fn integer_signed_i32_le_bytes_to_int_value(b0: Int, b1: Int, b2: Int, b3: Int) -> Int {
-  int_add(
+  let unsigned = int_add(
     a: int_add(
       a: int_add(a: b0, b: int_mul(a: 256, b: b1)),
       b: int_mul(a: 65536, b: b2)
     ),
     b: int_mul(a: 16777216, b: b3)
   )
+  if b3 >= 128 {
+    int_add(a: unsigned, b: int_negate(a: integer_i32_modulus()))
+  } else {
+    unsigned
+  }
 }
 
 fn integer_decimal_digit_from_tag_atom(id: Symbol) -> Optional<DecimalDigit> {

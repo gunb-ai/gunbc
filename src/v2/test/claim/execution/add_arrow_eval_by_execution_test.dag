@@ -83,11 +83,13 @@ import v2.std.runtime {
   EvaluationEnvironment,
   InterpretationAlgebra,
   LoopInterpreter,
+  MatchInterpreter,
   RuntimePrimitive,
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.witness { Holds, Witness }
 import v2.std.verdict { Pass }
@@ -894,12 +896,4 @@ test fn add_arrow_eval_by_execution_keystone_holds() -> Bool {
     && add_arrow_eval_lazy_arm_branch_suppression_holds()
 
     && add_arrow_eval_lazy_arm_loop_suppression_holds()
-}
-
-test fn _debug_add_arrow_eval_source_driven_add_executes_holds() -> Bool {
-  add_arrow_eval_source_driven_add_executes_holds()
-}
-
-test fn _debug_add_arrow_eval_direct_runtime_holds() -> Bool {
-  add_arrow_eval_direct_runtime_holds()
 }

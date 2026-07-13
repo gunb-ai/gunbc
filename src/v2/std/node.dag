@@ -220,6 +220,9 @@ type EdgeDiscipline
   | LoopBoundEdges
 
   | ArrowBodyEdges
+
+data atom_payload_labeled_edges_scaffold_note: String = "🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on ^dag_token_int_literal via ^integer_literal_magnitude_field) — well_formed/connective_edges_conform permit LabeledEdges when count(children)>0, mirrored in node_edge_discipline. Not a new connective: the payload is a typed named field, not an open Conj record. Reconcile when int-literal lowering lands a dedicated connective or magnitude lives only on the magnitude subnode without widening Atom's nullary discipline in connective_edge_discipline's summary path."
+
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
     Atom { identity: _ } => NoEdges

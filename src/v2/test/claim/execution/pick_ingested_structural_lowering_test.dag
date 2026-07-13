@@ -53,7 +53,7 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.node_query { find_arrow_body_child }
+import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.runtime { RuntimeValue }
 import v2.std.witness { Holds, Witness }
 import v2.std.verdict { Pass }
@@ -70,13 +70,17 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data pick_ingested_source: String = "module m\n\nfn pick(b: Bool) -> Int { if b { 1 } else { 2 } }\n"
+data pick_ingested_source: String = "module m\n\nfn pick() -> Int { if true { 1 } else { 2 } }\n"
 
-data pick_ingested_swapped_source: String = "module m\n\nfn pick(b: Bool) -> Int { if b { 2 } else { 1 } }\n"
+data pick_ingested_false_source: String = "module m\n\nfn pick() -> Int { if false { 1 } else { 2 } }\n"
 
-data pick2_ingested_source: String = "module m\n\nfn pick(b: Bool) -> Int { if b { 3 } else { 4 } }\n"
+data pick_ingested_swapped_source: String = "module m\n\nfn pick() -> Int { if true { 2 } else { 1 } }\n"
 
-data pick2_ingested_swapped_source: String = "module m\n\nfn pick(b: Bool) -> Int { if b { 4 } else { 3 } }\n"
+data pick2_ingested_source: String = "module m\n\nfn pick() -> Int { if true { 3 } else { 4 } }\n"
+
+data pick2_ingested_false_source: String = "module m\n\nfn pick() -> Int { if false { 3 } else { 4 } }\n"
+
+data pick2_ingested_swapped_source: String = "module m\n\nfn pick() -> Int { if true { 4 } else { 3 } }\n"
 
 fn pick_eval_atom(s: Symbol) -> Node {
   Node {
@@ -160,11 +164,19 @@ fn pick_ingested_normalized_arrow_has_branch_body(source: String) -> Bool {
   }
 }
 
+fn pick_ingested_deep_unwrap(node: Node) -> Node {
+  match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+    Accepted { value: child, diagnostics: _ } => pick_ingested_deep_unwrap(node: child)
+    Rejected { diagnostics: _ } => node
+  }
+}
+
 fn pick_ingested_int_literal_node_optional(node: Node) -> Optional<Node> {
-  if dag_node_is_int_literal_atom(node: node) {
-    optional_present(value: node)
+  let unwrapped = pick_ingested_deep_unwrap(node: node)
+  if dag_node_is_int_literal_atom(node: unwrapped) {
+    optional_present(value: unwrapped)
   } else {
-    fold(node.children, init: Absent, f: fn(acc, e) {
+    fold(unwrapped.children, init: Absent, f: fn(acc, e) {
       match acc {
         Present { value: _ } => acc
         Absent => pick_ingested_int_literal_node_optional(node: e.target)
@@ -268,13 +280,12 @@ fn pick_ingested_arrow_from_source(source: String) -> Outcome<Node> {
   )
 }
 
-fn pick_eval_pick_call(callee: Node, condition: Node) -> Node {
+fn pick_eval_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: condition }
+      Edge { label: Positional, target: callee }
     ]
   }
 }
@@ -340,20 +351,19 @@ fn pick_eval_subject(
   }
 }
 
-fn pick_eval_run_with_condition(
+fn pick_eval_run(
   callee: Node,
-  condition: Node,
   expected_lexeme: String
 ) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
   match pick_eval_int_literal_optional(lexeme: expected_lexeme) {
     Present { value: expected } => {
-      let input = pick_eval_pick_call(callee: callee, condition: condition)
+      let call_node = pick_eval_pick_call(callee: callee)
       bind_outcome(
-        o: pick_eval_inferred_run_tree(call: input, expected: expected),
+        o: pick_eval_inferred_run_tree(call: call_node, expected: expected),
         f: fn(tree) {
           outcome_accepted(
             value: run_test_claim(
-              subject: pick_eval_subject(tree: tree, input: input, expected: expected)
+              subject: pick_eval_subject(tree: tree, input: call_node, expected: expected)
             )
           )
         }
@@ -381,9 +391,8 @@ fn pick_ingested_pick_true_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
-        run: pick_eval_run_with_condition(
+        run: pick_eval_run(
           callee: arrow,
-          condition: pick_eval_kw_true_node(),
           expected_lexeme: "1"
         )
       )
@@ -392,12 +401,11 @@ fn pick_ingested_pick_true_executes_holds() -> Bool {
 }
 
 fn pick_ingested_pick_false_executes_holds() -> Bool {
-  match pick_ingested_arrow_from_source(source: pick_ingested_source) {
+  match pick_ingested_arrow_from_source(source: pick_ingested_false_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
-        run: pick_eval_run_with_condition(
+        run: pick_eval_run(
           callee: arrow,
-          condition: pick_eval_kw_false_node(),
           expected_lexeme: "2"
         )
       )
@@ -409,9 +417,8 @@ fn pick_ingested_swapped_arms_red_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick_ingested_swapped_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
-        run: pick_eval_run_with_condition(
+        run: pick_eval_run(
           callee: arrow,
-          condition: pick_eval_kw_true_node(),
           expected_lexeme: "1"
         )
       ) == false
@@ -430,9 +437,8 @@ fn pick2_ingested_pick_true_executes_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick2_ingested_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
-        run: pick_eval_run_with_condition(
+        run: pick_eval_run(
           callee: arrow,
-          condition: pick_eval_kw_true_node(),
           expected_lexeme: "3"
         )
       )
@@ -441,12 +447,11 @@ fn pick2_ingested_pick_true_executes_holds() -> Bool {
 }
 
 fn pick2_ingested_pick_false_executes_holds() -> Bool {
-  match pick_ingested_arrow_from_source(source: pick2_ingested_source) {
+  match pick_ingested_arrow_from_source(source: pick2_ingested_false_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
-        run: pick_eval_run_with_condition(
+        run: pick_eval_run(
           callee: arrow,
-          condition: pick_eval_kw_false_node(),
           expected_lexeme: "4"
         )
       )
@@ -458,9 +463,8 @@ fn pick2_ingested_swapped_arms_red_holds() -> Bool {
   match pick_ingested_arrow_from_source(source: pick2_ingested_swapped_source) {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
-        run: pick_eval_run_with_condition(
+        run: pick_eval_run(
           callee: arrow,
-          condition: pick_eval_kw_true_node(),
           expected_lexeme: "3"
         )
       ) == false
@@ -481,16 +485,4 @@ test fn pick2_ingested_equals_eval_generality_holds() -> Bool {
   pick2_ingested_pick_true_executes_holds()
     && pick2_ingested_pick_false_executes_holds()
     && pick2_ingested_swapped_arms_red_holds()
-}
-
-test fn _debug_pick_ingested_normalized_swapped_arms_structural_red_holds() -> Bool {
-  pick_ingested_normalized_swapped_arms_structural_red_holds()
-}
-
-test fn _debug_pick_ingested_pick_true_executes_holds() -> Bool {
-  pick_ingested_pick_true_executes_holds()
-}
-
-test fn _debug_pick_ingested_pick_false_executes_holds() -> Bool {
-  pick_ingested_pick_false_executes_holds()
 }

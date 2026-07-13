@@ -72,7 +72,7 @@ data corpus_ci_gate_row_typescript_same_language_source_emit_round_trip: ClaimWi
 
 data corpus_ci_gate_row_add_arrow_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "add arrow eval by execution keystone",
-  entry: "src/v2/test/claim/manual/add_arrow_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/execution/add_arrow_eval_by_execution_test.dag",
   function: "add_arrow_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
