@@ -1,0 +1,211 @@
+module v2.test.long.door_real_module_probe
+
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.compile { TranslateTo, compile_ingest_with_admission, compile_source_root_ingest_with_admission, validate_then_compile }
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_with_admission }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { grammar_validate_for_parse, parse, parse_production }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.diagnostic { port_locus }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data door_real_module_probe_note: String = "PR-2 milestone-1 feasibility receipts: (A) a REAL corpus module (dag/std/determinism.dag — real bytes via filesystem_read, zero imports so zero peer closure) through the GATED v2 door (compile_source_root_ingest_with_admission = assemble -> validate_then_compile with the accumulator-copy root roster live -> emit); (B) the resolve-symbol experiment — the known-suspect quad snippet with a peer module defining list_append, through compile_ingest_with_admission (tokenize -> parse -> normalize -> resolve_with_admission -> door), answering whether the copied-port registry still matches call-head symbols POST-RESOLVE (if the lens reason vanishes here, resolve qualifies heads and the registry needs qualified rows before door-grain enforcement sees real modules)."
+
+fn ingest_row(path: String, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+fn determinism_ingest() -> SourceRootIngest {
+  Cons {
+    head: ingest_row(path: "dag/std/determinism.dag", unit: ^std_determinism_unit),
+    tail: Empty
+  }
+}
+
+fn determinism_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^std, tail: Cons { head: ^determinism, tail: Empty } }
+    },
+    imports: Empty
+  }
+}
+
+type DoorProbeOutcome
+  = DoorAccepted
+  | DoorRejected { head_reason: Symbol }
+
+fn determinism_door_outcome() -> DoorProbeOutcome {
+  match compile_source_root_ingest_with_admission(
+    ingest: determinism_ingest(),
+    admission: determinism_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => DoorAccepted
+    Rejected { diagnostics: d } => DoorRejected { head_reason: d.head.reason }
+  }
+}
+
+data frontier_receipt_note: String = "PINNED frontier receipts (execution-measured 2026-07-13, interpreted door on merged main incl #6527): std.determinism (REAL corpus bytes, zero imports) passes assemble->resolve->infer and reds at the PRE-EXISTING per-node fact_density lens (fact_density_hollow_alias_locus) — the door works on real modules; the existing required roster is not corpus-calibrated. std.error_primitives reds at resolve (resolve_reason_unbound_symbol — generic type params). The synthetic import+peer pair reds at resolve (resolve_ambiguous_export). CONSEQUENCE (receipt, not caution): the PR-2 transport stage MUST be the AuditOnly stopped-line ledger — per-(module, stage, cause) counted refusals over the affected set — whose cause histogram is the burn-down list toward v2-compiles-the-repo, each cause-zero a named flip-to-Blocking trigger. When these receipts change (a cause zeroes), the pinned assertions here go red and the ledger design advances — that is their job."
+
+test fn real_module_determinism_reaches_lens_gates() -> Bool {
+  match determinism_door_outcome() {
+    DoorAccepted => false
+    DoorRejected { head_reason: r } => r == ^fact_density_hollow_alias_locus
+  }
+}
+
+test fn real_module_error_primitives_reds_at_resolve() -> Bool {
+  match error_primitives_door_outcome() {
+    DoorAccepted => false
+    DoorRejected { head_reason: r } => r == ^resolve_reason_unbound_symbol
+  }
+}
+
+data quad_source: String = "module quadmod\n\nimport minialg { list_append }\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+data minialg_source: String = "module minialg\n\nfn list_append(left: Int, right: Int) -> Int {\n  left\n}\n"
+
+type PeerProbe
+  = PeerStageRejected { stage: String }
+  | PeerNormalized { root: Node }
+
+fn normalized_peer(source: String) -> PeerProbe {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^door_probe_grammar_port)
+  match lm.grammar {
+    VoidGrammar => PeerStageRejected { stage: "void_grammar" }
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => PeerStageRejected { stage: "grammar_validate" }
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: source, file: ^door_probe_peer_file, rules: lm.lex) {
+            Rejected { diagnostics: _ } => PeerStageRejected { stage: "tokenize" }
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => PeerStageRejected { stage: "parse" }
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => PeerStageRejected { stage: "normalize" }
+                    Accepted { value: normalized, diagnostics: _ } =>
+                      PeerNormalized { root: normalized }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn error_primitives_ingest() -> SourceRootIngest {
+  Cons {
+    head: ingest_row(path: "dag/std/error_primitives.dag", unit: ^std_error_primitives_unit),
+    tail: Empty
+  }
+}
+
+fn error_primitives_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^std, tail: Cons { head: ^error_primitives, tail: Empty } }
+    },
+    imports: Empty
+  }
+}
+
+fn error_primitives_door_outcome() -> DoorProbeOutcome {
+  match compile_source_root_ingest_with_admission(
+    ingest: error_primitives_ingest(),
+    admission: error_primitives_admission(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => DoorAccepted
+    Rejected { diagnostics: d } => DoorRejected { head_reason: d.head.reason }
+  }
+}
+
+test fn real_module_error_primitives_head_reason_probe() -> Bool {
+  match error_primitives_door_outcome() {
+    DoorAccepted => true
+    DoorRejected { head_reason: r } => probe_reason_as_bool(r: r)
+  }
+}
+
+fn quad_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^quadmod, tail: Empty }
+    },
+    imports: Cons {
+      head: Import {
+        target: Cons { head: ^minialg, tail: Empty },
+        visibility: ImportVisible
+      },
+      tail: Empty
+    }
+  }
+}
+
+fn quad_door_outcome() -> DoorProbeOutcome {
+  match normalized_peer(source: minialg_source) {
+    PeerStageRejected { stage: _ } => DoorRejected { head_reason: ^door_probe_peer_front_end_rejected }
+    PeerNormalized { root: peer } =>
+      match normalized_peer(source: quad_source) {
+        PeerStageRejected { stage: _ } => DoorRejected { head_reason: ^door_probe_subject_front_end_rejected }
+        PeerNormalized { root: subject } =>
+          match resolve_with_admission(
+            lm: dag_language_model(),
+            roots: Cons { head: subject, tail: Cons { head: peer, tail: Empty } },
+            admission: quad_admission()
+          ) {
+            Rejected { diagnostics: d } => DoorRejected { head_reason: d.head.reason }
+            Accepted { value: resolved, diagnostics: _ } =>
+              match validate_then_compile(
+                source: resolved,
+                lenses: [],
+                mode: TranslateTo { target: rust_target_model() }
+              ) {
+                Accepted { value: _, diagnostics: _ } => DoorAccepted
+                Rejected { diagnostics: d } => DoorRejected { head_reason: d.head.reason }
+              }
+          }
+      }
+  }
+}
+
+test fn quad_with_peer_rejects_with_lens_reason() -> Bool {
+  match quad_door_outcome() {
+    DoorAccepted => false
+    DoorRejected { head_reason: r } => r == ^accumulator_copy_poly2_suspect
+  }
+}
+
+test fn quad_with_peer_head_reason_probe() -> Bool {
+  match quad_door_outcome() {
+    DoorAccepted => true
+    DoorRejected { head_reason: r } => probe_reason_as_bool(r: r)
+  }
+}
