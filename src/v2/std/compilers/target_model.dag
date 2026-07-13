@@ -90,6 +90,8 @@ import v2.std.node {
   fold_node,
   match_arm_children_conform_skip_first,
   name_occurrences,
+  node_int_literal_magnitude_node_optional,
+  node_is_int_literal_atom,
   node_rebuild,
   SyntheticOccurrence
 }
@@ -11115,36 +11117,7 @@ fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
   }
 }
 
-data target_value_expr_int_literal_predicate_dissolution_note: String = "🟡 dissolve-on: target_value_expr_is_int_literal_atom and target_value_expr_int_literal_magnitude_node_optional duplicate dag_node_is_int_literal_atom / dag_int_literal_magnitude_node_optional in extdeps/languages/dag.dag — std/compilers cannot import extdeps (layer DAG); DISSOLVES WHEN int-literal atom predicates live in std as single authority both compiler and extdeps import."
-
-fn target_value_expr_is_int_literal_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
-    _ => false
-  }
-}
-
-fn target_value_expr_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
-  if target_value_expr_is_int_literal_atom(node: node) {
-    fold(node.children, init: optional_absent(), f: fn(acc, edge) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match edge {
-            Edge { label: Named { name: field }, target: magnitude } =>
-              if field == ^integer_literal_magnitude_field {
-                optional_present(value: magnitude)
-              } else {
-                optional_absent()
-              }
-            Edge { label: Positional, target: _ } => optional_absent()
-          }
-      }
-    })
-  } else {
-    optional_absent()
-  }
-}
+data target_value_expr_int_literal_emit_scaffold_note: String = "🟡 dissolve-on: target_value_expr_int_literal_magnitude_binding maps only magnitudes 1/2 to legacy pick-lit bindings for existing emit round-trip witnesses; magnitudes 3+ refuse transform_shape_invalid until target int-literal emission lowers through a general decimal/text path (same authority as integer_lexeme_to_int / dag_int_literal_node_from_lexeme). DISSOLVES WHEN target_value_expr_project_int_literal_atom emits arbitrary magnitudes without per-value binding rows."
 
 fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> Optional<Symbol> {
   if magnitude == 1 {
@@ -11159,7 +11132,7 @@ fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> Optional<S
 data target_value_expr_int_literal_emit_scaffold_note: String = "🟡 dissolve-on: target_value_expr_int_literal_magnitude_binding maps only magnitudes 1/2 to legacy pick-lit bindings for existing emit round-trip witnesses; magnitudes 3+ refuse transform_shape_invalid until target int-literal emission lowers through a general decimal/text path (same authority as integer_lexeme_to_int / dag_int_literal_node_from_lexeme). DISSOLVES WHEN target_value_expr_project_int_literal_atom emits arbitrary magnitudes without per-value binding rows."
 
 fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValueExpression> {
-  match target_value_expr_int_literal_magnitude_node_optional(node: node) {
+  match node_int_literal_magnitude_node_optional(node: node) {
     Present { value: magnitude_node } =>
       match integer_decimal_magnitude_node_to_int(node: magnitude_node) {
         Accepted { value: magnitude, diagnostics: _ } =>
@@ -11265,7 +11238,7 @@ fn target_value_expr_project_atom_literal(node: Node) -> Outcome<TargetValueExpr
             target_value_expr_project_pick_literal_atom(id: inner_id)
           }
         )
-      } else if target_value_expr_is_int_literal_atom(node: node) {
+      } else if node_is_int_literal_atom(node: node) {
         target_value_expr_project_int_literal_atom(node: node)
       } else {
         target_value_expr_project_pick_literal_atom(id: id)

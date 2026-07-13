@@ -97,6 +97,8 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence,
   is_empty_conj_root,
+  node_int_literal_magnitude_node_optional,
+  node_is_int_literal_atom,
   OccurrenceId,
 }
 import v2.std.node_query { find_named_child }
@@ -4207,10 +4209,7 @@ fn dag_node_is_kw_false_atom(node: Node) -> Bool {
 }
 
 fn dag_node_is_int_literal_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
-    _ => false
-  }
+  node_is_int_literal_atom(node: node)
 }
 
 fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: OccurrenceId) -> Node {
@@ -4259,16 +4258,7 @@ fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> 
 }
 
 fn dag_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
-  if dag_node_is_int_literal_atom(node: node) {
-    fold(node.children, init: optional_absent(), f: fn(acc, edge) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => dag_int_literal_magnitude_edge_target_optional(edge: edge)
-      }
-    })
-  } else {
-    optional_absent()
-  }
+  node_int_literal_magnitude_node_optional(node: node)
 }
 
 fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {

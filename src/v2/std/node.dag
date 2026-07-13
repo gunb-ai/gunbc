@@ -221,32 +221,54 @@ type EdgeDiscipline
 
   | ArrowBodyEdges
 
-data atom_payload_labeled_edges_scaffold_note: String = "🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on ^dag_token_int_literal via ^integer_literal_magnitude_field) — atom_connective_edge_discipline(child_count) is the single authority (NoEdges when child_count==0, LabeledEdges otherwise); connective_edge_discipline_for_children delegates Atom through it. Not a new connective: the payload is a typed named field, not an open Conj record. Reconcile when int-literal lowering lands a dedicated connective or magnitude lives only on the magnitude subnode without widening Atom discipline."
+data atom_payload_labeled_edges_scaffold_note: String = "🟡 dissolve-on: Wave-1 A1 interim — ^dag_token_int_literal Atoms carry a single ^integer_literal_magnitude_field child; well_formed uses int_literal_atom_edges_conform (Atom substrate stays NoEdges in connective_edge_discipline). DISSOLVES WHEN dedicated IntLiteral connective lands in std/connectives (Track B #6542 fn_decl→Arrow keystone) — delete int_literal_atom_edges_conform special-case and magnitude-on-Atom payload."
 
-fn atom_connective_edge_discipline(child_count: Int) -> EdgeDiscipline {
-  if child_count == 0 {
-    NoEdges
-  } else {
-    LabeledEdges
+fn node_is_int_literal_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
+    _ => false
   }
+}
+
+fn node_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
+  match edge {
+    Edge { label: Named { name: field }, target: magnitude } =>
+      if field == ^integer_literal_magnitude_field {
+        Present { value: magnitude }
+      } else {
+        Absent
+      }
+    Edge { label: Positional, target: _ } => Absent
+  }
+}
+
+fn node_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
+  if node_is_int_literal_atom(node: node) {
+    fold(node.children, init: Absent, f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => node_int_literal_magnitude_edge_target_optional(edge: edge)
+      }
+    })
+  } else {
+    Absent
+  }
+}
+
+fn int_literal_atom_edges_conform(node: Node) -> Bool {
+  node_is_int_literal_atom(node: node)
+    && name_occurrences(name: ^integer_literal_magnitude_field, children: node.children) == 1
+    && edges_conform(children: node.children, d: LabeledEdges)
 }
 
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
-    Atom { identity: _ } => atom_connective_edge_discipline(child_count: 0)
+    Atom { identity: _ } => NoEdges
     Conj => LabeledEdges
     Disj => LabeledEdges
     Arrow => ArrowBodyEdges
     Cardinality => PositionalEdges
     Instantiation => PositionalEdges
-  }
-}
-
-fn connective_edge_discipline_for_children(c: Connective, children: List<Edge>) -> EdgeDiscipline {
-  match c {
-    Atom { identity: _ } =>
-      atom_connective_edge_discipline(child_count: count(children))
-    _ => connective_edge_discipline(c: c)
   }
 }
 
@@ -441,11 +463,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
 
 fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
   match c {
-    Atom { identity: _ } =>
-      edges_conform(
-        children: children,
-        d: connective_edge_discipline_for_children(c: c, children: children)
-      )
+    Atom { identity: _ } => edges_conform(children: children, d: NoEdges)
     Conj => edges_conform(children: children, d: LabeledEdges)
     Disj => edges_conform(children: children, d: LabeledEdges)
     Arrow => arrow_body_edges_conform(children: children)
@@ -510,9 +528,18 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
 }
 fn locally_well_formed(n: Node) -> Bool {
   match n.kind {
-      TypeNode { connective: c } => connective_edges_conform(children: n.children, c: c)
-      ComputationNode { behavior: b } => behavior_edges_conform(children: n.children, b: b)
-    }
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: id } =>
+          if id == ^dag_token_int_literal {
+            int_literal_atom_edges_conform(node: n)
+          } else {
+            connective_edges_conform(children: n.children, c: c)
+          }
+        _ => connective_edges_conform(children: n.children, c: c)
+      }
+    ComputationNode { behavior: b } => behavior_edges_conform(children: n.children, b: b)
+  }
 }
 fn well_formed(n: Node) -> Bool {
   fold_node(
@@ -548,7 +575,15 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
 fn node_edge_discipline(n: Node) -> EdgeDiscipline {
   match n.kind {
     TypeNode { connective: c } =>
-      connective_edge_discipline_for_children(c: c, children: n.children)
+      match c {
+        Atom { identity: id } =>
+          if id == ^dag_token_int_literal && count(n.children) > 0 {
+            LabeledEdges
+          } else {
+            NoEdges
+          }
+        _ => connective_edge_discipline(c: c)
+      }
     ComputationNode { behavior: b } => behavior_edge_discipline(b: b)
   }
 }
