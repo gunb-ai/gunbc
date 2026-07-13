@@ -97,21 +97,21 @@ fn body_lowering_projection_lowers_to_transform() -> Bool {
         Absent => false
         Present { value: postfix } =>
           match body_lower_unwrap_captured(shell: postfix) {
-                Present { value: captured } =>
-                  match body_lower_try_postfix_projection(node: captured) {
-                    Rejected { diagnostics: _ } => false
-                    Accepted { value: found, diagnostics: _ } =>
-                      match found {
-                        Present { value: lowered } =>
-                          match lowered.kind {
-                            ComputationNode { behavior: Transform } => true
-                            _ => false
-                          }
-                        Absent => false
+            Present { value: captured } =>
+              match body_lower_try_postfix_projection(node: captured) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: found, diagnostics: _ } =>
+                  match found {
+                    Present { value: lowered } =>
+                      match lowered.kind {
+                        ComputationNode { behavior: Transform } => true
+                        _ => false
                       }
+                    Absent => false
                   }
-                Absent => false
               }
+            Absent => false
+          }
       }
   }
 }
@@ -134,13 +134,13 @@ fn body_lowering_field_access_postfix_rejects() -> Bool {
             Absent => false
             Present { value: postfix } =>
               match body_lower_unwrap_captured(shell: postfix) {
-                    Present { value: captured } =>
-                      match body_lower_try_postfix_projection(node: captured) {
-                        Rejected { diagnostics: _ } => true
-                        Accepted { value: _, diagnostics: _ } => false
-                      }
-                    Absent => false
+                Present { value: captured } =>
+                  match body_lower_try_postfix_projection(node: captured) {
+                    Rejected { diagnostics: _ } => true
+                    Accepted { value: _, diagnostics: _ } => false
                   }
+                Absent => false
+              }
           }
       }
   }
