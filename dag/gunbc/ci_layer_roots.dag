@@ -114,7 +114,7 @@ data accumulator_copy_roster_gate_exclusion_note: String = "The three accumulato
 
 data lever_a_local_receipt_witness_exclusion_note: String = "dag/test/claim/lever_a_local_receipt_witness_test.dag is operator-ruled OFFLINE (2026-07-11: witness_touched_path_dispositions_hold cold-scans compile_clean_shard_entry_paths via module_declaration_facts once per scoped disposition row — O(rows) full dag entry-tree walks, 85m+ CI timeout / OOM when selection runs it after lens_verdict on cli_run.dag PRs; run via scripts/lever_a_local_verify.sh). Excluded from discovery for the same structural reason as accumulator_copy_roster_gate: the scoped rows read the shard roster at runtime — invisible to import-closure attribution — so skip-before-resolve cannot honestly bound cost. Dissolve-on: single-roster memo in tools.dag_compile_clean_scope lands AND live-read classification walks import closure for module_declaration_facts consumers; then re-enroll through the floor owner's lane."
 
-data whole_tree_strict_resolve_scaffold_exclusion_note: String = "The scaffold rows below (extdeps/spice_rc_passive_deck_claims_test.dag through workflow/manual_corpus_eval.dag) are the strict-resolve-broken scaffold set, baked as single authority per operator ruling 2026-07-13 ('just make it single authority') — previously re-derived per probe run as --exclude-subpath args (M0/M1a receipts, docs/plans/v1-run-stability-throughline.md), a parallel representation this bake dissolves. Class: family-eval/testgen/workflow eval scaffolds that fail v1 strict whole-tree resolve (15 direct reds) plus their importers (7 transitive), reconstructed by execution in 2 iterations against the 2026-07-13 tree. Consumers are probe/instrument/census class only (measure_whole_tree_resolve, capture_func_env_semantic_oracle, wiring_liveness_whole_tree, measure_dependency_view_build, fn_arrow_decl_substrate census) — no witness-discovery or CI-gate coverage narrows. Dissolve each row on: its scaffold dissolves or its resolve repairs; a row that excludes nothing is dead weight, delete it."
+data whole_tree_strict_resolve_scaffold_exclusion_note: String = "The per-file rows below (extdeps/spice_rc_passive_deck_claims_test.dag onward) are the strict-resolve-broken set, baked as single authority per operator ruling 2026-07-13 ('just make it single authority') — previously re-derived per probe run as --exclude-subpath args (M0/M1a receipts, docs/plans/v1-run-stability-throughline.md), a parallel representation this bake dissolves. Audited file-by-file 2026-07-13 (24 files, 5-group sweep with per-file execution receipts): 10 genuinely dead scaffolds were DELETED with their rows (the Wave-A rung evals, the A.1.5a inprocess_equivalence one-shot, the shadow-CI-era lens/testgen/ claim wrappers, manual_corpus_eval, lens/idempotency/subject_roster); every row remaining guards a LIVE file — floor-discovered witnesses or their roster/receipt/lens dependencies, proven green by claim_batch execution. Their strict-resolve reds are universe-relative artifacts, NOT tree rot: each imports modules that EXIST in-tree (v2.test.manual.eval_runtime, v2.test.manual.connective_anchors, test fixtures) but sit behind this list's own blanket '/test/' and 'test/fixture/' rows, so the probe universe drops the import target while keeping the importer. Consumers are probe/instrument/census class only (measure_whole_tree_resolve, capture_func_env_semantic_oracle, wiring_liveness_whole_tree, measure_dependency_view_build, fn_arrow_decl_substrate census) — no witness-discovery or CI-gate coverage narrows. Dissolve each row on: its file relocates under a /test/ path (leaving the probe universe together with its import targets) or the blanket /test/ exclusion policy changes so its resolve repairs; a row that excludes nothing is dead weight, delete it."
 
 data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
   "test/fixture/",
@@ -127,23 +127,15 @@ data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
   "lens/idempotency/write_effect.dag",
   "lens/parallelism/data_dependency.dag",
   "lens/testgen.dag",
-  "lens/testgen/",
   "workflow/affected_testgen_ci_runner.dag",
-  "workflow/branch_dispatch_rung34_eval.dag",
-  "workflow/branch_dispatch_rung8_eval.dag",
-  "workflow/inprocess_equivalence.dag",
   "workflow/lens_discrimination_family_eval_test.dag",
   "workflow/lens_synthesis_family_eval_test.dag",
-  "workflow/loop_linear_bound_rung34_eval.dag",
-  "workflow/loop_linear_bound_rung8_eval.dag",
   "workflow/testclaim_corpus_runner.dag",
   "lens/idempotency/sg_claims_test.dag",
-  "lens/idempotency/subject_roster.dag",
   "lens/idempotency/family_receipt.dag",
   "lens/parallelism/family_receipt.dag",
   "workflow/lens_idempotency_family_eval_test.dag",
-  "workflow/lens_parallelism_family_eval_test.dag",
-  "workflow/manual_corpus_eval.dag"
+  "workflow/lens_parallelism_family_eval_test.dag"
 ]
 
 fn whole_tree_resolve_exclusion_substrings() -> List<String> {
