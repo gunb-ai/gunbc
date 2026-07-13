@@ -155,12 +155,18 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
+import std.algebra { Empty }
 import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,
   integer_decimal_magnitude_node_to_int,
   integer_string_to_decimal_digits_optional,
-  Int
+  DecimalMagnitude,
+  DecimalNonZero,
+  DecimalNonZeroMagnitude,
+  Int,
+  NonZeroD1,
+  NonZeroD2
 }
 import v2.std.text { String }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
@@ -4207,22 +4213,27 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
+fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: OccurrenceId) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
+    children: [
+      Edge {
+        label: Named { name: ^integer_literal_magnitude_field },
+        target: integer_decimal_magnitude_node(magnitude: magnitude)
+      }
+    ],
+    occurrence_id: occurrence_id
+  }
+}
+
 fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: OccurrenceId) -> Outcome<Node> {
   match integer_string_to_decimal_digits_optional(s: lexeme) {
     Present { value: digits } =>
       outcome_accepted(
-        value: Node {
-          kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
-          children: [
-            Edge {
-              label: Named { name: ^integer_literal_magnitude_field },
-              target: integer_decimal_magnitude_node(
-                magnitude: decimal_digits_to_magnitude(digits: digits)
-              )
-            }
-          ],
+        value: dag_int_literal_node_from_magnitude(
+          magnitude: decimal_digits_to_magnitude(digits: digits),
           occurrence_id: occurrence_id
-        }
+        )
       )
     Absent =>
       outcome_rejected(
@@ -4442,27 +4453,41 @@ fn dag_pick_if_body_from_arms(
   }
 }
 
-fn dag_int_literal_fixture_node(lexeme: String) -> Node {
-  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
-    Accepted { value: node, diagnostics: _ } => node
-    Rejected { diagnostics: _ } =>
-      dag_type_atom_node(identity: ^dag_int_literal_lexeme_invalid)
-  }
+fn dag_int_literal_fixture_one() -> Node {
+  dag_int_literal_node_from_magnitude(
+    magnitude: DecimalNonZero {
+      magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
+    },
+    occurrence_id: SyntheticOccurrence
+  )
+}
+
+fn dag_int_literal_fixture_two() -> Node {
+  dag_int_literal_node_from_magnitude(
+    magnitude: DecimalNonZero {
+      magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: Empty }
+    },
+    occurrence_id: SyntheticOccurrence
+  )
+}
+
+fn dag_int_literal_fixture_node(lexeme: String) -> Outcome<Node> {
+  dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence)
 }
 
 fn dag_pick_if_body_node() -> Node {
   dag_pick_if_body_from_arms(
     condition: dag_type_atom_node(identity: ^dag_token_kw_true),
-    then_arm: dag_int_literal_fixture_node(lexeme: "1"),
-    else_arm: dag_int_literal_fixture_node(lexeme: "2")
+    then_arm: dag_int_literal_fixture_one(),
+    else_arm: dag_int_literal_fixture_two()
   )
 }
 
 fn dag_pick_if_body_swapped_arms_node() -> Node {
   dag_pick_if_body_from_arms(
     condition: dag_type_atom_node(identity: ^dag_token_kw_true),
-    then_arm: dag_int_literal_fixture_node(lexeme: "2"),
-    else_arm: dag_int_literal_fixture_node(lexeme: "1")
+    then_arm: dag_int_literal_fixture_two(),
+    else_arm: dag_int_literal_fixture_one()
   )
 }
 

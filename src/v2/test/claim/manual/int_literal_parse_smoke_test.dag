@@ -13,7 +13,7 @@ import v2.extdeps.languages.dag {
   dag_loop_source_text,
   dag_pick_source_text
 }
-import v2.std.compilers.lexing { token_stream_all, token_stream_remaining }
+import v2.std.compilers.lexing { token_stream_all, token_stream_first, token_stream_remaining }
 import v2.std.grammar { GrammarProduction, GrammarRoot }
 import v2.std.collection { Absent, Optional, Present, Set, list_at_optional, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected, port_locus }

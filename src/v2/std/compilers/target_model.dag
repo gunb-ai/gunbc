@@ -11115,6 +11115,8 @@ fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
   }
 }
 
+data target_value_expr_int_literal_predicate_dissolution_note: String = "🟡 dissolve-on: target_value_expr_is_int_literal_atom and target_value_expr_int_literal_magnitude_node_optional duplicate dag_node_is_int_literal_atom / dag_int_literal_magnitude_node_optional in extdeps/languages/dag.dag — std/compilers cannot import extdeps (layer DAG); DISSOLVES WHEN int-literal atom predicates live in std as single authority both compiler and extdeps import."
+
 fn target_value_expr_is_int_literal_atom(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal

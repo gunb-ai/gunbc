@@ -1179,7 +1179,7 @@ fn eval_binding_key_node(sym: Symbol) -> Node {
 
 fn eval_environment_binding_key(declaration: Node) -> EnvironmentBindingKey {
   EnvironmentBindingKey {
-    declaration: node_for_structural_equality(n: declaration)
+    declaration: declaration
   }
 }
 

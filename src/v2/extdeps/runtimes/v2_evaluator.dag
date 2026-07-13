@@ -389,9 +389,7 @@ fn v2_eval_bind_value(
     value: EvaluationEnvironment {
       bindings: map_insert(
         m: env.bindings,
-        key: EnvironmentBindingKey {
-          declaration: node_for_structural_equality(n: key.declaration)
-        },
+        key: key,
         value: value
       )
     },
