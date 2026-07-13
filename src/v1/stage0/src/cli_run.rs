@@ -12228,6 +12228,25 @@ mod nfr_tests {
     }
 
     #[test]
+    fn nfr_roster_debug_counts() {
+        eprintln!(
+            "unrostered={} stale={}",
+            non_fold_residue_unrostered_count(),
+            non_fold_residue_stale_roster_count()
+        );
+        for s in NON_FOLD_RESIDUE_ROSTER {
+            if !non_fold_residue_live_sites().iter().any(|l| l == *s) {
+                eprintln!("stale roster entry: {s}");
+            }
+        }
+        for s in non_fold_residue_live_sites() {
+            if !NON_FOLD_RESIDUE_ROSTER.contains(&s.as_str()) {
+                eprintln!("unrostered live site: {s}");
+            }
+        }
+    }
+
+    #[test]
     fn coproduct_index_finds_sums_not_records() {
         let f = files(&[(
             "t.dag",
