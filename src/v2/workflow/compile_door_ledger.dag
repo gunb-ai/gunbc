@@ -18,7 +18,7 @@ import v2.lens.module_graph {
 import v2.lens.reference_deps { reference_deps_ingest_source_text, reference_qn_from_import_decl_strict }
 import v2.std.algebra { fold_list, length, list_reverse }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { Absent, List, Present }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -272,4 +272,73 @@ fn ledger_cause_count(rows: List<DoorLedgerRow>, reason: Symbol) -> Int {
 
 fn ledger_all_compiled(rows: List<DoorLedgerRow>) -> Bool {
   ledger_refused_count(rows: rows) == 0
+}
+
+data flip_trigger_table_law: String = "The per-lens flip-to-Blocking triggers, modeled as DATA in the carrier (DESIGN 6: the mark on the carrier is the authority, no parallel-ledger markdown). Each known frontier cause maps to its OWNING lane and the named condition that flips its gate from AuditOnly-counted to Blocking. Two lane shapes carry a per-cause flip (ThisLaneCalibration, SharedSelfHostCriticalPath): when that cause's count reaches zero over the whole corpus, the owning lane flips the cause to Blocking and the histogram assertion pinning it goes red — the flip is a receipt, not a toggle. MigrationOwned causes carry NO per-cause trigger (nimble-boar-198 contract): the whole class dissolves BY CONSTRUCTION at the namespace-only containment flip, so counting them is the only action here. The table is fail-closed: a refused cause with no ownership row is an UNATTRIBUTED deficit (cause_is_attributed = false), the honest 'a new frontier cause appeared, someone must own it' signal — never silently bucketed. This is why the ledger is AuditOnly and NOT wired as a CI floor gate today: the seed compile path has no lens stage, so there is no stopped line to gate; wiring a per-PR affected-set gate now would either block every PR (the whole corpus refuses) or pass despite refusals (the DESIGN 5 absorbing fallback). The gate wiring is DEFERRED behind a named trigger: v2 interpreted compile becomes the actual compile path (the migration), at which point the door's fail-closed rejection IS compilation failure and this ledger becomes its stopped-line audit."
+
+type CauseLane
+  = ThisLaneCalibration
+  | SharedSelfHostCriticalPath
+  | MigrationOwned
+
+type CauseOwnership {
+  cause: Symbol
+  lane: CauseLane
+  flip_trigger: String
+}
+
+data known_frontier_causes: List<CauseOwnership> = [
+  CauseOwnership {
+    cause: ^fact_density_hollow_alias_locus,
+    lane: ThisLaneCalibration,
+    flip_trigger: "fact_density subtree roster corpus-calibrated (smart-eagle burn-down); flips to Blocking when the count zeroes — calibration must never become relaxing the lens"
+  },
+  CauseOwnership {
+    cause: ^resolve_reason_unbound_symbol,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "resolve grows generic type-param binding (sharp-bee std/logic thread); flips to Blocking when the count zeroes"
+  },
+  CauseOwnership {
+    cause: ^resolve_ambiguous_export,
+    lane: MigrationOwned,
+    flip_trigger: "no per-cause trigger — dissolves by construction at the namespace-only containment flip (admit_named_exports flat-merge replaced by position-distinct containment; nimble-boar-198)"
+  },
+  CauseOwnership {
+    cause: ^parse_grammar_choice_overlap_residue,
+    lane: MigrationOwned,
+    flip_trigger: "no per-cause trigger — dissolves by construction at phase-3 import-grammar deletion / grammar-surgery (nimble-boar-198)"
+  }
+]
+
+fn cause_ownership_lookup(cause: Symbol) -> Optional<CauseOwnership> {
+  fold_list(
+    xs: known_frontier_causes,
+    empty: optional_absent(),
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: found } => optional_present(value: found)
+        Absent =>
+          if row.cause == cause {
+            optional_present(value: row)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn cause_is_attributed(cause: Symbol) -> Bool {
+  match cause_ownership_lookup(cause: cause) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn all_refused_causes_attributed(rows: List<DoorLedgerRow>) -> Bool {
+  fold_list(
+    xs: ledger_cause_histogram(rows: rows),
+    empty: true,
+    cons: fn(acc, row) { acc && cause_is_attributed(cause: row.reason) }
+  )
 }

@@ -1,0 +1,61 @@
+module v2.test.compile_door_ledger_ownership
+
+import v2.std.collection { Absent, Present }
+import v2.std.logic { Bool }
+import v2.workflow.compile_door_ledger {
+  MigrationOwned,
+  SharedSelfHostCriticalPath,
+  ThisLaneCalibration,
+  cause_is_attributed,
+  cause_ownership_lookup
+}
+
+data ownership_witness_note: String = "Fast pure receipt (no door, no live tree) for the flip-trigger table: every frontier cause the histogram receipts pin is attributed to its owning lane, and an unknown cause is fail-closed UNATTRIBUTED (not silently bucketed). This is the DESIGN 5 tell that the burn-down table stays honest — a new frontier cause appearing over an affected set surfaces as cause_is_attributed = false, forcing an ownership decision rather than absorbing it. Pairs with the slow histogram witness in v2.test.long.compile_door_ledger, which pins the counts; this pins the ATTRIBUTION."
+
+fn lane_ok_this_lane(cause: Symbol) -> Bool {
+  match cause_ownership_lookup(cause: cause) {
+    Present { value: row } =>
+      match row.lane {
+        ThisLaneCalibration => true
+        SharedSelfHostCriticalPath => false
+        MigrationOwned => false
+      }
+    Absent => false
+  }
+}
+
+fn lane_ok_shared(cause: Symbol) -> Bool {
+  match cause_ownership_lookup(cause: cause) {
+    Present { value: row } =>
+      match row.lane {
+        ThisLaneCalibration => false
+        SharedSelfHostCriticalPath => true
+        MigrationOwned => false
+      }
+    Absent => false
+  }
+}
+
+fn lane_ok_migration(cause: Symbol) -> Bool {
+  match cause_ownership_lookup(cause: cause) {
+    Present { value: row } =>
+      match row.lane {
+        ThisLaneCalibration => false
+        SharedSelfHostCriticalPath => false
+        MigrationOwned => true
+      }
+    Absent => false
+  }
+}
+
+test fn every_pinned_cause_is_attributed_to_its_lane() -> Bool {
+  lane_ok_this_lane(cause: ^fact_density_hollow_alias_locus)
+    && lane_ok_shared(cause: ^resolve_reason_unbound_symbol)
+    && lane_ok_migration(cause: ^resolve_ambiguous_export)
+    && lane_ok_migration(cause: ^parse_grammar_choice_overlap_residue)
+}
+
+test fn unknown_cause_is_fail_closed_unattributed() -> Bool {
+  cause_is_attributed(cause: ^some_unmodeled_future_frontier_cause) == false
+    && cause_is_attributed(cause: ^fact_density_hollow_alias_locus) == true
+}
