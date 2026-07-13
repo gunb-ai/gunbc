@@ -2823,6 +2823,92 @@ fn resolve_entry_graph_with_index(
     resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
 }
 
+/// Per-entry stage attribution for the one-lump `resolve_nanos` (run-stability
+/// throughline, docs/plans/v1-run-stability-throughline.md): per-entry resolve cost
+/// was a single undifferentiated number, so which stage to memoize at module grain
+/// could not be chosen by receipt. Filled per entry by `resolve_entry_with_parse_cache`
+/// (reconcile internals accumulate their own rows) through a worker-local slot — each
+/// floor worker resolves its entries sequentially on its own thread, so a thread-local
+/// is per-worker-correct at width > 1, unlike the process-global last-writer-wins
+/// `phase_profile` sampler, which is explicitly not attribution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ResolveStageNanos {
+    /// `load_sources_for_entry_with_index` inside the timed window (closure walk over the index).
+    pub load: u128,
+    /// Parse-cache assembly loop: tokenize+parse on miss, cache clone on hit.
+    pub parse: u128,
+    /// `resolve_modules` + its blocking-diagnostic scan (per-module import resolution, closure topo/dup).
+    pub resolve: u128,
+    /// `normalize_graph` + its blocking-diagnostic scan (pure per-module diagnostics).
+    pub normalize: u128,
+    /// Genuine `typecheck_module` computes inside reconcile (typed-cache misses only).
+    pub typecheck_compute: u128,
+    /// `collect_parent_envs` calls inside reconcile (every module, cache hit or miss).
+    pub parent_envs: u128,
+    /// Reconcile total minus the two rows above: variant surfaces, registry merge,
+    /// transitive-service expansion, the three rewire passes, emit-graph info — the
+    /// whole-closure assembly residue that reruns per entry even at 100% cache hits.
+    pub reconcile_assembly: u128,
+    /// `extract_ownership_proofs` + its diagnostics walk.
+    pub ownership: u128,
+}
+
+impl ResolveStageNanos {
+    pub fn accumulate(&mut self, other: &ResolveStageNanos) {
+        self.load += other.load;
+        self.parse += other.parse;
+        self.resolve += other.resolve;
+        self.normalize += other.normalize;
+        self.typecheck_compute += other.typecheck_compute;
+        self.parent_envs += other.parent_envs;
+        self.reconcile_assembly += other.reconcile_assembly;
+        self.ownership += other.ownership;
+    }
+
+    /// Sum of the attributed stages; the caller's lump minus this is the
+    /// unattributed residue (early cache-hit returns, diagnostic formatting).
+    pub fn attributed_total(&self) -> u128 {
+        self.load
+            + self.parse
+            + self.resolve
+            + self.normalize
+            + self.typecheck_compute
+            + self.parent_envs
+            + self.reconcile_assembly
+            + self.ownership
+    }
+}
+
+thread_local! {
+    static RESOLVE_STAGE_SLOT: std::cell::Cell<ResolveStageNanos> =
+        const { std::cell::Cell::new(ResolveStageNanos {
+            load: 0,
+            parse: 0,
+            resolve: 0,
+            normalize: 0,
+            typecheck_compute: 0,
+            parent_envs: 0,
+            reconcile_assembly: 0,
+            ownership: 0,
+        }) };
+}
+
+fn resolve_stage_slot_reset() {
+    RESOLVE_STAGE_SLOT.with(|s| s.set(ResolveStageNanos::default()));
+}
+
+fn resolve_stage_slot_add(update: impl FnOnce(&mut ResolveStageNanos)) {
+    RESOLVE_STAGE_SLOT.with(|s| {
+        let mut v = s.get();
+        update(&mut v);
+        s.set(v);
+    });
+}
+
+fn resolve_stage_slot_snapshot() -> ResolveStageNanos {
+    RESOLVE_STAGE_SLOT.with(|s| s.get())
+}
+
 fn resolve_entry_with_parse_cache(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -2834,12 +2920,15 @@ fn resolve_entry_with_parse_cache(
     ),
     String,
 > {
+    resolve_stage_slot_reset();
     set_phase(FloorPhase::Resolve, entry_file);
+    let load_started = std::time::Instant::now();
     let sources = load_sources_for_entry_with_index(
         &index.source_files,
         &index.module_graph_facts,
         entry_file,
     )?;
+    resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
@@ -2866,6 +2955,7 @@ fn resolve_entry_with_parse_cache(
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
 
+    let parse_started = std::time::Instant::now();
     for source in &sources {
         let cached = index.parse_cache.borrow().get(&source.path).cloned();
 
@@ -2909,7 +2999,9 @@ fn resolve_entry_with_parse_cache(
 
     let source_indices = Rc::new(si_map);
     let global_table = index.intern_table.borrow().clone();
+    resolve_stage_slot_add(|s| s.parse += parse_started.elapsed().as_nanos());
 
+    let resolve_started = std::time::Instant::now();
     let graph =
         v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
 
@@ -2920,7 +3012,9 @@ fn resolve_entry_with_parse_cache(
     {
         return Err(format_error_nodes(&graph.diagnostics, &source_indices));
     }
+    resolve_stage_slot_add(|s| s.resolve += resolve_started.elapsed().as_nanos());
 
+    let normalize_started = std::time::Instant::now();
     let norm = v1_compiler_normalize::normalize_graph(graph.clone(), source_indices.clone());
 
     if norm
@@ -2930,8 +3024,10 @@ fn resolve_entry_with_parse_cache(
     {
         return Err(format_error_nodes(&norm.diagnostics, &source_indices));
     }
+    resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
     set_phase(FloorPhase::Typecheck, entry_file);
+    let reconcile_started = std::time::Instant::now();
     let typed = reconcile_with_typed_cache(
         norm.graph.clone(),
         source_indices.clone(),
@@ -2939,6 +3035,14 @@ fn resolve_entry_with_parse_cache(
         &index.typed_module_cache,
         &index.module_source_identity,
     )?;
+    // Assembly residue = reconcile wall minus the per-module rows its internals
+    // accumulated into the slot during this call (typecheck computes + parent envs).
+    let reconcile_total = reconcile_started.elapsed().as_nanos();
+    resolve_stage_slot_add(|s| {
+        s.reconcile_assembly += reconcile_total.saturating_sub(
+            s.typecheck_compute + s.parent_envs,
+        );
+    });
 
     for d in typed.diagnostics.iter() {
         log_discovery_advisory_typecheck(d, &source_indices, typecheck_gate);
