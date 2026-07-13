@@ -34,7 +34,7 @@ func run_frontier_probe_survey_gate() -> Bool {
   let root = git.Core.Toplevel()
   let survey_bin = witness_bin(var_name: "FRONTIER_PROBE_SURVEY", bin_name: "frontier_probe_survey")
   if witness_bin_ensure_built_typed(root: root.path, bin: survey_bin) {
-    let target_ready = shell.Mkdir.Parents(path: concat(root.path, "/target/frontier-probe-survey"))
+    let target_ready = shell.Mkdir.Parents(path: concat(root.path, concat("/", survey_manifest_dir)))
     if target_ready.success {
       let emitted = gunbc.WitnessBin.Run(
         workdir: root.path,
