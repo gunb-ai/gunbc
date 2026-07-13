@@ -1,6 +1,7 @@
 module gunbc.host_standup
 
 import std.types { List, String, NonEmptyStr, Bool, Int }
+import std.measure { millisecond }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.effects { IdempotencyEvidence }
@@ -23,6 +24,11 @@ import gunbc.os_install_mechanism {
 import gunbc.host_converge { fleet_converge_policy, ConvergePolicy }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import product.placement_supply { HostIdentity }
+import std.upsert_decision { ObservationVerdict, Converged, Absent }
+import gunbc.host_standup_assimilation_deduction {
+  srv3_pre_install_actuation_verdict,
+  deduce_os_install_actuated_satisfied,
+}
 
 type HostStandupPrefixPhase
   = BmcCredentialConverge
@@ -390,11 +396,38 @@ fn host_standup_step_is_gap(step: HostStandupStep) -> Bool {
 }
 
 fn host_standup_step_is_effective_gap(step: HostStandupStep) -> Bool {
+  host_standup_step_is_effective_gap_at_actuation_verdict(
+    step: step,
+    verdict: srv3_pre_install_actuation_verdict(elapsed: millisecond(count: 0)),
+  )
+}
+
+fn host_standup_step_is_effective_gap_at_actuation_verdict(
+  step: HostStandupStep,
+  verdict: ObservationVerdict,
+) -> Bool {
   match step.phase {
+    Prefix { phase: OsInstallActuated } =>
+      !deduce_os_install_actuated_satisfied(verdict: verdict)
+        && host_standup_step_is_gap(step: step)
+    Prefix { phase: _ } => host_standup_step_is_gap(step: step)
     Assimilation { phase: GreenPlaceReadiness } =>
       !host_standup_p3_gunbc_pinned_tree_landed || host_standup_step_is_gap(step: step)
-    _ => host_standup_step_is_gap(step: step)
+    Assimilation { phase: _ } => host_standup_step_is_gap(step: step)
   }
+}
+
+fn host_standup_gap_count_at_actuation_verdict(verdict: ObservationVerdict) -> Int {
+  fold(
+    host_standup_spine,
+    init: 0,
+    f: (acc, s) =>
+      if host_standup_step_is_effective_gap_at_actuation_verdict(step: s, verdict: verdict) {
+        acc + 1
+      } else {
+        acc
+      }
+  )
 }
 
 fn host_standup_p3_green_place_input_witness() -> GreenPlacePinCoherentWitness {
@@ -466,10 +499,8 @@ fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
 }
 
 fn host_standup_gap_count() -> Int {
-  fold(
-    host_standup_spine,
-    init: 0,
-    f: (acc, s) => if host_standup_step_is_effective_gap(step: s) { acc + 1 } else { acc }
+  host_standup_gap_count_at_actuation_verdict(
+    verdict: srv3_pre_install_actuation_verdict(elapsed: millisecond(count: 0)),
   )
 }
 
