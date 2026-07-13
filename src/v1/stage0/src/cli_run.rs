@@ -11900,6 +11900,13 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
     "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
+    // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
+    // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
+    // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
+    // (third instance of the masking class receipted on #6530). Declared here so the ratchet
+    // re-arms; burns down with the frontier probe's fold migration. (#6533's other wildcard
+    // fn, compiler_frontier_probe_entry_test.dag, is outside the scan universe — no row.)
+    "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.
