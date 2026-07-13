@@ -8,6 +8,7 @@ import v2.std.node {
   Named,
   Node,
   Positional,
+  Symbol,
   TypeNode,
   Value,
   node_synthetic,

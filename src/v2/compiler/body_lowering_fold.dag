@@ -8,6 +8,7 @@ import v2.compiler.fold_lowering {
 }
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
+  ParseSubtreeFind,
   ParseSubtreeFound,
   dag_binding_branded_atom_identity,
   dag_int_type_binding,
