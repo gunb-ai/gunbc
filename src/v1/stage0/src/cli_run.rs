@@ -3898,6 +3898,169 @@ pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result
     Ok(subject_digest_for_closure(&sources))
 }
 
+/// M0 ancestry-retention probe (v1-run-stability-throughline M0): per-module vs
+/// distinct-spine entry counts for the typecheck-env maps — the quadratic witness the
+/// deleted `cache_walk` (#5888, dissolved #5899) never measured (it counted payload-Rc
+/// sharing, which is healthy; the byte carrier is the per-module materialized map SPINES).
+/// Pure reader over one strict whole-tree resolve; prints `[ancestry]` lines and the peak
+/// RSS; no behavior change anywhere else. `retained` sums every module's map sizes (what
+/// the typed cache holds resident); `distinct` sums each unique Rc spine once (what is
+/// actually allocated). `dup_factor = retained/distinct` — a factor ≫1 on the ancestry
+/// maps is the located §2 duplication; flat ≈1 means spines are shared and M1 is done.
+pub fn whole_tree_ancestry_retention_probe(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<(), String> {
+    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
+    let modules_resolved = picked.modules_resolved;
+    let modules_excluded = picked.modules_excluded;
+    let (graph, source_indices) =
+        resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
+
+    struct FieldTally {
+        name: &'static str,
+        retained_entries: usize,
+        distinct_entries: usize,
+        distinct_spines: std::collections::HashSet<usize>,
+    }
+    impl FieldTally {
+        fn new(name: &'static str) -> Self {
+            FieldTally {
+                name,
+                retained_entries: 0,
+                distinct_entries: 0,
+                distinct_spines: std::collections::HashSet::new(),
+            }
+        }
+        fn add(&mut self, spine_ptr: usize, entries: usize) {
+            self.retained_entries += entries;
+            if self.distinct_spines.insert(spine_ptr) {
+                self.distinct_entries += entries;
+            }
+        }
+    }
+
+    let mut tallies = [
+        FieldTally::new("tec.str_bindings"),
+        FieldTally::new("tec.deps_map"),
+        FieldTally::new("tec.cycle_set_str"),
+        FieldTally::new("tec.variant_locals"),
+        FieldTally::new("te.str_bindings"),
+        FieldTally::new("te.ancestry_str_bindings"),
+        FieldTally::new("te.bindings"),
+        FieldTally::new("te.source_visible_names"),
+        FieldTally::new("te.inductive_fields.keys"),
+        FieldTally::new("te.recursive_type_set"),
+    ];
+    // Inductive-field LIST mass (Σ list lengths) tracked separately from key count —
+    // the concat-on-collision duplication class shows up in list length, not key count.
+    let mut ind_lists_retained: usize = 0;
+    let mut ind_lists_distinct: usize = 0;
+    let mut ind_list_spines: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+    let mut per_module: Vec<(String, usize, usize, usize)> = Vec::new();
+
+    for m in graph.modules.iter() {
+        let te = &m.type_env;
+        let tec = &m.type_env_cache;
+        tallies[0].add(Rc::as_ptr(&tec.str_bindings) as usize, tec.str_bindings.len());
+        tallies[1].add(Rc::as_ptr(&tec.deps_map) as usize, tec.deps_map.len());
+        tallies[2].add(
+            Rc::as_ptr(&tec.cycle_set_str) as usize,
+            tec.cycle_set_str.len(),
+        );
+        tallies[3].add(
+            Rc::as_ptr(&tec.variant_locals) as usize,
+            tec.variant_locals.len(),
+        );
+        tallies[4].add(Rc::as_ptr(&te.str_bindings) as usize, te.str_bindings.len());
+        tallies[5].add(
+            Rc::as_ptr(&te.ancestry_str_bindings) as usize,
+            te.ancestry_str_bindings.len(),
+        );
+        tallies[6].add(Rc::as_ptr(&te.bindings) as usize, te.bindings.len());
+        tallies[7].add(
+            Rc::as_ptr(&te.source_visible_names) as usize,
+            te.source_visible_names.len(),
+        );
+        tallies[8].add(
+            Rc::as_ptr(&te.inductive_fields) as usize,
+            te.inductive_fields.len(),
+        );
+        tallies[9].add(
+            Rc::as_ptr(&te.recursive_type_set) as usize,
+            te.recursive_type_set.len(),
+        );
+
+        let module_ind_mass: usize = te.inductive_fields.iter().map(|(_, v)| v.len()).sum();
+        ind_lists_retained += module_ind_mass;
+        if ind_list_spines.insert(Rc::as_ptr(&te.inductive_fields) as usize) {
+            ind_lists_distinct += module_ind_mass;
+        }
+
+        per_module.push((
+            authored_name_at(source_indices.clone(), m.module.clone()),
+            tec.str_bindings.len(),
+            te.ancestry_str_bindings.len(),
+            module_ind_mass,
+        ));
+    }
+
+    eprintln!(
+        "[ancestry] modules={modules_resolved} excluded={modules_excluded} (strict whole-tree resolve)"
+    );
+    let mut retained_total = 0usize;
+    let mut distinct_total = 0usize;
+    for t in &tallies {
+        let dup = if t.distinct_entries > 0 {
+            t.retained_entries as f64 / t.distinct_entries as f64
+        } else {
+            1.0
+        };
+        eprintln!(
+            "[ancestry] field={} retained_entries={} distinct_spines={} distinct_entries={} dup_factor={:.2}",
+            t.name,
+            t.retained_entries,
+            t.distinct_spines.len(),
+            t.distinct_entries,
+            dup
+        );
+        retained_total += t.retained_entries;
+        distinct_total += t.distinct_entries;
+    }
+    let ind_dup = if ind_lists_distinct > 0 {
+        ind_lists_retained as f64 / ind_lists_distinct as f64
+    } else {
+        1.0
+    };
+    eprintln!(
+        "[ancestry] field=te.inductive_fields.list_mass retained={ind_lists_retained} distinct={ind_lists_distinct} dup_factor={ind_dup:.2}"
+    );
+    eprintln!(
+        "[ancestry] TOTAL retained_entries={retained_total} distinct_entries={distinct_total} dup_factor={:.2}",
+        if distinct_total > 0 {
+            retained_total as f64 / distinct_total as f64
+        } else {
+            1.0
+        }
+    );
+
+    per_module.sort_by(|a, b| (b.1 + b.2).cmp(&(a.1 + a.2)));
+    for (name, tec_str, anc_str, ind_mass) in per_module.iter().take(10) {
+        eprintln!(
+            "[ancestry] top module={name} tec.str_bindings={tec_str} te.ancestry_str_bindings={anc_str} inductive_list_mass={ind_mass}"
+        );
+    }
+
+    match peak_rss_vhwm_bytes() {
+        Some(bytes) => eprintln!(
+            "[ancestry] peak RSS: {bytes} bytes (VmHWM) modules={modules_resolved}"
+        ),
+        None => eprintln!("[ancestry] peak RSS: unavailable (no /proc/self/status)"),
+    }
+    Ok(())
+}
+
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
     // ProcessExit is the wet-gate return convention (ExitSuccess => Pass, ExitFailure => Fail).
     // NotProcessExit stays NotBool — fail-closed preserved for genuine type errors. Reuses
