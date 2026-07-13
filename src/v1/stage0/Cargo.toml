@@ -25,6 +25,11 @@ lazy_static = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 ureq = { version = "2", features = ["json"] }
+# Thread CPU-time clock (CLOCK_THREAD_CPUTIME_ID) for the fast-lane eval budget: the
+# budget bounds COMPUTE, not wall, so a witness inflated by cold-I/O reads or governor
+# time-slicing is not misclassified as an eval-wedge (a true non-terminating eval still
+# burns CPU and is caught). Already present transitively; declared direct for this use.
+libc = "0.2"
 
 [[bin]]
 name = "gunbc"

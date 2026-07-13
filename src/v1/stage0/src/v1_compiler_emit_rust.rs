@@ -3851,7 +3851,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod module_path_index;".to_string()
+            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod module_path_index;\npub mod memory_governor;".to_string()
         } else {
             "".to_string()
         };

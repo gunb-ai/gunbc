@@ -59,7 +59,7 @@ fn witness_forensics_scale_tiny_report() -> List<Int> {
 }
 
 fn witness_forensics_scale_small_report() -> List<Int> {
-  forensics_scaling_report(path: "src/v2/std/execution_mode.dag")
+  forensics_scaling_report(path: "dag/std/execution_mode.dag")
 }
 
 fn witness_forensics_scale_medium_report() -> List<Int> {

@@ -309,24 +309,41 @@ fn repo_relative_path(path: &Path) -> Result<String, String> {
 /// relative source roots (`layer_import_facts`) emit exactly these spellings, while a
 /// relative path anchored anywhere else stays a refusal, never a fabricated key.
 fn repo_relative_path_normalized(path: &Path) -> String {
+    try_repo_relative_path_normalized(path).unwrap_or_else(|| {
+        panic!(
+            "repo_relative_path_normalized: path {} is not under process workspace \
+             root {} or compiled-in root {}",
+            path.display(),
+            process_workspace_root().display(),
+            workspace_root().display()
+        )
+    })
+}
+
+fn try_repo_relative_path_normalized(path: &Path) -> Option<String> {
     if path.is_relative() && process_workspace_root().join(path).exists() {
-        return path.to_string_lossy().replace('\\', "/");
+        return Some(path.to_string_lossy().replace('\\', "/"));
     }
     if let Ok(rel) = repo_relative_path(path) {
-        return rel;
+        return Some(rel);
     }
     let baked = workspace_root();
     path.strip_prefix(&baked)
         .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|_| {
-            panic!(
-                "repo_relative_path_normalized: path {} is not under process workspace \
-                 root {} or compiled-in root {}",
-                path.display(),
-                process_workspace_root().display(),
-                baked.display()
-            )
-        })
+        .ok()
+}
+
+/// Module-index key for a file under a caller-supplied source root. Files under an
+/// OUT-OF-TREE absolute root (a temp fixture tree, another checkout handed to the
+/// parse-only audits) have no workspace-relative spelling — their absolute path IS the
+/// canonical, readable key, not a fabrication. A relative spelling anchored outside the
+/// process root stays a refusal (the fabricated-key hazard the panic guards).
+fn module_index_path_key(path: &Path) -> String {
+    match try_repo_relative_path_normalized(path) {
+        Some(rel) => rel,
+        None if path.is_absolute() => path.to_string_lossy().replace('\\', "/"),
+        None => repo_relative_path_normalized(path),
+    }
 }
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold
@@ -769,7 +786,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                 panic!("build_module_path_index: failed to read {:?}: {}", path, e)
             });
             if let Some(module_path) = extract_module_path(&content) {
-                let rel = repo_relative_path_normalized(&path);
+                let rel = module_index_path_key(&path);
                 if is_source_root_ingest_manifest_stub_rel(&rel)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
                 {
@@ -1131,7 +1148,10 @@ pub fn free_monoid_symbol_value_from_dotted_string(
 }
 
 pub(crate) fn repo_rel(path: &Path) -> String {
-    repo_relative_path_normalized(path)
+    // Same out-of-tree fallback as the module index: corpus walks accept
+    // caller-supplied roots (temp fixture trees, other checkouts), whose files key
+    // by their absolute spelling; relative-not-under-root stays a refusal.
+    module_index_path_key(path)
 }
 
 pub(crate) fn is_test_dag(path: &str) -> bool {
@@ -1207,7 +1227,7 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             if let Some(module_path) = extract_module_path(&content) {
-                let rel_path = repo_relative_path_normalized(&path);
+                let rel_path = module_index_path_key(&path);
                 let rel_forward = rel_path.clone();
                 if is_source_root_ingest_manifest_stub_rel(&rel_forward)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
@@ -3907,13 +3927,98 @@ pub fn run_claim_measured(
         crate::resolved_graph_cache::witness_work_subject_key(closure_subject_digest, function);
     v1_interpreter::eval_profile_reset();
     v1_interpreter::eval_subject_set(subject_key.clone());
+    if let Some(budget_ms) = ctx.witness_eval_budget() {
+        ctx.arm_eval_deadline(budget_ms);
+    }
     let started = std::time::Instant::now();
+    let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
     let outcome = run_claim(ctx, function);
+    // CPU consumed by THIS (witness-eval) thread — the budget metric, so the completion-side
+    // check matches the cooperative stride-poll and neither fires on cold-I/O or contention
+    // wall time. wall_nanos stays the measurement/receipt basis (unchanged).
+    let cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
     let wall_nanos = started.elapsed().as_nanos();
+    ctx.clear_eval_deadline();
     v1_interpreter::eval_subject_clear();
+    let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, cpu_nanos);
     let receipt =
         v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
     (outcome, receipt)
+}
+
+/// Completion-side budget enforcement: the cooperative deadline polls every 4096
+/// eval_expr dispatches, so a witness whose time is spent in few dispatches (native
+/// builtin-heavy) can finish over budget without ever hitting a poll. A Pass that
+/// exceeded the budget converts to the same typed refusal here — the witness is over
+/// the fast-lane classification either way, and silent green would fail open on the
+/// operator 5s rule. A Fail/RuntimeError stays itself: those are already loud, and
+/// replacing a genuine finding with the budget message would discard it. `cpu_nanos` is
+/// THREAD CPU time (not wall), matching the stride-poll metric — a witness whose wall time
+/// was inflated by cold-I/O or governor time-slicing is not misclassified as over-budget.
+fn budget_completion_outcome(
+    budget: Option<u64>,
+    outcome: ClaimOutcome,
+    cpu_nanos: u128,
+) -> ClaimOutcome {
+    match (budget, outcome) {
+        (Some(budget_ms), ClaimOutcome::Pass) if cpu_nanos > u128::from(budget_ms) * 1_000_000 => {
+            ClaimOutcome::RuntimeError {
+                message: format!(
+                    "{}",
+                    v1_interpreter::InterpError::EvalBudgetExceeded {
+                        elapsed_ms: (cpu_nanos / 1_000_000) as u64,
+                        budget_ms,
+                    }
+                ),
+            }
+        }
+        (_, o) => o,
+    }
+}
+
+#[cfg(test)]
+mod budget_completion_tests {
+    use super::*;
+
+    #[test]
+    fn pass_over_budget_converts_to_typed_refusal() {
+        // The stride-poll blind spot: a witness burning over-budget CPU in fewer than
+        // 4096 dispatches must still refuse at completion, never green silently. The
+        // third arg is CPU nanos (6ms CPU > 5ms budget), matching the stride-poll metric.
+        match budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000) {
+            ClaimOutcome::RuntimeError { message } => {
+                assert!(
+                    message.contains("eval budget exceeded"),
+                    "typed refusal expected; got {message}"
+                );
+            }
+            other => panic!("expected RuntimeError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pass_under_budget_stays_pass() {
+        assert!(matches!(
+            budget_completion_outcome(Some(5), ClaimOutcome::Pass, 4_000_000),
+            ClaimOutcome::Pass
+        ));
+    }
+
+    #[test]
+    fn no_budget_never_converts() {
+        assert!(matches!(
+            budget_completion_outcome(None, ClaimOutcome::Pass, u128::MAX),
+            ClaimOutcome::Pass
+        ));
+    }
+
+    #[test]
+    fn over_budget_fail_keeps_its_finding() {
+        assert!(matches!(
+            budget_completion_outcome(Some(5), ClaimOutcome::Fail, 6_000_000),
+            ClaimOutcome::Fail
+        ));
+    }
 }
 
 pub fn run_value(
@@ -5973,10 +6078,11 @@ pub struct DiscoveryCorpusOptions {
     /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
-    /// When > 0, caps the effective spawn_width for this discovery corpus to this value.
-    /// Derived from RunnableDiscoveryBatch.spawn_width_cap (provisioned from runner alloc ÷
-    /// per-witness memory reservation). 0 = use the batch-wide spawn_width.
-    pub spawn_width_cap: usize,
+    /// Fast-lane per-witness eval budget (operator 5s rule, 2026-07-12). When set, every
+    /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
+    /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
+    /// bound (the long-lane / local recipe posture).
+    pub fast_lane_eval_budget_ms: Option<u64>,
 }
 
 impl Default for DiscoveryCorpusOptions {
@@ -5986,9 +6092,19 @@ impl Default for DiscoveryCorpusOptions {
             explicit_roster_only: false,
             exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
-            spawn_width_cap: 0,
+            fast_lane_eval_budget_ms: None,
         }
     }
+}
+
+/// How the discovery corpus parallelizes. `Serial` runs every row on the caller's thread —
+/// the calibration path that also carries the width-1 closure-drift oracle. `Adaptive`
+/// drains entry-groups through a worker pool whose concurrency the memory governor admits:
+/// a new worker (= one more whole-tree index resident) is the expensive act the governor
+/// gates, replacing the retired plan-pinned `spawn_width` / `spawn_width_cap` constants.
+pub enum DiscoveryWidthPolicy {
+    Serial,
+    Adaptive(std::sync::Arc<crate::memory_governor::MemoryGovernor>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -7142,29 +7258,12 @@ fn entry_touches_rerun_frontier(
     Ok(!saw_claim)
 }
 
-pub fn run_discovery_corpus(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    explicit_entries: &[(String, String)],
-    execution_mode: v1_interpreter::ExecutionMode,
-    parallel_width: usize,
-) -> Result<DiscoverySummary, String> {
-    run_discovery_corpus_with_options(
-        source_roots,
-        scan_dirs,
-        explicit_entries,
-        execution_mode,
-        parallel_width,
-        DiscoveryCorpusOptions::default(),
-    )
-}
-
 pub fn run_discovery_corpus_with_options(
     source_roots: &[String],
     scan_dirs: &[String],
     explicit_entries: &[(String, String)],
     execution_mode: v1_interpreter::ExecutionMode,
-    parallel_width: usize,
+    width_policy: DiscoveryWidthPolicy,
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
@@ -7379,132 +7478,210 @@ pub fn run_discovery_corpus_with_options(
     );
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
-    let capped_width = if options.spawn_width_cap > 0 {
-        parallel_width.min(options.spawn_width_cap)
-    } else {
-        parallel_width
+    let governor = match width_policy {
+        DiscoveryWidthPolicy::Serial => {
+            let summary = run_discovery_rows(
+                &rows,
+                &index,
+                execution_mode,
+                options.node_frontier_selection,
+                &changed_paths,
+                &diff_edits,
+                floor_runner_ctx.as_ref(),
+                whole_tree_published_keys.clone(),
+                options.fast_lane_eval_budget_ms,
+                ShardStyle {
+                    shard_id: 0,
+                    shard_count: 1,
+                    color: floor_color,
+                    stream: floor_stream,
+                },
+            )?;
+            // Definition-drift oracle (single-authority reconciliation, executable): on a
+            // COMPLETED serial run the pre-resolve import walk and the post-resolve
+            // resolved-graph union must agree — resolve resolves exactly the transitive
+            // imports. Serial only: the merged multi-worker field is max-over-workers, not
+            // the process union, so the comparison is ill-posed there. A mismatch means one
+            // closure definition is wrong (an implicit prelude module the walk missed, or a
+            // resolve seeding change) and the space-lens calibration pair would silently
+            // skew — refuse rather than emit a lying receipt.
+            if summary.roster_closure_nodes != pre_resolve_closure_nodes {
+                return Err(format!(
+                    "[calibration] closure-definition drift: pre-resolve import walk = {} nodes, \
+                     post-resolve resolved union = {} — the two closure definitions diverged \
+                     (implicit prelude/kernel module in resolve the import walk cannot see, or a \
+                     seeding change); reconcile the definitions before trusting bytes-per-node \
+                     calibration (roster_import_closure_nodes_pre_resolve is the shared authority)",
+                    pre_resolve_closure_nodes, summary.roster_closure_nodes
+                ));
+            }
+            eprintln!(
+                "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
+                pre_resolve_closure_nodes
+            );
+            return Ok(summary);
+        }
+        DiscoveryWidthPolicy::Adaptive(governor) => governor,
     };
-    let width = capped_width.max(1);
-    if width == 1 {
-        let summary = run_discovery_rows(
-            &rows,
-            &index,
-            execution_mode,
-            options.node_frontier_selection,
-            &changed_paths,
-            &diff_edits,
-            floor_runner_ctx.as_ref(),
-            whole_tree_published_keys.clone(),
-            ShardStyle {
-                shard_id: 0,
-                shard_count: 1,
-                color: floor_color,
-                stream: floor_stream,
-            },
-        )?;
-        // Definition-drift oracle (single-authority reconciliation, executable): on a
-        // COMPLETED width-1 run the pre-resolve import walk and the post-resolve
-        // resolved-graph union must agree — resolve resolves exactly the transitive
-        // imports. Width-1 only: the merged multi-shard field is max-over-shards, not
-        // the process union, so the comparison is ill-posed there. A mismatch means one
-        // closure definition is wrong (an implicit prelude module the walk missed, or a
-        // resolve seeding change) and the space-lens calibration pair would silently
-        // skew — refuse rather than emit a lying receipt.
-        if summary.roster_closure_nodes != pre_resolve_closure_nodes {
-            return Err(format!(
-                "[calibration] closure-definition drift: pre-resolve import walk = {} nodes, \
-                 post-resolve resolved union = {} — the two closure definitions diverged \
-                 (implicit prelude/kernel module in resolve the import walk cannot see, or a \
-                 seeding change); reconcile the definitions before trusting bytes-per-node \
-                 calibration (roster_import_closure_nodes_pre_resolve is the shared authority)",
-                pre_resolve_closure_nodes, summary.roster_closure_nodes
-            ));
-        }
-        eprintln!(
-            "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
-            pre_resolve_closure_nodes
-        );
-        return Ok(summary);
-    }
-    let shards = shard_row_indices_by_entry(&rows, width);
-    let active_shards = shards.iter().filter(|s| !s.is_empty()).count();
+    // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
+    // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
+    // resident structure across every group it pulls — admission of a worker (not of a
+    // group) is therefore the memory-relevant act the governor decides.
+    let groups = entry_row_groups(&rows);
     eprintln!(
-        "run_discovery_corpus: parallel_width={width} ({active_shards} entry-group shard(s))"
+        "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
+        groups.len(),
+        rows.len(),
+        governor.current_target_width(),
     );
-    if floor_stream && active_shards > 1 {
+    if floor_stream && governor.current_target_width() > 1 {
         eprintln!(
-            "{} [affected-set] streaming run-witnesses live across {active_shards} concurrent shards (▎shard N, one color each)",
-            floor_ts()
+            "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
+            floor_ts(),
+            governor.current_target_width(),
         );
     }
+    let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
+        std::sync::Arc::new(Mutex::new(
+            groups
+                .into_iter()
+                .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
+                .collect(),
+        ));
+    let abort = std::sync::Arc::new(AtomicBool::new(false));
     let source_roots_owned = source_roots.to_vec();
-    let selection_for_shards = options.node_frontier_selection;
+    let selection_for_workers = options.node_frontier_selection;
+    let fast_lane_budget_for_workers = options.fast_lane_eval_budget_ms;
     let mut handles = Vec::new();
-    for (shard_id, shard) in shards.into_iter().enumerate() {
-        if shard.is_empty() {
-            continue;
+    let mut worker_ordinal: usize = 0;
+    loop {
+        if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
+            break;
         }
-        let shard_rows: Vec<DiscoveryRow> = shard.iter().map(|&i| rows[i].clone()).collect();
+        match governor.try_admit() {
+            crate::memory_governor::AdmitDecision::Admit { .. } => {}
+            crate::memory_governor::AdmitDecision::Hold(_) => {
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                continue;
+            }
+        }
+        let queue_for_worker = queue.clone();
+        let abort_for_worker = abort.clone();
+        let governor_for_worker = governor.clone();
         let roots = source_roots_owned.clone();
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
+        // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
+        // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
+        // admission window has no interleaving to disambiguate.
         let style = ShardStyle {
-            shard_id,
-            shard_count: active_shards,
+            shard_id: worker_ordinal,
+            shard_count: governor.current_target_width(),
             color: floor_color,
             stream: floor_stream,
         };
-        handles.push(std::thread::spawn(move || {
-            // Each shard is its own thread (Rc<ResolvedGraph> is !Send, so the resolve store
-            // cannot cross the shard boundary — that cross-shard share is the S2b/Arc frontier).
-            // Within the shard, union-resolve S1 still holds: the shard's floor runner and its
-            // rows resolve against ONE index, so the shard no longer re-resolves the floor
-            // runner's closure privately alongside the rows' — the std/spec prefix typechecks
-            // once per shard, not twice.
-            let index = build_multi_entry_index(&roots);
-            let runner = if selection_for_shards != NodeFrontierSelectionMode::Off {
-                match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
-                    Ok((graph, source_indices)) => {
-                        Some(make_eval_context(&graph, source_indices, execution_mode))
+        worker_ordinal += 1;
+        handles.push(std::thread::spawn(
+            move || -> Result<Vec<DiscoverySummary>, String> {
+                // The slot was granted by try_admit on the pump thread; the guard owns the
+                // matching release so a panicking worker cannot wedge admissions.
+                let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
+                    governor_for_worker.clone(),
+                );
+                // Each worker is its own thread (Rc<ResolvedGraph> is !Send, so the resolve
+                // store cannot cross the worker boundary — that cross-worker share is the
+                // S2b/Arc frontier). Within the worker, union-resolve S1 still holds: the
+                // worker's floor runner and its rows resolve against ONE index.
+                let index = build_multi_entry_index(&roots);
+                let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
+                    match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
+                        Ok((graph, source_indices)) => {
+                            Some(make_eval_context(&graph, source_indices, execution_mode))
+                        }
+                        Err(msg) => {
+                            abort_for_worker.store(true, Ordering::SeqCst);
+                            return Err(format!(
+                                "floor runner resolve failed in worker ({msg}) — declared \
+                                 affected-set machinery must resolve; no silent \
+                                 run-everything fallback"
+                            ));
+                        }
                     }
-                    Err(msg) => {
-                        return Err(format!(
-                            "floor runner resolve failed in shard ({msg}) — declared \
-                             affected-set machinery must resolve; no silent \
-                             run-everything fallback"
-                        ));
+                } else {
+                    None
+                };
+                // The front-loaded admission cost (index build + runner resolve) has
+                // landed and is visible to the creep signals: unblock admission pacing.
+                slot.note_first_cost_paid();
+                let mut worker_summaries = Vec::new();
+                loop {
+                    // Multiplicative decrease drains here: a worker between groups retires
+                    // when concurrency sits above the (possibly just-halved) window.
+                    if governor_for_worker.should_retire()
+                        || abort_for_worker.load(Ordering::SeqCst)
+                    {
+                        break;
+                    }
+                    let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front() else {
+                        break;
+                    };
+                    match run_discovery_rows(
+                        &group_rows,
+                        &index,
+                        execution_mode,
+                        selection_for_workers,
+                        &paths,
+                        &seeds,
+                        runner.as_ref(),
+                        keys.clone(),
+                        fast_lane_budget_for_workers,
+                        style,
+                    ) {
+                        Ok(summary) => {
+                            worker_summaries.push(summary);
+                            slot.note_unit_complete();
+                        }
+                        Err(e) => {
+                            abort_for_worker.store(true, Ordering::SeqCst);
+                            return Err(e);
+                        }
                     }
                 }
-            } else {
-                None
-            };
-            run_discovery_rows(
-                &shard_rows,
-                &index,
-                execution_mode,
-                selection_for_shards,
-                &paths,
-                &seeds,
-                runner.as_ref(),
-                keys,
-                style,
-            )
-        }));
+                Ok(worker_summaries)
+            },
+        ));
     }
     let mut summaries = Vec::new();
+    let mut first_err: Option<String> = None;
     for handle in handles {
-        summaries.push(
-            handle
-                .join()
-                .map_err(|_| "discovery corpus shard thread panicked".to_string())??,
-        );
+        match handle
+            .join()
+            .map_err(|_| "discovery corpus worker thread panicked".to_string())
+        {
+            Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
+            Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
+        }
+    }
+    if let Some(e) = first_err {
+        return Err(e);
+    }
+    // The pump exits when the queue is empty OR on abort; with no error the queue must be
+    // fully drained (workers only exit early on retire/abort, and the pump re-admits while
+    // items remain), so an undrained queue here is a scheduler bug — refuse, never under-run.
+    let leftover = queue.lock().unwrap().len();
+    if leftover > 0 {
+        return Err(format!(
+            "adaptive discovery pool exited with {leftover} undrained entry-group(s) and no \
+             worker error — scheduler invariant violated; refusing a partial corpus"
+        ));
     }
     Ok(merge_discovery_summaries(summaries))
 }
 
-fn shard_row_indices_by_entry(rows: &[DiscoveryRow], parallel_width: usize) -> Vec<Vec<usize>> {
-    let width = parallel_width.max(1);
+/// Contiguous same-entry row groups, order-preserving: the unit a pool worker pulls (rows
+/// sharing an entry resolve once against the worker's index).
+fn entry_row_groups(rows: &[DiscoveryRow]) -> Vec<Vec<usize>> {
     let mut entry_groups: Vec<Vec<usize>> = Vec::new();
     let mut current: Vec<usize> = Vec::new();
     let mut current_entry: Option<&str> = None;
@@ -7522,11 +7699,7 @@ fn shard_row_indices_by_entry(rows: &[DiscoveryRow], parallel_width: usize) -> V
     if !current.is_empty() {
         entry_groups.push(current);
     }
-    let mut shards: Vec<Vec<usize>> = vec![Vec::new(); width];
-    for (gi, group) in entry_groups.into_iter().enumerate() {
-        shards[gi % width].extend(group);
-    }
-    shards
+    entry_groups
 }
 
 fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySummary {
@@ -7764,6 +7937,7 @@ impl ShardStyle {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
@@ -7773,6 +7947,7 @@ fn run_discovery_rows(
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
+    fast_lane_eval_budget_ms: Option<u64>,
     style: ShardStyle,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
@@ -7908,6 +8083,9 @@ fn run_discovery_rows(
                 current_entry_touches = resolved.touches_frontier;
                 current_entry_file_touched = resolved.entry_file_touched;
                 ctx = Some(resolved.ctx);
+                if let Some(c) = ctx.as_ref() {
+                    c.set_witness_eval_budget(fast_lane_eval_budget_ms);
+                }
                 current_entry = Some(row.entry.clone());
             }
         }
@@ -7996,6 +8174,9 @@ fn run_discovery_rows(
             current_entry_touches = resolved.touches_frontier;
             current_entry_file_touched = resolved.entry_file_touched;
             ctx = Some(resolved.ctx);
+            if let Some(c) = ctx.as_ref() {
+                c.set_witness_eval_budget(fast_lane_eval_budget_ms);
+            }
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
         let closure_subject = current_closure_subject
@@ -9152,7 +9333,7 @@ mod module_grain_affected_equivalence_tests {
             "dag/gunbc/ci_layer_roots.dag",
             "src/v2/test/claim/bash_command_fold_test.dag",
             "src/v2/workflow/orchestration_emit_test.dag",
-            "dag/test/claim/module_graph/import_closure_live_test.dag",
+            "dag/test/claim/long/import_closure_live_test.dag",
             "src/v2/test/claim/affected_set_universe_test.dag",
             "src/v2/lens/module_graph.dag",
         ]
@@ -9176,7 +9357,7 @@ mod module_grain_affected_equivalence_tests {
             "dag/test/claim/card_intake_risk_witness_test.dag",
             "dag/tools/host_prelude.dag",
             "src/v2/test/claim/affected_set_universe_test.dag",
-            "dag/test/claim/module_graph/import_closure_live_test.dag",
+            "dag/test/claim/long/import_closure_live_test.dag",
         ]
     }
 
@@ -9256,20 +9437,27 @@ mod module_grain_affected_equivalence_tests {
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
-        // `orchestration_emit_test.dag` imports `bash_orchestration_emit.dag` directly, which in
-        // turn imports `bash.dag` — a genuine 2-hop chain (not a 1-hop direct import), so
-        // dropping the intermediate's edges is the only way to sever reachability to the leaf.
+        // `orchestration_emit_test.dag` reaches `bash.dag` transitively along two routes:
+        // via `bash_orchestration_emit.dag` and (since the bash-program-emit lane) via
+        // `05_emit_orchestration.dag`. Dropping the outgoing edges of BOTH intermediates
+        // severs every route to the leaf without touching the entry's own imports — still
+        // a genuine wiring perturbation (the entry stays resolvable; only reachability to
+        // the leaf flips).
         let entry = "src/v2/workflow/orchestration_emit_test.dag";
         let leaf = "src/v2/extdeps/languages/bash.dag".to_string();
-        let intermediate_exclude = "extdeps/languages/bash_orchestration_emit.dag".to_string();
+        let intermediate_excludes = [
+            "extdeps/languages/bash_orchestration_emit.dag".to_string(),
+            "compiler/05_emit_orchestration.dag".to_string(),
+        ];
+        let intermediate_exclude = intermediate_excludes.join(" + ");
 
         let content = std::fs::read_to_string(ws.join(entry))
             .unwrap_or_else(|e| panic!("read {entry} for precondition: {e}"));
         assert!(
             !content.contains("v2.extdeps.languages.bash "),
-            "precondition: {entry} must reach {leaf} only transitively (via \
-             bash_orchestration_emit.dag), not via a direct import — otherwise excluding the \
-             intermediate would not discriminate"
+            "precondition: {entry} must reach {leaf} only transitively (via the excluded \
+             intermediates), not via a direct import — otherwise excluding the \
+             intermediates would not discriminate"
         );
 
         let touched = vec![leaf.clone()];
@@ -9290,7 +9478,7 @@ mod module_grain_affected_equivalence_tests {
             (Some("touched_paths".to_string()), str_list_value(&touched)),
             (
                 Some("exclude_substrings".to_string()),
-                str_list_value(&[intermediate_exclude.clone()]),
+                str_list_value(&intermediate_excludes),
             ),
         ];
         let perturbed = match v1_interpreter::run_in_context_with_args(
@@ -11229,6 +11417,22 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
     "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
+    // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
+    // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
+    // re-arms; each burns down with its owning file's fold migration.
+    "dag/extdeps/git/git.dag::git_diff_name_status_pending_after_status",
+    "dag/gunbc/srv3_os_install_reconcile.dag::kvm_screen_from_diagnostic",
+    "dag/gunbc/srv3_os_install_reconcile.dag::optional_kvm_attestation_from_observation",
+    "dag/gunbc/srv3_os_install_reconcile.dag::reconcile_pending_step_id",
+    "dag/gunbc/srv3_os_install_reconcile.dag::workflow_approval_from_durable_grant",
+    "dag/gunbc/srv3_os_install_reconcile_apply.dag::process_exit_succeeded",
+    "dag/gunbc/srv3_os_install_reconcile_receipt.dag::durable_grant_is_active",
+    "dag/gunbc/srv3_os_install_reconcile_receipt.dag::reconcile_refusal_reason_wire",
+    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_body_not_located",
+    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_known",
+    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_parse_tree_opaque",
+    "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_unknown",
+    "src/v2/lens/enforcement/receipts.dag::consumer_receipt_ref_for",
     "dag/extdeps/languages/markdown.dag::md_nested",
     "dag/gunbc/generated_artifact.dag::artifact_eq",
     "dag/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
@@ -12046,6 +12250,43 @@ fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
     out
 }
 
+// A coproduct is consumed through its variant names (constructors, match arms) at least as
+// often as through the type name itself, which may appear only at the declaration. Credit
+// variant occurrences to the parent type or a live state machine reads as inert. Variant
+// names shared across coproducts merge their tallies — an approximation that errs toward
+// not flagging; the roster stays the per-name override.
+fn inert_carrier_variant_names(block: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (idx, raw) in block.lines().enumerate() {
+        let t = raw.trim_start();
+        let payload = if idx == 0 {
+            match t.find('=') {
+                Some(p) => &t[p + 1..],
+                None => continue,
+            }
+        } else if let Some(rest) = t.strip_prefix('=') {
+            rest
+        } else if let Some(rest) = t.strip_prefix('|') {
+            rest
+        } else {
+            continue;
+        };
+        for seg in payload.split('|') {
+            let name: String = seg
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() && name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+                out.push(name);
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
 const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
 
@@ -12116,6 +12357,7 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
     let mut declared: BTreeMap<String, String> = BTreeMap::new();
     let mut decl_count: BTreeMap<String, usize> = BTreeMap::new();
     let mut self_block_refs: BTreeMap<String, i64> = BTreeMap::new();
+    let mut type_variants: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (rel, content) in files {
         if is_test_dag(rel) {
             continue;
@@ -12125,9 +12367,17 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
             *decl_count.entry(name.clone()).or_insert(0) += 1;
             *self_block_refs.entry(name.clone()).or_insert(0) +=
                 inert_carrier_count_token(&block, &name);
+            for v in inert_carrier_variant_names(&block) {
+                *self_block_refs.entry(v.clone()).or_insert(0) +=
+                    inert_carrier_count_token(&block, &v);
+                type_variants.entry(name.clone()).or_default().push(v);
+            }
         }
     }
-    let names: BTreeSet<String> = declared.keys().cloned().collect();
+    let mut names: BTreeSet<String> = declared.keys().cloned().collect();
+    for vs in type_variants.values() {
+        names.extend(vs.iter().cloned());
+    }
     let mut nontest_occ: BTreeMap<String, i64> = BTreeMap::new();
     let mut self_tested: BTreeSet<String> = BTreeSet::new();
     for (rel, content) in files {
@@ -12159,7 +12409,13 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
         }
         let total = nontest_occ.get(name).copied().unwrap_or(0);
         let own = self_block_refs.get(name).copied().unwrap_or(0);
-        if total - own <= 0 {
+        let mut consumption = total - own;
+        for v in type_variants.get(name).map(|v| v.as_slice()).unwrap_or(&[]) {
+            let vtotal = nontest_occ.get(v).copied().unwrap_or(0);
+            let vown = self_block_refs.get(v).copied().unwrap_or(0);
+            consumption += vtotal - vown;
+        }
+        if consumption <= 0 {
             inert_names.push(name.clone());
         }
     }
@@ -12213,6 +12469,44 @@ mod inert_carrier_tests {
         assert!(toks.contains(&"PlacementSupply".to_string()));
         assert!(toks.contains(&"Placement".to_string()));
         assert!(toks.contains(&"field".to_string()));
+    }
+
+    #[test]
+    fn variant_consumed_coproduct_is_not_inert() {
+        // The RustGramBuild1State shape: type name appears only at its declaration;
+        // consumption is entirely via variant constructors/match arms in a nontest fn.
+        let inert = inert_names_of(&[
+            (
+                "a.dag",
+                "module a\ntype BuildState\n  = BuildInit\n  | BuildReady { expr: Int }\nfn go(x: Int) -> Int {\n  match BuildInit {\n    BuildInit => 0\n    BuildReady { expr: e } => e\n  }\n}\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { go(x: 1) == 0 }\nfn probe(s: BuildState) -> Bool { true }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"BuildState".to_string()),
+            "variant-mediated consumption must credit the parent type; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn red_control_variant_dead_coproduct_stays_inert() {
+        let inert = inert_names_of(&[
+            (
+                "a.dag",
+                "module a\ntype LonelyState\n  = LonelyInit\n  | LonelyReady { expr: Int }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { match LonelyInit { LonelyInit => true _ => false } }\nfn probe(s: LonelyState) -> Bool { true }\n",
+            ),
+        ]);
+        assert!(
+            inert.contains(&"LonelyState".to_string()),
+            "a coproduct whose variants are used nowhere outside its block must stay flagged; got {inert:?}"
+        );
     }
 
     #[test]

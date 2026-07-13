@@ -75,6 +75,7 @@ data emitted_medium_emit_fns: List<String> = [
   "fleet_converge_sh_for",
   "expected_fleet_converge_sh",
   "expected_githooks_pre_push_sh",
+  "expected_githooks_pre_commit_sh",
   "toolchain_provision_shell_exec",
   "autoinstall_user_data",
   "install_server_dnsmasq_conf",
@@ -159,6 +160,7 @@ data medium_structure_exception_roster: List<String> = [
   "dag/gunbc/host_identity_adopt.dag",
   "dag/gunbc/host_identity_assimilation.dag",
   "dag/gunbc/githooks_pre_push_emit.dag",
+  "dag/gunbc/githooks_pre_commit_emit.dag",
   "dag/gunbc/ci_spec.dag",
   "dag/gunbc/merge_admission_produce.dag",
   "dag/tools/merge_admission_stamp.dag",
@@ -207,7 +209,7 @@ data medium_structure_exception_roster: List<String> = [
 
 data medium_structure_clean_tree_unquarantine_note: String = "Pre-existing rot surfaced by live host census at discovery-flip unquarantine (2026-07-09; not debt introduced by this PR): dag_compile_clean_shard_transport is shell-transport sibling to already-rostered seam/shard_totality transports; os_install_deduction + v1_dag_parse witness tests pair string_contains with emit-fn output (same pattern as ci_yaml_serializer_witness_test.dag)."
 
-data medium_structure_exception_roster_size_baseline: Int = 58
+data medium_structure_exception_roster_size_baseline: Int = 59
 
 fn roster_growth_ratchet_holds(live_size: Int, baseline: Int) -> Bool {
   live_size <= baseline

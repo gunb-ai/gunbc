@@ -1,5 +1,7 @@
 module gunbc.ci_layer_roots
 
+import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 
 fn compile_clean_source_roots() -> List<String> {
@@ -24,7 +26,84 @@ data witness_exclusion_substrings: List<String> = [
   "test/claim/enforcement/",
   "enforcement_live_witness_test.dag",
   "lever_a_local_receipt_witness",
-  "test/fixture/floor_skip/"
+  "host_effect_apply_witness_test.dag",
+  "deploy_access_privilege_witness_test.dag",
+  "ci_deploy_observed_wet_test.dag",
+  "random_bytes_csprng_witness_test.dag",
+  "typed_witness_invocation_test.dag",
+  "emit_host_typed_smoke_test.dag",
+  "dag_collect_fingerprint_witness_test.dag",
+  "dag_compile_clean_perturb_receipts_test.dag",
+  "test/claim/diagnostics_test.dag",
+  "effects_rest_transport_parse_witness_test.dag",
+  "floor_skip_discovery_witness_test.dag",
+  "interp_recorded_fixture_witness_test.dag",
+  "test/claim/parse_test.dag",
+  "v1_dag_parse_witness_test.dag",
+  "auth_declared_but_unwired_witness_test.dag",
+  "test/claim/bootstrap_test.dag",
+  "infer_semantics_witness_test.dag",
+  "dag_compile_clean_shard_a_witness_test.dag",
+  "dag_compile_clean_shard_totality_witness_test.dag",
+  "dag_compile_clean_seam_witness_test.dag",
+  "test/fixture/floor_skip/",
+  "test/claim/long/",
+  "test/claim/emit/logic_ground_truth_test.dag",
+  "test/claim/manual/english_emit_add_test.dag"
+]
+
+data long_lane_exclusion_note: String = "test/claim/long/ is the LONG-test home (operator 5-second rule, 2026-07-12; authority + enforcement: gunbc_ci_fast_lane_rule_note / gunbc_ci_fast_lane_witness_eval_budget in v2.workflow.ci_floor_plan): a witness whose own eval reaches 5s does not run in per-PR discovery — the executor's cooperative eval deadline REDs it by name (EvalBudgetExceeded), and the fix is moving its file here (dag/test/claim/long/, src/v2/test/claim/long/), where discovery excludes it at dir grain and it runs via the local recipe (claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>) or the scheduled lane's future enrollment. First residents (receipted): s1_closure_receipt_test (whole-closure re-parse through the interpreted v2 frontend, 90+min eval, the run-29183446733 wedge class) and self_host_module_emit_derisk_test (~31s/witness). Unlike the roster exclusions above, membership here is a HOME, not a per-file ruling: the 5s deadline makes an over-budget fast-lane witness unwritable-in-place, so the roster cannot silently grow stale (§5 construction over validation). Dissolve-on: per-witness declared cost envelopes (witness-cost-locality admission law) subsume the dir grain."
+
+data wet_integration_offline_note: String = "Four wet-integration entries above (host_effect_apply, deploy_access_privilege, ci_deploy_observed_wet, random_bytes_csprng) are OFFLINE per the hermetic-floor posture (operator 2026-07-11: integration-style witnesses must not run regularly; CI runs hermetic/mocked behavior checks). Each performs genuinely live host effects the hermetic envelope refuses by construction: host_effect_apply drives real LocalShell/SSH host effects (the 133s row atop the slow-witness census), deploy_access_privilege applies privileged shell mutations through fixture actors, ci_deploy_observed_wet shells whoami + sudo -n, random_bytes_csprng reads host entropy. Hermetic duals stay discovered where they exist (the ci_deploy split keeps the pure half; deploy_access_check(access, actor) is the mock-shaped dual). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> per file. Dissolve-on: the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget — then these four enroll there as declared execution rows and the exclusion rows delete."
+
+data known_red_frontier_note: String = "Two entries above (logic_ground_truth_test, english_emit_add_test) are the KNOWN-RED FRONTIER: witnesses red on main for feature gaps owned by named lanes, exposed per-PR only when a whole-corpus-affecting diff (like the 2026-07-12 interpreter change) selects the entire tree. They are RED CONTROLS for their lanes, not broken tests — deleting them would discard the discriminating input; leaving them discovered reds every wide PR on debts those PRs did not create. So they sit here as declared, countable rows (the typed self-host-frontier pattern applied to witnesses), each with its diagnosis and dissolve-on. logic_ground_truth_test (4 witnesses): the v1 resolver does not bind imported bare variant constructors in EXPRESSION position (import v2.std.logic { True } then gt_complement(a: True) -> undefined variable: True; patterns-via-scrutinee work) — the namespace-only-resolution lane's containment SymbolIndex covers exactly this class; dissolve-on: that lane lands imported-variant value bindings, these four run green, the entry deletes. english_emit_add_test (1 witness): the english-language emit-ingest round trip returns false undiagnosed (S2 emit family); dissolve-on: the S2 behavioral-closure lane greens it locally, the entry deletes. Local recipe per file: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>. This roster must not grow silently: a new known-red admission requires the same per-file diagnosis + owner + dissolve-on in this note, and an entry whose witness runs green locally is stale and deletes."
+
+data bin_witness_wet_note: String = "The remaining excluded entries are the BIN-EXECUTION witness class: their test fns run compiled seed witness binaries via tools.host_prelude.run_witness_bin (git.Core.Toplevel to locate the checkout, shell.Test.IsExecutable against target/release build artifacts, then process execution) — host effects on non-commit-deterministic inputs, so the hermetic envelope refuses them by construction (audit 2026-07-12: every refusal typed as IsExecutable / Run / IsNonEmpty / Dir; the pure fns that merely read transport modules pass hermetically and stay discovered). They carry core per-PR compiler coverage, so unlike the offline four they DO keep running on every PR — as the declared bin-witness wet batch (bin_witness_wet_entries below, a Wet-profiled explicit-entry batch in v2.workflow.ci_floor_plan), never as silently-wet discovery rows. Dissolve-on: these files migrate under the execution-corpus scope prefix and enroll as ExecutionWitnessKind rows in gunbc.commit_workflow; then this roster and its exclusion rows delete."
+
+fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
+}
+
+data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
+  bin_wet(entry: "dag/test/claim/dag_collect_fingerprint_witness_test.dag", f: "dag_collect_fingerprint_witness_keystone_holds"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "dag_compile_clean_perturb_receipts_holds"),
+  bin_wet(entry: "dag/test/claim/diagnostics_test.dag", f: "diagnostics_import_resolution_holds"),
+  bin_wet(entry: "dag/test/claim/diagnostics_test.dag", f: "diagnostics_reexport_surface_holds"),
+  bin_wet(entry: "dag/test/claim/diagnostics_test.dag", f: "diagnostics_type_and_arity_holds"),
+  bin_wet(entry: "dag/test/claim/diagnostics_test.dag", f: "diagnostics_empty_list_context_holds"),
+  bin_wet(entry: "dag/test/claim/diagnostics_test.dag", f: "diagnostics_constructor_owner_walls_hold"),
+  bin_wet(entry: "dag/test/claim/effects_rest_transport_parse_witness_test.dag", f: "effects_rest_transport_parse_keystone_holds"),
+  bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_golden_is_nonempty_holds"),
+  bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_golden_length_matches_declared_count_holds"),
+  bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_content_equality_discriminates_count_identical_bytes_holds"),
+  bin_wet(entry: "dag/test/claim/floor_skip_discovery_witness_test.dag", f: "floor_skip_discovery_keystone_holds"),
+  bin_wet(entry: "dag/test/claim/interp_recorded_fixture_witness_test.dag", f: "interp_recorded_fixture_keystone_holds"),
+  bin_wet(entry: "dag/test/claim/parse_test.dag", f: "parse_witness_floor_holds"),
+  bin_wet(entry: "dag/test/claim/parse_test.dag", f: "parse_witness_perf_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_git_toplevel_resolves_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_executable_positive_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_executable_negative_red_control_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_witness_bin_run_argv_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_witness_bin_run_nonzero_red_control_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_witness_bin_run_args_splice_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_witness_bin_run_workdir_anchors_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_witness_bin_run_workdir_anchors_root_control_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_run_witness_bin_unbuildable_red_control_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_positive_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_zero_byte_red_control_holds"),
+  bin_wet(entry: "dag/test/claim/v1_dag_parse_witness_test.dag", f: "v1_dag_parse_witnesses"),
+  bin_wet(entry: "src/v2/test/claim/auth_declared_but_unwired_witness_test.dag", f: "auth_declared_but_unwired_witness_keystone_holds"),
+  bin_wet(entry: "src/v2/test/claim/bootstrap_test.dag", f: "bootstrap_witness_keystone_holds"),
+  bin_wet(entry: "src/v2/test/claim/infer_semantics_witness_test.dag", f: "infer_semantics_witness_keystone_holds"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag", f: "compile_clean_partition_boundary_matches_compile_clean_source_roots"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag", f: "compile_clean_shard_verdict_compose_laws_hold"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag", f: "compile_clean_shard_verdict_compose_RED_on_injected_failure"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag", f: "compile_clean_shard_a_exemplar_compile_green"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_roster_is_well_formed"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_totality_algebra_holds"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_totality_holds_on_live_tree"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag", f: "cross_shard_seam_algebra_holds"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag", f: "cross_shard_seam_preservation_holds_on_live_tree")
 ]
 
 data floor_skip_control_fixture_exclusion_note: String = "test/fixture/floor_skip/ is excluded from tree-wide discovery at DIR grain (parent ruling 2026-07-11: a fixture that WANTS witness enrollment is mis-homed by definition, and file-grain exclusion invites the next control fixture to repeat the landmine). These fixtures exist to be driven by floor_skip_discovery_witness's explicit rosters, not as corpus witnesses: falsifier_divergence_control_test.dag carries a BY-DESIGN red row (falsifier_red_control_holds returns false to prove the divergence attribution channel), so any completed full-corpus run - the nightly falsifier, or a PR whose diff touches its import closure - would red on a row whose red is the control's specification, and a permanent by-design divergence would also make the falsifier's 8-clean-window retirement criterion unsatisfiable; live_tree_declared_test.dag declares ReadsLiveTree as a control, so as a corpus row it would be a permanent never-skip cost with no enforcement value. Genuine corpus witnesses that were mis-homed here have been re-homed under test/claim/ (provenance_fail_closed_contract_test, live_tree_collision_test). Explicit-roster runs (the floor_skip bin) are unaffected: witness exclusions apply to discovery only."
