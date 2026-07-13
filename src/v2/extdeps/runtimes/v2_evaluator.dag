@@ -298,6 +298,8 @@ fn v2_eval_choose_branch(
     }
   }
 }
+
+fn v2_eval_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
   match list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
@@ -362,24 +364,6 @@ fn v2_eval_call_primitive(
       }
     }
   )
-}
-
-fn v2_eval_choose_branch(
-  node: Node,
-  condition: RuntimeValue,
-  _env: EvaluationEnvironment
-) -> Outcome<Node> {
-  if count(node.children) == 3 {
-    if v2_eval_runtime_bool_is_true(value: condition) {
-      v2_eval_nth_child_target(node: node, wanted: 1)
-    } else if v2_eval_runtime_bool_is_false(value: condition) {
-      v2_eval_nth_child_target(node: node, wanted: 2)
-    } else {
-      outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
-    }
-  } else {
-    outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
-  }
 }
 
 fn v2_eval_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
