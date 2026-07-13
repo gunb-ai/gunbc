@@ -9796,6 +9796,36 @@ mod node_frontier_plumbing_controls {
         );
     }
 
+    // §5 deferred-discovery receipt: long-lane witnesses (s1_closure class) are excluded
+    // from per-PR discovery but must be COUNTED in the floor log — never a silent skip.
+    #[test]
+    fn deferred_discovery_counts_long_lane_s1_closure_reads_live_tree() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let excludes = super::witness_exclusion_substrings();
+        let deferred =
+            super::collect_deferred_discovery_rows(&roots, &excludes).expect("deferred scan");
+        let s1 = deferred
+            .iter()
+            .find(|r| r.function == "s1_closure_parses_holds")
+            .expect("s1_closure_parses_holds must appear in deferred-discovery receipt");
+        assert!(
+            s1.reads_live_tree,
+            "s1_closure declares ReadsLiveTree — deferred row must carry the disposition"
+        );
+        assert!(
+            s1.entry.contains("test/claim/long/"),
+            "s1_closure lives in the long lane: got {}",
+            s1.entry
+        );
+        assert!(
+            s1.exclude_reason.contains("test/claim/long/"),
+            "exclude reason must name the long-lane substring: got {}",
+            s1.exclude_reason
+        );
+    }
+
     // RED guard: data-item edits in the entry import closure must not fast-skip — the
     // node-frontier machinery needs resolve to discriminate referenced nodes.
     #[test]
