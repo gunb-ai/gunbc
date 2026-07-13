@@ -206,7 +206,16 @@ pub fn binding_same_authority(a: Rc<TypeBinding>, b: Rc<TypeBinding>) -> bool {
     }
 }
 
-pub fn guarded_union_str_bindings(
+pub fn union_base_choice_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across four maps). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for str_bindings/deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn guarded_union_str_bindings_into_acc(
     acc: Rc<HashMap<String, Rc<TypeBinding>>>,
     overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
     import_path: String,
@@ -276,13 +285,100 @@ pub fn guarded_union_str_bindings(
     )
 }
 
+pub fn guarded_union_str_bindings_into_overlay(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+    import_path: String,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<GuardedStrBindingsUnion> {
+    Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
+        Rc::new(GuardedStrBindingsUnion {
+            bindings: overlay.clone(),
+            conflicts: conflicts.clone(),
+        }),
+        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(&acc, name.clone())
+        {
+            None => state.clone(),
+            Some(accumulated) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
+                None => Rc::new(GuardedStrBindingsUnion {
+                    bindings: v1_rt::rc_map_insert(
+                        state.bindings.clone(),
+                        name.clone(),
+                        accumulated.clone(),
+                    ),
+                    conflicts: state.conflicts.clone(),
+                }),
+                Some(incoming) => {
+                    if binding_same_authority(accumulated.clone(), incoming.clone()) {
+                        state.clone()
+                    } else {
+                        Rc::new(GuardedStrBindingsUnion {
+                            bindings: state.bindings.clone(),
+                            conflicts: v1_rt::concat(
+                                state.conflicts.clone(),
+                                Rc::new(vec![Rc::new(TypeEnvCacheMergeConflict {
+                                    name: name.clone(),
+                                    import_path: import_path.clone(),
+                                    existing_site: accumulated
+                                        .resolved
+                                        .clone()
+                                        .span
+                                        .clone()
+                                        .file
+                                        .clone(),
+                                    incoming_site: incoming
+                                        .resolved
+                                        .clone()
+                                        .span
+                                        .clone()
+                                        .file
+                                        .clone(),
+                                    span: incoming.resolved.clone().span.clone(),
+                                    same_tree: (source_tree_of(
+                                        accumulated.resolved.clone().span.clone().file.clone(),
+                                    ) == source_tree_of(
+                                        incoming.resolved.clone().span.clone().file.clone(),
+                                    )),
+                                })]),
+                            ),
+                        })
+                    }
+                }
+            },
+        },
+    )
+}
+
+pub fn guarded_union_str_bindings(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+    import_path: String,
+    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+) -> Rc<GuardedStrBindingsUnion> {
+    if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
+        guarded_union_str_bindings_into_acc(
+            acc.clone(),
+            overlay.clone(),
+            import_path.clone(),
+            conflicts.clone(),
+        )
+    } else {
+        guarded_union_str_bindings_into_overlay(
+            acc.clone(),
+            overlay.clone(),
+            import_path.clone(),
+            conflicts.clone(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardedStrBindingsUnion {
     pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
-pub fn union_deps_map_skip_equal(
+pub fn union_deps_map_into_acc(
     acc: Rc<HashMap<String, Rc<Vec<String>>>>,
     overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
@@ -307,7 +403,37 @@ pub fn union_deps_map_skip_equal(
     )
 }
 
-pub fn union_bool_set_skip_equal(
+pub fn union_deps_map_into_overlay(
+    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
+    overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
+        overlay.clone(),
+        |m: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
+            &acc,
+            name.clone(),
+        ) {
+            None => m.clone(),
+            Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
+                None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
+                Some(_incoming) => m.clone(),
+            },
+        },
+    )
+}
+
+pub fn union_deps_map_skip_equal(
+    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
+    overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
+        union_deps_map_into_acc(acc.clone(), overlay.clone())
+    } else {
+        union_deps_map_into_overlay(acc.clone(), overlay.clone())
+    }
+}
+
+pub fn union_bool_set_into_acc(
     acc: Rc<HashMap<String, bool>>,
     overlay: Rc<HashMap<String, bool>>,
 ) -> Rc<HashMap<String, bool>> {
@@ -323,7 +449,40 @@ pub fn union_bool_set_skip_equal(
     )
 }
 
-pub fn union_variant_locals_skip_equal(
+pub fn union_bool_set_into_overlay(
+    acc: Rc<HashMap<String, bool>>,
+    overlay: Rc<HashMap<String, bool>>,
+) -> Rc<HashMap<String, bool>> {
+    Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
+        overlay.clone(),
+        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&acc, name.clone()) {
+            None => m.clone(),
+            Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
+                None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
+                Some(incoming) => {
+                    if (incoming.clone() == accumulated.clone()) {
+                        m.clone()
+                    } else {
+                        v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone())
+                    }
+                }
+            },
+        },
+    )
+}
+
+pub fn union_bool_set_skip_equal(
+    acc: Rc<HashMap<String, bool>>,
+    overlay: Rc<HashMap<String, bool>>,
+) -> Rc<HashMap<String, bool>> {
+    if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
+        union_bool_set_into_acc(acc.clone(), overlay.clone())
+    } else {
+        union_bool_set_into_overlay(acc.clone(), overlay.clone())
+    }
+}
+
+pub fn union_variant_locals_into_acc(
     acc: Rc<HashMap<String, Rc<TypeBinding>>>,
     overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
@@ -346,6 +505,36 @@ pub fn union_variant_locals_skip_equal(
             },
         },
     )
+}
+
+pub fn union_variant_locals_into_overlay(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
+        overlay.clone(),
+        |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+            &acc,
+            name.clone(),
+        ) {
+            None => m.clone(),
+            Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
+                None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
+                Some(_incoming) => m.clone(),
+            },
+        },
+    )
+}
+
+pub fn union_variant_locals_skip_equal(
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
+        union_variant_locals_into_acc(acc.clone(), overlay.clone())
+    } else {
+        union_variant_locals_into_overlay(acc.clone(), overlay.clone())
+    }
 }
 
 pub fn merge_type_env_cache_guarded(
@@ -533,6 +722,35 @@ pub fn is_inductive_field(
     }
 }
 
+pub fn put_inductive_field_guard_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (DESIGN §5 - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn append_inductive_field_absent(
+    existing: Rc<Vec<Rc<InductiveField>>>,
+    incoming: Rc<InductiveField>,
+) -> Rc<Vec<Rc<InductiveField>>> {
+    if {
+        let mut __found = false;
+        for f in existing.clone().iter().cloned() {
+            if (inductive_field_key(f.clone()) == inductive_field_key(incoming.clone())) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    } {
+        existing.clone()
+    } else {
+        v1_rt::concat(existing.clone(), Rc::new(vec![incoming.clone()]))
+    }
+}
+
 pub fn put_inductive_field(
     fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     type_name: String,
@@ -548,15 +766,15 @@ pub fn put_inductive_field(
         v1_rt::rc_map_insert(
             fields.clone(),
             type_name.clone(),
-            v1_rt::concat(
+            append_inductive_field_absent(
                 existing.clone(),
-                Rc::new(vec![Rc::new(InductiveField {
+                Rc::new(InductiveField {
                     type_name: type_name.clone(),
                     variant_name: variant_name.clone(),
                     field_name: field_name.clone(),
                     shape: shape.clone(),
                     element_type: type_name.clone(),
-                })]),
+                }),
             ),
         )
     }
@@ -578,15 +796,15 @@ pub fn put_inductive_field_cross(
         v1_rt::rc_map_insert(
             fields.clone(),
             type_name.clone(),
-            v1_rt::concat(
+            append_inductive_field_absent(
                 existing.clone(),
-                Rc::new(vec![Rc::new(InductiveField {
+                Rc::new(InductiveField {
                     type_name: type_name.clone(),
                     variant_name: variant_name.clone(),
                     field_name: field_name.clone(),
                     shape: shape.clone(),
                     element_type: element_type.clone(),
-                })]),
+                }),
             ),
         )
     }

@@ -4,12 +4,15 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
+data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
+
 type FrontierBlockerClass
   = SelfEmitReady
   | NameResolutionGap
   | EmitSurfaceGap
   | RealizationGap
-  | UnclassifiedProbeReason { reason: Symbol }
+  | FixtureCemented
+  | UnknownProbeCause { reason: Symbol }
 
 type FrontierProbeStage
   = ProbeStageAssemble
@@ -54,6 +57,28 @@ fn frontier_blocker_is_realization_reason(reason: Symbol) -> Bool {
     || reason == ^emit_host_run_transport_unrealized
 }
 
+data frontier_probe_survey_host_unknown_reason_scaffold_note: String = "Seed `frontier_probe_survey` bin emits UnknownProbeCause with these located_reason symbols when per-module probe fails or emit-accept is unverified; not classified by frontier_classify_rejection_reason (assemble/emit diagnostics only). Dissolves with the P5 bin."
+
+data frontier_blocker_is_probe_survey_host_reason_dispatch_note: String = "frontier_blocker_is_probe_survey_host_reason is the reason-table authority for P5 seed-bin UnknownProbeCause symbols (^frontier_probe_runtime_error, ^frontier_probe_oom_or_budget, ^probe_emit_accept_self_host_bar_unbound). Wired through frontier_classify_rejection_reason and frontier_probe_survey_host_failure_reason; the seed bin reads the latter at runtime — no parallel Rust symbol strings. Dissolves with the P5 bin scaffold."
+
+fn frontier_blocker_is_probe_survey_host_reason(reason: Symbol) -> Bool {
+  reason == frontier_probe_survey_host_runtime_error_reason
+    || reason == frontier_probe_survey_host_oom_or_budget_reason
+    || reason == ^probe_emit_accept_self_host_bar_unbound
+}
+
+data frontier_probe_survey_host_runtime_error_reason: Symbol = ^frontier_probe_runtime_error
+
+data frontier_probe_survey_host_oom_or_budget_reason: Symbol = ^frontier_probe_oom_or_budget
+
+fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> Symbol {
+  if is_oom_or_budget {
+    frontier_probe_survey_host_oom_or_budget_reason
+  } else {
+    frontier_probe_survey_host_runtime_error_reason
+  }
+}
+
 fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
   if frontier_blocker_is_name_resolution_reason(reason: reason) {
     NameResolutionGap
@@ -61,8 +86,10 @@ fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
     EmitSurfaceGap
   } else if frontier_blocker_is_realization_reason(reason: reason) {
     RealizationGap
+  } else if frontier_blocker_is_probe_survey_host_reason(reason: reason) {
+    UnknownProbeCause { reason: reason }
   } else {
-    UnclassifiedProbeReason { reason: reason }
+    UnknownProbeCause { reason: reason }
   }
 }
 
@@ -72,6 +99,41 @@ fn frontier_probe_blocker_rank(blocker: FrontierBlockerClass) -> Int {
     EmitSurfaceGap => 1
     NameResolutionGap => 2
     RealizationGap => 3
-    UnclassifiedProbeReason { reason: _ } => 4
+    FixtureCemented => 4
+    UnknownProbeCause { reason: _ } => 5
+  }
+}
+
+fn frontier_blocker_class_matches(
+  blocker: FrontierBlockerClass,
+  target: FrontierBlockerClass
+) -> Bool {
+  match blocker {
+    SelfEmitReady =>
+      match target {
+        SelfEmitReady => true
+        _ => false
+      }
+    NameResolutionGap =>
+      match target {
+        NameResolutionGap => true
+        _ => false
+      }
+    EmitSurfaceGap =>
+      match target {
+        EmitSurfaceGap => true
+        _ => false
+      }
+    RealizationGap =>
+      match target {
+        RealizationGap => true
+        _ => false
+      }
+    FixtureCemented =>
+      match target {
+        FixtureCemented => true
+        _ => false
+      }
+    UnknownProbeCause { reason: _ } => false
   }
 }

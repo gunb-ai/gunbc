@@ -9,7 +9,7 @@ import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeReceipt,
   ProbeStageAssemble,
   ProbeStageEmit,
-  SelfEmitReady,
+  UnknownProbeCause,
   frontier_classify_rejection_reason
 }
 import v2.compiler.source_authority { SourceRootIngest }
@@ -46,9 +46,11 @@ fn frontier_probe_emit_from_ingest(
         Accepted { value: _, diagnostics: _ } =>
           FrontierProbeReceipt {
             module_path: module_path,
-            blocker_class: SelfEmitReady,
+            blocker_class: UnknownProbeCause {
+              reason: ^probe_emit_accept_self_host_bar_unbound
+            },
             located_stage: ProbeStageEmit,
-            located_reason: ^probe_stage_emit_ok
+            located_reason: ^probe_emit_accept_self_host_bar_unbound
           }
         Rejected { diagnostics: d } =>
           FrontierProbeReceipt {
