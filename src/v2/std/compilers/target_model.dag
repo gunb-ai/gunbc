@@ -11119,8 +11119,6 @@ fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
   }
 }
 
-data target_value_expr_int_literal_emit_scaffold_note: String = "🟡 dissolve-on: target_value_expr_int_literal_magnitude_binding maps only magnitudes 1/2 to legacy pick-lit bindings for existing emit round-trip witnesses; magnitudes 3+ refuse transform_shape_invalid until target int-literal emission lowers through a general decimal/text path (same authority as integer_lexeme_to_int / dag_int_literal_node_from_lexeme). DISSOLVES WHEN target_value_expr_project_int_literal_atom emits arbitrary magnitudes without per-value binding rows."
-
 fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> Optional<Symbol> {
   if magnitude == 1 {
     optional_present(value: ^dag_binding_pick_lit_one)

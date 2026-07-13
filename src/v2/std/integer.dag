@@ -113,6 +113,14 @@ fn integer_signed_i32_le_decode_invalid_diagnostic() -> Diagnostic {
   }
 }
 
+fn integer_byte_bit_at_shift_out_of_range_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^integer_byte_bit_at_shift_out_of_range,
+    at: port_locus(port: ^integer_byte_bit_at_shift_out_of_range),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn decimal_digit_value(d: DecimalDigit) -> Int {
   match d {
     D0 => 0
@@ -1082,36 +1090,73 @@ fn integer_int_to_signed_i32_le_bytes(value: Int) -> List<Byte> {
   ]
 }
 
-fn integer_byte_bit_at(b: Byte, shift: Int) -> Int {
+data integer_byte_bit_at_scaffold_note: String = "🟡 dissolve-on: Byte.bits from integer_u8_to_byte is always length 8; shift must be 0..7. list_at Absent means out-of-range shift and refuses (§5 — no fabricated 0). DISSOLVES WHEN Byte width is grounded as MachineWidth<8> construction guarantee."
+
+fn integer_byte_bit_at(b: Byte, shift: Int) -> Outcome<Int> {
   match list_at_optional(xs: b.bits, index: shift) {
-    Present { value: bit } => if bit { 1 } else { 0 }
-    Absent => 0
+    Present { value: bit } => outcome_accepted(value: if bit { 1 } else { 0 })
+    Absent =>
+      outcome_rejected(d: integer_byte_bit_at_shift_out_of_range_diagnostic())
   }
 }
 
-fn integer_u8_from_byte(b: Byte) -> Int {
-  int_add(
-    a: int_add(
-      a: int_add(
-        a: int_add(
-          a: int_add(
-            a: int_add(
-              a: int_add(
-                a: integer_byte_bit_at(b: b, shift: 0),
-                b: int_mul(a: 2, b: integer_byte_bit_at(b: b, shift: 1))
-              ),
-              b: int_mul(a: 4, b: integer_byte_bit_at(b: b, shift: 2))
-            ),
-            b: int_mul(a: 8, b: integer_byte_bit_at(b: b, shift: 3))
-          ),
-          b: int_mul(a: 16, b: integer_byte_bit_at(b: b, shift: 4))
-        ),
-        b: int_mul(a: 32, b: integer_byte_bit_at(b: b, shift: 5))
-      ),
-      b: int_mul(a: 64, b: integer_byte_bit_at(b: b, shift: 6))
-    ),
-    b: int_mul(a: 128, b: integer_byte_bit_at(b: b, shift: 7))
-  )
+fn integer_u8_from_byte(b: Byte) -> Outcome<Int> {
+  match integer_byte_bit_at(b: b, shift: 0) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: b0, diagnostics: _ } =>
+      match integer_byte_bit_at(b: b, shift: 1) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: b1, diagnostics: _ } =>
+          match integer_byte_bit_at(b: b, shift: 2) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: b2, diagnostics: _ } =>
+              match integer_byte_bit_at(b: b, shift: 3) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: b3, diagnostics: _ } =>
+                  match integer_byte_bit_at(b: b, shift: 4) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: b4, diagnostics: _ } =>
+                      match integer_byte_bit_at(b: b, shift: 5) {
+                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                        Accepted { value: b5, diagnostics: _ } =>
+                          match integer_byte_bit_at(b: b, shift: 6) {
+                            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                            Accepted { value: b6, diagnostics: _ } =>
+                              match integer_byte_bit_at(b: b, shift: 7) {
+                                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                Accepted { value: b7, diagnostics: _ } =>
+                                  outcome_accepted(
+                                    value: int_add(
+                                      a: int_add(
+                                        a: int_add(
+                                          a: int_add(
+                                            a: int_add(
+                                              a: int_add(
+                                                a: int_add(
+                                                  a: b0,
+                                                  b: int_mul(a: 2, b: b1)
+                                                ),
+                                                b: int_mul(a: 4, b: b2)
+                                              ),
+                                              b: int_mul(a: 8, b: b3)
+                                            ),
+                                            b: int_mul(a: 16, b: b4)
+                                          ),
+                                          b: int_mul(a: 32, b: b5)
+                                        ),
+                                        b: int_mul(a: 64, b: b6)
+                                      ),
+                                      b: int_mul(a: 128, b: b7)
+                                    )
+                                  )
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
 }
 
 fn integer_signed_i32_le_bytes_to_int_value(b0: Int, b1: Int, b2: Int, b3: Int) -> Int {
@@ -1212,14 +1257,30 @@ fn integer_signed_i32_le_bytes_to_int(bytes: List<Byte>) -> Outcome<Int> {
               Present { value: b2 } =>
                 match list_at_optional(xs: bytes, index: 3) {
                   Present { value: b3 } =>
-                    outcome_accepted(
-                      value: integer_signed_i32_le_bytes_to_int_value(
-                        b0: integer_u8_from_byte(b: b0),
-                        b1: integer_u8_from_byte(b: b1),
-                        b2: integer_u8_from_byte(b: b2),
-                        b3: integer_u8_from_byte(b: b3)
-                      )
-                    )
+                    match integer_u8_from_byte(b: b0) {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: u0, diagnostics: _ } =>
+                        match integer_u8_from_byte(b: b1) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: u1, diagnostics: _ } =>
+                            match integer_u8_from_byte(b: b2) {
+                              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                              Accepted { value: u2, diagnostics: _ } =>
+                                match integer_u8_from_byte(b: b3) {
+                                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                  Accepted { value: u3, diagnostics: _ } =>
+                                    outcome_accepted(
+                                      value: integer_signed_i32_le_bytes_to_int_value(
+                                        b0: u0,
+                                        b1: u1,
+                                        b2: u2,
+                                        b3: u3
+                                      )
+                                    )
+                                }
+                            }
+                        }
+                    }
                   Absent =>
                     outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
                 }
