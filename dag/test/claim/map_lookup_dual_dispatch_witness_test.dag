@@ -18,8 +18,13 @@ test fn map_index_routes_through_dual_dispatch_chokepoint() -> Bool {
 
 test fn lookup_builtin_routes_through_dual_dispatch_chokepoint() -> Bool {
   let m = empty_map() |> map_insert("k", 7)
-  lookup(m, "k") == 7
+  match lookup(m, "k") {
+    Holds { value: v } => v == 7
+    _ => false
+  }
 }
+
+data lookup_witness_contract_note: String = "lookup routes through the dual-dispatch chokepoint, which wraps the hit in the Witness coproduct (Holds { value } | Violates) — proven by execution 2026-07-12. The earlier bare `lookup(m, k) == 7` compared the Holds wrapper against a native Int, which the cross-representation equality guard refuses by design (DESIGN §5); matching Holds is the discriminating form — a raw 7 here would mean the bare builtin BYPASSED the chokepoint."
 
 test fn std_graph_build_adjacency_views_evaluates() -> Bool {
   let names = ["a", "b"]

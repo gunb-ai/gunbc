@@ -62,6 +62,8 @@ pub mod std_effects;
 pub mod std_emit_model;
 #[path = "../../stage0/src/std_error_primitives.rs"]
 pub mod std_error_primitives;
+#[path = "../../stage0/src/std_execution_mode.rs"]
+pub mod std_execution_mode;
 #[path = "../../stage0/src/std_graph.rs"]
 pub mod std_graph;
 #[path = "../../stage0/src/std_http_path.rs"]

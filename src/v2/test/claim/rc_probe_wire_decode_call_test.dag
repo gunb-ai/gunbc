@@ -6,7 +6,6 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-type FilesystemReadResult { content: String }
 
 data target_model_path: String = "src/v2/std/compilers/target_model.dag"
 

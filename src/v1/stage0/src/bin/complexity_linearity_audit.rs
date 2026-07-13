@@ -86,7 +86,7 @@ fn print_summary(
     eprintln!(
         "complexity_linearity_audit: syntactic wildcard arms — total={} on_roster={} off_roster={} \
          | triage buckets are grounded in v2.lens.complexity_linearity_audit (.dag), verified by \
-         src/v2/test/claim/complexity_linearity/syntactic_audit_witness_test.dag",
+         src/v2/test/claim/long/syntactic_audit_witness_test.dag",
         wildcard_facts.len(),
         on_roster,
         wildcard_facts.len() - on_roster,

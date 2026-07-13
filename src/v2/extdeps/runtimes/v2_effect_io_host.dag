@@ -15,10 +15,10 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
   effect_io_pure_store_lookup,
   effect_io_pure_write_payload_from_args
 }
-import v2.std.execution_mode {
+import std.execution_mode {
   ExecutionMode,
   Hermetic,
-  execution_mode_is_hermetic
+  execution_mode_is_wet_dispatch
 }
 import v2.std.collection { Absent, List, Map }
 import v2.std.diagnostic {
@@ -140,9 +140,7 @@ fn effect_io_host_dispatch_read(
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
-      if execution_mode_is_hermetic(mode: mode) {
-        effect_io_pure_store_lookup(store: fixture, locator: locator)
-      } else {
+      if execution_mode_is_wet_dispatch(mode: mode) {
         match host_ctx {
           HostFileContext { context: ctx } =>
             effect_io_host_file_read(ctx: ctx, locator: locator)
@@ -151,6 +149,8 @@ fn effect_io_host_dispatch_read(
           HostStorageContext { context: ctx } =>
             effect_io_host_storage_read(ctx: ctx, locator: locator)
         }
+      } else {
+        effect_io_pure_store_lookup(store: fixture, locator: locator)
       }
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
@@ -166,11 +166,7 @@ fn effect_io_host_dispatch_write(
     Holds { value: locator } =>
       match effect_io_pure_write_payload_from_args(args: request.arguments) {
         Holds { value: payload } =>
-          if execution_mode_is_hermetic(mode: mode) {
-            outcome_rejected(
-              d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_hermetic_write_rejected)
-            )
-          } else {
+          if execution_mode_is_wet_dispatch(mode: mode) {
             match host_ctx {
               HostFileContext { context: ctx } =>
                 effect_io_host_file_write(ctx: ctx, locator: locator, payload: payload)
@@ -179,6 +175,10 @@ fn effect_io_host_dispatch_write(
               HostStorageContext { context: ctx } =>
                 effect_io_host_storage_write(ctx: ctx, locator: locator, payload: payload)
             }
+          } else {
+            outcome_rejected(
+              d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_hermetic_write_rejected)
+            )
           }
         Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
       }

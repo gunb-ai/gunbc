@@ -12,6 +12,7 @@ type GeneratedArtifact
   | RoadmapArtifact
   | DesignArtifact
   | GithooksPrePushArtifact
+  | GithooksPreCommitArtifact
   | RunnerDeployArtifact
   | FleetConvergeArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
@@ -21,7 +22,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, RunnerDeployArtifact, FleetConvergeArtifact],
+      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, FleetConvergeArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -47,6 +48,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     RoadmapArtifact => "ROADMAP.md"
     DesignArtifact => "DESIGN.md"
     GithooksPrePushArtifact => ".githooks/pre-push"
+    GithooksPreCommitArtifact => ".githooks/pre-commit"
     RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
     FleetConvergeArtifact => ".github/fleet-converge.sh"
     AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
@@ -59,6 +61,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
   match a {
     GitignoreArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPrePushArtifact => CommitRequired { consumer: GitProtocol }
+    GithooksPreCommitArtifact => CommitRequired { consumer: GitProtocol }
     CiYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FalsifierYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
@@ -90,6 +93,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     GithooksPrePushArtifact => match b { GithooksPrePushArtifact => true  _ => false }
+    GithooksPreCommitArtifact => match b { GithooksPreCommitArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
     FleetConvergeArtifact => match b { FleetConvergeArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }

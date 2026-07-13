@@ -9,7 +9,6 @@ import std.realization_schedule {
   CorpusWitnessKind,
   runnable_resource_profile_negligible
 }
-import std.measure { HardwareThreadCount, hardware_thread_count }
 import std.types { List }
 
 data floor_skip_disc_entry: String = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag"
@@ -38,12 +37,8 @@ fn floor_skip_proof_batches() -> List<List<Runnable>> {
       node_frontier_selection: SelectionApplied,
       exclude_substrings: [],
       discovery_scope_dirs: [],
-      spawn_width_cap: 1,
       profile: runnable_resource_profile_negligible()
     }
   ]]
 }
 
-fn floor_skip_proof_plan_spawn_width() -> HardwareThreadCount {
-  hardware_thread_count(count: 1)
-}

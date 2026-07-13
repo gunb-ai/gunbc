@@ -50,6 +50,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_effects.rs",
     "std_emit_model.rs",
     "std_error_primitives.rs",
+    "std_execution_mode.rs",
     "std_graph.rs",
     "std_http_path.rs",
     "std_induction.rs",
@@ -130,6 +131,10 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     // Phase-local heartbeat for long floor walks (2026-07-04); its own header
     // carries the dissolution trigger (realization_measurement_loop Phase 0).
     "phase_profile.rs",
+    // AIMD memory governor (2026-07-12): run-time adaptive width against the slot's
+    // cgroup budget; replaced the plan-pinned spawn-width constants. Hand-maintained
+    // beside cli_run/v1_interpreter until host-effect modules migrate to .dag.
+    "memory_governor.rs",
 ];
 
 /// Hand-maintained stage0 support living in subdirectories (not flat `.rs` files).
