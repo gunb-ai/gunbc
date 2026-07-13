@@ -109,6 +109,7 @@ import v2.std.host_transport {
   TargetEmitHostRuntimeRow,
   configured_emit_host_runtime_row_from_target_row
 }
+import v2.std.integer { integer_decimal_magnitude_node_to_int }
 
 type TargetModel {
   bundle: Node
@@ -11114,6 +11115,75 @@ fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
   }
 }
 
+fn target_value_expr_is_int_literal_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
+    _ => false
+  }
+}
+
+fn target_value_expr_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
+  if target_value_expr_is_int_literal_atom(node: node) {
+    fold(node.children, init: optional_absent(), f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge {
+            Edge { label: Named { name: field }, target: magnitude } =>
+              if field == ^integer_literal_magnitude_field {
+                optional_present(value: magnitude)
+              } else {
+                optional_absent()
+              }
+            Edge { label: Positional, target: _ } => optional_absent()
+          }
+      }
+    })
+  } else {
+    optional_absent()
+  }
+}
+
+fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> Optional<Symbol> {
+  if magnitude == 1 {
+    optional_present(value: ^dag_binding_pick_lit_one)
+  } else if magnitude == 2 {
+    optional_present(value: ^dag_binding_pick_lit_two)
+  } else {
+    optional_absent()
+  }
+}
+
+fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValueExpression> {
+  match target_value_expr_int_literal_magnitude_node_optional(node: node) {
+    Present { value: magnitude_node } =>
+      match integer_decimal_magnitude_node_to_int(node: magnitude_node) {
+        Accepted { value: magnitude, diagnostics: _ } =>
+          match target_value_expr_int_literal_magnitude_binding(magnitude: magnitude) {
+            Present { value: binding } =>
+              outcome_accepted(
+                target_value_expression_binding_ref(binding: binding)
+              )
+            Absent =>
+              outcome_rejected(
+                target_value_expr_diagnostic(
+                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  node: node
+                )
+              )
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: node
+        )
+      )
+  }
+}
+
 fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol> {
   if id == ^dag_pick_lit_one {
     optional_present(value: ^dag_binding_pick_lit_one)
@@ -11191,6 +11261,8 @@ fn target_value_expr_project_atom_literal(node: Node) -> Outcome<TargetValueExpr
             target_value_expr_project_pick_literal_atom(id: inner_id)
           }
         )
+      } else if target_value_expr_is_int_literal_atom(node: node) {
+        target_value_expr_project_int_literal_atom(node: node)
       } else {
         target_value_expr_project_pick_literal_atom(id: id)
       }
