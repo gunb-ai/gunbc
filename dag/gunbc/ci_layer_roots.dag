@@ -126,9 +126,6 @@ data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
   "extdeps/formats/spice_rc_ngspice_oracle_test.dag",
   "lens/idempotency/write_effect.dag",
   "lens/parallelism/data_dependency.dag",
-  "lens/testgen.dag",
-  "lens/testgen/",
-  "workflow/affected_testgen_ci_runner.dag",
   "workflow/branch_dispatch_rung34_eval.dag",
   "workflow/branch_dispatch_rung8_eval.dag",
   "workflow/inprocess_equivalence.dag",
@@ -136,14 +133,12 @@ data whole_tree_strict_resolve_exclusion_substrings: List<String> = [
   "workflow/lens_synthesis_family_eval_test.dag",
   "workflow/loop_linear_bound_rung34_eval.dag",
   "workflow/loop_linear_bound_rung8_eval.dag",
-  "workflow/testclaim_corpus_runner.dag",
   "lens/idempotency/sg_claims_test.dag",
   "lens/idempotency/subject_roster.dag",
   "lens/idempotency/family_receipt.dag",
   "lens/parallelism/family_receipt.dag",
   "workflow/lens_idempotency_family_eval_test.dag",
-  "workflow/lens_parallelism_family_eval_test.dag",
-  "workflow/manual_corpus_eval.dag"
+  "workflow/lens_parallelism_family_eval_test.dag"
 ]
 
 fn whole_tree_resolve_exclusion_substrings() -> List<String> {
