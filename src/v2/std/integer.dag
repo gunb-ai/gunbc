@@ -3,7 +3,7 @@ module v2.std.integer
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { AbelianGroup, TailAbsent, TailFound, fold_list, fold_list_node, Group, length, Magma, Monoid, OrderedRing, Ordering, Ring, Semigroup }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
-import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, port_locus, Unavailable }
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, bind_outcome, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, port_locus, Unavailable }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
 import v2.std.machine {
@@ -16,6 +16,7 @@ import v2.std.machine {
   Word64,
   Word128
 }
+import v2.std.logic { Bool }
 import v2.std.nat { Nat }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 type GroupCompletion<M>
@@ -95,6 +96,17 @@ type IntegerIntervalBound
 type IntegerIntervalSpec {
   inclusive_min: IntegerIntervalBound
   inclusive_max: IntegerIntervalBound
+}
+
+type IntegerU8Wire {
+  b0: Bool
+  b1: Bool
+  b2: Bool
+  b3: Bool
+  b4: Bool
+  b5: Bool
+  b6: Bool
+  b7: Bool
 }
 
 fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
@@ -1039,18 +1051,108 @@ fn integer_u8_unit_to_bit(value: Int, shift: Int) -> Bool {
   (value / shift) % 2 == 1
 }
 
+fn integer_u8_wire_from_int(value: Int) -> IntegerU8Wire {
+  IntegerU8Wire {
+    b0: integer_u8_unit_to_bit(value: value, shift: 1),
+    b1: integer_u8_unit_to_bit(value: value, shift: 2),
+    b2: integer_u8_unit_to_bit(value: value, shift: 4),
+    b3: integer_u8_unit_to_bit(value: value, shift: 8),
+    b4: integer_u8_unit_to_bit(value: value, shift: 16),
+    b5: integer_u8_unit_to_bit(value: value, shift: 32),
+    b6: integer_u8_unit_to_bit(value: value, shift: 64),
+    b7: integer_u8_unit_to_bit(value: value, shift: 128)
+  }
+}
+
+fn integer_u8_from_wire(w: IntegerU8Wire) -> Int {
+  int_add(
+    a: int_add(
+      a: int_add(
+        a: int_add(
+          a: int_add(
+            a: int_add(
+              a: int_add(
+                a: if w.b0 { 1 } else { 0 },
+                b: int_mul(a: 2, b: if w.b1 { 1 } else { 0 })
+              ),
+              b: int_mul(a: 4, b: if w.b2 { 1 } else { 0 })
+            ),
+            b: int_mul(a: 8, b: if w.b3 { 1 } else { 0 })
+          ),
+          b: int_mul(a: 16, b: if w.b4 { 1 } else { 0 })
+        ),
+        b: int_mul(a: 32, b: if w.b5 { 1 } else { 0 })
+      ),
+      b: int_mul(a: 64, b: if w.b6 { 1 } else { 0 })
+    ),
+    b: int_mul(a: 128, b: if w.b7 { 1 } else { 0 })
+  )
+}
+
 fn integer_u8_to_byte(value: Int) -> Byte {
+  let w = integer_u8_wire_from_int(value: value)
   Byte {
-    bits: [
-      integer_u8_unit_to_bit(value: value, shift: 1),
-      integer_u8_unit_to_bit(value: value, shift: 2),
-      integer_u8_unit_to_bit(value: value, shift: 4),
-      integer_u8_unit_to_bit(value: value, shift: 8),
-      integer_u8_unit_to_bit(value: value, shift: 16),
-      integer_u8_unit_to_bit(value: value, shift: 32),
-      integer_u8_unit_to_bit(value: value, shift: 64),
-      integer_u8_unit_to_bit(value: value, shift: 128)
-    ]
+    bits: [w.b0, w.b1, w.b2, w.b3, w.b4, w.b5, w.b6, w.b7]
+  }
+}
+
+fn integer_byte_to_u8_wire_optional(b: Byte) -> Optional<IntegerU8Wire> {
+  if length(xs: b.bits) != 8 {
+    optional_absent()
+  } else {
+    match list_at_optional(xs: b.bits, index: 0) {
+      Present { value: b0 } =>
+        match list_at_optional(xs: b.bits, index: 1) {
+          Present { value: b1 } =>
+            match list_at_optional(xs: b.bits, index: 2) {
+              Present { value: b2 } =>
+                match list_at_optional(xs: b.bits, index: 3) {
+                  Present { value: b3 } =>
+                    match list_at_optional(xs: b.bits, index: 4) {
+                      Present { value: b4 } =>
+                        match list_at_optional(xs: b.bits, index: 5) {
+                          Present { value: b5 } =>
+                            match list_at_optional(xs: b.bits, index: 6) {
+                              Present { value: b6 } =>
+                                match list_at_optional(xs: b.bits, index: 7) {
+                                  Present { value: b7 } =>
+                                    optional_present(
+                                      value: IntegerU8Wire {
+                                        b0: b0,
+                                        b1: b1,
+                                        b2: b2,
+                                        b3: b3,
+                                        b4: b4,
+                                        b5: b5,
+                                        b6: b6,
+                                        b7: b7
+                                      }
+                                    )
+                                  Absent => optional_absent()
+                                }
+                              Absent => optional_absent()
+                            }
+                          Absent => optional_absent()
+                        }
+                      Absent => optional_absent()
+                    }
+                  Absent => optional_absent()
+                }
+              Absent => optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      Absent => optional_absent()
+    }
+  }
+}
+
+fn integer_u8_from_byte_wire(b: Byte) -> Outcome<Int> {
+  match integer_byte_to_u8_wire_optional(b: b) {
+    Present { value: w } =>
+      outcome_accepted(value: integer_u8_from_wire(w: w))
+    Absent =>
+      outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
   }
 }
 
@@ -1080,38 +1182,6 @@ fn integer_int_to_signed_i32_le_bytes(value: Int) -> List<Byte> {
     integer_u8_to_byte(value: (wire / 65536) % 256),
     integer_u8_to_byte(value: (wire / 16777216) % 256)
   ]
-}
-
-fn integer_byte_bit_at(b: Byte, shift: Int) -> Int {
-  match list_at_optional(xs: b.bits, index: shift) {
-    Present { value: bit } => if bit { 1 } else { 0 }
-    Absent => 0
-  }
-}
-
-fn integer_u8_from_byte(b: Byte) -> Int {
-  int_add(
-    a: int_add(
-      a: int_add(
-        a: int_add(
-          a: int_add(
-            a: int_add(
-              a: int_add(
-                a: integer_byte_bit_at(b: b, shift: 0),
-                b: int_mul(a: 2, b: integer_byte_bit_at(b: b, shift: 1))
-              ),
-              b: int_mul(a: 4, b: integer_byte_bit_at(b: b, shift: 2))
-            ),
-            b: int_mul(a: 8, b: integer_byte_bit_at(b: b, shift: 3))
-          ),
-          b: int_mul(a: 16, b: integer_byte_bit_at(b: b, shift: 4))
-        ),
-        b: int_mul(a: 32, b: integer_byte_bit_at(b: b, shift: 5))
-      ),
-      b: int_mul(a: 64, b: integer_byte_bit_at(b: b, shift: 6))
-    ),
-    b: int_mul(a: 128, b: integer_byte_bit_at(b: b, shift: 7))
-  )
 }
 
 fn integer_signed_i32_le_bytes_to_int_value(b0: Int, b1: Int, b2: Int, b3: Int) -> Int {
@@ -1212,13 +1282,33 @@ fn integer_signed_i32_le_bytes_to_int(bytes: List<Byte>) -> Outcome<Int> {
               Present { value: b2 } =>
                 match list_at_optional(xs: bytes, index: 3) {
                   Present { value: b3 } =>
-                    outcome_accepted(
-                      value: integer_signed_i32_le_bytes_to_int_value(
-                        b0: integer_u8_from_byte(b: b0),
-                        b1: integer_u8_from_byte(b: b1),
-                        b2: integer_u8_from_byte(b: b2),
-                        b3: integer_u8_from_byte(b: b3)
-                      )
+                    bind_outcome(
+                      o: integer_u8_from_byte_wire(b: b0),
+                      f: fn(v0) {
+                        bind_outcome(
+                          o: integer_u8_from_byte_wire(b: b1),
+                          f: fn(v1) {
+                            bind_outcome(
+                              o: integer_u8_from_byte_wire(b: b2),
+                              f: fn(v2) {
+                                bind_outcome(
+                                  o: integer_u8_from_byte_wire(b: b3),
+                                  f: fn(v3) {
+                                    outcome_accepted(
+                                      value: integer_signed_i32_le_bytes_to_int_value(
+                                        b0: v0,
+                                        b1: v1,
+                                        b2: v2,
+                                        b3: v3
+                                      )
+                                    )
+                                  }
+                                )
+                              }
+                            )
+                          }
+                        )
+                      }
                     )
                   Absent =>
                     outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
