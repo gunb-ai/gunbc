@@ -14,36 +14,73 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 const PROBE_ENTRY: &str = "src/v2/test/claim/long/compiler_frontier_probe_entry_test.dag";
 const PROBE_RECEIPT_FN: &str = "frontier_probe_entry_receipt";
 const WITNESS_LAYER_ROOTS: &[&str] = &["dag", "src/v2"];
+const FRONTIER_SWEEP_ORDER_ENTRY: &str = "src/v2/compiler/self_host/frontier.dag";
+const SWEEP_ORDER_DATA: &str = "compiler_frontier_sweep_order";
 
-const COMPILER_FRONTIER_MODULE_PATHS: &[&str] = &[
-    "src/v2/compiler/parse_engine_hooks.dag",
-    "src/v2/compiler/use_site_verdict.dag",
-    "src/v2/compiler/discovery_enumeration.dag",
-    "src/v2/compiler/self_host.dag",
-    "src/v2/compiler/materialization_carriers.dag",
-    "src/v2/compiler/07_target_carriers.dag",
-    "src/v2/compiler/fold_lowering.dag",
-    "src/v2/compiler/03_normalize.dag",
-    "src/v2/compiler/03_resolve.dag",
-    "src/v2/compiler/03_name_resolve.dag",
-    "src/v2/compiler/04_infer.dag",
-    "src/v2/compiler/05_eval.dag",
-    "src/v2/compiler/06_translate.dag",
-    "src/v2/compiler/05_emit.dag",
-    "src/v2/compiler/emit_module.dag",
-    "src/v2/compiler/05_emit_orchestration.dag",
-    "src/v2/compiler/program_partition.dag",
-    "src/v2/compiler/emit_semantic_decl.dag",
-    "src/v2/compiler/emit_host.dag",
-    "src/v2/compiler/emit_produced.dag",
-    "src/v2/compiler/02_parse.dag",
-    "src/v2/compiler/source_authority.dag",
-    "src/v2/compiler/program_assembly.dag",
-    "src/v2/compiler/03_ingest.dag",
-    "src/v2/compiler/01_tokenize.dag",
-    "src/v2/compiler/03_body_producer.dag",
-    "src/v2/compiler/00_compile.dag",
-];
+fn free_monoid_elems<'a>(value: &'a Value, ctx: &InterpContext) -> Result<Vec<&'a Value>, String> {
+    let mut out = Vec::new();
+    let mut cur = value;
+    loop {
+        match cur {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Cons") => {
+                let head = ctx
+                    .field(fields, "head")
+                    .ok_or_else(|| "Cons without `head` field".to_string())?;
+                out.push(head);
+                cur = ctx
+                    .field(fields, "tail")
+                    .ok_or_else(|| "Cons without `tail` field".to_string())?;
+            }
+            Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "Empty") => {
+                return Ok(out);
+            }
+            Value::List(items) => {
+                out.extend(items.iter());
+                return Ok(out);
+            }
+            other => {
+                return Err(format!(
+                    "expected a List (Cons/Empty), got {}",
+                    other.type_label_public()
+                ));
+            }
+        }
+    }
+}
+
+fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for elem in free_monoid_elems(value, ctx)? {
+        match elem {
+            Value::Str(s) => out.push(s.clone()),
+            other => {
+                return Err(format!(
+                    "expected a List<String> element, got {}",
+                    other.type_label_public()
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn load_compiler_frontier_sweep_order(source_roots: &[String]) -> Result<Vec<String>, String> {
+    let mut roots: Vec<String> = WITNESS_LAYER_ROOTS
+        .iter()
+        .map(|r| r.to_string())
+        .collect();
+    roots.extend(source_roots.iter().cloned());
+    let (graph, source_indices) =
+        resolve_entry_graph(&roots, FRONTIER_SWEEP_ORDER_ENTRY).map_err(|e| format!("{e}"))?;
+    let ctx = InterpContext::new(&graph, source_indices, ExecutionMode::Hermetic);
+    let value = v1_interpreter::run_in_context(&ctx, SWEEP_ORDER_DATA, true)
+        .map_err(|e| format!("read {SWEEP_ORDER_DATA}: {e}"))?;
+    str_list_from_value(&value, &ctx)
+}
 
 struct ProbeReceiptRow {
     module_path: String,
@@ -71,7 +108,7 @@ fn symbol_to_manifest(sym: &str) -> String {
     }
 }
 
-fn value_symbol_name(ctx: &InterpContext, value: &Value) -> Result<String, String> {
+fn value_symbol_name(_ctx: &InterpContext, value: &Value) -> Result<String, String> {
     match value {
         Value::Str(s) => Ok(symbol_to_manifest(s)),
         other => Err(format!(
@@ -369,8 +406,21 @@ fn run() -> Result<ExitCode, ExitCode> {
         ExitCode::from(1)
     })?;
 
+    let module_paths = load_compiler_frontier_sweep_order(&source_roots).map_err(|msg| {
+        eprintln!("frontier_probe_survey: {msg}");
+        ExitCode::from(1)
+    })?;
+    if module_paths.is_empty() {
+        eprintln!("frontier_probe_survey: {SWEEP_ORDER_DATA} is empty");
+        return Err(ExitCode::from(1));
+    }
+    eprintln!(
+        "frontier_probe_survey: loaded {} module path(s) from {SWEEP_ORDER_DATA}",
+        module_paths.len()
+    );
+
     let mut rows: Vec<ProbeReceiptRow> = Vec::new();
-    for module_path in COMPILER_FRONTIER_MODULE_PATHS {
+    for module_path in &module_paths {
         eprintln!("frontier_probe_survey: probing {module_path}");
         match run_probe_for_module(&source_roots, &survey_dir, module_path) {
             Ok(row) => {

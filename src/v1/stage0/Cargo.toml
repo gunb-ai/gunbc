@@ -67,7 +67,13 @@ path = "src/bin/discover_owned_data.rs"
 name = "discover_source_root_ingest"
 path = "src/bin/discover_source_root_ingest.rs"
 
-# Per-module emit-frontier probe survey over the 27 compiler modules (Wave 2 de-risking).
+# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / P5) — per-module emit-frontier survey host transport.
+# Authority: module census reads `compiler_frontier_sweep_order` from `frontier.dag` at runtime (no parallel roster).
+# NOT floor-enrolled — long-lane local recipe via `frontier_probe_survey_transport.dag`.
+# DISSOLUTION: shrink when `^migrate_when_frontier_per_module_probe_receipt_binds` lands (gunbc.plans.wave2_prep_design
+# §census carrier) and survey receipts replace knowledge-attributed roster rows; then delete this bin and fold the
+# per-module loop into a pure `.dag` witness or self-emitted transport (same dissolution row as
+# `frontier_probe_survey_transport_scaffold_note`).
 [[bin]]
 name = "frontier_probe_survey"
 path = "src/bin/frontier_probe_survey.rs"
