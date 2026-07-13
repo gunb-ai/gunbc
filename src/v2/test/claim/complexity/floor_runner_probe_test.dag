@@ -9,21 +9,11 @@ import v2.std.text { String }
 
 data floor_path: String = "src/v2/workflow/affected_set_floor_runner.dag"
 
-test fn floor_runner_zero_suspects() -> Bool {
-  file_suspect_count(path: floor_path) == 0
-}
-
-test fn floor_runner_refusals_eq_0() -> Bool {
-  file_refusal_count(path: floor_path) == 0
-}
-
-test fn floor_runner_refusals_eq_1() -> Bool {
-  file_refusal_count(path: floor_path) == 1
-}
-
-test fn floor_runner_refusals_eq_2() -> Bool {
-  file_refusal_count(path: floor_path) == 2
-}
+test fn floor_suspects_eq_1() -> Bool { file_suspect_count(path: floor_path) == 1 }
+test fn floor_suspects_eq_2() -> Bool { file_suspect_count(path: floor_path) == 2 }
+test fn floor_refusals_eq_3() -> Bool { file_refusal_count(path: floor_path) == 3 }
+test fn floor_refusals_eq_4() -> Bool { file_refusal_count(path: floor_path) == 4 }
+test fn floor_refusals_eq_5() -> Bool { file_refusal_count(path: floor_path) == 5 }
 
 fn floor_findings_have_cause(cause: Symbol) -> Bool {
   match ingest_findings(path: floor_path) {
@@ -32,18 +22,10 @@ fn floor_findings_have_cause(cause: Symbol) -> Bool {
   }
 }
 
-test fn floor_cause_fold_accumulator_unread() -> Bool {
-  floor_findings_have_cause(cause: ^fold_accumulator_unread)
+test fn floor_cause_computed_argument() -> Bool {
+  floor_findings_have_cause(cause: ^copied_port_computed_argument)
 }
 
-test fn floor_cause_copied_port_name_may_alias() -> Bool {
-  floor_findings_have_cause(cause: ^copied_port_name_may_alias)
-}
-
-test fn floor_cause_combiner_unregistered_carrier_reaches() -> Bool {
-  floor_findings_have_cause(cause: ^combiner_unregistered_carrier_reaches)
-}
-
-test fn floor_cause_call_head_unreadable() -> Bool {
-  floor_findings_have_cause(cause: ^call_head_unreadable)
+test fn floor_cause_argument_missing() -> Bool {
+  floor_findings_have_cause(cause: ^copied_port_argument_missing)
 }
