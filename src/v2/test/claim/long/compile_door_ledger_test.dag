@@ -18,42 +18,27 @@ import v2.workflow.compile_door_ledger {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data compile_door_ledger_witness_note: String = "PR-2 ledger receipts: the door_real_module_probe receipts re-pinned THROUGH the ledger machinery (one typed counted row per subject path, shared module-graph census, per-row import closure fed into the door ingest). Pinned counts are the burn-down baseline: when a cause zeroes (fact_density calibration lands, resolve grows generics, the namespace migration flips), the matching assertion here goes red and the ledger's flip-trigger table advances — that is their job, same contract as the probe receipts."
+data compile_door_ledger_witness_note: String = "PR-2 ledger receipt: the door_real_module_probe frontier receipts re-pinned THROUGH the AuditOnly ledger machinery — one typed counted row per subject path, shared module-graph census, per-row import closure fed into the door ingest, aggregated into the cause histogram (the burn-down list). Three REAL corpus modules over one affected set, each reaching the door's deep stages, produce three DISTINCT correctly-attributed causes: std.determinism (zero imports, passes assemble->resolve->infer) reds at the per-node fact_density lens (fact_density_hollow_alias_locus — THIS lane's calibration burn-down); std.error_primitives reds at resolve (resolve_reason_unbound_symbol — generics, shared self-host critical path); std.bit (WITH an import — parses, assembles, reaches resolve's subject admission) reds at resolve_ambiguous_export (the admit_named_exports flat-merge ambiguity, migration-owned, counted with NO flip trigger per the nimble-boar-198 contract). When a cause zeroes (calibration lands, resolve grows generics, the namespace-only containment flip dissolves the flat-merge) the matching cause_count assertion goes red and the flip-trigger table advances — that is these receipts' job, the same contract as the probe receipts they re-pin."
+
+data closure_feeding_frontier_note: String = "HONEST frontier finding (DESIGN 5, no fail-open receipt): the ledger's import-closure feeding is WIRED (door_ledger feeds import_closure into the door ingest) and structurally exercised — modules reach the door's deep resolve/infer/lens stages, which an empty or broken ingest could not — but NO real import-carrying module demonstrates the fed peer as LOAD-BEARING today, because they red at migration-owned causes BEFORE a peer's exports matter: std.bit reds at admit_named_exports on its OWN repeated field names (bits in Nibble and Byte) at the SUBJECT admission step, which runs before admit_imports; std.currency reds earlier still, at parse (parse_grammar_choice_overlap_residue, its coproduct syntax — std.bit imports too yet parses, so that red is not the import). This is a migration-frontier fact, not a ledger deficit: the same admit_named_exports flat-merge that makes std.bit's own fields ambiguous is exactly the mechanism the namespace-only containment flip dissolves (Nibble.bits and Byte.bits distinct by position). A load-bearing closure-feeding receipt becomes constructible once that flip lands; until then the ledger counts these causes, it does not fake a proof it cannot yet make."
 
 data ledger_pool_roots: List<String> = ["dag", "src/v2"]
 
-fn two_module_rows() -> List<DoorLedgerRow> {
-  door_ledger(
-    paths: ["dag/std/determinism.dag", "dag/std/error_primitives.dag"],
-    pool_roots: ledger_pool_roots
-  )
+data affected_set_paths: List<String> = [
+  "dag/std/determinism.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/bit.dag"
+]
+
+fn affected_rows() -> List<DoorLedgerRow> {
+  door_ledger(paths: affected_set_paths, pool_roots: ledger_pool_roots)
 }
 
-test fn ledger_counts_frontier_causes_over_import_free_modules() -> Bool {
-  let rows = two_module_rows()
-  ledger_refused_count(rows: rows) == 2
+test fn ledger_cause_histogram_over_mixed_affected_set() -> Bool {
+  let rows = affected_rows()
+  ledger_refused_count(rows: rows) == 3
+    && ledger_all_compiled(rows: rows) == false
     && ledger_cause_count(rows: rows, reason: ^fact_density_hollow_alias_locus) == 1
     && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 1
-    && ledger_all_compiled(rows: rows) == false
-}
-
-fn bit_module_rows() -> List<DoorLedgerRow> {
-  door_ledger(paths: ["dag/std/bit.dag"], pool_roots: ledger_pool_roots)
-}
-
-fn bit_first_disposition() -> Symbol {
-  fold_list(
-    xs: bit_module_rows(),
-    empty: ^BIT_EMPTY_ROWS,
-    cons: fn(acc, row) {
-      match row.outcome {
-        DoorCompiled => ^BIT_DOOR_COMPILED
-        DoorRefused { reason: r } => r
-      }
-    }
-  )
-}
-
-test fn ledger_feeds_import_closure_through_the_door() -> Bool {
-  bit_first_disposition()
+    && ledger_cause_count(rows: rows, reason: ^resolve_ambiguous_export) == 1
 }
