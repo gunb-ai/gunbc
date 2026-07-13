@@ -9796,6 +9796,27 @@ mod node_frontier_plumbing_controls {
         );
     }
 
+    // §5 prove-the-refusal-fires: layer-3 backstop is by-design hard to reach in integration
+    // (the .dag model + entry_qualifies_for_skip_without_resolve gate first) — direct RED.
+    #[test]
+    fn refuse_reads_live_tree_selection_skip_fires_red_on_live_tree_row() {
+        let live = super::DiscoveryRow {
+            label: "live".to_string(),
+            entry: "e.dag".to_string(),
+            function: "live_holds".to_string(),
+            reads_live_tree: true,
+        };
+        let err = super::refuse_reads_live_tree_selection_skip(&live, "test")
+            .expect_err("ReadsLiveTree row must refuse selection skip");
+        assert!(err.contains("ReadsLiveTreeSelectionSkip"));
+        let substrate = super::DiscoveryRow {
+            reads_live_tree: false,
+            ..live
+        };
+        super::refuse_reads_live_tree_selection_skip(&substrate, "test")
+            .expect("SubstrateInputsOnly row may proceed to skip evaluation");
+    }
+
     // §5 deferred-discovery receipt: long-lane witnesses (s1_closure class) are excluded
     // from per-PR discovery but must be COUNTED in the floor log — never a silent skip.
     #[test]
