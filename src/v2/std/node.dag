@@ -1,5 +1,12 @@
 module v2.std.node
 
+import v2.std.collection {
+  Optional,
+  optional_absent,
+  optional_present,
+  optional_prefer_first_present,
+}
+
 type Symbol
 type Hash
 
@@ -234,24 +241,24 @@ fn node_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node>
   match edge {
     Edge { label: Named { name: field }, target: magnitude } =>
       if field == ^integer_literal_magnitude_field {
-        Present { value: magnitude }
+        optional_present(value: magnitude)
       } else {
-        Absent
+        optional_absent()
       }
-    Edge { label: Positional, target: _ } => Absent
+    Edge { label: Positional, target: _ } => optional_absent()
   }
 }
 
 fn node_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
   if node_is_int_literal_atom(node: node) {
-    fold(node.children, init: Absent, f: fn(acc, edge) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => node_int_literal_magnitude_edge_target_optional(edge: edge)
-      }
+    fold(node.children, init: optional_absent(), f: fn(acc, edge) {
+      optional_prefer_first_present(
+        left: acc,
+        right: node_int_literal_magnitude_edge_target_optional(edge: edge),
+      )
     })
   } else {
-    Absent
+    optional_absent()
   }
 }
 
