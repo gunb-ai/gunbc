@@ -1,0 +1,79 @@
+module v2.test.long.door_seam_probe
+
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse }
+import v2.compiler.normalize { normalize }
+import v2.compiler.resolve { resolve }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.complexity_accumulator_copy.analyze { accumulator_copy_findings, finding_is_suspect }
+import v2.std.algebra { count_where }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data quad_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+fn suspect_count(root: Node) -> Int {
+  count_where(xs: accumulator_copy_findings(root: root), predicate: finding_is_suspect)
+}
+
+type SeamProbe
+  = TokenizeRejected
+  | ParseRejected
+  | NormalizeRejected
+  | NormalizedProbe { normalized_suspects: Int, resolve_outcome: ResolveProbe }
+
+type ResolveProbe
+  = ResolveRejected
+  | ResolvedProbe { resolved_suspects: Int }
+
+fn probe() -> SeamProbe {
+  let lm = dag_language_model()
+  match tokenize(text: quad_snippet, file: ^door_seam_probe_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => TokenizeRejected
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => ParseRejected
+        Accepted { value: parse_tree, diagnostics: _ } =>
+          match normalize(parse_tree: parse_tree) {
+            Rejected { diagnostics: _ } => NormalizeRejected
+            Accepted { value: normalized, diagnostics: _ } =>
+              NormalizedProbe {
+                normalized_suspects: suspect_count(root: normalized),
+                resolve_outcome:
+                  match resolve(tree: normalized, lm: lm) {
+                    Rejected { diagnostics: _ } => ResolveRejected
+                    Accepted { value: resolved, diagnostics: _ } =>
+                      ResolvedProbe { resolved_suspects: suspect_count(root: resolved) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+test fn normalized_has_suspect() -> Bool {
+  match probe() {
+    NormalizedProbe { normalized_suspects: n, resolve_outcome: _ } => n > 0
+    _ => false
+  }
+}
+
+test fn resolve_accepts_snippet() -> Bool {
+  match probe() {
+    NormalizedProbe { normalized_suspects: _, resolve_outcome: ResolvedProbe { resolved_suspects: _ } } => true
+    _ => false
+  }
+}
+
+test fn resolved_still_has_suspect() -> Bool {
+  match probe() {
+    NormalizedProbe { normalized_suspects: _, resolve_outcome: ResolvedProbe { resolved_suspects: n } } => n > 0
+    _ => false
+  }
+}
