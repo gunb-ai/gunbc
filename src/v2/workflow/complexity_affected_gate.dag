@@ -66,3 +66,13 @@ fn affected_complexity_gate_passes(changed_paths: List<String>) -> Bool {
     AffectedComplexityRefused { flagged: _ } => false
   }
 }
+
+data affected_complexity_floor_gate_note: String = "The nullary floor-gate entry: it observes the diff itself via the same host effect the affected-set floor already uses (floor_observe_git_diff_name_status_for_ci — a git diff --name-status ShellProgram intent, ReadsLiveTree), then runs the suspects-only verdict over the changed .dag paths. So it is a self-scoping gate: no Rust executor change and no injected argument — enrollable as one RunnableSingleClaim gate row. A diff-observation FAILURE refuses the gate (fail-closed, DESIGN §5: an unobservable diff is not a green, it is a refusal), matching the floor's own DiffObservationRefusal disposition."
+
+fn affected_complexity_floor_gate() -> Bool {
+  match floor_observe_git_diff_name_status_for_ci() {
+    NameStatusDiffFail { reason: _ } => false
+    NameStatusDiffOk { changed_paths: paths, departed_paths: _ } =>
+      affected_complexity_gate_passes(changed_paths: paths)
+  }
+}
