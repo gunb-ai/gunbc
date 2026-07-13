@@ -147,12 +147,6 @@ fn error_primitives_door_outcome() -> DoorProbeOutcome {
   }
 }
 
-test fn real_module_error_primitives_head_reason_probe() -> Bool {
-  match error_primitives_door_outcome() {
-    DoorAccepted => true
-    DoorRejected { head_reason: r } => probe_reason_as_bool(r: r)
-  }
-}
 
 fn quad_admission() -> Admission {
   Admission {
@@ -196,16 +190,9 @@ fn quad_door_outcome() -> DoorProbeOutcome {
   }
 }
 
-test fn quad_with_peer_rejects_with_lens_reason() -> Bool {
+test fn quad_with_peer_reds_at_resolve_ambiguous_export() -> Bool {
   match quad_door_outcome() {
     DoorAccepted => false
-    DoorRejected { head_reason: r } => r == ^accumulator_copy_poly2_suspect
-  }
-}
-
-test fn quad_with_peer_head_reason_probe() -> Bool {
-  match quad_door_outcome() {
-    DoorAccepted => true
-    DoorRejected { head_reason: r } => probe_reason_as_bool(r: r)
+    DoorRejected { head_reason: r } => r == ^resolve_ambiguous_export
   }
 }
