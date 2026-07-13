@@ -2504,6 +2504,11 @@ fn body_lower_try_if_from_node(node: Node) -> Outcome<Optional<Node>> {
             body_lower_try_if_from_captured(captured: captured)
           Absent => outcome_accepted(value: optional_absent())
         }
+      } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: captured } => body_lower_try_if_from_node(node: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
       } else {
         outcome_accepted(value: optional_absent())
       }
