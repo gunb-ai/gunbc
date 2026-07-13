@@ -3126,6 +3126,8 @@ fn dag_language_model_binding_canonical(sym: Symbol) -> Bool {
     || sym == ^dag_binding_bind_x
     || sym == ^dag_binding_pick_lit_one
     || sym == ^dag_binding_pick_lit_two
+    || sym == ^dag_binding_type_bool
+    || sym == ^bool_node_symbol
 }
 
 fn dag_canonical_symbols() -> Set<Symbol> {

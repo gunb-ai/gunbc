@@ -127,9 +127,9 @@ fn body_lower_resolved_type_binding(sym: Symbol) -> Symbol {
 fn body_lower_numeric_pick_lit_optional(sym: Symbol) -> Optional<Symbol> {
   let lex = symbol_lexeme(sym: sym)
   if lex == "1" {
-    optional_present(value: ^dag_pick_lit_one)
+    optional_present(value: ^dag_binding_pick_lit_one)
   } else if lex == "2" {
-    optional_present(value: ^dag_pick_lit_two)
+    optional_present(value: ^dag_binding_pick_lit_two)
   } else {
     optional_absent()
   }
@@ -270,7 +270,12 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
     Absent =>
       match dag_binding_branded_atom_identity(node: node) {
         Present { value: binding } =>
-          Present { value: body_lower_param_ref_atom(identity: binding) }
+          match body_lower_numeric_pick_lit_optional(sym: binding) {
+            Present { value: lit } =>
+              Present { value: body_lower_param_ref_atom(identity: lit) }
+            Absent =>
+              Present { value: body_lower_param_ref_atom(identity: binding) }
+          }
         Absent =>
           match node_atom_identity_optional(node: node) {
             Present { value: id } =>
@@ -1705,7 +1710,12 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match dag_binding_branded_atom_identity(node: stripped) {
     Present { value: binding } =>
-      optional_present(value: body_lower_param_ref_atom(identity: binding))
+      match body_lower_numeric_pick_lit_optional(sym: binding) {
+        Present { value: lit } =>
+          optional_present(value: body_lower_param_ref_atom(identity: lit))
+        Absent =>
+          optional_present(value: body_lower_param_ref_atom(identity: binding))
+      }
     Absent =>
       match parse_production_emitted_identity_optional(node: stripped) {
         Present { value: emitted } =>
