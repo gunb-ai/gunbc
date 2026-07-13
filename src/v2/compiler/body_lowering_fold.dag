@@ -82,10 +82,23 @@ data body_lowering_interim_scaffold_row_match_hand_walker: BodyLoweringInterimSc
   }
 }
 
+data body_lowering_interim_scaffold_row_numeric_pick_lit: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
+  site: ^body_lower_numeric_pick_lit_optional,
+  disposition: SeedRetained {
+    reason: ^body_lowering_pick_eval_witness_bridge_reason,
+    migration_trigger: ^migrate_when_general_body_producer_lands
+  }
+}
+
+data body_lower_numeric_pick_lit_scaffold_note: String = "pick-eval witness bridge: maps stamped int lexemes \"1\"/\"2\" to canonical pick fixture bindings (^dag_binding_pick_lit_one/two). dissolve-on: ^migrate_when_general_body_producer_lands — delete body_lower_numeric_pick_lit_* when ingested numerics ground through general Int-literal production, not a permanent two-row nickname table."
+
 fn body_lowering_interim_scaffold_rows() -> List<BodyLoweringInterimScaffoldRow> {
   Cons {
     head: body_lowering_interim_scaffold_row_match_hand_walker,
-    tail: Empty
+    tail: Cons {
+      head: body_lowering_interim_scaffold_row_numeric_pick_lit,
+      tail: Empty
+    }
   }
 }
 
@@ -2180,12 +2193,19 @@ fn body_lower_if_expr_capture_optional(spine: Node) -> Optional<Node> {
               Present { value: right } =>
                 match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
                   Present { value: id } =>
-                    if (id == ^dag_token_kw_if) || (id == ^dag_token_kw_then) || (id == ^dag_token_kw_else) {
-                      body_lower_if_expr_capture_optional(spine: right)
-                    } else {
-                      body_lower_if_expr_capture_optional(spine: right)
+                    match (id == ^dag_token_kw_if) || (id == ^dag_token_kw_then) || (id == ^dag_token_kw_else) {
+                      true => body_lower_if_expr_capture_optional(spine: right)
+                      false =>
+                        match body_lower_if_expr_capture_optional(spine: left) {
+                          Present { value: found } => Present { value: found }
+                          Absent => body_lower_if_expr_capture_optional(spine: right)
+                        }
                     }
-                  Absent => body_lower_if_expr_capture_optional(spine: right)
+                  Absent =>
+                    match body_lower_if_expr_capture_optional(spine: left) {
+                      Present { value: found } => Present { value: found }
+                      Absent => body_lower_if_expr_capture_optional(spine: right)
+                    }
                 }
               Absent => Absent
             }

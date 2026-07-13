@@ -2364,6 +2364,8 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
   )
 }
 
+data dag_grammar_int_literal_stamp_lexeme_scaffold_note: String = "Interim: primary_expr_core and pattern_expr stamp int_literal with StampLexeme (was StampClass) so census-path operands carry distinct lexeme identities resolvable through body lowering. dissolve-on: ^migrate_when_general_body_producer_lands — general integer-literal ingestion supersedes grammar-level lexeme stamping. Fixture pick tokens (dag_pick_concrete_tokens) retain dag_grammar_pick_arm_literal_terminal with StampClass + branded bindings."
+
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
