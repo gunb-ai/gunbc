@@ -13,7 +13,7 @@ import v2.std.diagnostic {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { TailAbsent, TailFound, is_empty, list_snoc_item, list_tail }
-import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.collection { Absent, List, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.node {
   Ambiguous,
   Atom,
@@ -47,24 +47,24 @@ fn node_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node>
   match edge {
     Edge { label: Named { name: field }, target: magnitude } =>
       if field == ^integer_literal_magnitude_field {
-        Present { value: magnitude }
+        optional_present(value: magnitude)
       } else {
-        Absent
+        optional_absent()
       }
-    Edge { label: Positional, target: _ } => Absent
+    Edge { label: Positional, target: _ } => optional_absent()
   }
 }
 
 fn node_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
   if node_is_int_literal_atom(node: node) {
-    fold(node.children, init: Absent, f: fn(acc, edge) {
+    fold(node.children, init: optional_absent(), f: fn(acc, edge) {
       match acc {
         Present { value: _ } => acc
         Absent => node_int_literal_magnitude_edge_target_optional(edge: edge)
       }
     })
   } else {
-    Absent
+    optional_absent()
   }
 }
 
