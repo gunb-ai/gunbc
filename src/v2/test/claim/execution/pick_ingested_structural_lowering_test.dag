@@ -1,4 +1,4 @@
-module v2.test.execution.pick_ingested_equals_eval
+module v2.test.execution.pick_ingested_structural_lowering
 
 import v2.compiler.eval {
   EvalContext,
@@ -523,7 +523,7 @@ fn pick_eval_inferred_run_tree(call: Node, expected: Node) -> Outcome<InferredTr
 
 fn pick_eval_claim(input: Node, expected: Node) -> TestClaim {
   CompilesClaim {
-    label: "execution/pick-ingested: census-path if b {1} else {2} Branch.body executes through eval",
+    label: "execution/pick-ingested: census-path if_expr→Branch structural lowering + resolve/eval deferred RED",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,
     expected_value: expected,
@@ -634,7 +634,7 @@ fn pick_ingested_pipeline_resolves_holds() -> Bool {
   }
 }
 
-test fn pick_ingested_equals_eval_keystone_holds() -> Bool {
+test fn pick_ingested_structural_lowering_keystone_holds() -> Bool {
   pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
     && pick_ingested_normalized_swapped_arms_structural_red_holds()
     && pick_ingested_resolve_deferred_red_holds()

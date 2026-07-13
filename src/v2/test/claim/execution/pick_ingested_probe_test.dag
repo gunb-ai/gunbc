@@ -1,6 +1,6 @@
 module v2.test.execution.pick_ingested_probe
 
-import v2.test.execution.pick_ingested_equals_eval {
+import v2.test.execution.pick_ingested_structural_lowering {
   pick_ingested_eval_equals_deferred_red_holds,
   pick_ingested_normalized_arrow_has_branch_body,
   pick_ingested_normalized_swapped_arms_structural_red_holds,
