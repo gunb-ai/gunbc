@@ -9,22 +9,27 @@ import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  eval_context_with_semantics,
   eval,
+  eval_context_v4_evaluator,
   inputs_root_only,
   run_test_claim,
   test_claim_run_verdict,
   test_claim_typed_input_node
+}
+import v2.extdeps.runtimes.v2_evaluator {
+  v2_eval_allocate_literal,
+  v2_evaluator_interpretation
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
+  dag_int_literal_node_from_lexeme,
   dag_language_model,
   dag_source_text
 }
-import v2.std.collection { Absent, List, Map, Present, list_at_optional, map_insert }
+import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, map_insert }
 import v2.std.compilers.lexing { Token, token_stream_all, token_stream_remaining }
 import v2.std.cardinality {
   RankingDimension,
@@ -47,6 +52,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.compilers.lexing { Token }
+import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 import v2.std.machine { Byte }
 import v2.std.node {
   Arrow,
@@ -124,34 +130,22 @@ fn add_arrow_eval_int_value(bytes: List<Byte>) -> RuntimeValue {
   }
 }
 
-fn add_arrow_eval_two_value() -> RuntimeValue {
-  add_arrow_eval_int_value(bytes: [add_arrow_eval_byte(), add_arrow_eval_byte()])
+fn add_arrow_eval_int_literal_optional(lexeme: String) -> Optional<Node> {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+    Accepted { value: node, diagnostics: _ } => Present { value: node }
+    Rejected { diagnostics: _ } => Absent
+  }
 }
 
-fn add_arrow_eval_three_value() -> RuntimeValue {
-  add_arrow_eval_int_value(bytes: [add_arrow_eval_byte(), add_arrow_eval_byte(), add_arrow_eval_byte()])
-}
-
-fn add_arrow_eval_five_value() -> RuntimeValue {
-  add_arrow_eval_int_value(bytes: [
-    add_arrow_eval_byte(),
-    add_arrow_eval_byte(),
-    add_arrow_eval_byte(),
-    add_arrow_eval_byte(),
-    add_arrow_eval_byte()
-  ])
-}
-
-fn add_arrow_eval_literal_two_node() -> Node {
-  add_arrow_eval_atom(s: ^add_arrow_eval_literal_two)
-}
-
-fn add_arrow_eval_literal_three_node() -> Node {
-  add_arrow_eval_atom(s: ^add_arrow_eval_literal_three)
-}
-
-fn add_arrow_eval_literal_five_node() -> Node {
-  add_arrow_eval_atom(s: ^add_arrow_eval_literal_five)
+fn add_arrow_eval_runtime_int_equals(value: RuntimeValue, n: Int) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+        Accepted { value: magnitude, diagnostics: _ } => magnitude == n
+        Rejected { diagnostics: _ } => false
+      }
+    _ => false
+  }
 }
 
 fn add_arrow_eval_runtime_diagnostic(n: Node) -> Diagnostic {
@@ -162,34 +156,14 @@ fn add_arrow_eval_runtime_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-fn add_arrow_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == add_arrow_eval_literal_two_node() {
-    outcome_accepted(value: add_arrow_eval_two_value())
-  } else if node == add_arrow_eval_literal_three_node() {
-    outcome_accepted(value: add_arrow_eval_three_value())
-  } else if node == add_arrow_eval_literal_five_node() {
-    outcome_accepted(value: add_arrow_eval_five_value())
-  } else {
-    outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
-  }
-}
-
-fn add_arrow_eval_arg_is_count(value: RuntimeValue, n: Int) -> Bool {
-  match value {
-    RuntimePrimitive { value: p } =>
-      (p.primitive_type == add_arrow_eval_i64_node()) && (count(p.bytes) == n)
-    _ => false
-  }
-}
-
 fn add_arrow_eval_ordered_add_args(args: List<RuntimeValue>) -> Bool {
   if count(args) == 2 {
-    match first(args) {
+    match list_at_optional(xs: args, index: 0) {
       Present { value: left } =>
-        match last(args) {
+        match list_at_optional(xs: args, index: 1) {
           Present { value: right } =>
-            add_arrow_eval_arg_is_count(value: left, n: 2)
-              && add_arrow_eval_arg_is_count(value: right, n: 3)
+            add_arrow_eval_runtime_int_equals(value: left, n: 2)
+              && add_arrow_eval_runtime_int_equals(value: right, n: 3)
           Absent => false
         }
       Absent => false
@@ -199,13 +173,23 @@ fn add_arrow_eval_ordered_add_args(args: List<RuntimeValue>) -> Bool {
   }
 }
 
+fn add_arrow_eval_lazy_five_value() -> RuntimeValue {
+  add_arrow_eval_int_value(bytes: [
+    add_arrow_eval_byte(),
+    add_arrow_eval_byte(),
+    add_arrow_eval_byte(),
+    add_arrow_eval_byte(),
+    add_arrow_eval_byte()
+  ])
+}
+
 fn add_arrow_eval_call_primitive(
   node: Node,
   args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
   if add_arrow_eval_ordered_add_args(args: args) {
-    outcome_accepted(value: add_arrow_eval_five_value())
+    outcome_accepted(value: add_arrow_eval_lazy_five_value())
   } else {
     outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
   }
@@ -225,7 +209,7 @@ fn add_arrow_eval_choose_first_arm(node: Node, _value: RuntimeValue, _env: Evalu
 fn add_arrow_eval_lazy_arm_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: add_arrow_eval_allocate_literal
+      allocate_literal: v2_eval_allocate_literal
     },
     transform: TransformInterpreter {
       call_primitive: add_arrow_eval_call_primitive
@@ -243,14 +227,27 @@ fn add_arrow_eval_lazy_arm_interpretation() -> InterpretationAlgebra {
 }
 
 fn add_arrow_eval_lazy_arm_branch_node() -> Node {
-  Node {
-    kind: ComputationNode { behavior: Branch },
-    occurrence_id: SyntheticOccurrence,
-    children: [
-      Edge { label: Positional, target: add_arrow_eval_literal_two_node() },
-      Edge { label: Positional, target: add_arrow_eval_literal_five_node() },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal) }
-    ]
+  match add_arrow_eval_int_literal_optional(lexeme: "2") {
+    Present { value: two_lit } =>
+      match add_arrow_eval_int_literal_optional(lexeme: "5") {
+        Present { value: five_lit } =>
+          Node {
+            kind: ComputationNode { behavior: Branch },
+            occurrence_id: SyntheticOccurrence,
+            children: [
+              Edge { label: Positional, target: two_lit },
+              Edge { label: Positional, target: five_lit },
+              Edge {
+                label: Positional,
+                target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal)
+              }
+            ]
+          }
+        Absent =>
+          add_arrow_eval_atom(s: ^add_arrow_eval_lazy_arm_branch_miss)
+      }
+    Absent =>
+      add_arrow_eval_atom(s: ^add_arrow_eval_lazy_arm_branch_miss)
   }
 }
 
@@ -271,43 +268,8 @@ fn add_arrow_eval_bind_value(
   }
 }
 
-fn add_arrow_eval_interpretation() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter {
-      allocate_literal: add_arrow_eval_allocate_literal
-    },
-    transform: TransformInterpreter {
-      call_primitive: add_arrow_eval_call_primitive
-    },
-    branch: BranchInterpreter {
-      choose_branch: add_arrow_eval_choose_branch
-    },
-    loop: LoopInterpreter {
-      step_loop: add_arrow_eval_step_loop
-    },
-    bind: BindInterpreter {
-      bind_value: add_arrow_eval_bind_value
-    }
-  }
-}
-
-fn add_arrow_eval_interpretation_structure_witness() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
-    allocate_literal: ^add_arrow_eval_allocate_literal_sym,
-    call_primitive: ^add_arrow_eval_call_primitive_sym,
-    choose_branch: ^add_arrow_eval_choose_branch_sym,
-    step_loop: ^add_arrow_eval_step_loop_sym,
-    bind_value: ^add_arrow_eval_bind_value_sym,
-    choose_arm: ^runtime_reject_match_arm
-  }
-}
-
 fn add_arrow_eval_context() -> EvalContext {
-  eval_context_with_semantics(
-    runtime_identity: ^add_arrow_eval_runtime_id,
-    interpretation: add_arrow_eval_interpretation(),
-    structure_witness: add_arrow_eval_interpretation_structure_witness()
-  )
+  eval_context_v4_evaluator()
 }
 
 fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
@@ -398,15 +360,29 @@ fn add_arrow_eval_resolve_holds() -> Bool {
   }
 }
 
-fn add_arrow_eval_add_call(callee: Node) -> Node {
-  Node {
-    kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
-    children: [
-      Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: add_arrow_eval_literal_two_node() },
-      Edge { label: Positional, target: add_arrow_eval_literal_three_node() }
-    ]
+fn add_arrow_eval_add_call_optional(
+  callee: Node,
+  left_lex: String,
+  right_lex: String
+) -> Optional<Node> {
+  match add_arrow_eval_int_literal_optional(lexeme: left_lex) {
+    Present { value: left } =>
+      match add_arrow_eval_int_literal_optional(lexeme: right_lex) {
+        Present { value: right } =>
+          Present {
+            value: Node {
+              kind: ComputationNode { behavior: Transform },
+              occurrence_id: SyntheticOccurrence,
+              children: [
+                Edge { label: Positional, target: callee },
+                Edge { label: Positional, target: left },
+                Edge { label: Positional, target: right }
+              ]
+            }
+          }
+        Absent => Absent
+      }
+    Absent => Absent
   }
 }
 
