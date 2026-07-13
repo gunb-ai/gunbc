@@ -111,7 +111,22 @@ Controlled pair (isolated whole-corpus resolve probe, same tree, same EX list, o
 
 Note the probe's per-module **entry counts are invariant by construction** — the probe counts semantic entries, and M1a changes only which spine is shared (bytes), so the fingerprint identity is the equivalence oracle and VmHWM the retention oracle. The modest −5.4% is consistent with M0's mass ranking (inductive fields were the dominant term, already taken by M1b/M1b-2; the union base was second). Battery green: `cargo test --release -p v1-compiler --lib` **214 passed / 0 failed**, `regen_stage0 --verify` **regen_divergence_count=0**, memo oracles 3/3.
 
-Probe honesty note: the M0 receipt's 22-subpath scaffold EX list was never baked into an authority — `ci_layer_roots.dag`'s `whole_tree_strict_resolve_exclusion_substrings` carries only 4 of them — so this pair re-derived the list by execution (2 iterations to converge; saved with the probe scripts). Follow-up question, not edited here: should the reconstructed list be baked into the `ci_layer_roots` authority, or is per-probe derivation the honest form (the corpus's scaffold set drifts)?
+Probe honesty note: the M0 receipt's 22-subpath scaffold EX list was never baked into an authority — `ci_layer_roots.dag`'s `whole_tree_strict_resolve_exclusion_substrings` carries only 4 of them — so this pair re-derived the list by execution (2 iterations to converge; saved with the probe scripts). **RESOLVED (operator ruling 2026-07-13, "just make it single authority"):** the 22 subpaths are baked into `whole_tree_strict_resolve_exclusion_substrings` with a scaffold-class note row (`whole_tree_strict_resolve_scaffold_exclusion_note`); the probe now runs with zero `--exclude-subpath` args, verified by execution below.
+
+### Track A denomination receipt (2026-07-13, resolve-split instrument #6535 — whole-corpus falsifier, EXIT=0)
+
+The per-entry resolve cost was one lump (`resolve_nanos`); #6535 attributes it through a worker-thread-local slot (exact at any governor width, unlike the last-writer-wins `phase_profile`). Whole-corpus run, 1,776 witnesses, width 9, zero governor distress, resolve lump 371.1s, **residue 0.4s (99.9% attributed)**:
+
+| Stage | Time | Share | Routing |
+|---|---:|---:|---|
+| `typecheck_compute` (genuine cold computes) | 194.7s | 52% | cross-worker share prize — interface-summary Inc B ladder (resolver lane) |
+| `reconcile_assembly` (residue rerun per entry even at 100% cache hits) | 107.7s | 29% | resolver-graph-major lane |
+| `normalize` (pure per-module diags) | 28.5s | 8% | this lane — within-worker memo (next cut) |
+| `ownership` (per-typed-graph proofs) | 24.3s | 7% | this lane — within-worker memo (next cut) |
+| `resolve` (`resolve_modules`) | 4.7s | 1.3% | none — the pre-receipt candidate cut, disproven |
+| `parse` / `load` / `parent_envs` / other | ~11s | ~3% | none |
+
+Lesson the receipt bought: the intuitive cut (memoize `resolve_module_imports`) was worth 1.3% — the instrument re-priced the plan before any code was written on the wrong target. The two dominant terms route to their owning lanes with hard numbers; this lane's remaining cheap win is normalize+ownership (~53s).
 
 ## 2. The defect, located (verified against the live tree, 2026-07-13)
 
