@@ -11,7 +11,8 @@ import v2.compiler.self_host.frontier_probe_types {
   RealizationGap,
   SelfEmitReady,
   UnknownProbeCause,
-  FixtureCemented
+  FixtureCemented,
+  frontier_blocker_class_matches
 }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.source_authority { SourceRootIngest }
@@ -51,40 +52,6 @@ fn count_receipts_with_located_reason(
       }
     }
   )
-}
-
-fn frontier_blocker_class_matches(
-  blocker: FrontierBlockerClass,
-  target: FrontierBlockerClass
-) -> Bool {
-  match blocker {
-    SelfEmitReady =>
-      match target {
-        SelfEmitReady => true
-        _ => false
-      }
-    NameResolutionGap =>
-      match target {
-        NameResolutionGap => true
-        _ => false
-      }
-    EmitSurfaceGap =>
-      match target {
-        EmitSurfaceGap => true
-        _ => false
-      }
-    RealizationGap =>
-      match target {
-        RealizationGap => true
-        _ => false
-      }
-    FixtureCemented =>
-      match target {
-        FixtureCemented => true
-        _ => false
-      }
-    UnknownProbeCause { reason: _ } => false
-  }
 }
 
 fn count_receipts_with_blocker(

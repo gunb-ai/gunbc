@@ -17,6 +17,7 @@ import v2.compiler.self_host.frontier_probe_types {
   SelfEmitReady,
   UnknownProbeCause,
   FixtureCemented,
+  frontier_blocker_class_matches,
   frontier_probe_blocker_rank
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -683,38 +684,11 @@ fn frontier_roster_row_blocker_matches_probe(
   row: CompilerModuleFrontierRow,
   receipt: FrontierProbeReceipt
 ) -> Bool {
-  if row.module_path != receipt.module_path {
-    false
-  } else {
-    match row.measured_probe.blocker_class {
-      SelfEmitReady =>
-        match receipt.blocker_class {
-          SelfEmitReady => true
-          _ => false
-        }
-      NameResolutionGap =>
-        match receipt.blocker_class {
-          NameResolutionGap => true
-          _ => false
-        }
-      EmitSurfaceGap =>
-        match receipt.blocker_class {
-          EmitSurfaceGap => true
-          _ => false
-        }
-      RealizationGap =>
-        match receipt.blocker_class {
-          RealizationGap => true
-          _ => false
-        }
-      FixtureCemented =>
-        match receipt.blocker_class {
-          FixtureCemented => true
-          _ => false
-        }
-      UnknownProbeCause { reason: _ } => false
-    }
-  }
+  (row.module_path == receipt.module_path)
+    && frontier_blocker_class_matches(
+      blocker: row.measured_probe.blocker_class,
+      target: receipt.blocker_class
+    )
 }
 
 fn compiler_frontier_row_for_path_matches_probe(

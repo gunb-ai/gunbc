@@ -87,3 +87,37 @@ fn frontier_probe_blocker_rank(blocker: FrontierBlockerClass) -> Int {
     UnknownProbeCause { reason: _ } => 5
   }
 }
+
+fn frontier_blocker_class_matches(
+  blocker: FrontierBlockerClass,
+  target: FrontierBlockerClass
+) -> Bool {
+  match blocker {
+    SelfEmitReady =>
+      match target {
+        SelfEmitReady => true
+        _ => false
+      }
+    NameResolutionGap =>
+      match target {
+        NameResolutionGap => true
+        _ => false
+      }
+    EmitSurfaceGap =>
+      match target {
+        EmitSurfaceGap => true
+        _ => false
+      }
+    RealizationGap =>
+      match target {
+        RealizationGap => true
+        _ => false
+      }
+    FixtureCemented =>
+      match target {
+        FixtureCemented => true
+        _ => false
+      }
+    UnknownProbeCause { reason: _ } => false
+  }
+}
