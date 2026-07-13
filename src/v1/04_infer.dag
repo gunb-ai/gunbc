@@ -5629,6 +5629,8 @@ fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv
 
 data interface_summary_consumer_note: String = "S2a move 2 increment B (resolver-graph-major-design.md §7): build_type_env reads a direct import's ModuleInterface (std.interface_summary carrier + interface-grain env/cache realization) — never the parent's full TypeEnv+TypeEnvCache chains. interface.env is the export surface with parents: [] (ancestry-complete via flattened str_bindings/ancestry maps and merged inductive/recursive sets); interface.cache is the flattened import-union grain (variant_locals stripped — interpretation-local). Consumption still runs interface_env_for_import for importer-specific std.types filtering. Discriminating receipt: transitive_interface_binding_test."
 
+data interface_signature_fingerprint_v0_note: String = "Interim v0 export signature fingerprint (export_entry_from_item): content_hash of export name + authored_name_at(binding.resolved) under tag v1-interface-sig-v0 — NOT yet structural type shape. Two exports with the same name and resolved authored-name string collide in interface_hash even if types differ; increment-B receipt is binding transitivity (transitive_interface_binding_test), not hash-discriminated signature change. Structural fingerprint authority: std.interface_summary.interface_summary_v0_dissolution_trigger → export_entry_fingerprint when type-structure hashing lands."
+
 fn interface_env_surface(env: TypeEnv) -> TypeEnv {
   TypeEnv {
     bindings: env.bindings,
