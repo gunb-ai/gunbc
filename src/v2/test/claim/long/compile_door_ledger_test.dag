@@ -10,6 +10,7 @@ import v2.workflow.compile_door_ledger {
   DoorCompiled,
   DoorLedgerRow,
   DoorRefused,
+  all_refused_causes_attributed,
   door_ledger,
   ledger_all_compiled,
   ledger_cause_count,
@@ -38,6 +39,7 @@ test fn ledger_cause_histogram_over_mixed_affected_set() -> Bool {
   let rows = affected_rows()
   ledger_refused_count(rows: rows) == 3
     && ledger_all_compiled(rows: rows) == false
+    && all_refused_causes_attributed(rows: rows) == true
     && ledger_cause_count(rows: rows, reason: ^fact_density_hollow_alias_locus) == 1
     && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 1
     && ledger_cause_count(rows: rows, reason: ^resolve_ambiguous_export) == 1
