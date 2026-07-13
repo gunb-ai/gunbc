@@ -16,7 +16,12 @@ import v2.lens.module_graph {
   module_declaration_facts_live
 }
 import v2.lens.reference_deps { reference_deps_ingest_source_text, reference_qn_from_import_decl_strict }
-import v2.std.algebra { fold_list, length, list_reverse }
+import v2.std.algebra { filter, fold_list, length, list_reverse }
+import v2.workflow.floor_diff_observe {
+  NameStatusDiffFail,
+  NameStatusDiffOk,
+  floor_observe_git_diff_name_status_for_ci
+}
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
@@ -200,6 +205,26 @@ fn door_ledger(paths: List<String>, pool_roots: List<String>) -> List<DoorLedger
       }
     )
   )
+}
+
+data affected_set_ledger_law: String = "door_ledger_over_affected_set is the affected-set entry point: it reads the PR's real changed paths off the git diff (floor_observe_git_diff_name_status_for_ci — the same name-status observation the CI floor already uses, single authority for the diff), keeps only the .dag modules present on disk (changed_paths; departed_paths are deletions the ledger cannot read and never fabricates a row for), and ledgers exactly those through the door. Fail-closed per DESIGN 5: a diff-observation failure yields AffectedDiffRefused carrying the observation's own reason — it NEVER widens to the whole corpus. Widening on a provenance gap is the absorbing fallback (corpus-denominated cost, deficit frequency zeroed by construction) that the affected-set floor was explicitly repaired to remove; the ledger inherits that discipline. The result is AuditOnly: a counted cause histogram over the affected set, never a gate that greens or blocks (there is no stopped line while the seed is the compile path — wiring a gate here would block every PR or absorb refusals)."
+
+type AffectedLedgerResult
+  = AffectedDiffRefused { reason: String }
+  | AffectedLedgered { rows: List<DoorLedgerRow> }
+
+fn dag_module_paths(paths: List<String>) -> List<String> {
+  filter(xs: paths, predicate: fn(p) { ends_with(s: p, suffix: ".dag") })
+}
+
+fn door_ledger_over_affected_set(pool_roots: List<String>) -> AffectedLedgerResult {
+  match floor_observe_git_diff_name_status_for_ci() {
+    NameStatusDiffFail { reason: r } => AffectedDiffRefused { reason: r }
+    NameStatusDiffOk { changed_paths: changed, departed_paths: _ } =>
+      AffectedLedgered {
+        rows: door_ledger(paths: dag_module_paths(paths: changed), pool_roots: pool_roots)
+      }
+  }
 }
 
 type CauseBumpState {

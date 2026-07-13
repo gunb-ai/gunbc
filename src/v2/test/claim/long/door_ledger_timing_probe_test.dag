@@ -1,0 +1,31 @@
+module v2.test.long.door_ledger_timing_probe
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.compile_door_ledger { DoorLedgerRow, door_ledger, ledger_refused_count }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data timing_pool_roots: List<String> = ["dag", "src/v2"]
+
+data small_closure_sample: List<String> = [
+  "dag/std/determinism.dag",
+  "dag/std/currency.dag",
+  "dag/std/bit.dag",
+  "dag/std/abi.dag",
+  "dag/std/content_hash.dag"
+]
+
+test fn time_5_small_closure_modules() -> Bool {
+  let rows = door_ledger(paths: small_closure_sample, pool_roots: timing_pool_roots)
+  ledger_refused_count(rows: rows) >= 0
+}
+
+data large_closure_sample: List<String> = ["src/v2/compiler/04_infer.dag"]
+
+test fn time_1_large_closure_module() -> Bool {
+  let rows = door_ledger(paths: large_closure_sample, pool_roots: timing_pool_roots)
+  ledger_refused_count(rows: rows) >= 0
+}
