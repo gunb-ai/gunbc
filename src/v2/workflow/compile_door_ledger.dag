@@ -18,6 +18,7 @@ import v2.lens.module_graph {
 import v2.lens.reference_deps { reference_deps_ingest_source_text, reference_qn_from_import_decl_strict }
 import v2.std.algebra { filter, fold_list, length, list_reverse }
 import v2.workflow.floor_diff_observe {
+  FloorNameStatusDiffResult,
   NameStatusDiffFail,
   NameStatusDiffOk,
   floor_observe_git_diff_name_status_for_ci
@@ -217,14 +218,24 @@ fn dag_module_paths(paths: List<String>) -> List<String> {
   filter(xs: paths, predicate: fn(p) { ends_with(s: p, suffix: ".dag") })
 }
 
-fn door_ledger_over_affected_set(pool_roots: List<String>) -> AffectedLedgerResult {
-  match floor_observe_git_diff_name_status_for_ci() {
+fn affected_ledger_from_diff(
+  diff: FloorNameStatusDiffResult,
+  pool_roots: List<String>
+) -> AffectedLedgerResult {
+  match diff {
     NameStatusDiffFail { reason: r } => AffectedDiffRefused { reason: r }
     NameStatusDiffOk { changed_paths: changed, departed_paths: _ } =>
       AffectedLedgered {
         rows: door_ledger(paths: dag_module_paths(paths: changed), pool_roots: pool_roots)
       }
   }
+}
+
+fn door_ledger_over_affected_set(pool_roots: List<String>) -> AffectedLedgerResult {
+  affected_ledger_from_diff(
+    diff: floor_observe_git_diff_name_status_for_ci(),
+    pool_roots: pool_roots
+  )
 }
 
 type CauseBumpState {
