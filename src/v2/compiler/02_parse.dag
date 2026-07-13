@@ -577,24 +577,6 @@ fn parse_stamp_terminal(
     start: tok.start,
     end: tok.end
   )
-  if tok.class == ^dag_token_int_literal {
-    match dag_int_literal_node_from_lexeme(
-      lexeme: tok.lexeme,
-      occurrence_id: node_occurrence_minted(id: minted.id)
-    ) {
-      Accepted { value: node, diagnostics: _ } =>
-        ParseStampResult { node: node, prov: minted.prov }
-      Rejected { diagnostics: _ } =>
-        ParseStampResult {
-          node: node_with_occurrence_id(
-            kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
-            children: [],
-            occurrence_id: node_occurrence_minted(id: minted.id)
-          ),
-          prov: minted.prov
-        }
-    }
-  } else {
   let identity = match stamp {
     StampClass => tok.class
     StampBinding { binding: b } => b
@@ -607,7 +589,6 @@ fn parse_stamp_terminal(
       occurrence_id: node_occurrence_minted(id: minted.id)
     ),
     prov: minted.prov
-  }
   }
 }
 

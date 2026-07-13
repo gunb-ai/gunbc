@@ -1124,6 +1124,13 @@ fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
         Absent =>
           match body_lower_find_captured(
             root: captured,
+            emitted: ^dag_surface_if_expr
+          ) {
+            ParseSubtreeFound { captured: if_capture } =>
+              body_lower_try_if_from_captured(captured: if_capture)
+            ParseSubtreeAbsent =>
+          match body_lower_find_captured(
+            root: captured,
             emitted: ^dag_surface_match_expr
           ) {
             ParseSubtreeFound { captured: match_capture } =>
@@ -1161,6 +1168,7 @@ fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
                       }
                   }
               }
+          }
           }
           }
       }
