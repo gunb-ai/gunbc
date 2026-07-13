@@ -2371,7 +2371,7 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
       right: dag_grammar_primary_ident_suffix_expr()
     ),
     right: dag_grammar_choice(
-      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_int_literal),
       right: dag_grammar_choice(
         left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
         right: dag_grammar_choice(
@@ -2511,7 +2511,7 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
       right: dag_grammar_choice(
         left: dag_grammar_terminal(token_class: ^dag_token_kw_false),
         right: dag_grammar_choice(
-          left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+          left: dag_grammar_terminal_lexeme(token_class: ^dag_token_int_literal),
           right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
         )
       )
