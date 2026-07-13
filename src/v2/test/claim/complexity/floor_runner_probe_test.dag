@@ -1,0 +1,47 @@
+module v2.test.claim.complexity.floor_runner_probe
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+fn stage_of(path: String) -> String {
+  let source_text = filesystem_read(path: path).content
+  let lm = dag_language_model()
+  let at = port_locus(port: ^probe_port)
+  match lm.grammar {
+    VoidGrammar => "void_grammar"
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => "grammar_validate_rejected"
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: source_text, file: ^probe_subject, rules: lm.lex) {
+            Rejected { diagnostics: _ } => "tokenize_rejected"
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => "parse_rejected"
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => "normalize_rejected"
+                    Accepted { value: _, diagnostics: _ } => "ok"
+                  }
+              }
+          }
+      }
+  }
+}
+
+test fn change_ok() -> Bool { stage_of(path: "dag/std/change.dag") == "ok" }
+test fn change_parse_rejected() -> Bool { stage_of(path: "dag/std/change.dag") == "parse_rejected" }
+test fn change_normalize_rejected() -> Bool { stage_of(path: "dag/std/change.dag") == "normalize_rejected" }
+test fn change_tokenize_rejected() -> Bool { stage_of(path: "dag/std/change.dag") == "tokenize_rejected" }
