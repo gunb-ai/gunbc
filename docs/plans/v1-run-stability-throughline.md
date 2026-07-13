@@ -64,7 +64,21 @@ The cut: `merge_inductive_fields` skip-if-equal + insert-not-concat on absent ke
 
 (The earlier `82e9c68b96617067` baseline was a different binary/tree state — 1,102 vs 1,101 modules — and is superseded by the controlled pair above.)
 
-- Residual inductive mass (95M) = genuinely-differing-list concats — multiplicities already baked into different parents' lists before the fix; full set-semantics dedupe is a **separate decision** (changes list multiplicities consumers could observe; staged as an M1b follow-on question, not smuggled into this cut).
+- Residual inductive mass (95M) = genuinely-differing-list concats — multiplicities already baked into different parents' lists before the fix; full set-semantics dedupe is a **separate decision** (changes list multiplicities consumers could observe; staged as an M1b follow-on question, not smuggled into this cut). → **Taken as M1b-2, receipt below.**
+
+### M1b-2 receipt (2026-07-13, set-semantics merge — filtered append, identity = variant|field|shape|element)
+
+Consumer analysis first: `inductive_fields_for` readers use filter/first per (variant, field) — first-match, multiplicity-insensitive; `has_inductive_field` is any-match. Dedupe keeps the first occurrence of each fact, so every consumer sees the same winner. Then by execution:
+
+| Receipt | Pre-M1b | M1b | **M1b-2** |
+|---|---:|---:|---:|
+| `te.inductive_fields` list mass | 409,240,584 | 95,050,553 | **82,037 (−99.98%)** |
+| Worst module list mass | 22,610,058 | 4,091,670 | **334** |
+| Whole-tree resolve peak RSS | 5.27 GB | 2.05 GB | **1.48 GB (−72% total)** |
+| `corpus_fingerprint` | `d34a91a4d8fe8845` | identical | **identical** |
+| `emit_graph_fingerprint` | `cfdc338c2795a035` | identical | **identical** |
+
+Every list is duplicate-free by induction under the new merge (locals are duplicate-free; merges never append a present fact), so the mass cannot re-accumulate — the multiplicative class is **unwritable**, not just reduced (§5 construction, not validation).
 - **Outstanding half of the M1 done-bar (declared, not asserted): the floor dial receipt** — one whole-corpus floor run completing within step budget at governor width > 1. Lands from the first whole-corpus run on this tree (local attempt or the post-merge CI run); until then M1 is *retention-receipted, throughput-pending*.
 - Pre-fix equivalence baseline for the M1a oracle: `corpus_fingerprint=d34a91a4d8fe8845` at the M1b-landed state.
 
