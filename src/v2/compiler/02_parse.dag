@@ -63,7 +63,7 @@ import v2.std.provenance {
 }
 import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_get, map_insert }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_snoc_item, list_tail, unique }
+import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_reverse, list_snoc_item, list_tail, unique }
 import v2.std.text { Char, CharAbsent, CharFound, string_head }
 import v2.std.witness { Holds, Violates, Witness }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
@@ -902,8 +902,8 @@ fn parse_match_arm_stmt_body(
   } else {
     let init = ParseMatchArmStmtAcc {
       remaining: tokens,
-      acc_nodes: [],
-      acc_diags: [],
+      acc_nodes: Empty,
+      acc_diags: Empty,
       done: false,
       prov: prov,
       table: table
@@ -912,7 +912,7 @@ fn parse_match_arm_stmt_body(
     if is_empty(xs: result.acc_nodes) {
       ParseExprRejected { diagnostics: [], table: result.table }
     } else {
-      let ordered_nodes = result.acc_nodes.reverse()
+      let ordered_nodes = list_reverse(xs: result.acc_nodes)
       let stamped = parse_stamp_match_arm_stmt_nodes(acc_nodes: ordered_nodes, prov: result.prov)
       ParseExprAccepted {
         remaining: result.remaining,
@@ -1690,11 +1690,11 @@ fn parse_expr_terminal(
                   lexeme: tok.lexeme,
                   occurrence_id: node_occurrence_minted(id: minted.id)
                 ) {
-                  Accepted { value: captured, diagnostics: d } =>
+                  Accepted { value: captured, diagnostics: _ } =>
                     ParseExprAccepted {
                       remaining: remaining,
                       captured: captured,
-                      diagnostics: d,
+                      diagnostics: Empty,
                       prov: minted.prov,
                       table: table
                     }
@@ -1970,14 +1970,14 @@ fn parse_expr_repeat(
 ) -> ParseExprResult {
   let init = ParseRepeatAcc {
     remaining: tokens,
-    acc_nodes: [],
-    acc_diags: [],
+    acc_nodes: Empty,
+    acc_diags: Empty,
     done: false,
     prov: prov,
     table: table
   }
   let result = parse_expr_repeat_step(element: element, all_tokens: all_tokens, root: root, acc: init)
-  let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes.reverse(), prov: result.prov)
+  let stamped = parse_stamp_derived_repeat(acc_nodes: list_reverse(xs: result.acc_nodes), prov: result.prov)
   ParseExprAccepted {
     remaining: result.remaining,
     captured: stamped.node,
