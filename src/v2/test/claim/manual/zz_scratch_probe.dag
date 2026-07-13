@@ -33,23 +33,12 @@ fn probe_parsed_tree() -> Optional<Node> {
 }
 
 fn probe_find_emitted(root: Node, target: Symbol) -> Optional<Node> {
-  match parse_production_emitted_identity_optional(node: root) {
-    Present { value: id } =>
-      if id == target {
-        Present { value: root }
-      } else {
-        fold(root.children, init: Absent, f: fn(acc, e) {
-          match acc { Present { value: _ } => acc  Absent => probe_find_emitted(root: e.target, target: target) }
-        })
-      }
-    Absent =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc { Present { value: _ } => acc  Absent => probe_find_emitted(root: e.target, target: target) }
-      })
+  match parse_subtree_find_production_captured(root: root, emitted: target) {
+    ParseSubtreeFound { captured: c } => Present { value: c }
+    ParseSubtreeAbsent => Absent
   }
 }
 
-// Compact structural dump: KIND[prod=..|atom=..](childlabel: <sub> ...) to bounded depth.
 fn probe_child_label(e: Edge) -> String {
   match e.label {
     Named { name: n } => symbol_lexeme(sym: n)
@@ -86,9 +75,9 @@ fn probe_fn_body_dump() -> String {
   match probe_parsed_tree() {
     Absent => "NO_PARSE"
     Present { value: tree } =>
-      match probe_find_emitted(root: tree, target: ^dag_surface_fn_body) {
-        Absent => "NO_FN_BODY"
-        Present { value: body } => probe_dump(n: body, depth: 9)
+      match probe_find_emitted(root: tree, target: ^dag_surface_binary_expr) {
+        Absent => "NO_BINARY"
+        Present { value: body } => probe_dump(n: body, depth: 18)
       }
   }
 }
