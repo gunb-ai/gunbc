@@ -56,7 +56,7 @@ import v1.std.core {
   is_container_type, container_expected_arity,
   default_ident_span, node_name_span
 }
-import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport, get_exported_names }
+import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, is_fully_resolved,
