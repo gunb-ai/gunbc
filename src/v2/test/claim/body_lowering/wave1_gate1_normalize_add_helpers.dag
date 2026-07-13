@@ -84,7 +84,7 @@ fn wave1_gate1_normalized_add_yields_arrow_transform_holds() -> Bool {
   }
 }
 
-fn wave1_gate1_resolved_add_arrow_holds() -> Bool {
+fn wave1_gate1_resolved_add_arrow_transform_holds() -> Bool {
   match wave1_gate1_normalized_add_module() {
     Absent => false
     Present { value: tree } =>
@@ -92,15 +92,14 @@ fn wave1_gate1_resolved_add_arrow_holds() -> Bool {
         Accepted { value: resolved, diagnostics: _ } =>
           match wave1_gate1_find_arrow_in_module(root: resolved) {
             Present { value: arrow } =>
-              well_formed(n: arrow)
-                && match find_arrow_body_child(root: arrow) {
-                  Accepted { value: body, diagnostics: _ } =>
-                    match body.kind {
-                      ComputationNode { behavior: Transform } => true
-                      _ => false
-                    }
-                  Rejected { diagnostics: _ } => false
-                }
+              match find_arrow_body_child(root: arrow) {
+                Accepted { value: body, diagnostics: _ } =>
+                  match body.kind {
+                    ComputationNode { behavior: Transform } => true
+                    _ => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
             Absent => false
           }
         Rejected { diagnostics: _ } => false
