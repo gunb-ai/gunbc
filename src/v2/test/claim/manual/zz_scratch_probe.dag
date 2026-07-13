@@ -5,7 +5,7 @@ import std.algebra { Empty }
 import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
 import v2.compiler.normalize { normalize, normalize_node }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_lexeme, token_stream_remaining }
@@ -48,6 +48,68 @@ fn probe_node_kind_str(n: Node) -> String {
         Match => "CN:Match"
       }
   }
+}
+
+fn probe_emit_str(n: Node) -> String {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } => symbol_lexeme(sym: id)
+    Absent => "-"
+  }
+}
+
+fn probe_indent(depth: Int) -> String {
+  if depth <= 0 { "" } else { concat("  ", probe_indent(depth: depth - 1)) }
+}
+
+fn probe_dump(n: Node, depth: Int) -> String {
+  if depth > 40 {
+    ""
+  } else {
+    let self_str = match parse_production_emitted_identity_optional(node: n) {
+      Present { value: id } =>
+        concat(probe_indent(depth: depth), concat("prod=", symbol_lexeme(sym: id)))
+      Absent => ""
+    }
+    fold(n.children, init: self_str, f: fn(acc, e) {
+      let child = probe_dump(n: e.target, depth: depth + 1)
+      if child == "" {
+        acc
+      } else if acc == "" {
+        child
+      } else {
+        concat(acc, concat("\n", child))
+      }
+    })
+  }
+}
+
+fn probe_dump_parse(path: String) -> String {
+  let lm = dag_language_model()
+  let source = filesystem_read(path: path).content
+  match lm.grammar {
+    VoidGrammar => "void"
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: port_locus(port: ^probe_locus)) {
+        Rejected { diagnostics: _ } => "ginvalid"
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: source, file: ^probe_file2, rules: lm.lex) {
+            Rejected { diagnostics: _ } => "tokfail"
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => "parsefail"
+                Accepted { value: artifact, diagnostics: _ } => probe_dump(n: artifact.tree, depth: 0)
+              }
+          }
+      }
+  }
+}
+
+fn probe_dump_min() -> String {
+  probe_dump_parse(path: "/tmp/claude-1000/-home-briansrls--worktrees-gunbc-clever-hawk-862/6b3d8809-edba-4a2d-ad47-a3b064ed4552/scratchpad/zz_add.dag")
 }
 
 fn probe_first_malformed(n: Node) -> String {
