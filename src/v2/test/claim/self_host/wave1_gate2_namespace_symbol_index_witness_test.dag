@@ -23,7 +23,7 @@ import v2.test.claim.symbol_index.containment {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data wave1_gate2_witness_note: String = "Wave 1 exit gate 2 verification (namespace SymbolIndex / tree-resolution) by execution on main. Substrate receipts: symbol_index_fill + symbol_index_lexical_lookup (containment_test greens + named RED controls), 03_name_resolve fill + 03_resolve consumer wiring, and import-closure resolution of the three frontier NameResolutionGap rows (00_compile, 01_tokenize, 03_body_producer). Frontier self-emit NameResolutionGap classification is orthogonal — proven by compile-gated imports, not asserted as metadata."
+data wave1_gate2_witness_note: String = "Wave 1 exit gate 2 verification (namespace SymbolIndex / containment-tree resolution) by execution. Proven here: symbol_index_fill + symbol_index_lexical_lookup via containment_test greens (symbol_index_lexical_lookup_unique_variant_holds, symbol_index_variant_visibility_equivalence_holds) and named RED controls (lookup_miss, flat_index_false_accept, unique_variant_without_alias). Import-closure resolution of 00_compile, 01_tokenize, 03_body_producer is compile-gated (symbols import or the witness module does not resolve). Not proven here: frontier probe blocker_class rows, 03_name_resolve/03_resolve end-to-end ingest wire (variant_visibility_test.dag; normalize-stage debt)."
 
 test fn wave1_gate2_symbol_index_containment_substrate_holds() -> Bool {
   symbol_index_lexical_lookup_unique_variant_holds()
