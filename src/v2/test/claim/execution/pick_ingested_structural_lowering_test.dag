@@ -117,6 +117,21 @@ fn pick_eval_kw_false_node() -> Node {
   pick_eval_atom(s: ^dag_token_kw_false)
 }
 
+fn pick_ingested_parsed_module_from_source(source: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          outcome_accepted(value: artifact.tree)
+        }
+      )
+    }
+  )
+}
+
 fn pick_ingested_normalized_module_from_source(source: String) -> Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(
