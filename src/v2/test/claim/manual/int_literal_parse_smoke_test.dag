@@ -1,0 +1,151 @@
+module v2.test.manual.int_literal_parse_smoke
+
+import v2.compiler.parse { parse_production_tree, grammar_validate_for_parse }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_formal_production_fn_loop,
+  dag_formal_production_fn_pick,
+  dag_grammar_production_fn_loop,
+  dag_grammar_production_fn_pick,
+  dag_int_literal_magnitude_int_from_node,
+  dag_int_literal_node_from_lexeme,
+  dag_language_model,
+  dag_loop_source_text,
+  dag_pick_source_text
+}
+import v2.std.compilers.lexing { token_stream_all, token_stream_remaining }
+import v2.std.grammar { GrammarProduction, GrammarRoot }
+import v2.std.collection { Absent, Optional, Present, Set, list_at_optional, optional_absent, optional_present }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.integer {
+  decimal_digits_to_magnitude,
+  integer_decimal_magnitude_node,
+  integer_string_to_decimal_digits_optional
+}
+import v2.std.logic { Bool }
+import v2.std.node { SyntheticOccurrence }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn int_literal_smoke_first_int_token_lexeme(source_text: String) -> Optional<String> {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: ^int_literal_smoke_file, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      fold(token_stream_all(stream: stream), init: optional_absent(), f: fn(acc, tok) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            if tok.class == ^dag_token_int_literal {
+              optional_present(value: tok.lexeme)
+            } else {
+              optional_absent()
+            }
+        }
+      })
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+test fn int_literal_loop_token_lexeme_builds_holds() -> Bool {
+  match int_literal_smoke_first_int_token_lexeme(source_text: dag_loop_source_text) {
+    Present { value: lexeme } =>
+      match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn int_literal_smoke_parse_text(source_text: String, production_name: Symbol, production: GrammarProduction) -> Bool {
+  let lm = dag_language_model()
+  let root = GrammarRoot {
+    start: production_name,
+    productions: [production],
+    sync_tokens: Set { member: fn(_) { false } }
+  }
+  match tokenize(text: source_text, file: ^int_literal_smoke_file, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      match grammar_validate_for_parse(root: root, at: port_locus(port: ^int_literal_smoke_file)) {
+        Accepted { value: validated, diagnostics: _ } =>
+          match parse_production_tree(
+            tokens: token_stream_remaining(stream: stream),
+            validated: validated,
+            production_name: production_name
+          ) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn int_literal_loop_source_parse_holds() -> Bool {
+  int_literal_smoke_parse_text(
+    source_text: dag_loop_source_text,
+    production_name: ^dag_production_fn_loop,
+    production: dag_grammar_production_fn_loop()
+  )
+}
+
+test fn int_literal_pick_source_parse_holds() -> Bool {
+  int_literal_smoke_parse_text(
+    source_text: dag_pick_source_text,
+    production_name: ^dag_production_fn_pick,
+    production: dag_grammar_production_fn_pick()
+  )
+}
+
+test fn int_literal_from_token_lexeme_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: "1", file: ^int_literal_smoke_file, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      match token_stream_first(stream: stream) {
+        Present { value: tok } =>
+          match dag_int_literal_node_from_lexeme(lexeme: tok.lexeme, occurrence_id: SyntheticOccurrence) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn int_literal_string_to_digits_holds() -> Bool {
+  match integer_string_to_decimal_digits_optional(s: "1") {
+    Present { value: _ } => true
+    _ => false
+  }
+}
+
+test fn int_literal_magnitude_node_holds() -> Bool {
+  match integer_string_to_decimal_digits_optional(s: "1") {
+    Present { value: digits } => {
+      let _node = integer_decimal_magnitude_node(magnitude: decimal_digits_to_magnitude(digits: digits))
+      true
+    }
+    _ => false
+  }
+}
+
+test fn int_literal_node_from_lexeme_one_holds() -> Bool {
+  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn int_literal_magnitude_int_from_node_holds() -> Bool {
+  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
+    Accepted { value: node, diagnostics: _ } =>
+      match dag_int_literal_magnitude_int_from_node(node: node) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
