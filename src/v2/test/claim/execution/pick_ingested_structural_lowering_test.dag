@@ -316,6 +316,8 @@ fn pick_eval_context() -> EvalContext {
   )
 }
 
+data pick_ingested_structural_lowering_keystone_note: String = "Keystone witness: normalized if_expr→Branch + arm-lexeme swapped structural RED + resolve/eval deferred REDs. Renamed from pick_ingested_equals_eval_keystone — does not claim eval-equals until Int-literal ingestion lands."
+
 data pick_ingested_eval_deferred_note: String = "ingested Int-literal operands in if arms are lexeme-stamped atoms, not grounded to the numeric tower — resolve and eval-equals are deferred until general Int-literal ingestion lands (migrate_when_general_body_producer_lands). Structural if_expr→Branch lowering is proven by normalized_branch + arm-lexeme swapped RED; fabricated pick-lit bridge deleted."
 
 fn pick_ingested_normalized_module_from_source(source: String) -> Outcome<Node> {
