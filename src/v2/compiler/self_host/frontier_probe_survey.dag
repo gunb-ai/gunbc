@@ -10,7 +10,8 @@ import v2.compiler.self_host.frontier_probe_types {
   NameResolutionGap,
   RealizationGap,
   SelfEmitReady,
-  UnclassifiedProbeReason
+  UnknownProbeCause,
+  FixtureCemented
 }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.source_authority { SourceRootIngest }
@@ -77,7 +78,12 @@ fn frontier_blocker_class_matches(
         RealizationGap => true
         _ => false
       }
-    UnclassifiedProbeReason { reason: _ } => false
+    FixtureCemented =>
+      match target {
+        FixtureCemented => true
+        _ => false
+      }
+    UnknownProbeCause { reason: _ } => false
   }
 }
 
@@ -104,7 +110,8 @@ fn frontier_probe_survey_has_unclassified(xs: List<FrontierProbeReceipt>) -> Boo
     empty: false,
     cons: fn(found, receipt) {
       found || match receipt.blocker_class {
-        UnclassifiedProbeReason { reason: _ } => true
+        UnknownProbeCause { reason: _ } => true
+        FixtureCemented => false
         SelfEmitReady => false
         NameResolutionGap => false
         EmitSurfaceGap => false

@@ -10,7 +10,8 @@ import v2.compiler.self_host.frontier_probe_types {
   NameResolutionGap,
   RealizationGap,
   SelfEmitReady,
-  UnclassifiedProbeReason
+  UnknownProbeCause,
+  FixtureCemented
 }
 import v2.test.workflow.host_source_root_ingest_manifest {
   frontier_probe_entry_module_path,

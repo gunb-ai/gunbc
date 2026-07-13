@@ -9,7 +9,8 @@ type FrontierBlockerClass
   | NameResolutionGap
   | EmitSurfaceGap
   | RealizationGap
-  | UnclassifiedProbeReason { reason: Symbol }
+  | FixtureCemented
+  | UnknownProbeCause { reason: Symbol }
 
 type FrontierProbeStage
   = ProbeStageAssemble
@@ -62,7 +63,7 @@ fn frontier_classify_rejection_reason(reason: Symbol) -> FrontierBlockerClass {
   } else if frontier_blocker_is_realization_reason(reason: reason) {
     RealizationGap
   } else {
-    UnclassifiedProbeReason { reason: reason }
+    UnknownProbeCause { reason: reason }
   }
 }
 
@@ -72,6 +73,7 @@ fn frontier_probe_blocker_rank(blocker: FrontierBlockerClass) -> Int {
     EmitSurfaceGap => 1
     NameResolutionGap => 2
     RealizationGap => 3
-    UnclassifiedProbeReason { reason: _ } => 4
+    FixtureCemented => 4
+    UnknownProbeCause { reason: _ } => 5
   }
 }
