@@ -32,7 +32,6 @@ import v2.std.node {
   Node,
   Transform,
   TypeNode,
-  node_subtree_count,
   node_synthetic,
   well_formed
 }
@@ -154,17 +153,13 @@ fn body_lowering_fn_body_subtree_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: captured_opt, diagnostics: _ } =>
-          match captured_opt {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
-                ParseSubtreeFound { captured: _ } => true
-                ParseSubtreeAbsent => false
-              }
-            Absent => false
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } =>
+          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
+            ParseSubtreeFound { captured: _ } => true
+            ParseSubtreeAbsent => false
           }
+        Absent => false
       }
   }
 }
@@ -173,13 +168,9 @@ fn body_lowering_arrow_token_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: captured_opt, diagnostics: _ } =>
-          match captured_opt {
-            Present { value: captured } => body_lower_has_arrow_token(root: captured)
-            Absent => false
-          }
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } => body_lower_has_arrow_token(root: captured)
+        Absent => false
       }
   }
 }
@@ -198,18 +189,14 @@ fn body_lowering_has_plus_token() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: captured_opt, diagnostics: _ } =>
-          match captured_opt {
-            Present { value: captured } =>
-              fold(
-                body_lower_collect_atoms(root: captured, acc: Empty),
-                init: false,
-                f: fn(acc, sym) { acc || sym == ^dag_token_plus }
-              )
-            Absent => false
-          }
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } =>
+          fold(
+            body_lower_collect_atoms(root: captured, acc: Empty),
+            init: false,
+            f: fn(acc, sym) { acc || sym == ^dag_token_plus }
+          )
+        Absent => false
       }
   }
 }
@@ -218,25 +205,17 @@ fn body_lowering_binary_infix_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: captured_opt, diagnostics: _ } =>
-          match captured_opt {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_binary_expr) {
-                ParseSubtreeFound { captured: binary } =>
-                  match body_lower_try_infix_transform(remaining: node_subtree_count(n: binary), node: binary) {
-                    Rejected { diagnostics: _ } => false
-                    Accepted { value: lowered_opt, diagnostics: _ } =>
-                      match lowered_opt {
-                        Present { value: _ } => true
-                        Absent => false
-                      }
-                  }
-                ParseSubtreeAbsent => false
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } =>
+          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_binary_expr) {
+            ParseSubtreeFound { captured: binary } =>
+              match body_lower_try_infix_transform(node: binary) {
+                Present { value: _ } => true
+                Absent => false
               }
-            Absent => false
+            ParseSubtreeAbsent => false
           }
+        Absent => false
       }
   }
 }
@@ -245,25 +224,17 @@ fn body_lowering_expr_infix_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: captured_opt, diagnostics: _ } =>
-          match captured_opt {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_expr) {
-                ParseSubtreeFound { captured: expr } =>
-                  match body_lower_try_infix_transform(remaining: node_subtree_count(n: expr), node: expr) {
-                    Rejected { diagnostics: _ } => false
-                    Accepted { value: lowered_opt, diagnostics: _ } =>
-                      match lowered_opt {
-                        Present { value: _ } => true
-                        Absent => false
-                      }
-                  }
-                ParseSubtreeAbsent => false
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } =>
+          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_expr) {
+            ParseSubtreeFound { captured: expr } =>
+              match body_lower_try_infix_transform(node: expr) {
+                Present { value: _ } => true
+                Absent => false
               }
-            Absent => false
+            ParseSubtreeAbsent => false
           }
+        Absent => false
       }
   }
 }
@@ -272,25 +243,17 @@ fn body_lowering_fn_body_infix_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
-      match body_lower_unwrap_captured(remaining: node_subtree_count(n: fn_decl), shell: fn_decl) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: captured_opt, diagnostics: _ } =>
-          match captured_opt {
-            Present { value: captured } =>
-              match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
-                ParseSubtreeFound { captured: body } =>
-                  match body_lower_try_infix_transform(remaining: node_subtree_count(n: body), node: body) {
-                    Rejected { diagnostics: _ } => false
-                    Accepted { value: lowered_opt, diagnostics: _ } =>
-                      match lowered_opt {
-                        Present { value: _ } => true
-                        Absent => false
-                      }
-                  }
-                ParseSubtreeAbsent => false
+      match body_lower_unwrap_captured(shell: fn_decl) {
+        Present { value: captured } =>
+          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
+            ParseSubtreeFound { captured: body } =>
+              match body_lower_try_infix_transform(node: body) {
+                Present { value: _ } => true
+                Absent => false
               }
-            Absent => false
+            ParseSubtreeAbsent => false
           }
+        Absent => false
       }
   }
 }
