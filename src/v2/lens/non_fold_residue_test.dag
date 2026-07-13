@@ -14,6 +14,14 @@ test fn non_fold_residue_no_unrostered_or_stale() -> Bool {
   return non_fold_residue_clean_holds()
 }
 
+test fn non_fold_residue_unrostered_count_is_zero() -> Bool {
+  non_fold_residue_unrostered_count() == 0
+}
+
+test fn non_fold_residue_stale_roster_count_is_zero() -> Bool {
+  non_fold_residue_stale_roster_count() == 0
+}
+
 test fn non_fold_residue_coproduct_universe_is_nonempty() -> Bool {
   return non_fold_residue_live_coproduct_universe_count() > 0
 }
