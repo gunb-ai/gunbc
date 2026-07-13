@@ -946,9 +946,10 @@ fn run_discovery_batch_node(
     ) {
         Ok(summary) if summary.failures.is_empty() => {
             eprintln!(
-                "[measurement] discovery corpus: {} witness(es) ({} skipped), resolve {:.3}ms, evalu {:.3}ms, CostAccount.time basis=Measured {}ns, roster-closure {} nodes (max shard)",
+                "[measurement] discovery corpus: {} witness(es) ({} skipped, {} deferred), resolve {:.3}ms, evalu {:.3}ms, CostAccount.time basis=Measured {}ns, roster-closure {} nodes (max shard)",
                 summary.total,
                 summary.skipped,
+                summary.deferred_rows.len(),
                 summary.total_resolve_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos,
