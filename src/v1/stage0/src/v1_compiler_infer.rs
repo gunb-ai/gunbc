@@ -12144,6 +12144,15 @@ pub fn interface_summary_consumer_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn interface_signature_fingerprint_v0_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Interim v0 export signature fingerprint (export_entry_from_item): content_hash of export name + authored_name_at(binding.resolved) under tag v1-interface-sig-v0 — NOT yet structural type shape. Two exports with the same name and resolved authored-name string collide in interface_hash even if types differ; increment-B receipt is binding transitivity (transitive_interface_binding_test), not hash-discriminated signature change. Structural fingerprint authority: std.interface_summary.interface_summary_v0_dissolution_trigger → export_entry_fingerprint when type-structure hashing lands.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         bindings: env.bindings.clone(),
