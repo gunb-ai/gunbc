@@ -1204,8 +1204,13 @@ pub struct InterpContext {
     // Cooperative per-witness eval deadline (fast-lane 5s rule, operator 2026-07-12).
     // The bound must unwind from INSIDE eval as a typed error: witness evals run on
     // in-process worker threads with no kill authority, so a wall-clock bound imposed
-    // from outside cannot terminate them (the Phase A governor lesson).
-    eval_deadline: std::cell::Cell<Option<(std::time::Instant, u64)>>,
+    // from outside cannot terminate them (the Phase A governor lesson). The budget is
+    // denominated in THREAD CPU TIME, not wall: the fast-lane rule targets the eval-wedge
+    // (a non-terminating eval that burns a core), so a witness inflated by cold-I/O reads
+    // or by governor time-slicing (many witnesses sharing a core) must not be misclassified
+    // — "assuming the infra isn't the problem" is exactly the CPU-vs-wall gap. The stored
+    // pair is (cpu_baseline_nanos, budget_ms).
+    eval_deadline: std::cell::Cell<Option<(u128, u64)>>,
     eval_deadline_stride: std::cell::Cell<u32>,
     // Lane-level budget: when set, run_claim_measured re-arms the deadline per witness.
     witness_eval_budget_ms: std::cell::Cell<Option<u64>>,
@@ -1363,7 +1368,7 @@ impl InterpContext {
 
     pub fn arm_eval_deadline(&self, budget_ms: u64) {
         self.eval_deadline
-            .set(Some((std::time::Instant::now(), budget_ms)));
+            .set(Some((thread_cpu_nanos(), budget_ms)));
         self.eval_deadline_stride.set(0);
     }
 
@@ -1648,11 +1653,12 @@ fn call_function_inner(
 }
 
 fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    if let Some((armed_at, budget_ms)) = ctx.eval_deadline.get() {
+    if let Some((cpu_baseline_nanos, budget_ms)) = ctx.eval_deadline.get() {
         let stride = ctx.eval_deadline_stride.get().wrapping_add(1);
         ctx.eval_deadline_stride.set(stride);
         if stride % 4096 == 0 {
-            let elapsed_ms = armed_at.elapsed().as_millis() as u64;
+            let elapsed_ms =
+                (thread_cpu_nanos().saturating_sub(cpu_baseline_nanos) / 1_000_000) as u64;
             if elapsed_ms > budget_ms {
                 return Err(InterpError::EvalBudgetExceeded {
                     elapsed_ms,
