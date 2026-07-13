@@ -12436,6 +12436,18 @@ mod nfr_tests {
     }
 
     #[test]
+    fn dump_unrostered_nfr_once() {
+        let mut u = Vec::new();
+        for s in non_fold_residue_live_sites() {
+            if !non_fold_residue_site_is_rostered(s) {
+                u.push(s.clone());
+            }
+        }
+        eprintln!("UNROSTERED: {:?}", u);
+        eprintln!("STALE: {}", non_fold_residue_stale_roster_count());
+    }
+
+    #[test]
     fn coproduct_index_finds_sums_not_records() {
         let f = files(&[(
             "t.dag",
