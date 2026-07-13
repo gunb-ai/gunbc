@@ -4235,12 +4235,44 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: OccurrenceId)
   }
 }
 
+fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
+  match edge {
+    Edge { label: Named { name: field }, target: magnitude } =>
+      if field == ^integer_literal_magnitude_field {
+        optional_present(value: magnitude)
+      } else {
+        optional_absent()
+      }
+    Edge { label: Positional, target: _ } => optional_absent()
+  }
+}
+
+fn dag_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
+  if dag_node_is_int_literal_atom(node: node) {
+    fold(node.children, init: optional_absent(), f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => dag_int_literal_magnitude_edge_target_optional(edge: edge)
+      }
+    })
+  } else {
+    optional_absent()
+  }
+}
+
 fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
   if dag_node_is_int_literal_atom(node: node) {
-    match find_named_child(root: node, name: ^integer_literal_magnitude_field) {
-      Accepted { value: magnitude_node, diagnostics: _ } =>
+    match dag_int_literal_magnitude_node_optional(node: node) {
+      Present { value: magnitude_node } =>
         integer_decimal_magnitude_node_to_int(node: magnitude_node)
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      Absent =>
+        outcome_rejected(
+          d: Diagnostic {
+            reason: ^dag_int_literal_lexeme_invalid,
+            at: node_locus(node: node),
+            correction: None
+          }
+        )
     }
   } else {
     outcome_rejected(
@@ -4410,19 +4442,27 @@ fn dag_pick_if_body_from_arms(
   }
 }
 
+fn dag_int_literal_fixture_node(lexeme: String) -> Node {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+    Accepted { value: node, diagnostics: _ } => node
+    Rejected { diagnostics: _ } =>
+      dag_type_atom_node(identity: ^dag_int_literal_lexeme_invalid)
+  }
+}
+
 fn dag_pick_if_body_node() -> Node {
   dag_pick_if_body_from_arms(
     condition: dag_type_atom_node(identity: ^dag_token_kw_true),
-    then_arm: dag_type_atom_node(identity: ^dag_pick_lit_one),
-    else_arm: dag_type_atom_node(identity: ^dag_pick_lit_two)
+    then_arm: dag_int_literal_fixture_node(lexeme: "1"),
+    else_arm: dag_int_literal_fixture_node(lexeme: "2")
   )
 }
 
 fn dag_pick_if_body_swapped_arms_node() -> Node {
   dag_pick_if_body_from_arms(
     condition: dag_type_atom_node(identity: ^dag_token_kw_true),
-    then_arm: dag_type_atom_node(identity: ^dag_pick_lit_two),
-    else_arm: dag_type_atom_node(identity: ^dag_pick_lit_one)
+    then_arm: dag_int_literal_fixture_node(lexeme: "2"),
+    else_arm: dag_int_literal_fixture_node(lexeme: "1")
   )
 }
 

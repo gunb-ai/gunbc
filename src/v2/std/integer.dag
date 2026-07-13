@@ -1,7 +1,7 @@
 module v2.std.integer
 
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { AbelianGroup, fold_list, fold_list_node, Group, length, Magma, Monoid, OrderedRing, Ordering, Ring, Semigroup }
+import v2.std.algebra { AbelianGroup, TailAbsent, TailFound, fold_list, fold_list_node, Group, length, Magma, Monoid, OrderedRing, Ordering, Ring, Semigroup }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, Unavailable }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence, is_empty_conj_root }
@@ -80,7 +80,7 @@ type NonZeroDecimalDigit
 
 type DecimalNonZeroMagnitude {
   lead: NonZeroDecimalDigit
-  tail: List<DecimalDigit>
+  tail: FreeMonoid<DecimalDigit>
 }
 
 type DecimalMagnitude
@@ -258,7 +258,7 @@ fn decimal_nonzero_sub_one(m: DecimalNonZeroMagnitude) -> DecimalMagnitude {
 
 fn integer_pow2_magnitude(exponent: Int) -> DecimalNonZeroMagnitude {
   if exponent <= 0 {
-    DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [] }
+    DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
   } else {
     decimal_nonzero_double(m: integer_pow2_magnitude(exponent: exponent - 1))
   }
@@ -980,10 +980,14 @@ fn integer_string_to_decimal_digits_step(
     CharFound { value: c } =>
       match integer_char_code_to_decimal_digit_optional(c: c) {
         Present { value: d } =>
-          integer_string_to_decimal_digits_step(
-            s: string_tail(s: s),
-            acc: integer_decimal_digits_snoc(xs: acc, digit: d)
-          )
+          match string_tail(s: s) {
+            TailFound { tail: rest } =>
+              integer_string_to_decimal_digits_step(
+                s: rest,
+                acc: integer_decimal_digits_snoc(xs: acc, digit: d)
+              )
+            TailAbsent => optional_absent()
+          }
         Absent => optional_absent()
       }
   }

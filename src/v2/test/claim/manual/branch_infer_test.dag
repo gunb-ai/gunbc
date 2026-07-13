@@ -10,8 +10,11 @@ import v2.compiler.infer {
   inferred_facts_witness_for_node,
   InferredTree
 }
-import v2.compiler.resolve { ResolvedTree }
-import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.extdeps.languages.dag {
+  dag_int_literal_node_from_lexeme,
+  dag_node_is_int_literal_atom
+}
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -70,27 +73,34 @@ fn branch_infer_if_body_from_arms(
   }
 }
 
+fn branch_infer_int_literal_node(lexeme: String) -> Node {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+    Accepted { value: node, diagnostics: _ } => node
+    Rejected { diagnostics: _ } => branch_infer_atom(s: ^branch_infer_int_literal_miss)
+  }
+}
+
 fn branch_infer_bool_if_else_body_node() -> Node {
   branch_infer_if_body_from_arms(
     condition: branch_infer_atom(s: ^dag_token_kw_true),
-    then_arm: branch_infer_atom(s: ^dag_pick_lit_one),
-    else_arm: branch_infer_atom(s: ^dag_pick_lit_two)
+    then_arm: branch_infer_int_literal_node(lexeme: "1"),
+    else_arm: branch_infer_int_literal_node(lexeme: "2")
   )
 }
 
 fn branch_infer_arm_mismatch_body_node() -> Node {
   branch_infer_if_body_from_arms(
     condition: branch_infer_atom(s: ^dag_token_kw_true),
-    then_arm: branch_infer_atom(s: ^dag_pick_lit_one),
+    then_arm: branch_infer_int_literal_node(lexeme: "1"),
     else_arm: branch_infer_string_type_node()
   )
 }
 
 fn branch_infer_cond_not_bool_body_node() -> Node {
   branch_infer_if_body_from_arms(
-    condition: branch_infer_atom(s: ^dag_pick_lit_one),
-    then_arm: branch_infer_atom(s: ^dag_pick_lit_one),
-    else_arm: branch_infer_atom(s: ^dag_pick_lit_two)
+    condition: branch_infer_int_literal_node(lexeme: "1"),
+    then_arm: branch_infer_int_literal_node(lexeme: "1"),
+    else_arm: branch_infer_int_literal_node(lexeme: "2")
   )
 }
 
