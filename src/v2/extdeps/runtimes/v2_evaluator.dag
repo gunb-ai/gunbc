@@ -1,17 +1,28 @@
 module v2.extdeps.runtimes.v2_evaluator
 
 import v2.std.collection { List, Map, map_insert }
+import v2.extdeps.languages.dag {
+  dag_int_literal_magnitude_int_from_node,
+  dag_node_is_int_literal_atom
+}
+import v2.std.integer {
+  Int,
+  integer_int_to_signed_i32_le_bytes
+}
 import v2.std.diagnostic {
   Accepted,
-  AmbiguousIntent,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted,
+  outcome_rejected,
+  node_locus,
+  port_locus,
   Diagnostic,
   ExternalContractUnknown,
-  None,
-  Outcome,
   Unavailable,
-  node_locus,
-  outcome_rejected,
-  port_locus
+  None,
+  AmbiguousIntent
 }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
@@ -155,8 +166,61 @@ fn v2_eval_empty_frame() -> EvaluationFrame {
   }
 }
 
+fn v2_eval_int_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn v2_eval_int_runtime_value(value: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: v2_eval_int_type_node(),
+      bytes: integer_int_to_signed_i32_le_bytes(value: value)
+    }
+  }
+}
+
+fn v2_eval_bool_runtime_value(is_true: Bool) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: v2_eval_bool_literal_pin,
+      bytes: if is_true {
+        [Byte { bits: [true, false, false, false, false, false, false, false] }]
+      } else {
+        [Byte { bits: [false, false, false, false, false, false, false, false] }]
+      }
+    }
+  }
+}
+
 fn v2_eval_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+  if node == v2_eval_bool_literal_pin {
+    outcome_accepted(value: v2_eval_bool_runtime_value(is_true: true))
+  } else if node == v2_eval_unit_literal_pin {
+    outcome_accepted(value: v2_eval_unit_runtime_value())
+  } else if dag_node_is_int_literal_atom(node: node) {
+    bind_outcome(
+      o: dag_int_literal_magnitude_int_from_node(node: node),
+      f: fn(value) {
+        outcome_accepted(value: v2_eval_int_runtime_value(value: value))
+      }
+    )
+  } else {
+    match node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if id == ^dag_token_kw_true {
+          outcome_accepted(value: v2_eval_bool_runtime_value(is_true: true))
+        } else if id == ^dag_token_kw_false {
+          outcome_accepted(value: v2_eval_bool_runtime_value(is_true: false))
+        } else {
+          outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+        }
+      _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+    }
+  }
 }
 
 fn v2_eval_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {

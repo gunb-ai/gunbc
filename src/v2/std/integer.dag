@@ -934,33 +934,40 @@ fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
   }
 }
 
-fn integer_ascii_digit_zero_code() -> Char {
-  48
-}
-
 fn integer_char_code_to_decimal_digit_optional(c: Char) -> Optional<DecimalDigit> {
-  if c == integer_ascii_digit_zero_code() {
+  if c == 48 {
     optional_present(value: D0)
-  } else if c == integer_ascii_digit_zero_code() + 1 {
+  } else if c == 49 {
     optional_present(value: D1)
-  } else if c == integer_ascii_digit_zero_code() + 2 {
+  } else if c == 50 {
     optional_present(value: D2)
-  } else if c == integer_ascii_digit_zero_code() + 3 {
+  } else if c == 51 {
     optional_present(value: D3)
-  } else if c == integer_ascii_digit_zero_code() + 4 {
+  } else if c == 52 {
     optional_present(value: D4)
-  } else if c == integer_ascii_digit_zero_code() + 5 {
+  } else if c == 53 {
     optional_present(value: D5)
-  } else if c == integer_ascii_digit_zero_code() + 6 {
+  } else if c == 54 {
     optional_present(value: D6)
-  } else if c == integer_ascii_digit_zero_code() + 7 {
+  } else if c == 55 {
     optional_present(value: D7)
-  } else if c == integer_ascii_digit_zero_code() + 8 {
+  } else if c == 56 {
     optional_present(value: D8)
-  } else if c == integer_ascii_digit_zero_code() + 9 {
+  } else if c == 57 {
     optional_present(value: D9)
   } else {
     optional_absent()
+  }
+}
+
+fn integer_decimal_digits_snoc(
+  xs: FreeMonoid<DecimalDigit>,
+  digit: DecimalDigit
+) -> FreeMonoid<DecimalDigit> {
+  match xs {
+    Empty => Cons { head: digit, tail: Empty }
+    Cons { head, tail } =>
+      Cons { head: head, tail: integer_decimal_digits_snoc(xs: tail, digit: digit) }
   }
 }
 
@@ -975,7 +982,7 @@ fn integer_string_to_decimal_digits_step(
         Present { value: d } =>
           integer_string_to_decimal_digits_step(
             s: string_tail(s: s),
-            acc: Cons { head: d, tail: acc }
+            acc: integer_decimal_digits_snoc(xs: acc, digit: d)
           )
         Absent => optional_absent()
       }
@@ -1052,14 +1059,38 @@ fn integer_byte_bit_at(b: Byte, shift: Int) -> Int {
 }
 
 fn integer_u8_from_byte(b: Byte) -> Int {
-  integer_byte_bit_at(b: b, shift: 0)
-    + 2 * integer_byte_bit_at(b: b, shift: 1)
-    + 4 * integer_byte_bit_at(b: b, shift: 2)
-    + 8 * integer_byte_bit_at(b: b, shift: 3)
-    + 16 * integer_byte_bit_at(b: b, shift: 4)
-    + 32 * integer_byte_bit_at(b: b, shift: 5)
-    + 64 * integer_byte_bit_at(b: b, shift: 6)
-    + 128 * integer_byte_bit_at(b: b, shift: 7)
+  int_add(
+    a: int_add(
+      a: int_add(
+        a: int_add(
+          a: int_add(
+            a: int_add(
+              a: int_add(
+                a: integer_byte_bit_at(b: b, shift: 0),
+                b: int_mul(a: 2, b: integer_byte_bit_at(b: b, shift: 1))
+              ),
+              b: int_mul(a: 4, b: integer_byte_bit_at(b: b, shift: 2))
+            ),
+            b: int_mul(a: 8, b: integer_byte_bit_at(b: b, shift: 3))
+          ),
+          b: int_mul(a: 16, b: integer_byte_bit_at(b: b, shift: 4))
+        ),
+        b: int_mul(a: 32, b: integer_byte_bit_at(b: b, shift: 5))
+      ),
+      b: int_mul(a: 64, b: integer_byte_bit_at(b: b, shift: 6))
+    ),
+    b: int_mul(a: 128, b: integer_byte_bit_at(b: b, shift: 7))
+  )
+}
+
+fn integer_signed_i32_le_bytes_to_int_value(b0: Int, b1: Int, b2: Int, b3: Int) -> Int {
+  int_add(
+    a: int_add(
+      a: int_add(a: b0, b: int_mul(a: 256, b: b1)),
+      b: int_mul(a: 65536, b: b2)
+    ),
+    b: int_mul(a: 16777216, b: b3)
+  )
 }
 
 fn integer_decimal_digit_from_tag_atom(id: Symbol) -> Optional<DecimalDigit> {
@@ -1146,10 +1177,12 @@ fn integer_signed_i32_le_bytes_to_int(bytes: List<Byte>) -> Outcome<Int> {
                 match list_at_optional(xs: bytes, index: 3) {
                   Present { value: b3 } =>
                     outcome_accepted(
-                      value: integer_u8_from_byte(b: b0)
-                        + 256 * integer_u8_from_byte(b: b1)
-                        + 65536 * integer_u8_from_byte(b: b2)
-                        + 16777216 * integer_u8_from_byte(b: b3)
+                      value: integer_signed_i32_le_bytes_to_int_value(
+                        b0: integer_u8_from_byte(b: b0),
+                        b1: integer_u8_from_byte(b: b1),
+                        b2: integer_u8_from_byte(b: b2),
+                        b3: integer_u8_from_byte(b: b3)
+                      )
                     )
                   Absent =>
                     outcome_rejected(
