@@ -1,6 +1,6 @@
 # v1 run-stability throughline — the memory axis (corpus-OOM lane)
 
-> **Status:** executing, 2026-07-13, session sleek-deer-172 ("corpus OOM"). Same-day arc: proposed → amended per the routed review (sharp-bee-290: success metric corrected from floor peak — a governor-pinned design constant — to completion-within-step-budget at width > 1; M0 widened to test the retention→parallelism mechanism; M2 trigger reworded; eval-memo scope boundary added) → operator sign-off ("start executing on this now") → **M0 DONE (receipt §1) and M1b LANDED (receipt §1)**, both in this PR; M1a next; M1's floor-dial (throughput) receipt outstanding and declared so. Operator-requested alignment doc: the decision tree + milestone list for making whole-corpus floor runs complete reliably inside the 16 GiB slot envelope, for the months the self-host waves need. **This doc is a bridge plan, not a destination:** its terminal dissolution trigger is the witness corpus running as emitted native artifacts (ROADMAP §④ / Wave 3+), at which point the interpreted cost class this doc stabilizes stops being the live path.
+> **Status:** executing, 2026-07-13, session sleek-deer-172 ("corpus OOM"). Same-day arc: proposed → amended per the routed review (sharp-bee-290: success metric corrected from floor peak — a governor-pinned design constant — to completion-within-step-budget at width > 1; M0 widened to test the retention→parallelism mechanism; M2 trigger reworded; eval-memo scope boundary added) → operator sign-off ("start executing on this now") → **M0 DONE, M1b + M1b-2 LANDED, M1 dial receipt CAPTURED (all receipts §1)**, in this PR; M1a next. The dial run also restored the falsifier cold sweep itself, which immediately caught three latent corpus reds (two pre-existing, fixed in #6530; one this PR's own orphan doc, fixed here) — the masking the lane exists to end, receipted in §1. Operator-requested alignment doc: the decision tree + milestone list for making whole-corpus floor runs complete reliably inside the 16 GiB slot envelope, for the months the self-host waves need. **This doc is a bridge plan, not a destination:** its terminal dissolution trigger is the witness corpus running as emitted native artifacts (ROADMAP §④ / Wave 3+), at which point the interpreted cost class this doc stabilizes stops being the live path.
 >
 > DESIGN refs: §1 (time is the value; safety = wrong answers cost later at interest), §2 (minimize redundancy — the located defect is duplicated ancestry materialization), §5 (fail-closed — no widening arms; the cap raises this doc forbids are the receipted widening arm), §6 (denominate in displaced cost; every scaffold lands with a dissolution trigger), §7 (the seed shrinks toward zero — nothing here invests in v1 beyond stabilizing the bridge).
 >
@@ -79,8 +79,22 @@ Consumer analysis first: `inductive_fields_for` readers use filter/first per (va
 | `emit_graph_fingerprint` | `cfdc338c2795a035` | identical | **identical** |
 
 Every list is duplicate-free by induction under the new merge (locals are duplicate-free; merges never append a present fact), so the mass cannot re-accumulate — the multiplicative class is **unwritable**, not just reduced (§5 construction, not validation).
-- **Outstanding half of the M1 done-bar (declared, not asserted): the floor dial receipt** — one whole-corpus floor run completing within step budget at governor width > 1. Lands from the first whole-corpus run on this tree (local attempt or the post-merge CI run); until then M1 is *retention-receipted, throughput-pending*.
 - Pre-fix equivalence baseline for the M1a oracle: `corpus_fingerprint=d34a91a4d8fe8845` at the M1b-landed state.
+
+### M1 dial receipt (2026-07-13, whole-corpus falsifier cold run — `gunbc_falsifier_batches`, local)
+
+Run shape: predict-only cold sweep, **all 1,757 discovery witnesses across 537 entries, 0 skipped**, M1b-2 seed binaries, this tree + the #6530 red-fixes. Honesty note: local cgroup budget is **33.6 GB vs CI's 16 GB slot**, so the width the governor packs is not CI's width — but the observed peak fits even CI's envelope with headroom, and the dial variables the done-bar names are envelope-independent signs of health.
+
+| Dial | Pre-M1b (CI whole-corpus runs, §1 baseline) | **M1b-2 (this run)** |
+|---|---:|---:|
+| outcome | step-cap TIME death at swap speed (270 m / 60 m runs; nightly killed at 35.8 GB censored) | **EXIT=0 green, ~8 m wall** (resolve 406 s + eval 36 s) |
+| governor width | `forced_serial=1` (one worker ≈ whole budget) | **max_width_reached=9, forced_serial=0** |
+| hard_backoffs / budget_exceeded | 474 / 1 | **0 / 0** |
+| peak | ≥15 GiB censored (packed to the clamp) | **8.83 GB VmHWM; governor peak_current 11.35 GB** — inside even a 16 GB slot |
+
+**M1 done-bar: met at the local envelope** — completion within step budget at width > 1, zero governor distress. The CI-slot confirmation (16 GB `memory.high`, where the governor will pack to a narrower width by construction) lands with the first post-merge whole-corpus CI run; declared, not asserted.
+
+**What restoring the cold sweep immediately paid for (the lane's premise, receipted):** the falsifier had been memory-dead since before 2026-07-10, and in that shadow three corpus reds accumulated undetected — (1) #6520's fold-API dissolution left 3 manual body-lowering claim modules unresolvable (typed refusal at frontier population; falsifier-blocking); (2) #6506 added `git.Core.Toplevel` to the git mock corpus without extending the totality consumer (witness red); (3) this PR's own throughline doc was a doc-graph orphan (2 witness reds) until the DESIGN.md open-threads link in this commit. (1)+(2) proven pre-existing on pure main by execution with the merge-base binary and fixed in **#6530**; (3) caught pre-merge by the very cold run M1 revived. CI's affected-set selection ran none of these consumers for the diffs that broke them — missing-selection-edge follow-ups flagged on #6530.
 
 ## 2. The defect, located (verified against the live tree, 2026-07-13)
 
