@@ -5,7 +5,6 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
-  dag_fn_decl_param_binding_atoms,
   dag_language_model_canonical_symbols,
   dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
@@ -643,7 +642,7 @@ fn resolve_child_edge(
   }
 }
 
-data scope_with_fn_decl_params_interim_note: String = "Interim-for-FLAG-D: bare sym→sym merge of dag_fn_decl_param_binding_atoms + add_arrow_domain_named_params until fn_decl→Arrow lowering dissolves the fn_decl reader; dissolve this hunk when FLAG D lands (eager-ram-612 Track 5)."
+data scope_with_arrow_domain_params_note: String = "Post body-lowering Stage A (zesty-eagle-417 Track B): fn_decl→Arrow lowering in normalize makes add_arrow_domain_named_params the sole param-scoping authority. dag_fn_decl_param_binding_atoms and the interim fn_decl production-wrapper reader dissolved — wrapper-retained fn_decl shells (body_lowering_fold frontier) carry no param scope and resolve fail-closed on body param refs."
 
 fn domain_root_has_named_bindings(root: Node) -> Bool {
   match root.kind {
@@ -678,29 +677,14 @@ fn arrow_domain_has_named_bindings(n: Node) -> Bool {
   }
 }
 
-fn scope_with_fn_decl_params(n: Node, scope: Scope) -> Scope {
-  let params = dag_fn_decl_param_binding_atoms(node: n)
-  if length(xs: params) == 0 {
-    if arrow_domain_has_named_bindings(n: n) {
-      ScopeFrame {
-        locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
-        outer: scope
-      }
-    } else {
-      scope
-    }
-  } else {
-    let merged = fold(
-      params,
-      init: add_arrow_domain_named_params(n: n, acc: empty_map()),
-      f: fn(m, sym) {
-        map_insert(m, sym, sym)
-      }
-    )
+fn scope_with_arrow_domain_params(n: Node, scope: Scope) -> Scope {
+  if arrow_domain_has_named_bindings(n: n) {
     ScopeFrame {
-      locals: merged,
+      locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
       outer: scope
     }
+  } else {
+    scope
   }
 }
 
@@ -709,7 +693,7 @@ fn resolve_children_homogeneous_scope(
   n: Node
 ) -> Outcome<Node> {
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
-  let scope_here = scope_with_fn_decl_params(n: n, scope: ctx.scope)
+  let scope_here = scope_with_arrow_domain_params(n: n, scope: ctx.scope)
   let child_ctx = resolve_ctx_with_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here

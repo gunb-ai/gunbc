@@ -1,0 +1,14 @@
+module v2.test.claim.self_host.wave1_track_b_scope_dissolution_witness
+
+import v2.test.claim.body_lowering.wave1_gate1_normalize_add_helpers {
+  wave1_gate1_normalized_add_resolves_holds,
+  wave1_gate1_resolved_add_arrow_transform_holds
+}
+import v2.std.logic { Bool }
+
+data wave1_track_b_scope_dissolution_note: String = "Wave 1 Track B scope scaffold dissolution witness: after fn_decl→Arrow lowering in normalize, resolve scopes params via add_arrow_domain_named_params only (dag_fn_decl_param_binding_atoms + scope_with_fn_decl_params dissolved). Proven by execution: ingested add module normalizes to Arrow+Transform and resolves with param refs bound (wave1_gate1 helpers). RED control: wrapper-retained fn_decl shells without Arrow domain do not get interim fn_decl param scope — body_lowering_wrapper_retained_test.dag."
+
+test fn wave1_track_b_ingested_add_resolves_after_scope_dissolution_holds() -> Bool {
+  wave1_gate1_normalized_add_resolves_holds()
+    && wave1_gate1_resolved_add_arrow_transform_holds()
+}
