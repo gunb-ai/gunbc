@@ -165,6 +165,34 @@ fn pick_probe_find_fn_decl_optional(root: Node) -> Optional<Node> {
   }
 }
 
+fn pick_probe_parsed_then_arm_literal_optional(module_outcome: Outcome<Node>) -> Optional<Node> {
+  match module_outcome {
+    Accepted { value: module_root, diagnostics: _ } =>
+      match pick_probe_find_fn_decl_optional(root: module_root) {
+        Present { value: fn_decl } =>
+          match body_lower_unwrap_captured(shell: fn_decl) {
+            Present { value: captured } =>
+              match pick_probe_find_if_expr_optional(root: captured) {
+                Present { value: if_shell } =>
+                  match body_lower_unwrap_captured(shell: if_shell) {
+                    Present { value: if_captured } =>
+                      match body_lower_if_then_arm_optional(captured: if_captured) {
+                        Present { value: then_capture } =>
+                          pick_probe_int_literal_in_node_optional(node: then_capture)
+                        Absent => Absent
+                      }
+                    Absent => Absent
+                  }
+                Absent => Absent
+              }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
 fn pick_probe_parsed_then_int_literal_has_magnitude_child_holds(module_outcome: Outcome<Node>) -> Bool {
   match module_outcome {
     Accepted { value: module_root, diagnostics: _ } =>
@@ -261,6 +289,15 @@ test fn pick_probe_normalized_then_arm_has_magnitude_child_holds() -> Bool {
     module_outcome: pick_ingested_normalized_module_from_source(source: pick_ingested_source),
     arm_index: 1
   )
+}
+
+test fn pick_probe_parsed_then_arm_literal_found_holds() -> Bool {
+  match pick_probe_parsed_then_arm_literal_optional(
+    module_outcome: pick_ingested_parsed_module_from_source(source: pick_ingested_source)
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 test fn pick_probe_parsed_then_arm_has_magnitude_child_holds() -> Bool {
