@@ -2076,9 +2076,17 @@ fn body_lower_collect_match_arms(sequence_capture: Node) -> Outcome<List<Node>> 
 }
 
 fn body_lower_reify_branch_target(node: Node) -> Node {
-  match body_lower_reify_operand_node(node: node) {
+  match body_lower_literal_int_atom_optional(node: node) {
     Present { value: reified } => reified
-    Absent => node
+    Absent =>
+      match body_lower_literal_bool_atom_optional(node: node) {
+        Present { value: reified } => reified
+        Absent =>
+          match body_lower_reify_operand_node(node: node) {
+            Present { value: reified } => reified
+            Absent => node
+          }
+      }
   }
 }
 
@@ -2130,6 +2138,25 @@ fn body_lower_if_navigation_reject(captured: Node) -> Outcome<Node> {
       n: captured
     )
   )
+}
+
+fn body_lower_arm_operand_resolved_optional(arm: Node) -> Optional<Node> {
+  match body_lower_literal_int_atom_optional(node: arm) {
+    Present { value: lit } => Present { value: lit }
+    Absent =>
+      match body_lower_literal_bool_atom_optional(node: arm) {
+        Present { value: b } => Present { value: b }
+        Absent =>
+          match body_lower_operand_from_shell_optional(shell: arm) {
+            Present { value: op } =>
+              match body_lower_literal_int_atom_optional(node: op) {
+                Present { value: lit } => Present { value: lit }
+                Absent => Present { value: op }
+              }
+            Absent => optional_absent()
+          }
+      }
+  }
 }
 
 fn body_lower_if_arm_operand_optional(arm_capture: Node) -> Optional<Node> {
@@ -2387,23 +2414,35 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
           match body_lower_if_else_capture_optional(captured: captured) {
             Present { value: else_capture } =>
               match body_lower_if_arm_operand_optional(arm_capture: condition_capture) {
-                Present { value: condition } =>
-                  match body_lower_if_arm_operand_optional(arm_capture: then_capture) {
-                    Present { value: then_arm } =>
-                      match body_lower_if_arm_operand_optional(arm_capture: else_capture) {
-                        Present { value: else_arm } =>
-                          outcome_accepted(
-                            value: optional_present(
-                              value: lower_branch(
-                                condition: condition,
-                                then_arm: then_arm,
-                                else_arm: else_arm
-                              )
-                            )
-                          )
-                        Absent => body_lower_if_navigation_reject(captured: else_capture)
+                Present { value: condition_raw } =>
+                  match body_lower_arm_operand_resolved_optional(arm: condition_raw) {
+                    Present { value: condition } =>
+                      match body_lower_if_arm_operand_optional(arm_capture: then_capture) {
+                        Present { value: then_raw } =>
+                          match body_lower_arm_operand_resolved_optional(arm: then_raw) {
+                            Present { value: then_arm } =>
+                              match body_lower_if_arm_operand_optional(arm_capture: else_capture) {
+                                Present { value: else_raw } =>
+                                  match body_lower_arm_operand_resolved_optional(arm: else_raw) {
+                                    Present { value: else_arm } =>
+                                      outcome_accepted(
+                                        value: optional_present(
+                                          value: lower_branch(
+                                            condition: condition,
+                                            then_arm: then_arm,
+                                            else_arm: else_arm
+                                          )
+                                        )
+                                      )
+                                    Absent => body_lower_if_navigation_reject(captured: else_capture)
+                                  }
+                                Absent => body_lower_if_navigation_reject(captured: else_capture)
+                              }
+                            Absent => body_lower_if_navigation_reject(captured: then_capture)
+                          }
+                        Absent => body_lower_if_navigation_reject(captured: then_capture)
                       }
-                    Absent => body_lower_if_navigation_reject(captured: then_capture)
+                    Absent => body_lower_if_navigation_reject(captured: condition_capture)
                   }
                 Absent => body_lower_if_navigation_reject(captured: condition_capture)
               }
