@@ -538,17 +538,34 @@ fn run_batch_unit(
             exclude_substrings,
             discovery_scope_dirs,
             execution_mode,
-        } => vec![run_discovery_batch_node(
-            roots,
-            scan_dirs,
-            explicit_entries,
-            node_frontier_selection,
-            exclude_substrings,
-            discovery_scope_dirs,
-            governor,
-            execution_mode,
-            fast_lane_eval_budget_ms,
-        )],
+        } => {
+            // The fast-lane eval budget (operator 5s rule) governs the HERMETIC per-PR
+            // discovery corpus — witnesses whose own eval must stay cheap or move to a
+            // long/ lane. A Wet execution batch (the bin-witness roster: compile-clean
+            // seam checks, floor-skip/interp-fixture drivers) spends its wall time in
+            // declared subprocess I/O, not in eval, and legitimately runs for minutes;
+            // the budget's completion-side wall check would kill it for doing exactly its
+            // declared job. So the budget applies only to a hermetic batch. This is not a
+            // silent widen: the Wet roster is a small explicit set with its own resource
+            // profile, and the eval-wedge risk the budget guards (the s1_closure class)
+            // lives in the wide hermetic corpus, not here.
+            let effective_budget = if execution_mode.is_hermetic() {
+                fast_lane_eval_budget_ms
+            } else {
+                None
+            };
+            vec![run_discovery_batch_node(
+                roots,
+                scan_dirs,
+                explicit_entries,
+                node_frontier_selection,
+                exclude_substrings,
+                discovery_scope_dirs,
+                governor,
+                execution_mode,
+                effective_budget,
+            )]
+        }
         BatchUnit::SharedClaims {
             entry,
             functions,
