@@ -11,7 +11,8 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     peak_rss_vhwm_bytes, whole_corpus_semantic_oracle_snapshot,
-    whole_tree_resolve_exclusion_substrings, whole_tree_resolved_ctx, WholeTreeCtx,
+    whole_tree_ancestry_retention_probe, whole_tree_resolve_exclusion_substrings,
+    whole_tree_resolved_ctx, WholeTreeCtx,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -29,6 +30,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
     let mut exclude_subpaths = whole_tree_resolve_exclusion_substrings();
+    let mut ancestry_report = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -41,6 +43,12 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 exclude_subpaths.push(require_value(&args, i, "--exclude-subpath")?);
             }
+            // M0 ancestry-retention mode (v1-run-stability-throughline): one strict
+            // resolve, then per-field retained-vs-distinct entry counts + peak RSS.
+            // Replaces the default flow (no oracle snapshot — one resolve, one report).
+            "--ancestry-report" => {
+                ancestry_report = true;
+            }
             other => {
                 eprintln!("measure_whole_tree_resolve: unknown argument: {other}");
                 return Err(ExitCode::from(2));
@@ -52,6 +60,14 @@ fn run() -> Result<ExitCode, ExitCode> {
     if source_roots.is_empty() {
         eprintln!("measure_whole_tree_resolve: at least one --source-root is required");
         return Err(ExitCode::from(2));
+    }
+
+    if ancestry_report {
+        whole_tree_ancestry_retention_probe(&source_roots, &exclude_subpaths).map_err(|e| {
+            eprintln!("measure_whole_tree_resolve: ancestry probe failed:\n{e}");
+            ExitCode::from(2)
+        })?;
+        return Ok(ExitCode::SUCCESS);
     }
 
     let WholeTreeCtx {

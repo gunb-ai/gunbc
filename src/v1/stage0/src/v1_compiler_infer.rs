@@ -12739,12 +12739,25 @@ pub fn build_type_env(
             cycle_set_for_inductive.clone(),
             source_indices.clone(),
         );
-        let parent_inductive_fields = scope_parents.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
-                merge_inductive_fields(acc, parent.inductive_fields.clone())
-            },
-        );
+        let parent_inductive_fields = match scope_parents.clone().first().cloned() {
+            Some(head_parent) => Rc::new(
+                scope_parents
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            .fold(
+                head_parent.inductive_fields.clone(),
+                |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
+                    merge_inductive_fields(acc, parent.inductive_fields.clone())
+                },
+            ),
+            None => v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+        };
         let merged_inductive_fields = merge_inductive_fields(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
@@ -13264,12 +13277,25 @@ pub fn build_type_env_unresolved(
             cycle_set_for_inductive.clone(),
             source_indices.clone(),
         );
-        let parent_inductive_fields = scope_parents.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
-                merge_inductive_fields(acc, parent.inductive_fields.clone())
-            },
-        );
+        let parent_inductive_fields = match scope_parents.clone().first().cloned() {
+            Some(head_parent) => Rc::new(
+                scope_parents
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            .fold(
+                head_parent.inductive_fields.clone(),
+                |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
+                    merge_inductive_fields(acc, parent.inductive_fields.clone())
+                },
+            ),
+            None => v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+        };
         let merged_inductive_fields = merge_inductive_fields(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
