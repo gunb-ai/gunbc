@@ -31,6 +31,23 @@ Whole-corpus floor runs currently pin at the 15 GiB `memory.high` reclaim clamp 
 
 **Verdict the numbers force:** parsing is fat-but-linear; the instability is the typecheck-env web — per-module *materialized ancestry* whose size grows with the closure, retained for the life of the process in `typed_module_cache`. Not a leak; a cost-shape defect (§6 bare-minimum-cost class: "a proven quadratic fold is always fixed").
 
+### M0 receipt (2026-07-13, `--ancestry-report`, 1,101 modules / 898 excluded, peak RSS 5,269,540,864 B)
+
+The instrument landed and the numbers **re-order M1: the dominant mass is gun (b), not gun (a).**
+
+| Field (all modules) | Retained entries | Spine dup_factor |
+|---|---:|---:|
+| `te.inductive_fields` **list mass** | **409,240,584** | 1.00 |
+| all ten map fields combined | 1,068,601 | 1.00 |
+| `tec.str_bindings` / `tec.deps_map` | 304,577 each | 1.00 |
+| `te.ancestry_str_bindings` | 300,782 | 1.00 |
+
+- The inductive-field **list mass is ~400× all map entries combined**: 409M `Rc<InductiveField>` slots ≈ **3.3 GB of Vec slots alone** — essentially the whole +4.35 GiB typecheck bloat. Worst modules: `tools.floor_effect_gate_witness` **22,610,058** entries, `tools.ci_gates` 20,135,582 (≈17k duplicates per type at ~1,338 types) — the `merge_inductive_fields` concat-on-collision compounding **multiplicatively along the import DAG** (each module re-concats its parents' already-duplicated lists).
+- `dup_factor=1.00` on every map field at spine grain = zero cross-module sharing anywhere (every module a fresh spine), as diagnosed — but the map *entry* totals (~1M) are not where the bytes are.
+- Dial-side pairing (from the governor receipts already recorded above): at this retention, `forced_serial=1`, `hard_backoffs=474`, wall 270 min → step-cap death.
+- Consequence: **M1b (inductive-fields dedupe + base-sharing) is the first cut**; M1a (union base-choice) second; M1c (cycle sets: 23,945 entries — negligible) demoted to opportunistic.
+- Pre-fix equivalence baseline for the M1 oracles: `corpus_fingerprint=82e9c68b96617067`, `emit_graph_fingerprint=cfdc338c2795a035`, `per_module_rows=1102`.
+
 ## 2. The defect, located (verified against the live tree, 2026-07-13)
 
 Cleared: `func_env` is a proper scope-chain post-#5893 (local sigs, shared parent chain, O(n+edges)) — not the problem.
