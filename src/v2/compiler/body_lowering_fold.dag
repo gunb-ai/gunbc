@@ -13,6 +13,7 @@ import v2.extdeps.languages.dag {
   dag_binding_branded_atom_identity,
   dag_int_type_binding,
   dag_int_literal_magnitude_node_optional,
+  dag_int_literal_node_from_lexeme,
   dag_lex_token_symbol,
   dag_node_is_int_literal_atom,
   dag_match_arm_node,
@@ -42,7 +43,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
-import v2.std.integer { Int }
+import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
 import v2.std.node {
   Arrow,
   Atom,
@@ -2076,7 +2077,7 @@ fn body_lower_collect_match_arms(sequence_capture: Node) -> Outcome<List<Node>> 
 }
 
 fn body_lower_reify_branch_target(node: Node) -> Node {
-  match body_lower_literal_int_atom_optional(node: node) {
+  match body_lower_materialize_int_literal_operand_optional(node: node) {
     Present { value: reified } => reified
     Absent =>
       match body_lower_literal_bool_atom_optional(node: node) {
@@ -2140,8 +2141,43 @@ fn body_lower_if_navigation_reject(captured: Node) -> Outcome<Node> {
   )
 }
 
+fn body_lower_materialize_int_literal_operand_optional(node: Node) -> Optional<Node> {
+  match body_lower_int_literal_with_magnitude_optional(node: node) {
+    Present { value: lit } => Present { value: lit }
+    Absent =>
+      match body_lower_literal_int_atom_optional(node: node) {
+        Present { value: lit } => Present { value: lit }
+        Absent =>
+          match body_lower_unwrap_captured(shell: node) {
+            Present { value: captured } =>
+              body_lower_materialize_int_literal_operand_optional(node: captured)
+            Absent =>
+              match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+                Present { value: id } =>
+                  if dag_node_is_int_literal_atom(node: body_lower_deep_unwrap_optional(node: node)) {
+                    optional_absent()
+                  } else {
+                    match integer_string_to_decimal_digits_optional(s: symbol_lexeme(sym: id)) {
+                      Present { value: _ } =>
+                        match dag_int_literal_node_from_lexeme(
+                          lexeme: symbol_lexeme(sym: id),
+                          occurrence_id: node.occurrence_id
+                        ) {
+                          Accepted { value: lit, diagnostics: _ } => Present { value: lit }
+                          Rejected { diagnostics: _ } => optional_absent()
+                        }
+                      Absent => optional_absent()
+                    }
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+  }
+}
+
 fn body_lower_arm_operand_resolved_optional(arm: Node) -> Optional<Node> {
-  match body_lower_literal_int_atom_optional(node: arm) {
+  match body_lower_materialize_int_literal_operand_optional(node: arm) {
     Present { value: lit } => Present { value: lit }
     Absent =>
       match body_lower_literal_bool_atom_optional(node: arm) {
@@ -2149,9 +2185,14 @@ fn body_lower_arm_operand_resolved_optional(arm: Node) -> Optional<Node> {
         Absent =>
           match body_lower_operand_from_shell_optional(shell: arm) {
             Present { value: op } =>
-              match body_lower_literal_int_atom_optional(node: op) {
+              match body_lower_materialize_int_literal_operand_optional(node: op) {
                 Present { value: lit } => Present { value: lit }
-                Absent => Present { value: op }
+                Absent =>
+                  if dag_node_is_int_literal_atom(node: body_lower_deep_unwrap_optional(node: op)) {
+                    optional_absent()
+                  } else {
+                    optional_present(value: op)
+                  }
               }
             Absent => optional_absent()
           }
