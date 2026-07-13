@@ -1,0 +1,81 @@
+module v2.test.execution.pick_ingested_probe
+
+import v2.test.execution.pick_ingested_equals_eval {
+  pick_ingested_arrow_has_branch_body,
+  pick_ingested_pipeline_resolves_holds,
+  pick_ingested_pick_false_executes_holds,
+  pick_ingested_pick_true_executes_holds,
+  pick_ingested_source,
+  pick_ingested_swapped_arms_red_holds
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.node { Arrow, Branch, ComputationNode, Node, TypeNode }
+import v2.std.node_query { find_arrow_body_child }
+
+fn pick_probe_find_arrow(root: Node) -> Node {
+  match root.kind {
+    TypeNode { connective: Arrow } => root
+    _ =>
+      fold(root.children, init: root, f: fn(acc, e) {
+        match pick_probe_find_arrow(root: e.target).kind {
+          TypeNode { connective: Arrow } => pick_probe_find_arrow(root: e.target)
+          _ => acc
+        }
+      })
+  }
+}
+
+fn pick_probe_normalized_has_branch_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: pick_ingested_source, file: ^pick_probe_file, rules: lm.lex) {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module(tokens: tokens, grammar: lm.grammar) {
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Accepted { value: normalized, diagnostics: _ } =>
+              match find_arrow_body_child(root: pick_probe_find_arrow(root: normalized)) {
+                Accepted { value: body, diagnostics: _ } =>
+                  match body.kind {
+                    ComputationNode { behavior: Branch } => true
+                    _ => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn pick_probe_resolves_holds() -> Bool {
+  pick_ingested_pipeline_resolves_holds()
+}
+
+test fn pick_probe_branch_body_holds() -> Bool {
+  pick_ingested_arrow_has_branch_body(source: pick_ingested_source)
+}
+
+test fn pick_probe_normalized_branch_holds() -> Bool {
+  pick_probe_normalized_has_branch_holds()
+}
+
+test fn pick_probe_true_holds() -> Bool {
+  pick_ingested_pick_true_executes_holds()
+}
+
+test fn pick_probe_false_holds() -> Bool {
+  pick_ingested_pick_false_executes_holds()
+}
+
+test fn pick_probe_swapped_red_holds() -> Bool {
+  pick_ingested_swapped_arms_red_holds()
+}
