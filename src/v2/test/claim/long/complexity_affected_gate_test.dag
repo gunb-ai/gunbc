@@ -1,4 +1,4 @@
-module v2.test.claim.complexity.complexity_affected_gate
+module v2.test.long.complexity_affected_gate
 
 import v2.workflow.complexity_affected_gate {
   ChangedFileClean,
