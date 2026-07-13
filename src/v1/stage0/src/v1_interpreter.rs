@@ -1652,6 +1652,42 @@ fn call_function_inner(
     }
 }
 
+/// Thread CPU time in nanoseconds — the metric the fast-lane eval budget is denominated in.
+/// It advances only while THIS thread is actually running on a core, so it excludes both
+/// blocking-I/O waits (a witness reading the live tree cold) and scheduler time-slicing (many
+/// witnesses sharing cores under the adaptive governor). That is exactly the "assuming the
+/// infra isn't the problem" clause of the operator's 5s rule: a genuine non-terminating eval
+/// burns CPU and is still caught, while a bounded scan whose WALL time was inflated by infra is
+/// not misclassified. On unix this reads `CLOCK_THREAD_CPUTIME_ID`; elsewhere (dev only — CI is
+/// linux) it falls back to a process-monotonic wall clock. A clock error yields 0, which makes
+/// the deadline under-count rather than fire spuriously (the witness still returns its real
+/// Pass/Fail; the budget is a performance guard, not a correctness gate).
+pub fn thread_cpu_nanos() -> u128 {
+    #[cfg(unix)]
+    {
+        let mut ts = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        // SAFETY: `ts` is a valid, owned timespec; CLOCK_THREAD_CPUTIME_ID is always supported
+        // on linux/macos. rc != 0 (unreachable there) falls through to 0.
+        let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
+        if rc == 0 {
+            return (ts.tv_sec as u128) * 1_000_000_000 + (ts.tv_nsec as u128);
+        }
+        0
+    }
+    #[cfg(not(unix))]
+    {
+        use std::sync::OnceLock;
+        static START: OnceLock<std::time::Instant> = OnceLock::new();
+        START
+            .get_or_init(std::time::Instant::now)
+            .elapsed()
+            .as_nanos()
+    }
+}
+
 fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     if let Some((cpu_baseline_nanos, budget_ms)) = ctx.eval_deadline.get() {
         let stride = ctx.eval_deadline_stride.get().wrapping_add(1);

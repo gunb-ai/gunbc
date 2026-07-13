@@ -3931,11 +3931,16 @@ pub fn run_claim_measured(
         ctx.arm_eval_deadline(budget_ms);
     }
     let started = std::time::Instant::now();
+    let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
     let outcome = run_claim(ctx, function);
+    // CPU consumed by THIS (witness-eval) thread — the budget metric, so the completion-side
+    // check matches the cooperative stride-poll and neither fires on cold-I/O or contention
+    // wall time. wall_nanos stays the measurement/receipt basis (unchanged).
+    let cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
     let wall_nanos = started.elapsed().as_nanos();
     ctx.clear_eval_deadline();
     v1_interpreter::eval_subject_clear();
-    let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, wall_nanos);
+    let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, cpu_nanos);
     let receipt =
         v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
     (outcome, receipt)
@@ -3947,19 +3952,21 @@ pub fn run_claim_measured(
 /// exceeded the budget converts to the same typed refusal here — the witness is over
 /// the fast-lane classification either way, and silent green would fail open on the
 /// operator 5s rule. A Fail/RuntimeError stays itself: those are already loud, and
-/// replacing a genuine finding with the budget message would discard it.
+/// replacing a genuine finding with the budget message would discard it. `cpu_nanos` is
+/// THREAD CPU time (not wall), matching the stride-poll metric — a witness whose wall time
+/// was inflated by cold-I/O or governor time-slicing is not misclassified as over-budget.
 fn budget_completion_outcome(
     budget: Option<u64>,
     outcome: ClaimOutcome,
-    wall_nanos: u128,
+    cpu_nanos: u128,
 ) -> ClaimOutcome {
     match (budget, outcome) {
-        (Some(budget_ms), ClaimOutcome::Pass) if wall_nanos > u128::from(budget_ms) * 1_000_000 => {
+        (Some(budget_ms), ClaimOutcome::Pass) if cpu_nanos > u128::from(budget_ms) * 1_000_000 => {
             ClaimOutcome::RuntimeError {
                 message: format!(
                     "{}",
                     v1_interpreter::InterpError::EvalBudgetExceeded {
-                        elapsed_ms: (wall_nanos / 1_000_000) as u64,
+                        elapsed_ms: (cpu_nanos / 1_000_000) as u64,
                         budget_ms,
                     }
                 ),
@@ -3975,8 +3982,9 @@ mod budget_completion_tests {
 
     #[test]
     fn pass_over_budget_converts_to_typed_refusal() {
-        // The stride-poll blind spot: a witness finishing over budget in fewer than
-        // 4096 dispatches must still refuse at completion, never green silently.
+        // The stride-poll blind spot: a witness burning over-budget CPU in fewer than
+        // 4096 dispatches must still refuse at completion, never green silently. The
+        // third arg is CPU nanos (6ms CPU > 5ms budget), matching the stride-poll metric.
         match budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000) {
             ClaimOutcome::RuntimeError { message } => {
                 assert!(
