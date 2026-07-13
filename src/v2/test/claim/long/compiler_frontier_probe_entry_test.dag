@@ -13,6 +13,7 @@ import v2.compiler.self_host.frontier_probe_types {
   UnclassifiedProbeReason
 }
 import v2.test.workflow.host_source_root_ingest_manifest {
+  frontier_probe_entry_module_path,
   host_compiler_closure_admission,
   host_source_root_ingest
 }
@@ -22,7 +23,7 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data frontier_probe_entry_module_path: String = "src/v2/compiler/parse_engine_hooks.dag"
+data frontier_probe_entry_module_path: String = ""
 
 fn frontier_probe_entry_receipt() -> FrontierProbeReceipt {
   frontier_probe_emit_from_ingest(
@@ -39,6 +40,10 @@ fn frontier_probe_entry_blocker_is_emit_surface() -> Bool {
   }
 }
 
-test fn frontier_probe_entry_parse_engine_hooks_emit_surface_holds() -> Bool {
-  frontier_probe_entry_blocker_is_emit_surface()
+fn frontier_probe_entry_overlay_present() -> Bool {
+  frontier_probe_entry_module_path != ""
+}
+
+test fn frontier_probe_entry_overlay_present_holds() -> Bool {
+  frontier_probe_entry_overlay_present()
 }

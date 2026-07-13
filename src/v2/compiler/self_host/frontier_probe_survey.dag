@@ -52,6 +52,35 @@ fn count_receipts_with_located_reason(
   )
 }
 
+fn frontier_blocker_class_matches(
+  blocker: FrontierBlockerClass,
+  target: FrontierBlockerClass
+) -> Bool {
+  match blocker {
+    SelfEmitReady =>
+      match target {
+        SelfEmitReady => true
+        _ => false
+      }
+    NameResolutionGap =>
+      match target {
+        NameResolutionGap => true
+        _ => false
+      }
+    EmitSurfaceGap =>
+      match target {
+        EmitSurfaceGap => true
+        _ => false
+      }
+    RealizationGap =>
+      match target {
+        RealizationGap => true
+        _ => false
+      }
+    UnclassifiedProbeReason { reason: _ } => false
+  }
+}
+
 fn count_receipts_with_blocker(
   xs: List<FrontierProbeReceipt>,
   target: FrontierBlockerClass
@@ -60,7 +89,7 @@ fn count_receipts_with_blocker(
     xs: xs,
     empty: 0,
     cons: fn(count, receipt) {
-      if receipt.blocker_class == target {
+      if frontier_blocker_class_matches(blocker: receipt.blocker_class, target: target) {
         count + 1
       } else {
         count

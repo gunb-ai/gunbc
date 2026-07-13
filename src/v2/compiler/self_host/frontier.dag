@@ -676,6 +676,69 @@ fn compiler_frontier_band_a_emit_readiness_holds() -> Bool {
     && compiler_frontier_band_a_other_gate_triggers_match_holds()
 }
 
+fn frontier_roster_row_blocker_matches_probe(
+  row: CompilerModuleFrontierRow,
+  receipt: FrontierProbeReceipt
+) -> Bool {
+  if row.module_path != receipt.module_path {
+    false
+  } else {
+    match row.measured_probe.blocker_class {
+      SelfEmitReady =>
+        match receipt.blocker_class {
+          SelfEmitReady => true
+          _ => false
+        }
+      NameResolutionGap =>
+        match receipt.blocker_class {
+          NameResolutionGap => true
+          _ => false
+        }
+      EmitSurfaceGap =>
+        match receipt.blocker_class {
+          EmitSurfaceGap => true
+          _ => false
+        }
+      RealizationGap =>
+        match receipt.blocker_class {
+          RealizationGap => true
+          _ => false
+        }
+      UnclassifiedProbeReason { reason: _ } => false
+    }
+  }
+}
+
+fn compiler_frontier_row_for_path_matches_probe(
+  target: String,
+  receipt: FrontierProbeReceipt
+) -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: false,
+    cons: fn(matched, row) {
+      if row.module_path == target {
+        frontier_roster_row_blocker_matches_probe(row: row, receipt: receipt)
+      } else {
+        matched
+      }
+    }
+  )
+}
+
+fn compiler_frontier_roster_matches_survey_holds(survey: List<FrontierProbeReceipt>) -> Bool {
+  fold_list(
+    xs: survey,
+    empty: true,
+    cons: fn(ok, receipt) {
+      ok && compiler_frontier_row_for_path_matches_probe(
+        target: receipt.module_path,
+        receipt: receipt
+      )
+    }
+  )
+}
+
 fn compiler_frontier_census_holds() -> Bool {
   compiler_frontier_roster_complete_holds()
     && compiler_frontier_roster_paths_unique_holds()
