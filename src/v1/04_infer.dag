@@ -5742,9 +5742,13 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let cross_type_set = fold(sorted_map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let cycle_set_for_inductive = fold(sorted_map_keys(cycle_set_str), init: empty_set(), f: (acc, name) => set_insert(acc, name))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_set_for_inductive, source_indices: source_indices)
-  let parent_inductive_fields = fold(scope_parents, init: empty_map(), f: (acc, parent) =>
-    merge_inductive_fields(left: acc, right: parent.inductive_fields)
-  )
+  let parent_inductive_fields = match scope_parents |> first {
+    Present { value: head_parent } =>
+      fold(scope_parents |> skip(1), init: head_parent.inductive_fields, f: (acc, parent) =>
+        merge_inductive_fields(left: acc, right: parent.inductive_fields)
+      )
+    Absent => empty_map()
+  }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
   let ancestry_str_bindings = if module.resolved_imports |> count == 1 {
     match module.resolved_imports |> first {
@@ -5872,9 +5876,13 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let cross_type_set = fold(sorted_map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let cycle_set_for_inductive = fold(sorted_map_keys(cycle_set_str), init: empty_set(), f: (acc, name) => set_insert(acc, name))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_set_for_inductive, source_indices: source_indices)
-  let parent_inductive_fields = fold(scope_parents, init: empty_map(), f: (acc, parent) =>
-    merge_inductive_fields(left: acc, right: parent.inductive_fields)
-  )
+  let parent_inductive_fields = match scope_parents |> first {
+    Present { value: head_parent } =>
+      fold(scope_parents |> skip(1), init: head_parent.inductive_fields, f: (acc, parent) =>
+        merge_inductive_fields(left: acc, right: parent.inductive_fields)
+      )
+    Absent => empty_map()
+  }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
   let ancestry_str_bindings = if module.resolved_imports |> count == 1 {
     match module.resolved_imports |> first {
