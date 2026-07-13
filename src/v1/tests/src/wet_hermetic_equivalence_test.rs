@@ -1,7 +1,8 @@
 use v1_compiler::cli_run::{
-    discover_floor_corpus_rows, is_governed_service_representative_row, run_discovery_corpus,
-    wet_hermetic_discovery_outcome_divergences, wet_hermetic_scaffold_roster_entry_prefix,
-    witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, DiscoveryWitnessOutcome,
+    discover_floor_corpus_rows, is_governed_service_representative_row,
+    run_discovery_corpus_with_options, wet_hermetic_discovery_outcome_divergences,
+    wet_hermetic_scaffold_roster_entry_prefix, witness_exclusion_substrings, ClaimOutcome,
+    DiscoveryCorpusOptions, DiscoveryRow, DiscoveryWidthPolicy, DiscoveryWitnessOutcome,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -141,10 +142,24 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
 fn wet_hermetic_scaffold_roster_outcomes_agree() {
     let roots = ci_witness_layer_roots();
     let explicit = governed_service_representative_explicit_entries();
-    let wet = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Wet, 1)
-        .expect("wet discovery run for scaffold roster");
-    let hermetic = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Hermetic, 1)
-        .expect("hermetic discovery run for scaffold roster");
+    let wet = run_discovery_corpus_with_options(
+        &roots,
+        &[],
+        &explicit,
+        ExecutionMode::Wet,
+        DiscoveryWidthPolicy::Serial,
+        DiscoveryCorpusOptions::default(),
+    )
+    .expect("wet discovery run for scaffold roster");
+    let hermetic = run_discovery_corpus_with_options(
+        &roots,
+        &[],
+        &explicit,
+        ExecutionMode::Hermetic,
+        DiscoveryWidthPolicy::Serial,
+        DiscoveryCorpusOptions::default(),
+    )
+    .expect("hermetic discovery run for scaffold roster");
     let divergences = wet_hermetic_discovery_outcome_divergences(
         &wet.witness_outcomes,
         &hermetic.witness_outcomes,

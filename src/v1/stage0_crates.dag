@@ -178,6 +178,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           "std_effects",
           "std_emit_model",
           "std_error_primitives",
+          "std_execution_mode",
           "std_graph",
           "std_http_path",
           "std_induction",

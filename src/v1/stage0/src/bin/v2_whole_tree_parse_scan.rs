@@ -7,7 +7,7 @@ use v1_compiler::cli_run::{discover_source_root_reads, load_sources_for_entry};
 use v1_compiler::v1_compiler_compile::compile_to_resolved;
 use v1_compiler::v1_interpreter::{self, Value};
 
-const PARSE_HARNESS_ENTRY: &str = "src/v2/test/claim/languages/gap4_parse_tokens_remain_test.dag";
+const PARSE_HARNESS_ENTRY: &str = "src/v2/test/claim/long/gap4_parse_tokens_remain_test.dag";
 const PARSE_FN: &str = "parses";
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {

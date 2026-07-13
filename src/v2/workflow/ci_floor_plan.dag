@@ -1,6 +1,7 @@
 module v2.workflow.ci_floor_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
+import std.execution_mode { Hermetic, Wet }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, gunbc_ci_emit_determinism_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
@@ -16,33 +17,8 @@ import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
 import std.nat { Nat }
-import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size, ByteSize, byte_size_count, measure_scale_fraction_floor }
-import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width, int_min }
-import gunbc.fleet_container {
-  ResourceEnvelope,
-  parallel_run_demand_envelope,
-  demand_envelope_thread_count,
-  demand_envelope_fits_budget
-}
-import gunbc.ci_floor_measurement {
-  gunbc_ci_floor_per_shard_peak_rss_bytes,
-  gunbc_falsifier_per_shard_peak_rss_bytes,
-  gunbc_falsifier_memory_derived_width,
-  gunbc_ci_floor_host_compiler_spawn_peak,
-  gunbc_ci_floor_conservative_fallback_width,
-  gunbc_ci_floor_memory_derived_width,
-  gunbc_ci_floor_width_usable_fraction_num,
-  gunbc_ci_floor_width_usable_fraction_den,
-  gunbc_ci_runner_cgroup_memory_cap,
-  gunbc_ci_runner_slot_memory_max_live,
-  gunbc_ci_runner_slot_ram_speed_ceiling,
-  gunbc_ci_execution_corpus_available_width,
-  gunbc_ci_floor_execution_corpus_per_witness_rss,
-  gunbc_ci_floor_executor_base_overhead_bytes,
-}
-import gunbc.ci_budget_tree { srv1_floor_memory_budget }
-import gunbc.ci_runner_target { ci_runner_target_ram_speed_budget, selected_ci_runner_target }
-import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import std.measure { Second, second, second_count }
+import std.realization_width { width_fold_objective_goals }
 import std.realization_schedule {
   SelectionApplied,
   SelectionPredictOnly,
@@ -59,7 +35,6 @@ import std.realization_schedule {
   runnable_resource_profile_negligible,
   runnable_memory_negligible,
   runnable_memory_substantial,
-  runnable_memory_substantial_sum,
   runnable_excludes_corpus_co_residence,
   runnable_heavy_whole_tree_resolve,
   runnable_forbids_corpus_co_residence,
@@ -129,10 +104,17 @@ fn witness_entries_kind_path_all_agree(entries: List<ScheduleWitnessEntry>) -> B
   })
 }
 
+fn bin_witness_corpus_enrolled(spec: CiSpec) -> Bool {
+  length(xs: spec.discovery_scan_dirs) > 0 && length(xs: bin_witness_wet_entries) > 0
+}
+
 fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
   concat(
     if length(xs: corpus_witness_entries(spec: spec)) > 0 || length(xs: spec.discovery_scan_dirs) > 0 { [floor_corpus_node] } else { [] },
-    if length(xs: execution_witness_entries(spec: spec)) > 0 { [execution_corpus_node] } else { [] }
+    concat(
+      if length(xs: execution_witness_entries(spec: spec)) > 0 { [execution_corpus_node] } else { [] },
+      if bin_witness_corpus_enrolled(spec: spec) { [bin_witness_corpus_node] } else { [] }
+    )
   )
 }
 
@@ -156,59 +138,78 @@ fn floor_compile_root_node() -> Node {
 }
 
 fn floor_resource_anchor_node(node: Node) -> Bool {
-  (node == floor_compile_root_node()) || (node == floor_corpus_node) || (node == execution_corpus_node)
+  (node == floor_compile_root_node()) || (node == floor_corpus_node) || (node == execution_corpus_node) || (node == bin_witness_corpus_node)
 }
 
+data gate_profile_memory_marker_note: String = "Gate memory classes are structural markers (Negligible vs Substantial) since the 2026-07-12 adaptive-width ruling: the fabricated per-gate byte predictions (per-shard peak, host-compiler spawn peak, and their sums) retired with the width folds they fed. Run-time concurrency is governed by the executor's memory governor against the slot's own cgroup budget; the marker still feeds co-residence structure (runnable_excludes_corpus_co_residence)."
+
 fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
-  let per_shard = runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
-  let host_compiler = runnable_memory_substantial(predicted_peak: gunbc_ci_floor_host_compiler_spawn_peak)
+  let substantial = runnable_memory_substantial()
   match g {
     DagCompileCleanGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: false,
-        memory: per_shard
+        memory: substantial,
+        execution_mode: Wet
       )
     SourceRootIngestGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: false,
-        memory: per_shard
+        memory: substantial,
+        execution_mode: Wet
       )
     RegenVerifyGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
-        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+        memory: substantial,
+        execution_mode: Wet
       )
     SelfHostReadsRealBytesGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: true,
-        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+        memory: substantial,
+        execution_mode: Wet
       )
     SelfHostStalenessGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: true,
-        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+        memory: substantial,
+        execution_mode: Wet
       )
     EmitDeterminismGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
-        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+        memory: substantial,
+        execution_mode: Wet
       )
     EmitHostGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: true,
-        memory: host_compiler
+        memory: substantial,
+        execution_mode: Wet
       )
-    LayeringImportsGate => runnable_resource_profile_negligible()
-    ExtdepsExternalAuthorityGate => runnable_resource_profile_negligible()
-    GeneratedArtifactDriftGate => runnable_resource_profile_negligible()
+    LayeringImportsGate => gate_profile_negligible_wet_declared()
+    ExtdepsExternalAuthorityGate => gate_profile_negligible_wet_declared()
+    GeneratedArtifactDriftGate => gate_profile_negligible_wet_declared()
   }
+}
+
+data gate_profile_wet_declaration_note: String = "Every floor GATE declares execution_mode: Wet explicitly — an honest declaration of pre-existing reality (the executor hardwired ExecutionMode::Wet at every witness-execution site until the profile field landed), kept while gates run effectful work (fmt/nextest, emit-host, regen, compile-clean shell receipts). The three negligible-memory gates (layering-imports scan, extdeps external-authority scan, generated-artifact drift) are wet-DECLARED via gate_profile_negligible_wet_declared; per-gate hermetic tightening is a follow-on, each flip proven by a green hermetic run of that gate entry. The DISCOVERY and FALSIFIER corpus batches flipped to Hermetic with the audit receipt (claim_batch default-hermetic census 2026-07-12: 1042 PASS / 105 FAIL before remediation; the mode-typed refusals zeroed by the Filesystem.Read checkout carve-out, the git.Core.Toplevel checkout-root mock case, and the six wet-integration offline rows in gunbc.ci_layer_roots — see wet_integration_offline_note). The fail-closed default (runnable_resource_profile_negligible = Hermetic, absent profile = Hermetic at the executor) applies to every NEW runnable: an undeclared live effect refuses with a typed, located diagnostic instead of dispatching."
+
+fn gate_profile_negligible_wet_declared() -> RunnableResourceProfile {
+  runnable_resource_profile(
+    heavy_whole_tree_resolve: false,
+    spawns_host_compiler: false,
+    memory: runnable_memory_negligible(),
+    execution_mode: Wet
+  )
 }
 
 fn gate_runnable(g: Gate) -> Runnable {
@@ -243,14 +244,14 @@ fn corpus_source_roots() -> List<String> {
   witness_layer_roots
 }
 
-data gunbc_ci_corpus_discovery_spawn_width_cap_note: String = "Discovery-flip corpus batch spawn cap (run 28999086030 receipt): the tree-wide discovery corpus with SelectionApplied OOM-killed exit 137 @ spawn_width=2 on the 24GiB live slot (24349MiB VmRSS) while gate workloads fit at width=2 against gunbc_ci_floor_per_shard_peak_max. The discovery batch pins spawn_width_cap to 1 so its heavier per-shard resolve footprint cannot stack; the executor's global spawn_width from gunbc_ci_plan_spawn_width is unchanged for gate batches. Dissolve-on: resolver graph-major shrinks discovery per-shard below the gate envelope and the cap can lift back to the tree-derived width."
+data gunbc_ci_adaptive_width_note: String = "Adaptive width (operator ruling 2026-07-12, superseding the pinned-cap regime): the plan no longer authors spawn widths or per-shard byte predictions — the retired machinery was gunbc_ci_corpus_discovery_spawn_width_cap (pinned 1 after the run 28999086030 width=2 OOM), the per-plan *_plan_spawn_width fns the executor evaluated by name, and the gunbc.ci_floor_measurement width folds over hand-edited peak samples (pins freezing derivations: stale samples predated the enrollment flip, and the base-overhead re-measure chased its own tail — the July OOM/wedge regime). The executor now governs concurrency at run time: v1_compiler::memory_governor admits workers AIMD-style against the slot's OWN declared budget (memory.high else memory.max else MemAvailable else MemTotal — MemAvailable precedes MemTotal on uncapped hosts because the kernel's availability estimate excludes the co-tenant baseline that let run 29180195694 reach physical RAM; GUNBC_MEMORY_BUDGET_BYTES to override). Admission is paced (at most one worker whose front-loaded index-build cost has not yet landed), predictive (the run measures its first worker's share over the pool baseline and admits only while current + share fits under high-water), and ceilinged at half the budget — the maturation reserve: the 2026-07-12 run series proved admitted demand matures minutes after admission at ~7x its digest-time footprint, so reactive arms alone always observe it too late and half the pipe stays reserved for in-flight growth. The creep-episode edge (memory.current high-water, PSI some avg10, swap growth) halves the window AND holds admissions — early congestion is TCP's ECN, not a stop-and-hope — while hard events halve it again (memory.events high/oom_kill deltas) and memory.current crossing the declared budget itself collapses the window to one (the reachable loss signal on uncapped hosts, where memory.events never fires); the width-1 progress floor still guarantees forward motion. The window re-grows additively on calm completions. Every hold/back-off is typed, counted, and surfaced in the [governor] receipt line (DESIGN §5: loud bounded degradation, never an absorbing widen). Dissolve-on: graph-derived per-node demand (CostAccount.space measured, the realization-measurement lane) replaces the reactive estimator and the governor demotes to a safety net."
 
-fn gunbc_ci_corpus_discovery_spawn_width_cap(spec: CiSpec) -> Nat {
-  if length(xs: spec.discovery_scan_dirs) > 0 {
-    hardware_thread_count_value(t: hardware_thread_count(count: 1))
-  } else {
-    hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree())
-  }
+data gunbc_ci_fast_lane_rule_note: String = "Fast-lane 5-second rule (operator ruling 2026-07-12): a witness whose OWN eval takes 5 seconds or longer does not run in per-PR discovery — it lives under a long/ test dir (dag/test/claim/long/, src/v2/test/claim/long/), excluded from discovery at dir grain (gunbc.ci_layer_roots) and triggered independently (local recipe: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>; scheduled-lane enrollment rides the falsifier follow-on). Enforcement is by execution, not census: the executor arms a cooperative per-witness eval deadline from the budget row below (v1_interpreter EvalBudgetExceeded — a typed FAIL row naming the over-budget witness; the bound unwinds from INSIDE eval because in-process worker threads have no kill authority, the Phase A governor lesson). The deadline arms at eval start, so resolve/index cost is infra and never counted against the witness (the operator's carve-out: 'assuming the infra isn't the problem'). This is also the wedge tourniquet: an unbounded eval that previously burned the 270-minute step cap in billed silence (run 29183446733: 243 of 270 minutes after the last progress line, zero witnesses completed) now fails red in seconds with its name in the log. Dissolve-on: per-witness declared cost envelopes (the witness-cost-locality admission law) replace the blanket lane budget with declared rows."
+
+data gunbc_ci_fast_lane_witness_eval_budget: Second = second(count: 5)
+
+fn gunbc_ci_fast_lane_eval_budget_ms() -> Nat {
+  second_count(s: gunbc_ci_fast_lane_witness_eval_budget) * 1000
 }
 
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
@@ -261,11 +262,11 @@ fn corpus_runnable_for(spec: CiSpec) -> Runnable {
     node_frontier_selection: SelectionApplied,
     exclude_substrings: witness_exclusion_substrings,
     discovery_scope_dirs: [],
-    spawn_width_cap: gunbc_ci_corpus_discovery_spawn_width_cap(spec: spec),
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
     )
   }
 }
@@ -273,10 +274,6 @@ fn corpus_runnable_for(spec: CiSpec) -> Runnable {
 data execution_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_execution_corpus } },
   children: []
-}
-
-fn execution_corpus_spawn_width() -> Int {
-  gunbc_ci_execution_corpus_available_width(each: gunbc_ci_floor_execution_corpus_per_witness_rss)
 }
 
 fn execution_corpus_runnable_for(spec: CiSpec) -> Runnable {
@@ -287,11 +284,35 @@ fn execution_corpus_runnable_for(spec: CiSpec) -> Runnable {
     node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
-    spawn_width_cap: execution_corpus_spawn_width(),
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_execution_corpus_per_witness_rss)
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
+data bin_witness_corpus_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_bin_witness_corpus } },
+  children: []
+}
+
+data bin_witness_corpus_note: String = "The bin-execution witness batch: the declared Wet lane for witnesses whose fns execute compiled seed witness binaries (gunbc.ci_layer_roots bin_witness_wet_entries — see bin_witness_wet_note there). They ran silently wet inside the discovery corpus until the hermetic flip; now the discovery batch is Hermetic and these rows keep their per-PR coverage under an explicit Wet profile (spawns_host_compiler: the runner may cargo-build a missing witness bin locally; in CI the build job prebuilds them). Enrolled only when the spec runs live discovery (bin_witness_corpus_enrolled), so regen/emit-determinism/synthetic specs carry no bin batch."
+
+fn bin_witness_corpus_runnable_for() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: bin_witness_wet_entries,
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
     )
   }
 }
@@ -322,11 +343,19 @@ fn floor_resource_depends_on(source: Node, dependent: Node) -> DependencyView {
 
 fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
   let corpus_nodes = corpus_plan_nodes(spec: spec)
-  let after_floor_corpus = if length(xs: corpus_nodes) > 1 {
-    [floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node)]
-  } else {
-    []
-  }
+  let floor_present = length(xs: corpus_witness_entries(spec: spec)) > 0 || length(xs: spec.discovery_scan_dirs) > 0
+  let after_floor_corpus = concat(
+    if floor_present && length(xs: execution_witness_entries(spec: spec)) > 0 {
+      [floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node)]
+    } else {
+      []
+    },
+    if floor_present && bin_witness_corpus_enrolled(spec: spec) {
+      [floor_resource_depends_on(source: floor_corpus_node, dependent: bin_witness_corpus_node)]
+    } else {
+      []
+    }
+  )
   fold(spec.gates, init: after_floor_corpus, f: fn(acc, g) {
     let node = gate_node(g: g)
     if floor_resource_anchor_node(node: node) {
@@ -420,7 +449,7 @@ fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView
   }
 }
 
-data gunbc_ci_corpus_discovery_batch_isolation_note: String = "Discovery-flip batch isolation (run 29120615071 receipt): with SelectionApplied the discovery corpus resolves on the main thread (heavy_whole_tree_resolve memo path) while light gate units in the same antichain batch spawn at gunbc_ci_plan_spawn_width — two resolve-groups in one batch, so discovery's whole-tree index and gate shard threads stack even though spawn_width_cap pins the corpus shard count to 1. Resource edges from floor_corpus_node to every gate when discovery_scan_dirs is non-empty isolate the corpus to its own batch so gates start only after discovery completes and walk_memo holds the shared index. Dissolve-on: resolver graph-major shrinks discovery per-shard below the gate envelope so co-residence is safe again."
+data gunbc_ci_corpus_discovery_batch_isolation_note: String = "Discovery-flip batch isolation (run 29120615071 receipt, retained under the adaptive-width regime): resource edges from floor_corpus_node to every gate when discovery_scan_dirs is non-empty isolate the corpus to its own batch so gates start only after discovery completes and walk_memo holds the shared index — the surviving justification is the walk_memo ORDERING (gates reuse the corpus's resolved whole-tree index instead of re-resolving it), not memory stacking, which the run-time memory governor now handles by admission (the original receipt: at pinned width the corpus's main-thread whole-tree resolve stacked with gate shard threads in one antichain batch). Dissolve-on: resolver graph-major makes per-entry resolve cheap enough that memo-order no longer matters, or the cross-process resolved-graph cache supersedes walk_memo."
 
 fn floor_discovery_flip_corpus_serializes_before_gates_edges(spec: CiSpec) -> List<DependencyView> {
   if length(xs: spec.discovery_scan_dirs) > 0 {
@@ -481,6 +510,8 @@ fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
     corpus_runnable_for(spec: spec)
   } else if node == execution_corpus_node {
     execution_corpus_runnable_for(spec: spec)
+  } else if node == bin_witness_corpus_node {
+    bin_witness_corpus_runnable_for()
   } else {
     fold(spec.gates, init: floor_unrunnable_sentinel(), f: fn(acc, g) {
       if node == gate_node(g: g) { gate_runnable(g: g) } else { acc }
@@ -537,23 +568,6 @@ fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec)
 }
 
-fn gunbc_falsifier_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThreadCount {
-  let budget_count = byte_size_count(b: memory_budget)
-  if budget_count <= 0 {
-    hardware_thread_count(count: 1)
-  } else {
-    let cpu_bound = hardware_thread_count_value(t: bounded_host_spawn_width(
-      shard_count: 1,
-      hardware_threads: gunbc_ci_floor_hardware_threads()
-    ))
-    hardware_thread_count(count: gunbc_falsifier_memory_derived_width(cap: memory_budget, cpu_bound: cpu_bound))
-  }
-}
-
-fn gunbc_falsifier_spawn_width_from_live_cap() -> HardwareThreadCount {
-  gunbc_falsifier_spawn_width_for_budget(memory_budget: ci_runner_target_ram_speed_budget(target: selected_ci_runner_target()))
-}
-
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
   [[RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
@@ -562,11 +576,11 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
     node_frontier_selection: SelectionPredictOnly,
     exclude_substrings: witness_exclusion_substrings,
     discovery_scope_dirs: [],
-    spawn_width_cap: hardware_thread_count_value(t: gunbc_falsifier_spawn_width_from_live_cap()),
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: gunbc_falsifier_per_shard_peak_rss_bytes())
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
     )
   }]]
 }
@@ -577,8 +591,9 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
 
 fn runnable_scan_dir_count(r: Runnable) -> Int {
   match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => length(xs: dirs)
-    _ => 0 - 1
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => length(xs: dirs)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => 0 - 1
+    RunnableKernelWorkload { fused_op_count: _ } => 0 - 1
   }
 }
 
@@ -600,14 +615,6 @@ fn witness_ci_corpus_discovery_is_live() -> Bool {
     && (length(xs: gunbc_ci_spec.discovery_scan_dirs) > 0)
     && (runnable_scan_dir_count(r: corpus_runnable_for(spec: gunbc_ci_spec)) > 0)
     && runnable_selection_applied(r: corpus_runnable_for(spec: gunbc_ci_spec))
-}
-
-fn witness_ci_corpus_discovery_serializes_at_width_one() -> Bool {
-  match corpus_runnable_for(spec: gunbc_ci_spec_discovery_flip_enrolled()) {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: cap, profile: _ } =>
-      (length(xs: dirs) > 0) && (cap == 1)
-    _ => false
-  }
 }
 
 fn witness_floor_discovery_flip_serializes_gates_after_corpus(spec: CiSpec) -> Bool {
@@ -640,10 +647,6 @@ fn gunbc_ci_plan_artifact_batches() -> List<List<Runnable>> {
   })
 }
 
-fn gunbc_ci_plan_artifact_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
-  gunbc_ci_plan_spawn_width(memory_budget_bytes: memory_budget_bytes)
-}
-
 fn gunbc_ci_emit_determinism_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_emit_determinism_spec).schedule
 }
@@ -664,132 +667,10 @@ fn gunbc_ci_floor_breadth() -> Int {
   length(xs: gunbc_ci_spec.gates)
 }
 
-fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
-  altra_max_m12830_catalog.threads
-}
-
-fn gunbc_ci_floor_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThreadCount {
-  let budget_count = byte_size_count(b: memory_budget)
-  if budget_count <= 0 {
-    hardware_thread_count(count: int_min(a: gunbc_ci_floor_conservative_fallback_width, b: execution_corpus_spawn_width()))
-  } else {
-    let cpu_bound = hardware_thread_count_value(t: bounded_host_spawn_width(
-      shard_count: gunbc_ci_floor_breadth(),
-      hardware_threads: gunbc_ci_floor_hardware_threads()
-    ))
-    hardware_thread_count(count: gunbc_ci_floor_memory_derived_width(cap: memory_budget, cpu_bound: cpu_bound))
-  }
-}
-
-fn gunbc_ci_floor_spawn_width_from_tree() -> HardwareThreadCount {
-  gunbc_ci_floor_spawn_width_for_budget(memory_budget: srv1_floor_memory_budget())
-}
-
-fn gunbc_ci_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
-  gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
-}
-
-fn gunbc_ci_regen_floor_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
-  gunbc_ci_plan_spawn_width(memory_budget_bytes: memory_budget_bytes)
-}
-
-data gunbc_ci_emit_determinism_plan_spawn_width_note: String = "Same wiring-gap class as ci_regen (#6393) and the falsifier: claim_executor derives the spawn-width fn name from the plan-function string (strip _batches, append _plan_spawn_width) and the eval is FATAL when the fn is absent. This one was missed when #6472 split the emit-determinism job, and every green since was an affected-set SKIP - the first diff to touch this file (2026-07-11) executed the job and died at spawn-width eval before any emit ran."
-
-fn gunbc_ci_emit_determinism_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
-  gunbc_ci_plan_spawn_width(memory_budget_bytes: memory_budget_bytes)
-}
-
-data gunbc_falsifier_plan_spawn_width_note: String = "claim_executor derives gunbc_falsifier_plan_spawn_width from gunbc_falsifier_batches at runtime (same wiring-gap class as ci_regen, #6393). Unlike ci/regen, the falsifier cold full-corpus discovery batch carries a heavier per-shard envelope (gunbc_falsifier_per_shard_peak_rss_bytes) than floor gate witnesses — run 28993330753 exit-137 @ spawn_width=4 under gunbc_ci_runner_slot_memory_max_live proved the floor per_shard underestimate. This function and gunbc_falsifier_spawn_width_from_live_cap share gunbc_falsifier_memory_derived_width so plan-time spawn_width_cap and runtime eval agree; with the flip-re-measured executor base overhead (8910036989) the falsifier memory formula derives 2 at the live 24GiB cap while the shipped falsifier width is 1 (cpu_bound pins shard_count: 1 - the run-all cold corpus serializes so its whole-tree shard footprint cannot stack). The ci discovery corpus batch separately pins spawn_width_cap to 1 (run 28999086030 OOM receipt — gunbc_ci_corpus_discovery_spawn_width_cap_note). witness_falsifier_plan_spawn_width_backs_off_at_live_cap executes the derived name in the corpus. RE-LAND RECEIPT (2026-07-10): the 5 consecutive falsifier exit-137s (07-06..07-10, srv1 AND srv2 slots) are NOT a slot-cap or width fact — run 29086228839 ran at spawn_width=1, read live memory budget 25769803776 (the cap is UNIFORM 24GiB; read back on srv1-02/srv2-03/srv2-07 too, run 29112500694), and was killed at rss 6741MiB, far below its own cap. That is a HOST-level OOM kill: the hosts are memory-oversubscribed (134GiB host_ram vs ~25 slots hand-set to 24GiB each plus session containers), so under fleet pressure the kernel takes the biggest resident process, and the falsifier's ~15min cold union resolve makes it the reliably-biggest target. Same kill vector took #6403's run 29000557166 MID-discovery-corpus at ~8min (its ExitSuccess line belongs to the merge-admission stamp tool stamping CI_FLOOR_EXIT=137, NOT a floor completion) - as of 2026-07-10 NO flipped corpus has completed in CI; the sole completion receipt is local (33.5GiB container). Owners: the runner-slot allocation converge lane (un-oversubscribe: live == declared) for the kill vector; resolver graph-major frontier-window memory for shrinking the target. This plan's width accounting (base row re-measured parent-inclusive, falsifier width 1, ci discovery width 1) is correct against the slot cap and is not the residual risk."
-fn gunbc_falsifier_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
-  gunbc_falsifier_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
-}
-
-fn witness_falsifier_plan_spawn_width_backs_off_at_live_cap() -> Bool {
-  let ceiling = byte_size_count(b: ci_runner_target_ram_speed_budget(target: selected_ci_runner_target()))
-  let falsifier_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: ceiling))
-  let ci_width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: ceiling))
-  let fallback_width = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: 0))
-  let reference = 25769803776
-  let falsifier_ref = hardware_thread_count_value(t: gunbc_falsifier_plan_spawn_width(memory_budget_bytes: reference))
-  let ci_ref = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: reference))
-  falsifier_width <= ci_width && falsifier_width > 0 && fallback_width == 1
-    && falsifier_ref < ci_ref
-}
-
-data falsifier_slot_capacity_deficit_note: String = "PINNED CAPACITY DEFICIT (2026-07-11, converged slot shape): the falsifier's minimum envelope - executor base overhead (8910036989) + one cold-corpus shard (gunbc_falsifier_per_shard_peak_rss_bytes) - EXCEEDS the usable fraction of the applied 16GiB/15GiB slot. It fit only the stale 24GiB hand-set regime, which is why the nightly has been dark (exit-137 series, 07-06..07-10) and why weakening this witness would enshrine the degradation (DESIGN 5). The deficit is the SLOT SHAPE, not the width formula: width already floors at 1 and the same envelope fits the 24GiB-class reference below. Dissolve-on: the falsifier is routed to a runner offer whose envelope fits (the runner-offer-rows lane; a 64GB-class shape holds it with 3x headroom - ubicloud receipt run 29162064482 peaked 13.5GiB uncapped) OR the executor base overhead shrinks below the slot's usable budget minus one shard; then this pin flips back to a fits-assert against the live ceiling."
-
-fn witness_falsifier_envelope_deficit_on_slot_is_pinned() -> Bool {
-  let width = hardware_thread_count_value(t: gunbc_falsifier_spawn_width_for_budget(memory_budget: gunbc_ci_runner_slot_ram_speed_ceiling()))
-  let committed = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes()) + width * byte_size_count(b: gunbc_falsifier_per_shard_peak_rss_bytes())
-  let usable_at_ceiling = byte_size_count(b: measure_scale_fraction_floor(
-    m: gunbc_ci_runner_slot_ram_speed_ceiling(),
-    num: gunbc_ci_floor_width_usable_fraction_num,
-    den: gunbc_ci_floor_width_usable_fraction_den
-  ))
-  let usable_at_reference = measure_scale_fraction_floor(
-    m: byte_size(25769803776),
-    num: gunbc_ci_floor_width_usable_fraction_num,
-    den: gunbc_ci_floor_width_usable_fraction_den
-  )
-  committed > usable_at_ceiling && committed <= byte_size_count(b: usable_at_reference)
-}
-
-fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
-  parallel_run_demand_envelope(
-    width: gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes)),
-    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes()
-  )
-}
-
-fn witness_floor_tight_budget_backs_off_envelope() -> Bool {
-  let tight_budget = 10000000000
-  let envelope = gunbc_ci_floor_run_envelope(memory_budget_bytes: tight_budget)
-
-  demand_envelope_thread_count(envelope: envelope) < gunbc_ci_floor_breadth()
-    && demand_envelope_fits_budget(envelope: envelope, budget: byte_size(tight_budget))
-}
-
-fn witness_floor_fail_open_would_exceed_budget() -> Bool {
-  let tight_budget = 10000000000
-  let blind_envelope = parallel_run_demand_envelope(
-    width: bounded_host_spawn_width(
-      shard_count: gunbc_ci_floor_breadth(),
-      hardware_threads: gunbc_ci_floor_hardware_threads()
-    ),
-    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes()
-  )
-  demand_envelope_fits_budget(envelope: blind_envelope, budget: byte_size(tight_budget)) == false
-}
-
-fn witness_floor_width_governed_by_budget_tree() -> Bool {
-  let tree_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree())
-  let cpu_only_width = hardware_thread_count_value(t: bounded_host_spawn_width(shard_count: gunbc_ci_floor_breadth(), hardware_threads: gunbc_ci_floor_hardware_threads()))
-  return tree_width < cpu_only_width
-}
-
-fn witness_floor_width_derived_from_tree_is_positive() -> Bool {
-  byte_size_count(b: srv1_floor_memory_budget()) > 0
-    && hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree()) > 0
-}
-
-fn witness_floor_spawn_width_tight_budget_backs_off() -> Bool {
-  let tight = 10000000000
-  let width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: tight))
-  width < gunbc_ci_floor_breadth()
-}
-
-fn witness_floor_spawn_width_zero_budget_falls_back() -> Bool {
-  let width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: 0))
-  width == int_min(
-    a: gunbc_ci_floor_conservative_fallback_width,
-    b: execution_corpus_spawn_width()
-  )
-}
-
 fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
   fold(batch, init: 0, f: fn(acc, r) {
     match r {
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => acc
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => acc
       RunnableKernelWorkload { fused_op_count: _ } => acc
       RunnableSingleClaim { entry: _, function: f, profile: p } =>
         if f == ci_floor_compile_gate_fn {
@@ -838,21 +719,5 @@ fn witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: CiSpec) -> Bool
   fold(floor_corpus_exclusion_resource_edges(spec: spec), init: true, f: fn(ok, edge) {
     ok && (edge.dependent != floor_compile_root_node())
   })
-}
-
-fn witness_corpus_effective_widths_fit_runner_cap() -> Bool {
-  let cap = byte_size_count(b: ci_runner_target_ram_speed_budget(target: selected_ci_runner_target()))
-  let base = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes())
-  let floor_cap_w = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree())
-  let floor_committed = base + floor_cap_w * byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
-  let exec_cap_w = execution_corpus_spawn_width()
-  let exec_committed = base + exec_cap_w * byte_size_count(b: gunbc_ci_floor_execution_corpus_per_witness_rss)
-  floor_committed <= cap && exec_committed <= cap
-}
-
-fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {
-  let width = gunbc_ci_floor_memory_derived_width(cap: gunbc_ci_runner_cgroup_memory_cap, cpu_bound: 128)
-  let committed = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) * width
-  committed < byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }
 

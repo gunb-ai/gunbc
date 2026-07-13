@@ -711,6 +711,7 @@ dependencies = [
  "clap",
  "im-rc",
  "lazy_static",
+ "libc",
  "serde",
  "serde_json",
  "stacker",
