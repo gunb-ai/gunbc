@@ -1,0 +1,20 @@
+module v2.test.claim.complexity.floor_runner_probe
+
+import v2.lens.complexity_accumulator_copy.roster_gate { file_suspect_count, file_refusal_count }
+import v2.std.logic { Bool }
+
+test fn floor_runner_has_suspect() -> Bool {
+  file_suspect_count(path: "src/v2/workflow/affected_set_floor_runner.dag") > 0
+}
+
+test fn floor_runner_refusals_le_30() -> Bool {
+  file_refusal_count(path: "src/v2/workflow/affected_set_floor_runner.dag") <= 30
+}
+
+test fn floor_runner_refusals_le_2() -> Bool {
+  file_refusal_count(path: "src/v2/workflow/affected_set_floor_runner.dag") <= 2
+}
+
+test fn floor_runner_refusals_eq_0() -> Bool {
+  file_refusal_count(path: "src/v2/workflow/affected_set_floor_runner.dag") == 0
+}
