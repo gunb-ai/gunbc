@@ -1,31 +1,20 @@
 module v2.test.claim.complexity.floor_runner_probe
 
-import v2.lens.complexity_accumulator_copy.roster_gate { file_suspect_count, file_refusal_count, ingest_findings }
-import v2.lens.complexity_accumulator_copy.analyze { findings_have_refusal_cause }
+import v2.lens.complexity_accumulator_copy.roster_gate { ingest_findings }
 import v2.std.collection { Absent, Present }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
 import v2.std.text { String }
 
-data floor_path: String = "src/v2/workflow/affected_set_floor_runner.dag"
-
-test fn floor_suspects_eq_1() -> Bool { file_suspect_count(path: floor_path) == 1 }
-test fn floor_suspects_eq_2() -> Bool { file_suspect_count(path: floor_path) == 2 }
-test fn floor_refusals_eq_3() -> Bool { file_refusal_count(path: floor_path) == 3 }
-test fn floor_refusals_eq_4() -> Bool { file_refusal_count(path: floor_path) == 4 }
-test fn floor_refusals_eq_5() -> Bool { file_refusal_count(path: floor_path) == 5 }
-
-fn floor_findings_have_cause(cause: Symbol) -> Bool {
-  match ingest_findings(path: floor_path) {
+fn ingests(path: String) -> Bool {
+  match ingest_findings(path: path) {
     Absent => false
-    Present { value: fs } => findings_have_refusal_cause(fs: fs, cause: cause)
+    Present { value: _ } => true
   }
 }
 
-test fn floor_cause_computed_argument() -> Bool {
-  floor_findings_have_cause(cause: ^copied_port_computed_argument)
-}
-
-test fn floor_cause_argument_missing() -> Bool {
-  floor_findings_have_cause(cause: ^copied_port_argument_missing)
-}
+test fn ingest_change_dag() -> Bool { ingests(path: "dag/std/change.dag") }
+test fn ingest_floor_runner() -> Bool { ingests(path: "src/v2/workflow/affected_set_floor_runner.dag") }
+test fn ingest_affected_selection() -> Bool { ingests(path: "src/v2/workflow/affected_set_selection.dag") }
+test fn ingest_witness_cost_locality() -> Bool { ingests(path: "src/v2/lens/witness_cost_locality.dag") }
+test fn ingest_roster_gate() -> Bool { ingests(path: "src/v2/lens/complexity_accumulator_copy/roster_gate.dag") }
+test fn ingest_ci_floor_plan() -> Bool { ingests(path: "src/v2/workflow/ci_floor_plan.dag") }
