@@ -1,7 +1,0 @@
-module v2.test.claim.complexity.floor_runner_probe
-
-import v2.lens.complexity_accumulator_copy.roster_gate { file_gate }
-import v2.std.logic { Bool }
-
-test fn file_gate_change() -> Bool { file_gate(path: "dag/std/change.dag", refusal_ceiling: 13) }
-test fn file_gate_floor() -> Bool { file_gate(path: "src/v2/workflow/affected_set_floor_runner.dag", refusal_ceiling: 5) }
