@@ -15713,7 +15713,7 @@ pub fn rewire_type_env_parent_links(
                                     match v1_rt::map_get(&index, path.clone()) {
                                         Some(parent) => Rc::new(vec![interface_env_for_import(
                                             path.clone(),
-                                            parent.interface.clone().env.clone(),
+                                            parent.type_env.clone(),
                                         )]),
                                         None => Rc::new(vec![]),
                                     }
