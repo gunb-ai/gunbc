@@ -1,4 +1,4 @@
-module v2.test.resolve.symbol_index_scaling_receipt
+module v2.test.long.symbol_index_scaling_receipt
 
 import v2.lens.complexity_accumulator_copy.roster_gate { file_refusal_count, file_suspect_count }
 import v2.std.logic { Bool }
