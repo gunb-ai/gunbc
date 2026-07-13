@@ -3,7 +3,7 @@ module v2.test.manual.zz_scratch_probe
 import extdeps.filesystem.filesystem_io
 import std.algebra { Empty }
 import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
-import v2.compiler.normalize { normalize }
+import v2.compiler.normalize { normalize, normalize_node }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list }
@@ -12,6 +12,11 @@ import v2.std.compilers.lexing { symbol_lexeme, token_stream_remaining }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, port_locus }
 import v2.std.grammar { ModeledGrammar, VoidGrammar }
 import v2.std.logic { Bool }
+import v2.std.node {
+  Atom, Behavior, Branch, Bind, Cardinality, ComputationNode, Conj, Connective, Disj, Instantiation,
+  Loop, Match, Node, NodeFold, Transform, TypeNode, Value,
+  fold_node, locally_well_formed
+}
 import v2.std.text { String }
 
 fn probe_all_reasons(nd: NonEmptyDiagnostics) -> String {
@@ -20,6 +25,76 @@ fn probe_all_reasons(nd: NonEmptyDiagnostics) -> String {
     empty: symbol_lexeme(sym: nd.head.reason),
     cons: fn(acc, d) { concat(acc, concat(" | ", symbol_lexeme(sym: d.reason))) }
   )
+}
+
+fn probe_node_kind_str(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: id } => concat("Atom:", symbol_lexeme(sym: id))
+        Conj => "Conj"
+        Disj => "Disj"
+        Arrow => "Arrow"
+        Cardinality => "Cardinality"
+        Instantiation => "Instantiation"
+      }
+    ComputationNode { behavior: b } =>
+      match b {
+        Value => "CN:Value"
+        Transform => "CN:Transform"
+        Branch => "CN:Branch"
+        Loop => "CN:Loop"
+        Bind => "CN:Bind"
+        Match => "CN:Match"
+      }
+  }
+}
+
+fn probe_first_malformed(n: Node) -> String {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(self) {
+        if locally_well_formed(n: self) { "" } else { probe_node_kind_str(n: self) }
+      },
+      step: fn(acc, e, child) {
+        if acc == "" { child } else { acc }
+      }
+    }
+  )
+}
+
+fn probe_malformed_stage(path: String) -> String {
+  let lm = dag_language_model()
+  let source = filesystem_read(path: path).content
+  match lm.grammar {
+    VoidGrammar => "void_grammar"
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: port_locus(port: ^probe_locus)) {
+        Rejected { diagnostics: _ } => "grammar_invalid"
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: source, file: ^probe_file2, rules: lm.lex) {
+            Rejected { diagnostics: _ } => "tokenize_fail"
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => "parse_fail"
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize_node(n: artifact.tree) {
+                    Rejected { diagnostics: nd } => concat("normalize_node_REJECT: ", probe_all_reasons(nd: nd))
+                    Accepted { value: normalized, diagnostics: _ } =>
+                      match probe_first_malformed(n: normalized) {
+                        "" => "OK (all well-formed)"
+                        bad => concat("MALFORMED first bad node: ", bad)
+                      }
+                  }
+              }
+          }
+      }
+  }
 }
 
 fn probe_normalize_stage(path: String) -> String {
@@ -51,30 +126,10 @@ fn probe_normalize_stage(path: String) -> String {
   }
 }
 
-fn probe_normalize_file(path: String) -> Bool {
-  probe_normalize_stage(path: path) == "OK"
-}
-
-fn probe_normalize_target_model() -> Bool {
-  probe_normalize_file(path: "src/v2/std/compilers/target_model.dag")
-}
-
-fn probe_normalize_node_dag() -> Bool {
-  probe_normalize_file(path: "src/v2/std/node.dag")
-}
-
-fn probe_normalize_collection() -> Bool {
-  probe_normalize_file(path: "src/v2/std/collection.dag")
-}
-
-fn probe_normalize_refinement() -> Bool {
-  probe_normalize_file(path: "src/v2/std/refinement.dag")
-}
-
-fn probe_stage_collection() -> Bool {
-  probe_normalize_stage(path: "src/v2/std/collection.dag") == "OK"
-}
-
 fn probe_stage_collection_str() -> String {
   probe_normalize_stage(path: "src/v2/std/collection.dag")
+}
+
+fn probe_malformed_collection_str() -> String {
+  probe_malformed_stage(path: "src/v2/std/collection.dag")
 }

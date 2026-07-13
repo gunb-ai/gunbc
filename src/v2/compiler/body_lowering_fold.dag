@@ -56,6 +56,7 @@ import v2.std.node {
   is_empty_conj_root,
   match_arm_body,
   match_arm_pattern,
+  node_rebuild,
   node_synthetic
 }
 import v2.std.node_query { find_named_child }
@@ -186,6 +187,9 @@ fn body_lower_param_ref_atom(identity: Symbol) -> Node {
 }
 
 fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
+  if body_lower_is_core_substrate(node: node) {
+    optional_present(value: node)
+  } else {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
       if body_lower_is_pass_through_emitted(emitted: emitted) {
@@ -235,6 +239,7 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
               }
           }
       }
+  }
   }
 }
 
@@ -919,6 +924,108 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
+fn body_lower_reduce_passthrough(folded: Node) -> Outcome<Node> {
+  match parse_production_captured_child_optional(node: folded) {
+    Present { value: child } => outcome_accepted(value: child)
+    Absent => outcome_accepted(value: folded)
+  }
+}
+
+fn body_lower_reduce_or_keep(o: Outcome<Node>, folded: Node) -> Outcome<Node> {
+  match o {
+    Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: rejected_with_pending(pending: None, rejected: r) }
+  }
+}
+
+fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
+  if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
+    outcome_accepted(value: folded)
+  } else if emitted == ^dag_surface_binary_expr {
+    match body_lower_try_infix_transform(node: folded) {
+      Present { value: transform } => outcome_accepted(value: transform)
+      Absent => body_lower_reduce_passthrough(folded: folded)
+    }
+  } else if emitted == ^dag_surface_postfix_expr {
+    body_lower_reduce_or_keep(o: body_lower_postfix_expr(shell: folded), folded: folded)
+  } else if emitted == ^dag_surface_primary_expr {
+    body_lower_reduce_or_keep(o: body_lower_primary_expr(shell: folded), folded: folded)
+  } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+    body_lower_reduce_passthrough(folded: folded)
+  } else if emitted == ^dag_surface_fn_decl {
+    body_lower_reduce_or_keep(o: body_lower_fn_decl_to_arrow(shell: folded), folded: folded)
+  } else {
+    outcome_accepted(value: folded)
+  }
+}
+
+fn body_lower_reduce(folded: Node) -> Outcome<Node> {
+  if body_lower_is_core_substrate(node: folded) {
+    outcome_accepted(value: folded)
+  } else if dag_resolve_preserve_module_metadata_subtree(node: folded) {
+    outcome_accepted(value: folded)
+  } else {
+    match parse_production_emitted_identity_optional(node: folded) {
+      Absent => outcome_accepted(value: folded)
+      Present { value: emitted } => body_lower_reduce_emitted(folded: folded, emitted: emitted)
+    }
+  }
+}
+
+fn body_lower_fold_children(node: Node) -> Outcome<Node> {
+  fold(node.children, init: outcome_accepted(value: node_rebuild(n: node, children: [])), f: fn(acc, e) {
+    match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: shell, diagnostics: ad } =>
+        match body_lower_fold(node: e.target) {
+          Rejected { diagnostics: cr } =>
+            Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+          Accepted { value: child, diagnostics: cd } =>
+            Accepted {
+              value: node_rebuild(
+                n: shell,
+                children: list_snoc_item(xs: shell.children, item: Edge { label: e.label, target: child })
+              ),
+              diagnostics: diagnostics_merge(outer: ad, inner: cd)
+            }
+        }
+    }
+  })
+}
+
+fn body_lower_fold(node: Node) -> Outcome<Node> {
+  if body_lower_is_core_substrate(node: node) {
+    outcome_accepted(value: node)
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Present { value: emitted } =>
+        if emitted == ^dag_surface_match_expr {
+          body_lower_match_expr(shell: node)
+        } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
+          outcome_accepted(value: node)
+        } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
+          outcome_accepted(value: node)
+        } else {
+          body_lower_fold_reduce(node: node)
+        }
+      Absent => body_lower_fold_reduce(node: node)
+    }
+  }
+}
+
+fn body_lower_fold_reduce(node: Node) -> Outcome<Node> {
+  match body_lower_fold_children(node: node) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: folded, diagnostics: d } =>
+      match body_lower_reduce(folded: folded) {
+        Rejected { diagnostics: r } =>
+          Rejected { diagnostics: rejected_with_pending(pending: d, rejected: r) }
+        Accepted { value: reduced, diagnostics: rd } =>
+          Accepted { value: reduced, diagnostics: diagnostics_merge(outer: d, inner: rd) }
+      }
+  }
+}
+
 fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_try_body_lowered(node: captured) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -973,7 +1080,17 @@ fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
 
 fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
   match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
-    ParseSubtreeFound { captured: body } => body_lower_body_subtree_lower(captured: body)
+    ParseSubtreeFound { captured: body } =>
+      match body_lower_fold(node: body) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: lowered, diagnostics: d } =>
+          match body_lower_find_core_substrate_optional(root: lowered) {
+            Present { value: core } =>
+              Accepted { value: optional_present(value: core), diagnostics: d }
+            Absent =>
+              Accepted { value: body_lower_operand_ref_optional(node: lowered), diagnostics: d }
+          }
+      }
     ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
   }
 }
@@ -2210,12 +2327,19 @@ fn body_lower_after_children(folded: Node) -> Outcome<Node> {
   }
 }
 
+fn body_lower_finish_wrapper_retained(folded: Node, cd: Diagnostics) -> Outcome<Node> {
+  match body_lower_wrapper_retained_shell(shell: folded) {
+    Accepted { value: kept, diagnostics: wd } =>
+      Accepted { value: kept, diagnostics: diagnostics_merge(outer: cd, inner: wd) }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
+  }
+}
+
 fn body_lower_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
   match body_lower_after_children(folded: folded) {
-    Rejected { diagnostics: r } =>
-      Rejected {
-        diagnostics: rejected_with_pending(pending: cd, rejected: r)
-      }
+    Rejected { diagnostics: _ } =>
+      body_lower_finish_wrapper_retained(folded: folded, cd: cd)
     Accepted { value: lowered, diagnostics: d } =>
       Accepted {
         value: lowered,
