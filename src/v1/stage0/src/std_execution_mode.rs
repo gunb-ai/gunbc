@@ -32,6 +32,15 @@ pub enum ExecutionMode {
     Record,
 }
 
+pub fn execution_mode_is_wet_dispatch_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "execution_mode_is_wet_dispatch survives the 2026-07-12 predicate dissolution (which deleted the single-variant is_hermetic/is_record nicknames) because it is a two-variant semantic partition, not a variant test: Wet and Record share dispatch semantics (both drive live transports; Record additionally captures fixtures), and the effect-io host branches on exactly that partition at both its dispatch sites. Deciding it here keeps the grouping a single authority instead of two inline matches.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn execution_mode_is_wet_dispatch(mode: ExecutionMode) -> bool {
     match mode.clone() {
         ExecutionMode::Hermetic => false,
