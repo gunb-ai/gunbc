@@ -22,7 +22,6 @@ import v2.std.node {
   Node,
   Transform,
   TypeNode,
-  node_subtree_count,
   node_synthetic
 }
 import v2.std.verification {
@@ -97,12 +96,9 @@ fn body_lowering_projection_lowers_to_transform() -> Bool {
       match body_lowering_find_postfix_expr(root: tree) {
         Absent => false
         Present { value: postfix } =>
-          match body_lower_unwrap_captured(remaining: node_subtree_count(n: postfix), shell: postfix) {
-            Rejected { diagnostics: _ } => false
-            Accepted { value: captured_opt, diagnostics: _ } =>
-              match captured_opt {
+          match body_lower_unwrap_captured(shell: postfix) {
                 Present { value: captured } =>
-                  match body_lower_try_postfix_projection(remaining: node_subtree_count(n: captured), node: captured) {
+                  match body_lower_try_postfix_projection(node: captured) {
                     Rejected { diagnostics: _ } => false
                     Accepted { value: found, diagnostics: _ } =>
                       match found {
@@ -116,7 +112,6 @@ fn body_lowering_projection_lowers_to_transform() -> Bool {
                   }
                 Absent => false
               }
-          }
       }
   }
 }
@@ -138,18 +133,14 @@ fn body_lowering_field_access_postfix_rejects() -> Bool {
           match body_lowering_find_postfix_expr(root: artifact.tree) {
             Absent => false
             Present { value: postfix } =>
-              match body_lower_unwrap_captured(remaining: node_subtree_count(n: postfix), shell: postfix) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: captured_opt, diagnostics: _ } =>
-                  match captured_opt {
+              match body_lower_unwrap_captured(shell: postfix) {
                     Present { value: captured } =>
-                      match body_lower_try_postfix_projection(remaining: node_subtree_count(n: captured), node: captured) {
+                      match body_lower_try_postfix_projection(node: captured) {
                         Rejected { diagnostics: _ } => true
                         Accepted { value: _, diagnostics: _ } => false
                       }
                     Absent => false
                   }
-              }
           }
       }
   }
