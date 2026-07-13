@@ -1088,7 +1088,7 @@ fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
             Present { value: core } =>
               Accepted { value: optional_present(value: core), diagnostics: d }
             Absent =>
-              Accepted { value: body_lower_operand_ref_optional(node: lowered), diagnostics: d }
+              Accepted { value: optional_absent(), diagnostics: d }
           }
       }
     ParseSubtreeAbsent => outcome_accepted(value: optional_absent())

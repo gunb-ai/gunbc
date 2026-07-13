@@ -133,3 +133,23 @@ fn probe_stage_collection_str() -> String {
 fn probe_malformed_collection_str() -> String {
   probe_malformed_stage(path: "src/v2/std/collection.dag")
 }
+
+fn probe_malformed_min_str() -> String {
+  probe_malformed_stage(path: "/tmp/claude-1000/-home-briansrls--worktrees-gunbc-clever-hawk-862/6b3d8809-edba-4a2d-ad47-a3b064ed4552/scratchpad/zz_min.dag")
+}
+
+fn probe_stage_nat() -> String {
+  probe_normalize_stage(path: "src/v2/std/nat.dag")
+}
+
+fn probe_stage_refinement() -> String {
+  probe_normalize_stage(path: "src/v2/std/refinement.dag")
+}
+
+fn probe_stage_node() -> String {
+  probe_normalize_stage(path: "src/v2/std/node.dag")
+}
+
+fn probe_stage_target_model() -> String {
+  probe_normalize_stage(path: "src/v2/std/compilers/target_model.dag")
+}
