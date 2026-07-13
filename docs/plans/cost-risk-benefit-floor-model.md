@@ -69,13 +69,15 @@ Two quantitative axes and a budget; the qualitative kinds become **derived regio
 
 Every stage is independently landable, keeps the §2 invariant (no silent drops), and delivers CI relief. Ordered so the acute timeout dies first and the model hardens under it.
 
-- **Stage 0 — Relief now (no new model). RELIEF: unbreaks the 270-min timeout.**
+> **In flight (2026-07-13): PR #6506** (`session/eager-gull-872`) already implements the mechanism side of **Stages 0–2** — hermetic-by-default floor with declared wet lanes (`dag/std/execution_mode.dag`), a per-witness **5s fast-lane eval budget** (fail-closed `EvalBudgetExceeded`), **26 over-budget files moved to `test/claim/long/`** (deferral by budget, which supersedes this doc's earlier "option (a)" hand-list), and an AIMD memory governor. This doc is the *model* those mechanisms should derive from; #6506 is the *mechanism*. Note its 5s budget is a **hand-set threshold** — a §5 smuggled heuristic, and exactly the interim that Stage 4 (cost-from-graph) is meant to retire. The live forward work not covered by #6506 is **Stages 3–5** (reconcile the kind-classifiers, derive cost from the graph, model benefit).
+
+- **Stage 0 — Relief now (no new model). RELIEF: unbreaks the 270-min timeout.** *(mechanism in flight: #6506 — `test/claim/long/`.)*
   Take the expensive/broken receipts off the *PR* floor and run them on a `long` cadence (main/nightly). Concretely: drop `src/v2/test/claim/manual` from `witness_discovery_scan_dirs`, stand up a `long` runner. **Invariant-preserving:** the removed set is a *declared, counted* deferral with a reason (cost) and a cadence — not a silent scan-dir deletion — and the existing nightly falsifier keeps running the full corpus cold, so nothing goes dark. This is the hand-applied conclusion of the model; Stages 1–2 make it *derived*.
 
-- **Stage 1 — Cost first-class (measured) + explicit budget. RELIEF: floor size tracks a real number, not a folder.**
+- **Stage 1 — Cost first-class (measured) + explicit budget. RELIEF: floor size tracks a real number, not a folder.** *(mechanism in flight: #6506 — the 5s fast-lane budget; interim, hand-set.)*
   Carry a per-claim measured cost receipt (from `wall_nanos` the floor already emits; BatchRecord/`emit_gantt`/`write_resolve_receipt` are the source). Declare a PR wall-clock budget. Admission = fit by cost; declined = counted `Deferred{cost, cadence}`. Stage 0's `manual/` un-scoping now becomes *derived from cost*, and the scan-dir/roster hand-list (first cruft) is deleted.
 
-- **Stage 2 — Collapse `LiveTreeDisposition` into input-domain + fidelity. RELIEF: wet stops being mandatory.**
+- **Stage 2 — Collapse `LiveTreeDisposition` into input-domain + fidelity. RELIEF: wet stops being mandatory.** *(mechanism in flight: #6506 — hermetic-by-default + declared wet lanes.)*
   Replace the boolean with the `input-domain` axis; delete the never-skip special case; introduce the per-claim fidelity choice (mock vs wet) with the §2 instrumentation requirement (a wet→mock swap must have its divergence on the falsifier). Kills the wet-is-sacred default and the second cruft carrier.
 
 - **Stage 3 — Reconcile the kind-classifiers. RELIEF: one authority, deletes 3 forks.**
