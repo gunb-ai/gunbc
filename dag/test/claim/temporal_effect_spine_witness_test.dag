@@ -1,6 +1,7 @@
 module test.claim.temporal_effect_spine
 
-import std.types { Bool, NonEmptyStr, List, ContentHash, Timestamp }
+import std.types { Bool, NonEmptyStr, List, ContentHash, Timestamp, Milliseconds }
+import std.measure { millisecond }
 import std.temporal_effect {
   EffectAttemptIntent,
   EffectStepReceipt,
@@ -35,6 +36,25 @@ import std.temporal_effect {
   NextStepApplyPlan,
   ApplyAtStep,
   DrainThenStartAtStep,
+  EffectStallBudget,
+  StallWithinBudget,
+  StallBudgetExceeded,
+  stall_budget_verdict,
+  next_step_plan_on_stall_budget,
+}
+import gunbc.srv3_os_install_diagnostic {
+  srv3_install_hang_no_installer_progress_ms,
+  srv3_install_hang_no_router_lease_ms,
+  OsInstallHangStallCause,
+  HangStallWithinBudget,
+  HangStallInstallerProgressSilent,
+  HangStallRouterLeaseAbsent,
+  cause_fold_dominant_hang_stall,
+}
+import std.measure { millisecond, millisecond_count }
+import gunbc.host_standup_assimilation_deduction {
+  hang_budget_millisecond,
+  srv3_os_install_to_host_identity_budget,
 }
 import std.upsert_decision {
   ObservationVerdict,
@@ -443,4 +463,76 @@ test fn decision_for_held_lease_verdict_grounds_each_observation_arm() -> Bool {
       Refuse { reason: r } => string_contains(s: r, pattern: "foreign")
       _ => false
     }
+}
+
+test fn stall_budget_within_limit_preserves_apply_plan() -> Bool {
+  let budget = EffectStallBudget {
+    step_id: witness_step_serve,
+    limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_installer_progress_ms),
+    elapsed_ms: millisecond(count: 600000),
+  }
+  match stall_budget_verdict(budget: budget) {
+    StallWithinBudget => true
+    StallBudgetExceeded { step_id: _, elapsed_ms: _, limit_ms: _ } => false
+  }
+    && match next_step_plan_on_stall_budget(
+      pending_plan: PlanApply { step_id: witness_step_serve },
+      budget: budget,
+    ) {
+      PlanApply { step_id: sid } => sid == witness_step_serve
+      _ => false
+    }
+}
+
+test fn stall_budget_exceeded_refuses_not_widen() -> Bool {
+  let budget = EffectStallBudget {
+    step_id: witness_step_serve,
+    limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_installer_progress_ms),
+    elapsed_ms: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+  }
+  match stall_budget_verdict(budget: budget) {
+    StallBudgetExceeded { step_id: sid, elapsed_ms: _, limit_ms: _ } => sid == witness_step_serve
+    StallWithinBudget => false
+  }
+    && match next_step_plan_on_stall_budget(
+      pending_plan: PlanApply { step_id: witness_step_serve },
+      budget: budget,
+    ) {
+      PlanRefuse { step_id: _, reason: r } => string_contains(s: r, pattern: "stall budget exceeded")
+      PlanApply { step_id: _ } => false
+      _ => false
+    }
+}
+
+test fn stall_cause_fold_router_absent_dominates_silent_installer() -> Bool {
+  match cause_fold_dominant_hang_stall(causes: [
+    HangStallInstallerProgressSilent { elapsed_ms: millisecond(count: 1000000) },
+    HangStallRouterLeaseAbsent { elapsed_ms: millisecond(count: 4600000) },
+  ]) {
+    HangStallRouterLeaseAbsent { elapsed_ms: _ } => true
+    _ => false
+  }
+    && match cause_fold_dominant_hang_stall(causes: [HangStallWithinBudget]) {
+      HangStallWithinBudget => true
+      _ => false
+    }
+}
+
+test fn srv3_stall_budget_limits_match_runbook() -> Bool {
+  srv3_install_hang_no_installer_progress_ms == 900000
+    && srv3_install_hang_no_router_lease_ms == 4500000
+}
+
+test fn srv3_transition_budget_past_limit_is_exceeded_not_within() -> Bool {
+  let past = millisecond(
+    count: millisecond_count(
+      m: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+    ) + 1,
+  )
+  let budget = srv3_os_install_to_host_identity_budget(elapsed: past)
+  match stall_budget_verdict(budget: budget) {
+    StallBudgetExceeded { step_id: sid, elapsed_ms: _, limit_ms: _ } =>
+      string_contains(s: sid, pattern: "os-install-actuated-to-host-identity")
+    StallWithinBudget => false
+  }
 }

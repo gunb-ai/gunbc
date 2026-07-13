@@ -54,24 +54,17 @@ data srv3_fleet_slot_host_name: HostName = HostName {
   qualification: PartiallyQualified,
 }
 
-fn dynamic_lease_hostname_subsumes_fleet_slot(
-  reported: DhcpClientHostNameOption12,
-  fleet_slot: HostIdentity,
-) -> Bool {
-  match deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot) {
-    Present { value: desired } =>
-      domain_name_wire(name: reported.name) == (desired as String)
-    Absent => false
-  }
-}
-
 fn network_identity_subsumes_fleet_slot(
   fleet_slot: HostIdentity,
   lease: DhcpLeaseObservation,
 ) -> Bool {
   match lease {
     DynamicDhcpLease { client_hostname: Present { value: reported }, lease_time_remaining: _, status: Active } =>
-      dynamic_lease_hostname_subsumes_fleet_slot(reported: reported, fleet_slot: fleet_slot)
+      match deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot) {
+        Present { value: desired } =>
+          domain_name_wire(name: reported.name) == (desired as String)
+        Absent => false
+      }
     DynamicDhcpLease { client_hostname: Absent, lease_time_remaining: _, status: _ } => false
     DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Inactive } => false
     DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Expired } => false
