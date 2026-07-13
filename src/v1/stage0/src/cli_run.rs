@@ -11974,6 +11974,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
     "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
     "src/v2/compiler/emit_host.dag::runtime_value_signed_i32_le_as_int",
+    "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
     "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
