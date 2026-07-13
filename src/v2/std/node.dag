@@ -230,31 +230,6 @@ fn node_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
-fn node_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
-  match edge {
-    Edge { label: Named { name: field }, target: magnitude } =>
-      if field == ^integer_literal_magnitude_field {
-        Present { value: magnitude }
-      } else {
-        Absent
-      }
-    Edge { label: Positional, target: _ } => Absent
-  }
-}
-
-fn node_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
-  if node_is_int_literal_atom(node: node) {
-    fold(node.children, init: Absent, f: fn(acc, edge) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => node_int_literal_magnitude_edge_target_optional(edge: edge)
-      }
-    })
-  } else {
-    Absent
-  }
-}
-
 fn int_literal_atom_edges_conform(node: Node) -> Bool {
   node_is_int_literal_atom(node: node)
     && name_occurrences(name: ^integer_literal_magnitude_field, children: node.children) == 1

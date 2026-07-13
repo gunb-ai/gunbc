@@ -39,7 +39,33 @@ import v2.std.node {
   coproduct_nullary_payload_type_name,
   name_occurrences,
   named_edge_sort_key,
+  node_is_int_literal_atom,
   resolve_type_node
+}
+
+fn node_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
+  match edge {
+    Edge { label: Named { name: field }, target: magnitude } =>
+      if field == ^integer_literal_magnitude_field {
+        Present { value: magnitude }
+      } else {
+        Absent
+      }
+    Edge { label: Positional, target: _ } => Absent
+  }
+}
+
+fn node_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
+  if node_is_int_literal_atom(node: node) {
+    fold(node.children, init: Absent, f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => node_int_literal_magnitude_edge_target_optional(edge: edge)
+      }
+    })
+  } else {
+    Absent
+  }
 }
 
 fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {

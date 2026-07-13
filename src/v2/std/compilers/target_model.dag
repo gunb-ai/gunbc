@@ -90,7 +90,6 @@ import v2.std.node {
   fold_node,
   match_arm_children_conform_skip_first,
   name_occurrences,
-  node_int_literal_magnitude_node_optional,
   node_is_int_literal_atom,
   node_rebuild,
   SyntheticOccurrence
@@ -100,6 +99,7 @@ import v2.std.node_query {
   arrow_domain_named_param_bindings,
   find_arrow_body_child,
   find_named_child,
+  node_int_literal_magnitude_node_optional,
   node_labeled_child_edges,
   node_positional_child_targets
 }
