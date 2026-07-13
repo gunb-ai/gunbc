@@ -120,3 +120,22 @@ fn source_has_suspect(source_text: String) -> Bool {
       count_matching(fs: fs, pred: finding_is_suspect) > 0
   }
 }
+
+data file_suspect_verdict_note: String = "Suspect-only file verdict for diff-scoped enrollment: the refusal ratchet (RosterRatchetExceeded) is a per-file offline-roster concern, meaningless against an arbitrary changed file, so it is excluded here. The two fail-closed arms are SuspectFound (a confirmed Poly2 copied accumulator) and Unanalyzable (ingest regressed — refuse, never widen, DESIGN 5). No refusal_ceiling and no -1 sentinel: the -1 of file_suspect_count is an ingest-regression code that a caller can misread as zero suspects; this typed verdict names the ingest failure instead."
+
+type FileSuspectVerdict
+  = FileSuspectClean
+  | FileSuspectFound
+  | FileSuspectUnanalyzable
+
+fn file_suspect_verdict(path: String) -> FileSuspectVerdict {
+  match ingest_findings(path: path) {
+    Absent => FileSuspectUnanalyzable
+    Present { value: fs } =>
+      if count_matching(fs: fs, pred: finding_is_suspect) > 0 {
+        FileSuspectFound
+      } else {
+        FileSuspectClean
+      }
+  }
+}

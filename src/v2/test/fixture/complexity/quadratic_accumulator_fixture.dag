@@ -1,0 +1,5 @@
+module fixture.complexity.quadratic_accumulator
+
+fn f(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })
+}
