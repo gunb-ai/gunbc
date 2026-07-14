@@ -2950,22 +2950,26 @@ fn resolve_entry_with_parse_cache(
     )?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
 
+    let subject = subject_digest_for_closure(&sources);
+    // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in
+    // front of the opt-in cross-process store. A subject this process has already
+    // assembled is served by reference, eliminating the per-entry reconcile assembly
+    // residue on re-resolve (Track A denomination receipt, resolve-split #6535).
+    if let Some((graph, si)) = index.resolved_graph_memo.borrow().get(&subject) {
+        return Ok((graph.clone(), si.clone()));
+    }
+    // Cross-process store tier: opt-in via GUNBC_RESOLVED_GRAPH_CACHE_DIR; installs into
+    // the share above on hit so later same-subject demands never re-decode.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        let subject = subject_digest_for_closure(&sources);
-        // Share before store (ladder tier ordering): a subject this process has
-        // already decoded or built is served by reference — never re-decoded.
-        if let Some((graph, si)) = index.resolved_graph_memo.borrow().get(&subject) {
-            return Ok((graph.clone(), si.clone()));
-        }
         match cross_process_lookup(&cache_root, &subject) {
             CacheLookupResult::Hit(hit) => {
                 eprintln!(
                     "[resolved-graph-cache] decode subject={subject} (installed into process share)"
                 );
-                index
-                    .resolved_graph_memo
-                    .borrow_mut()
-                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
+                index.resolved_graph_memo.borrow_mut().insert(
+                    subject,
+                    (hit.graph.clone(), hit.source_indices.clone()),
+                );
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -3141,8 +3145,12 @@ fn resolve_entry_with_parse_cache(
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
+    // Install into the in-process share so same-subject re-resolves skip assembly.
+    index.resolved_graph_memo.borrow_mut().insert(
+        subject,
+        (typed.clone(), source_indices.clone()),
+    );
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        let subject = subject_digest_for_closure(&sources);
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
         // the prelude artifact ever existed), which mis-shaped a whole OOM
@@ -3151,12 +3159,6 @@ fn resolve_entry_with_parse_cache(
         {
             eprintln!("[resolved-graph-cache] write refused subject={subject}: {e}");
         }
-        // Build fills the share through the same seam as a store hit, so a
-        // same-subject re-resolve later in this process takes the reference.
-        index
-            .resolved_graph_memo
-            .borrow_mut()
-            .insert(subject, (typed.clone(), source_indices.clone()));
     }
 
     Ok((typed, source_indices))
@@ -3324,6 +3326,102 @@ mod module_schedule_batches_tests {
         let batches = schedule_batches_from_edges(3, &[]);
         assert_eq!(batches, vec![vec![0, 1, 2]]);
     }
+}
+
+fn finish_resolved_graph_assembly(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+    binding_fork_counts: (usize, usize),
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Result<Rc<ResolvedGraph>, String> {
+    let (same_tree_fork_count, cross_tree_fork_count) = binding_fork_counts;
+    let item_registry = modules.iter().fold(v1_rt::rc_empty_map(), |acc, typed| {
+        v1_rt::rc_map_merge(acc, typed.item_registry.clone())
+    });
+    let expanded_registry =
+        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    let diagnostics: Rc<im_rc::Vector<Rc<ErrorNode>>> = Rc::new({
+        let mut acc = im_rc::Vector::new();
+        for chunk in &diag_chunks {
+            acc.extend(chunk.iter().cloned());
+        }
+        acc
+    });
+    let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
+    if total_fork_count > 0 && floor_verbose() {
+        eprintln!(
+            "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
+        );
+    }
+    let modules =
+        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
+        modules.clone(),
+        source_indices.clone(),
+    );
+    let modules =
+        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
+    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
+    Ok(Rc::new(ResolvedGraph {
+        modules,
+        item_registry: expanded_registry,
+        diagnostics,
+        emit_graph_info,
+    }))
+}
+
+/// When every module in the closure is already in the typed cache, skip the
+/// schedule-dispatch loop's per-module `collect_parent_envs` and
+/// `build_variant_export_surface` work — both exist only to feed a cold
+/// `typecheck_module` — and jump straight to closure assembly (expand, rewire,
+/// emit). The assembled output matches the serial dispatch path because
+/// variant surfaces are not consulted on a cache hit and parent-env diagnostics
+/// are empty when every import parent is already in the store.
+fn reconcile_all_cache_hits(
+    closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
+    closure_names: &[String],
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    typed_cache: &RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    module_identity: &RefCell<HashMap<String, String>>,
+) -> Result<Rc<ResolvedGraph>, String> {
+    let mut modules_vec: Vec<Rc<TypedModule>> = Vec::with_capacity(closure_modules.len());
+    let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> =
+        Vec::with_capacity(closure_modules.len() * 2);
+    let mut same_tree_fork_count: usize = 0;
+    let mut cross_tree_fork_count: usize = 0;
+    let empty_parent_diags = Rc::new(im_rc::Vector::new());
+
+    for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
+        let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+        check_module_source_identity(module_identity, mod_name, &decl_file)?;
+        let tc_result = typed_cache
+            .borrow()
+            .get(mod_name)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
+                )
+            })?;
+        modules_vec.push(tc_result.typed.clone());
+        diag_chunks.push(empty_parent_diags.clone());
+        diag_chunks.push(tc_result.diagnostics.clone());
+        for fork in tc_result.binding_forks.iter() {
+            if fork.same_tree {
+                same_tree_fork_count += 1;
+            } else {
+                cross_tree_fork_count += 1;
+            }
+        }
+    }
+
+    finish_resolved_graph_assembly(
+        Rc::new(modules_vec),
+        diag_chunks,
+        (same_tree_fork_count, cross_tree_fork_count),
+        source_indices,
+    )
 }
 
 fn reconcile_with_typed_cache(
