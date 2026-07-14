@@ -31,7 +31,12 @@ import gunbc.fleet_converge_apply {
   fleet_converge_apply_result_converged,
   fleet_converge_thin_invocation,
 }
-import gunbc.host_effect { LocalShell, EmitArtifactThenThinRun, BootstrapFragment }
+import gunbc.host_effect { LocalShell, EmitArtifactThenThinRun, BootstrapFragment,
+  bootstrap_fragment_script_carrier_scaffold,
+  thin_invocation_argv_carrier_scaffold,
+  emit_artifact_then_thin_run_transport_scaffold,
+}
+import std.disposition { Scaffold, RealizationDispatch }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -89,6 +94,21 @@ fn witness_thin_invocation_argv() -> Bool {
   inv.argv.length() == 4
 }
 
+fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
+  match bootstrap_fragment_script_carrier_scaffold {
+    Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+    _ => false
+  }
+    && match thin_invocation_argv_carrier_scaffold {
+      Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+      _ => false
+    }
+    && match emit_artifact_then_thin_run_transport_scaffold {
+      Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+      _ => false
+    }
+}
+
 fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
   !fleet_converge_apply_result_converged(r: converge_apply(
     policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
@@ -103,5 +123,6 @@ test fn fleet_converge_apply_holds() -> Bool {
   witness_unsound_policy_refused()
     && witness_converge_apply_fail_closed_on_knob_frontier()
     && witness_thin_invocation_argv()
+    && witness_emit_artifact_carriers_name_bash_emit_scaffolds()
     && witness_emit_artifact_transport_rejects_shell_command()
 }

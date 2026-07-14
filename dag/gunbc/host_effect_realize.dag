@@ -40,11 +40,11 @@ type ResolvedHostEffectCell =
   | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
   | IncompatibleCell { reason: String }
 
-fn converge_plan_identity_mismatch_reason(host: ComputeHost, policy: HostConverge) -> String {
+fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
   concat(
     concat(
-      "host_effect: ConvergePlan host identity ",
-      host.identity as String
+      "host_effect: ConvergePlan target identity ",
+      node.identity as String
     ),
     concat(" does not match policy identity ", policy.identity as String)
   )
@@ -57,9 +57,9 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         ShellCommand { script: s } => ShellOnHost { node: n, script: s }
         RedfishAction { action: _ } =>
           IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
-        ConvergePlan { policy: p, host: h } =>
-          if n.identity != p.identity || h.identity != p.identity {
-            IncompatibleCell { reason: converge_plan_identity_mismatch_reason(host: h, policy: p) }
+        ConvergePlan { policy: p } =>
+          if n.identity != p.identity {
+            IncompatibleCell { reason: converge_plan_identity_mismatch_reason(node: n, policy: p) }
           } else {
             ConvergeOnHost { node: n, host_converge: p }
           }
@@ -69,7 +69,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         ShellCommand { script: _ } =>
           IncompatibleCell { reason: "host_effect: ShellCommand is in-band (shell/systemd) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
-        ConvergePlan { policy: _, host: _ } =>
+        ConvergePlan { policy: _ } =>
           IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
       }
   }
@@ -156,7 +156,7 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
       match gunbc_apply_mode_for_host(host: host_converge.identity) {
         FreshStandup =>
           NotConverged {
-            reason: "host_effect_apply: EmitArtifactThenThinRun fresh-standup bootstrap+thin-run is fail-closed Unimplemented; bootstrap emit routes through shell-emission slice 1, typed argv thin-run dispatch pending slice 2.",
+            reason: "host_effect_apply: EmitArtifactThenThinRun fresh-standup bootstrap+thin-run is fail-closed Unimplemented until bootstrap_fragment_script_carrier_scaffold and thin_invocation_argv_carrier_scaffold dissolve via bash-emit (#5828 / shell-emission slice 1+2).",
             applied: intent,
           }
         ExistingHostQuiescentReload =>

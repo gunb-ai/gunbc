@@ -51,10 +51,8 @@ fn fleet_compute_host_for_identity(identity: HostIdentity) -> ComputeHost? {
 
 fn converge_plan_effect(host_converge: HostConverge) -> HostEffect? {
   match fleet_compute_host_for_identity(identity: host_converge.identity) {
-    Present { value: host } =>
-      Present {
-        value: ConvergePlan { policy: host_converge, host: host }
-      }
+    Present { value: _ } =>
+      Present { value: ConvergePlan { policy: host_converge } }
     Absent => none
   }
 }

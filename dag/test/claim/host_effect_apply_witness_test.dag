@@ -237,7 +237,7 @@ fn fixture_srv1_host_converge() -> HostConverge {
 fn witness_converge_plan_fail_closed_on_knob_frontier() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
-    effect: ConvergePlan { policy: fixture_srv1_host_converge(), host: srv1_host },
+    effect: ConvergePlan { policy: fixture_srv1_host_converge() },
     evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   ))
@@ -246,7 +246,7 @@ fn witness_converge_plan_fail_closed_on_knob_frontier() -> Bool {
 fn witness_converge_plan_on_bmc_typed_mismatch() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
-    effect: ConvergePlan { policy: fixture_srv1_host_converge(), host: srv1_host },
+    effect: ConvergePlan { policy: fixture_srv1_host_converge() },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
@@ -255,7 +255,7 @@ fn witness_converge_plan_on_bmc_typed_mismatch() -> Bool {
 fn witness_converge_plan_redrives_on_frontier() -> Bool {
   directive_is_redrive(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
-    effect: ConvergePlan { policy: fixture_srv1_host_converge(), host: srv1_host },
+    effect: ConvergePlan { policy: fixture_srv1_host_converge() },
     evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   )))
