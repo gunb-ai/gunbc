@@ -1,0 +1,151 @@
+module v2.test.claim.self_host.wave1_gate1_a1_symbol_index_body_producer_witness
+
+import v2.compiler.body_lowering_fold {
+  body_lower_arrow_domain_named_bindings,
+  body_lower_arrow_domain_symbol_index_holds,
+  body_lower_fn_decl_to_arrow,
+  body_lower_outcome_frontier_disposition,
+  body_lower_unwrap_captured,
+  BodyLoweringLowered,
+  BodyLoweringWrapperRetained
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  parse_production_emitted_identity_optional,
+  qualified_name_from_module_node
+}
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Arrow, Atom, Node, TypeNode, node_synthetic }
+import v2.std.qualified_name { QualifiedName }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data wave1_gate1_a1_witness_note: String = "Wave 1 Gate 1 PR-A1 receipts: fn_decl→Arrow domain uses containment Named edges (SymbolIndex authority); dag_fn_decl_param_binding_atoms deleted; scope_with_fn_decl_params dissolved; wrapper-retained frontier disposition typed+counted. Proven: domain Named bindings on lowered Arrow, SymbolIndex containment parity, real-ingest normalize lowers (not wrapper-retained), wrapper-retained RED on invalid shell."
+
+data wave1_gate1_a1_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn wave1_gate1_a1_find_arrow_in_module(root: Node) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } => Present { value: root }
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
+        }
+      })
+  }
+}
+
+fn wave1_gate1_a1_normalized_add_module() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: wave1_gate1_a1_add_module_source,
+    file: ^wave1_gate1_a1_add_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+          }
+      }
+  }
+}
+
+fn wave1_gate1_a1_module_qn_optional(tree: Node) -> Optional<QualifiedName> {
+  match qualified_name_from_module_node(root: tree) {
+    Accepted { value: qn, diagnostics: _ } => Present { value: qn }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn wave1_gate1_a1_arrow_domain_binding_count(arrow: Node) -> Int {
+  if count(arrow.children) >= 1 {
+    match first(arrow.children) {
+      Present { value: domain_edge } =>
+        length(xs: body_lower_arrow_domain_named_bindings(root: domain_edge.target))
+      Absent => 0
+    }
+  } else {
+    0
+  }
+}
+
+fn wave1_gate1_a1_domain_containment_named_edges_holds() -> Bool {
+  match wave1_gate1_a1_normalized_add_module() {
+    Absent => false
+    Present { value: tree } =>
+      match wave1_gate1_a1_find_arrow_in_module(root: tree) {
+        Absent => false
+        Present { value: arrow } => wave1_gate1_a1_arrow_domain_binding_count(arrow: arrow) == 2
+      }
+  }
+}
+
+fn wave1_gate1_a1_symbol_index_domain_parity_holds() -> Bool {
+  match wave1_gate1_a1_normalized_add_module() {
+    Absent => false
+    Present { value: tree } =>
+      match wave1_gate1_a1_module_qn_optional(tree: tree) {
+        Absent => false
+        Present { value: module_qn } =>
+          match wave1_gate1_a1_find_arrow_in_module(root: tree) {
+            Absent => false
+            Present { value: arrow } =>
+              body_lower_arrow_domain_symbol_index_holds(
+                arrow: arrow,
+                containment_path: module_qn
+              )
+          }
+      }
+  }
+}
+
+fn wave1_gate1_a1_real_ingest_lowers_holds() -> Bool {
+  match wave1_gate1_a1_normalized_add_module() {
+    Absent => false
+    Present { value: tree } =>
+      match wave1_gate1_a1_find_arrow_in_module(root: tree) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+fn wave1_gate1_a1_wrapper_retained_red_control_holds() -> Bool {
+  let shell = node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^wave1_gate1_a1_invalid_shell } },
+    children: []
+  )
+  match body_lower_outcome_frontier_disposition(o: body_lower_fn_decl_to_arrow(shell: shell)) {
+    BodyLoweringWrapperRetained { reason: r } => r == ^body_lowering_reason_wrapper_retained_emitted
+    BodyLoweringLowered => false
+  }
+}
+
+test fn wave1_gate1_a1_domain_containment_named_edges_witness_holds() -> Bool {
+  wave1_gate1_a1_domain_containment_named_edges_holds()
+}
+
+test fn wave1_gate1_a1_symbol_index_domain_parity_witness_holds() -> Bool {
+  wave1_gate1_a1_symbol_index_domain_parity_holds()
+}
+
+test fn wave1_gate1_a1_real_ingest_lowers_witness_holds() -> Bool {
+  wave1_gate1_a1_real_ingest_lowers_holds()
+}
+
+test fn wave1_gate1_a1_wrapper_retained_red_control_witness_holds() -> Bool {
+  wave1_gate1_a1_wrapper_retained_red_control_holds()
+}

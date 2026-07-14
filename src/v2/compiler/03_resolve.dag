@@ -667,15 +667,14 @@ fn resolve_children_homogeneous_scope(
   n: Node
 ) -> Outcome<Node> {
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
-  let scope_here =
-    if arrow_domain_has_named_bindings(n: n) {
+  let scope_here = match arrow_domain_has_named_bindings(n: n) {
+    true =>
       ScopeFrame {
         locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
         outer: ctx.scope
       }
-    } else {
-      ctx.scope
-    }
+    false => ctx.scope
+  }
   let child_ctx = resolve_ctx_with_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here
