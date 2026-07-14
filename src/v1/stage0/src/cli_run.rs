@@ -7634,6 +7634,26 @@ fn floor_diff_edits_from_line_ranges(
     })
 }
 
+/// True when `name` is declared as a `data` item at `file_norm`, verified against the entry's
+/// own resolved import closure (`ctx.modules`) rather than by bare name — `item_registry` is
+/// flat-namespace-keyed (name only, no origin file), so a homonym declared in some unrelated
+/// file must not be mistaken for the diff-changed declaration. Because `ctx.modules` already
+/// contains only this entry's resolved import closure, a `file_norm` the entry does not import
+/// yields no match here regardless of name collisions elsewhere in the corpus.
+fn data_item_declared_in_file(
+    ctx: &v1_interpreter::InterpContext,
+    name: &str,
+    file_norm: &str,
+) -> bool {
+    ctx.modules.iter().any(|module| {
+        module.items.iter().any(|item| {
+            item_kind(item.clone()) == ItemKind::DataItem
+                && span_file_matches(&item.span.file, file_norm)
+                && authored_name_at(ctx.source_indices.clone(), item.clone()) == name
+        })
+    })
+}
+
 fn rerun_frontier_nodes_for_entry(
     ctx: &v1_interpreter::InterpContext,
     entry_path: &str,
@@ -7643,11 +7663,16 @@ fn rerun_frontier_nodes_for_entry(
     let mut seen = HashSet::new();
     let entry_norm = repo_relative_dag_path(entry_path);
     for (file, name) in &edits.overlapping_data_items {
-        // Only same-entry-file overlapping data seeds this entry's rerun frontier.
-        // Cross-file `(file, name)` pairs must not re-eval homonymous data items in foreign
-        // entry contexts (e.g. `construction_justification` on every top-level lens) — that
-        // silently widens SelectionApplied to the whole corpus when a new lens lands.
-        if repo_relative_dag_path(file) != entry_norm {
+        let file_norm = repo_relative_dag_path(file);
+        // Same-entry-file overlapping data always seeds the frontier. A cross-file data item
+        // seeds it too, once verified against the entry's own resolved import closure
+        // (`data_item_declared_in_file`) — matching on bare name alone would silently widen
+        // SelectionApplied to any entry that happens to import a same-named data item declared
+        // elsewhere (e.g. `construction_justification` on every top-level lens). Before this
+        // check existed, an entry that genuinely imports the changed data decl (e.g. a witness
+        // importing `generated_stage0_files` from a different file) fell through the `continue`
+        // below and predict-skipped (#6543 falsifier divergence, run 29293446579).
+        if file_norm != entry_norm && !data_item_declared_in_file(ctx, name, &file_norm) {
             continue;
         }
         if !ctx.item_registry.contains_key(name) {
