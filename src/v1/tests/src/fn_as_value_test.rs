@@ -7,8 +7,10 @@
 //! - scoped_entry_resolves_import_closure_not_entire_v4_tree: exercises the Rust
 //!   loader (cli_run::load_sources_for_entry) itself — part of the pinned harness.
 //! - generic_instantiation_field_checks_concrete_type_red: a NEGATIVE (must-fail)
-//!   witness; blocked on a floor ExpectFail mechanism
-//!   (claim_witness_corpus_ci_runner.dag ExpectFail rows currently have no consumer).
+//!   witness; blocked on a floor ExpectFail mechanism — the floor has no
+//!   declared-expected-failure carrier today (the unconsumed
+//!   claim_witness_corpus_ci_runner.dag roster that once sketched ExpectFail rows
+//!   was deleted 2026-07-14 as a zero-consumer parallel representation).
 use std::fs;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
