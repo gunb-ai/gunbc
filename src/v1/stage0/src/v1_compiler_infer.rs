@@ -12401,6 +12401,62 @@ pub fn local_binding_for_item(
     }
 }
 
+pub fn census_insert_binding(
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    binding: Rc<TypeBinding>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    match v1_rt::map_get(&census, binding.name.clone())
+        .as_deref()
+        .cloned()
+    {
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => census.clone(),
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            binding: existing, ..
+        }) => {
+            if (existing.resolved.clone() == binding.resolved.clone()) {
+                census.clone()
+            } else {
+                v1_rt::rc_map_insert(
+                    census.clone(),
+                    binding.name.clone(),
+                    Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
+                )
+            }
+        }
+        None => v1_rt::rc_map_insert(
+            census.clone(),
+            binding.name.clone(),
+            Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
+                binding: binding.clone(),
+            }),
+        ),
+    }
+}
+
+pub fn census_insert_item(
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let census = match local_binding_for_item(item.clone(), source_indices.clone()) {
+            None => census.clone(),
+            Some(binding) => census_insert_binding(census.clone(), binding.clone()),
+        };
+        let is_coproduct = (item.connective.clone() == Connective::Disj);
+        if is_coproduct.clone() {
+            item.children.clone().iter().cloned().fold(
+                census.clone(),
+                |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, arm: Rc<Node>| {
+                    census_insert_item(acc, arm.clone(), source_indices.clone())
+                },
+            )
+        } else {
+            census.clone()
+        }
+    })
+}
+
 pub fn build_global_bare_census(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -12411,36 +12467,7 @@ pub fn build_global_bare_census(
             module_items(mod_.module.clone()).iter().cloned().fold(
                 census,
                 |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
-                    match local_binding_for_item(item.clone(), source_indices.clone()) {
-                        None => acc.clone(),
-                        Some(binding) => match v1_rt::map_get(&acc, binding.name.clone())
-                            .as_deref()
-                            .cloned()
-                        {
-                            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => acc.clone(),
-                            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                                binding: existing,
-                                ..
-                            }) => {
-                                if (existing.resolved.clone() == binding.resolved.clone()) {
-                                    acc.clone()
-                                } else {
-                                    v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        binding.name.clone(),
-                                        Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
-                                    )
-                                }
-                            }
-                            None => v1_rt::rc_map_insert(
-                                acc.clone(),
-                                binding.name.clone(),
-                                Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
-                                    binding: binding.clone(),
-                                }),
-                            ),
-                        },
-                    }
+                    census_insert_item(acc, item.clone(), source_indices.clone())
                 },
             )
         },

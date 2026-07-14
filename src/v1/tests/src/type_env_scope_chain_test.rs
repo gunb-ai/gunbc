@@ -603,7 +603,9 @@ fn global_bare_fallback_resolves_when_corpus_wide_unique() {
     use v1_compiler::v1_compiler_infer_env::{
         lookup_binding_by_name, GlobalBareLookupState, TypeBinding, TypeEnv,
     };
-    use v1_compiler::v1_std_core::{empty_intern_table, leaf_node_with_span, make_span, SubValueRelation};
+    use v1_compiler::v1_std_core::{
+        empty_intern_table, leaf_node_with_span, make_span, SubValueRelation,
+    };
 
     let intern_table = empty_intern_table();
     let binding = Rc::new(TypeBinding {
