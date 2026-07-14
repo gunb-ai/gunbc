@@ -2771,7 +2771,7 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     )
 }
 
-pub fn build_multi_entry_index_with_shared_caches(
+fn build_multi_entry_index_with_shared_caches(
     source_roots: &[String],
     shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
 ) -> MultiEntryIndex {

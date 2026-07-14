@@ -22,9 +22,9 @@
 use std::fs;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, make_eval_context, process_shared_floor_index,
-    reset_typecheck_compute_count, resolve_entry_graph, resolve_entry_with_index, run_claim,
-    typecheck_compute_count, workspace_root, ClaimOutcome,
+    build_multi_entry_index, make_eval_context, reset_typecheck_compute_count,
+    resolve_entry_graph, resolve_entry_with_index, run_claim, typecheck_compute_count,
+    workspace_root, ClaimOutcome,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
