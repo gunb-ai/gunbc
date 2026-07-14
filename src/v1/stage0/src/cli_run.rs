@@ -12279,6 +12279,14 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // re-arms; burns down with the frontier probe's fold migration. (#6533's other wildcard
     // fn, compiler_frontier_probe_entry_test.dag, is outside the scan universe — no row.)
     "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
+    // 2026-07-14 backfill: the shell->dag P2b/P4 slices landed orch_emit_let_step with a
+    // one-special-variant dispatch (ExprCmdSubst -> cmdsubst_assign; every other Expr through
+    // the uniform spelling path) — enumerating all Expr variants would clone the general arm.
+    // The nfr witness is a corpus-read host-fed row, so the landing PR predict-skipped it and
+    // the red surfaced on the 2026-07-14 nightly cold sweep (masking receipt #9; live-read
+    // classification P1/P2, in flight, is the structural fix). Burns down with the
+    // orchestration-emit fold migration.
+    "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.
@@ -12354,6 +12362,14 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
     "src/v2/compiler/emit_host.dag::runtime_value_signed_i32_le_as_int",
     "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
+    // 2026-07-14 backfill: the shell->dag P2b/P4 slices landed orch_emit_let_step with a
+    // one-special-variant dispatch (ExprCmdSubst -> cmdsubst_assign; every other Expr through
+    // the uniform spelling path) — enumerating all Expr variants would clone the general arm.
+    // The nfr witness is a corpus-read host-fed row, so the landing PR predict-skipped it and
+    // the red surfaced on the 2026-07-14 nightly cold sweep (masking receipt #9; live-read
+    // classification P1/P2, in flight, is the structural fix). Burns down with the
+    // orchestration-emit fold migration.
+    "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
     "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
