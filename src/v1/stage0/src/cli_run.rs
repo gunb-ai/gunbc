@@ -8315,6 +8315,10 @@ pub fn run_discovery_corpus_with_options(
             Ok(attach_deferred_discovery_rows(summary, deferred_rows))
         }
         DiscoveryWidthPolicy::Adaptive(governor) => {
+            // Process-scoped typed store shell — populated only when plural workers run
+            // (target_width > 1). At width=1 the serde byte store adds retention without
+            // cross-worker benefit and breaks the CI memory budget (design §7; OOM
+            // 29349125185 / 29371206526). 🟡 dissolve-on: Rc→Arc retires the gate.
             let cross_worker_store = new_shared_typecheck_caches();
     // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
     // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
@@ -8365,7 +8369,17 @@ pub fn run_discovery_corpus_with_options(
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
-        let cross_worker_store = cross_worker_store.clone();
+        let spawn_target_width = governor.current_target_width();
+        let cross_worker_store_for_worker = if spawn_target_width > 1 {
+            Some(cross_worker_store.clone())
+        } else {
+            None
+        };
+        if worker_ordinal == 0 && spawn_target_width <= 1 {
+            eprintln!(
+                "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
+            );
+        }
         // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
         // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
         // admission window has no interleaving to disambiguate.
@@ -8383,10 +8397,12 @@ pub fn run_discovery_corpus_with_options(
                 let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
                     governor_for_worker.clone(),
                 );
-                // Process-scoped typed_module_cache: serde byte transport shares prefix
-                // typechecks across worker shards (cross-worker-typecheck-share-design §4).
-                let index =
-                    build_multi_entry_index_with_shared_caches(&roots, cross_worker_store);
+                // Process-scoped typed_module_cache when governor width > 1; private cold
+                // index at width=1 (CI budget — cross-worker-typecheck-share-design §7).
+                let index = match cross_worker_store_for_worker {
+                    Some(store) => build_multi_entry_index_with_shared_caches(&roots, store),
+                    None => build_multi_entry_index(&roots),
+                };
                 let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                     match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
                         Ok((graph, source_indices)) => {
