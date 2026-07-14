@@ -13,9 +13,10 @@ use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::{
-    authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
-    source_text_at,
+    authored_name_at, empty_intern_table, has_child_named, intern, intern_find, intern_str,
+    merge_intern_tables, source_text_at,
 };
+use crate::v1_std_core::Connective::Disj;
 pub use crate::v1_std_core::{InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -700,6 +701,84 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
         Some(binding) => Some(binding.resolved.clone()),
         None => None,
     }
+}
+
+pub fn find_coproduct_containing_arm_in_env(
+    env: Rc<TypeEnv>,
+    arm_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    let mut found: Option<Rc<Node>> = None;
+    let mut binding_names: Vec<String> = Rc::new(v1_rt::map_keys(&env.str_bindings.clone()))
+        .iter()
+        .cloned()
+        .collect();
+    for key in Rc::new(v1_rt::map_keys(&env.ancestry_str_bindings.clone()))
+        .iter()
+        .cloned()
+    {
+        binding_names.push(key);
+    }
+    for binding_name in binding_names.iter().cloned() {
+        if let Some(ty) = lookup_type_by_name(env.clone(), binding_name.clone()) {
+            if ((ty.connective.clone() == Disj)
+                && has_child_named(ty.clone(), arm_name.clone(), source_indices.clone()))
+            {
+                if found.clone().is_none() {
+                    found = Some(ty.clone());
+                }
+            }
+        }
+    }
+    for bare_name in Rc::new(v1_rt::map_keys(&env.global_bare.clone()))
+        .iter()
+        .cloned()
+    {
+        match v1_rt::map_get(&env.global_bare.clone(), bare_name.clone())
+            .as_deref()
+            .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding }) => {
+                let ty = binding.resolved.clone();
+                if ((ty.connective.clone() == Disj)
+                    && has_child_named(ty.clone(), arm_name.clone(), source_indices.clone()))
+                {
+                    if found.clone().is_none() {
+                        found = Some(ty.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    found
+}
+
+pub fn find_coproduct_containing_arm(
+    env: Rc<TypeEnv>,
+    arm_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    let mut envs: Vec<Rc<TypeEnv>> = vec![env.clone()];
+    for parent in env.parents.clone().iter().cloned() {
+        envs.push(parent.clone());
+    }
+    let mut found: Option<Rc<Node>> = None;
+    for candidate_env in envs.iter().cloned() {
+        match find_coproduct_containing_arm_in_env(
+            candidate_env.clone(),
+            arm_name.clone(),
+            source_indices.clone(),
+        ) {
+            Some(ty) => {
+                if found.clone().is_none() {
+                    found = Some(ty.clone());
+                }
+            }
+            None => {}
+        }
+    }
+    found
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {

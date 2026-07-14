@@ -52,10 +52,11 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    empty_type_env_cache, global_bare_lookup, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
+    empty_type_env_cache, find_coproduct_containing_arm, global_bare_lookup, inductive_fields_for,
+    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
+    lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
+    merge_type_env_cache_guarded, put_inductive_field, put_inductive_field_cross,
+    str_bindings_from_bindings,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, TypeBinding, TypeEnv, TypeEnvCache,
@@ -12724,6 +12725,33 @@ pub fn try_resolve_variant_from_expected(
                 scope.module_name.clone(),
             );
             let mut candidates = vec![expanded.clone()];
+            let exp_arm = authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                expanded.clone(),
+            );
+            if (exp_arm.clone() != "") {
+                match find_coproduct_containing_arm(
+                    scope.type_env.clone(),
+                    exp_arm.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(parent) => {
+                        if !candidates.iter().any(|c| {
+                            Rc::ptr_eq(c, &parent)
+                                || (authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    c.clone(),
+                                ) == authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    parent.clone(),
+                                ))
+                        }) {
+                            candidates.push(parent.clone());
+                        }
+                    }
+                    None => {}
+                }
+            }
             match lookup_type_by_name(scope.type_env.clone(), type_name.clone()) {
                 Some(ty) => {
                     let ty_expanded = expand_type_for_field_access(
@@ -12784,11 +12812,24 @@ pub fn is_optional_arm_shape(
     if is_unit_like(ty.clone()) {
         return true;
     }
+    let shape = node_type_shape(ty.clone(), source_indices.clone());
+    if ((shape.clone() == "Product(Unit)".to_string())
+        || (shape.clone() == "Product(Present)".to_string())
+        || (shape.clone() == "Product(Absent)".to_string())
+        || (shape.clone() == "Primitive(Absent)".to_string())
+        || (shape.clone() == "Primitive(Present)".to_string())
+        || (shape.clone() == "Primitive(Unit)".to_string())
+        || (shape.clone() == "Primitive(None)".to_string())
+        || (shape.clone() == "Primitive(none)".to_string()))
+    {
+        return true;
+    }
     let name = authored_name_at(source_indices.clone(), ty.clone());
     (name.clone() == "Absent".to_string())
         || (name.clone() == "Present".to_string())
         || (name.clone() == "Unit".to_string())
         || (name.clone() == "none".to_string())
+        || (name.clone() == "None".to_string())
 }
 
 pub fn resolve_coproduct_type_ref(
@@ -12818,95 +12859,6 @@ pub fn resolve_coproduct_type_ref(
         }
         None => ty.clone(),
     }
-}
-
-pub fn find_coproduct_containing_arm_in_env(
-    env: Rc<TypeEnv>,
-    arm_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    let mut found: Option<Rc<Node>> = None;
-    let mut binding_names: Vec<String> = Rc::new(v1_rt::map_keys(&env.str_bindings.clone()))
-        .iter()
-        .cloned()
-        .collect();
-    for key in Rc::new(v1_rt::map_keys(&env.ancestry_str_bindings.clone()))
-        .iter()
-        .cloned()
-    {
-        binding_names.push(key);
-    }
-    for binding_name in binding_names.iter().cloned() {
-        if let Some(ty) = lookup_type_by_name(env.clone(), binding_name.clone()) {
-            if ((ty.connective.clone() == Connective::Disj)
-                && has_child_named(
-                    ty.clone(),
-                    arm_name.clone(),
-                    source_indices.clone(),
-                ))
-            {
-                match found.clone() {
-                    Some(_) => {}
-                    None => {
-                        found = Some(ty.clone());
-                    }
-                }
-            }
-        }
-    }
-    for bare_name in Rc::new(v1_rt::map_keys(&env.global_bare.clone()))
-        .iter()
-        .cloned()
-    {
-        match v1_rt::map_get(&env.global_bare.clone(), bare_name.clone()) {
-            Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding }) => {
-                let ty = binding.resolved.clone();
-                if ((ty.connective.clone() == Connective::Disj)
-                    && has_child_named(
-                        ty.clone(),
-                        arm_name.clone(),
-                        source_indices.clone(),
-                    ))
-                {
-                    match found.clone() {
-                        Some(_) => {}
-                        None => {
-                            found = Some(ty.clone());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    found
-}
-
-pub fn find_coproduct_containing_arm(
-    env: Rc<TypeEnv>,
-    arm_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    let mut envs: Vec<Rc<TypeEnv>> = vec![env.clone()];
-    for parent in env.parents.clone().iter().cloned() {
-        envs.push(parent.clone());
-    }
-    let mut found: Option<Rc<Node>> = None;
-    for candidate_env in envs.iter().cloned() {
-        match find_coproduct_containing_arm_in_env(
-            candidate_env.clone(),
-            arm_name.clone(),
-            source_indices.clone(),
-        ) {
-            Some(ty) => {
-                if found.clone().is_none() {
-                    found = Some(ty.clone());
-                }
-            }
-            None => {}
-        }
-    }
-    found
 }
 
 pub fn find_shared_coproduct_for_branch_arms(
@@ -13039,6 +12991,34 @@ pub fn coproduct_branches_compatible(
     if (else_coproduct.connective.clone() == Connective::Disj) {
         if branch_is_coproduct_member(then_rt.clone(), else_coproduct.clone(), si.clone()) {
             return Some(else_coproduct.clone());
+        }
+    }
+    for (arm_rt, other_rt) in [(then_rt.clone(), else_rt.clone()), (else_rt.clone(), then_rt.clone())]
+    {
+        if let Some(arm_name) = branch_coproduct_arm_name(arm_rt.clone(), si.clone()) {
+            if let Some(parent) = find_coproduct_containing_arm(
+                scope.type_env.clone(),
+                arm_name.clone(),
+                si.clone(),
+            ) {
+                let parent_name = authored_name_at(si.clone(), parent.clone());
+                let other_name = authored_name_at(si.clone(), other_rt.clone());
+                let other_coproduct = resolve_coproduct_type_ref(
+                    other_rt.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                );
+                if (other_name.clone() == parent_name.clone())
+                    || branch_is_coproduct_member(other_rt.clone(), parent.clone(), si.clone())
+                    || branch_is_coproduct_member(
+                        other_coproduct.clone(),
+                        parent.clone(),
+                        si.clone(),
+                    )
+                {
+                    return Some(parent.clone());
+                }
+            }
         }
     }
     find_shared_coproduct_for_branch_arms(then_rt.clone(), else_rt.clone(), scope.clone())
