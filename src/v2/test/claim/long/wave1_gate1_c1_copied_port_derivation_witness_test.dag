@@ -1,0 +1,23 @@
+module v2.test.long.wave1_gate1_c1_copied_port_derivation_witness
+
+import v2.lens.cost.arrow_body_cost_domain_excluded {
+  arrow_body_cost_domain_excluded_holds
+}
+import v2.test.claim.body_lowering.wave1_gate1_c1_copied_port_helpers {
+  wave1_gate1_c1_derived_indices_match_retired_registry_holds,
+  wave1_gate1_c1_unpriceable_combiner_refuses_holds,
+  wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds
+}
+import v2.std.logic { Bool }
+
+data wave1_gate1_c1_long_witness_note: String = "Wave 1 Gate 1 C1 execution witnesses (long lane): arrow ^arrow_body_edge-only cost fold RED control + full per-combiner derivation suite. Fast compile-gate receipts live in self_host/wave1_gate1_c1_copied_port_derivation_witness_test.dag."
+
+test fn wave1_gate1_c1_arrow_body_cost_domain_excluded_witness_holds() -> Bool {
+  arrow_body_cost_domain_excluded_holds()
+}
+
+test fn wave1_gate1_c1_derived_registry_execution_witness_holds() -> Bool {
+  wave1_gate1_c1_derived_indices_match_retired_registry_holds()
+    && wave1_gate1_c1_unpriceable_combiner_refuses_holds()
+    && wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds()
+}
