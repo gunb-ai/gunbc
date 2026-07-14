@@ -206,7 +206,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebTokenExtract => srv3_host_effect_script_resolution_failed_cell()
-                Srv3NbdProxyServe => srv3_host_effect_script_resolution_failed_cell()
+                Srv3NbdProxyServe { intent: _, lease_key: _ } => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BootOnceReadBackSleep => srv3_host_effect_script_resolution_failed_cell()
                 Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
                 SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
