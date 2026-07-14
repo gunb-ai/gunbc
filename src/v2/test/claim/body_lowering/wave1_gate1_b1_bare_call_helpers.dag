@@ -154,6 +154,15 @@ fn wave1_gate1_b1_builtin_call_resolves_end_to_end_holds() -> Bool {
   wave1_gate1_b1_resolve_source(source: wave1_gate1_b1_builtin_call_module_source)
 }
 
+data wave1_gate1_b1_unbound_call_infix_module_source: String = "module wave1_gate1_b1_unbound_call\n\nfn caller(x: Int) -> Int { totally_nonexistent_symbol_xyz(x) + x }\n"
+
+fn wave1_gate1_b1_unbound_infix_call_resolve_rejects_holds() -> Bool {
+  match wave1_gate1_b1_resolve_source(source: wave1_gate1_b1_unbound_call_infix_module_source) {
+    true => false
+    false => true
+  }
+}
+
 fn wave1_gate1_b1_unbound_call_resolve_rejects_holds() -> Bool {
   match wave1_gate1_b1_resolve_source(source: wave1_gate1_b1_unbound_call_module_source) {
     true => false
