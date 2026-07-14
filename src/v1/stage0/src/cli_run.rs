@@ -12685,6 +12685,74 @@ pub fn reference_resolution_facts(
     edges
 }
 
+#[cfg(test)]
+mod reference_edge_producer_tests {
+    use super::reference_resolution_facts;
+
+    fn fixture_root(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("gunbc-refedge-{tag}-{}", std::process::id()))
+    }
+
+    fn write(root: &std::path::Path, rel: &str, content: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
+        std::fs::write(&p, content).expect("write dag");
+    }
+
+    // Green-by-execution + discriminating RED: the producer must derive a cross-module edge from a
+    // bare reference in an import-LESS file (the stripped case), resolve a same-module name LOCALLY
+    // (no edge — the live_tree_disposition fan-out guard), and emit NOTHING for an import-bearing
+    // file (import-covered). A reader that ignored the parsed references would fail the first assert.
+    #[test]
+    fn reference_edges_derived_from_bare_refs_local_and_import_aware() {
+        let root = fixture_root("core");
+        let _ = std::fs::remove_dir_all(&root);
+        // Declares the shared name.
+        write(&root, "decl.dag", "module test.decl\n\nfn shared_fn() -> Bool {\n  true\n}\n");
+        // Import-LESS file that references it → edge to test.decl.
+        write(
+            &root,
+            "refless.dag",
+            "module test.refless\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
+        );
+        // Declares its OWN shared_fn and references it → resolves locally, NO edge.
+        write(
+            &root,
+            "reflocal.dag",
+            "module test.reflocal\n\nfn shared_fn() -> Bool {\n  true\n}\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
+        );
+        // Import-bearing file → covered by import facts, producer emits nothing for it.
+        write(
+            &root,
+            "imported.dag",
+            "module test.imported\n\nimport test.decl { shared_fn }\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
+        );
+
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let edges = reference_resolution_facts(&roots, &roots, &[]);
+        let has_edge = |from_sub: &str, to_mod: &str| {
+            edges
+                .iter()
+                .any(|e| e.path.contains(from_sub) && e.target_module == to_mod)
+        };
+        let emits_any = |from_sub: &str| edges.iter().any(|e| e.path.contains(from_sub));
+
+        assert!(
+            has_edge("refless.dag", "test.decl"),
+            "import-less file referencing shared_fn must yield an edge to its declaring module"
+        );
+        assert!(
+            !emits_any("reflocal.dag"),
+            "a same-module declaration resolves locally — no cross-module edge"
+        );
+        assert!(
+            !emits_any("imported.dag"),
+            "an import-bearing file is import-covered — the reference producer skips it"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
 //
 // Audits the corpus for `match` expressions whose scrutinee is a function parameter with a declared
