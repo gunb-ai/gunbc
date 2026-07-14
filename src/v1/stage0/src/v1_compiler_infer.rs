@@ -12661,21 +12661,13 @@ pub fn census_arm_binding_for_census(
 
 pub fn census_insert_coproduct_arms(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    _item: Rc<Node>,
+    _source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    match census_disj_source_node(item.clone()) {
-        None => census.clone(),
-        Some(disj) => disj.children.clone().iter().cloned().fold(
-            census.clone(),
-            |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, arm: Rc<Node>| {
-                census_insert_binding(
-                    acc,
-                    census_arm_binding_for_census(arm.clone(), source_indices.clone()),
-                )
-            },
-        ),
-    }
+    // PR-5c: do not publish coproduct arms into global_bare — arm bindings shadow
+    // import-scoped variant constructors and break if-branch unification (Grounds vs
+    // DoesNotGround, local ResolvedHostEffectCell arms, …). Types/fns/data stay.
+    census.clone()
 }
 
 pub fn census_insert_module_item(
@@ -12745,34 +12737,17 @@ pub fn build_global_bare_census(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    {
-        let top_level_census = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
-            |census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, mod_: Rc<ResolvedModule>| {
-                module_items(mod_.module.clone()).iter().cloned().fold(
-                    census,
-                    |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
-                        census_insert_module_item(acc, item.clone(), source_indices.clone())
-                    },
-                )
-            },
-        );
-        modules.clone().iter().cloned().fold(
-            top_level_census.clone(),
-            |census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, mod_: Rc<ResolvedModule>| {
-                module_items(mod_.module.clone()).iter().cloned().fold(
-                    census,
-                    |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
-                        census_flag_arm_collisions_for_item(
-                            acc,
-                            item.clone(),
-                            source_indices.clone(),
-                        )
-                    },
-                )
-            },
-        )
-    }
+    modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+        |census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, mod_: Rc<ResolvedModule>| {
+            module_items(mod_.module.clone()).iter().cloned().fold(
+                census,
+                |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
+                    census_insert_module_item(acc, item.clone(), source_indices.clone())
+                },
+            )
+        },
+    )
 }
 
 pub fn build_type_env(
