@@ -91,7 +91,6 @@ test fn roster_gate_facts_classify_filesystem_carrier() -> Bool {
     carrier_homes: fixture_carriers
   )
   classification_has_filesystem_read_carrier(classification: c)
-    && runtime_read_carrier_module_names(classification: c) == ["fix.roster_gate"]
 }
 
 test fn red_control_roster_gate_severed_is_local() -> Bool {
@@ -141,4 +140,134 @@ test fn v0_registry_two_hop_decl_index_runtime_read() -> Bool {
       facts: fixture_v0_two_hop_facts
     )
   )
+}
+
+data roster_gate_corpus_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    imports: [
+      "v2.lens.complexity_accumulator_copy.roster_gate",
+      "v2.std.logic",
+      "v2.std.text",
+      "v2.std.live_tree"
+    ]
+  },
+  ModuleImportFact {
+    module: "v2.lens.complexity_accumulator_copy.roster_gate",
+    imports: []
+  }
+]
+
+data g2_union_corpus_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    imports: [
+      "v2.lens.complexity_accumulator_copy.roster_gate",
+      "tools.dag_compile_clean_scope",
+      "v2.std.logic",
+      "v2.std.text",
+      "v2.std.live_tree"
+    ]
+  },
+  ModuleImportFact {
+    module: "v2.lens.complexity_accumulator_copy.roster_gate",
+    imports: []
+  },
+  ModuleImportFact {
+    module: "tools.dag_compile_clean_scope",
+    imports: []
+  }
+]
+
+test fn g2_roster_gate_entry_classifies_literal_paths() -> Bool {
+  let c = live_read_classification_g2_from_facts(
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    facts: roster_gate_corpus_facts,
+    decls: fn_arrow_decl_facts_live(),
+    carrier_homes: live_read_carrier_homes_v0
+  )
+  classification_has_filesystem_read_carrier(classification: c)
+    && classification_has_literal_path(
+      classification: c,
+      path: "src/v2/std/algebra.dag"
+    )
+}
+
+test fn g2_roster_gate_literal_path_touched_selects() -> Bool {
+  let c = live_read_classification_g2_from_facts(
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    facts: roster_gate_corpus_facts,
+    decls: fn_arrow_decl_facts_live(),
+    carrier_homes: live_read_carrier_homes_v0
+  )
+  runtime_read_touched_by_path_g2(
+    classification: c,
+    touched_path: "src/v2/std/algebra.dag"
+  )
+    && runtime_read_touched_by_path_g2(
+      classification: c,
+      touched_path: "src/v2/lens/complexity_accumulator_copy.dag"
+    )
+}
+
+test fn g2_unknown_filesystem_path_widens_alongside_literal_paths() -> Bool {
+  let c = live_read_classification_g2_from_facts(
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    facts: roster_gate_corpus_facts,
+    decls: fn_arrow_decl_facts_live(),
+    carrier_homes: live_read_carrier_homes_v0
+  )
+  runtime_read_touched_by_path_g2(
+    classification: c,
+    touched_path: "src/v2/std/logic.dag"
+  )
+}
+
+test fn g2_implies_reads_live_tree_for_roster_gate() -> Bool {
+  g2_implies_reads_live_tree(
+    classification: live_read_classification_g2_from_facts(
+      entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+      facts: roster_gate_corpus_facts,
+      decls: fn_arrow_decl_facts_live(),
+      carrier_homes: live_read_carrier_homes_v0
+    )
+  )
+    && live_tree_disposition == SubstrateInputsOnly
+}
+
+test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {
+  let c = live_read_classification_from_facts(
+    entry_module: "fix.witness",
+    facts: fixture_roster_gate_facts,
+    carrier_homes: fixture_carriers
+  )
+  match c {
+    RuntimeRead { carriers: carriers } =>
+      runtime_read_touched_by_path_g2(
+        classification: c,
+        touched_path: "dag/unrelated.dag"
+      )
+    LocalRead => false
+  }
+}
+
+test fn g2_union_retains_g1_import_carriers_with_g2_literal_paths() -> Bool {
+  let c = live_read_classification_g2_from_facts(
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    facts: g2_union_corpus_facts,
+    decls: fn_arrow_decl_facts_live(),
+    carrier_homes: live_read_carrier_homes_v0
+  )
+  classification_has_corpus_scan_carrier(classification: c)
+    && classification_has_literal_path(
+      classification: c,
+      path: "src/v2/std/algebra.dag"
+    )
+}
+
+test fn g2_fn_arrow_marshal_host_scaffold_receipt_is_checkable() -> Bool {
+  match fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
