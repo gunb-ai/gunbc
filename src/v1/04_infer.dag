@@ -5783,7 +5783,12 @@ fn census_insert_item(census: Map<String, GlobalBareLookupState>, item: Node, so
     Absent => census
     Present { value: binding } => census_insert_binding(census: census, binding: binding)
   }
-  census
+  let is_coproduct = item.connective == Disj
+  if is_coproduct {
+    fold(item.children, init: census, f: (acc, arm) => census_insert_item(census: acc, item: arm, source_indices: source_indices))
+  } else {
+    census
+  }
 }
 
 fn build_global_bare_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
