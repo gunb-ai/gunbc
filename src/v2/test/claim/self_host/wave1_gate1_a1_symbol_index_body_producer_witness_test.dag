@@ -7,6 +7,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_find_captured,
   body_lower_fn_decl_ident_from_captured,
   body_lower_fn_decl_to_arrow,
+  body_lower_frontend_symbol_index_from_module,
   body_lower_outcome_frontier_disposition,
   body_lower_param_binding_symbols_from_fn_decl_module,
   body_lowering_domain_construction_disposition,
@@ -21,24 +22,33 @@ import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_language_model,
-  ParseSubtreeFound
+  ParseSubtreeFound,
+  qualified_name_from_module_node
 }
-import v2.std.algebra { length }
+import v2.std.algebra { Cons, Empty, length }
 import v2.std.collection { Absent, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Node, TypeNode, node_synthetic }
+import v2.std.qualified_name { qualified_name_snoc }
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.std.node { Arrow, Atom, Conj, Node, TypeNode, node_synthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data wave1_gate1_a1_witness_note: String = "Wave 1 Gate 1 PR-A1 honest receipts: dag_fn_decl_param_binding_atoms deleted; scope_with_fn_decl_params dissolved; wrapper-retained frontier typed+counted; domain construction remains param-list-walk (BodyLoweringDomainParamListWalk) with SeedRetained frontier row (^migrate_when_fn_decl_ident_binding_terminal_lands) until fn_decl ident routes to binding_name_terminal and SymbolIndex carries module_qn.fn.param. Proven by execution: producer Arrow domain matches ingest param bindings independently extracted from parse tree (not self-filled); frontend SymbolIndex fill cannot yet resolve fn.param (discriminating RED control — flips when namespace lane lands fn-ident binding terminal); real-ingest normalize lowers; wrapper-retained RED on invalid shell."
+data wave1_gate1_a1_witness_note: String = "Wave 1 Gate 1 PR-A1 honest receipts: dag_fn_decl_param_binding_atoms deleted; scope_with_fn_decl_params dissolved; wrapper-retained frontier typed+counted; fn_decl ident routes through StampLexeme (grammar_formal_terminal_lexeme + dag_grammar_terminal_lexeme); body_lower_fn_decl_to_arrow wraps lowered Arrow as Named fn member at module scope; SymbolIndex fill recurses Arrow domain so module_qn.fn.param resolves. Proven by execution: producer Arrow domain matches ingest param bindings independently extracted from parse tree; frontend SymbolIndex parity holds on real ingest; real-ingest normalize lowers; wrapper-retained RED on invalid shell."
 
 data wave1_gate1_a1_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 
 fn wave1_gate1_a1_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
+        }
+      })
     _ =>
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
@@ -110,20 +120,20 @@ fn wave1_gate1_a1_domain_param_list_walk_holds() -> Bool {
 
 fn wave1_gate1_a1_domain_construction_frontier_holds() -> Bool {
   match body_lowering_domain_construction_disposition {
-    BodyLoweringDomainParamListWalk =>
-      body_lowering_interim_scaffold_seed_retained_count() == 3
-    BodyLoweringDomainSymbolIndexResolved => false
+    BodyLoweringDomainSymbolIndexResolved =>
+      body_lowering_interim_scaffold_seed_retained_count() == 2
+    BodyLoweringDomainParamListWalk => false
   }
 }
 
-fn wave1_gate1_a1_symbol_index_frontend_blocked_red_control_holds() -> Bool {
+fn wave1_gate1_a1_symbol_index_frontend_parity_holds() -> Bool {
   match wave1_gate1_a1_parsed_add_module() {
     Absent => false
     Present { value: parsed } =>
       match body_lower_find_captured(root: parsed, emitted: ^dag_surface_fn_decl) {
         ParseSubtreeFound { captured: captured } =>
           match body_lower_fn_decl_ident_from_captured(captured: captured) {
-            Absent => true
+            Absent => false
             Present { value: fn_name } =>
               match wave1_gate1_a1_normalized_add_module() {
                 Absent => false
@@ -131,7 +141,7 @@ fn wave1_gate1_a1_symbol_index_frontend_blocked_red_control_holds() -> Bool {
                   match wave1_gate1_a1_find_arrow_in_module(root: normalized) {
                     Absent => false
                     Present { value: arrow } =>
-                      !body_lower_arrow_domain_matches_frontend_symbol_index(
+                      body_lower_arrow_domain_matches_frontend_symbol_index(
                         arrow: arrow,
                         module_tree: normalized,
                         fn_name: fn_name
@@ -153,6 +163,100 @@ fn wave1_gate1_a1_real_ingest_lowers_holds() -> Bool {
         Absent => false
       }
   }
+}
+
+fn wave1_gate1_a1_debug_module_qn_holds() -> Bool {
+  match wave1_gate1_a1_normalized_add_module() {
+    Absent => false
+    Present { value: normalized } =>
+      match qualified_name_from_module_node(root: normalized) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn wave1_gate1_a1_debug_param_lookup_holds() -> Bool {
+  match wave1_gate1_a1_parsed_add_module() {
+    Absent => false
+    Present { value: parsed } =>
+      match body_lower_find_captured(root: parsed, emitted: ^dag_surface_fn_decl) {
+        ParseSubtreeFound { captured: captured } =>
+          match body_lower_fn_decl_ident_from_captured(captured: captured) {
+            Absent => false
+            Present { value: fn_name } =>
+              match wave1_gate1_a1_normalized_add_module() {
+                Absent => false
+                Present { value: normalized } =>
+                  match qualified_name_from_module_node(root: normalized) {
+                    Accepted { value: module_qn, diagnostics: _ } =>
+                      match wave1_gate1_a1_find_arrow_in_module(root: normalized) {
+                        Absent => false
+                        Present { value: arrow } =>
+                          let fn_path = qualified_name_snoc(qn: module_qn, segment: fn_name)
+                          let idx = body_lower_frontend_symbol_index_from_module(tree: normalized)
+                          match body_lower_arrow_domain_binding_symbols(arrow: arrow) {
+                            Cons { head: binding, tail: _ } =>
+                              match symbol_index_lookup(
+                                index: idx,
+                                qualified_path: qualified_name_snoc(qn: fn_path, segment: binding)
+                              ) {
+                                Present { value: _ } => true
+                                Absent => false
+                              }
+                            Empty => false
+                          }
+                      }
+                    Rejected { diagnostics: _ } => false
+                  }
+              }
+          }
+        _ => false
+      }
+  }
+}
+
+test fn wave1_gate1_a1_debug_module_qn_witness_holds() -> Bool {
+  wave1_gate1_a1_debug_module_qn_holds()
+}
+
+fn wave1_gate1_a1_debug_fn_path_lookup_holds() -> Bool {
+  match wave1_gate1_a1_parsed_add_module() {
+    Absent => false
+    Present { value: parsed } =>
+      match body_lower_find_captured(root: parsed, emitted: ^dag_surface_fn_decl) {
+        ParseSubtreeFound { captured: captured } =>
+          match body_lower_fn_decl_ident_from_captured(captured: captured) {
+            Absent => false
+            Present { value: fn_name } =>
+              match wave1_gate1_a1_normalized_add_module() {
+                Absent => false
+                Present { value: normalized } =>
+                  match qualified_name_from_module_node(root: normalized) {
+                    Accepted { value: module_qn, diagnostics: _ } =>
+                      let fn_path = qualified_name_snoc(qn: module_qn, segment: fn_name)
+                      match symbol_index_lookup(
+                        index: body_lower_frontend_symbol_index_from_module(tree: normalized),
+                        qualified_path: fn_path
+                      ) {
+                        Present { value: _ } => true
+                        Absent => false
+                      }
+                    Rejected { diagnostics: _ } => false
+                  }
+              }
+          }
+        _ => false
+      }
+  }
+}
+
+test fn wave1_gate1_a1_debug_fn_path_lookup_witness_holds() -> Bool {
+  wave1_gate1_a1_debug_fn_path_lookup_holds()
+}
+
+test fn wave1_gate1_a1_debug_param_lookup_witness_holds() -> Bool {
+  wave1_gate1_a1_debug_param_lookup_holds()
 }
 
 fn wave1_gate1_a1_wrapper_retained_red_control_holds() -> Bool {
@@ -178,8 +282,8 @@ test fn wave1_gate1_a1_domain_construction_frontier_witness_holds() -> Bool {
   wave1_gate1_a1_domain_construction_frontier_holds()
 }
 
-test fn wave1_gate1_a1_symbol_index_frontend_blocked_red_control_witness_holds() -> Bool {
-  wave1_gate1_a1_symbol_index_frontend_blocked_red_control_holds()
+test fn wave1_gate1_a1_symbol_index_frontend_parity_witness_holds() -> Bool {
+  wave1_gate1_a1_symbol_index_frontend_parity_holds()
 }
 
 test fn wave1_gate1_a1_real_ingest_lowers_witness_holds() -> Bool {

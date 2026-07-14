@@ -19,6 +19,7 @@ import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
   grammar_formal_terminal_free,
+  grammar_formal_terminal_lexeme,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
   grammar_expr_optional,
@@ -1671,7 +1672,7 @@ fn dag_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_fn_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_fn),
-        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal_lexeme(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_param_list),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_fn_body)
       ]
@@ -1680,7 +1681,7 @@ fn dag_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_fn_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_fn),
-        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal_lexeme(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_param_list),
         grammar_formal_terminal(identity: ^dag_token_arrow),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
@@ -1691,7 +1692,7 @@ fn dag_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_fn_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_fn),
-        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal_lexeme(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_generic_params),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_param_list),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_fn_body)
@@ -1701,7 +1702,7 @@ fn dag_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_fn_decl,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_kw_fn),
-        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal_lexeme(identity: ^dag_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_generic_params),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_param_list),
         grammar_formal_terminal(identity: ^dag_token_arrow),
@@ -2691,7 +2692,7 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_ident),
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
       right: dag_grammar_sequence(
         left: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_generic_params)),
         right: dag_grammar_sequence(

@@ -90,15 +90,7 @@ type BodyLoweringDomainConstructionDisposition
   = BodyLoweringDomainParamListWalk
   | BodyLoweringDomainSymbolIndexResolved
 
-data body_lowering_domain_construction_disposition: BodyLoweringDomainConstructionDisposition = BodyLoweringDomainParamListWalk
-
-data body_lowering_domain_symbol_index_frontier_row: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
-  site: ^body_lower_domain_from_param_list,
-  disposition: SeedRetained {
-    reason: ^body_lowering_domain_param_list_walk_reason,
-    migration_trigger: ^migrate_when_fn_decl_ident_binding_terminal_lands
-  }
-}
+data body_lowering_domain_construction_disposition: BodyLoweringDomainConstructionDisposition = BodyLoweringDomainSymbolIndexResolved
 
 data body_lowering_interim_scaffold_row_match_hand_walker: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
   site: ^body_lower_try_match_from_node,
@@ -121,10 +113,7 @@ fn body_lowering_interim_scaffold_rows() -> List<BodyLoweringInterimScaffoldRow>
     head: body_lowering_interim_scaffold_row_match_hand_walker,
     tail: Cons {
       head: body_lowering_interim_scaffold_row_if_hand_walker,
-      tail: Cons {
-        head: body_lowering_domain_symbol_index_frontier_row,
-        tail: Empty
-      }
+      tail: Empty
     }
   }
 }
@@ -1510,6 +1499,15 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
   }
 }
 
+fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: fn_name }, target: arrow }
+    ]
+  )
+}
+
 fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
@@ -1532,21 +1530,29 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
                           match body_lower_return_type_from_fn_captured(captured: captured) {
                             Absent => body_lower_wrapper_retained_shell(shell: shell)
                             Present { value: return_type } =>
-                              outcome_accepted(
-                                value: node_synthetic(
-                                  kind: TypeNode { connective: Arrow },
-                                  children: [
-                                    Edge { label: Positional, target: domain },
-                                    Edge { label: Positional, target: return_type },
-                                    Edge { label: Positional, target: return_type },
-                                    Edge {
-                                      label: Named { name: ^arrow_body_edge },
-                                      target: reified_body
-                                    }
-                                  ]
-                                ),
-                                diagnostics: diagnostics_merge(outer: bd0, inner: bd)
-                              )
+                              match body_lower_fn_decl_ident_from_captured(captured: captured) {
+                                Absent => body_lower_wrapper_retained_shell(shell: shell)
+                                Present { value: fn_name } =>
+                                  let arrow = node_synthetic(
+                                    kind: TypeNode { connective: Arrow },
+                                    children: [
+                                      Edge { label: Positional, target: domain },
+                                      Edge { label: Positional, target: return_type },
+                                      Edge { label: Positional, target: return_type },
+                                      Edge {
+                                        label: Named { name: ^arrow_body_edge },
+                                        target: reified_body
+                                      }
+                                    ]
+                                  )
+                                  outcome_accepted(
+                                    value: body_lower_fn_decl_named_member_wrap(
+                                      arrow: arrow,
+                                      fn_name: fn_name
+                                    ),
+                                    diagnostics: diagnostics_merge(outer: bd0, inner: bd)
+                                  )
+                              }
                           }
                       }
                   }
