@@ -68,6 +68,15 @@ enum Commands {
         #[arg(long)]
         claim_run: bool,
     },
+
+    /// Apply a host's typed converge policy in-process
+    /// (`gunbc.fleet_converge_cli.converge_cli_run`) and print a
+    /// `converge-receipt` line on the byte-locked receipt grammar.
+    Converge {
+        /// Fleet host identity (e.g. "srv1") to converge
+        #[arg(long)]
+        host: String,
+    },
 }
 
 /// Recursively find all .dag files under a directory.
@@ -468,6 +477,10 @@ fn main() {
             claim_run,
         } => {
             cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);
+        }
+
+        Commands::Converge { host } => {
+            cli_run::handle_converge(host);
         }
     };
 }
