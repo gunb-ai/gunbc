@@ -1,0 +1,173 @@
+module v2.lens.live_read_classification
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import v2.lens.witness_cost_locality {
+  ModuleImportFact,
+  import_closure
+}
+import v2.std.algebra { contains, filter, fold_list, length, any }
+import v2.std.collection { List }
+import v2.std.live_tree {
+  LiveReadCarrierHome,
+  LiveReadCarrierKind,
+  LiveReadClassification,
+  LocalRead,
+  RuntimeRead,
+  FilesystemReadCarrier,
+  ModuleDeclarationFactsCarrier,
+  DeclFactsReflectionCarrier,
+  live_read_carrier_homes_v0
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data live_read_classification_law: String = "G1 (module-closure) live-read classification per docs/plans/live-read-witness-classification-design.md: proven runtime-read closure = import-closure walk from the witness entry module intersecting declared LiveReadCarrierHome rows. A hit means the evaluation may reach the live tree/host through a carrier import even when the witness entry file contains no filesystem_read or module_declaration_facts text — the masking-class root. Fail-closed at G1: carrier reachability without path patterns implies any non-empty touched path may affect the witness (CorpusScan / Unknown path envelope). Dissolve-on: G2 fn-arrow call reachability refines invocation shape and path sets."
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn carrier_home_module(home: LiveReadCarrierHome) -> String {
+  home.module
+}
+
+fn carrier_homes_in_closure(
+  closure_modules: List<String>,
+  carrier_homes: List<LiveReadCarrierHome>
+) -> List<LiveReadCarrierHome> {
+  filter(
+    xs: carrier_homes,
+    predicate: fn(home) {
+      contains(xs: closure_modules, item: carrier_home_module(home: home), eq: string_eq)
+    }
+  )
+}
+
+fn live_read_classification(
+  closure_modules: List<String>,
+  carrier_homes: List<LiveReadCarrierHome>
+) -> LiveReadClassification {
+  let hits = carrier_homes_in_closure(
+    closure_modules: closure_modules,
+    carrier_homes: carrier_homes
+  )
+  if length(xs: hits) == 0 {
+    LocalRead
+  } else {
+    RuntimeRead { carrier_homes: hits }
+  }
+}
+
+fn live_read_classification_from_facts(
+  entry_module: String,
+  facts: List<ModuleImportFact>,
+  carrier_homes: List<LiveReadCarrierHome>
+) -> LiveReadClassification {
+  live_read_classification(
+    closure_modules: import_closure(root: entry_module, facts: facts),
+    carrier_homes: carrier_homes
+  )
+}
+
+fn live_read_classification_from_facts_v0(
+  entry_module: String,
+  facts: List<ModuleImportFact>
+) -> LiveReadClassification {
+  live_read_classification_from_facts(
+    entry_module: entry_module,
+    facts: facts,
+    carrier_homes: live_read_carrier_homes_v0
+  )
+}
+
+fn classification_is_local(classification: LiveReadClassification) -> Bool {
+  match classification {
+    LocalRead => true
+    RuntimeRead { carrier_homes: _ } => false
+  }
+}
+
+fn classification_has_runtime_read(classification: LiveReadClassification) -> Bool {
+  !classification_is_local(classification: classification)
+}
+
+fn classification_has_corpus_scan_carrier(classification: LiveReadClassification) -> Bool {
+  match classification {
+    LocalRead => false
+    RuntimeRead { carrier_homes: homes } =>
+      any(
+        xs: homes,
+        predicate: fn(home) {
+          match home.kind {
+            ModuleDeclarationFactsCarrier => true
+            DeclFactsReflectionCarrier => true
+            FilesystemReadCarrier => false
+          }
+        }
+      )
+  }
+}
+
+fn classification_has_filesystem_read_carrier(classification: LiveReadClassification) -> Bool {
+  match classification {
+    LocalRead => false
+    RuntimeRead { carrier_homes: homes } =>
+      any(
+        xs: homes,
+        predicate: fn(home) {
+          match home.kind {
+            FilesystemReadCarrier => true
+            ModuleDeclarationFactsCarrier => false
+            DeclFactsReflectionCarrier => false
+          }
+        }
+      )
+  }
+}
+
+fn runtime_read_carrier_module_names(classification: LiveReadClassification) -> List<String> {
+  match classification {
+    LocalRead => []
+    RuntimeRead { carrier_homes: homes } =>
+      fold_list(xs: homes, empty: [], cons: fn(acc, home) {
+        if contains(xs: acc, item: home.module, eq: string_eq) {
+          acc
+        } else {
+          concat(acc, [home.module])
+        }
+      })
+  }
+}
+
+fn string_is_empty(s: String) -> Bool {
+  s == ""
+}
+
+fn runtime_read_touched_by_path_g1(
+  classification: LiveReadClassification,
+  touched_path: String
+) -> Bool {
+  if string_is_empty(s: touched_path) {
+    false
+  } else {
+    match classification {
+      LocalRead => false
+      RuntimeRead { carrier_homes: _ } => true
+    }
+  }
+}
+
+fn runtime_read_touched_by_paths_g1(
+  classification: LiveReadClassification,
+  touched_paths: List<String>
+) -> Bool {
+  any(
+    xs: touched_paths,
+    predicate: fn(p) { runtime_read_touched_by_path_g1(classification: classification, touched_path: p) }
+  )
+}
