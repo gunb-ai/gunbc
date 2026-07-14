@@ -1,17 +1,5 @@
 module gunbc.srv3_seeded_install_media
 
-import extdeps.os.ubuntu_seeded_install_media_remaster {
-<<<<<<< HEAD
-  install_media_remaster_reconcile,
-  InstallMediaRemasterOutcome,
-  InstallMediaRemasterAlreadyPresent,
-  InstallMediaRemasterRemastered,
-  InstallMediaRemasterRefused,
-=======
-  install_media_remaster_script_applies_grub_cmdline,
-  install_media_remaster_bash_emit_dissolution_trigger,
->>>>>>> origin/main
-}
 import extdeps.os.ubuntu_seeded_install_media_toolchain {
   install_media_remaster_toolchain_requirement,
   install_media_remaster_toolchain_is_complete,
@@ -44,7 +32,7 @@ data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = Terminal {
 }
 
 data srv3_seeded_install_media_remaster_scaffold: Disposition = Terminal {
-  reason: "srv3_seeded_install_media_remaster() calls install_media_remaster_reconcile() directly - no shell script is built, serialized, or run"
+  reason: "srv3_seeded_install_media_remaster() routes through host_effect_apply to install_media_remaster_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
 data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = Scaffold {
@@ -86,20 +74,6 @@ func srv3_seeded_install_media_toolchain_ensure() -> ProcessExit
 func srv3_seeded_install_media_remaster() -> ProcessExit
   uses net: Network
 {
-<<<<<<< HEAD
-  let ensure_script = install_media_remaster_toolchain_ensure_script()
-  let ensure_run = shell.Exec.Run(script: shell_exec_via_bash(body: ensure_script))
-  if ensure_run.success == false {
-    return exit_failure(reason: concat("seeded-install-media-remaster: toolchain ensure failed: ", ensure_run.stderr))
-  }
-
-  let outcome = install_media_remaster_reconcile(artifact: srv3_seeded_install_media_artifact)
-  match outcome {
-    InstallMediaRemasterAlreadyPresent { path: _ } => ExitSuccess
-    InstallMediaRemasterRemastered { path: _ } => ExitSuccess
-    InstallMediaRemasterRefused { reason: reason } =>
-      exit_failure(reason: concat("seeded-install-media-remaster: ", reason as String))
-=======
   let ensure_exit = srv3_reconciliation_to_process_exit(
     r: srv3_seeded_install_media_toolchain_ensure_apply(),
     failure_prefix: "seeded-install-media-remaster: toolchain ensure failed: ",
@@ -107,7 +81,6 @@ func srv3_seeded_install_media_remaster() -> ProcessExit
   match ensure_exit {
     ExitSuccess => {}
     _ => return ensure_exit
->>>>>>> origin/main
   }
   srv3_reconciliation_to_process_exit(
     r: srv3_seeded_install_media_remaster_apply(),
