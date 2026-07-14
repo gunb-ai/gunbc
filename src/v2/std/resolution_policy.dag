@@ -4,8 +4,6 @@ type NameResolutionPolicy
   = ImportScoped
   | NamespaceOnlyY
 
-data namespace_only_import_admission_note: String = "Phase-3 prep (nimble-boar-198): under NamespaceOnlyY, admit_imports is skipped — parsed import decls are inert for v2 resolve. Cross-module bare names fall through to symbol_index_lexical_lookup then symbol_index_global_unique_lookup (globally-unique leaf only). Corpus strip + grammar deletion remain gated on v1 compile-global-unique fallback."
-
 fn default_name_resolution_policy() -> NameResolutionPolicy {
   NamespaceOnlyY
 }
