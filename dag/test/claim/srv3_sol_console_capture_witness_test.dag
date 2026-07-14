@@ -3,8 +3,8 @@ module test.claim.srv3_sol_console_capture
 import gunbc.srv3_sol_console_capture {
   srv3_sol_console_capture_log_path_is_declared,
   srv3_sol_console_capture_carries_dissolution_trigger,
-  srv3_sol_console_capture_intent,
 }
+import gunbc.srv3_sol_console_intent { srv3_sol_console_capture_intent }
 import extdeps.bmc.serial_console {
   ObmcConsoleCli,
   RedfishSerialInterface,

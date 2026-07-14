@@ -3,7 +3,7 @@ module extdeps.version.semver
 import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.integer { NonNegativeInt }
-import std.list { List }
+import std.types { List }
 import std.nat { nat_compare }
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }

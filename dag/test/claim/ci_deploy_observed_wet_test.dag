@@ -9,6 +9,10 @@ import gunbc.ci_deploy_access {
   deploy_access_decision_reason,
   Permit,
   Deny,
+}
+import gunbc.fleet_posix_accounts {
+  FleetAccountCiRunner,
+  fleet_posix_principal,
   grounded_posix_principal_name,
 }
 
