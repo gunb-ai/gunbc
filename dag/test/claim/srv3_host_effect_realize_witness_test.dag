@@ -9,6 +9,9 @@ import gunbc.host_effect {
   host_effect_read_evidence,
   host_effect_identity_evidence,
   LocalShell,
+  EmitArtifactThenThinRun,
+  BootstrapFragment,
+  ThinInvocation,
 }
 import gunbc.host_effect_realize { host_effect_apply }
 import gunbc.srv3_os_install_diagnostic { srv3_os_install_attempt_intent }
@@ -46,6 +49,22 @@ test fn os_install_actuator_toolchain_ensure_rejects_bmc_controller_target() -> 
   ) {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "OsInstallActuatorToolchainEnsure")
+    _ => false
+  }
+}
+
+test fn os_install_actuator_toolchain_ensure_rejects_emit_artifact_transport() -> Bool {
+  match host_effect_apply(
+    target: HostOs { node: srv1_host },
+    effect: OsInstallActuatorToolchainEnsure {},
+    evidence: host_effect_identity_evidence,
+    transport: EmitArtifactThenThinRun {
+      bootstrap: BootstrapFragment { script: "true" },
+      invocation: ThinInvocation { argv: ["true"] },
+    },
+  ) {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "EmitArtifactThenThinRun")
     _ => false
   }
 }
