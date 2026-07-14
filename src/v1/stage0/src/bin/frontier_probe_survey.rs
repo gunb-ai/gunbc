@@ -236,9 +236,12 @@ fn unknown_probe_row(module_path: &str, cause: &str) -> ProbeReceiptRow {
 
 fn write_probe_overlay_manifest(module_path: &str, ingest_manifest: &Path) -> Result<(), String> {
     let escaped = module_path.replace('\\', "/");
-    let append = format!(
-        "\nimport v2.std.text {{ String }}\n\ndata frontier_probe_entry_module_path: String = \"{escaped}\"\n"
-    );
+    // The emitted ingest manifest already imports `String` in its header block
+    // (`host_source_root_ingest_content_hash: String`), and post-namespace-wave the
+    // grammar accepts imports ONLY in the header — a trailing `import` at EOF is now a
+    // parse error ("expected item declaration"). Append the `data` decl alone; String
+    // is already in scope.
+    let append = format!("\ndata frontier_probe_entry_module_path: String = \"{escaped}\"\n");
     let mut body =
         fs::read_to_string(ingest_manifest).map_err(|e| format!("read ingest manifest: {e}"))?;
     if body.contains("frontier_probe_entry_module_path") {

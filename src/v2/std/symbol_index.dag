@@ -15,14 +15,32 @@ import v2.std.collection {
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_snoc }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_init,
+  qualified_name_last_segment,
+  qualified_name_snoc
+}
+
+type GlobalBareBindingState
+  = GlobalBareUnique { node: Node, path: QualifiedName }
+  | GlobalBareAmbiguous
+
+type GlobalBareLookup
+  = GlobalBareHit { node: Node }
+  | GlobalBareLookupAmbiguous
+  | GlobalBareLookupUnbound
 
 type SymbolIndex {
   entries: Map<QualifiedName, Node>
+  global_bare: Map<Symbol, GlobalBareBindingState>
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map() }
+  SymbolIndex {
+    entries: empty_map(),
+    global_bare: empty_map()
+  }
 }
 
 fn symbol_index_lookup(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
@@ -32,9 +50,69 @@ fn symbol_index_lookup(index: SymbolIndex, qualified_path: QualifiedName) -> Opt
   }
 }
 
+fn symbol_index_track_global_bare(
+  index: SymbolIndex,
+  qualified_path: QualifiedName,
+  resolved: Node
+) -> SymbolIndex {
+  match qualified_name_last_segment(qn: qualified_path) {
+    Absent => index
+    Present { value: leaf } =>
+      match map_get(index.global_bare, leaf) {
+        Accepted { value: opt, diagnostics: _ } => match opt {
+          Present { value: GlobalBareAmbiguous } => index
+          Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
+            if existing_path == qualified_path && existing == resolved {
+              index
+            } else {
+              SymbolIndex {
+                entries: index.entries,
+                global_bare: map_insert(
+                  m: index.global_bare,
+                  key: leaf,
+                  value: GlobalBareAmbiguous
+                )
+              }
+            }
+          Absent =>
+            SymbolIndex {
+              entries: index.entries,
+              global_bare: map_insert(
+                m: index.global_bare,
+                key: leaf,
+                value: GlobalBareUnique { node: resolved, path: qualified_path }
+              )
+            }
+        }
+        Rejected { diagnostics: _ } => index
+      }
+  }
+}
+
 fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolved: Node) -> SymbolIndex {
-  SymbolIndex {
-    entries: map_insert(m: index.entries, key: qualified_path, value: resolved)
+  let with_entry = SymbolIndex {
+    entries: map_insert(
+      m: index.entries,
+      key: qualified_path,
+      value: resolved
+    ),
+    global_bare: index.global_bare
+  }
+  symbol_index_track_global_bare(
+    index: with_entry,
+    qualified_path: qualified_path,
+    resolved: resolved
+  )
+}
+
+fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
+  match map_get(index.global_bare, name) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: GlobalBareUnique { node: n, path: _ } } => GlobalBareHit { node: n }
+      Present { value: GlobalBareAmbiguous } => GlobalBareLookupAmbiguous
+      Absent => GlobalBareLookupUnbound
+    }
+    Rejected { diagnostics: _ } => GlobalBareLookupUnbound
   }
 }
 

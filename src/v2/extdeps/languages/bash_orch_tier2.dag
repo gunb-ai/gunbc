@@ -1,0 +1,134 @@
+module v2.extdeps.languages.bash_orch_tier2
+
+import v2.std.compilers.lexing { LexRules, phrase, phrase_to_lex_rules, span }
+import v2.std.compilers.target_model {
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
+  TargetModel
+}
+import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.extdeps.languages.bash {
+  bash_conj_emitted_from_tokens,
+  bash_relation_translation_rules_node,
+  bash_make_bound_tokens_target_model,
+  bash_stmt_assign_target_model
+}
+
+fn bash_orch_procedure_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_procedure_name },
+    FixedToken { token_class: ^bash_token_orch_procedure_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_procedure_body },
+    FixedToken { token_class: ^bash_token_orch_procedure_close }
+  ]
+}
+
+data bash_orch_procedure_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_orch_procedure_tokens()
+)
+
+fn bash_orch_procedure_source_text(name: String, body: String) -> String {
+  concat(name, concat("() {\n  ", concat(body, "\n}")))
+}
+
+fn bash_orch_procedure_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "() {\n  ", class: ^bash_token_orch_procedure_open),
+    span(text: "\n}", class: ^bash_token_orch_procedure_close)
+  ]))
+}
+
+fn bash_orch_procedure_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_orch_procedure,
+    lhs: ^bash_production_orch_procedure,
+    tokens: bash_orch_procedure_tokens(),
+    emitted: bash_orch_procedure_emitted
+  )
+}
+
+fn bash_orch_procedure_binding_spellings(name: String, body: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_orch_procedure_name, name),
+    ^bash_orch_procedure_body, body
+  )
+}
+
+fn bash_orch_procedure_target_model(name: String, body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_orch_procedure_translation_rules_node(),
+    source_literal: ^bash_orch_procedure_source_literal,
+    production_name: ^bash_production_orch_procedure,
+    tokens: bash_orch_procedure_tokens(),
+    source_text: bash_orch_procedure_source_text(name: name, body: body),
+    lex: bash_orch_procedure_lex(),
+    binding_spellings: bash_orch_procedure_binding_spellings(name: name, body: body)
+  )
+}
+
+fn bash_orch_call_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_call_spelling }
+  ]
+}
+
+data bash_orch_call_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_orch_call_tokens()
+)
+
+fn bash_orch_call_source_text(spelling: String) -> String {
+  spelling
+}
+
+fn bash_orch_call_lex(spelling: String) -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: spelling, class: ^bash_token_orch_raw)
+  ]))
+}
+
+fn bash_orch_call_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_orch_call,
+    lhs: ^bash_production_orch_call,
+    tokens: bash_orch_call_tokens(),
+    emitted: bash_orch_call_emitted
+  )
+}
+
+fn bash_orch_call_binding_spellings(spelling: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_orch_call_spelling, spelling)
+}
+
+fn bash_orch_call_target_model(spelling: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_orch_call_translation_rules_node(),
+    source_literal: ^bash_orch_call_source_literal,
+    production_name: ^bash_production_orch_call,
+    tokens: bash_orch_call_tokens(),
+    source_text: bash_orch_call_source_text(spelling: spelling),
+    lex: bash_orch_call_lex(spelling: spelling),
+    binding_spellings: bash_orch_call_binding_spellings(spelling: spelling)
+  )
+}
+
+fn orch_procedure_target_model(name: String, body: String) -> TargetModel {
+  bash_orch_procedure_target_model(name: name, body: body)
+}
+
+fn orch_call_target_model(callee: String, args_spelling: String) -> TargetModel {
+  bash_orch_call_target_model(spelling: concat(callee, concat(" ", args_spelling)))
+}
+
+fn orch_cmdsubst_assign_target_model(name: String, body: String) -> TargetModel {
+  bash_stmt_assign_target_model(
+    name: name,
+    value: concat("\"$(", concat(body, ")\""))
+  )
+}
+
+fn orch_let_assign_target_model(name: String, value: String) -> TargetModel {
+  bash_stmt_assign_target_model(name: name, value: value)
+}
