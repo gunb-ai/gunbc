@@ -1,0 +1,92 @@
+module gunbc.host_effect_nbd_proxy_serve
+
+import std.types { String, NonEmptyStr, Int }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.temporal_effect { TemporalEffectPolicy, HeldSessionLease }
+import extdeps.bmc.webui.nbd_proxy_serve {
+  NbdProxyServeTransportIntent,
+  nbd_proxy_serve_program,
+}
+import extdeps.languages.bash.program { serialize_bash }
+import gunbc.session_lease { ProcessPortScope }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.srv3_actuate_shell_paths {
+  srv3_bmcweb_token_path,
+  srv3_nbd_proxy_serve_script_path,
+}
+
+data host_effect_nbd_proxy_serve_dissolution_trigger: String = "🟡 dissolve-on: host_effect_nbd_proxy_serve — concat-built wrapper export-token+bash path and serialize_bash transport for Srv3NbdProxyServe realize-layer long-running session (P6 Part 2; relocated from srv3_host_effect_script); DISSOLVES WHEN bash-emit (#5828 / shell-emission slice0) realizes Srv3NbdProxyServe through typed argv invocations / grammar-emitted nodes and host_effect_nbd_proxy_serve_script retires without concat-built transport strings; retire medium_structure_exception_roster entry for dag/gunbc/host_effect_nbd_proxy_serve.dag. Wave 4 residue (shell→dag census §1C category C)."
+
+data host_effect_nbd_proxy_serve_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect_nbd_proxy_serve",
+    decl_name: "host_effect_nbd_proxy_serve_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data nbd_proxy_serve_expected_owner_label: NonEmptyStr = "gunbc-nbd-proxy" as NonEmptyStr
+
+data nbd_proxy_serve_expected_process_fingerprint: NonEmptyStr = "gunbc-nbd-proxy" as NonEmptyStr
+
+fn host_effect_nbd_proxy_serve_session_policy(lease_key: NonEmptyStr) -> TemporalEffectPolicy {
+  HeldSessionLease { lease_key: lease_key }
+}
+
+fn host_effect_nbd_proxy_serve_session_policy_is_held_lease(lease_key: NonEmptyStr) -> Bool {
+  match host_effect_nbd_proxy_serve_session_policy(lease_key: lease_key) {
+    HeldSessionLease { lease_key: lk } => lk == lease_key
+    PureRead => false
+    CreateIfAbsent { content_key: _ } => false
+    ReplaceIfStale { content_key: _ } => false
+    UpsertScope { scope_key: _ } => false
+    DestructiveOnce { approval_id: _, idempotency_key: _ } => false
+  }
+}
+
+fn host_effect_nbd_proxy_serve_session_scope(intent: NbdProxyServeTransportIntent) -> ProcessPortScope {
+  ProcessPortScope {
+    listen_port: intent.local_nbd_port,
+    expected_owner_label: nbd_proxy_serve_expected_owner_label,
+    expected_process_fingerprint: nbd_proxy_serve_expected_process_fingerprint,
+  }
+}
+
+fn host_effect_nbd_proxy_serve_script(intent: NbdProxyServeTransportIntent) -> String {
+  serialize_bash(p: nbd_proxy_serve_program(intent: intent))
+}
+
+fn host_effect_nbd_proxy_serve_wrapper_script(intent: NbdProxyServeTransportIntent) -> String {
+  concat(
+    concat(
+      concat("export BMCWEB_SESSION_TOKEN=$(cat ", srv3_bmcweb_token_path),
+      "); bash ",
+    ),
+    srv3_nbd_proxy_serve_script_path,
+  )
+}
+
+type NbdProxyServeSessionBinding {
+  intent: NbdProxyServeTransportIntent
+  lease_key: NonEmptyStr
+  scope: ProcessPortScope
+  policy: TemporalEffectPolicy
+}
+
+fn host_effect_nbd_proxy_serve_session_binding(
+  intent: NbdProxyServeTransportIntent,
+  lease_key: NonEmptyStr,
+) -> NbdProxyServeSessionBinding {
+  NbdProxyServeSessionBinding {
+    intent: intent,
+    lease_key: lease_key,
+    scope: host_effect_nbd_proxy_serve_session_scope(intent: intent),
+    policy: host_effect_nbd_proxy_serve_session_policy(lease_key: lease_key),
+  }
+}
+
+fn host_effect_nbd_proxy_serve_apply_script(binding: NbdProxyServeSessionBinding) -> String {
+  shell_exec_via_bash(body: host_effect_nbd_proxy_serve_wrapper_script(intent: binding.intent))
+}
