@@ -7,8 +7,6 @@ import extdeps.languages.bash.program {
   ShellStmt,
   ShellWord,
   Redir,
-  serialize_stmt,
-  single_quote,
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -443,10 +441,6 @@ fn bash_program_stmt_spelling(stmt: ShellStmt) -> Outcome<String> {
         }
       )
   }
-}
-
-fn bash_program_serialize_stmt_direct(stmt: ShellStmt) -> Outcome<String> {
-  Accepted { value: serialize_stmt(s: stmt), diagnostics: None }
 }
 
 fn bash_program_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {
