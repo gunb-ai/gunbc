@@ -1,54 +1,5 @@
 module gunbc.node_http_server_emit
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
-import std.http_path { PathTemplate, LiteralToken, ParamToken }
-import std.markup { MarkupNode }
-import extdeps.uri_path {
-  ParsedPathTemplate,
-  MalformedPathTemplate,
-  parse_path_template,
-}
-import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import extdeps.http.server {
-  HttpServerListenConfig,
-  ServedStaticRoute,
-  ServedStaticRouteTable,
-  HttpContentType,
-  TextHtmlUtf8,
-  http_content_type_wire_label,
-}
-import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
-import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
-import gunbc.roadmap_static_site { roadmap_site_text_static_routes }
-import extdeps.languages.typescript.program {
-  TsProgram,
-  TsExpr,
-  TsStmt,
-  serialize_typescript_program,
-  ts_ident,
-  ts_lit_str,
-  ts_lit_backtick,
-  ts_lit_num,
-  ts_lit_regex,
-  ts_member,
-  ts_call,
-  ts_binop,
-  ts_field,
-  ts_quoted_field,
-  ts_object,
-  ts_array,
-  ts_arrow,
-  ts_block,
-  ts_const,
-  ts_expr_stmt,
-  ts_return,
-  ts_if,
-  ts_for_of,
-  ts_index,
-  ts_cond,
-  ts_prefix,
-  ts_spread,
-}
 
 type NodeHttpStaticServerSpec {
   service_name: String

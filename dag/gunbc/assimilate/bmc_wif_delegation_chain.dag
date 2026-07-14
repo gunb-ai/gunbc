@@ -1,24 +1,5 @@
 module gunbc.assimilate.bmc_wif_delegation_chain
 
-import std.types { NonEmptyStr, String, List }
-import extdeps.cloud.gcp.gcp { WifPool, WifProvider, ServiceAccountEmail, wif_provider_resource }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import extdeps.cloud.gcp.iam { GcpBinding }
-import gunbc.auth.secret_access_grant {
-  SecretAccessGrant, GrantPrincipal, GrantPrincipalCondition,
-  Signed, Unsigned, DeclaredInModel, AppliedOutOfBand,
-  signed_grants_only, signed_grant_bindings
-}
-import gunbc.assimilate.bmc_token_federation {
-  bmc_secrets_project_id,
-  bmc_secrets_project_number,
-  bmc_srv3_secret_name,
-  bmc_assimilator_sa_email,
-  bmc_wif_pool,
-  bmc_wif_provider,
-  bmc_wif_attribute_condition,
-  bmc_token_smoke_job
-}
 
 data bmc_srv3_admin_secret_ref: SecretRef = SecretRef {
   project: bmc_secrets_project_id,

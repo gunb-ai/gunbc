@@ -577,11 +577,30 @@ fn callable_inferred(n: Node) -> Node {
   let is_callable = n.params |> count > 0
   if is_callable {
     match n.inferred {
-      Present { value: Resolved { node: ret } } => ret
+      Present { value: Resolved { node: ret } } =>
+        if ret.connective == Arrow { ret } else { make_callable_type(func_params: n.params, ret: ret) }
       Absent => error_type
       _ => error_type
     }
   } else { n }
+}
+
+fn callable_return_type(n: Node) -> Node {
+  match callable_inferred(n: n).inferred {
+    Present { value: Resolved { node: callable } } =>
+      match callable.inferred {
+        Present { value: Resolved { node: ret } } => ret
+        _ => error_type
+      }
+    _ => error_type
+  }
+}
+
+fn value_binding_expr_type_node(resolved: Node) -> Node {
+  match resolved.inferred {
+    Present { value: Resolved { node: ty } } => ty
+    _ => resolved
+  }
 }
 
 fn normalize_access_type_node(n: Node) -> Node {

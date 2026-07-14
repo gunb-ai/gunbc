@@ -1,31 +1,5 @@
 module gunbc.network_identity_subsumption
 
-import std.types { NonEmptyStr, Bool, List, String }
-import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.dhcp.v4 {
-  DhcpLeaseObservation,
-  DhcpClientHostNameOption12,
-  DynamicDhcpLease,
-  StaticDhcpReservation,
-  Active,
-  Inactive,
-  Expired,
-  MacAddress,
-  Ipv4Address,
-  dhcp_lease_remaining_from_cited_minutes,
-}
-import extdeps.dns.domain_name {
-  HostName,
-  DomainName,
-  DnsLabel,
-  PartiallyQualified,
-  domain_name_wire,
-}
-import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow, Cr1000aDhcpLeaseTable }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.deployed_intent_v1 { deployed_intent_v1_desired_hostname_short }
 
 data gunbc_network_identity_subsumption_scope_disposition: Disposition = Terminal {
   reason: "Slice-1 network-identity subsumption: DHCP option-12 dynamic lease client_hostname short label must subsume fleet_intent HostIdentity slot — discriminates BMC static reservation labels (operator-typed) from OS self-report (option-12). Pre-install: no dynamic row subsumes srv3; post-install: dynamic row with hostname srv3 subsumes operator_host_srv3."

@@ -1,45 +1,5 @@
 module gunbc.runner_deploy_emit
 
-import gunbc.ci_runner_placement {
-  RunnerDeploymentPlan,
-  PlanDerived,
-  PlanUnsound,
-  RunnerHostDeployment,
-  runner_deployment_plan,
-  SessionReservationPlan,
-  SessionReservationDerived,
-  SessionReservationUnsound,
-  SessionHostReservation,
-  session_reservation_plan,
-  OperatingPointRow,
-  operating_curve,
-  WorkloadClass,
-  BatchLatencyTolerant,
-  InteractiveLatencySensitive,
-  workload_class_cpu_weight,
-}
-import gunbc.ci_floor_measurement {
-  SessionReservationMode,
-  Regime2AggregateOomd,
-  Regime1WorstCase,
-  SessionReservationModeUnset,
-  SessionAggregateMeasured,
-  SessionAggregateUnmeasured,
-  gunbc_ci_session_reservation_mode,
-}
-import gunbc.ci_fleet { fleet_intent_offers }
-import gunbc.oomd_install { gunbc_oomd_sessions_policy }
-import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
-import std.measure { byte_size_count, hardware_thread_count_value, percent_count }
-import std.types { String, List, Bool }
-import std.layout {
-  Doc, DocConcat, DocLine,
-  LayoutProtocol,
-  doc_text, doc_concat, doc_line_of,
-  render
-}
-import std.languages { SerializationKnobs, SerialField, SerialValue, ScalarValue, json_record_knobs }
-import std.serialize { serial_scalar, serial_field, serialize_fields_doc, serialize_record_doc }
 
 data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 

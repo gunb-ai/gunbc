@@ -1,21 +1,5 @@
 module gunbc.ci_failure_class
 
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.types { ContentHash, String }
-import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.runtime.errno { PosixErrno, EAGAIN, errno_strerror }
-import extdeps.rust.std_process { StdProcessSpawnOutcome, SpawnFailed, spawn_outcome_log_fragment }
-import extdeps.cache.sccache {
-  sccache_fatal_error_log_fragment,
-  sccache_rustc_wrapper_exit_254_log_fragment,
-  sccache_failed_to_execute_compile_log_fragment
-}
-import extdeps.github.ci_runner { RunnerLifecycleSignal, ShutdownReceived, runner_lifecycle_log_fragment }
-import gunbc.merge_admission {
-  MergeAdmissionReceipt,
-  merge_admission_would_block,
-}
 
 type InfraSignature
   = ResourceTemporarilyUnavailable

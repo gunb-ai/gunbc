@@ -1,18 +1,5 @@
 module gunbc.roadmap_emit
 
-import std.markdown {
-  MarkdownDocument, MarkdownBlock, MarkdownInline, HeadingBlock, ParagraphBlock, TaskListBlock,
-  UnorderedListBlock, MarkdownListItem,
-  MarkdownTaskItem, StrongInline, TextInline, LinkInline, H2, Checked, Unchecked,
-}
-import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, Pointer,
-  RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
-  SectionElement, Prose, Group, SectionProse, SectionGroup,
-}
-
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done, signoff_accepts, signoff_by }
-import ctrl.process_algebra { ProcessNodeId }
 
 fn roadmap_max_depth() -> Int { 8 }
 

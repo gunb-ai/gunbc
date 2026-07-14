@@ -63,6 +63,8 @@ import v1.compiler.infer_types {
   resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
   bare_map_node, bare_set_node,
   callable_inferred,
+  callable_return_type,
+  value_binding_expr_type_node,
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   is_declared_container_alias_spelling, structural_carrier_template_name,
@@ -85,7 +87,8 @@ import v1.compiler.infer_env {
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
-  GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding
+  GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
+  global_bare_lookup
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -489,6 +492,26 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
   make_expr_error_node(kind: InternalExprError, message: message, span: span)
 }
 
+fn find_global_variant_parent_enum(env: TypeEnv, arm_name: String) -> String? {
+  let parents = fold(env.global_bare |> map_values, init: [], f: (acc, state) =>
+    match state {
+      GlobalBareUniqueBinding { binding: parent_binding } =>
+        if parent_binding.resolved.connective == Disj && has_child_named(n: parent_binding.resolved, name: arm_name, source_indices: env.source_indices) {
+          list_push(acc, parent_binding.name)
+        } else { acc }
+      GlobalBareAmbiguousBinding => acc
+    }
+  )
+  match parents |> count {
+    1 =>
+      match parents |> first {
+        Present { value: p } => Present { value: p }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
 
   match map_get(scope.locals, name) {
@@ -503,7 +526,7 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
           } else { none }
         Absent => none
       }
-    Absent => none
+    Absent => find_global_variant_parent_enum(env: scope.type_env, arm_name: name)
   }
 }
 
@@ -1392,6 +1415,40 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               ))
           }
         Absent =>
+          match global_bare_lookup(env: scope.type_env, name: name) {
+            Present { value: binding } =>
+              match find_global_variant_parent_enum(env: scope.type_env, arm_name: name) {
+                Present { value: parent_enum } =>
+                  ok_infer(texpr: make_named_expr_node(
+                    name: name,
+                    expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: parent_enum } } },
+                    children: [],
+                    inferred: Present { value: Resolved { node: binding.resolved } },
+                    span: span,
+                    name_span: span
+                  ))
+                Absent =>
+                  if binding.resolved.params |> count > 0 {
+                    ok_infer(texpr: make_named_expr_node(
+                      name: name,
+                      expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
+                      children: [],
+                      inferred: Present { value: Resolved { node: callable_inferred(n: binding.resolved) } },
+                      span: span,
+                      name_span: span
+                    ))
+                  } else {
+                    ok_infer(texpr: make_named_expr_node(
+                      name: name,
+                      expr_data: ExprVar { binding_kind: Present { value: LocalValueBinding } },
+                      children: [],
+                      inferred: Present { value: Resolved { node: value_binding_expr_type_node(resolved: binding.resolved) } },
+                      span: span,
+                      name_span: span
+                    ))
+                  }
+              }
+            Absent =>
           match lookup_func_sig(func_env: scope.func_env, name: name) {
             Present { value: fsig } =>
               if (fsig.params |> count) == 0 {
@@ -1430,6 +1487,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                   module_name: scope.module_name
                 )]
               }
+          }
           }
       }
 
@@ -1860,14 +1918,20 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Present { value: binding } =>
               if binding.resolved.params |> count > 0 { Present { value: binding.resolved } }
               else { none }
-            Absent => none
+            Absent =>
+              match global_bare_lookup(env: scope.type_env, name: func_name) {
+                Present { value: binding } =>
+                  if binding.resolved.params |> count > 0 { Present { value: binding.resolved } }
+                  else { none }
+                Absent => none
+              }
           }
           if callable_local != none {
             let callable_type = match callable_local {
               Present { value: ct } => ct
               Absent => error_type
             }
-            let resolved_type = callable_inferred(n: callable_type)
+            let resolved_type = callable_return_type(n: callable_type)
             InferResult {
               typed: make_named_expr_node(
                 name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
@@ -5785,9 +5849,97 @@ fn census_insert_item(census: Map<String, GlobalBareLookupState>, item: Node, so
   }
 }
 
+fn census_binding_for_fn_decl(item: Node, source_indices: Map<String, NewlineIndex>) -> TypeBinding? {
+  if item.body != none && item.transport == none && (item.connective == NoConnective) {
+    let inferred = match item.inferred {
+      Present { value: _ } => item.inferred
+      Absent =>
+        match item.type_annotation {
+          Present { value: ta } => Present { value: Resolved { node: ta } }
+          Absent => none
+        }
+    }
+    match inferred {
+      Absent => none
+      Present { value: _ } =>
+        let bare_node = Node {
+          name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+          connective: NoConnective, params: item.params, inferred: inferred,
+          return_cardinality: item.return_cardinality,
+          uses: [], body: none, transport: none, properties: [],
+          type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+        }
+        Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown } }
+    }
+  } else { none }
+}
+
+fn census_disj_source_node(item: Node) -> Node? {
+  if (item.connective == Disj) {
+    Present { value: item }
+  } else {
+    match item.inferred {
+      Present { value: Resolved { node: n } } =>
+        if (n.connective == Disj) { Present { value: n } } else { none }
+      _ => none
+    }
+  }
+}
+
+fn census_arm_binding_for_census(arm: Node, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
+  match local_binding_for_item(item: arm, source_indices: source_indices) {
+    Present { value: binding } => binding
+    Absent => nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: arm))
+  }
+}
+
+fn census_insert_coproduct_arms(census: Map<String, GlobalBareLookupState>, item: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
+  match census_disj_source_node(item: item) {
+    Absent => census
+    Present { value: disj } =>
+      fold(disj.children, init: census, f: (acc, arm) =>
+        census_insert_binding(census: acc, binding: census_arm_binding_for_census(arm: arm, source_indices: source_indices))
+      )
+  }
+}
+
+fn census_insert_module_item(census: Map<String, GlobalBareLookupState>, item: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
+  let after_type = census_insert_item(census: census, item: item, source_indices: source_indices)
+  let after_arms = census_insert_coproduct_arms(census: after_type, item: item, source_indices: source_indices)
+  match census_binding_for_fn_decl(item: item, source_indices: source_indices) {
+    Present { value: fn_binding } => census_insert_binding(census: after_arms, binding: fn_binding)
+    Absent => after_arms
+  }
+}
+
+fn census_flag_arm_collision(census: Map<String, GlobalBareLookupState>, arm: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
+  let binding = census_arm_binding_for_census(arm: arm, source_indices: source_indices)
+  match map_get(census, binding.name) {
+    Present { value: GlobalBareUniqueBinding { binding: existing } } =>
+      if existing.resolved == binding.resolved {
+        census
+      } else {
+        map_insert(census, binding.name, GlobalBareAmbiguousBinding)
+      }
+    Present { value: GlobalBareAmbiguousBinding } => census
+    Absent => census
+  }
+}
+
+fn census_flag_arm_collisions_for_item(census: Map<String, GlobalBareLookupState>, item: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
+  match census_disj_source_node(item: item) {
+    Absent => census
+    Present { value: disj } =>
+      fold(disj.children, init: census, f: (acc, arm) => census_flag_arm_collision(census: acc, arm: arm, source_indices: source_indices))
+  }
+}
+
 fn build_global_bare_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
-  fold(modules, init: empty_map(), f: (census, mod) =>
-    fold(module_items(n: mod.module), init: census, f: (acc, item) => census_insert_item(census: acc, item: item, source_indices: source_indices))
+  let top_level_census = fold(modules, init: empty_map(), f: (census, mod) =>
+    fold(module_items(n: mod.module), init: census, f: (acc, item) => census_insert_module_item(census: acc, item: item, source_indices: source_indices))
+  )
+  fold(modules, init: top_level_census, f: (census, mod) =>
+    fold(module_items(n: mod.module), init: census, f: (acc, item) => census_flag_arm_collisions_for_item(census: acc, item: item, source_indices: source_indices))
   )
 }
 

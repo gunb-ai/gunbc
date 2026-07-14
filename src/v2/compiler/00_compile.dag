@@ -27,7 +27,6 @@ import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
-import v2.lens.determinism { determinism_compile_gate }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -123,18 +122,12 @@ data required_lens_grain_note: String = "Two required-roster grains, one door (v
 
 data accumulator_copy_lens: CompileLens = CompileLens { gate: accumulator_copy_root_gate }
 
-data determinism_lens: CompileLens = CompileLens { gate: determinism_root_gate }
-
 fn always_required_root_lenses() -> List<CompileLens> {
-  [accumulator_copy_lens, determinism_lens]
+  [accumulator_copy_lens]
 }
 
 fn accumulator_copy_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   accumulator_copy_compile_gate(node: tree.root)
-}
-
-fn determinism_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
-  determinism_compile_gate(node: tree.root)
 }
 
 fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
