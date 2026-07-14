@@ -1,33 +1,4 @@
 module v2.compiler.self_host.frontier
-
-import v2.compiler.self_host.frontier_band_a_emit_readiness {
-  BandAEmitReadinessRow,
-  compiler_frontier_band_a_emit_readiness_core_holds,
-  compiler_frontier_band_a_emit_readiness_roster
-}
-import v2.compiler.self_host.frontier_probe_types {
-  EmitSurfaceGap,
-  FrontierBlockerClass,
-  FrontierProbeReceipt,
-  FrontierProbeStage,
-  NameResolutionGap,
-  ProbeStageAssemble,
-  ProbeStageEmit,
-  RealizationGap,
-  SelfEmitReady,
-  UnknownProbeCause,
-  FixtureCemented,
-  frontier_blocker_class_matches,
-  frontier_probe_blocker_rank
-}
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
-import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
-
 type CompilerFrontierAttributedDebt {
   dissolution_trigger: Symbol
 }
