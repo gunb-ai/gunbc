@@ -15,17 +15,20 @@ import gunbc.srv3_seeded_install_media {
 }
 import extdeps.os.ubuntu_seeded_install_media_remaster {
   install_media_remaster_bash_emit_dissolution_trigger,
-  install_media_remaster_script,
-  install_media_remaster_script_applies_grub_cmdline,
-  install_media_remaster_classification_scaffold_marked,
-  install_media_remaster_chmod_is_file_access_upsert_scaffold,
+  install_media_remaster_classification_scaffold,
+  install_media_remaster_chmod_access_upsert_scaffold,
+  install_media_remaster_ensure_grub_cmdline,
 }
 import std.disposition { Scaffold, Terminal }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data grub_cfg_fixture_without_cmdline: String = "menuentry \"Ubuntu\" \{\n  linux /casper/vmlinuz ---\n\}\n"
 
 test fn srv3_seeded_autoinstall_user_data_is_cloud_config() -> Bool {
   let ud = srv3_autoinstall_user_data_body as String
@@ -47,32 +50,39 @@ test fn srv3_seeded_install_media_path_and_delivery() -> Bool {
     && srv3_seeded_install_media_actuator_host_is_srv1()
 }
 
-test fn srv3_seeded_install_media_remaster_carries_dissolution_trigger() -> Bool {
+test fn srv3_seeded_install_media_remaster_dissolution_trigger_is_terminal() -> Bool {
   match install_media_remaster_bash_emit_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: _ } => true
   }
 }
 
-test fn install_media_remaster_scaffolds_marked() -> Bool {
-  install_media_remaster_classification_scaffold_marked()
-    && install_media_remaster_chmod_is_file_access_upsert_scaffold()
+test fn install_media_remaster_scaffolds_dissolved() -> Bool {
+  match install_media_remaster_classification_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: _ } => true
+  }
+    && match install_media_remaster_chmod_access_upsert_scaffold {
+      Scaffold { dissolves_to: _, bind: _ } => false
+      Terminal { reason: _ } => true
+    }
 }
 
-test fn srv3_seeded_install_media_remaster_applies_grub_kernel_cmdline() -> Bool {
-  install_media_remaster_script_applies_grub_cmdline(artifact: srv3_seeded_install_media_artifact)
-    && string_contains(
-      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
-      pattern: srv3_seeded_install_media_artifact.grub_kernel_cmdline as String,
-    )
-    && string_contains(
-      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
-      pattern: "gunbc-content-hash",
-    )
-    && string_contains(
-      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
-      pattern: "StaleRefusal",
-    )
+test fn install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let grub_cfg = concat(dir.path as String, "/grub.cfg") as NonEmptyStr
+  let wrote = Filesystem.Write(path: grub_cfg as String, content: grub_cfg_fixture_without_cmdline)
+  let cmdline = srv3_seeded_install_media_artifact.grub_kernel_cmdline
+  let applied = install_media_remaster_ensure_grub_cmdline(grub_cfg: grub_cfg, cmdline: cmdline)
+  let after = Filesystem.Read(path: grub_cfg as String)
+  let idempotent_reapply = install_media_remaster_ensure_grub_cmdline(grub_cfg: grub_cfg, cmdline: cmdline)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success
+    && wrote.success
+    && applied
+    && after.success
+    && string_contains(s: after.content, pattern: cmdline as String)
+    && idempotent_reapply
 }
 
 test fn srv3_seeded_unattended_not_claimed_until_execution() -> Bool {

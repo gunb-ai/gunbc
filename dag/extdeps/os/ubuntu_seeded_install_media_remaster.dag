@@ -2,13 +2,11 @@ module extdeps.os.ubuntu_seeded_install_media_remaster
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.languages.bash.program {
-  ShellProgram,
-  RawLine,
-  assign,
-  lit,
-  serialize_bash,
-}
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.tools.xorriso
+import extdeps.tools.grep
+import extdeps.tools.sed
 import extdeps.os.ubuntu_seeded_install_media {
   UbuntuSeededInstallMediaArtifactRow,
   ubuntu_seeded_install_media_install_path,
@@ -16,10 +14,10 @@ import extdeps.os.ubuntu_seeded_install_media {
 }
 import extdeps.os.ubuntu_install_media {
   ubuntu_install_media_install_path,
+  ubuntu_install_media_artifacts_dir,
 }
-import std.types { String, NonEmptyStr }
-import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String, NonEmptyStr, FilePath }
+import std.disposition { Disposition, Terminal }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -28,132 +26,233 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data install_media_remaster_bash_emit_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
-    decl_name: "install_media_remaster_script",
-    field: WholeDeclaration
+data install_media_remaster_bash_emit_dissolution_trigger: Disposition = Terminal {
+  reason: "in-process typed reconcile (shell.Test.IsFile, xorriso.Iso.*, grep.Grep.MatchesFixedString, sed.Sed.InPlaceSubstitute, Filesystem.Write, shell.Move.File) replaces ShellProgram/serialize_bash - no shell text is built or serialized"
+}
+
+data install_media_remaster_classification_scaffold: Disposition = Terminal {
+  reason: "InstallMediaRemasterObservation (Absent|Valid|Stale) is the single classification authority, derived by observe_install_media_remaster - no parallel ad hoc staleness check remains"
+}
+
+data install_media_remaster_classification_dissolution_trigger: Disposition = Terminal {
+  reason: "install_media_remaster_reconcile dispatches on InstallMediaRemasterObservation directly, not on inline shell text"
+}
+
+data install_media_remaster_chmod_access_upsert_scaffold: Disposition = Terminal {
+  reason: "shell.Chmod.RecursiveWritable is the single typed authority for making the extracted work tree writable - no inline chmod RawLine remains"
+}
+
+data install_media_remaster_chmod_access_upsert_dissolution_trigger: Disposition = Terminal {
+  reason: "install_media_remaster_build calls shell.Chmod.RecursiveWritable directly"
+}
+
+type InstallMediaRemasterObservation
+  = InstallMediaRemasterAbsent
+  | InstallMediaRemasterValid
+  | InstallMediaRemasterStale
+
+type InstallMediaRemasterOutcome
+  = InstallMediaRemasterAlreadyPresent { path: NonEmptyStr }
+  | InstallMediaRemasterRemastered { path: NonEmptyStr }
+  | InstallMediaRemasterRefused { reason: NonEmptyStr }
+
+fn install_media_remaster_sidecar_path(final_path: NonEmptyStr) -> NonEmptyStr {
+  concat(final_path as String, ".gunbc-content-hash") as NonEmptyStr
+}
+
+fn install_media_remaster_sidecar_matches(final_path: NonEmptyStr, expected_hash: NonEmptyStr) -> Bool {
+  let read = Filesystem.Read(path: install_media_remaster_sidecar_path(final_path: final_path) as String)
+  read.success && (read.content == expected_hash as String)
+}
+
+fn install_media_remaster_probe_valid(artifact: UbuntuSeededInstallMediaArtifactRow, final_path: NonEmptyStr) -> Bool {
+  let probe = shell.Mktemp.Dir()
+  if probe.success == false {
+    false
+  } else {
+    let grub_probe = concat(probe.path as String, "/grub.cfg") as NonEmptyStr
+    let user_probe = concat(probe.path as String, "/user-data") as NonEmptyStr
+    let user_internal = concat("/", concat(artifact.nocloud_dir_on_iso as String, "/user-data")) as NonEmptyStr
+    let grub_extracted = xorriso.Iso.ExtractPathBestEffort(
+      iso_path: final_path,
+      iso_internal_path: "/boot/grub/grub.cfg" as NonEmptyStr,
+      destination: grub_probe,
+    )
+    let user_extracted = xorriso.Iso.ExtractPathBestEffort(
+      iso_path: final_path,
+      iso_internal_path: user_internal,
+      destination: user_probe,
+    )
+    let sidecar_matches = install_media_remaster_sidecar_matches(
+      final_path: final_path,
+      expected_hash: artifact.content_hash as NonEmptyStr,
+    )
+    let grub_present = shell.Test.IsFile(path: grub_probe as FilePath)
+    let grub_has_cmdline = grub_present.is_file
+      && grep.Grep.MatchesFixedString(pattern: artifact.grub_kernel_cmdline, path: grub_probe).matches
+    let user_nonempty = shell.Test.IsNonEmpty(path: user_probe as FilePath).nonempty
+    let cleaned = shell.Remove.RecursiveForce(path: probe.path)
+    sidecar_matches && grub_has_cmdline && user_nonempty
   }
 }
 
-data install_media_remaster_classification_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
-    decl_name: "install_media_remaster_classification_dissolution_trigger",
-    field: WholeDeclaration,
+fn observe_install_media_remaster(artifact: UbuntuSeededInstallMediaArtifactRow) -> InstallMediaRemasterObservation {
+  let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
+  let present = shell.Test.IsFile(path: final_path as FilePath)
+  if present.is_file == false {
+    InstallMediaRemasterAbsent
+  } else if install_media_remaster_probe_valid(artifact: artifact, final_path: final_path) {
+    InstallMediaRemasterValid
+  } else {
+    InstallMediaRemasterStale
   }
 }
 
-data install_media_remaster_classification_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
-    decl_name: "install_media_remaster_script",
-    field: WholeDeclaration
+fn install_media_remaster_ensure_grub_cmdline(grub_cfg: NonEmptyStr, cmdline: NonEmptyStr) -> Bool {
+  let already_present = grep.Grep.MatchesFixedString(pattern: cmdline, path: grub_cfg).matches
+  let substituted = if already_present {
+    true
+  } else {
+    let expression = concat(
+      "s|\\(linux[[:space:]].*\\) ---|\\1 ",
+      concat(cmdline as String, " ---|g"),
+    ) as NonEmptyStr
+    sed.Sed.InPlaceSubstitute(expression: expression, path: grub_cfg).success
+  }
+  substituted && grep.Grep.MatchesFixedString(pattern: cmdline, path: grub_cfg).matches
+}
+
+fn install_media_remaster_write_nocloud_seed(
+  work_dir: NonEmptyStr,
+  nocloud_dir_on_iso: NonEmptyStr,
+  user_data_body: NonEmptyStr,
+) -> Bool {
+  let nocloud_dir = concat(work_dir as String, concat("/", nocloud_dir_on_iso as String)) as NonEmptyStr
+  let mkdir_nocloud = shell.Mkdir.Parents(path: nocloud_dir as FilePath)
+  if mkdir_nocloud.success == false {
+    false
+  } else {
+    let wrote_user_data = Filesystem.Write(
+      path: concat(nocloud_dir as String, "/user-data"),
+      content: user_data_body as String,
+    )
+    let wrote_meta_data = Filesystem.Write(
+      path: concat(nocloud_dir as String, "/meta-data"),
+      content: "instance-id: gunbc-srv3-seeded\n",
+    )
+    wrote_user_data.success && wrote_meta_data.success
   }
 }
 
-data install_media_remaster_chmod_access_upsert_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
-    decl_name: "install_media_remaster_chmod_access_upsert_dissolution_trigger",
-    field: WholeDeclaration,
+fn install_media_remaster_build_iso(
+  final_path: NonEmptyStr,
+  part_path: NonEmptyStr,
+  content_hash: NonEmptyStr,
+  work_dir: NonEmptyStr,
+) -> InstallMediaRemasterOutcome {
+  let built = xorriso.Iso.BuildIso(
+    volume_id: "UBUNTU_SEEDED" as NonEmptyStr,
+    output_path: part_path,
+    source_dir: work_dir,
+  )
+  if built.success == false {
+    InstallMediaRemasterRefused { reason: "xorriso -as mkisofs failed" as NonEmptyStr }
+  } else {
+    let moved = shell.Move.File(source: part_path as FilePath, destination: final_path as FilePath)
+    if moved.success == false {
+      InstallMediaRemasterRefused { reason: "mv failed after mkisofs" as NonEmptyStr }
+    } else {
+      let wrote_sidecar = Filesystem.Write(
+        path: install_media_remaster_sidecar_path(final_path: final_path) as String,
+        content: content_hash as String,
+      )
+      if wrote_sidecar.success == false {
+        InstallMediaRemasterRefused { reason: "writing content-hash sidecar failed" as NonEmptyStr }
+      } else {
+        InstallMediaRemasterRemastered { path: final_path }
+      }
+    }
   }
 }
 
-data install_media_remaster_chmod_access_upsert_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
-    decl_name: "install_media_remaster_script",
-    field: WholeDeclaration
+fn install_media_remaster_build(
+  artifact: UbuntuSeededInstallMediaArtifactRow,
+  stock_path: NonEmptyStr,
+  final_path: NonEmptyStr,
+  part_path: NonEmptyStr,
+  work_dir: NonEmptyStr,
+) -> InstallMediaRemasterOutcome {
+  let extracted = xorriso.Iso.ExtractTree(iso_path: stock_path, destination: work_dir)
+  if extracted.success == false {
+    InstallMediaRemasterRefused { reason: "xorriso -osirrox extract failed" as NonEmptyStr }
+  } else {
+    let chmod = shell.Chmod.RecursiveWritable(path: work_dir as FilePath)
+    if chmod.success == false {
+      InstallMediaRemasterRefused { reason: "chmod -R u+w failed" as NonEmptyStr }
+    } else if install_media_remaster_write_nocloud_seed(
+      work_dir: work_dir,
+      nocloud_dir_on_iso: artifact.nocloud_dir_on_iso,
+      user_data_body: artifact.autoinstall_user_data_body,
+    ) == false {
+      InstallMediaRemasterRefused { reason: "writing NoCloud seed files failed" as NonEmptyStr }
+    } else {
+      let grub_cfg = concat(work_dir as String, "/boot/grub/grub.cfg") as NonEmptyStr
+      let grub_present = shell.Test.IsFile(path: grub_cfg as FilePath)
+      if grub_present.is_file == false {
+        InstallMediaRemasterRefused {
+          reason: concat("InstallMediaRemasterRefusal: missing grub.cfg at ", grub_cfg as String) as NonEmptyStr
+        }
+      } else if install_media_remaster_ensure_grub_cmdline(grub_cfg: grub_cfg, cmdline: artifact.grub_kernel_cmdline) == false {
+        InstallMediaRemasterRefused { reason: "InstallMediaRemasterRefusal: grub kernel cmdline not applied" as NonEmptyStr }
+      } else {
+        install_media_remaster_build_iso(
+          final_path: final_path,
+          part_path: part_path,
+          content_hash: artifact.content_hash as NonEmptyStr,
+          work_dir: work_dir,
+        )
+      }
+    }
   }
 }
 
-fn install_media_remaster_script(artifact: UbuntuSeededInstallMediaArtifactRow) -> String {
-  serialize_bash(p: install_media_remaster_program(artifact: artifact))
-}
-
-fn install_media_remaster_script_applies_grub_cmdline(artifact: UbuntuSeededInstallMediaArtifactRow) -> Bool {
-  let script = install_media_remaster_script(artifact: artifact)
-  string_contains(s: script, pattern: "boot/grub/grub.cfg")
-    && string_contains(s: script, pattern: "$GRUB_CMD")
-    && string_contains(s: script, pattern: "grub kernel cmdline not applied")
-}
-
-fn install_media_remaster_classification_scaffold_marked() -> Bool {
-  match install_media_remaster_classification_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
-  }
-}
-
-fn install_media_remaster_chmod_is_file_access_upsert_scaffold() -> Bool {
-  match install_media_remaster_chmod_access_upsert_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
-  }
-}
-
-fn install_media_remaster_program(artifact: UbuntuSeededInstallMediaArtifactRow) -> ShellProgram {
+fn install_media_remaster_apply(artifact: UbuntuSeededInstallMediaArtifactRow) -> InstallMediaRemasterOutcome {
   let stock_path = ubuntu_install_media_install_path(artifact: artifact.stock_artifact)
   let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
   let part_path = ubuntu_seeded_install_media_part_path(install_path: final_path)
-  let nocloud_dir = artifact.nocloud_dir_on_iso
-  let user_data = artifact.autoinstall_user_data_body
-  let grub_cmdline = artifact.grub_kernel_cmdline
-  ShellProgram {
-    set_e: true,
-    statements: [
-      assign(name: "STOCK", value: lit(text: stock_path as String)),
-      assign(name: "FINAL", value: lit(text: final_path as String)),
-      assign(name: "PART", value: lit(text: part_path as String)),
-      assign(name: "NO_CLOUD", value: lit(text: nocloud_dir as String)),
-      assign(name: "USER_DATA", value: lit(text: user_data as String)),
-      assign(name: "GRUB_CMD", value: lit(text: grub_cmdline as String)),
-      assign(name: "HASH", value: lit(text: artifact.content_hash as String)),
-      RawLine { text: "if [ -f \"$FINAL\" ]; then" },
-      RawLine { text: "  probe=$(mktemp -d)" },
-      RawLine { text: "  grub_probe=\"$probe/boot/grub/grub.cfg\"" },
-      RawLine { text: "  mkdir -p \"$probe/$NO_CLOUD\"" },
-      RawLine { text: "  user_probe=\"$probe/$NO_CLOUD/user-data\"" },
-      RawLine { text: "  xorriso -osirrox on -indev \"$FINAL\" -extract /boot/grub/grub.cfg \"$grub_probe\" >/dev/null 2>&1 || true" },
-      RawLine { text: "  xorriso -osirrox on -indev \"$FINAL\" -extract \"/$NO_CLOUD/user-data\" \"$user_probe\" >/dev/null 2>&1 || true" },
-      RawLine { text: "  sidecar=\"$FINAL.gunbc-content-hash\"" },
-      RawLine { text: "  valid=false" },
-      RawLine { text: "  if [ -f \"$sidecar\" ] && [ \"$(cat \"$sidecar\")\" = \"$HASH\" ] && [ -f \"$grub_probe\" ] && grep -qF \"$GRUB_CMD\" \"$grub_probe\" && [ -s \"$user_probe\" ]; then" },
-      RawLine { text: "    valid=true" },
-      RawLine { text: "  fi" },
-      RawLine { text: "  rm -rf \"$probe\"" },
-      RawLine { text: "  if [ \"$valid\" = true ]; then" },
-      RawLine { text: "    echo \"InstallMediaRemasterReceipt: outcome=AlreadyPresent path=$FINAL content_hash=$HASH\"" },
-      RawLine { text: "    exit 0" },
-      RawLine { text: "  fi" },
-      RawLine { text: "  echo \"InstallMediaRemasterReceipt: outcome=StaleRefusal path=$FINAL content_hash=$HASH\" >&2" },
-      RawLine { text: "fi" },
-      RawLine { text: "test -f \"$STOCK\" || { echo \"InstallMediaRemasterRefusal: stock ISO missing at $STOCK\" >&2; exit 1; }" },
-      RawLine { text: "mkdir -p \"$(dirname \"$FINAL\")\"" },
-      RawLine { text: "work=$(mktemp -d)" },
-      RawLine { text: "trap 'rm -rf \"$work\"' EXIT" },
-      RawLine { text: "xorriso -osirrox on -indev \"$STOCK\" -extract / \"$work\" >/dev/null" },
-      RawLine { text: "chmod -R u+w \"$work\"" },
-      RawLine { text: "mkdir -p \"$work/$NO_CLOUD\"" },
-      RawLine { text: "printf '%s' \"$USER_DATA\" > \"$work/$NO_CLOUD/user-data\"" },
-      RawLine { text: "printf 'instance-id: gunbc-srv3-seeded\\n' > \"$work/$NO_CLOUD/meta-data\"" },
-      RawLine { text: "grub_cfg=\"$work/boot/grub/grub.cfg\"" },
-      RawLine { text: "test -f \"$grub_cfg\" || { echo \"InstallMediaRemasterRefusal: missing grub.cfg at $grub_cfg\" >&2; exit 1; }" },
-      RawLine { text: "if ! grep -qF \"$GRUB_CMD\" \"$grub_cfg\"; then" },
-      RawLine { text: "  sed -i \"s|\\(linux[[:space:]].*\\) ---|\\1 $GRUB_CMD ---|g\" \"$grub_cfg\"" },
-      RawLine { text: "fi" },
-      RawLine { text: "grep -qF \"$GRUB_CMD\" \"$grub_cfg\" || { echo \"InstallMediaRemasterRefusal: grub kernel cmdline not applied\" >&2; exit 1; }" },
-      RawLine { text: "xorriso -as mkisofs -r -V \"UBUNTU_SEEDED\" -o \"$PART\" -graft-points /=\"$work\" >/dev/null" },
-      RawLine { text: "mv \"$PART\" \"$FINAL\"" },
-      RawLine { text: "printf '%s' \"$HASH\" > \"$FINAL.gunbc-content-hash\"" },
-      RawLine { text: "echo \"InstallMediaRemasterReceipt: outcome=Remastered path=$FINAL content_hash=$HASH stock=$STOCK\"" },
-      RawLine { text: "exit 0" },
-    ],
+  let stock_present = shell.Test.IsFile(path: stock_path as FilePath)
+  if stock_present.is_file == false {
+    InstallMediaRemasterRefused {
+      reason: concat("InstallMediaRemasterRefusal: stock ISO missing at ", stock_path as String) as NonEmptyStr
+    }
+  } else {
+    let mkdir = shell.Mkdir.Parents(path: ubuntu_install_media_artifacts_dir() as FilePath)
+    if mkdir.success == false {
+      InstallMediaRemasterRefused { reason: "mkdir -p failed" as NonEmptyStr }
+    } else {
+      let work = shell.Mktemp.Dir()
+      if work.success == false {
+        InstallMediaRemasterRefused { reason: "mktemp -d failed" as NonEmptyStr }
+      } else {
+        let outcome = install_media_remaster_build(
+          artifact: artifact,
+          stock_path: stock_path,
+          final_path: final_path,
+          part_path: part_path,
+          work_dir: work.path as NonEmptyStr,
+        )
+        let cleaned = shell.Remove.RecursiveForce(path: work.path)
+        outcome
+      }
+    }
+  }
+}
+
+fn install_media_remaster_reconcile(artifact: UbuntuSeededInstallMediaArtifactRow) -> InstallMediaRemasterOutcome {
+  let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
+  match observe_install_media_remaster(artifact: artifact) {
+    InstallMediaRemasterValid => InstallMediaRemasterAlreadyPresent { path: final_path }
+    InstallMediaRemasterAbsent => install_media_remaster_apply(artifact: artifact)
+    InstallMediaRemasterStale => install_media_remaster_apply(artifact: artifact)
   }
 }

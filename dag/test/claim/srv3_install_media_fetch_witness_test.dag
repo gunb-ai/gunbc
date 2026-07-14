@@ -25,12 +25,24 @@ import extdeps.os.ubuntu_install_media {
   ubuntu_install_media_mirror_rows,
 }
 import extdeps.os.ubuntu_install_media_fetch {
-  install_media_fetch_script,
   install_media_fetch_bash_emit_dissolution_trigger,
+  install_media_hash_matches,
+  observe_install_media_fetch,
+  InstallMediaFetchAbsent,
+  InstallMediaFetchVerified,
+  InstallMediaFetchHashMismatch,
 }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data install_media_fetch_fixture_content: String = "gunbc-fetch-fixture\n"
+data install_media_fetch_fixture_sha256: NonEmptyStr =
+  "eaa07ba0ed4429e01ecb4a645b81efd5cc718c1b5a4d3e021a63bdecc89290ba" as NonEmptyStr
+data install_media_fetch_fixture_wrong_sha256: NonEmptyStr =
+  "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr
 
 test fn install_media_fetch_effect_is_create_if_absent_on_content_sha256() -> Bool {
   match install_media_fetch_effect_shape {
@@ -84,16 +96,43 @@ test fn install_media_fetch_absent_plans_mirror_order() -> Bool {
   }
 }
 
-test fn install_media_fetch_script_is_emittable() -> Bool {
-  let script = install_media_fetch_script(artifact: srv3_ubuntu_install_media_artifact)
-  string_contains(s: script, pattern: "sha256sum -c")
-    && string_contains(s: script, pattern: "curl -fL")
-    && string_contains(s: script, pattern: "ubuntu-24.04.3-live-server-arm64.iso")
-    && string_contains(s: script, pattern: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555")
-    && string_contains(s: script, pattern: "releases.ubuntu.com")
-    && string_contains(s: script, pattern: "cdimage.ubuntu.com")
-    && string_contains(s: script, pattern: "old-releases.ubuntu.com")
-    && string_contains(s: script, pattern: ".part")
+test fn install_media_hash_matches_true_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let path = concat(dir.path as String, "/fixture") as NonEmptyStr
+  let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
+  let matched = install_media_hash_matches(path: path, expected_hash: install_media_fetch_fixture_sha256)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && matched
+}
+
+test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let path = concat(dir.path as String, "/fixture") as NonEmptyStr
+  let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
+  let matched = install_media_hash_matches(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && (matched == false)
+}
+
+test fn observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let missing_path = concat(dir.path as String, "/does-not-exist") as NonEmptyStr
+  let present_path = concat(dir.path as String, "/present") as NonEmptyStr
+  let wrote = Filesystem.Write(path: present_path as String, content: install_media_fetch_fixture_content)
+  let absent_ok = observe_install_media_fetch(
+    path: missing_path,
+    expected_hash: install_media_fetch_fixture_sha256,
+  ) == InstallMediaFetchAbsent
+  let verified_ok = observe_install_media_fetch(
+    path: present_path,
+    expected_hash: install_media_fetch_fixture_sha256,
+  ) == InstallMediaFetchVerified
+  let mismatch_ok = observe_install_media_fetch(
+    path: present_path,
+    expected_hash: install_media_fetch_fixture_wrong_sha256,
+  ) == InstallMediaFetchHashMismatch
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && absent_ok && verified_ok && mismatch_ok
 }
 
 test fn install_media_fetch_first_mirror_is_releases_then_cdimage() -> Bool {
@@ -105,11 +144,11 @@ test fn srv3_install_media_fetch_scope_facts() -> Bool {
   srv3_install_media_fetch_install_path_is_versioned()
     && srv3_install_media_fetch_actuator_host_is_srv1()
     && match srv3_install_media_fetch_shell_runner_scaffold {
-      Scaffold { dissolves_to: _, bind: _ } => true
-      Terminal { reason: _ } => false
+      Scaffold { dissolves_to: _, bind: _ } => false
+      Terminal { reason: _ } => true
     }
     && match install_media_fetch_bash_emit_dissolution_trigger {
-      Scaffold { dissolves_to: _, bind: _ } => true
-      Terminal { reason: _ } => false
+      Scaffold { dissolves_to: _, bind: _ } => false
+      Terminal { reason: _ } => true
     }
 }

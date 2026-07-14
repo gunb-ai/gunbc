@@ -36,8 +36,6 @@ data realization_edge_path_prefixes: List<String> = [
 
 data realization_vocab_exception_roster: List<String> = [
   "dag/extdeps/bmc/webui/nbd_proxy_serve.dag",
-  "dag/extdeps/os/ubuntu_install_media_fetch.dag",
-  "dag/extdeps/os/ubuntu_seeded_install_media_remaster.dag",
   "dag/gunbc/node_http_server_emit.dag",
   "dag/gunbc/srv3_os_install_actuate.dag",
   "dag/tools/build_step.dag",
