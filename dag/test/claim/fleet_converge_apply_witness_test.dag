@@ -37,6 +37,7 @@ import gunbc.host_effect { LocalShell, EmitArtifactThenThinRun, BootstrapFragmen
   emit_artifact_then_thin_run_transport_scaffold,
 }
 import std.disposition { Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -96,15 +97,29 @@ fn witness_thin_invocation_argv() -> Bool {
 
 fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
   match bootstrap_fragment_script_carrier_scaffold {
-    Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: d, field: WholeDeclaration },
+    } =>
+      m == "gunbc.fleet_converge_emit"
+        && d == "fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger"
     _ => false
   }
     && match thin_invocation_argv_carrier_scaffold {
-      Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+      Scaffold {
+        dissolves_to: RealizationDispatch,
+        bind: DeclarationRef { module_path: m, decl_name: d, field: WholeDeclaration },
+      } =>
+        m == "gunbc.fleet_converge_apply" && d == "fleet_converge_thin_invocation"
       _ => false
     }
     && match emit_artifact_then_thin_run_transport_scaffold {
-      Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+      Scaffold {
+        dissolves_to: RealizationDispatch,
+        bind: DeclarationRef { module_path: m, decl_name: d, field: WholeDeclaration },
+      } =>
+        m == "gunbc.fleet_converge_emit"
+          && d == "fleet_converge_steady_state_doc_projection_dissolution_trigger"
       _ => false
     }
 }

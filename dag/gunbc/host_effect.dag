@@ -49,7 +49,7 @@ data bootstrap_fragment_script_carrier_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "gunbc.fleet_converge_emit",
-    decl_name: "fleet_converge_fresh_standup_bootstrap_emit_frontier",
+    decl_name: "fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger",
     field: WholeDeclaration,
   }
 }
