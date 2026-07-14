@@ -12680,9 +12680,12 @@ pub fn census_insert_module_item(
         let after_type = census_insert_item(census.clone(), item.clone(), source_indices.clone());
         let after_arms =
             census_insert_coproduct_arms(after_type.clone(), item.clone(), source_indices.clone());
-        match census_binding_for_fn_decl(item.clone(), source_indices.clone()) {
-            Some(fn_binding) => census_insert_binding(after_arms.clone(), fn_binding.clone()),
-            None => after_arms.clone(),
+        match census_binding_for_data_decl(item.clone(), source_indices.clone()) {
+            Some(_) => after_arms.clone(),
+            None => match census_binding_for_fn_decl(item.clone(), source_indices.clone()) {
+                Some(fn_binding) => census_insert_binding(after_arms.clone(), fn_binding.clone()),
+                None => after_arms.clone(),
+            },
         }
     }
 }
