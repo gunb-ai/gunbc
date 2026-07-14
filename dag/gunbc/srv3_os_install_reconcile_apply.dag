@@ -51,8 +51,8 @@ import std.temporal_effect {
 data srv3_os_install_reconcile_apply_shell_runner_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.srv3_os_install_reconcile",
-    decl_name: "srv3_os_install_reconcile_shell_runner_dissolution_trigger",
+    module_path: "gunbc.srv3_host_effect_script",
+    decl_name: "srv3_host_effect_script_dissolution_trigger",
     field: WholeDeclaration,
   }
 }
