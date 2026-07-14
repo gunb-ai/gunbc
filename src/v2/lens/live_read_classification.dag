@@ -130,11 +130,13 @@ fn classification_has_filesystem_read_carrier(classification: LiveReadClassifica
   }
 }
 
+data empty_string_list: List<String> = []
+
 fn runtime_read_carrier_module_names(classification: LiveReadClassification) -> List<String> {
   match classification {
-    LocalRead => []
+    LocalRead => empty_string_list
     RuntimeRead { carrier_homes: homes } =>
-      fold_list(xs: homes, empty: [], cons: fn(acc, home) {
+      fold_list(xs: homes, empty: empty_string_list, cons: fn(acc, home) {
         if contains(xs: acc, item: home.module, eq: string_eq) {
           acc
         } else {

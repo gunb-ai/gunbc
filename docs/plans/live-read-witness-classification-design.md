@@ -1,6 +1,6 @@
 # Live-read witness classification — closing the masking-class root
 
-> **Status:** design draft (2026-07-14, session keen-ram-460). Model-before-implement: this doc is the single authority for how runtime tree/host reads become visible to affected-set attribution. Companion to [affected-set precompute pruning](affected-set-precompute-pruning.md), [witness cost locality](../src/v2/lens/witness_cost_locality.dag) (`v2.lens.witness_cost_locality`), and [v1 run-stability throughline](v1-run-stability-throughline.md) §1 (the falsifier receipts that motivated this lane).
+> **Status:** P0 landed (2026-07-14, session keen-ram-460) — `v2.lens.live_read_classification` + fixture witnesses green by execution. P1–P3 (G2 call reachability, floor axis iv, OFFLINE re-enrollment) remain open. Model-before-implement authority for how runtime tree/host reads become visible to affected-set attribution. Companion to [affected-set precompute pruning](affected-set-precompute-pruning.md), [witness cost locality](../src/v2/lens/witness_cost_locality.dag) (`v2.lens.witness_cost_locality`), and [v1 run-stability throughline](v1-run-stability-throughline.md) §1.
 
 ---
 
