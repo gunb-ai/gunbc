@@ -2066,6 +2066,13 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     const EXCLUDE: &[String] = &[];
     let roots = pool_roots_for_module_graph_closure(pool_roots);
+    // NOTE: the module-graph LOADER closure stays import-derived for now (Blocker-1 part 1). A
+    // reference-derived closure changes every witness's load set tree-wide and surfaces latent issues
+    // (import-less-but-referencing std files, witnesses that need src/v1 in their pool, the
+    // pre-existing fleet_converge Srv3 red, and homonyms the bright-cat lane must qualify), so the
+    // loader repoint is staged as a separate part after those land. The REFERENCE producer below is
+    // already live via the inert-lens reach (the strips' documented CI blocker), which is hygiene-
+    // only and cannot regress a compile.
     let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
     let nodes = module_declaration_facts(&roots);
     let adjacency = build_import_adjacency(&edges, &nodes);
@@ -6396,6 +6403,9 @@ fn build_floor_lens_hygiene_graph(
                 }
                 module_to_path.insert(m, rel.clone());
             }
+            // Import edges (transition term of the union); reference edges are added below once the
+            // whole pool is available for the name→module index. A file with imports stripped
+            // contributes none here and is carried entirely by its reference edges.
             path_imports.insert(rel, extract_import_paths(&content));
             if excludes.iter().any(|sub| entry.contains(sub.as_str())) {
                 continue;
@@ -6457,6 +6467,22 @@ fn build_floor_lens_hygiene_graph(
             ));
         }
     }
+    // Reference-derived reach edges (namespace terminal step), unioned onto the import edges above so
+    // a stripped file (no import edges) still reaches its lenses. STRICT set only (Qualified +
+    // UniqueBare, dropping AmbiguousBare) so an over-connected graph cannot silently clear a truly-
+    // inert lens (DESIGN §5 — no fail-open hygiene). Parsed-tree, not a substring scan, so comments/
+    // strings never fabricate a reach. Dedup keeps the BFS set honest.
+    for edge in reference_edges_as_import_facts(
+        &reference_resolution_facts(source_roots, source_roots, &excludes),
+        true,
+    ) {
+        let importer = repo_relative_dag_path(&edge.path);
+        let entry = path_imports.entry(importer).or_default();
+        if !entry.contains(&edge.import_module) {
+            entry.push(edge.import_module);
+        }
+    }
+
     rows.sort_by(|a, b| {
         a.entry
             .cmp(&b.entry)
@@ -12259,6 +12285,404 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
         .collect();
     out.sort_by(|a, b| a.module.cmp(&b.module));
     out
+}
+
+// ── Reference-derived module edges (namespace terminal step, DESIGN "deps via container.member") ──
+//
+// SCAFFOLD (DESIGN §7). Replaces the import-parse module graph (`extract_import_paths` /
+// `import_resolution_facts`) with edges derived from where a module's body/type REFERENCES resolve,
+// so the module graph survives corpus-wide `import` deletion (namespace-only resolution, operator-
+// signed 2026-07-06; the reference is the sole representation of usage, Rule 1). One O(corpus) parse
+// pass over the pool (reusing the real front-end `tokenize` + `parse` — no substring scan), cached.
+// Consumers (`build_module_graph_facts_live`, the inert-lens reach) union these edges onto the import
+// edges during the transition; when the import grammar is deleted (parent's terminal step) the import
+// term is empty and the module graph is reference-only, the `src/v2/lens/module_graph.dag`
+// single-swap-point end state. Every closure/loader/lens consumer is edge-source-agnostic (reads edge
+// rows as data, never import syntax).
+//
+// Confidence tag (parent ruling, 2026-07-14; DESIGN §5): the LOADER closure and affected-set read
+// ALL edges (over-load is safe — a superset only compiles extra modules). The inert-lens reach reads
+// Qualified + UniqueBare only (dropping AmbiguousBare), so an over-connected graph can never silently
+// clear a truly-inert lens (no fail-open hygiene). AmbiguousBare is a bare identifier declared in >1
+// module; under namespace-only that is a Rule-2 ambiguity the source should qualify.
+//
+// Dissolve-on: `symbol_index_fill` (SymbolIndex lane) projects exact, scope-aware reference edges from
+// the filled containment tree; when that lands, this parse-and-index approximation (which is liberal
+// on bare-name reference collection — a local binder that shadows a globally-unique declared name
+// yields a spurious UniqueBare edge, safe for the loader, tolerated by the inert-lens grain) deletes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RefEdgeResolution {
+    Qualified,
+    UniqueBare,
+    AmbiguousBare,
+}
+
+impl RefEdgeResolution {
+    fn rank(self) -> u8 {
+        match self {
+            RefEdgeResolution::Qualified => 2,
+            RefEdgeResolution::UniqueBare => 1,
+            RefEdgeResolution::AmbiguousBare => 0,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ReferenceEdgeRaw {
+    pub path: String,
+    pub target_module: String,
+    pub resolution: RefEdgeResolution,
+}
+
+/// Project reference edges into the `ImportResolutionFactRaw` channel the module-graph adjacency and
+/// closure consumers already read (the `module_graph.dag` single-swap-point contract — downstream is
+/// edge-source-agnostic). `strict` drops `AmbiguousBare` edges: false for the loader/affected-set
+/// (superset-safe), true for the inert-lens reach (no fail-open hygiene, DESIGN §5).
+pub fn reference_edges_as_import_facts(
+    edges: &[ReferenceEdgeRaw],
+    strict: bool,
+) -> Vec<ImportResolutionFactRaw> {
+    edges
+        .iter()
+        .filter(|e| !strict || e.resolution != RefEdgeResolution::AmbiguousBare)
+        .map(|e| ImportResolutionFactRaw {
+            path: e.path.clone(),
+            import_module: e.target_module.clone(),
+            target_declared: true,
+        })
+        .collect()
+}
+
+/// Parse a `.dag` module's source text through the real front-end. Returns the module node, or
+/// `None` on a parse error (the whole-tree compile reports such errors loudly; the module graph
+/// simply omits its edges, and the corpus stays green because a syntax-broken file never resolves).
+fn parse_module_node_tolerant(rel: &str, content: &str) -> Option<Rc<crate::v1_std_core::Node>> {
+    let filename = rel.to_string();
+    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
+    let source_index =
+        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.clone(), source_index);
+    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
+    if result.error.is_some() {
+        return None;
+    }
+    result.module.clone()
+}
+
+/// The names a module EXPORTS (what an `import M { X }` could once have listed): every top-level
+/// item name, plus the direct child names of type declarations (variant constructors / record
+/// fields). Precise by construction — fn-body locals and params are never descended into — so the
+/// name→module index is not poisoned by incidental identifiers.
+fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<String> {
+    use crate::v1_compiler_emit_core_support::is_type_def_item;
+    let mut names = Vec::new();
+    for item in module.children.iter() {
+        if !item.name.is_empty() {
+            names.push(item.name.clone());
+        }
+        if is_type_def_item(item.clone()) {
+            for variant in item.children.iter() {
+                if !variant.name.is_empty() {
+                    names.push(variant.name.clone());
+                }
+            }
+        }
+    }
+    names
+}
+
+/// Reconstruct a qualified-name segment list from a `FieldAccess` chain (`A.B.c` → `[A, B, c]`).
+/// `None` when the base is not a plain identifier (e.g. a call result `f(x).field` — that is a
+/// value field access, not a module-qualified name).
+fn ref_field_chain(node: &Rc<crate::v1_std_core::Node>) -> Option<Vec<String>> {
+    use crate::v1_std_core::ExprData;
+    let mut segs: Vec<String> = vec![node.name.clone()];
+    let mut cur = node.children.get(0).cloned()?;
+    loop {
+        match &*cur.expr_data {
+            ExprData::ExprFieldAccess { .. } => {
+                segs.push(cur.name.clone());
+                cur = cur.children.get(0).cloned()?;
+            }
+            ExprData::ExprVar { .. } => {
+                segs.push(cur.name.clone());
+                break;
+            }
+            _ => return None,
+        }
+    }
+    segs.reverse();
+    if segs.iter().any(|s| s.is_empty()) {
+        return None;
+    }
+    Some(segs)
+}
+
+/// Walk a declaration subtree collecting every reference use site: bare identifiers (`node.name` on
+/// any node — over-collection is a safe superset for the loader) and qualified-name chains (for
+/// module-prefix matching). Recurses through every child-bearing field of `Node`.
+fn collect_node_refs(
+    node: &Rc<crate::v1_std_core::Node>,
+    bare: &mut std::collections::HashSet<String>,
+    chains: &mut Vec<Vec<String>>,
+) {
+    use crate::v1_std_core::{ExprData, MatchPattern};
+    if let ExprData::ExprFieldAccess { .. } = &*node.expr_data {
+        if let Some(chain) = ref_field_chain(node) {
+            chains.push(chain);
+        }
+    }
+    if !node.name.is_empty() {
+        bare.insert(node.name.clone());
+    }
+    if let Some(mp) = &node.match_pattern {
+        if let MatchPattern::VariantPattern {
+            name,
+            field_bindings,
+            ..
+        } = &**mp
+        {
+            if !name.is_empty() {
+                bare.insert(name.clone());
+            }
+            for fb in field_bindings.iter() {
+                collect_node_refs(fb, bare, chains);
+            }
+        }
+    }
+    for c in node.children.iter() {
+        collect_node_refs(c, bare, chains);
+    }
+    for p in node.params.iter() {
+        collect_node_refs(p, bare, chains);
+    }
+    if let Some(b) = &node.body {
+        collect_node_refs(b, bare, chains);
+    }
+    if let Some(t) = &node.type_annotation {
+        collect_node_refs(t, bare, chains);
+    }
+    for u in node.uses.iter() {
+        collect_node_refs(u, bare, chains);
+    }
+    for pr in node.properties.iter() {
+        collect_node_refs(pr, bare, chains);
+    }
+    if let Some(tr) = &node.transport {
+        collect_node_refs(tr, bare, chains);
+    }
+}
+
+/// Count of shared leading dot-separated segments between two module paths (containment proximity).
+fn module_prefix_shared_len(a: &str, b: &str) -> usize {
+    a.split('.')
+        .zip(b.split('.'))
+        .take_while(|(x, y)| x == y)
+        .count()
+}
+
+/// Longest module-path prefix of a qualified chain that names a declared module.
+fn longest_declared_module_prefix(
+    chain: &[String],
+    module_names: &std::collections::HashSet<String>,
+) -> Option<String> {
+    let mut k = chain.len();
+    while k >= 1 {
+        let candidate = chain[..k].join(".");
+        if module_names.contains(&candidate) {
+            return Some(candidate);
+        }
+        k -= 1;
+    }
+    None
+}
+
+thread_local! {
+    static REFERENCE_EDGE_CACHE: RefCell<HashMap<String, Vec<ReferenceEdgeRaw>>> =
+        RefCell::new(HashMap::new());
+}
+
+/// Reference-derived analogue of `import_resolution_facts`: emit one edge per (file, referenced
+/// module). Same row shape channel as import facts, plus a `resolution` confidence tag. Cached by
+/// (pool_roots, importer_roots, excludes).
+pub fn reference_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ReferenceEdgeRaw> {
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let abs_importer_roots = pool_roots_abs(importer_roots);
+    let cache_key = format!(
+        "{}\u{1f}{}\u{1f}{}",
+        abs_pool_roots.join("\u{1e}"),
+        abs_importer_roots.join("\u{1e}"),
+        exclude_substrings.join("\u{1e}")
+    );
+    if let Some(cached) =
+        REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned())
+    {
+        return cached;
+    }
+
+    // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
+    // wins, mirroring `build_module_path_index`) and the declared-module-name set. Keep each file's
+    // parsed tree so edge emission does not re-parse.
+    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // `has_imports` decides per-file whether reference edges are emitted at all: a file that still
+    // carries `import` lines is covered EXACTLY by `import_resolution_facts` (no regression, no
+    // over-connection). Only an import-less (stripped) file falls back to reference edges. So on the
+    // un-stripped tree this producer emits nothing and the module graph is byte-identical to before.
+    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
+        HashMap::new();
+    for root in &abs_pool_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let module_name = match extract_module_path(&content) {
+                Some(m) => m,
+                None => continue,
+            };
+            let tree = match parse_module_node_tolerant(&rel, &content) {
+                Some(t) => t,
+                None => continue,
+            };
+            let has_imports = !extract_import_paths(&content).is_empty();
+            // Precedence: a module name already claimed by an earlier root does not re-contribute
+            // exported names (first-root-wins, as `build_module_path_index`).
+            if seen_modules.insert(module_name.clone()) {
+                module_names.insert(module_name.clone());
+                for name in collect_module_decl_names(&tree) {
+                    decl_index.entry(name).or_default().insert(module_name.clone());
+                }
+            }
+            pool_trees
+                .entry(rel)
+                .or_insert((module_name, tree, has_imports));
+        }
+    }
+
+    // ── Pass 2: for each importer file, collect its reference use sites and resolve them to modules.
+    let mut edges: Vec<ReferenceEdgeRaw> = Vec::new();
+    for root in &abs_importer_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let (self_module, tree) = match pool_trees.get(&rel) {
+                // A file that still carries imports is covered exactly by `import_resolution_facts`;
+                // emitting reference edges for it would only over-connect. Skip — reference edges are
+                // for import-less (stripped) files.
+                Some((_, _, true)) => continue,
+                Some((m, t, false)) => (m.clone(), t.clone()),
+                None => {
+                    let content = match std::fs::read_to_string(&file) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    if !extract_import_paths(&content).is_empty() {
+                        continue;
+                    }
+                    let module_name = match extract_module_path(&content) {
+                        Some(m) => m,
+                        None => continue,
+                    };
+                    match parse_module_node_tolerant(&rel, &content) {
+                        Some(t) => (module_name, t),
+                        None => continue,
+                    }
+                }
+            };
+            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut chains: Vec<Vec<String>> = Vec::new();
+            for item in tree.children.iter() {
+                collect_node_refs(item, &mut bare, &mut chains);
+            }
+            // Resolve to per-file (target_module → strongest confidence).
+            let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
+                std::collections::BTreeMap::new();
+            let mut upgrade = |m: String, res: RefEdgeResolution| {
+                let entry = file_edges.entry(m).or_insert(res);
+                if res.rank() > entry.rank() {
+                    *entry = res;
+                }
+            };
+            for chain in &chains {
+                if let Some(m) = longest_declared_module_prefix(chain, &module_names) {
+                    if m != self_module {
+                        upgrade(m, RefEdgeResolution::Qualified);
+                    }
+                }
+            }
+            for name in &bare {
+                if let Some(mods) = decl_index.get(name) {
+                    // Same-module declaration wins by lexical scope (namespace-only): a bare name the
+                    // referencing file itself declares resolves LOCALLY — no cross-module edge. This
+                    // is what keeps a ubiquitous fixture `data` (e.g. `live_tree_disposition`,
+                    // declared top-level in ~670 test files) from fanning every referrer out to every
+                    // declarer.
+                    if mods.contains(&self_module) {
+                        continue;
+                    }
+                    // Proximity disambiguation (namespace-only "nearest in the containment tree"):
+                    // among declarers, prefer the one sharing the longest module-path prefix with the
+                    // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
+                    // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
+                    let mut best_len = 0usize;
+                    let mut winners: Vec<&String> = Vec::new();
+                    for m in mods.iter() {
+                        let shared = module_prefix_shared_len(&self_module, m);
+                        if winners.is_empty() || shared > best_len {
+                            best_len = shared;
+                            winners.clear();
+                            winners.push(m);
+                        } else if shared == best_len {
+                            winners.push(m);
+                        }
+                    }
+                    match winners.len() {
+                        0 => {}
+                        1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
+                        _ => {
+                            for t in winners {
+                                upgrade(t.clone(), RefEdgeResolution::AmbiguousBare);
+                            }
+                        }
+                    }
+                }
+            }
+            for (m, res) in file_edges {
+                edges.push(ReferenceEdgeRaw {
+                    path: rel.clone(),
+                    target_module: m,
+                    resolution: res,
+                });
+            }
+        }
+    }
+
+    REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
+    edges
 }
 
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
