@@ -2724,8 +2724,6 @@ pub fn build_multi_entry_index_with_shared_caches(
     source_roots: &[String],
     cross_worker_store: Arc<RwLock<SharedTypecheckCaches>>,
 ) -> MultiEntryIndex {
-    // 🟡 dissolve-on: adaptive floor wiring must pair this with a live governor
-    // byte-codec width cap when serde transport is armed (re-land together post-Arc).
     new_multi_entry_index_shell(
         build_module_index(source_roots),
         source_roots,
@@ -8167,12 +8165,22 @@ pub fn run_discovery_corpus_with_options(
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let changed_paths: Vec<String> = name_status_changed_paths;
     // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
-    // process step on the pump thread — `process_shared_index` reuses prelude-warmed
-    // parse/typed caches instead of a private cold build. Increment C serde
-    // `cross_worker_store` is deferred on the floor until store-path `Rc`→`Arc` retires
-    // the byte codec (CI 29349125185 OOM); explicit oracles arm it via
-    // `build_multi_entry_index_with_shared_caches` (🟡 dissolve-on).
-    let index = process_shared_index(source_roots);
+    // process step on the pump thread — prelude-warmed parse/typed caches instead of a
+    // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
+    // design.md §4): adaptive pool runs arm ONE process-scoped typed_module_cache via
+    // serde byte transport on the pump thread and every worker shard (🟡 dissolve-on:
+    // store-path Rc→Arc retires the byte codec).
+    let cross_worker_store = match &width_policy {
+        DiscoveryWidthPolicy::Adaptive(_) => Some(new_shared_typecheck_caches()),
+        DiscoveryWidthPolicy::Serial => None,
+    };
+    let index = match &cross_worker_store {
+        Some(store) => Rc::new(build_multi_entry_index_with_shared_caches(
+            source_roots,
+            store.clone(),
+        )),
+        None => process_shared_index(source_roots),
+    };
     // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
     // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
     // in flight on PR #6442; consumer binds to roster_import_closure_nodes_pre_resolve):
@@ -8364,6 +8372,10 @@ pub fn run_discovery_corpus_with_options(
                 .collect(),
         ));
     let abort = std::sync::Arc::new(AtomicBool::new(false));
+    let cross_worker_store_for_workers = cross_worker_store
+        .as_ref()
+        .expect("adaptive pool must arm cross_worker_store")
+        .clone();
     let source_roots_owned = source_roots.to_vec();
     let selection_for_workers = options.node_frontier_selection;
     let fast_lane_budget_for_workers = options.fast_lane_eval_budget_ms;
@@ -8387,6 +8399,7 @@ pub fn run_discovery_corpus_with_options(
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
+        let cross_worker_store = cross_worker_store_for_workers.clone();
         // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
         // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
         // admission window has no interleaving to disambiguate.
@@ -8404,9 +8417,10 @@ pub fn run_discovery_corpus_with_options(
                 let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
                     governor_for_worker.clone(),
                 );
-                // Per-index `Rc` typed cache (serde cross_worker_store deferred — see pump
-                // index arm above; oracles arm shared store explicitly).
-                let index = build_multi_entry_index(&roots);
+                // Process-scoped typed_module_cache: serde byte transport shares prefix
+                // typechecks across worker shards (cross-worker-typecheck-share-design §4).
+                let index =
+                    build_multi_entry_index_with_shared_caches(&roots, cross_worker_store);
                 let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                     match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
                         Ok((graph, source_indices)) => {
