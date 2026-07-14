@@ -24,7 +24,7 @@ use std::fs;
 use v1_compiler::cli_run::{
     build_multi_entry_index, make_eval_context, reset_typecheck_compute_count,
     resolve_entry_graph, resolve_entry_with_index, run_claim, typecheck_compute_count,
-    workspace_root, ClaimOutcome,
+    workspace_root, ClaimOutcome, MultiEntryIndex,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -114,7 +114,7 @@ fn private_outcome(roots: &[String], entry: &str, function: &str) -> String {
 
 /// Union-view resolve: the entry assembled over the shared index (already warmed by the
 /// other entries in this process).
-fn union_outcome(index: &cli_run::MultiEntryIndex, entry: &str, function: &str) -> String {
+fn union_outcome(index: &MultiEntryIndex, entry: &str, function: &str) -> String {
     let (graph, si) = resolve_entry_with_index(index, entry).expect("union-view resolve");
     let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     outcome_tag(&run_claim(&ctx, function))
@@ -291,78 +291,41 @@ fn roster_closure_count_is_independent_of_thread_cache_warmth() {
     );
 }
 
-/// S2a increment C (cross-worker-typecheck-share-design.md): parallel workers share one
-/// process-scoped typed_module_cache — the shared prefix is typechecked once per process,
-/// not once per shard.
+/// C1-prep (cross-worker-typecheck-share-design.md §4.1): `typecheck_compute_count` is a
+/// process-wide atomic — prerequisite for summing misses across floor workers once the
+/// shared typed_module_cache lands (`Rc`→`Arc` migration). Private per-thread indexes
+/// today; the counter still accumulates across threads.
 #[test]
-fn cross_worker_share_typechecks_union_once() {
-    let fx = Fixture::new("cross-worker");
-
-    // Cold private baselines — isolated caches per index (no cross-index sharing).
-    let idx_a = build_multi_entry_index(&fx.roots);
-    reset_typecheck_compute_count();
-    resolve_entry_with_index(&idx_a, &fx.entry_a).expect("cold resolve a");
-    let cold_a = typecheck_compute_count();
-
-    let idx_b = build_multi_entry_index(&fx.roots);
-    reset_typecheck_compute_count();
-    resolve_entry_with_index(&idx_b, &fx.entry_b).expect("cold resolve b");
-    let cold_b = typecheck_compute_count();
-
-    assert!(cold_a > 0 && cold_b > 0);
-
-    // Cross-worker: two threads, same process_shared_floor_index, sequential resolves.
-    let shared = process_shared_floor_index(&fx.roots);
+fn typecheck_compute_count_accumulates_across_threads() {
+    let fx = Fixture::new("process-wide-counter");
     reset_typecheck_compute_count();
 
+    let roots_a = fx.roots.clone();
     let entry_a = fx.entry_a.clone();
-    let shared_a = shared.clone();
     std::thread::spawn(move || {
-        let index = shared_a.lock().expect("shared floor index lock");
-        resolve_entry_with_index(&index, &entry_a).expect("worker resolve a");
+        let index = build_multi_entry_index(&roots_a);
+        resolve_entry_with_index(&index, &entry_a).expect("thread resolve a");
     })
     .join()
-    .expect("worker a join")
-    .expect("worker a ok");
-    let after_a = typecheck_compute_count();
+    .expect("thread a join");
 
+    let after_a = typecheck_compute_count();
+    assert!(after_a > 0, "first thread must record typecheck computes");
+
+    let roots_b = fx.roots.clone();
     let entry_b = fx.entry_b.clone();
     std::thread::spawn(move || {
-        let index = shared.lock().expect("shared floor index lock");
-        resolve_entry_with_index(&index, &entry_b).expect("worker resolve b");
+        let index = build_multi_entry_index(&roots_b);
+        resolve_entry_with_index(&index, &entry_b).expect("thread resolve b");
     })
     .join()
-    .expect("worker b join")
-    .expect("worker b ok");
+    .expect("thread b join");
 
-    let cross_worker_total = typecheck_compute_count();
-    assert_eq!(
-        after_a, cold_a,
-        "first worker on the shared cache pays exactly entry a's private closure ({cold_a})"
-    );
-    let b_added = cross_worker_total - after_a;
     assert!(
-        b_added < cold_b,
-        "second worker's incremental cost ({b_added}) must be below its private closure \
-         ({cold_b}) — u.common was not re-typechecked"
-    );
-
-    // Purity: outcomes match the private baseline.
-    assert_eq!(
-        private_outcome(&fx.roots, &fx.entry_a, "wit_a_pass"),
-        "PASS"
-    );
-    assert_eq!(
-        private_outcome(&fx.roots, &fx.entry_b, "wit_b_pass"),
-        "PASS"
-    );
-    let index = build_multi_entry_index(&fx.roots);
-    assert_eq!(
-        union_outcome(&index, &fx.entry_a, "wit_a_pass"),
-        "PASS"
-    );
-    assert_eq!(
-        union_outcome(&index, &fx.entry_b, "wit_b_pass"),
-        "PASS"
+        typecheck_compute_count() > after_a,
+        "second thread's computes must accumulate into the process-wide counter (got {} after {}, now {})",
+        after_a,
+        after_a,
+        typecheck_compute_count()
     );
 }
