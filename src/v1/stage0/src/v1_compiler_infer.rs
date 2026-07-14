@@ -12391,6 +12391,34 @@ pub fn local_binding_for_item(
                                 source_indices.clone(),
                                 item.clone(),
                             )))
+                        } else if ((item.body.clone() != None)
+                            && (item.connective.clone() == Connective::NoConnective))
+                            && (item.transport.clone() == None)
+                        {
+                            Some(Rc::new(TypeBinding {
+                                name: authored_name_at(source_indices.clone(), item.clone()),
+                                resolved: Rc::new(Node {
+                                    name: item.name.clone(),
+                                    span: item.span.clone(),
+                                    ident_span: item.ident_span.clone(),
+                                    children: item.children.clone(),
+                                    connective: Connective::NoConnective,
+                                    params: item.params.clone(),
+                                    inferred: item.inferred.clone(),
+                                    return_cardinality: item.return_cardinality.clone(),
+                                    uses: item.uses.clone(),
+                                    body: item.body.clone(),
+                                    transport: None,
+                                    properties: item.properties.clone(),
+                                    type_annotation: item.type_annotation.clone(),
+                                    is_self_recursive: item.is_self_recursive,
+                                    has_non_tail_self_call: item.has_non_tail_self_call,
+                                    match_pattern: item.match_pattern.clone(),
+                                    expr_data: item.expr_data.clone(),
+                                    ident: item.ident.clone(),
+                                }),
+                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                            }))
                         } else {
                             None
                         }
@@ -12456,6 +12484,26 @@ pub fn build_global_bare_census(
                 |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
                     census_insert_item(acc, item.clone(), source_indices.clone())
                 },
+            )
+        },
+    )
+}
+
+pub fn build_global_variant_census(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<VariantFoldState> {
+    modules.clone().iter().cloned().fold(
+        Rc::new(VariantFoldState {
+            locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            collision_errors: Rc::new(vec![]),
+        }),
+        |acc: Rc<VariantFoldState>, mod_: Rc<ResolvedModule>| {
+            build_local_variants(
+                module_items(mod_.module.clone()),
+                source_indices.clone(),
+                authored_name_at(source_indices.clone(), mod_.module.clone()),
+                acc,
             )
         },
     )
@@ -14161,6 +14209,7 @@ pub fn build_module_context(
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
     variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    global_variant: Rc<VariantFoldState>,
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<ModuleContext> {
@@ -14184,14 +14233,18 @@ pub fn build_module_context(
                 collision_errors: Rc::new(vec![]),
             }),
         );
-        let variant_fold = build_imported_variants(
-            resolved_imports.clone(),
-            parent_index.clone(),
-            variant_surfaces.clone(),
-            env.source_indices.clone(),
-            module_name.clone(),
-            local_variant_fold.clone(),
-        );
+        let variant_fold = if (resolved_imports.clone().len() as i64) == 0 {
+            global_variant.clone()
+        } else {
+            build_imported_variants(
+                resolved_imports.clone(),
+                parent_index.clone(),
+                variant_surfaces.clone(),
+                env.source_indices.clone(),
+                module_name.clone(),
+                local_variant_fold.clone(),
+            )
+        };
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
             merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
@@ -14270,6 +14323,7 @@ pub fn typecheck_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    global_variant: Rc<VariantFoldState>,
 ) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
@@ -14334,6 +14388,7 @@ pub fn typecheck_module(
             parent_index.clone(),
             variant_surfaces.clone(),
             resolved.resolved_imports.clone(),
+            global_variant.clone(),
             env.clone(),
             resolved_module_name.clone(),
         );
@@ -14489,6 +14544,10 @@ pub fn typecheck_module_isolated(
         source_indices.clone(),
         intern_table.clone(),
         v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+        Rc::new(VariantFoldState {
+            locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            collision_errors: Rc::new(vec![]),
+        }),
     )
 }
 
@@ -15102,6 +15161,8 @@ pub fn typecheck(
             },
         );
         let global_bare = build_global_bare_census(graph.modules.clone(), source_indices.clone());
+        let global_variant =
+            build_global_variant_census(graph.modules.clone(), source_indices.clone());
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -15117,6 +15178,7 @@ pub fn typecheck(
                     source_indices.clone(),
                     intern_table.clone(),
                     global_bare.clone(),
+                    global_variant.clone(),
                 )
             },
         );
@@ -15175,6 +15237,7 @@ pub fn realize_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    global_variant: Rc<VariantFoldState>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
@@ -15192,6 +15255,7 @@ pub fn realize_module(
                                 source_indices.clone(),
                                 intern_table.clone(),
                                 global_bare.clone(),
+                                global_variant.clone(),
                             )
                         },
                     );
@@ -15207,6 +15271,7 @@ pub fn realize_module(
                         source_indices.clone(),
                         intern_table.clone(),
                         global_bare.clone(),
+                        global_variant.clone(),
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
