@@ -3501,6 +3501,7 @@ fn build_pool_global_bare_census(
     (
         Rc<HashMap<String, Rc<v1_compiler_infer::GlobalBareLookupState>>>,
         Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<v1_compiler_infer::PoolServiceComponents>,
     ),
     String,
 > {
@@ -3566,7 +3567,11 @@ fn build_pool_global_bare_census(
             pool_graph.modules.clone(),
             source_indices.clone(),
         ),
-        source_indices,
+        source_indices.clone(),
+        v1_compiler_infer::build_pool_service_components(
+            pool_graph.modules.clone(),
+            source_indices.clone(),
+        ),
     ))
 }
 
@@ -3584,7 +3589,7 @@ fn reconcile_with_typed_cache(
     // Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): built once,
     // order-independent, over the indexed witness pool (not the entry import closure) — see
     // global_bare_fallback_invariant in v1_compiler_infer_env.
-    let (global_bare, _pool_source_indices) =
+    let (global_bare, _pool_source_indices, pool_services) =
         build_pool_global_bare_census(index, shared_caches)?;
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
@@ -3689,6 +3694,7 @@ fn reconcile_with_typed_cache(
                         source_indices.clone(),
                         intern_table.clone(),
                         global_bare.clone(),
+                        pool_services.clone(),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
                     // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
