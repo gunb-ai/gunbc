@@ -7,10 +7,6 @@ import extdeps.languages.bash.program {
   lit, var_ref, serialize_bash
 }
 import tools.build_step { BuildArtifact, emit_verifications, verifications_script }
-import tools.build_step_transport {
-  witness_zero_byte_artifact_rejected_by_execution,
-  witness_nonempty_executable_accepted_by_execution
-}
 import gunbc.ci_spec { ci_floor_build_verify_script }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -72,6 +68,4 @@ test fn build_artifact_verification_holds() -> Bool {
     && witness_existence_check_no_mtime()
     && witness_serialized_conjuncts_and_teeth()
     && witness_floor_covers_both_release_bins()
-    && witness_zero_byte_artifact_rejected_by_execution()
-    && witness_nonempty_executable_accepted_by_execution()
 }

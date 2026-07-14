@@ -7,6 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
   dag_fn_decl_param_binding_atoms,
   dag_language_model_canonical_symbols,
+  dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
@@ -47,8 +48,12 @@ import v2.std.resolution_policy {
   default_name_resolution_policy
 }
 import v2.std.symbol_index {
+  GlobalBareHit,
+  GlobalBareLookupAmbiguous,
+  GlobalBareLookupUnbound,
   SymbolIndex,
   empty_symbol_index,
+  symbol_index_global_unique_lookup,
   symbol_index_lexical_lookup
 }
 import v2.std.node {
@@ -297,40 +302,6 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
   }
 }
 
-fn lookup_chain_locals_only(s: Scope, name: Symbol) -> Outcome<Symbol?> {
-  match s {
-    ScopeFrame { locals: m, outer: o } =>
-      match map_get(m, name) {
-        Accepted { value: opt, diagnostics: d_here } => match opt {
-          Present { value: v } =>
-            Accepted { value: optional_present(value: v), diagnostics: d_here }
-          Absent =>
-            match lookup_chain_locals_only(s: o, name: name) {
-              Accepted { value: found, diagnostics: d_outer } =>
-                Accepted {
-                  value: found,
-                  diagnostics: diagnostics_merge(outer: d_here, inner: d_outer)
-                }
-              Rejected { diagnostics: ds } =>
-                Rejected {
-                  diagnostics: rejected_with_pending(pending: d_here, rejected: ds)
-                }
-            }
-        }
-        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-      }
-    ScopeRoot { module: _ } =>
-      Accepted { value: optional_absent(), diagnostics: None }
-  }
-}
-
-fn lookup_chain_for_policy(ctx: ResolveContext, name: Symbol) -> Outcome<Symbol?> {
-  match ctx.policy {
-    NamespaceOnlyY => lookup_chain_locals_only(s: ctx.scope, name: name)
-    ImportScoped => lookup_chain(s: ctx.scope, name: name)
-  }
-}
-
 fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
   match s {
     ScopeFrame { locals: m, outer: o } =>
@@ -399,6 +370,13 @@ fn symbol_index_lookup_position(ctx: ResolveContext) -> QualifiedName {
   }
 }
 
+fn symbol_index_node_identity(node: Node, fallback: Symbol) -> Symbol {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } => sym
+    _ => fallback
+  }
+}
+
 fn try_symbol_index_atom_identity(ctx: ResolveContext, name: Symbol) -> Optional<Symbol> {
   match symbol_index_lexical_lookup(
     index: ctx.namespace.symbol_index,
@@ -406,51 +384,63 @@ fn try_symbol_index_atom_identity(ctx: ResolveContext, name: Symbol) -> Optional
     name: name
   ) {
     Present { value: node } =>
-      match node.kind {
-        TypeNode { connective: Atom { identity: sym } } =>
-          optional_present(value: sym)
-        _ =>
-          optional_present(value: name)
+      optional_present(value: symbol_index_node_identity(node: node, fallback: name))
+    Absent =>
+      match ctx.policy {
+        NamespaceOnlyY =>
+          match symbol_index_global_unique_lookup(
+            index: ctx.namespace.symbol_index,
+            name: name
+          ) {
+            GlobalBareHit { node } =>
+              optional_present(value: symbol_index_node_identity(node: node, fallback: name))
+            GlobalBareLookupAmbiguous => optional_absent()
+            GlobalBareLookupUnbound => optional_absent()
+          }
+        ImportScoped => optional_absent()
       }
-    Absent => optional_absent()
   }
 }
 
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
-  match lookup_chain_for_policy(ctx: ctx, name: identity) {
-    Accepted { value: found, diagnostics: pending } => match found {
-      Present { value: canonical } =>
-        Accepted {
-          value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
-          diagnostics: pending
-        }
-      Absent =>
-        match try_symbol_index_atom_identity(ctx: ctx, name: identity) {
-          Present { value: canonical } =>
-            Accepted {
-              value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
-              diagnostics: pending
-            }
-          Absent =>
-            if namespace_has_canonical_symbol(
-              namespace: ctx.namespace,
-              name: identity
-            ) {
+  if dag_node_is_int_literal_atom(node: n) {
+    Accepted { value: n, diagnostics: None }
+  } else {
+    match lookup_chain(s: ctx.scope, name: identity) {
+      Accepted { value: found, diagnostics: pending } => match found {
+        Present { value: canonical } =>
+          Accepted {
+            value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
+            diagnostics: pending
+          }
+        Absent =>
+          match try_symbol_index_atom_identity(ctx: ctx, name: identity) {
+            Present { value: canonical } =>
               Accepted {
-                value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
+                value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
                 diagnostics: pending
               }
-            } else {
-              Rejected {
-                diagnostics: rejected_with_pending(
-                  pending: pending,
-                  rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
-                )
+            Absent =>
+              if namespace_has_canonical_symbol(
+                namespace: ctx.namespace,
+                name: identity
+              ) {
+                Accepted {
+                  value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
+                  diagnostics: pending
+                }
+              } else {
+                Rejected {
+                  diagnostics: rejected_with_pending(
+                    pending: pending,
+                    rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+                  )
+                }
               }
-            }
-        }
+          }
+      }
+      Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     }
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
 

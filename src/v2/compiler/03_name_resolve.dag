@@ -9,8 +9,14 @@ import v2.compiler.resolve {
   Namespace,
   namespace_bindings_augment_from_module_atoms,
   ResolvedTree,
-  resolve_with_namespace,
+  resolve_with_namespace_policy,
   try_edge_declared_binding
+}
+import v2.std.resolution_policy {
+  ImportScoped,
+  NameResolutionPolicy,
+  NamespaceOnlyY,
+  default_name_resolution_policy
 }
 import v2.extdeps.languages.dag {
   dag_language_model_canonical_symbols,
@@ -485,12 +491,56 @@ fn subject_module_root_for_name(
   module_root_find(roots: roots, name: name)
 }
 
+fn namespace_admission_initial_state(
+  policy: NameResolutionPolicy,
+  lm: LanguageModel,
+  subject_module_root: Node,
+  subject_qn: QualifiedName
+) -> AdmissionState {
+  let base = admission_namespace_base(lm: lm)
+  match policy {
+    NamespaceOnlyY =>
+      admission_initial(base: base)
+    ImportScoped =>
+      admit_named_exports(
+        root: subject_module_root,
+        origin: subject_qn,
+        state: admission_initial(base: base)
+      )
+  }
+}
+
+fn admitted_subject_from_bindings(
+  bindings: Map<Symbol, Symbol>,
+  base: Namespace,
+  subject_module_root: Node,
+  validated_roots: FreeMonoid<Node>,
+  module_qn: QualifiedName
+) -> AdmittedSubject {
+  AdmittedSubject {
+    namespace: Namespace {
+      bindings: namespace_bindings_augment_from_module_atoms(
+        root: subject_module_root,
+        bindings: bindings
+      ),
+      canonical_symbols: base.canonical_symbols,
+      symbol_index: symbol_index_fill_module_roots(
+        index: empty_symbol_index(),
+        roots: validated_roots
+      ),
+      module_qn: module_qn
+    },
+    subject_root: subject_module_root
+  }
+}
+
 fn namespace_for_subject(
   lm: LanguageModel,
   roots: FreeMonoid<Node>,
   admission: Admission,
   index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
 ) -> Outcome<AdmittedSubject> {
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -506,40 +556,55 @@ fn namespace_for_subject(
         Accepted { value: subject_module_root, diagnostics: _ } =>
           if well_formed(n: subject_module_root) {
             let base = admission_namespace_base(lm: lm)
-            match admit_imports(
-              roots: validated_roots,
-              imports: admission.imports,
-              state: admit_named_exports(
-                root: subject_module_root,
-                origin: admission.subject.name,
-                state: admission_initial(base: base)
-              ),
-              subject_qn: admission.subject.name,
-              index: index,
-              active_roots: active_roots
-            ) {
-              AdmissionAccepted { bindings: b, origins: _ } =>
-                Accepted {
-                  value: AdmittedSubject {
-                    namespace: Namespace {
-                      bindings: namespace_bindings_augment_from_module_atoms(
-                        root: subject_module_root,
-                        bindings: b
+            let initial = namespace_admission_initial_state(
+              policy: policy,
+              lm: lm,
+              subject_module_root: subject_module_root,
+              subject_qn: admission.subject.name
+            )
+            match policy {
+              NamespaceOnlyY =>
+                match initial {
+                  AdmissionRejected { diagnostics: d } =>
+                    Rejected {
+                      diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
+                    }
+                  AdmissionAccepted { bindings: b, origins: _ } =>
+                    Accepted {
+                      value: admitted_subject_from_bindings(
+                        bindings: b,
+                        base: base,
+                        subject_module_root: subject_module_root,
+                        validated_roots: validated_roots,
+                        module_qn: admission.subject.name
                       ),
-                      canonical_symbols: base.canonical_symbols,
-                      symbol_index: symbol_index_fill_module_roots(
-                        index: empty_symbol_index(),
-                        roots: validated_roots
-                      ),
-                      module_qn: admission.subject.name
-                    },
-                    subject_root: subject_module_root
-                  },
-                  diagnostics: validate_diag
+                      diagnostics: validate_diag
+                    }
                 }
-              AdmissionRejected { diagnostics: d } =>
-                Rejected {
-                  diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
+              ImportScoped =>
+                match admit_imports(
+                  roots: validated_roots,
+                  imports: admission.imports,
+                  state: initial,
+                  subject_qn: admission.subject.name,
+                  index: index,
+                  active_roots: active_roots
+                ) {
+                  AdmissionAccepted { bindings: b, origins: _ } =>
+                    Accepted {
+                      value: admitted_subject_from_bindings(
+                        bindings: b,
+                        base: base,
+                        subject_module_root: subject_module_root,
+                        validated_roots: validated_roots,
+                        module_qn: admission.subject.name
+                      ),
+                      diagnostics: validate_diag
+                    }
+                  AdmissionRejected { diagnostics: d } =>
+                    Rejected {
+                      diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
+                    }
                 }
             }
           } else {
@@ -559,20 +624,23 @@ fn resolve_with_admission_policy(
   roots: FreeMonoid<Node>,
   admission: Admission,
   index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
   match namespace_for_subject(
     lm: lm,
     roots: roots,
     admission: admission,
     index: index,
-    active_roots: active_roots
+    active_roots: active_roots,
+    policy: policy
   ) {
     Accepted { value: admitted, diagnostics: namespace_diag } =>
-      match resolve_with_namespace(
+      match resolve_with_namespace_policy(
         tree: admitted.subject_root,
         namespace: admitted.namespace,
-        lm: lm
+        lm: lm,
+        policy: policy
       ) {
         Accepted { value: resolved, diagnostics: resolve_diag } =>
           Accepted {
@@ -598,7 +666,8 @@ fn resolve_with_admission(
     roots: roots,
     admission: admission,
     index: source_root_index_empty(),
-    active_roots: Empty
+    active_roots: Empty,
+    policy: default_name_resolution_policy()
   )
 }
 
@@ -614,6 +683,7 @@ fn resolve_with_admission_grounded(
     roots: roots,
     admission: admission,
     index: index,
-    active_roots: active_roots
+    active_roots: active_roots,
+    policy: default_name_resolution_policy()
   )
 }
