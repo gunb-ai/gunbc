@@ -8,8 +8,9 @@ use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_compiler_parse::parse;
 use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_std_core::{
-    arg_value, build_newline_index, expr_call_func_at, expr_var_name_at, let_binding_name_at,
-    let_value, ExprData, LiteralValue, NewlineIndex, Node,
+    arg_value, build_newline_index, expr_call_func_at, expr_var_name_at, field_init_node_name_at,
+    field_init_node_value, let_binding_name_at, let_value, record_lit_type_name_at, ExprData,
+    LiteralValue, NewlineIndex, Node,
 };
 
 pub const FACE_INLINE_SYNTAX_LITERAL: &str = "InlineSyntaxLiteral";
@@ -332,6 +333,167 @@ pub fn medium_structure_leak_facts(
             .cmp(&b.path)
             .then(a.face.cmp(b.face))
             .then(a.detail.cmp(&b.detail))
+    });
+    out
+}
+
+// ---- no-smuggled-programs wall (HALF B): grammar-ignorant field-expression parts projection ----
+//
+// The Hole producer for `v2.lens.medium_structure_containment` grammar classifier. GRAMMAR- AND
+// LANGUAGE-IGNORANT (ruling R1b): this walks record CONSTRUCTIONS (`ExprRecordLit`) whose
+// `Constructor.field` matches a CALLER-SUPPLIED target ("RawLine.text", "Heredoc.body"), and
+// projects each such field's VALUE expression into a neutral parts list `[Const(text)|Hole]`. It
+// assigns NO meaning — the `.dag` lens owns the language decision (RawLine.text -> bash classify;
+// Heredoc.body -> NoLanguageDecision) and the composition recognizer. Projection: a string literal
+// -> Const(text); `concat(..)` args flattened; string interpolation decomposed (text segment ->
+// Const, interpolated expr -> Hole); any other dynamic sub-expression -> Hole (a .dag COMPOSE-TIME
+// value spliced into the source before the target language parses it — never assume-Const).
+//
+// SCAFFOLD (§7 hand-Rust shrink-to-zero): rides the `marshal_string_literal_atom` literal-
+// preservation idiom (coproduct_reflection.rs) and the #5364 field-expression projection corridor;
+// dissolves when the projection is a modeled substrate fold rather than a hand-Rust walk here.
+
+pub struct LiteralPartRaw {
+    pub is_hole: bool,
+    pub text: String,
+}
+
+pub struct RawLiteralPartsFact {
+    pub path: String,
+    pub constructor: String,
+    pub field: String,
+    pub parts: Vec<LiteralPartRaw>,
+}
+
+// Project a field-value expression into neutral [Const(text)|Hole] parts. Fail-closed: any
+// sub-expression that is not a preserved literal segment becomes a Hole (a compose-time splice),
+// never a silent Const.
+fn project_field_expr_parts(node: &Rc<Node>, si: &SourceIndices, out: &mut Vec<LiteralPartRaw>) {
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitStr { value: s, .. } => out.push(LiteralPartRaw {
+                is_hole: false,
+                text: s.clone(),
+            }),
+            _ => out.push(LiteralPartRaw {
+                is_hole: true,
+                text: String::new(),
+            }),
+        },
+        ExprData::ExprCall { .. } => {
+            let callee = expr_call_func_at(node.clone(), si.clone());
+            if callee == "concat" {
+                for child in node.children.iter() {
+                    project_field_expr_parts(&arg_value(child.clone()), si, out);
+                }
+            } else {
+                out.push(LiteralPartRaw {
+                    is_hole: true,
+                    text: String::new(),
+                });
+            }
+        }
+        ExprData::ExprStringInterp => {
+            for child in node.children.iter() {
+                project_field_expr_parts(child, si, out);
+            }
+        }
+        _ => out.push(LiteralPartRaw {
+            is_hole: true,
+            text: String::new(),
+        }),
+    }
+}
+
+fn walk_record_lit_parts(
+    node: &Rc<Node>,
+    targets: &[(String, String)],
+    path: &str,
+    si: &SourceIndices,
+    out: &mut Vec<RawLiteralPartsFact>,
+) {
+    if let ExprData::ExprRecordLit { .. } = node.expr_data.as_ref() {
+        if let Some(type_name) = record_lit_type_name_at(node.clone(), si.clone()) {
+            for (target_ctor, target_field) in targets {
+                if target_ctor == &type_name {
+                    for f in node.children.iter() {
+                        let fname = field_init_node_name_at(f.clone(), si.clone());
+                        if &fname == target_field {
+                            let value = field_init_node_value(f.clone());
+                            let mut parts: Vec<LiteralPartRaw> = Vec::new();
+                            project_field_expr_parts(&value, si, &mut parts);
+                            out.push(RawLiteralPartsFact {
+                                path: path.to_string(),
+                                constructor: type_name.clone(),
+                                field: fname.clone(),
+                                parts,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for child in node.children.iter() {
+        walk_record_lit_parts(child, targets, path, si, out);
+    }
+    if let Some(body) = node.body.as_ref() {
+        walk_record_lit_parts(body, targets, path, si, out);
+    }
+}
+
+fn parse_targets(targets: &[String]) -> Vec<(String, String)> {
+    targets
+        .iter()
+        .filter_map(|t| {
+            let mut it = t.splitn(2, '.');
+            let ctor = it.next()?.to_string();
+            let field = it.next()?.to_string();
+            if ctor.is_empty() || field.is_empty() {
+                None
+            } else {
+                Some((ctor, field))
+            }
+        })
+        .collect()
+}
+
+// A cheap grammar-ignorant pre-gate: skip a file whose text contains none of the target
+// constructor names. This is a string the CALLER supplied (a name, not a grammar marker), so the
+// seed still assigns no language meaning; it only avoids parsing files with no candidate site.
+fn any_target_ctor_present(content: &str, targets: &[(String, String)]) -> bool {
+    targets
+        .iter()
+        .any(|(ctor, _)| !ctor.is_empty() && content.contains(ctor.as_str()))
+}
+
+pub fn medium_structure_literal_parts_facts(
+    roots: &[String],
+    targets: &[String],
+) -> Vec<RawLiteralPartsFact> {
+    let parsed = parse_targets(targets);
+    let mut out: Vec<RawLiteralPartsFact> = Vec::new();
+    for root in roots {
+        for file in dag_files_sorted(root) {
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            if !any_target_ctor_present(&content, &parsed) {
+                continue;
+            }
+            if let Some((items, si)) = parse_file(&file) {
+                let rel = rel_path(&file);
+                for body in item_value_bodies(&items) {
+                    walk_record_lit_parts(&body, &parsed, &rel, &si, &mut out);
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(a.constructor.cmp(&b.constructor))
+            .then(a.field.cmp(&b.field))
     });
     out
 }
