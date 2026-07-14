@@ -1,12 +1,5 @@
 module product.budget_tree
 
-import std.measure { ByteSize, byte_size, measure_add, measure_le, Memory, One }
-import extdeps.accounting.budget {
-  Appropriation, LineItem, BudgetBalance, Surplus, Balanced, Deficit,
-  line_items_total, within_appropriation, budget_balance,
-  BudgetingMethod, ZeroBased,
-  AdmissionState, admit_all
-}
 
 type BudgetPriority = Guaranteed | Burstable | BestEffort
 

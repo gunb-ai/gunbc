@@ -1,7 +1,5 @@
 module tools.dag_compile_clean_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.dag_compile_clean_transport { run_clean_tree_compile }
 
 func run_dag_compile_clean_gate_body() -> ProcessExit {
   if run_clean_tree_compile() {
