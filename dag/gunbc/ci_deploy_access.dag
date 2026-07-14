@@ -1,6 +1,31 @@
 module gunbc.ci_deploy_access
 
+import std.types { NonEmptyStr, List, String, Bool }
+import std.access { AccessDecision, Permit, Deny, decision_meet }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
+import extdeps.diagnostic.ssh { ssh_session_exec }
+import gunbc.fleet_intent { ComputeHost, srv1_host }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_posix_accounts {
+  GroundedPosixPrincipal,
+  PosixSudoGrant,
+  FleetAccountCiRunner,
+  FleetAccountOperator,
+  fleet_posix_principal,
+  grounded_posix_principal_name,
+  fleet_apt_get_binary_path,
+}
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.ci_deploy_target_host {
+  DeployTargetHostProof,
+  deploy_target_proof,
+  deploy_target_host_preflight_block,
+  DeployTargetHostObservation,
+  deploy_target_host_check,
+  deploy_target_host_check_observed,
+}
 
 type PrivilegedCommand {
   path: NonEmptyStr
