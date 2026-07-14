@@ -1,18 +1,18 @@
 module std.determinism
 
 
-type DeterminismAxis
+type Determinism
   = Deterministic
   | NonDeterministic { source: DeclarationRef }
 
-fn determinism_from_perturbation(verdict: PerturbationVerdict, reached: DeclarationRef) -> DeterminismAxis {
+fn determinism_from_perturbation(verdict: PerturbationVerdict, reached: DeclarationRef) -> Determinism {
   match verdict {
     ResponseConsistent => Deterministic
     ResponseViolation => NonDeterministic { source: reached }
   }
 }
 
-fn determinism_compose(outer: DeterminismAxis, inner: DeterminismAxis) -> DeterminismAxis {
+fn determinism_compose(outer: Determinism, inner: Determinism) -> Determinism {
   match outer {
     NonDeterministic { source: s } => NonDeterministic { source: s }
     Deterministic => inner
