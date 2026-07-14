@@ -339,6 +339,16 @@ fn classify_scan_state(st: ScanState) -> BashCompositionDisposition {
 
 data hole_straddle_deferral_note: String = "T3 HoleStraddlesToken detection is conservatively DEFERRED in this increment: a Hole is treated as an opaque operand (bash-sound — an expansion's value is not re-parsed as control operators), so hole_straddle stays false and holes never fabricate a cross-boundary token. The narrow deliberate-split case (a const segment ending in a dangling ; & | before a Hole) is a tracked refinement; it can only move a Clean to AmbiguousParse (reported-not-gated), never change a Violation."
 
+fn quote_is_out(q: QuoteMode) -> Bool {
+  match q {
+    QuoteOut => true
+    QuoteSingle => false
+    QuoteDouble => false
+    QuoteEscOut => false
+    QuoteEscDouble => false
+  }
+}
+
 fn scan_part(st: ScanState, part: SkeletonPart) -> ScanState {
   match part {
     ConstPart { text: t } => scan(remaining: t, st: st)
@@ -349,7 +359,7 @@ fn scan_part(st: ScanState, part: SkeletonPart) -> ScanState {
       has_if: st.has_if,
       saw_unmodeled_kw: st.saw_unmodeled_kw,
       hole_present: true,
-      hole_straddle: st.hole_straddle
+      hole_straddle: st.hole_straddle || quote_is_out(q: st.quote)
     }
   }
 }
