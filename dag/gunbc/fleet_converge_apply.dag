@@ -49,31 +49,23 @@ fn fleet_compute_host_for_identity(identity: HostIdentity) -> ComputeHost? {
   )
 }
 
-fn converge_plan_effect(host_converge: HostConverge) -> HostEffect? {
-  match fleet_compute_host_for_identity(identity: host_converge.identity) {
-    Present { value: _ } =>
-      Present { value: ConvergePlan { policy: host_converge } }
-    Absent => none
-  }
+fn converge_plan_effect(host_converge: HostConverge) -> HostEffect {
+  ConvergePlan { policy: host_converge }
 }
 
 fn converge_apply_for_host(
   host_converge: HostConverge,
   transport: HostEffectTransport,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
-  match converge_plan_effect(host_converge: host_converge) {
-    Present { value: effect } =>
-      match fleet_compute_host_for_identity(identity: host_converge.identity) {
-        Present { value: host } =>
-          Present {
-            value: host_effect_apply(
-              target: HostOs { node: host },
-              effect: effect,
-              evidence: host_effect_converge_loop_evidence,
-              transport: transport,
-            )
-          }
-        Absent => none
+  match fleet_compute_host_for_identity(identity: host_converge.identity) {
+    Present { value: host } =>
+      Present {
+        value: host_effect_apply(
+          target: HostOs { node: host },
+          effect: converge_plan_effect(host_converge: host_converge),
+          evidence: host_effect_converge_loop_evidence,
+          transport: transport,
+        )
       }
     Absent => none
   }
