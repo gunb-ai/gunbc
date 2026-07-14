@@ -1,6 +1,15 @@
 module v2.workflow.bash_program_emit
 
-import extdeps.languages.bash.program { AndOrOp, Command, ShellProgram, ShellStmt, ShellWord, Redir }
+import extdeps.languages.bash.program {
+  AndOrOp,
+  Command,
+  ShellProgram,
+  ShellStmt,
+  ShellWord,
+  Redir,
+  serialize_stmt,
+  single_quote,
+}
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.bash {
@@ -433,7 +442,45 @@ fn bash_program_stmt_spelling(stmt: ShellStmt) -> Outcome<String> {
           )
         }
       )
+    SetShellOptions { errexit: _, nounset: _, pipefail: _ } =>
+      bash_program_serialize_stmt_direct(stmt: stmt)
+    Background { stmt: st } =>
+      bind_outcome(
+        o: bash_program_stmt_spelling(stmt: st),
+        f: fn(inner_spelling) {
+          Accepted { value: concat(inner_spelling, " &"), diagnostics: None }
+        }
+      )
+    CaptureLastBackgroundPid { var_name: v } =>
+      Accepted { value: concat(v, "=$!"), diagnostics: None }
+    TrapOnSignals { handler: h, signals: sigs } =>
+      bind_outcome(
+        o: bash_program_stmt_spelling(stmt: h),
+        f: fn(handler_spelling) {
+          Accepted {
+            value: concat(
+              concat("trap ", single_quote(s: handler_spelling)),
+              fold(
+                sigs,
+                init: "",
+                f: (acc, sig) => {
+                  if acc == "" {
+                    concat(" ", sig)
+                  } else {
+                    concat(acc, concat(" ", sig))
+                  }
+                },
+              ),
+            ),
+            diagnostics: None,
+          }
+        }
+      )
   }
+}
+
+fn bash_program_serialize_stmt_direct(stmt: ShellStmt) -> Outcome<String> {
+  Accepted { value: serialize_stmt(s: stmt), diagnostics: None }
 }
 
 fn bash_program_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {

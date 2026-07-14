@@ -260,6 +260,12 @@ fn shell_stmt_computation_demands(
     Heredoc { path: _, delimiter: _, body: _ } => empty_computation_demand_facts
     Exit { code: _ } => empty_computation_demand_facts
     RawLine { text: _ } => empty_computation_demand_facts
+    SetShellOptions { errexit: _, nounset: _, pipefail: _ } => empty_computation_demand_facts
+    Background { stmt: st } =>
+      shell_stmt_computation_demands(site: site, stmt: st, guarded: guarded, replication: replication)
+    CaptureLastBackgroundPid { var_name: _ } => empty_computation_demand_facts
+    TrapOnSignals { handler: h, signals: _ } =>
+      shell_stmt_computation_demands(site: site, stmt: h, guarded: guarded, replication: replication)
   }
 }
 
