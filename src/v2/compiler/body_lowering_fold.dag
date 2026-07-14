@@ -86,10 +86,6 @@ type BodyLoweringInterimScaffoldRow {
   disposition: BodyLoweringInterimScaffoldDisposition
 }
 
-type BodyLoweringDomainConstructionDisposition = BodyLoweringDomainParamListWalk
-
-data body_lowering_domain_construction_disposition: BodyLoweringDomainConstructionDisposition = BodyLoweringDomainParamListWalk
-
 data body_lowering_domain_construction_disposition_note: String = "Wave 1 Gate 1 A1/B1: param-name domain harvesting is terminal param-list-walk (declaration reading, not SymbolIndex resolution). BodyLoweringDomainSymbolIndexResolved deleted in B1 — uninhabited variant with no migration trigger (operator ruling 2026-07-14)."
 
 data body_lowering_interim_scaffold_row_match_hand_walker: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
@@ -1838,9 +1834,9 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => outcome_accepted(value: optional_absent())
     Present { value: pair } =>
-      match body_lower_param_binding_optional(node: pair.left) {
+      match body_lower_operand_ref_optional(node: pair.left) {
         Absent => outcome_accepted(value: optional_absent())
-        Present { value: callee } =>
+        Present { value: callee_atom } =>
           match body_lower_primary_call_suffix_optional(root: pair.right) {
             Absent => outcome_accepted(value: optional_absent())
             Present { value: call_suffix } =>
@@ -1849,7 +1845,7 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
                   outcome_accepted(
                     value: optional_present(
                       value: body_lower_transform_call(
-                        operator: body_lower_method_operator_atom(sym: callee),
+                        operator: callee_atom,
                         args: args
                       )
                     )
