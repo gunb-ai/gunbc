@@ -277,6 +277,7 @@ fn no_identity_navigation_finding() -> Optional<Finding> {
 }
 
 fn suspect_identity_navigation_finding(
+  source_node: Node,
   match_node: Node,
   reduction_count: Int,
   remaining: Int
@@ -284,6 +285,7 @@ fn suspect_identity_navigation_finding(
   Present {
     value: Suspect {
       violation: IdentityNodeEscapesAsValue {
+        source: source_node,
         at: match_node,
         reduction_count: reduction_count,
         extraneous_mentions: remaining
@@ -298,7 +300,7 @@ fn unclassifiable_identity_navigation_finding(match_node: Node, cause: Symbol) -
   }
 }
 
-fn classify_identity_match(match_node: Node, mentions: List<Symbol>) -> Optional<Finding> {
+fn classify_identity_match(source_node: Node, match_node: Node, mentions: List<Symbol>) -> Optional<Finding> {
   let non_absent = fold(mentions, init: empty_symbol_list(), f: fn(acc, s) {
     if s == ^Absent { acc } else { symbol_list_prepend(item: s, xs: acc) }
   })
@@ -310,6 +312,7 @@ fn classify_identity_match(match_node: Node, mentions: List<Symbol>) -> Optional
       no_identity_navigation_finding()
     } else {
       suspect_identity_navigation_finding(
+        source_node: source_node,
         match_node: match_node,
         reduction_count: reduction_count,
         remaining: remaining
@@ -325,6 +328,7 @@ fn classify_identity_match(match_node: Node, mentions: List<Symbol>) -> Optional
       )
     } else {
       suspect_identity_navigation_finding(
+        source_node: source_node,
         match_node: match_node,
         reduction_count: reduction_count,
         remaining: remaining
@@ -351,10 +355,11 @@ fn identity_navigation_findings_at(node: Node, span_index: SpanIndex, source_tex
                   span_index: span_index,
                   source_text: source_text
                 ) {
-                  Present { value: _ } =>
+                  Present { value: source_call } =>
                     match match_arms_region_node(match_capture: cap) {
                       Present { value: arms } =>
                         match classify_identity_match(
+                          source_node: source_call,
                           match_node: node,
                           mentions: collect_value_identifiers_into(n: arms, acc: Empty)
                         ) {

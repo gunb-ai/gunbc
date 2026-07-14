@@ -9,6 +9,7 @@ data identity_captured_navigation_bug_class_note: String = "The grammar wraps ev
 
 type IdentityCapturedNavigationViolation
   = IdentityNodeEscapesAsValue {
+      source: Node,
       at: Node,
       reduction_count: Int,
       extraneous_mentions: Int
@@ -23,3 +24,5 @@ data identity_captured_navigation_wall_note: String = "WallAfterGrounding, not W
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+
+data identity_captured_navigation_fidelity_mapping_note: String = "IdentityNodeEscapesAsValue is exactly the dependency-fidelity under-claim arm's int-literal class (docs/plans/dependency-fidelity-design.md S5: 'a witnessed dependency edge with no declared authority \\| value flows through the captured projection; nothing declared it, so a consumer took the identity edge'). source is the find_named_child(name: ^grammar_production_identity_node_projection) call node - the witnessed edge's origin, undeclared as a value-producing authority. at is the enclosing match_expr whose arms consume the un-reduced identity node - the witnessed edge's dependent. v2.lens.identity_captured_navigation.fidelity projects Suspect findings into v2.lens.dependency_fidelity.UnderClaimedEdge\{source, dependent: at\} so this detector reports through the one verdict authority (DESIGN S3) rather than a bespoke parallel verdict type; Unclassifiable findings are typed refusals, not verdict-lattice members, and do not project."
