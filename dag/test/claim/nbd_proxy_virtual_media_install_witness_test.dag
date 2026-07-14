@@ -98,7 +98,7 @@ test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
         _ => false
       }
         && match intent.effect {
-          ShellCommand { script: _ } => true
+          Srv3NbdProxyServe { intent: _, lease_key: _ } => true
           _ => false
         }
     Absent => false

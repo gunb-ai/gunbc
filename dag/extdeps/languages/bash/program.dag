@@ -138,27 +138,11 @@ fn join_stmts_semi(stmts: List<ShellStmt>) -> String {
   })
 }
 
-fn join_set_option_flags(flags: List<String>) -> String {
-  fold(flags, init: "set", f: (acc, flag) => concat(acc, concat(" ", flag)))
-}
-
 fn serialize_set_shell_options(errexit: Bool, nounset: Bool, pipefail: Bool) -> String {
-  let with_e = fold(
-    if errexit { ["-e"] } else { [] },
-    init: [] as List<String>,
-    f: (acc, flag) => list_push(acc, flag),
-  )
-  let with_u = fold(
-    if nounset { ["-u"] } else { [] },
-    init: with_e,
-    f: (acc, flag) => list_push(acc, flag),
-  )
-  let with_o = fold(
-    if pipefail { ["-o", "pipefail"] } else { [] },
-    init: with_u,
-    f: (acc, flag) => list_push(acc, flag),
-  )
-  join_set_option_flags(flags: with_o)
+  let e = if errexit { " -e" } else { "" }
+  let u = if nounset { " -u" } else { "" }
+  let o = if pipefail { " -o pipefail" } else { "" }
+  concat("set", concat(e, concat(u, o)))
 }
 
 fn serialize_stmt(s: ShellStmt) -> String {
