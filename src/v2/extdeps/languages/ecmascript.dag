@@ -24,7 +24,6 @@ import v2.std.grammar {
   FormalTerminal,
   FormalTerminalOccurrence,
   Nonterminal,
-  Optional,
   Sequence,
   Terminal,
   grammar_carries_symbol,

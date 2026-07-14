@@ -2,7 +2,7 @@ module v2.extdeps.languages.dag
 import v2.std.model_core { bool_model_core }
 import v2.std.language_model { LanguageModel }
 
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
 import v2.std.collection {
   Absent,
   List,
@@ -125,7 +125,6 @@ import v2.std.compilers.target_model {
   concrete_syntax_token_to_node,
   TargetBindingRefShape,
   TargetBodiedArrowStatementScaffold,
-  TargetEmitHostRuntimeRow,
   TargetCallApplyShape,
   TargetClosureShape,
   TargetConditionalShape,
