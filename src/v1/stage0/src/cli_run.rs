@@ -2194,12 +2194,19 @@ fn entry_file_touched_via_import_closure(
 
 /// Receipted Rust mirror of the single authority `v2.std.live_read.live_read_carrier_homes_v0`
 /// (`src/v2/std/live_read.dag`) — the module names of the 8 declared live-read carrier homes.
-/// Kept in lockstep with that `.dag` roster by hand (no generator yet); a drift here
-/// under-approximates axis (iv) fail-closed-safe direction only if this list is a SUPERSET of
-/// the `.dag` roster, so any addition to the `.dag` roster must be mirrored here — the drift
-/// gate below (`live_read_carrier_home_modules_v0_is_superset_of_dag_authority`) evaluates the
-/// `.dag` authority through a real interpreter context and fails the build the moment this
-/// const falls behind, so the mismatch cannot silently pass.
+/// Kept in lockstep with that `.dag` roster by hand; a drift here under-approximates axis (iv)
+/// fail-closed-safe direction only if this list is a SUPERSET of the `.dag` roster, so any
+/// addition to the `.dag` roster must be mirrored here — the drift gate below
+/// (`live_read_carrier_home_modules_v0_is_superset_of_dag_authority`) evaluates the `.dag`
+/// authority through a real interpreter context and fails the build the moment this const falls
+/// behind, so the mismatch cannot silently pass.
+/// Dissolution trigger: every caller of `runtime_data_dependency_touched_via_carrier_closure`
+/// (the skip-before-resolve fast path and the precompute-count helpers below) is itself a named
+/// `SCAFFOLD (§7 hand-Rust shrink-to-zero)` whose own DELETE WHEN note ties dissolution to
+/// `v2.workflow.affected_set_floor_runner`'s `.dag` disposition owning the same predicate
+/// end-to-end. This const has no independent dissolution path or generator lane because it has
+/// no independent caller: when those scaffolds delete, this const and its drift gate delete with
+/// them, not before.
 const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
     "v2.lens.enforcement.cost_coverage",
     "v2.lens.enforcement.grammar_coverage",
