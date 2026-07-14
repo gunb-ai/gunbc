@@ -42,4 +42,14 @@ service curl.Http {
       nonzero => String "curl POST JSON from file failed"
     }
   }
+
+  operation DownloadToFile {
+    input { url: NonEmptyStr, destination: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["curl", "-fL", "{url}", "-o", "{destination}"] }
+    exit {
+      0 => Unit
+      nonzero => String "curl download failed"
+    }
+  }
 }

@@ -88,6 +88,17 @@ service shell.Test {
       1 => Unit "Path is missing or zero-byte"
     }
   }
+
+  operation IsFile {
+    input { path: FilePath }
+    output { is_file: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-f", "{path}"] }
+    exit {
+      0 => Unit "Path is a regular file"
+      1 => Unit "Path is missing or not a regular file"
+    }
+  }
 }
 
 service shell.Mktemp {
@@ -132,6 +143,30 @@ service shell.Remove {
     exit {
       0 => Unit
       nonzero => String "rm -rf failed"
+    }
+  }
+}
+
+service shell.Move {
+  operation File {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mv", "{source}", "{destination}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mv failed"
+    }
+  }
+}
+
+service shell.Chmod {
+  operation RecursiveWritable {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "-R", "u+w", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod -R u+w failed"
     }
   }
 }

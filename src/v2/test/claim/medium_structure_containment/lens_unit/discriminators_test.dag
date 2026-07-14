@@ -57,8 +57,13 @@ data rostered_composition_fact: List<RawLiteralPartsFact> = [
   }
 ]
 
+data custom_roster_with_specimen_path: List<String> = ["dag/extdeps/os/ubuntu_install_media_fetch.dag"]
+
 test fn rostered_composition_is_not_counted_holds() -> Bool {
-  medium_structure_violation_count_canonical(facts: rostered_composition_fact) == 0
+  medium_structure_violation_count(
+    facts: rostered_composition_fact,
+    roster: custom_roster_with_specimen_path
+  ) == 0
 }
 
 # ---- de-rostered: the SAME composition counts (discriminating: roster suppresses, not classifier) ----

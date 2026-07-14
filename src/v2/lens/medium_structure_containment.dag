@@ -100,15 +100,11 @@ data medium_bash_scan_roots: List<String> = [
   "src/v2/lens"
 ]
 
-data medium_structure_roster_prune_note: String = "Roster PRUNED 62->3 as part of the marker-to-gate swap (parent-ruled 2026-07-14): under the type-structural gate ONLY the 3 RawLine-CONSTRUCTION files are live violations; the ~59 marker-era entries exempted files with ZERO classified RawLine/Heredoc literal sites = inert exemptions = the inert-lens-is-a-lie failure (§2/§5), so they are removed, not kept. The enumerated per-entry zero-classified-site proof for the removed 59 is the census receipt (whole-corpus grep: RawLine/Heredoc CONSTRUCTIONS live in exactly 4 files — the 3 below + bash_command_fold_test which is scope-excluded above). The ratchet re-freezes tighter at baseline=3 and stays LIVE (a 4th entry added without a live violation must red on execution)."
+data medium_structure_roster_prune_note: String = "Roster PRUNED 59->0 (EMPTY) as part of the marker-to-gate swap (parent-ruled 2026-07-14 as a prune; the honest live count fell further to 0 after the latest main merge). Under the type-structural gate NO substrate file has a live RawLine.text/Heredoc.body VIOLATION: (a) the marker era's ~59 entries exempted files with zero classified sites (inert = the inert-lens-is-a-lie failure, §2/§5); (b) the two os RawLine files the earlier census flagged (ubuntu_install_media_fetch, ubuntu_seeded_install_media_remaster) were RawLine->modeled MIGRATED on main and no longer construct RawLine at all, so they dropped from main's roster too; (c) the sole remaining RawLine-construction file, dag/extdeps/bmc/webui/nbd_proxy_serve.dag, is 3 single-command RawLines (Clean) + 2 concat-with-unquoted-hole RawLines (AmbiguousParse{HoleStraddlesToken}, counted DecodeFidelity residue) + 0 Violations, so it needs no exemption either. Whole-corpus census: RawLine/Heredoc CONSTRUCTIONS in scope live ONLY in nbd_proxy_serve (Clean+Ambiguous); bash_command_fold_test is scope-excluded above. Honest receipt: roster == exactly the violating files == EMPTY. The ratchet re-freezes at baseline=0 and stays LIVE (any entry added without a live violation reds on execution)."
 
-data medium_structure_exception_roster: List<String> = [
-  "dag/extdeps/bmc/webui/nbd_proxy_serve.dag",
-  "dag/extdeps/os/ubuntu_install_media_fetch.dag",
-  "dag/extdeps/os/ubuntu_seeded_install_media_remaster.dag"
-]
+data medium_structure_exception_roster: List<String> = []
 
-data medium_structure_exception_roster_size_baseline: Int = 3
+data medium_structure_exception_roster_size_baseline: Int = 0
 
 fn roster_growth_ratchet_holds(live_size: Int, baseline: Int) -> Bool {
   live_size <= baseline
