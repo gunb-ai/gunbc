@@ -147,8 +147,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRead => srv3_host_effect_script_resolution_failed_cell()
-                Srv3InstallMediaFetch => srv3_host_effect_script_resolution_failed_cell()
-                Srv3SeededInstallMediaRemaster => srv3_host_effect_script_resolution_failed_cell()
+                Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
+                Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
                 Srv3SeededInstallMediaToolchainEnsure => srv3_host_effect_script_resolution_failed_cell()
                 Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
@@ -159,20 +159,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
                   HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
               }
-            Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
-            DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
-            DurableApprovalGrantRead => srv3_host_effect_script_resolution_failed_cell()
-            Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
-            Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
-            Srv3SeededInstallMediaToolchainEnsure => srv3_host_effect_script_resolution_failed_cell()
-            Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
-            Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
-            Srv3BmcwebTokenExtract => srv3_host_effect_script_resolution_failed_cell()
-            Srv3NbdProxyServe => srv3_host_effect_script_resolution_failed_cell()
-            Srv3BootOnceReadBackSleep => srv3_host_effect_script_resolution_failed_cell()
-            Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
-            SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
-              HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
           }
       }
     BmcController { node: n } =>
