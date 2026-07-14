@@ -23,7 +23,7 @@ import std.cache_interface {
   ProducerReceipt,
 }
 import std.types { ContentHash, NonEmptyStr, Bool }
-import std.list { List }
+import std.types { List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
