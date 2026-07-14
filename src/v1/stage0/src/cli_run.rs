@@ -13,7 +13,7 @@ use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
-use crate::v1_compiler_infer_env::lookup_type_by_name;
+use crate::v1_compiler_infer_env::{lookup_type_by_name, SymbolIndex};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -2870,7 +2870,7 @@ pub struct MultiEntryIndex {
     /// Corpus-wide SymbolIndex census (Grammar lane G1): entry-scoped import closures
     /// omit provider modules for import-less qualified projections; the census authority
     /// is the whole indexed pool, not the entry closure alone.
-    corpus_symbol_index: RefCell<Option<Rc<v1_compiler_infer_env::SymbolIndex>>>,
+    corpus_symbol_index: RefCell<Option<Rc<SymbolIndex>>>,
 }
 
 pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
@@ -3727,7 +3727,7 @@ fn reconcile_all_cache_hits(
 
 fn get_or_build_corpus_symbol_index(
     index: &MultiEntryIndex,
-) -> Result<Rc<v1_compiler_infer_env::SymbolIndex>, String> {
+) -> Result<Rc<SymbolIndex>, String> {
     if let Some(cached) = index.corpus_symbol_index.borrow().clone() {
         return Ok(cached);
     }
