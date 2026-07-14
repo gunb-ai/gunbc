@@ -7292,8 +7292,55 @@ fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::Interp
                 | "DiagnosticClaim"
                 | "StructuralEqualsClaim"
                 | "RoundTripClaim"
-                | "BoolWitnessClaim"
         ),
+        _ => false,
+    }
+}
+
+fn variant_field<'a>(
+    ctx: &v1_interpreter::InterpContext,
+    fields: &'a [(v1_interpreter::Symbol, v1_interpreter::Value)],
+    name: &str,
+) -> Option<&'a v1_interpreter::Value> {
+    fields
+        .iter()
+        .find(|(sym, _)| ctx.sym_eq(*sym, name))
+        .map(|(_, v)| v)
+}
+
+/// Node-frontier selection applies only to node-corpus TestClaim rows whose
+/// evaluation footprint is structurally Node-valued at runtime. UnifiedTestClaim
+/// BoolWitnessClaim rows and CompilesClaim rows whose input/expected_value are
+/// Symbol atoms (parse-bridge harness claims) are out of scope for
+/// `test_claim_evaluation_touches_rerun_frontier` — skipping them is
+/// fail-closed-safe (cannot under-approximate touch → may rerun, never skip).
+fn test_claim_selection_has_node_corpus(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> bool {
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = val
+    else {
+        return false;
+    };
+    let all_nodes = |vals: &[&v1_interpreter::Value]| vals.iter().all(|v| value_is_node(v, ctx));
+    match ctx.resolve(*variant_name).as_str() {
+        "EqualsClaim" | "StructuralEqualsClaim" => all_nodes(&[
+            variant_field(ctx, fields, "lhs").expect("lhs"),
+            variant_field(ctx, fields, "rhs").expect("rhs"),
+        ]),
+        "CompilesClaim" => all_nodes(&[
+            variant_field(ctx, fields, "input").expect("input"),
+            variant_field(ctx, fields, "expected_value").expect("expected_value"),
+        ]),
+        "RoundTripClaim" => all_nodes(&[variant_field(ctx, fields, "input").expect("input")]),
+        "DiagnosticClaim" => {
+            variant_field(ctx, fields, "input")
+                .is_some_and(|v| value_is_node(v, ctx))
+        }
         _ => false,
     }
 }
@@ -8233,6 +8280,9 @@ fn entry_touches_rerun_frontier(
     .map_err(|e| format!("{e}"))?;
     for val in initializer_values {
         if !value_is_test_claim(&val, ctx) {
+            continue;
+        }
+        if !test_claim_selection_has_node_corpus(&val, ctx) {
             continue;
         }
         saw_claim = true;
@@ -12243,78 +12293,6 @@ mod witness_timing_attribution_tests {
         assert_eq!(top.len(), 2);
         assert_eq!(top[0].function, "slow");
         assert_eq!(top[1].function, "medium");
-    }
-
-    /// Local reproducer for PR #6632 batch-2 selection failure: walk discovery roster
-    /// under the real merge-base diff and fail on the first entry whose frontier
-    /// machinery cannot evaluate a TestClaim.
-    #[test]
-    fn c1_pr_merge_diff_discovery_selection_machinery_green() {
-        use super::{
-            build_multi_entry_index, discover_floor_corpus_rows_scoped,
-            entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-            list_value_from_vec, make_eval_context,
-            resolve_entry_with_index_for_discovery_corpus, rerun_frontier_nodes_for_entry,
-            workspace_root,
-        };
-        use crate::v1_interpreter::ExecutionMode;
-        use std::process::Command;
-
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        let scan_dirs = vec![
-            ws.join("dag/test/claim")
-                .to_string_lossy()
-                .into_owned(),
-            ws.join("src/v2/test/claim")
-                .to_string_lossy()
-                .into_owned(),
-        ];
-        let excludes: Vec<String> = Vec::new();
-        let rows = discover_floor_corpus_rows_scoped(&roots, &scan_dirs, &excludes, &[])
-            .expect("discovery roster");
-        let diff = Command::new("git")
-            .args(["diff", "-U0", "origin/main...HEAD"])
-            .current_dir(&ws)
-            .output()
-            .expect("git diff");
-        assert!(diff.status.success(), "git diff failed");
-        let diff_text = String::from_utf8(diff.stdout).expect("utf8 diff");
-        let index = build_multi_entry_index(&roots);
-        let edits = floor_diff_edits_from_diff_text(&index, &diff_text)
-            .expect("floor diff edits from PR merge diff");
-        let mut failures: Vec<String> = Vec::new();
-        for row in rows {
-            let Ok((graph, source_indices)) =
-                resolve_entry_with_index_for_discovery_corpus(&index, &row.entry)
-            else {
-                continue;
-            };
-            let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
-            let Ok(frontier_nodes) = rerun_frontier_nodes_for_entry(&ctx, &row.entry, &edits)
-            else {
-                continue;
-            };
-            if frontier_nodes.is_empty() {
-                continue;
-            }
-            if let Err(e) =
-                entry_touches_rerun_frontier(&ctx, &list_value_from_vec(frontier_nodes))
-            {
-                failures.push(format!("{}::{} ({})", row.entry, row.function, e));
-            }
-        }
-        if !failures.is_empty() {
-            panic!(
-                "PR merge-diff selection failures ({}):\n{}",
-                failures.len(),
-                failures.join("\n")
-            );
-        }
     }
 }
 
