@@ -38,8 +38,7 @@ fn converge_target_kind_label(t: ConvergeTarget) -> String {
   }
 }
 
-data converge_knob_unimplemented_reason_prefix: String =
-  "host_converge_realize: ConvergeKnob interpreter frontier — fail-closed Unimplemented per knob target; no free-form imperative arm (host-effect Phase D / shell-emission slice 2)"
+data converge_knob_unimplemented_reason_prefix: String = "host_converge_realize: ConvergeKnob interpreter frontier — fail-closed Unimplemented per knob target; no free-form imperative arm (host-effect Phase D / shell-emission slice 2)"
 
 fn converge_knob_unimplemented_reason(knob: ConvergeKnob) -> String {
   concat(

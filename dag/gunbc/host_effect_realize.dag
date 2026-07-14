@@ -19,13 +19,19 @@ import extdeps.shell
 import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
+import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
+import gunbc.host_converge_realize {
+  interpret_host_converge,
+  ConvergeHostRefused,
+  ConvergeHostInterpreted,
+}
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.ci_deploy_access {
   DeployAccess, DeployAccessActor,
   deploy_access_check, deploy_access_check_observed,
   deploy_access_decision_reason,
 }
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, List }
 
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
@@ -116,6 +122,85 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
         }
       }
     }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: "host_effect_apply: ShellCommand cannot use EmitArtifactThenThinRun transport; typed mismatch — reserved for ConvergePlan (host-effect Phase D).",
+        stderr: "",
+      }
+  }
+}
+
+fn thin_invocation_script(invocation: ThinInvocation) -> String {
+  fold(
+    invocation.argv,
+    init: "",
+    f: fn(acc, arg) {
+      if acc == "" { arg } else { concat(concat(acc, " "), arg) }
+    }
+  )
+}
+
+fn converge_bootstrap_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
+  match transport {
+    LocalShell => run_shell_transport(script: script, transport: LocalShell)
+    SshShell { ssh_host: h } => run_shell_transport(script: script, transport: SshShell { ssh_host: h })
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      run_shell_transport(script: script, transport: LocalShell)
+  }
+}
+
+fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match interpret_host_converge(host_converge: host_converge) {
+    ConvergeHostRefused { reason: why } =>
+      NotConverged { reason: why, applied: intent }
+    ConvergeHostInterpreted { knob_count: _, stdout: out } => {
+      let observed = ShellExecObserved {
+        exit_code: 0,
+        success: true,
+        stdout: out,
+        stderr: "",
+      }
+      reconcile_grounded(
+        apply_effect: intent,
+        show_read: ReadObserved { value: observed },
+        grounding: Grounds { evidence: ConvergePlanApplied { exit_code: 0, stdout: out } }
+      )
+    }
+  }
+}
+
+fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match transport {
+    EmitArtifactThenThinRun { bootstrap: boot, invocation: inv } =>
+      match gunbc_apply_mode_for_host(host: host_converge.identity) {
+        FreshStandup => {
+          let boot_result = converge_bootstrap_transport(script: boot.script, transport: transport)
+          if boot_result.success {
+            let inv_result = converge_bootstrap_transport(
+              script: thin_invocation_script(invocation: inv),
+              transport: transport
+            )
+            if inv_result.success {
+              realize_converge_in_process(host_converge: host_converge, intent: intent)
+            } else {
+              NotConverged { reason: shell_exec_failure_reason(observed: inv_result), applied: intent }
+            }
+          } else {
+            NotConverged { reason: shell_exec_failure_reason(observed: boot_result), applied: intent }
+          }
+        }
+        ExistingHostQuiescentReload =>
+          realize_converge_in_process(host_converge: host_converge, intent: intent)
+      }
+    LocalShell =>
+      realize_converge_in_process(host_converge: host_converge, intent: intent)
+    SshShell { ssh_host: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
+        applied: intent,
+      }
   }
 }
 
@@ -143,6 +228,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
   }
   match resolve_host_effect_cell(target: target, effect: effect) {
     ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
+    ConvergeOnHost { node: _, host_converge: hc } =>
+      realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -179,6 +266,8 @@ fn host_effect_apply_gated(
     Permit =>
       match resolve_host_effect_cell(target: target, effect: effect) {
         ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
+        ConvergeOnHost { node: _, host_converge: hc } =>
+          realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -217,6 +306,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
           match resolve_host_effect_cell(target: intent.target, effect: intent.effect) {
             IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
             ShellOnHost { node: _, script: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }
