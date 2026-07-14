@@ -2966,10 +2966,10 @@ fn resolve_entry_with_parse_cache(
                 eprintln!(
                     "[resolved-graph-cache] decode subject={subject} (installed into process share)"
                 );
-                index.resolved_graph_memo.borrow_mut().insert(
-                    subject,
-                    (hit.graph.clone(), hit.source_indices.clone()),
-                );
+                index
+                    .resolved_graph_memo
+                    .borrow_mut()
+                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -3146,10 +3146,10 @@ fn resolve_entry_with_parse_cache(
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
     // Install into the in-process share so same-subject re-resolves skip assembly.
-    index.resolved_graph_memo.borrow_mut().insert(
-        subject.clone(),
-        (typed.clone(), source_indices.clone()),
-    );
+    index
+        .resolved_graph_memo
+        .borrow_mut()
+        .insert(subject.clone(), (typed.clone(), source_indices.clone()));
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
@@ -3395,15 +3395,9 @@ fn reconcile_all_cache_hits(
     for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
         let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
         check_module_source_identity(module_identity, mod_name, &decl_file)?;
-        let tc_result = typed_cache
-            .borrow()
-            .get(mod_name)
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
-                )
-            })?;
+        let tc_result = typed_cache.borrow().get(mod_name).cloned().ok_or_else(|| {
+            format!("reconcile all-cache-hit path: module '{mod_name}' missing from typed store")
+        })?;
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
