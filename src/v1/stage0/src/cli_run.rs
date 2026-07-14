@@ -3,8 +3,8 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::std_node::compiler_recursive_types;
@@ -2024,9 +2024,7 @@ pub(crate) fn module_graph_facts_build_count_for_test() -> usize {
 
 #[cfg(test)]
 mod shared_cache_collision_guard_tests {
-    use super::check_module_source_identity;
-    use im_rc::HashMap;
-    use std::cell::RefCell;
+    use super::check_module_source_identity_map;
 
     // Collision-honesty receipt (union-resolve §6.3): the shared typed-module cache's
     // source-identity guard fails LOUD when one module name resolves from two declaring files
@@ -2034,17 +2032,17 @@ mod shared_cache_collision_guard_tests {
     // This is the guard exercised by execution with a red control — not an inert wall.
     #[test]
     fn source_identity_flags_coresidence_collision_but_allows_reexport() {
-        let reg: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+        let mut reg = std::collections::HashMap::new();
         // First sight records the identity.
-        assert!(check_module_source_identity(&reg, "std.foo", "dag/std/foo.dag").is_ok());
+        assert!(check_module_source_identity_map(&mut reg, "std.foo", "dag/std/foo.dag").is_ok());
         // GREEN control: the SAME module reached again (a legitimate re-export / second
         // import path) is benign — one authority, many hops — so no error.
-        assert!(check_module_source_identity(&reg, "std.foo", "dag/std/foo.dag").is_ok());
+        assert!(check_module_source_identity_map(&mut reg, "std.foo", "dag/std/foo.dag").is_ok());
         // A distinct name from a distinct file is fine.
-        assert!(check_module_source_identity(&reg, "std.bar", "dag/std/bar.dag").is_ok());
+        assert!(check_module_source_identity_map(&mut reg, "std.bar", "dag/std/bar.dag").is_ok());
         // RED control: the same name from a DIFFERENT declaring file is the co-residence
         // surprise — a loud typed error, never a silently divergent resolution.
-        let err = check_module_source_identity(&reg, "std.foo", "src/v2/std/foo.dag")
+        let err = check_module_source_identity_map(&mut reg, "std.foo", "src/v2/std/foo.dag")
             .expect_err("a colliding module name from a second file must fail closed");
         assert!(
             err.contains("co-residence collision") && err.contains("std.foo"),
@@ -2668,16 +2666,12 @@ pub fn resolve_entry_graph_shared(
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
-    intern_table: RefCell<Rc<InternTable>>,
-    parse_cache: RefCell<HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>>,
-    typed_module_cache: RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
-    // Collision-honesty registry for the shared typed_module_cache (union-resolve
-    // receipt §6.3, docs/plans/resolver-graph-major-design.md). The typed cache is
-    // keyed by authored module name and reused across every entry that co-resides in
-    // this index, so a name that maps to two DIFFERENT declaring files must fail loud
-    // — never silently serve one file's typecheck for the other's. Records
-    // mod_name → declaring_file; a mismatch on a later co-resolve is a typed error.
-    module_source_identity: RefCell<HashMap<String, String>>,
+    /// Increment C cache shell (C1-prep). `std::collections::HashMap` map shells avoid
+    /// `im_rc::HashMap` (`!Sync` in statics); payloads remain `Rc` and the struct is
+    /// `!Send` — `Arc<Mutex<_>>` does not cross threads until store-path `Rc`→`Arc`
+    /// (cross-worker-typecheck-share-design.md §4.1). Today each index owns one `Arc` on
+    /// its thread; worker spawn still builds a private index per shard.
+    shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -2695,40 +2689,70 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
-    // Per-module memo for the two per-entry recomputations the resolve-split receipt
-    // priced at ~15% of whole-corpus resolve (normalize 8% + ownership 7% — the
-    // "Track A denomination receipt", docs/plans/v1-run-stability-throughline.md §1).
-    // Normalize diagnostics are a pure function of the parsed module node
-    // (v1.compiler.normalize.normalize_module_diagnostics) and ownership diagnostics
-    // a pure function of the typed module (v1.compiler.compile.module_ownership_proofs)
-    // — both stable per declaring-file path within one process, the same in-process
-    // source-stability contract parse_cache and typed_module_cache already ride
-    // (module_source_identity walls name↔file divergence loud). Keyed by the module's
-    // declaring file (span.file, the parse_cache key's own identity).
-    normalize_diag_cache: RefCell<HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
-    ownership_diag_cache: RefCell<HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+}
+
+/// S2a increment C typed/parse cache payloads (C1-prep). Target: one instance per
+/// `(process, source_roots)` cloned across worker index shells. Blocked on `Rc`→`Arc` for
+/// store-carried infer carriers — `Rc` payloads make this `!Send` today.
+struct SharedTypecheckCaches {
+    intern_table: Rc<InternTable>,
+    parse_cache: std::collections::HashMap<
+        String,
+        (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>),
+    >,
+    typed_module_cache: std::collections::HashMap<
+        String,
+        Rc<v1_compiler_infer::TypecheckModuleResult>,
+    >,
+    module_source_identity: std::collections::HashMap<String, String>,
+    normalize_diag_cache:
+        std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+    ownership_diag_cache:
+        std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+}
+
+impl SharedTypecheckCaches {
+    fn new() -> Self {
+        Self {
+            intern_table: seed_kernel_intern_names(empty_intern_table()),
+            parse_cache: std::collections::HashMap::new(),
+            typed_module_cache: std::collections::HashMap::new(),
+            module_source_identity: std::collections::HashMap::new(),
+            normalize_diag_cache: std::collections::HashMap::new(),
+            ownership_diag_cache: std::collections::HashMap::new(),
+        }
+    }
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
-// docs/plans/resolver-graph-major-design.md). Counts how many module typechecks were
-// actually COMPUTED (cache misses) on this thread. When every consumer of the process
-// shares one index, this stays == the distinct module count of the union closure — the
-// enforced form of "a process's resolve cost is ≤ 1× its union closure, never N×". A
-// private re-resolve sneaking back would push computes above distinct nodes.
-thread_local! {
-    static TYPECHECK_COMPUTE_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+// docs/plans/resolver-graph-major-design.md; process-wide after increment C). Counts how
+// many module typechecks were actually COMPUTED (cache misses). When every consumer of
+// the process shares one typed_module_cache, this stays ≤ the distinct module count of
+// the process union.
+static TYPECHECK_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+// Union-resolve receipt tests reset/read the process-wide counter; `cargo test` runs
+// `#[test]` fns in parallel by default — serialize those oracles (not production use).
+static TYPECHECK_COMPUTE_COUNT_RECEIPT_LOCK: Mutex<()> = Mutex::new(());
+
+/// Run a counter-based receipt test with exclusive access to `TYPECHECK_COMPUTE_COUNT`.
+pub fn with_typecheck_compute_count_receipt<R>(f: impl FnOnce() -> R) -> R {
+    let _guard = TYPECHECK_COMPUTE_COUNT_RECEIPT_LOCK
+        .lock()
+        .expect("typecheck_compute_count receipt lock poisoned");
+    f()
 }
 
 pub fn typecheck_compute_count() -> usize {
-    TYPECHECK_COMPUTE_COUNT.with(|c| c.get())
+    TYPECHECK_COMPUTE_COUNT.load(Ordering::SeqCst)
 }
 
 pub fn reset_typecheck_compute_count() {
-    TYPECHECK_COMPUTE_COUNT.with(|c| c.set(0));
+    TYPECHECK_COMPUTE_COUNT.store(0, Ordering::SeqCst);
 }
 
 fn bump_typecheck_compute_count() {
-    TYPECHECK_COMPUTE_COUNT.with(|c| c.set(c.get().saturating_add(1)));
+    TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
 }
 
 /// Accumulate the authored module names of a set of typed modules into `out`.
@@ -2762,16 +2786,21 @@ fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
 }
 
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
+    build_multi_entry_index_with_shared_caches(
+        source_roots,
+        Arc::new(Mutex::new(SharedTypecheckCaches::new())),
+    )
+}
+
+fn build_multi_entry_index_with_shared_caches(
+    source_roots: &[String],
+    shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
+) -> MultiEntryIndex {
     MultiEntryIndex {
         source_files: build_module_index(source_roots),
         module_graph_facts: build_module_graph_facts_live(source_roots),
-        intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
-        parse_cache: RefCell::new(HashMap::new()),
-        typed_module_cache: RefCell::new(HashMap::new()),
-        module_source_identity: RefCell::new(HashMap::new()),
+        shared_caches,
         resolved_graph_memo: RefCell::new(HashMap::new()),
-        normalize_diag_cache: RefCell::new(HashMap::new()),
-        ownership_diag_cache: RefCell::new(HashMap::new()),
     }
 }
 
@@ -2786,13 +2815,8 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
     MultiEntryIndex {
         source_files: build_module_index_primary_precedence(&roots),
         module_graph_facts: build_module_graph_facts_live(&roots),
-        intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
-        parse_cache: RefCell::new(HashMap::new()),
-        typed_module_cache: RefCell::new(HashMap::new()),
-        module_source_identity: RefCell::new(HashMap::new()),
+        shared_caches: Arc::new(Mutex::new(SharedTypecheckCaches::new())),
         resolved_graph_memo: RefCell::new(HashMap::new()),
-        normalize_diag_cache: RefCell::new(HashMap::new()),
-        ownership_diag_cache: RefCell::new(HashMap::new()),
     }
 }
 
@@ -2981,7 +3005,13 @@ fn resolve_entry_with_parse_cache(
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
-        let cached = index.parse_cache.borrow().get(&source.path).cloned();
+        let cached = {
+            let caches = index
+                .shared_caches
+                .lock()
+                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+            caches.parse_cache.get(&source.path).cloned()
+        };
 
         let (parse_result, nl_index) = match cached {
             Some(entry) => entry,
@@ -2989,18 +3019,21 @@ fn resolve_entry_with_parse_cache(
                 let tokens =
                     v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                 let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-                let current_table = index.intern_table.borrow().clone();
+                let mut caches = index
+                    .shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+                let current_table = caches.intern_table.clone();
                 let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
                     let mut m = HashMap::new();
                     m.insert(source.path.clone(), nl_index.clone());
                     m
                 });
                 let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+                caches.intern_table = parsed.intern_table.clone();
                 let entry = (parsed.result.clone(), nl_index);
-                index
+                caches
                     .parse_cache
-                    .borrow_mut()
                     .insert(source.path.clone(), entry.clone());
                 entry
             }
@@ -3022,7 +3055,12 @@ fn resolve_entry_with_parse_cache(
     }
 
     let source_indices = Rc::new(si_map);
-    let global_table = index.intern_table.borrow().clone();
+    let global_table = index
+        .shared_caches
+        .lock()
+        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
+        .intern_table
+        .clone();
     resolve_stage_slot_add(|s| s.parse += parse_started.elapsed().as_nanos());
 
     let resolve_started = std::time::Instant::now();
@@ -3049,7 +3087,13 @@ fn resolve_entry_with_parse_cache(
     let mut norm_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
     for m in graph.modules.iter() {
         let key = m.module.span.file.clone();
-        let cached = index.normalize_diag_cache.borrow().get(&key).cloned();
+        let cached = index
+            .shared_caches
+            .lock()
+            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
+            .normalize_diag_cache
+            .get(&key)
+            .cloned();
         let module_diags = match cached {
             Some(hit) => hit,
             None => {
@@ -3058,8 +3102,10 @@ fn resolve_entry_with_parse_cache(
                     source_indices.clone(),
                 );
                 index
+                    .shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
                     .normalize_diag_cache
-                    .borrow_mut()
                     .insert(key, computed.clone());
                 computed
             }
@@ -3082,8 +3128,7 @@ fn resolve_entry_with_parse_cache(
         graph.clone(),
         source_indices.clone(),
         global_table,
-        &index.typed_module_cache,
-        &index.module_source_identity,
+        &index.shared_caches,
     )?;
     // Assembly residue = reconcile wall minus the per-module rows its internals
     // accumulated into the slot during this call (typecheck computes + parent envs).
@@ -3121,15 +3166,23 @@ fn resolve_entry_with_parse_cache(
     let mut ownership_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
     for m in typed.modules.iter() {
         let key = m.module.span.file.clone();
-        let cached = index.ownership_diag_cache.borrow().get(&key).cloned();
+        let cached = index
+            .shared_caches
+            .lock()
+            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
+            .ownership_diag_cache
+            .get(&key)
+            .cloned();
         let module_diags = match cached {
             Some(hit) => hit,
             None => {
                 let proofs = v1_compiler_compile::module_ownership_proofs(m.clone());
                 let computed = v1_compiler_compile::ownership_diagnostics(proofs);
                 index
+                    .shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
                     .ownership_diag_cache
-                    .borrow_mut()
                     .insert(key, computed.clone());
                 computed
             }
@@ -3175,12 +3228,12 @@ fn resolve_entry_with_parse_cache(
 /// tree-wide module-path collisions at index build; this is the same wall at the cache seam
 /// the union widens (e.g. an on-disk entry whose module path shadows an indexed module,
 /// reached via `entry_source_from_index_or_disk`).
-fn check_module_source_identity(
-    registry: &RefCell<HashMap<String, String>>,
+fn check_module_source_identity_map(
+    registry: &mut std::collections::HashMap<String, String>,
     mod_name: &str,
     decl_file: &str,
 ) -> Result<(), String> {
-    if let Some(prev_file) = registry.borrow().get(mod_name).cloned() {
+    if let Some(prev_file) = registry.get(mod_name).cloned() {
         if prev_file != decl_file {
             return Err(format!(
                 "co-residence collision: module '{mod_name}' resolved from two files \
@@ -3191,9 +3244,7 @@ fn check_module_source_identity(
         }
         return Ok(());
     }
-    registry
-        .borrow_mut()
-        .insert(mod_name.to_string(), decl_file.to_string());
+    registry.insert(mod_name.to_string(), decl_file.to_string());
     Ok(())
 }
 
@@ -3382,8 +3433,7 @@ fn reconcile_all_cache_hits(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    typed_cache: &RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
-    module_identity: &RefCell<HashMap<String, String>>,
+    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut modules_vec = im_rc::Vector::new();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> =
@@ -3394,16 +3444,25 @@ fn reconcile_all_cache_hits(
 
     for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
         let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        check_module_source_identity(module_identity, mod_name, &decl_file)?;
-        let tc_result = typed_cache
-            .borrow()
-            .get(mod_name)
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
-                )
-            })?;
+        let tc_result = {
+            let mut caches = shared_caches
+                .lock()
+                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+            check_module_source_identity_map(
+                &mut caches.module_source_identity,
+                mod_name,
+                &decl_file,
+            )?;
+            caches
+                .typed_module_cache
+                .get(mod_name)
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
+                    )
+                })?
+        };
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
@@ -3428,8 +3487,7 @@ fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
-    typed_cache: &RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
-    module_identity: &RefCell<HashMap<String, String>>,
+    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
@@ -3451,16 +3509,20 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
-    if closure_names
-        .iter()
-        .all(|name| typed_cache.borrow().contains_key(name))
-    {
+    let all_cached = {
+        let caches = shared_caches
+            .lock()
+            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+        closure_names
+            .iter()
+            .all(|name| caches.typed_module_cache.contains_key(name))
+    };
+    if all_cached {
         return reconcile_all_cache_hits(
             &closure_modules,
             &closure_names,
             source_indices,
-            typed_cache,
-            module_identity,
+            shared_caches,
         );
     }
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
@@ -3487,8 +3549,22 @@ fn reconcile_with_typed_cache(
             // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
             // authority — the guard must fire on genuinely different files, not path representations.
             let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-            check_module_source_identity(module_identity, &mod_name, &decl_file)?;
-            let cached = typed_cache.borrow().get(&mod_name).cloned();
+            {
+                let mut caches = shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+                check_module_source_identity_map(
+                    &mut caches.module_source_identity,
+                    &mod_name,
+                    &decl_file,
+                )?;
+            }
+            let cached = {
+                let caches = shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+                caches.typed_module_cache.get(&mod_name).cloned()
+            };
             let was_cache_hit = cached.is_some();
             let parent_diags = if was_cache_hit {
                 Rc::new(im_rc::Vector::new())
@@ -3530,8 +3606,10 @@ fn reconcile_with_typed_cache(
                     if module_tc_ms >= 2_000 {
                         eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
                     }
-                    typed_cache
-                        .borrow_mut()
+                    shared_caches
+                        .lock()
+                        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
+                        .typed_module_cache
                         .insert(mod_name.clone(), computed.clone());
                     computed
                 }
@@ -8168,10 +8246,11 @@ pub fn run_discovery_corpus_with_options(
                 let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
                     governor_for_worker.clone(),
                 );
-                // Each worker is its own thread (Rc<ResolvedGraph> is !Send, so the resolve
-                // store cannot cross the worker boundary — that cross-worker share is the
-                // S2b/Arc frontier). Within the worker, union-resolve S1 still holds: the
-                // worker's floor runner and its rows resolve against ONE index.
+                // Each worker is its own thread (`Rc` infer carriers are `!Send`, so the
+                // typed_module_cache cannot cross the worker boundary until store-path
+                // `Rc`→`Arc` migration lands — docs/plans/cross-worker-typecheck-share-design.md
+                // §4.1). Within the worker, union-resolve S1 still holds: the worker's floor
+                // runner and its rows resolve against ONE index.
                 let index = build_multi_entry_index(&roots);
                 let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                     match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
