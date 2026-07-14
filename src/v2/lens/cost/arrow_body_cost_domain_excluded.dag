@@ -17,15 +17,6 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 import v2.std.witness { Holds }
 
 data arrow_body_cost_domain_excluded_note: String = "Discriminating RED for Wave 1 Gate 1 C1: Arrow domain Cardinality children must NOT inflate the cost fold — only ^arrow_body_edge is priced. If edge_contributes_to_cost_fold regresses to include Arrow positional children, this witness goes red (domain linear cost would dominate)."
@@ -77,14 +68,4 @@ fn arrow_body_cost_domain_excluded_holds() -> Bool {
       }
     _ => false
   }
-}
-
-data arrow_body_cost_domain_excluded_claim_rhs: Node = arrow_body_cost_arrow
-
-data claim_arrow_body_cost_domain_excluded: TestClaim = EqualsClaim {
-  label: "lens_cost/arrow_body_cost_domain_excluded: Arrow cost fold prices ^arrow_body_edge only, not domain Cardinality",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: arrow_body_cost_arrow,
-  rhs: arrow_body_cost_domain_excluded_claim_rhs,
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }
