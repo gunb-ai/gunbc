@@ -1,6 +1,6 @@
 module v2.test.long.wave1_gate1_c1_copied_port_derivation_witness
 
-import v2.lens.cost.arrow_body_cost_domain_excluded {
+import v2.test.lens_cost.arrow_body_cost_domain_excluded {
   arrow_body_cost_domain_excluded_holds
 }
 import v2.test.claim.body_lowering.wave1_gate1_c1_copied_port_helpers {
