@@ -9,6 +9,16 @@
 
 ---
 
+> **⚠️ SUPERSEDED IN PART — 2026-07-14 (operator direction, 2026-07-13, session `emit-determinism`).** The **source representation** below is superseded; the mechanism's principles are unchanged and strengthened. Specifically:
+> - **Source is emergent, not labeled.** The `NonDetSource` label-enum (`HashIteration | TimeRead | RandomRead | EnvRead`, §0/§2-deep) is dissolved. Nondeterminism **emerges** by folding a node's dependencies to grounded external-world roots; the leak carries a **`DeclarationRef` reference to the root reached**, not a coined tag (operator: *"ideally that stuff is emergent from the modeling — I prefer not to model/label things as opposed to properly modeling dependencies"*). Grounded roots follow termination's shrunk registry (`measure_descent_fact_registry`): only the irreducible external-world leaf is grounded.
+> - **Built on `std.perturbation`.** `ForwardSameInSameOut` *is* the objective definition (perturb outside declared inputs → output must not respond); determinism refines it by naming *which root* was reached. One objective, boundary-relative determinism usable by any node — not a compiler-only axis.
+> - **Core carries the source directly.** P1's two-layer `DeterminismAxis` (core, two arms) + `DeterminismClass` (refinement, `source`) split is **collapsed**: `std.determinism.DeterminismAxis = Deterministic | NonDeterministic { source: DeclarationRef }` is the single authority. The core **name `DeterminismAxis` is retained** (avoids the `std.behavioral.Determinism` §3 collision the P1 name was chosen to prevent); the rename to a single `Determinism` lands together with the `behavioral`/`coordination` dissolution, not before.
+> - **Preserved:** §3 single authority (vs `behavioral.determinism` / `perturbation` / `emit_determinism_gate`), §5 construction-over-validation and the located/typed-leak requirement, §7 signature-derived classification. FLAG 1 = A and FLAG 2 = C still hold.
+>
+> **Execution (phased, green-by-execution):** (A) grounded authority on perturbation, emergent source — **landed** (`dag/std/determinism.dag`, PR #6551); (B) ground roots via `kind: Observation` — *needs seed work + a `service→resource` binding not present in source, deferred/escalation-worthy*; (C) the emit lens over the `map_keys`/`sorted_map_keys` callee-symbol root (the class the x2 gate actually guards) — the gate replacement; (D) delete `emit_determinism_gate`; (E) unify `behavioral`/`coordination`, lift a convergence `Bound`, rename to single `Determinism`. This note records the operator's redirection; the new shape's detailed decisions remain open to operator shape-review.
+
+---
+
 ## 0. The one-sentence claim
 
 > **Determinism is a signature-derived classification axis orthogonal to `EffectShape`**, carried by `DeterminismFact { signature, classification }`, where `NonDeterministic { source: NonDetSource }` names one of four **grounded leak atoms** (`HashIteration | TimeRead | RandomRead | EnvRead`). A pure function's output must be a function of its declared inputs only; any dependence outside that key is a **located, typed `NonDetSource` leak**, not a silent bit-identical drift discovered later by `emit_determinism_gate`.
