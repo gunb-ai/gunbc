@@ -12401,6 +12401,76 @@ pub fn local_binding_for_item(
     }
 }
 
+pub fn census_insert_binding_first_wins(
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    binding: Rc<TypeBinding>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    match v1_rt::map_get(&census, binding.name.clone()) {
+        Some(_) => census.clone(),
+        None => census_insert_binding(census, binding.clone()),
+    }
+}
+
+pub fn census_insert_item_first_wins(
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    match local_binding_for_item(item.clone(), source_indices.clone()) {
+        None => census,
+        Some(binding) => census_insert_binding_first_wins(census, binding.clone()),
+    }
+}
+
+pub fn build_global_bare_census_pool(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    let census = modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+        |census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, mod_: Rc<ResolvedModule>| {
+            let items_census = module_items(mod_.module.clone()).iter().cloned().fold(
+                census,
+                |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
+                    census_insert_item_first_wins(acc, item.clone(), source_indices.clone())
+                },
+            );
+            let surface = collect_own_variant_export_surface(
+                module_items(mod_.module.clone()),
+                source_indices.clone(),
+            );
+            v1_rt::map_keys(&surface.arm_owners.clone())
+                .iter()
+                .cloned()
+                .fold(items_census, |acc, arm_name: String| {
+                    match (
+                        v1_rt::map_get(&surface.arm_owners.clone(), arm_name.clone()),
+                        v1_rt::map_get(&surface.enum_items.clone(), arm_name.clone()),
+                    ) {
+                        (Some(coproduct), Some(_)) => {
+                            let variant = coproduct.children.clone().iter().cloned().find(|v| {
+                                authored_name_at(source_indices.clone(), v.clone()) == arm_name
+                            });
+                            match variant {
+                                Some(v) => census_insert_binding_first_wins(
+                                    acc,
+                                    Rc::new(TypeBinding {
+                                        name: arm_name.clone(),
+                                        resolved: v.clone(),
+                                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                    }),
+                                ),
+                                None => acc,
+                            }
+                        }
+                        _ => acc,
+                    }
+                })
+        },
+    );
+    census
+}
+
 pub fn census_insert_binding(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     binding: Rc<TypeBinding>,

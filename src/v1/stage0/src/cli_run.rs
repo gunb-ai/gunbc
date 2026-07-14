@@ -3508,7 +3508,11 @@ fn build_pool_global_bare_census(
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
         index.source_files.values().cloned().collect();
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.sort_by(|a, b| {
+        let a_v2 = a.path.starts_with("src/v2/");
+        let b_v2 = b.path.starts_with("src/v2/");
+        (a_v2, &a.path).cmp(&(b_v2, &b.path))
+    });
     for source in sources {
         let cached = {
             let caches = shared_caches
@@ -3558,7 +3562,7 @@ fn build_pool_global_bare_census(
     let pool_graph =
         v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
     Ok((
-        v1_compiler_infer::build_global_bare_census(
+        v1_compiler_infer::build_global_bare_census_pool(
             pool_graph.modules.clone(),
             source_indices.clone(),
         ),
