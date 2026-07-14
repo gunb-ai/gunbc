@@ -15,6 +15,7 @@ type TypeEnv {
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
   source_visible_names: Map<String, Bool>
+  global_bare: Map<String, GlobalBareLookupState>
 }
 
 type TypeBinding {
@@ -22,6 +23,12 @@ type TypeBinding {
   resolved: Node
   provenance: SubValueRelation
 }
+
+data global_bare_fallback_invariant: String = "Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): keyed on the bare declared name, one authority built once by build_global_bare_census over graph.modules before any module typechecks (order-independent — mirrors v2's symbol_index_global_bare, docs/plans/namespace-resolution-design.md §7.5). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss, and only a GlobalBareUniqueBinding resolves; GlobalBareAmbiguousBinding stays Absent (fail-closed, never guesses — §5). This is what unblocks the src/v1 import strip: a bare reference that used to resolve via a deleted import chain still resolves here iff its name is globally unique in the corpus."
+
+type GlobalBareLookupState
+  = GlobalBareUniqueBinding { binding: TypeBinding }
+  | GlobalBareAmbiguousBinding
 
 type ImportBinding {
   name: String
@@ -362,10 +369,21 @@ fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
         Present { value: binding } => Present { value: binding }
         Absent =>
           match intern_find(table: env.intern_table, s: name) {
-            Present { value: id } => map_get(env.bindings, id)
-            Absent => Absent
+            Present { value: id } => match map_get(env.bindings, id) {
+              Present { value: binding } => Present { value: binding }
+              Absent => global_bare_lookup(env: env, name: name)
+            }
+            Absent => global_bare_lookup(env: env, name: name)
           }
       }
+  }
+}
+
+fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
+  match map_get(env.global_bare, name) {
+    Present { value: GlobalBareUniqueBinding { binding: binding } } => Present { value: binding }
+    Present { value: GlobalBareAmbiguousBinding } => Absent
+    Absent => Absent
   }
 }
 

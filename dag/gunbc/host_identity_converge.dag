@@ -1,8 +1,6 @@
 module gunbc.host_identity_converge
 
 import std.types { String, NonEmptyStr, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.access { AccessDecision, Deny }
 import extdeps.dns.domain_name { DnsLabel }
 import std.effects {
@@ -14,7 +12,8 @@ import std.effects {
   LatticeEffect,
 }
 import gunbc.host_effect {
-  ShellCommand,
+  HostEffect,
+  SetHostnameCas,
   NodeControlPlane,
   HostEffectTransport,
   HostEffectIntent,
@@ -52,26 +51,6 @@ import std.realization_reconcile {
   Converged,
   NotConverged,
   reconciliation_converged,
-}
-
-data host_identity_set_hostname_script_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration,
-  }
-}
-
-fn host_identity_set_hostname_script(desired_hostname: DnsLabel) -> String {
-  concat(concat("sudo -n ", host_identity_hostnamectl_path), concat(" set-hostname ", desired_hostname as String))
-}
-
-fn host_identity_set_hostname_script_cas(base_hostname: DnsLabel, desired_hostname: DnsLabel) -> String {
-  concat(
-    concat("[ \"$(hostname -s)\" = \"", base_hostname as String, "\" ] && sudo -n "),
-    concat(host_identity_hostnamectl_path, " set-hostname ", desired_hostname as String)
-  )
 }
 
 fn host_identity_precondition_verdict(
@@ -148,9 +127,16 @@ fn host_identity_plan_from_verdict(
   }
 }
 
-fn host_identity_plan_effect_script(plan: HostIdentityPlan) -> String? {
+fn host_identity_plan_effect(plan: HostIdentityPlan) -> HostEffect? {
   match plan {
-    ApplyPlan { base: b, desired: d } => Present { value: host_identity_set_hostname_script_cas(base_hostname: b, desired_hostname: d) }
+    ApplyPlan { base: b, desired: d } =>
+      Present {
+        value: SetHostnameCas {
+          hostnamectl_path: host_identity_hostnamectl_path,
+          base: b,
+          desired: d,
+        }
+      }
     NoopPlan => none
     ConflictPlan { verdict: _ } => none
   }
@@ -168,7 +154,7 @@ fn host_identity_apply_evidence() -> IdempotencyEvidence {
 
 fn host_identity_apply_denied(
   target: NodeControlPlane,
-  script: String,
+  effect: HostEffect,
   transport: HostEffectTransport,
   reason: String,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -176,7 +162,7 @@ fn host_identity_apply_denied(
     reason: reason,
     applied: HostEffectIntent {
       target: target,
-      effect: ShellCommand { script: script },
+      effect: effect,
       evidence: host_identity_apply_evidence(),
       transport: transport,
       privilege_denial: none,
@@ -191,13 +177,13 @@ fn host_identity_apply_gated(
   transport: HostEffectTransport,
   fixture_actor: DeployAccessActor?,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
-  match host_identity_plan_effect_script(plan: plan) {
-    Present { value: script } =>
+  match host_identity_plan_effect(plan: plan) {
+    Present { value: effect } =>
       Present {
         value: host_effect_apply_gated(
           access: access,
           target: target,
-          effect: ShellCommand { script: script },
+          effect: effect,
           evidence: host_identity_apply_evidence(),
           transport: transport,
           fixture_actor: fixture_actor,
