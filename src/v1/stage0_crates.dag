@@ -182,6 +182,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           "std_graph",
           "std_http_path",
           "std_induction",
+          "std_interface_summary",
           "std_iteration",
           "std_lens_verdict",
           "std_magnitude",
