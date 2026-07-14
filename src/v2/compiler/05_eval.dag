@@ -62,6 +62,8 @@ import v2.std.runtime {
   ReadResource,
   WriteResource,
   effect_handler_for_kind,
+  environment_binding_key_for_symbol,
+  environment_binding_key_from_atom,
   interpretation_behavior_dispatch,
   runtime_value_node_projection,
   runtime_value_resolved_type
@@ -150,7 +152,10 @@ import v2.std.verification {
   test_claim_input
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-import v2.extdeps.languages.dag { dag_round_trip_authorities_ready }
+import v2.extdeps.languages.dag {
+  dag_node_is_int_literal_atom,
+  dag_round_trip_authorities_ready
+}
 import v2.extdeps.runtimes.v2_effect_io_pure {
   EffectIoFixtureStore,
   EffectIoResourceBackend,
@@ -944,7 +949,7 @@ fn runtime_binding_lookup_miss(key: EnvironmentBindingKey) -> Witness<RuntimeVal
   Violates {
     diagnostic: eval_diagnostic(
       reason: ^eval_rejected_runtime_binding_lookup_miss,
-      node: key.declaration
+      node: symbol_atom_node(sym: key.identity)
     )
   }
 }
@@ -1144,10 +1149,7 @@ fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
       absent_reason: ^eval_rejected_bind_key_absent
     ),
     f: fn(e) {
-      Accepted {
-        value: eval_environment_binding_key(declaration: e.target),
-        diagnostics: None
-      }
+      eval_environment_binding_key_from_node(declaration: e.target)
     }
   )
 }
@@ -1177,17 +1179,37 @@ fn eval_binding_key_node(sym: Symbol) -> Node {
   symbol_atom_node(sym: sym)
 }
 
-fn eval_environment_binding_key(declaration: Node) -> EnvironmentBindingKey {
-  EnvironmentBindingKey {
-    declaration: declaration
+fn eval_environment_binding_key_from_node(declaration: Node) -> Outcome<EnvironmentBindingKey> {
+  match environment_binding_key_from_atom(node: declaration) {
+    Present { value: key } =>
+      Accepted { value: key, diagnostics: None }
+    Absent =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_bind_key_absent, node: declaration)
+      )
+  }
+}
+
+fn eval_node_admits_literal_allocation(node: Node) -> Bool {
+  if dag_node_is_int_literal_atom(node: node) {
+    true
+  } else {
+    match node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false)
+      _ => false
+    }
   }
 }
 
 fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  eval_witness_outcome(
-    witness: environment.bindings.lookup(
-      eval_environment_binding_key(declaration: node)
-    )
+  bind_outcome(
+    o: eval_environment_binding_key_from_node(declaration: node),
+    f: fn(key) {
+      eval_witness_outcome(
+        witness: environment.bindings.lookup(key)
+      )
+    }
   )
 }
 

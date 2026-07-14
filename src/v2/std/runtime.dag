@@ -13,6 +13,8 @@ import v2.std.algebra { fold_list, fold_list_node, algebra_empty_conj }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
+import v2.std.collection { Optional, Present, optional_absent, optional_present }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node {
   Atom,
   Behavior,
@@ -35,7 +37,21 @@ type RuntimeFieldValue {
 }
 
 type EnvironmentBindingKey {
-  declaration: Node
+  identity: Symbol
+}
+
+fn environment_binding_key_for_symbol(sym: Symbol) -> EnvironmentBindingKey {
+  EnvironmentBindingKey {
+    identity: sym
+  }
+}
+
+fn environment_binding_key_from_atom(node: Node) -> Optional<EnvironmentBindingKey> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } =>
+      optional_present(value: environment_binding_key_for_symbol(sym: sym))
+    _ => optional_absent()
+  }
 }
 
 type EvaluationEnvironment {
