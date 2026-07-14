@@ -8525,29 +8525,82 @@ pub fn run_discovery_corpus_with_options(
             Ok(attach_deferred_discovery_rows(summary, deferred_rows))
         }
         DiscoveryWidthPolicy::Adaptive(governor) => {
+            // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
+            // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
+            // resident structure across every group it pulls — admission of a worker (not of a
+            // group) is therefore the memory-relevant act the governor decides.
+            let groups = entry_row_groups(&rows);
+            let spawn_target_width = governor.current_target_width();
+            eprintln!(
+                "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
+                groups.len(),
+                rows.len(),
+                spawn_target_width,
+            );
+            // Width=1: drain inline on the pump thread reusing `process_shared_index` (already
+            // warmed for calibration + floor runner). Spawning a worker thread duplicates the
+            // whole-tree index on a second thread-local cache — ~2× retention that OOM'd CI
+            // batch-2 discovery (runs 29372308568 / 29373433928). Cross-worker store arms only
+            // when plural workers run (below). 🟡 dissolve-on: Rc→Arc retires the width gate.
+            if spawn_target_width <= 1 {
+                eprintln!(
+                    "run_discovery_corpus: width=1 inline drain — reusing process_shared_index (no worker duplicate index)"
+                );
+                eprintln!(
+                    "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
+                );
+                let style = ShardStyle {
+                    shard_id: 0,
+                    shard_count: 1,
+                    color: floor_color,
+                    stream: floor_stream,
+                };
+                let mut summaries = Vec::new();
+                for group_indices in groups {
+                    let group_rows: Vec<DiscoveryRow> =
+                        group_indices.iter().map(|&i| rows[i].clone()).collect();
+                    summaries.push(run_discovery_rows(
+                        &group_rows,
+                        &index,
+                        execution_mode,
+                        options.node_frontier_selection,
+                        &changed_paths,
+                        &diff_edits,
+                        floor_runner_ctx.as_ref(),
+                        whole_tree_published_keys.clone(),
+                        options.fast_lane_eval_budget_ms,
+                        style,
+                    )?);
+                }
+                let summary = merge_discovery_summaries(summaries);
+                if summary.roster_closure_nodes != pre_resolve_closure_nodes {
+                    return Err(format!(
+                        "[calibration] closure-definition drift: pre-resolve import walk = {} nodes, \
+                         post-resolve resolved union = {} — the two closure definitions diverged \
+                         (implicit prelude/kernel module in resolve the import walk cannot see, or a \
+                         seeding change); reconcile the definitions before trusting bytes-per-node \
+                         calibration (roster_import_closure_nodes_pre_resolve is the shared authority)",
+                        pre_resolve_closure_nodes, summary.roster_closure_nodes
+                    ));
+                }
+                eprintln!(
+                    "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
+                    pre_resolve_closure_nodes
+                );
+                return Ok(attach_deferred_discovery_rows(summary, deferred_rows));
+            }
             // Process-scoped typed store shell — populated only when plural workers run
             // (target_width > 1). At width=1 the serde byte store adds retention without
             // cross-worker benefit and breaks the CI memory budget (design §7; OOM
             // 29349125185 / 29371206526). 🟡 dissolve-on: Rc→Arc retires the gate.
             let cross_worker_store = new_shared_typecheck_caches();
-    // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
-    // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
-    // resident structure across every group it pulls — admission of a worker (not of a
-    // group) is therefore the memory-relevant act the governor decides.
-    let groups = entry_row_groups(&rows);
-    eprintln!(
-        "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
-        groups.len(),
-        rows.len(),
-        governor.current_target_width(),
-    );
-    if floor_stream && governor.current_target_width() > 1 {
-        eprintln!(
-            "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
-            floor_ts(),
-            governor.current_target_width(),
-        );
-    }
+            if floor_stream && spawn_target_width > 1 {
+                eprintln!(
+                    "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
+                    floor_ts(),
+                    spawn_target_width,
+                );
+            }
     let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
         std::sync::Arc::new(Mutex::new(
             groups
