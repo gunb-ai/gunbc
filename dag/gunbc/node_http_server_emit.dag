@@ -56,15 +56,15 @@ type NodeHttpStaticServerSpec {
   listen: HttpServerListenConfig
 }
 
-fn emit_http_method_label(method: HttpMethod) -> String {
+fn emit_http_method_label(method: std.types.HttpMethod) -> String {
   match method {
-    GET => "GET"
-    POST => "POST"
-    PUT => "PUT"
-    PATCH => "PATCH"
-    DELETE => "DELETE"
-    HEAD => "HEAD"
-    OPTIONS => "OPTIONS"
+    std.types.GET => "GET"
+    std.types.POST => "POST"
+    std.types.PUT => "PUT"
+    std.types.PATCH => "PATCH"
+    std.types.DELETE => "DELETE"
+    std.types.HEAD => "HEAD"
+    std.types.OPTIONS => "OPTIONS"
   }
 }
 
@@ -381,7 +381,7 @@ fn roadmap_served_static_route(path: PathTemplate, page: MarkupNode) -> List<Ser
     EmitOk { html: h } =>
       [
         ServedStaticRoute {
-          method: GET,
+          method: std.types.GET,
           path_pattern: path,
           body: h,
           content_type: TextHtmlUtf8,

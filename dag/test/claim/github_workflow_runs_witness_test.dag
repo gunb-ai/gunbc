@@ -15,8 +15,8 @@ data sample_run: WorkflowRun = WorkflowRun {
   id: 12345678
   name: "CI"
   head_sha: "abc123def456abc123def456abc123def456abc123"
-  status: Completed
-  conclusion: Present { value: Success }
+  status: extdeps.github.workflow_runs.Completed
+  conclusion: Present { value: extdeps.github.workflow_runs.Success }
   workflow_id: 987
   run_number: 42
   html_url: "https://github.com/owner/repo/actions/runs/12345678"
@@ -30,46 +30,46 @@ data sample_run_list: WorkflowRunList = WorkflowRunList {
 }
 
 test fn workflow_run_status_wire_label_queued() -> Bool {
-  workflow_run_status_wire_label(Queued) == "queued"
+  workflow_run_status_wire_label(extdeps.github.workflow_runs.Queued) == "queued"
 }
 
 test fn workflow_run_status_wire_label_in_progress() -> Bool {
-  workflow_run_status_wire_label(InProgress) == "in_progress"
+  workflow_run_status_wire_label(extdeps.github.workflow_runs.InProgress) == "in_progress"
 }
 
 test fn workflow_run_status_wire_label_completed() -> Bool {
-  workflow_run_status_wire_label(Completed) == "completed"
+  workflow_run_status_wire_label(extdeps.github.workflow_runs.Completed) == "completed"
 }
 
 test fn workflow_run_status_wire_label_waiting() -> Bool {
-  workflow_run_status_wire_label(Waiting) == "waiting"
+  workflow_run_status_wire_label(extdeps.github.workflow_runs.Waiting) == "waiting"
 }
 
 test fn workflow_run_status_wire_label_requested() -> Bool {
-  workflow_run_status_wire_label(Requested) == "requested"
+  workflow_run_status_wire_label(extdeps.github.workflow_runs.Requested) == "requested"
 }
 
 test fn workflow_run_status_wire_label_pending() -> Bool {
-  workflow_run_status_wire_label(Pending) == "pending"
+  workflow_run_status_wire_label(extdeps.github.workflow_runs.Pending) == "pending"
 }
 
 test fn parse_workflow_run_status_queued() -> Bool {
   match parse_workflow_run_status("queued") {
-    Present { value: Queued } => true
+    Present { value: extdeps.github.workflow_runs.Queued } => true
     _ => false
   }
 }
 
 test fn parse_workflow_run_status_in_progress() -> Bool {
   match parse_workflow_run_status("in_progress") {
-    Present { value: InProgress } => true
+    Present { value: extdeps.github.workflow_runs.InProgress } => true
     _ => false
   }
 }
 
 test fn parse_workflow_run_status_completed() -> Bool {
   match parse_workflow_run_status("completed") {
-    Present { value: Completed } => true
+    Present { value: extdeps.github.workflow_runs.Completed } => true
     _ => false
   }
 }
@@ -89,11 +89,11 @@ test fn parse_workflow_run_status_case_sensitive() -> Bool {
 }
 
 test fn workflow_run_conclusion_wire_label_success() -> Bool {
-  workflow_run_conclusion_wire_label(Success) == "success"
+  workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.Success) == "success"
 }
 
 test fn workflow_run_conclusion_wire_label_failure() -> Bool {
-  workflow_run_conclusion_wire_label(Failure) == "failure"
+  workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.Failure) == "failure"
 }
 
 test fn workflow_run_conclusion_wire_label_startup_failure() -> Bool {
@@ -101,16 +101,16 @@ test fn workflow_run_conclusion_wire_label_startup_failure() -> Bool {
 }
 
 test fn workflow_run_conclusion_wire_label_action_required() -> Bool {
-  workflow_run_conclusion_wire_label(ActionRequired) == "action_required"
+  workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.ActionRequired) == "action_required"
 }
 
 test fn workflow_run_conclusion_wire_label_timed_out() -> Bool {
-  workflow_run_conclusion_wire_label(TimedOut) == "timed_out"
+  workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.TimedOut) == "timed_out"
 }
 
 test fn parse_workflow_run_conclusion_success() -> Bool {
   match parse_workflow_run_conclusion("success") {
-    Present { value: Success } => true
+    Present { value: extdeps.github.workflow_runs.Success } => true
     _ => false
   }
 }
@@ -124,7 +124,7 @@ test fn parse_workflow_run_conclusion_startup_failure() -> Bool {
 
 test fn parse_workflow_run_conclusion_neutral() -> Bool {
   match parse_workflow_run_conclusion("neutral") {
-    Present { value: Neutral } => true
+    Present { value: extdeps.github.workflow_runs.Neutral } => true
     _ => false
   }
 }
@@ -144,32 +144,32 @@ test fn parse_workflow_run_conclusion_case_sensitive() -> Bool {
 }
 
 test fn workflow_run_status_roundtrip_queued() -> Bool {
-  (parse_workflow_run_status(workflow_run_status_wire_label(Queued))) == Present { value: Queued }
+  (parse_workflow_run_status(workflow_run_status_wire_label(extdeps.github.workflow_runs.Queued))) == Present { value: extdeps.github.workflow_runs.Queued }
 }
 
 test fn workflow_run_status_roundtrip_in_progress() -> Bool {
-  (parse_workflow_run_status(workflow_run_status_wire_label(InProgress))) == Present { value: InProgress }
+  (parse_workflow_run_status(workflow_run_status_wire_label(extdeps.github.workflow_runs.InProgress))) == Present { value: extdeps.github.workflow_runs.InProgress }
 }
 
 test fn workflow_run_status_roundtrip_completed() -> Bool {
-  (parse_workflow_run_status(workflow_run_status_wire_label(Completed))) == Present { value: Completed }
+  (parse_workflow_run_status(workflow_run_status_wire_label(extdeps.github.workflow_runs.Completed))) == Present { value: extdeps.github.workflow_runs.Completed }
 }
 
 test fn workflow_run_conclusion_roundtrip_all() -> Bool {
-  let r_success = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Success))) == Present { value: Success }
-  let r_failure = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Failure))) == Present { value: Failure }
-  let r_cancelled = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Cancelled))) == Present { value: Cancelled }
-  let r_neutral = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Neutral))) == Present { value: Neutral }
-  let r_skipped = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Skipped))) == Present { value: Skipped }
-  let r_timed_out = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(TimedOut))) == Present { value: TimedOut }
-  let r_action_required = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(ActionRequired))) == Present { value: ActionRequired }
+  let r_success = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.Success))) == Present { value: extdeps.github.workflow_runs.Success }
+  let r_failure = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.Failure))) == Present { value: extdeps.github.workflow_runs.Failure }
+  let r_cancelled = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.Cancelled))) == Present { value: extdeps.github.workflow_runs.Cancelled }
+  let r_neutral = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.Neutral))) == Present { value: extdeps.github.workflow_runs.Neutral }
+  let r_skipped = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.Skipped))) == Present { value: extdeps.github.workflow_runs.Skipped }
+  let r_timed_out = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.TimedOut))) == Present { value: extdeps.github.workflow_runs.TimedOut }
+  let r_action_required = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.ActionRequired))) == Present { value: extdeps.github.workflow_runs.ActionRequired }
   let r_startup_failure = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(StartupFailure))) == Present { value: StartupFailure }
   r_success && r_failure && r_cancelled && r_neutral && r_skipped && r_timed_out && r_action_required && r_startup_failure
 }
 
 test fn sample_run_has_success_conclusion() -> Bool {
   match sample_run.conclusion {
-    Present { value: Success } => true
+    Present { value: extdeps.github.workflow_runs.Success } => true
     _ => false
   }
 }
