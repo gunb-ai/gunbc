@@ -803,23 +803,22 @@ mod process_workspace_root_tests {
             "Terminal",
             "Disposition",
             "money_amount_micro_count",
-            "Present",
-            "Absent",
-            "Optional",
+            "Run",
+            "Pipeline",
+            "orch_emit_step",
         ] {
-            match census.get(name) {
-                Some(entry) => match entry.as_ref() {
-                    GlobalBareUniqueBinding { .. } => {}
-                    GlobalBareAmbiguousBinding => panic!("{name}: ambiguous in census"),
-                },
-                None => {
-                    // Kernel-ambient Optional/Present/Absent are not census keys.
-                    if name == "Present" || name == "Absent" || name == "Optional" {
-                        continue;
-                    }
-                    panic!("{name}: missing from census");
-                }
+            let entry = census.get(name).unwrap_or_else(|| panic!("{name}: missing"));
+            match entry.as_ref() {
+                GlobalBareUniqueBinding { .. } => {}
+                GlobalBareAmbiguousBinding => panic!("{name}: ambiguous in census"),
             }
+        }
+        // Optional/Present/Absent must stay kernel-ambient — census arm collisions poison them.
+        for poison in ["Present", "Absent"] {
+            assert!(
+                !census.contains_key(poison),
+                "{poison}: must not appear in global_bare census (shadows kernel Optional arms)"
+            );
         }
     }
 
@@ -2937,9 +2936,9 @@ fn global_bare_for_decl_file(
 }
 
 /// Paths whose top-level declarations feed the interim PR-5c `global_bare` census.
-/// Non-test `dag/**` is the stripped namespace authority surface; other `src/v2/**`
-/// may contribute when needed, but `src/v2/std/**` is excluded — it homonyms `dag/std/**`
-/// (Nat, EffectShape, Terminal, …) and would mark census keys ambiguous.
+/// Non-test `dag/**` is the stripped namespace authority surface; `src/v2/std/**`
+/// contributes only non-homonym modules (dag/std and v2/std share 11 basenames that
+/// would mark census keys ambiguous); other `src/v2/**` is included.
 fn census_module_path_included(path: &str) -> bool {
     let p = path.replace('\\', "/");
     // PR-5c bare census: all non-test dag modules that gunbc may reference after
@@ -2948,9 +2947,31 @@ fn census_module_path_included(path: &str) -> bool {
         return true;
     }
     if p.contains("src/v2/std/") {
-        return false;
+        return census_v2_std_module_included(&p);
     }
     p.contains("src/v2/")
+}
+
+/// `dag/std/*` and `src/v2/std/*` share these basenames; census must use dag/std only.
+fn census_v2_std_module_included(path: &str) -> bool {
+    let base = path.rsplit('/').next().unwrap_or(path);
+    !matches!(
+        base,
+        "algebra.dag"
+            | "artifact.dag"
+            | "change.dag"
+            | "coercion.dag"
+            | "determinism.dag"
+            | "effects.dag"
+            | "float.dag"
+            | "grammar.dag"
+            | "integer.dag"
+            | "logic.dag"
+            | "nat.dag"
+            | "network.dag"
+            | "node.dag"
+            | "verification.dag"
+    )
 }
 
 fn merge_source_indices(
