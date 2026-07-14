@@ -10,7 +10,6 @@ import gunbc.accelerator_demo_program {
   ElementwiseArrayOp,
   pure_elementwise_ops_shape_recognizable,
 }
-
 fn int_relu(x: Int) -> Int {
   int_max(a: 0, b: x)
 }
