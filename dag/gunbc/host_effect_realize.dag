@@ -27,9 +27,24 @@ import gunbc.host_converge_realize {
   ConvergeHostInterpreted,
   converge_host_no_knobs_reason,
 }
-import gunbc.srv3_host_effect_realize {
-  realize_srv3_install_diagnostic_observe,
-  realize_os_install_actuator_toolchain_ensure,
+import extdeps.gunbc
+import extdeps.apt { package_curl, package_nbdkit, package_socat, apt_get_binary_path }
+import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools.nbdkit { nbdkit_cli_tool }
+import extdeps.tools.socat { socat_cli_tool }
+import extdeps.tools.websocat {
+  websocat_cli_tool,
+  websocat_github_tag,
+  websocat_asset_aarch64,
+  websocat_install_path,
+  websocat_github_release_download_url,
+}
+import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.srv3_install_diagnostic_observe_script {
+  srv3_install_diagnostic_observe_script,
+  srv3_bmcweb_token_path_for_observe,
+  srv3_sol_console_log_path_for_observe,
 }
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.ci_deploy_access {
@@ -37,8 +52,7 @@ import gunbc.ci_deploy_access {
   deploy_access_check, deploy_access_check_observed,
   deploy_access_decision_reason,
 }
-import gunbc.srv3_install_diagnostic_observe_script { srv3_bmcweb_token_path_for_observe, srv3_sol_console_log_path_for_observe }
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Bool }
 
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
@@ -71,13 +85,13 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           } else {
             ConvergeOnHost { node: n, host_converge: p }
           }
-        Srv3InstallDiagnosticObserve { intent: i } =>
+        Srv3InstallDiagnosticObserve { bmc: b, port: p, iso_path: ip, iso_content_hash: h } =>
           Srv3DiagnosticObserveOnHost {
             node: n,
-            bmc: i.bmc_endpoint as String,
-            port: i.serve_port as String,
-            iso_path: i.iso_path as String,
-            intent_content_hash: i.iso_content_hash as String,
+            bmc: b as String,
+            port: p as String,
+            iso_path: ip as String,
+            intent_content_hash: h as String,
           }
         OsInstallActuatorToolchainEnsure {} =>
           OsInstallActuatorToolchainOnHost { node: n }
@@ -89,7 +103,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
         ConvergePlan { policy: _ } =>
           IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-        Srv3InstallDiagnosticObserve { intent: _ } =>
+        Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } =>
           IncompatibleCell { reason: "host_effect: Srv3InstallDiagnosticObserve is in-band (actuator host shell observe) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         OsInstallActuatorToolchainEnsure {} =>
           IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -114,6 +128,168 @@ fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
       concat("\n--- stderr ---\n", observed.stderr)
     )
   }
+}
+
+fn srv3_shell_exec_failure_reason(observed: ShellExecObserved) -> String {
+  let header = "host_effect_apply: srv3 shell exec returned a nonzero exit code; fail-closed"
+  if observed.stdout == "" && observed.stderr == "" {
+    header
+  } else {
+    concat(
+      concat(concat(header, "\n--- stdout ---\n"), observed.stdout),
+      concat("\n--- stderr ---\n", observed.stderr)
+    )
+  }
+}
+
+fn srv3_shell_reconcile(
+  observed: ShellExecObserved,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let grounding = if observed.success {
+      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
+    } else {
+      DoesNotGround { reason: srv3_shell_exec_failure_reason(observed: observed) }
+    }
+  reconcile_grounded(
+    apply_effect: intent,
+    show_read: ReadObserved { value: observed },
+    grounding: grounding
+  )
+}
+
+fn realize_srv3_install_diagnostic_observe(
+  bmc: String,
+  port: String,
+  iso_path: String,
+  intent_content_hash: String,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let script = srv3_install_diagnostic_observe_script(
+    token_path: srv3_bmcweb_token_path_for_observe,
+    bmc: bmc,
+    port: port,
+    iso_path: iso_path,
+    intent_content_hash: intent_content_hash,
+    sol_log: srv3_sol_console_log_path_for_observe as String,
+  )
+  let observed = run_shell_transport(script: shell_exec_via_bash(body: script), transport: transport)
+  srv3_shell_reconcile(observed: observed, intent: effect_intent)
+}
+
+fn srv3_apt_tool_present(tool_name: NonEmptyStr) -> Bool {
+  shell.Which.Check(command: tool_name).exists
+}
+
+fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr) -> Bool {
+  let probe = concat(tool_name as String, " --version >/dev/null 2>&1")
+  shell.Exec.Check(command: probe).exists
+}
+
+fn srv3_privileged_apt_install(package: NonEmptyStr) -> Bool {
+  gunbc.WitnessBin.Run(
+    workdir: "/",
+    bin_path: "/usr/bin/sudo",
+    args: [
+      "-n",
+      apt_get_binary_path as String,
+      "install",
+      "-y",
+      package as String,
+    ],
+  ).success
+}
+
+fn srv3_ensure_apt_tool(
+  tool_name: NonEmptyStr,
+  package: NonEmptyStr,
+  require_version_probe: Bool,
+) -> Bool {
+  if srv3_apt_tool_present(tool_name: tool_name)
+    && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name))
+  {
+    true
+  } else {
+    srv3_privileged_apt_install(package: package)
+      && srv3_apt_tool_present(tool_name: tool_name)
+      && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name))
+  }
+}
+
+fn srv3_ensure_websocat() -> Bool {
+  let install_path = websocat_install_path as String
+  if shell.Test.IsExecutable(path: install_path).executable {
+    true
+  } else {
+    let bin_dir = gunbc_bin_dir as String
+    let url = websocat_github_release_download_url(
+      tag: websocat_github_tag,
+      asset: websocat_asset_aarch64,
+    )
+    let mkdir = gunbc.WitnessBin.Run(
+      workdir: "/",
+      bin_path: "/usr/bin/sudo",
+      args: ["mkdir", "-p", bin_dir],
+    )
+    let chown = shell.Exec.Run(
+      script: concat(concat("sudo -n chown \"$(id -un):$(id -gn)\" ", bin_dir), ""),
+    )
+    let curl = gunbc.WitnessBin.Run(
+      workdir: "/",
+      bin_path: "/usr/bin/curl",
+      args: ["-fsSL", url, "-o", install_path],
+    )
+    let chmod = gunbc.WitnessBin.Run(
+      workdir: "/",
+      bin_path: "/bin/chmod",
+      args: ["+x", install_path],
+    )
+    mkdir.success
+      && chown.success
+      && curl.success
+      && chmod.success
+      && shell.Test.IsExecutable(path: install_path).executable
+  }
+}
+
+fn realize_os_install_actuator_toolchain_ensure(
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let curl_ok = srv3_ensure_apt_tool(
+    tool_name: curl_cli_tool.name,
+    package: package_curl,
+    require_version_probe: true,
+  )
+  let nbdkit_ok = srv3_ensure_apt_tool(
+    tool_name: nbdkit_cli_tool.name,
+    package: package_nbdkit,
+    require_version_probe: true,
+  )
+  let socat_ok = srv3_ensure_apt_tool(
+    tool_name: socat_cli_tool.name,
+    package: package_socat,
+    require_version_probe: false,
+  )
+  let websocat_ok = srv3_ensure_websocat()
+  let success = curl_ok && nbdkit_ok && socat_ok && websocat_ok
+  let stdout = concat(
+    concat(
+      concat(
+        concat("OsInstallActuatorToolchainReceipt: curl=", if curl_ok { "ok" } else { "fail" }),
+        concat(" nbdkit=", if nbdkit_ok { "ok" } else { "fail" }),
+      ),
+      concat(" socat=", if socat_ok { "ok" } else { "fail" }),
+    ),
+    concat(" websocat=", if websocat_ok { "ok" } else { "fail" }),
+  )
+  let observed = ShellExecObserved {
+    exit_code: if success { 0 } else { 1 },
+    success: success,
+    stdout: stdout,
+    stderr: if success { "" } else { "actuator-toolchain-ensure: one or more tools failed ensure" },
+  }
+  srv3_shell_reconcile(observed: observed, intent: effect_intent)
 }
 
 fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
@@ -269,8 +445,15 @@ fn host_effect_apply_gated(
         ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
         ConvergeOnHost { node: _, host_converge: hc } =>
           realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
-        Srv3DiagnosticObserveOnHost { node: _, intent: i } =>
-          realize_srv3_install_diagnostic_observe(intent: i, transport: transport, effect_intent: intent)
+        Srv3DiagnosticObserveOnHost { node: _, bmc: b, port: p, iso_path: ip, intent_content_hash: h } =>
+          realize_srv3_install_diagnostic_observe(
+            bmc: b,
+            port: p,
+            iso_path: ip,
+            intent_content_hash: h,
+            transport: transport,
+            effect_intent: intent,
+          )
         OsInstallActuatorToolchainOnHost { node: _ } =>
           realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
         RedfishOnBmc { node: _, action: _ } =>

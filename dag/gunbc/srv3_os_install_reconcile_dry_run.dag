@@ -6,8 +6,9 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.srv3_install_diagnostic_observe_script {
-  srv3_install_diagnostic_observe_script,
+import gunbc.srv3_os_install_diagnostic {
+  srv3_install_diagnostic_observe_script_for_intent,
+  srv3_os_install_attempt_intent,
 }
 import gunbc.srv3_os_install_diagnostic {
   srv3_os_install_attempt_intent,
@@ -66,7 +67,7 @@ fn parse_reconcile_git_commit(stdout: String) -> NonEmptyStr {
 func srv3_os_install_reconcile_dry_run() -> ProcessExit {
   let intent = srv3_os_install_attempt_intent
   let observe_script = concat(
-    srv3_install_diagnostic_observe_script(intent: intent),
+    srv3_install_diagnostic_observe_script_for_intent(intent: intent),
     srv3_install_reconcile_git_meta_script(),
   )
   let observe_run = shell.Exec.Run(script: shell_exec_via_bash(body: observe_script))

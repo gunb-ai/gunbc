@@ -1,13 +1,12 @@
 module gunbc.host_effect
 
-import std.types { String, Int, NonEmptyStr, List }
+import std.types { String, Int, NonEmptyStr, List, ContentHash }
 import std.access { AccessDecision }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
-import gunbc.srv3_os_install_diagnostic { OsInstallAttemptIntent }
 import std.effects {
   EffectShape,
   ReadEffect,
@@ -22,7 +21,12 @@ type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
-  | Srv3InstallDiagnosticObserve { intent: OsInstallAttemptIntent }
+  | Srv3InstallDiagnosticObserve {
+      bmc: NonEmptyStr,
+      port: Int,
+      iso_path: NonEmptyStr,
+      iso_content_hash: ContentHash,
+    }
   | OsInstallActuatorToolchainEnsure {}
 
 type NodeControlPlane =

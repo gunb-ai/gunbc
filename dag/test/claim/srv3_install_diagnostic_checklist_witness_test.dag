@@ -1,9 +1,10 @@
 module test.claim.srv3_install_diagnostic_checklist
 
 import std.logic { Bool }
-import gunbc.srv3_install_diagnostic_observe_script {
-  srv3_install_diagnostic_observe_script,
+import gunbc.srv3_os_install_diagnostic {
+  srv3_install_diagnostic_observe_script_for_intent,
   srv3_install_diagnostic_observe_script_declares_five_surfaces,
+  srv3_os_install_attempt_intent,
 }
 import gunbc.srv3_install_diagnostic_checklist {
   srv3_install_diagnostic_checklist_entrypoint_is_declared,
@@ -42,14 +43,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn observe_script_covers_five_surfaces() -> Bool {
   srv3_install_diagnostic_observe_script_declares_five_surfaces()
-    && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "pgrep -x nbdkit")
-    && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "sha256sum")
-    && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "port_owner=")
-    && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "/vm/0/0")
+    && string_contains(s: srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent), pattern: "pgrep -x nbdkit")
+    && string_contains(s: srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent), pattern: "sha256sum")
+    && string_contains(s: srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent), pattern: "port_owner=")
+    && string_contains(s: srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent), pattern: "/vm/0/0")
 }
 
 test fn observe_script_websocket_http_code_not_concatenated_before_if() -> Bool {
-  let script = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
+  let script = srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent)
   !string_contains(s: script, pattern: "HTTP_CODE=if")
     && !string_contains(s: script, pattern: "echo 000))")
     && string_contains(s: script, pattern: "HTTP_CODE=$(curl")

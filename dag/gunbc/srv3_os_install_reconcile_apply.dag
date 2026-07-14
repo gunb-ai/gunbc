@@ -8,8 +8,9 @@ import std.types { NonEmptyStr, Timestamp }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { second_count }
-import gunbc.srv3_install_diagnostic_observe_script {
-  srv3_install_diagnostic_observe_script,
+import gunbc.srv3_os_install_diagnostic {
+  srv3_install_diagnostic_observe_script_for_intent,
+  srv3_os_install_attempt_intent,
 }
 import gunbc.srv3_os_install_diagnostic {
   srv3_os_install_attempt_intent,
@@ -62,7 +63,7 @@ fn load_durable_approval_grant_script() -> String {
 
 fn srv3_install_reconcile_run_observe_script() -> String {
   concat(
-    srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent),
+    srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent),
     srv3_install_reconcile_observe_meta_script(),
   )
 }

@@ -29,10 +29,10 @@ import std.realization_reconcile { reconciliation_converged }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, String, Bool }
 import std.resources { Network }
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Terminal, Scaffold }
 
 data srv3_os_install_actuator_toolchain_ensure_scaffold: Disposition = Terminal {
-  reason: "host_effect_apply binds OsInstallActuatorToolchainEnsure via typed apt/curl/websocat argv effects in srv3_host_effect_realize"
+  reason: "host_effect_apply binds OsInstallActuatorToolchainEnsure via typed apt/curl/websocat argv effects in host_effect_realize"
 }
 
 data os_install_actuator_toolchain_ensure_dissolution_trigger: Disposition = Terminal {
@@ -187,8 +187,8 @@ fn os_install_actuator_toolchain_ensure_is_privileged_gated_for_apt() -> Bool {
 }
 
 fn os_install_actuator_toolchain_ensure_routes_through_host_effect_apply() -> Bool {
-  string_contains(
-    s: srv3_os_install_actuator_toolchain_ensure_scaffold.reason,
-    pattern: "OsInstallActuatorToolchainEnsure",
-  )
+  match srv3_os_install_actuator_toolchain_ensure_scaffold {
+    Terminal { reason: why } => string_contains(s: why, pattern: "OsInstallActuatorToolchainEnsure")
+    Scaffold { dissolves_to: _, bind: _ } => false
+  }
 }

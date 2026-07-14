@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Terminal }
 
 data srv3_install_diagnostic_observe_script_scope_disposition: Disposition = Terminal {
-  reason: "FROZEN terminal observe-script concat — no further shell growth; realized via host_effect_apply Srv3InstallDiagnosticObserve in srv3_host_effect_realize"
+  reason: "FROZEN terminal observe-script concat — no further shell growth; realized via host_effect_apply Srv3InstallDiagnosticObserve in host_effect_realize"
 }
 
 data srv3_bmcweb_token_path_for_observe: String = "/tmp/srv3_bmcweb_token"
