@@ -57,6 +57,7 @@ import v2.std.host_transport {
   HostRuntimeRowPresent,
   TargetEmitHostRuntimeRow,
   FixedWidthBytes,
+  HostToolProgram,
   HostTransportDescriptor,
   ProcessInvocation,
   WorkspaceContent,
@@ -1149,7 +1150,7 @@ fn python_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: Empty,
     run: ProcessInvocation {
-      tool: ^host_tool_python3,
+      program: HostToolProgram { tool: ^host_tool_python3 },
       args: [WorkspacePath { path: "fixture.py" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
