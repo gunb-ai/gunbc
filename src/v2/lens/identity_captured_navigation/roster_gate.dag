@@ -1,0 +1,119 @@
+module v2.lens.identity_captured_navigation.roster_gate
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.identity_captured_navigation { Finding }
+import v2.lens.identity_captured_navigation.analyze {
+  finding_is_refusal,
+  finding_is_suspect,
+  identity_captured_navigation_findings
+}
+import v2.std.algebra { fold_list }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.compilers.lexing { LexRules, token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, ParseGrammar, VoidGrammar }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+fn source_findings(source_text: String) -> Optional<List<Finding>> {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^identity_captured_navigation_roster_gate_port)
+  match lm.grammar {
+    VoidGrammar => Absent
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(
+            text: source_text,
+            file: ^identity_captured_navigation_roster_subject,
+            rules: lm.lex
+          ) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => Absent
+                    Accepted { value: tree, diagnostics: _ } =>
+                      Present { value: identity_captured_navigation_findings(root: tree) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn ingest_findings(path: String) -> Optional<List<Finding>> {
+  source_findings(source_text: filesystem_read(path: path).content)
+}
+
+fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
+  fold_list(xs: fs, empty: 0, cons: fn(acc, f) {
+    if pred(f) { acc + 1 } else { acc }
+  })
+}
+
+type RosterVerdict
+  = RosterClean
+  | RosterIngestRegressed
+  | RosterSuspectFound
+  | RosterRatchetExceeded { refusals: Int, ceiling: Int }
+
+fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
+  match ingest_findings(path: path) {
+    Absent => RosterIngestRegressed
+    Present { value: fs } =>
+      if count_matching(fs: fs, pred: finding_is_suspect) > 0 {
+        RosterSuspectFound
+      } else {
+        let refusals = count_matching(fs: fs, pred: finding_is_refusal)
+        if refusals > refusal_ceiling {
+          RosterRatchetExceeded { refusals: refusals, ceiling: refusal_ceiling }
+        } else {
+          RosterClean
+        }
+      }
+  }
+}
+
+fn file_suspect_count(path: String) -> Int {
+  match ingest_findings(path: path) {
+    Absent => -1
+    Present { value: fs } => count_matching(fs: fs, pred: finding_is_suspect)
+  }
+}
+
+fn file_refusal_count(path: String) -> Int {
+  match ingest_findings(path: path) {
+    Absent => -1
+    Present { value: fs } => count_matching(fs: fs, pred: finding_is_refusal)
+  }
+}
+
+fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
+  match file_verdict(path: path, refusal_ceiling: refusal_ceiling) {
+    RosterClean => true
+    RosterIngestRegressed => false
+    RosterSuspectFound => false
+    RosterRatchetExceeded { refusals: _, ceiling: _ } => false
+  }
+}
+
+fn source_has_suspect(source_text: String) -> Bool {
+  match source_findings(source_text: source_text) {
+    Absent => false
+    Present { value: fs } => count_matching(fs: fs, pred: finding_is_suspect) > 0
+  }
+}
