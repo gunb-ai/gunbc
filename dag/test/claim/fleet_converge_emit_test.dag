@@ -66,9 +66,9 @@ import gunbc.fleet_converge_emit {
   fleet_converge_sh_for,
   fleet_converge_drifted,
   fleet_converge_steady_state_doc_projection_dissolution_trigger,
-  fleet_converge_fresh_standup_bootstrap_emit_frontier_count,
   fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger,
   fresh_standup_bootstrap_emit_refused_poison,
+  fresh_standup_bootstrap_arm_golden,
   fresh_standup_dag_pin_cmdsubst_line,
   fresh_standup_dag_pin_else_line,
   fresh_standup_verdict_gate_line,
@@ -319,10 +319,16 @@ fn witness_sessions_membership_line_emitted() -> Bool {
 
 fn witness_fresh_standup_bootstrap_emit_bytes_hold() -> Bool {
   let sh = expected_fleet_converge_sh()
-  has(s: sh, p: fresh_standup_dag_pin_cmdsubst_line())
+  has(s: sh, p: fresh_standup_bootstrap_arm_golden())
+    && has(s: sh, p: fresh_standup_dag_pin_cmdsubst_line())
     && has(s: sh, p: fresh_standup_dag_pin_else_line())
     && has(s: sh, p: fresh_standup_verdict_gate_line())
     && !has(s: sh, p: fresh_standup_bootstrap_emit_refused_poison)
+}
+
+fn witness_fresh_standup_bootstrap_arm_perturb_red() -> Bool {
+  !has(s: expected_fleet_converge_sh(), p: concat(fresh_standup_bootstrap_arm_golden(), "x"))
+    && !has(s: expected_fleet_converge_sh(), p: concat(fresh_standup_dag_pin_cmdsubst_line(), "x"))
 }
 
 fn witness_fresh_standup_bootstrap_emit_dissolution_scaffold() -> Bool {
@@ -350,8 +356,8 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_gunbc_pinned_tree_runs_first()
     && witness_sessions_membership_line_emitted()
     && witness_fresh_standup_bootstrap_emit_bytes_hold()
+    && witness_fresh_standup_bootstrap_arm_perturb_red()
     && witness_fresh_standup_bootstrap_emit_dissolution_scaffold()
-    && fleet_converge_fresh_standup_bootstrap_emit_frontier_count() == 3
     && match fleet_converge_steady_state_doc_projection_dissolution_trigger {
       Scaffold { dissolves_to: _, bind: _ } => true
       Terminal { reason: _ } => false

@@ -50,12 +50,6 @@ import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_me
 
 data fleet_converge_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
-type FleetConvergeEmitFrontierRow {
-  construct: String
-  site: String
-}
-
-
 fn sh_arg(s: String) -> String {
   concat(concat("\"", s), "\"")
 }
@@ -147,6 +141,61 @@ fn fresh_standup_verdict_gate_line() -> String {
     concat(
       fresh_standup_then_branch_line(),
       concat("; else ", concat(fresh_standup_else_branch_line(), "; fi"))
+    )
+  )
+}
+
+fn fresh_standup_bootstrap_arm_golden() -> String {
+  concat(
+    "  # fresh_standup: restart-free apply path for greenfield hosts (srv3 exemplar).\n",
+    concat(
+      "  if [ -d \"$checkout/.git\" ]; then\n",
+      concat(
+        "    (cd \"$checkout\" && git fetch --prune origin >/dev/null 2>&1) || true\n",
+        concat(
+          "    (cd \"$checkout\" && git checkout --detach \"$ctrl_pin\" >/dev/null 2>&1) || true\n",
+          concat(
+            "    dag_pin=\"$(converge_read_gunbc_host_pin \"$checkout\")\"\n",
+            concat(
+              "  else dag_pin=\"\"; fi\n",
+              concat(
+                "  mkdir -p \"$7\"\n",
+                concat(
+                  "  if [ ! -x \"$7/${13}\" ]; then\n",
+                  concat(
+                    "    echo \"binary pull ${11}@sha:$ctrl_pin into $7 (steady-state CAS/ghcr transport keyed by derived pin)\" >&2\n",
+                    concat(
+                      "    if [ ! -x \"$7/${13}\" ] && [ -d \"$checkout\" ]; then\n",
+                      concat(
+                        "      (cd \"$checkout\" && cargo build -p v1-compiler --release --bin \"${13}\" >/dev/null 2>&1) || true\n",
+                        concat(
+                          "      if [ -x \"$checkout/target/release/${13}\" ]; then cp \"$checkout/target/release/${13}\" \"$7/${13}\" 2>/dev/null || true; fi\n",
+                          concat(
+                            "    fi\n",
+                            concat(
+                              "  fi\n",
+                              concat(
+                                "  if [ -x \"$7/${13}\" ]; then export \"$6=$7\"; fi\n",
+                                concat(
+                                  "  if [ -z \"$dag_pin\" ]; then effective=ABSENT; verdict=absent; else decide_verdict \"$dag_pin\" \"$desired_pin\"; effective=\"$dag_pin\"; fi\n",
+                                  concat(
+                                    "  emit_receipt \"$1\" \"$2\" \"$3\" \"$desired_pin\" \"$effective\" \"$verdict\"\n",
+                                    "  record \"$verdict\""
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
     )
   )
 }
@@ -560,21 +609,6 @@ data fleet_converge_steady_state_doc_projection_dissolution_trigger: Disposition
   }
 }
 
-data fleet_converge_fresh_standup_bootstrap_emit_frontier: List<FleetConvergeEmitFrontierRow> = [
-  FleetConvergeEmitFrontierRow {
-    construct: "orch_construct_procedure",
-    site: "converge_gunbc_pinned_tree fresh_standup: decide_verdict/converge_read_gunbc_host_pin shell function calls — CONSUMED by fresh_standup_bootstrap_emit_step (P2b)"
-  },
-  FleetConvergeEmitFrontierRow {
-    construct: "orch_construct_cmdsubst_assign",
-    site: "converge_gunbc_pinned_tree fresh_standup: dag_pin=$(converge_read_gunbc_host_pin ...) cmdsubst assignment — CONSUMED by fresh_standup_dag_pin_cmdsubst_line (P2b)"
-  },
-  FleetConvergeEmitFrontierRow {
-    construct: "orch_construct_let_assign",
-    site: "converge_gunbc_pinned_tree fresh_standup: verdict=/effective=/export shell assignments — CONSUMED by fresh_standup_*_intent rows (P2b; export line remains literal until modeled)"
-  }
-]
-
 data fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
@@ -582,8 +616,4 @@ data fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger: Dispositio
     decl_name: "converge_script_header",
     field: WholeDeclaration
   }
-}
-
-fn fleet_converge_fresh_standup_bootstrap_emit_frontier_count() -> Int {
-  list_length(items: fleet_converge_fresh_standup_bootstrap_emit_frontier)
 }
