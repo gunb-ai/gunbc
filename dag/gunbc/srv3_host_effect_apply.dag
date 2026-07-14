@@ -33,7 +33,7 @@ import std.realization_reconcile {
   reconciliation_converged,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { String, List }
+import std.types { String, List, Bool }
 
 type Srv3TypedReceipt {
   lines: List<String>
