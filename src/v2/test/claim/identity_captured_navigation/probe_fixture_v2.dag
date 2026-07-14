@@ -1,0 +1,12 @@
+module identity_escape_probe_v2
+
+fn harmless_helper_only(x: Int) -> Int {
+  x + 1
+}
+
+fn leaky_identity_probe_v2(node: Node) -> Optional<Node> {
+  match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {
+    Accepted { value: id_node, diagnostics: _ } => Present { value: id_node }
+    Rejected { diagnostics: _ } => Absent
+  }
+}

@@ -10,6 +10,7 @@ import v2.lens.identity_captured_navigation.analyze {
   finding_is_refusal,
   finding_is_suspect,
   identity_captured_navigation_findings,
+  identity_navigation_debug_diag_sum,
   identity_navigation_debug_fn_decl_count,
   identity_navigation_debug_match_expr_count,
   identity_navigation_debug_scrutinee_hit_count
@@ -175,6 +176,17 @@ fn debug_scrutinee_hit_count(source_text: String) -> Int {
   match source_findings_tree(source_text: source_text) {
     Absent => -1
     Present { value: tree } => identity_navigation_debug_scrutinee_hit_count(root: tree)
+  }
+}
+
+fn debug_scrutinee_hit_count_file(path: String) -> Int {
+  debug_scrutinee_hit_count(source_text: filesystem_read(path: path).content)
+}
+
+fn debug_diag_sum(source_text: String) -> Int {
+  match source_findings_tree(source_text: source_text) {
+    Absent => -1
+    Present { value: tree } => identity_navigation_debug_diag_sum(root: tree)
   }
 }
 

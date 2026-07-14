@@ -6,7 +6,9 @@ import v2.lens.identity_captured_navigation.roster_gate {
   debug_fn_decl_count_file,
   debug_match_expr_count,
   debug_match_expr_count_file,
+  debug_diag_sum,
   debug_scrutinee_hit_count,
+  debug_scrutinee_hit_count_file,
   file_gate,
   file_refusal_count,
   file_suspect_count,
@@ -232,4 +234,36 @@ test fn debug_probe_fixture_suspect_count_is_zero() -> Bool {
 }
 test fn debug_probe_fixture_refusal_count_ge_zero() -> Bool {
   file_refusal_count(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 0
+}
+
+test fn debug_probe_fixture_scrutinee_hit_ge_one() -> Bool {
+  debug_scrutinee_hit_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 1
+}
+
+test fn debug_planted_snippet_diag_sum() -> Bool {
+  debug_diag_sum(source_text: planted_identity_escape_snippet) == -99999
+}
+
+test fn debug_planted_snippet_diag_sum_is_zero() -> Bool {
+  debug_diag_sum(source_text: planted_identity_escape_snippet) == 0
+}
+
+test fn debug_dag_dag_scrutinee_hit_ge_one() -> Bool {
+  debug_scrutinee_hit_count_file(path: "src/v2/extdeps/languages/dag.dag") >= 1
+}
+
+test fn debug_probe_fixture_fn_decl_count_ge_10() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 10
+}
+
+test fn debug_probe_fixture_fn_decl_count_ge_1_check() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 1
+}
+
+test fn debug_probe_fixture_v2_scrutinee_hit_ge_one() -> Bool {
+  debug_scrutinee_hit_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture_v2.dag") >= 1
+}
+
+test fn debug_probe_fixture_v2_fn_decl_ge_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture_v2.dag") >= 1
 }
