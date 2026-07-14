@@ -113,7 +113,7 @@ fn install_media_fetch_try_mirrors(
     urls,
     init: MirrorFoldAcc { terminal: none, saw_mismatch: false },
     f: (acc, url) => match acc.terminal {
-      Present { value: v } => acc
+      Present { value: _ } => acc
       Absent => match install_media_fetch_try_mirror(
         url: url,
         part_path: part_path,
