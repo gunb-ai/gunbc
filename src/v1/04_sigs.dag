@@ -1,17 +1,5 @@
 module v1.compiler.infer_sigs
 
-import v1.std.core {
-  Node,
-  ExprData, ExprCall, expr_call_func_at,
-  ErrorNode, make_error_node,
-  MissingAnnotation, no_span,
-  DeclaredFuncSig,
-  NewlineIndex,
-  authored_name_at
-}
-import v1.compiler.infer_types { emit_map_has }
-import std.induction { SubValueRelation }
-
 type ResolvedFuncSig {
   name: String
   params: List<Node>

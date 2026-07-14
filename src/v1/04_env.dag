@@ -1,9 +1,5 @@
 module v1.compiler.infer_env
 
-import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
-import std.types { SourceSpan }
-import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
-
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
   str_bindings: Map<String, TypeBinding>

@@ -1,7 +1,5 @@
 module v1.compiler.workspace_members
 
-import v1.compiler.stage0_crates { stage0_crate_plan, Stage0CrateSpec }
-
 fn workspace_members_region_begin_marker() -> String {
   "    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v1.compiler.workspace_members)"
 }
