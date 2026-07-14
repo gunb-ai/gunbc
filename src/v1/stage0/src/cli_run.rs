@@ -12239,6 +12239,78 @@ mod witness_timing_attribution_tests {
         assert_eq!(top[0].function, "slow");
         assert_eq!(top[1].function, "medium");
     }
+
+    /// Local reproducer for PR #6632 batch-2 selection failure: walk discovery roster
+    /// under the real merge-base diff and fail on the first entry whose frontier
+    /// machinery cannot evaluate a TestClaim.
+    #[test]
+    fn c1_pr_merge_diff_discovery_selection_machinery_green() {
+        use super::{
+            build_multi_entry_index, discover_floor_corpus_rows_scoped,
+            entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
+            list_value_from_vec, make_eval_context,
+            resolve_entry_with_index_for_discovery_corpus, rerun_frontier_nodes_for_entry,
+            workspace_root,
+        };
+        use crate::v1_interpreter::ExecutionMode;
+        use std::process::Command;
+
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let scan_dirs = vec![
+            ws.join("dag/test/claim")
+                .to_string_lossy()
+                .into_owned(),
+            ws.join("src/v2/test/claim")
+                .to_string_lossy()
+                .into_owned(),
+        ];
+        let excludes: Vec<String> = Vec::new();
+        let rows = discover_floor_corpus_rows_scoped(&roots, &scan_dirs, &excludes, &[])
+            .expect("discovery roster");
+        let diff = Command::new("git")
+            .args(["diff", "-U0", "origin/main...HEAD"])
+            .current_dir(&ws)
+            .output()
+            .expect("git diff");
+        assert!(diff.status.success(), "git diff failed");
+        let diff_text = String::from_utf8(diff.stdout).expect("utf8 diff");
+        let index = build_multi_entry_index(&roots);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff_text)
+            .expect("floor diff edits from PR merge diff");
+        let mut failures: Vec<String> = Vec::new();
+        for row in rows {
+            let Ok((graph, source_indices)) =
+                resolve_entry_with_index_for_discovery_corpus(&index, &row.entry)
+            else {
+                continue;
+            };
+            let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+            let Ok(frontier_nodes) = rerun_frontier_nodes_for_entry(&ctx, &row.entry, &edits)
+            else {
+                continue;
+            };
+            if frontier_nodes.is_empty() {
+                continue;
+            }
+            if let Err(e) =
+                entry_touches_rerun_frontier(&ctx, &list_value_from_vec(frontier_nodes))
+            {
+                failures.push(format!("{}::{} ({})", row.entry, row.function, e));
+            }
+        }
+        if !failures.is_empty() {
+            panic!(
+                "PR merge-diff selection failures ({}):\n{}",
+                failures.len(),
+                failures.join("\n")
+            );
+        }
+    }
 }
 
 pub struct LayerImportFactRaw {
