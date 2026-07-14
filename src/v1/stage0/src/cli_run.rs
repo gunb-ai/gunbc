@@ -3490,10 +3490,8 @@ fn reconcile_with_typed_cache(
     // Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): built once,
     // order-independent, over the whole graph before any module typechecks — see
     // global_bare_fallback_invariant in v1_compiler_infer_env.
-    let global_bare = v1_compiler_infer::build_global_bare_census(
-        graph.modules.clone(),
-        source_indices.clone(),
-    );
+    let global_bare =
+        v1_compiler_infer::build_global_bare_census(graph.modules.clone(), source_indices.clone());
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
