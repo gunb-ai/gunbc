@@ -1,14 +1,5 @@
 module test.claim.build_artifact_verification_witness
 
-import std.logic { Bool }
-import extdeps.languages.bash.program {
-  ShellStmt, ShellWord, ShellProgram,
-  If, Command, Concat, VarRef, Lit,
-  lit, var_ref, serialize_bash
-}
-import tools.build_step { BuildArtifact, emit_verifications, verifications_script }
-import gunbc.ci_spec { ci_floor_build_verify_script }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

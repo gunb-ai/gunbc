@@ -12381,18 +12381,53 @@ pub fn local_binding_for_item(
                             }))
                         }
                     } else {
-                        if ((((((item.properties.clone().len() as i64) > 0)
+                        if ((((((item.params.clone().len() as i64) > 0)
+                            && (item.body.clone() != None))
+                            && (item.inferred.clone() != None))
                             && (item.connective.clone() == Connective::NoConnective))
                             && (item.transport.clone() == None))
-                            && (item.inferred.clone() == None))
-                            && ((item.params.clone().len() as i64) == 0))
                         {
-                            Some(nominal_type_binding(authored_name_at(
-                                source_indices.clone(),
-                                item.clone(),
-                            )))
+                            {
+                                let bare_node = Rc::new(Node {
+                                    name: item.name.clone(),
+                                    span: item.span.clone(),
+                                    ident_span: item.ident_span.clone(),
+                                    children: Rc::new(vec![]),
+                                    connective: Connective::NoConnective,
+                                    params: item.params.clone(),
+                                    inferred: item.inferred.clone(),
+                                    return_cardinality: item.return_cardinality.clone(),
+                                    uses: Rc::new(vec![]),
+                                    body: None,
+                                    transport: None,
+                                    properties: Rc::new(vec![]),
+                                    type_annotation: None,
+                                    is_self_recursive: false,
+                                    has_non_tail_self_call: false,
+                                    match_pattern: None,
+                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
+                                });
+                                Some(Rc::new(TypeBinding {
+                                    name: authored_name_at(source_indices.clone(), item.clone()),
+                                    resolved: bare_node.clone(),
+                                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                }))
+                            }
                         } else {
-                            None
+                            if ((((((item.properties.clone().len() as i64) > 0)
+                                && (item.connective.clone() == Connective::NoConnective))
+                                && (item.transport.clone() == None))
+                                && (item.inferred.clone() == None))
+                                && ((item.params.clone().len() as i64) == 0))
+                            {
+                                Some(nominal_type_binding(authored_name_at(
+                                    source_indices.clone(),
+                                    item.clone(),
+                                )))
+                            } else {
+                                None
+                            }
                         }
                     }
                 }

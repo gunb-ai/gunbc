@@ -1,44 +1,5 @@
 module test.claim.host_effect_apply_witness
 
-import std.logic { Bool }
-import std.types { NonEmptyStr }
-import gunbc.host_effect {
-  HostEffect, ShellCommand, RedfishAction, ConvergePlan,
-  NodeControlPlane, HostOs, BmcController,
-  Drive, OneShot, ConvergeLoop,
-  host_effect_identity_evidence,
-  host_effect_converge_loop_evidence,
-  host_effect_drive_from_evidence,
-  LocalShell, SshShell,
-}
-import gunbc.host_effect_realize {
-  host_effect_apply, host_effect_drive_directive,
-  ConvergeDirective, Settled, ReDrive, Refused
-}
-import std.realization_reconcile { Reconciliation, reconciliation_converged, NotConverged }
-import std.effects { IdempotencyEvidence, LatticeEffect, NonIdempotent, AppendEffect }
-import gunbc.host_converge {
-  HostConverge,
-  ConvergeKnob,
-  GunbcSlice,
-  FreshStandup,
-  BlindApply,
-  GunbcPinnedTree,
-  DeferToSubmodule,
-  NoMembershipProbe,
-  gunbc_pinned_tree_desired_label,
-  gunbc_root_env_key,
-  gunbc_host_gunbc_root_path,
-  gunbc_dag_root_submodule_path,
-  gunbc_host_ctrl_checkout_path,
-  gunbc_ctrl_read_pin_script,
-  gunbc_pinned_binary_provenance_policy,
-  gunbc_green_place_marker_spec,
-  gunbc_dashboard_live_apply_policy,
-}
-import gunbc.fleet_intent { srv1_host }
-import extdeps.bmc.types { RedfishSystemAction, GetSystem }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

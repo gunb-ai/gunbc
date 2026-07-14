@@ -1,30 +1,5 @@
 module test.claim.runner_slot_enforcement_grounding_witness
 
-import std.types { Bool, NonEmptyStr }
-import std.measure { ByteSize, byte_size }
-import std.realization_reconcile {
-  ShowEffectiveRead,
-  ReadObserved,
-  reconciliation_converged,
-}
-import gunbc.ci_floor_measurement {
-  RunnerSliceCapEffectiveness,
-  CapEffective,
-  CapUnbounded,
-}
-import gunbc.runner_slot_enforcement {
-  RunnerSlotEnforcement,
-  RunnerSlotEnforced,
-  RunnerSlotUnenforced,
-  RunnerSlotApplyEffect,
-  runner_slot_apply_effect,
-  reconcile_runner_slot,
-  runner_slot_evidence_from_reconciliation,
-  runner_slot_enforcement_evidence,
-  gunbc_runner_slot_enforcement_committed,
-}
-import gunbc.fleet_show_effective_read { gunbc_fleet_runner_slice_cap_show_effective_read }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

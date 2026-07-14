@@ -1,21 +1,5 @@
 module test.claim.fleet_converge_cli_witness
 
-import std.logic { Bool }
-import gunbc.host_converge { VerdictConverged, Absent }
-import gunbc.fleet_converge_cli {
-  ConvergeCliReceipt,
-  ConvergeCliRefusalCause,
-  PolicyUnsound,
-  UnknownHost,
-  ComputeInventoryAbsent,
-  KnobFrontier,
-  converge_cli_run,
-  converge_cli_receipt_line,
-  converge_cli_receipt_converged,
-  converge_cli_output,
-  converge_cli_refusal_message,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

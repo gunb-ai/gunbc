@@ -1,42 +1,5 @@
 module test.claim.srv3_host_effect_apply_witness
 
-import std.logic { Bool }
-import gunbc.host_effect {
-  HostEffect,
-  ShellCommand,
-  NodeControlPlane,
-  HostOs,
-  BmcController,
-  host_effect_identity_evidence,
-  LocalShell,
-  Srv3InstallReconcileObserve,
-  DurableApprovalGrantRecord,
-  DurableApprovalGrantRead,
-  Srv3InstallMediaFetch,
-  Srv3SeededInstallMediaRemaster,
-  Srv3SeededInstallMediaToolchainEnsure,
-  Srv3SolConsoleCapture,
-  Srv3BmcwebSessionLogin,
-  Srv3BmcwebTokenExtract,
-  Srv3NbdProxyServe,
-  Srv3BootOnceReadBackSleep,
-  Srv3ReceiptEmit,
-}
-import gunbc.host_effect_realize { host_effect_apply }
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import std.realization_reconcile { reconciliation_converged, NotConverged }
-import gunbc.srv3_host_effect_script {
-  srv3_host_effect_script_for,
-  srv3_receipt_emit_script,
-  srv3_host_effect_script_dissolution_trigger,
-}
-import gunbc.srv3_host_effect_apply {
-  srv3_typed_receipt_from_lines,
-  srv3_typed_receipt,
-  srv3_shell_stdout_from_apply,
-}
-import gunbc.shell_bash_runner { shell_bash_runner_dissolution_trigger }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

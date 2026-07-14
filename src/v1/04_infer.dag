@@ -5758,6 +5758,15 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown } }
+  } else if item.params |> count > 0 && item.body != none && item.inferred != none && item.connective == NoConnective && item.transport == none {
+    let bare_node = Node {
+      name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+      connective: NoConnective, params: item.params, inferred: item.inferred,
+      return_cardinality: item.return_cardinality,
+      uses: [], body: none, transport: none, properties: [],
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown } }
   } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
     Present { value: nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)) }
   } else {
