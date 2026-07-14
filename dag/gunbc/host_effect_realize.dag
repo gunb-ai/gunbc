@@ -182,20 +182,27 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr) -> Bool {
   shell.Which.Check(command: tool_name).exists
 }
 
-fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr) -> Bool {
+fn srv3_tool_bin_path(tool_name: NonEmptyStr) -> String? {
   let found = shell.Which.Check(command: tool_name)
   if found.exists {
     match found.path {
-      Present { value: tool_path } =>
-        gunbc.WitnessBin.Run(
-          workdir: "/",
-          bin_path: tool_path,
-          args: ["--version"],
-        ).success
-      Absent => false
+      Present { value: tool_path } => Present { value: tool_path as String }
+      Absent => none
     }
   } else {
-    false
+    none
+  }
+}
+
+fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr) -> Bool {
+  match srv3_tool_bin_path(tool_name: tool_name) {
+    Present { value: tool_path } =>
+      gunbc.WitnessBin.Run(
+        workdir: "/",
+        bin_path: tool_path,
+        args: ["--version"],
+      ).success
+    Absent => false
   }
 }
 
@@ -249,32 +256,37 @@ fn srv3_ensure_websocat() -> Bool {
   if shell.Test.IsExecutable(path: install_path).executable {
     true
   } else {
-    let bin_dir = gunbc_bin_dir as String
-    let url = websocat_github_release_download_url(
-      tag: websocat_github_tag,
-      asset: websocat_asset_aarch64,
-    )
-    let mkdir = gunbc.WitnessBin.Run(
-      workdir: "/",
-      bin_path: "/usr/bin/sudo",
-      args: ["mkdir", "-p", bin_dir],
-    )
-    let chown = srv3_chown_directory_to_current_user(path: bin_dir)
-    let curl = gunbc.WitnessBin.Run(
-      workdir: "/",
-      bin_path: "/usr/bin/curl",
-      args: ["-fsSL", url, "-o", install_path],
-    )
-    let chmod = gunbc.WitnessBin.Run(
-      workdir: "/",
-      bin_path: "/bin/chmod",
-      args: ["+x", install_path],
-    )
-    mkdir.success
-      && chown
-      && curl.success
-      && chmod.success
-      && shell.Test.IsExecutable(path: install_path).executable
+    match srv3_tool_bin_path(tool_name: curl_cli_tool.name) {
+      Present { value: curl_path } => {
+        let bin_dir = gunbc_bin_dir as String
+        let url = websocat_github_release_download_url(
+          tag: websocat_github_tag,
+          asset: websocat_asset_aarch64,
+        )
+        let mkdir = gunbc.WitnessBin.Run(
+          workdir: "/",
+          bin_path: "/usr/bin/sudo",
+          args: ["mkdir", "-p", bin_dir],
+        )
+        let chown = srv3_chown_directory_to_current_user(path: bin_dir)
+        let curl = gunbc.WitnessBin.Run(
+          workdir: "/",
+          bin_path: curl_path,
+          args: ["-fsSL", url, "-o", install_path],
+        )
+        let chmod = gunbc.WitnessBin.Run(
+          workdir: "/",
+          bin_path: "/bin/chmod",
+          args: ["+x", install_path],
+        )
+        mkdir.success
+          && chown
+          && curl.success
+          && chmod.success
+          && shell.Test.IsExecutable(path: install_path).executable
+      }
+      Absent => false
+    }
   }
 }
 
