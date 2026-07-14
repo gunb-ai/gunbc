@@ -8,6 +8,7 @@ import gunbc.host_converge {
   ConvergePolicyUnsound,
   HostConverge,
   fleet_converge_policy,
+  find_by_identity,
 }
 import gunbc.host_effect {
   HostEffect,
@@ -32,21 +33,7 @@ import std.realization_reconcile {
 }
 
 fn fleet_compute_host_for_identity(identity: HostIdentity) -> ComputeHost? {
-  fold(
-    fleet_intent_known_hosts,
-    init: none,
-    f: fn(acc, host) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if host.identity == identity {
-            Present { value: host }
-          } else {
-            none
-          }
-      }
-    }
-  )
+  find_by_identity(fleet_intent_known_hosts, identity: identity, key: fn(host) { host.identity })
 }
 
 fn converge_plan_effect(host_converge: HostConverge) -> HostEffect {
