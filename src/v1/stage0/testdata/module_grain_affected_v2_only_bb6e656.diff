@@ -1,0 +1,551 @@
+commit bb6e65649c9625d021467b0d7fe33ca7dd086e4f
+Author: Brian Searls <11205878+briansrls@users.noreply.github.com>
+Date:   Thu Jul 2 03:24:17 2026 -0400
+
+    2-emit-partition (a): dissolve orch_run env weld into structured EnvPrefixed/EnvUnset AST (#6137)
+    
+    * WIP: 2-emit-partition — shell/json/yaml as grammar rows, zero language knowle
+    
+    * WIP: 2-emit-partition — shell/json/yaml as grammar rows, zero language knowle
+    
+    * 2-emit-partition (a): dissolve orch_run env weld into structured EnvPrefixed/EnvUnset AST
+    
+    Route env-bearing orchestration Run emission through the #5868 structured
+    bash_stmt_env_prefixed / bash_stmt_env_unset grammar builders instead of the
+    opaque single-orch_raw welded render. The medium now returns an OrchRunEmitPlan
+    (construct_tag + target) so env-shape dispatch lives entirely in extdeps; the
+    compiler stage stays a fully agnostic registry-dispatch fold. Drops the
+    met-condition orch_run_env_reduction_dissolution_trigger scaffold + its
+    recording witness. Byte-identical output preserved (single EnvSet and
+    multi-binding+EnvUnset retry paths).
+    
+    Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+    
+    * wip: targeted orch env verify plan (throwaway)
+    
+    * add structured bash_stmt_env_unset production (env -u NAME command)
+    
+    * wip: split verify plan into per-file batches
+    
+    * wip: skip=true to match real floor resolution
+    
+    * remove throwaway verification plan
+    
+    ---------
+    
+    Co-authored-by: Brian Searls <briansearls1@gmail.com>
+    Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+
+diff --git a/src/v2/compiler/05_emit_orchestration.dag b/src/v2/compiler/05_emit_orchestration.dag
+index 8d22c8a14b..9652d01cc2 100644
+--- a/src/v2/compiler/05_emit_orchestration.dag
++++ b/src/v2/compiler/05_emit_orchestration.dag
+@@ -7,7 +7,7 @@ import v2.compiler.translate { target_bundle_child }
+ import v2.std.node_query { find_named_child }
+ import v2.std.orchestration_emit {
+   OrchestrationEmitMedium,
+-  orch_construct_run_env,
++  OrchRunEmitPlan,
+   orch_construct_run_rawline,
+   orch_construct_retry,
+   orch_construct_seq2
+@@ -51,8 +51,6 @@ fn orch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
+   }
+ }
+ 
+-data orch_run_env_reduction_dissolution_trigger: String = "orchestration_emit Run/PipelineStep/Retry path reduces onto bash_fold serialize: an env-FREE Run is delegated to bash_fold_raw_line_target_model + bash_word_pass_emitted via orch_fold_serialize_rawline (single orch_raw, green path, proven byte-identical by orch_run_empty_env_delegates_to_shell_emit and bash_fold fold==serialize_stmt witnesses). An env-BEARING Run lowers to an EnvPrefixed over env plus a RawLine command. The emit-kernel String<->List-Int-codepoint straddle that blocked this is now FIXED by grounding String construction into its native realization (free_monoid_to_string in v1_interpreter.rs, sibling to Int<->Nat PR 5428). The RESIDUAL blocker is a DIFFERENT, modeling-side gap, not the kernel: EnvBinding has EnvUnset (env -u NAME) and FreeMonoid<EnvBinding> is a LIST, but the bash AST EnvPrefixed models only a single name=value prefix with no EnvUnset node, so an env-bearing Run cannot yet be lowered losslessly. It stays on the orch_run_emitted_command single-string render (orch_emit_run_env_welded) until the bash AST grows an env-unset construct and multi-binding nesting. DISSOLVES WHEN the bash EnvPrefixed AST covers EnvUnset + multi-binding env (modeling follow-on landed by gunbc#5846 'Grow bash AST: EnvUnset node + multi-binding env nesting (dissolve orch_emit_run_env_welded)', which depends on this PR's kernel String grounding and dissolves this welded fn outright; no longer kernel-blocked)."
+-
+ data orch_emit_unsupported_step_anchor: Node = Node {
+   kind: TypeNode { connective: Atom { identity: ^orch_emit_unsupported_step } },
+   children: [],
+@@ -102,14 +100,21 @@ fn orch_emit_run(r: Run, medium: OrchestrationEmitMedium) -> Outcome<Medium<Stri
+         target: medium.realize_run_rawline(r.command)
+       )
+     HeadFound { value: _ } =>
+-      orch_emit_from_registry(
+-        medium: medium,
+-        construct_tag: orch_construct_run_env,
+-        target: medium.realize_run_env(r)
+-      )
++      orch_emit_run_from_plan(plan: medium.run_env_plan(r), medium: medium)
+   }
+ }
+ 
++fn orch_emit_run_from_plan(
++  plan: OrchRunEmitPlan,
++  medium: OrchestrationEmitMedium
++) -> Outcome<Medium<String>> {
++  orch_emit_from_registry(
++    medium: medium,
++    construct_tag: plan.construct_tag,
++    target: plan.target
++  )
++}
++
+ fn orch_emit_join2(
+   left: String,
+   right: String,
+diff --git a/src/v2/extdeps/languages/bash.dag b/src/v2/extdeps/languages/bash.dag
+index 0e7ee7193c..1b2c1ff5ce 100644
+--- a/src/v2/extdeps/languages/bash.dag
++++ b/src/v2/extdeps/languages/bash.dag
+@@ -1154,54 +1154,6 @@ fn retry_eagain_bash_lex_for(tail_text: String, tail_class: Symbol) -> LexRules
+   ]))
+ }
+ 
+-fn orch_run_tokens() -> List<ConcreteSyntaxToken> {
+-  [
+-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_run_rendered }
+-  ]
+-}
+-
+-data orch_run_emitted_command: Node = bash_conj_emitted_from_tokens(
+-  tokens: orch_run_tokens()
+-)
+-
+-fn orch_run_rendered_spelling(r: Run) -> String {
+-  concat(bash_env_prefix(env: r.env), r.command)
+-}
+-
+-fn orch_run_source_text(r: Run) -> String {
+-  orch_run_rendered_spelling(r: r)
+-}
+-
+-fn orch_run_lex(r: Run) -> LexRules {
+-  phrase_to_lex_rules(p: phrase([
+-    span(text: orch_run_rendered_spelling(r: r), class: ^bash_token_orch_raw)
+-  ]))
+-}
+-
+-fn orch_run_translation_rules_node() -> Node {
+-  bash_relation_translation_rules_node(
+-    rule_name: ^bash_relation_rule_orch_run,
+-    lhs: ^bash_production_orch_run,
+-    tokens: orch_run_tokens(),
+-    emitted: orch_run_emitted_command
+-  )
+-}
+-
+-fn orch_run_binding_spellings(r: Run) -> Map<Symbol, String> {
+-  map_insert(empty_map(), ^orch_run_rendered, orch_run_rendered_spelling(r: r))
+-}
+-
+-fn orch_run_target_model(r: Run) -> TargetModel {
+-  bash_make_bound_tokens_target_model(
+-    rules: orch_run_translation_rules_node(),
+-    source_literal: ^bash_orch_run_source_literal,
+-    production_name: ^bash_production_orch_run,
+-    tokens: orch_run_tokens(),
+-    source_text: orch_run_source_text(r: r),
+-    lex: orch_run_lex(r: r),
+-    binding_spellings: orch_run_binding_spellings(r: r)
+-  )
+-}
+ 
+ fn orch_seq2_tokens() -> List<ConcreteSyntaxToken> {
+   [
+@@ -1822,6 +1774,58 @@ fn bash_stmt_env_prefixed_target_model(name: String, value: String, command: Str
+   )
+ }
+ 
++fn bash_stmt_env_unset_tokens() -> List<ConcreteSyntaxToken> {
++  [
++    FixedToken { token_class: ^bash_token_env_unset_prefix },
++    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_unset_name },
++    FixedToken { token_class: ^bash_token_env_unset_sp },
++    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_unset_command }
++  ]
++}
++
++data bash_stmt_env_unset_emitted: Node = bash_conj_emitted_from_tokens(
++  tokens: bash_stmt_env_unset_tokens()
++)
++
++fn bash_stmt_env_unset_source_text(name: String, command: String) -> String {
++  concat("env -u ", concat(name, concat(" ", command)))
++}
++
++fn bash_stmt_env_unset_lex() -> LexRules {
++  phrase_to_lex_rules(p: phrase([
++    span(text: "env -u ", class: ^bash_token_env_unset_prefix),
++    span(text: " ", class: ^bash_token_env_unset_sp)
++  ]))
++}
++
++fn bash_stmt_env_unset_translation_rules_node() -> Node {
++  bash_relation_translation_rules_node(
++    rule_name: ^bash_relation_rule_stmt_env_unset,
++    lhs: ^bash_production_stmt_env_unset,
++    tokens: bash_stmt_env_unset_tokens(),
++    emitted: bash_stmt_env_unset_emitted
++  )
++}
++
++fn bash_stmt_env_unset_binding_spellings(name: String, command: String) -> Map<Symbol, String> {
++  map_insert(
++    map_insert(empty_map(), ^bash_stmt_envp_unset_name, name),
++    ^bash_stmt_envp_unset_command, command
++  )
++}
++
++fn bash_stmt_env_unset_target_model(name: String, command: String) -> TargetModel {
++  bash_make_bound_tokens_target_model(
++    rules: bash_stmt_env_unset_translation_rules_node(),
++    source_literal: ^bash_stmt_env_unset_source_literal,
++    production_name: ^bash_production_stmt_env_unset,
++    tokens: bash_stmt_env_unset_tokens(),
++    source_text: bash_stmt_env_unset_source_text(name: name, command: command),
++    lex: bash_stmt_env_unset_lex(),
++    binding_spellings: bash_stmt_env_unset_binding_spellings(name: name, command: command)
++  )
++}
++
+ fn bash_stmt_if_tokens() -> List<ConcreteSyntaxToken> {
+   [
+     FixedToken { token_class: ^bash_token_if_kw },
+diff --git a/src/v2/extdeps/languages/bash_orchestration_emit.dag b/src/v2/extdeps/languages/bash_orchestration_emit.dag
+index da3e7bd521..c2a01ec471 100644
+--- a/src/v2/extdeps/languages/bash_orchestration_emit.dag
++++ b/src/v2/extdeps/languages/bash_orchestration_emit.dag
+@@ -3,14 +3,26 @@ module v2.extdeps.languages.bash_orchestration_emit
+ import v2.extdeps.languages.bash {
+   bash_named_edge,
+   bash_word_pass_emitted,
+-  orch_run_emitted_command,
+-  orch_run_target_model,
++  bash_env_prefix,
++  bash_stmt_env_prefixed_emitted,
++  bash_stmt_env_prefixed_target_model,
++  bash_stmt_env_unset_emitted,
++  bash_stmt_env_unset_target_model,
+   orch_seq2_emitted_command,
+   orch_seq2_target_model,
+   orch_retry_emitted_command,
+   orch_retry_target_model
+ }
+ import v2.extdeps.languages.bash_command_fold { bash_fold_raw_line_target_model }
++import v2.std.algebra {
++  FreeMonoid,
++  list_head,
++  list_tail,
++  HeadFound,
++  HeadAbsent,
++  TailFound,
++  TailAbsent
++}
+ import v2.std.collection { empty_map }
+ import v2.std.compilers.lexing { VoidLexRules }
+ import v2.std.compilers.target_model {
+@@ -20,13 +32,15 @@ import v2.std.compilers.target_model {
+ }
+ import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+ import v2.std.node { Node, TypeNode, Conj, SyntheticOccurrence }
+-import v2.std.orchestration { Run }
++import v2.std.orchestration { Run, EnvBinding, EnvSet, EnvUnset }
+ import v2.std.orchestration_emit {
+   OrchestrationEmitMedium,
+-  orch_construct_run_env,
++  OrchRunEmitPlan,
+   orch_construct_run_rawline,
+-  orch_construct_retry,
+-  orch_construct_seq2
++  orch_construct_run_env_prefixed,
++  orch_construct_run_env_unset,
++  orch_construct_seq2,
++  orch_construct_retry
+ }
+ import v2.std.text { String }
+ 
+@@ -39,8 +53,12 @@ fn bash_orchestration_emit_registry_node() -> Node {
+         target: bash_word_pass_emitted
+       ),
+       bash_named_edge(
+-        name: orch_construct_run_env,
+-        target: orch_run_emitted_command
++        name: orch_construct_run_env_prefixed,
++        target: bash_stmt_env_prefixed_emitted
++      ),
++      bash_named_edge(
++        name: orch_construct_run_env_unset,
++        target: bash_stmt_env_unset_emitted
+       ),
+       bash_named_edge(
+         name: orch_construct_seq2,
+@@ -75,11 +93,52 @@ fn bash_orchestration_medium_authority() -> TargetModel {
+   )
+ }
+ 
++fn bash_orch_run_env_tail(env: FreeMonoid<EnvBinding>) -> FreeMonoid<EnvBinding> {
++  match list_tail(xs: env) {
++    TailFound { tail: t } => t
++    TailAbsent => []
++  }
++}
++
++fn bash_orch_run_env_tail_command(env: FreeMonoid<EnvBinding>, command: String) -> String {
++  concat(bash_env_prefix(env: bash_orch_run_env_tail(env: env)), command)
++}
++
++fn bash_orch_run_env_plan(r: Run) -> OrchRunEmitPlan {
++  match list_head(xs: r.env) {
++    HeadFound { value: b } =>
++      match b {
++        EnvSet { name: n, value: v } =>
++          OrchRunEmitPlan {
++            construct_tag: orch_construct_run_env_prefixed,
++            target: bash_stmt_env_prefixed_target_model(
++              name: n,
++              value: v,
++              command: bash_orch_run_env_tail_command(env: r.env, command: r.command)
++            )
++          }
++        EnvUnset { name: n } =>
++          OrchRunEmitPlan {
++            construct_tag: orch_construct_run_env_unset,
++            target: bash_stmt_env_unset_target_model(
++              name: n,
++              command: bash_orch_run_env_tail_command(env: r.env, command: r.command)
++            )
++          }
++      }
++    HeadAbsent =>
++      OrchRunEmitPlan {
++        construct_tag: orch_construct_run_rawline,
++        target: bash_fold_raw_line_target_model(text: r.command)
++      }
++  }
++}
++
+ fn bash_orchestration_emit_medium() -> OrchestrationEmitMedium {
+   OrchestrationEmitMedium {
+     authority: bash_orchestration_medium_authority(),
+     realize_run_rawline: bash_fold_raw_line_target_model,
+-    realize_run_env: orch_run_target_model,
++    run_env_plan: bash_orch_run_env_plan,
+     realize_seq2: orch_seq2_target_model,
+     realize_retry: orch_retry_target_model
+   }
+diff --git a/src/v2/std/orchestration_emit.dag b/src/v2/std/orchestration_emit.dag
+index 870f3a0877..48d7d21c2a 100644
+--- a/src/v2/std/orchestration_emit.dag
++++ b/src/v2/std/orchestration_emit.dag
+@@ -6,14 +6,20 @@ import v2.std.orchestration { Run }
+ import v2.std.text { String }
+ 
+ data orch_construct_run_rawline: Symbol = ^orch_construct_run_rawline
+-data orch_construct_run_env: Symbol = ^orch_construct_run_env
++data orch_construct_run_env_prefixed: Symbol = ^orch_construct_run_env_prefixed
++data orch_construct_run_env_unset: Symbol = ^orch_construct_run_env_unset
+ data orch_construct_seq2: Symbol = ^orch_construct_seq2
+ data orch_construct_retry: Symbol = ^orch_construct_retry
+ 
++type OrchRunEmitPlan {
++  construct_tag: Symbol
++  target: TargetModel
++}
++
+ type OrchestrationEmitMedium {
+   authority: TargetModel
+   realize_run_rawline: fn(String) -> TargetModel
+-  realize_run_env: fn(Run) -> TargetModel
++  run_env_plan: fn(Run) -> OrchRunEmitPlan
+   realize_seq2: fn(String, String) -> TargetModel
+   realize_retry: fn(
+     String,
+diff --git a/src/v2/workflow/orchestration_bash_test.dag b/src/v2/workflow/orchestration_bash_test.dag
+index 41b37edf5e..36c111f61f 100644
+--- a/src/v2/workflow/orchestration_bash_test.dag
++++ b/src/v2/workflow/orchestration_bash_test.dag
+@@ -4,17 +4,15 @@ import v2.compiler.emit { emit }
+ import v2.compiler.infer { InferredFacts, InferredTree }
+ import extdeps.communication.medium { Medium }
+ import v2.extdeps.languages.bash {
+-  orch_run_emitted_command,
+-  orch_run_target_model
++  bash_word_pass_emitted,
++  bash_word_pass_target_model,
++  bash_stmt_env_prefixed_emitted,
++  bash_stmt_env_prefixed_target_model,
++  bash_stmt_env_unset_emitted,
++  bash_stmt_env_unset_target_model
+ }
+-import v2.std.orchestration {
+-  Run,
+-  EnvSet,
+-  EnvUnset,
+-  StdoutAndStderr,
+-  TeeTo
+-}
+-import v2.std.collection { Map, Optional, Present, Absent }
++import v2.std.collection { Map }
++import v2.std.compilers.target_model { TargetModel }
+ import v2.std.diagnostic {
+   Accepted,
+   Diagnostic,
+@@ -38,45 +36,21 @@ fn orch_bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
+   }
+ }
+ 
+-fn orch_run_bare() -> Run {
+-  Run {
+-    command: "cargo build -p v1-compiler --release --bins",
+-    env: [],
+-    redirect: Absent,
+-    capture: Absent
+-  }
+-}
+-
+-fn orch_run_env_prefixed() -> Run {
+-  Run {
+-    command: "cargo build -p v1-compiler --release --bins",
+-    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
+-    redirect: Absent,
+-    capture: Absent
+-  }
+-}
+-
+-fn orch_run_env_perturbed() -> Run {
+-  Run {
+-    command: "cargo build -p v1-compiler --release --bins",
+-    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "2" }],
+-    redirect: Absent,
+-    capture: Absent
+-  }
+-}
+-
+-fn orch_run_emit(r: Run) -> Outcome<Medium<String>> {
++fn orch_emit_bash(root: Node, target: TargetModel) -> Outcome<Medium<String>> {
+   emit(
+     tree: InferredTree {
+-      root: orch_run_emitted_command,
++      root: root,
+       facts: Map { lookup: orch_bash_facts_lookup }
+     },
+-    target: orch_run_target_model(r: r)
++    target: target
+   )
+ }
+ 
+ test fn orch_run_bare_emits_command_holds() -> Bool {
+-  match orch_run_emit(r: orch_run_bare()) {
++  match orch_emit_bash(
++    root: bash_word_pass_emitted,
++    target: bash_word_pass_target_model(spelling: "cargo build -p v1-compiler --release --bins")
++  ) {
+     Accepted { value: source, diagnostics: dg } =>
+       (source.carried == "cargo build -p v1-compiler --release --bins") && (dg == None)
+     Rejected { diagnostics: _ } => false
+@@ -84,7 +58,14 @@ test fn orch_run_bare_emits_command_holds() -> Bool {
+ }
+ 
+ test fn orch_run_env_prefix_derived_from_intent_holds() -> Bool {
+-  match orch_run_emit(r: orch_run_env_prefixed()) {
++  match orch_emit_bash(
++    root: bash_stmt_env_prefixed_emitted,
++    target: bash_stmt_env_prefixed_target_model(
++      name: "CARGO_BUILD_JOBS",
++      value: "1",
++      command: "cargo build -p v1-compiler --release --bins"
++    )
++  ) {
+     Accepted { value: source, diagnostics: dg } =>
+       (source.carried == "CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --bins")
+         && (dg == None)
+@@ -93,9 +74,31 @@ test fn orch_run_env_prefix_derived_from_intent_holds() -> Bool {
+ }
+ 
+ test fn orch_run_env_value_has_teeth_holds() -> Bool {
+-  match orch_run_emit(r: orch_run_env_perturbed()) {
++  match orch_emit_bash(
++    root: bash_stmt_env_prefixed_emitted,
++    target: bash_stmt_env_prefixed_target_model(
++      name: "CARGO_BUILD_JOBS",
++      value: "2",
++      command: "cargo build -p v1-compiler --release --bins"
++    )
++  ) {
+     Accepted { value: source, diagnostics: _ } =>
+       source.carried != "CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --bins"
+     Rejected { diagnostics: _ } => false
+   }
+ }
++
++test fn orch_run_env_unset_emits_env_u_holds() -> Bool {
++  match orch_emit_bash(
++    root: bash_stmt_env_unset_emitted,
++    target: bash_stmt_env_unset_target_model(
++      name: "RUSTC_WRAPPER",
++      command: "cargo build -p v1-compiler --release --bins"
++    )
++  ) {
++    Accepted { value: source, diagnostics: dg } =>
++      (source.carried == "env -u RUSTC_WRAPPER cargo build -p v1-compiler --release --bins")
++        && (dg == None)
++    Rejected { diagnostics: _ } => false
++  }
++}
+diff --git a/src/v2/workflow/orchestration_emit_test.dag b/src/v2/workflow/orchestration_emit_test.dag
+index c813bc2535..554bc1674b 100644
+--- a/src/v2/workflow/orchestration_emit_test.dag
++++ b/src/v2/workflow/orchestration_emit_test.dag
+@@ -1,6 +1,6 @@
+ module v2.workflow.orchestration_emit_test
+ 
+-import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_run, orch_run_env_reduction_dissolution_trigger }
++import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_run }
+ import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+ import extdeps.communication.medium { Medium }
+ import v2.std.orchestration {
+@@ -9,7 +9,8 @@ import v2.std.orchestration {
+   Do,
+   Pipeline,
+   FailFast,
+-  EnvSet
++  EnvSet,
++  EnvUnset
+ }
+ import v2.std.collection { Absent }
+ import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+@@ -93,8 +94,38 @@ test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
+   }
+ }
+ 
+-test fn orch_run_env_reduction_trigger_recorded_holds() -> Bool {
+-  string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "EnvPrefixed")
+-    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "straddle")
+-    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "DISSOLVES WHEN")
++test fn orch_run_env_prefixed_structured_holds() -> Bool {
++  match orch_emit_run(
++    r: Run {
++      command: "cargo test --workspace",
++      env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
++      redirect: Absent,
++      capture: Absent
++    },
++    medium: bash_orchestration_emit_medium()
++  ) {
++    Accepted { value: src, diagnostics: dg } =>
++      (src.carried == "CARGO_BUILD_JOBS=1 cargo test --workspace") && (dg == None)
++    Rejected { diagnostics: _ } => false
++  }
++}
++
++test fn orch_run_env_unset_multi_binding_structured_holds() -> Bool {
++  match orch_emit_run(
++    r: Run {
++      command: "cargo test --workspace",
++      env: [
++        EnvUnset { name: "RUSTC_WRAPPER" },
++        EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
++      ],
++      redirect: Absent,
++      capture: Absent
++    },
++    medium: bash_orchestration_emit_medium()
++  ) {
++    Accepted { value: src, diagnostics: dg } =>
++      (src.carried == "env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 cargo test --workspace")
++        && (dg == None)
++    Rejected { diagnostics: _ } => false
++  }
+ }

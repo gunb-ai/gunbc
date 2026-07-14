@@ -1,9 +1,5 @@
 module gunbc.srv3_seeded_install_media
 
-import extdeps.os.ubuntu_seeded_install_media_remaster {
-  install_media_remaster_script_applies_grub_cmdline,
-  install_media_remaster_bash_emit_dissolution_trigger,
-}
 import extdeps.os.ubuntu_seeded_install_media_toolchain {
   install_media_remaster_toolchain_requirement,
   install_media_remaster_toolchain_is_complete,
@@ -35,13 +31,8 @@ data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = Terminal {
   reason: "srv3 seeded autoinstall ISO — remaster stock ISO with embedded nocloud user-data + GRUB autoinstall ds=nocloud; content-hash keyed on stock sha256 + autoinstall payload; dissolves NoCloudNet seed-delivery gap when proven by unattended boot execution."
 }
 
-data srv3_seeded_install_media_remaster_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
-    decl_name: "install_media_remaster_bash_emit_dissolution_trigger",
-    field: WholeDeclaration,
-  }
+data srv3_seeded_install_media_remaster_scaffold: Disposition = Terminal {
+  reason: "srv3_seeded_install_media_remaster() routes through host_effect_apply to install_media_remaster_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
 data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = Scaffold {
@@ -121,7 +112,6 @@ fn srv3_seeded_autoinstall_delivery_is_on_iso() -> Bool {
 
 fn srv3_seeded_grub_cmdline_names_nocloud() -> Bool {
   string_contains(s: srv3_seeded_grub_kernel_cmdline as String, pattern: "autoinstall ds=nocloud")
-    && install_media_remaster_script_applies_grub_cmdline(artifact: srv3_seeded_install_media_artifact)
 }
 
 fn srv3_seeded_install_media_unattended_not_proven_yet() -> Bool {
