@@ -136,3 +136,15 @@ test fn parse_table_grammar_memo_multi_file_ingest_parses() -> Bool {
 test fn parse_table_memo_hit_path_content_hash_stable_holds() -> Bool {
   witness_parse_table_memo_hit_path_content_hash_stable()
 }
+
+data empty_ingest_guard_note: String = "Covers the empty-ingest branch of program_assembly_fold_ingest, added with the prepare-once hoist: an empty ingest must assemble to empty roots WITHOUT paying the one-time grammar preparation (well-formed + 5-check validation + FIRST analysis) for zero modules. Discriminating — RED if the guard rejected, fabricated a root, or (regression) fell through to prepare_grammar for no modules. Fast by construction (no prepare, no parse), unlike the multi-file amortization witnesses above which each pay exactly ONE preparation for the whole fold."
+
+test fn empty_ingest_assembles_to_empty_roots_without_prepare() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: Empty,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } => length(xs: roots) == 0
+    Rejected { diagnostics: _ } => false
+  }
+}

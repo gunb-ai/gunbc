@@ -63,7 +63,7 @@ import v2.std.provenance {
 }
 import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_get, map_insert }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_snoc_item, list_tail, unique }
+import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_reverse, list_snoc_item, list_tail, unique }
 import v2.std.text { Char, CharAbsent, CharFound, string_head }
 import v2.std.witness { Holds, Violates, Witness }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
@@ -74,6 +74,7 @@ import v2.compiler.materialization_carriers {
   parse_table_memo_materialization,
   materialization_allows_memo_store,
 }
+import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme }
 import v2.std.compilers.lexing {
   Lexeme,
   Token,
@@ -192,6 +193,17 @@ type ParseTableRealization {
 }
 
 type ParseTable = ParseTableRealization
+
+type PreparedModeledGrammar {
+  validated: ValidatedGrammarRoot
+  analysis: GrammarFirstAnalysis
+}
+
+type PreparedGrammar
+  = PreparedVoidGrammar
+  | PreparedModeled { modeled: PreparedModeledGrammar }
+
+data prepared_grammar_carrier_note: String = "PreparedGrammar is the once-per-grammar carrier: well-formedness, the five grammar_validate_for_parse checks, and the FIRST/nullable analysis (GrammarFirstAnalysis) are pure functions of the grammar, so prepare_grammar runs them ONCE and parse_module_prepared reuses the result per module. Previously parse_module re-ran the whole 5-check validation AND compute_grammar_first_analysis was computed twice (once in the ambiguity check, once in parse_table_for_production) on EVERY parse. Hoisting prepare_grammar above the assemble fold makes a door call over a K-module closure validate once, not K times — correctness-by-construction (the prepare sits above fold_list), no timing gate. The cache-interface fields on ParseTableRealization (grammar_digest/provider_id/materialization) stay for the cross-call content-addressed memo, which is gated on wiring the currently Miss-stubbed cache backend."
 
 fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -438,11 +450,11 @@ fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
   )
 }
 
-fn parse_table_for_production(
+fn parse_table_for_production_analyzed(
   validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
   all_tokens: List<Token>
 ) -> ParseTable {
-  let analysis = compute_grammar_first_analysis(root: validated.root)
   ParseTableRealization {
     artifact_kind: parse_table_memo_artifact_kind(),
     provider_id: parse_table_memo_provider_id(),
@@ -456,6 +468,17 @@ fn parse_table_for_production(
     nullable_set: analysis.nullable_set,
     first_rows: analysis.first_rows
   }
+}
+
+fn parse_table_for_production(
+  validated: ValidatedGrammarRoot,
+  all_tokens: List<Token>
+) -> ParseTable {
+  parse_table_for_production_analyzed(
+    validated: validated,
+    analysis: compute_grammar_first_analysis(root: validated.root),
+    all_tokens: all_tokens
+  )
 }
 
 fn parse_table_empty() -> ParseTable {
@@ -901,8 +924,8 @@ fn parse_match_arm_stmt_body(
   } else {
     let init = ParseMatchArmStmtAcc {
       remaining: tokens,
-      acc_nodes: [],
-      acc_diags: [],
+      acc_nodes: Empty,
+      acc_diags: Empty,
       done: false,
       prov: prov,
       table: table
@@ -911,7 +934,7 @@ fn parse_match_arm_stmt_body(
     if is_empty(xs: result.acc_nodes) {
       ParseExprRejected { diagnostics: [], table: result.table }
     } else {
-      let ordered_nodes = result.acc_nodes.reverse()
+      let ordered_nodes = list_reverse(xs: result.acc_nodes)
       let stamped = parse_stamp_match_arm_stmt_nodes(acc_nodes: ordered_nodes, prov: result.prov)
       ParseExprAccepted {
         remaining: result.remaining,
@@ -1599,7 +1622,7 @@ fn grammar_overlap_residue_diagnostics(at: Locus, roster: List<GrammarChoiceAmbi
   )
 }
 
-fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
+fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<PreparedModeledGrammar> {
   if grammar_has_undefined_nonterminals(root: root) {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
   } else {
@@ -1609,7 +1632,8 @@ fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<Validated
       if grammar_has_left_recursion(root: root) {
         Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
-        let ambiguity_roster = grammar_choice_ambiguity_roster(root: root)
+        let analysis = compute_grammar_first_analysis(root: root)
+        let ambiguity_roster = grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: analysis)
         let nullable_rows = grammar_nullable_ambiguity_rows(roster: ambiguity_roster)
         if !is_empty(xs: nullable_rows) {
           Rejected {
@@ -1617,12 +1641,23 @@ fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<Validated
           }
         } else {
           Accepted {
-            value: ValidatedGrammarRoot { root: root },
+            value: PreparedModeledGrammar {
+              validated: ValidatedGrammarRoot { root: root },
+              analysis: analysis
+            },
             diagnostics: grammar_overlap_residue_diagnostics(at: at, roster: ambiguity_roster)
           }
         }
       }
     }
+  }
+}
+
+fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
+  match grammar_validate_and_analyze(root: root, at: at) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: modeled, diagnostics: residue } =>
+      Accepted { value: modeled.validated, diagnostics: residue }
   }
 }
 
@@ -1678,13 +1713,37 @@ fn parse_expr_terminal(
         true =>
           match list_tail(xs: tokens) {
             TailFound { tail: remaining } =>
-              let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)
-              ParseExprAccepted {
-                remaining: remaining,
-                captured: stamped.node,
-                diagnostics: [],
-                prov: stamped.prov,
-                table: table
+              if token_class == ^dag_token_int_literal {
+                let minted = parse_mint_from_source(
+                  prov: prov,
+                  file: tok.file,
+                  start: tok.start,
+                  end: tok.end
+                )
+                match dag_int_literal_node_from_lexeme(
+                  lexeme: tok.lexeme,
+                  occurrence_id: node_occurrence_minted(id: minted.id)
+                ) {
+                  Accepted { value: captured, diagnostics: _ } =>
+                    ParseExprAccepted {
+                      remaining: remaining,
+                      captured: captured,
+                      diagnostics: Empty,
+                      prov: minted.prov,
+                      table: table
+                    }
+                  Rejected { diagnostics: d } =>
+                    ParseExprRejected { diagnostics: d, table: table }
+                }
+              } else {
+                let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)
+                ParseExprAccepted {
+                  remaining: remaining,
+                  captured: stamped.node,
+                  diagnostics: [],
+                  prov: stamped.prov,
+                  table: table
+                }
               }
             TailAbsent => ParseExprRejected { diagnostics: [], table: table }
           }
@@ -1945,14 +2004,14 @@ fn parse_expr_repeat(
 ) -> ParseExprResult {
   let init = ParseRepeatAcc {
     remaining: tokens,
-    acc_nodes: [],
-    acc_diags: [],
+    acc_nodes: Empty,
+    acc_diags: Empty,
     done: false,
     prov: prov,
     table: table
   }
   let result = parse_expr_repeat_step(element: element, all_tokens: all_tokens, root: root, acc: init)
-  let stamped = parse_stamp_derived_repeat(acc_nodes: result.acc_nodes.reverse(), prov: result.prov)
+  let stamped = parse_stamp_derived_repeat(acc_nodes: list_reverse(xs: result.acc_nodes), prov: result.prov)
   ParseExprAccepted {
     remaining: result.remaining,
     captured: stamped.node,
@@ -2075,9 +2134,10 @@ fn parse_production_memo_stats(
   }
 }
 
-fn parse_production(
+fn parse_production_prepared(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
   production_name: Symbol
 ) -> Outcome<ParseArtifact> {
   let root = validated.root
@@ -2085,7 +2145,7 @@ fn parse_production(
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
       let prov = parse_prov_initial()
-      let table = parse_table_for_production(validated: validated, all_tokens: tokens)
+      let table = parse_table_for_production_analyzed(validated: validated, analysis: analysis, all_tokens: tokens)
       match parse_expr(
         expr: production.expression,
         tokens: tokens,
@@ -2121,6 +2181,19 @@ fn parse_production(
   }
 }
 
+fn parse_production(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  production_name: Symbol
+) -> Outcome<ParseArtifact> {
+  parse_production_prepared(
+    tokens: tokens,
+    validated: validated,
+    analysis: compute_grammar_first_analysis(root: validated.root),
+    production_name: production_name
+  )
+}
+
 fn parse_production_tree(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
@@ -2137,44 +2210,70 @@ fn parse_production_tree(
       Rejected { diagnostics: r }
   }
 }
-fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
+fn prepare_grammar(grammar: ParseGrammar) -> Outcome<PreparedGrammar> {
   let at = port_locus(port: ^parse_stage_locus_port)
-  let ntok = token_stream_remaining_count(stream: tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
   if well_formed(n: grammar_node) {
     match grammar {
       VoidGrammar =>
-        if ntok == 0 {
-          Accepted {
-            value: ParseArtifact { tree: grammar_node, span_index: span_index_empty() },
-            diagnostics: None
-          }
-        } else {
-          Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
-        }
+        Accepted { value: PreparedVoidGrammar, diagnostics: None }
       ModeledGrammar { root: root } =>
-        match grammar_validate_for_parse(root: root, at: at) {
+        match grammar_validate_and_analyze(root: root, at: at) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-          Accepted { value: validated, diagnostics: validation_residue } =>
-            match parse_production(
-              tokens: token_stream_remaining(stream: tokens),
-              validated: validated,
-              production_name: root.start
-            ) {
-              Accepted { value: artifact, diagnostics: parse_diags } =>
-                Accepted {
-                  value: artifact,
-                  diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
-                }
-              Rejected { diagnostics: parse_rejected } =>
-                Rejected {
-                  diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
-                }
+          Accepted { value: modeled, diagnostics: validation_residue } =>
+            Accepted {
+              value: PreparedModeled { modeled: modeled },
+              diagnostics: validation_residue
             }
         }
     }
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
+  }
+}
+
+fn parse_module_prepared(
+  tokens: TokenStream,
+  prepared: PreparedGrammar,
+  validation_residue: Diagnostics
+) -> Outcome<ParseArtifact> {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  let ntok = token_stream_remaining_count(stream: tokens)
+  match prepared {
+    PreparedVoidGrammar =>
+      if ntok == 0 {
+        Accepted {
+          value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty() },
+          diagnostics: validation_residue
+        }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+      }
+    PreparedModeled { modeled: modeled } =>
+      match parse_production_prepared(
+        tokens: token_stream_remaining(stream: tokens),
+        validated: modeled.validated,
+        analysis: modeled.analysis,
+        production_name: modeled.validated.root.start
+      ) {
+        Accepted { value: artifact, diagnostics: parse_diags } =>
+          Accepted {
+            value: artifact,
+            diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
+          }
+        Rejected { diagnostics: parse_rejected } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
+          }
+      }
+  }
+}
+
+fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
+  match prepare_grammar(grammar: grammar) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: prepared, diagnostics: validation_residue } =>
+      parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: validation_residue)
   }
 }
 
