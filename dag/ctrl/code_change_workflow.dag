@@ -113,7 +113,7 @@ fn github_pr_terminal_anchor(pr: PullRequest) -> CodeChangeStage? {
       Present { value: CodeChangeTerminal { stage: ChangeMerged } }
     Absent =>
       match pr.state {
-        extdeps.github.pulls.Closed =>
+        Closed =>
           Present { value: CodeChangeTerminal { stage: ChangeClosed } }
         Open => Absent
       }
@@ -150,7 +150,7 @@ fn evaluate_mark_ready_for_review(
       }
       match ctx.pr.state {
         Open => {}
-        extdeps.github.pulls.Closed =>
+        Closed =>
           return TransitionRefused { refusal: ChangeNotOpen }
       }
       match facts.head_sha {
@@ -208,7 +208,7 @@ fn evaluate_record_merge_ready(
       }
       match ctx.pr.state {
         Open => {}
-        extdeps.github.pulls.Closed =>
+        Closed =>
           return TransitionRefused { refusal: ChangeNotOpen }
       }
       match facts.head_sha {
