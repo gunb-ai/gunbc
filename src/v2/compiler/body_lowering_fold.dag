@@ -2600,16 +2600,7 @@ fn body_lower_try_if_from_node(node: Node) -> Outcome<Optional<Node>> {
       } else {
         outcome_accepted(value: optional_absent())
       }
-    Absent =>
-      match body_lower_if_condition_optional(captured: node) {
-        Present { value: _ } =>
-          match body_lower_try_if_from_captured(captured: node) {
-            Accepted { value: lowered_opt, diagnostics: d } =>
-              Accepted { value: lowered_opt, diagnostics: d }
-            Rejected { diagnostics: _ } => outcome_accepted(value: optional_absent())
-          }
-        Absent => outcome_accepted(value: optional_absent())
-      }
+    Absent => outcome_accepted(value: optional_absent())
   }
 }
 
