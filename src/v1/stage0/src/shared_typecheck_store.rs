@@ -45,18 +45,14 @@ impl SharedTypecheckCaches {
 
     /// Decode a typed snapshot **without** holding the store lock.
     /// Payload is name-keyed (no intern-table indices) — safe to materialize on any worker index.
-    pub fn decode_typed_snapshot(
-        bytes: &[u8],
-    ) -> Result<Rc<TypecheckModuleResult>, String> {
+    pub fn decode_typed_snapshot(bytes: &[u8]) -> Result<Rc<TypecheckModuleResult>, String> {
         let value: TypecheckModuleResult = serde_json::from_slice(bytes)
             .map_err(|e| format!("shared typecheck store decode: {e}"))?;
         Ok(Rc::new(value))
     }
 
     /// Encode a typed result **without** holding the store lock.
-    pub fn encode_typed_snapshot(
-        result: &TypecheckModuleResult,
-    ) -> Result<Arc<Vec<u8>>, String> {
+    pub fn encode_typed_snapshot(result: &TypecheckModuleResult) -> Result<Arc<Vec<u8>>, String> {
         let bytes = serde_json::to_vec(result)
             .map_err(|e| format!("shared typecheck store encode: {e}"))?;
         Ok(Arc::new(bytes))
