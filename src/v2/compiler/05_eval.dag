@@ -63,7 +63,6 @@ import v2.std.runtime {
   WriteResource,
   effect_handler_for_kind,
   environment_binding_key_for_symbol,
-  environment_binding_key_from_atom,
   interpretation_behavior_dispatch,
   runtime_value_node_projection,
   runtime_value_resolved_type
@@ -1179,8 +1178,16 @@ fn eval_binding_key_node(sym: Symbol) -> Node {
   symbol_atom_node(sym: sym)
 }
 
+fn eval_binding_key_from_atom(node: Node) -> Optional<EnvironmentBindingKey> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      optional_present(value: environment_binding_key_for_symbol(sym: sym))
+    _ => optional_absent()
+  }
+}
+
 fn eval_environment_binding_key_from_node(declaration: Node) -> Outcome<EnvironmentBindingKey> {
-  match environment_binding_key_from_atom(node: declaration) {
+  match eval_binding_key_from_atom(node: declaration) {
     Present { value: key } =>
       Accepted { value: key, diagnostics: None }
     Absent =>
@@ -1243,9 +1250,7 @@ fn eval_bind_param_edge_step(
               ),
               f: fn(value) {
                 bind.bind_value(
-                  eval_environment_binding_key(
-                    declaration: eval_binding_key_node(sym: binding_id)
-                  ),
+                  environment_binding_key_for_symbol(sym: binding_id),
                   value,
                   env
                 )
@@ -2029,8 +2034,12 @@ fn eval_interpret_node(
         TypeNode { connective: _ } =>
           match eval_runtime_binding_lookup(node: node, environment: environment) {
             Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
-            Rejected { diagnostics: _ } =>
-              interpretation.value.allocate_literal(node, environment)
+            Rejected { diagnostics: binding_miss } =>
+              if eval_node_admits_literal_allocation(node: node) {
+                interpretation.value.allocate_literal(node, environment)
+              } else {
+                Rejected { diagnostics: binding_miss }
+              }
           }
       }
     }

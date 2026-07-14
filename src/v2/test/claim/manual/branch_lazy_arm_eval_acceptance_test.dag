@@ -170,13 +170,13 @@ fn lazy_arm_counted() -> Node {
 
 fn lazy_arm_counted_slot_key() -> EnvironmentBindingKey {
   EnvironmentBindingKey {
-    declaration: lazy_arm_atom(s: ^lazy_arm_counted_slot_sym)
+    identity: ^lazy_arm_counted_slot_sym
   }
 }
 
 fn lazy_arm_touch_key() -> EnvironmentBindingKey {
   EnvironmentBindingKey {
-    declaration: lazy_arm_atom(s: ^lazy_arm_touch_counter_sym)
+    identity: ^lazy_arm_touch_counter_sym
   }
 }
 
@@ -184,7 +184,7 @@ fn lazy_arm_binding_keys_equal(
   a: EnvironmentBindingKey,
   b: EnvironmentBindingKey
 ) -> Bool {
-  a.declaration == b.declaration
+  a.identity == b.identity
 }
 
 fn lazy_arm_int_from_runtime(value: RuntimeValue) -> Int {
@@ -385,7 +385,7 @@ fn lazy_arm_bind_node(
 
 fn lazy_arm_counted_bind_arm() -> Node {
   lazy_arm_bind_node(
-    key_decl: lazy_arm_counted_slot_key().declaration,
+    key_decl: lazy_arm_atom(s: ^lazy_arm_counted_slot_sym),
     value: lazy_arm_counted(),
     body: lazy_arm_lit_one()
   )
