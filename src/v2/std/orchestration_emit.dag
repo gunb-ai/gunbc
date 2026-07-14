@@ -12,6 +12,11 @@ data orch_construct_seq2: Symbol = ^orch_construct_seq2
 data orch_construct_retry: Symbol = ^orch_construct_retry
 data orch_construct_if: Symbol = ^orch_construct_if
 data orch_construct_if_else: Symbol = ^orch_construct_if_else
+data orch_construct_procedure: Symbol = ^orch_construct_procedure
+data orch_construct_call: Symbol = ^orch_construct_call
+data orch_construct_cmdsubst_assign: Symbol = ^orch_construct_cmdsubst_assign
+data orch_construct_let_assign: Symbol = ^orch_construct_let_assign
+data orch_construct_arith: Symbol = ^orch_construct_arith
 
 type OrchRunEmitPlan {
   construct_tag: Symbol
@@ -35,4 +40,9 @@ type OrchestrationEmitMedium {
   ) -> TargetModel
   realize_if: fn(String, String) -> TargetModel
   realize_if_else: fn(String, String, String) -> TargetModel
+  realize_procedure: fn(String, String) -> TargetModel
+  realize_call: fn(String, String) -> TargetModel
+  realize_cmdsubst_assign: fn(String, String) -> TargetModel
+  realize_let_assign: fn(String, String) -> TargetModel
+  realize_arith: fn(String, String, String) -> TargetModel
 }

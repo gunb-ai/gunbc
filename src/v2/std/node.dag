@@ -220,14 +220,33 @@ type EdgeDiscipline
   | LoopBoundEdges
 
   | ArrowBodyEdges
+
+data atom_payload_labeled_edges_scaffold_note: String = "🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on ^dag_token_int_literal via ^integer_literal_magnitude_field) — atom_connective_edge_discipline(child_count) is the single authority (NoEdges when child_count==0, LabeledEdges otherwise); connective_edge_discipline_for_children delegates Atom through it. Not a new connective: the payload is a typed named field, not an open Conj record. Reconcile when int-literal lowering lands a dedicated connective or magnitude lives only on the magnitude subnode without widening Atom discipline."
+
+fn atom_connective_edge_discipline(child_count: Int) -> EdgeDiscipline {
+  if child_count == 0 {
+    NoEdges
+  } else {
+    LabeledEdges
+  }
+}
+
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
-    Atom { identity: _ } => NoEdges
+    Atom { identity: _ } => atom_connective_edge_discipline(child_count: 0)
     Conj => LabeledEdges
     Disj => LabeledEdges
     Arrow => ArrowBodyEdges
     Cardinality => PositionalEdges
     Instantiation => PositionalEdges
+  }
+}
+
+fn connective_edge_discipline_for_children(c: Connective, children: List<Edge>) -> EdgeDiscipline {
+  match c {
+    Atom { identity: _ } =>
+      atom_connective_edge_discipline(child_count: count(children))
+    _ => connective_edge_discipline(c: c)
   }
 }
 
@@ -422,7 +441,11 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
 
 fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
   match c {
-    Atom { identity: _ } => edges_conform(children: children, d: NoEdges)
+    Atom { identity: _ } =>
+      edges_conform(
+        children: children,
+        d: connective_edge_discipline_for_children(c: c, children: children)
+      )
     Conj => edges_conform(children: children, d: LabeledEdges)
     Disj => edges_conform(children: children, d: LabeledEdges)
     Arrow => arrow_body_edges_conform(children: children)
@@ -524,7 +547,8 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
 }
 fn node_edge_discipline(n: Node) -> EdgeDiscipline {
   match n.kind {
-    TypeNode { connective: c } => connective_edge_discipline(c: c)
+    TypeNode { connective: c } =>
+      connective_edge_discipline_for_children(c: c, children: n.children)
     ComputationNode { behavior: b } => behavior_edge_discipline(b: b)
   }
 }
