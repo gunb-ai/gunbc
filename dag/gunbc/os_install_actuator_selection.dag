@@ -239,10 +239,6 @@ fn host_satisfies_os_install_actuator_requirements(
   )
 }
 
-fn os_install_actuator_requirement_kind_count() -> Int {
-  os_install_actuator_requirement_kinds.length()
-}
-
 fn optional_compute_host_when_identity_matches(
   host: ComputeHost,
   identity: HostIdentity,
