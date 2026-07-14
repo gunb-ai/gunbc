@@ -4,6 +4,7 @@ import v2.lens.cost.copied_port_citations {
   copied_port_citation_list_append,
   copied_port_citation_list_snoc_item,
   copied_port_citation_map_merge,
+  copied_port_citation_retained_count,
   copied_port_index_of
 }
 import v2.lens.cost.copied_port_derivation { derive_copied_port_index_from_arrow }
@@ -52,4 +53,8 @@ fn wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+fn wave1_gate1_c1_citation_retained_frontier_count_holds() -> Bool {
+  copied_port_citation_retained_count() == 3
 }
