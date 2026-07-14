@@ -3445,8 +3445,7 @@ fn reconcile_all_cache_hits(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    typed_cache: &RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
-    module_identity: &RefCell<HashMap<String, String>>,
+    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut modules_vec = im_rc::Vector::new();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> =
@@ -3457,16 +3456,25 @@ fn reconcile_all_cache_hits(
 
     for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
         let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        check_module_source_identity(module_identity, mod_name, &decl_file)?;
-        let tc_result = typed_cache
-            .borrow()
-            .get(mod_name)
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
-                )
-            })?;
+        let tc_result = {
+            let mut caches = shared_caches
+                .lock()
+                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+            check_module_source_identity_map(
+                &mut caches.module_source_identity,
+                mod_name,
+                &decl_file,
+            )?;
+            caches
+                .typed_module_cache
+                .get(mod_name)
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
+                    )
+                })?
+        };
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
@@ -3513,16 +3521,20 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
-    if closure_names
-        .iter()
-        .all(|name| typed_cache.borrow().contains_key(name))
-    {
+    let all_cached = {
+        let caches = shared_caches
+            .lock()
+            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+        closure_names
+            .iter()
+            .all(|name| caches.typed_module_cache.contains_key(name))
+    };
+    if all_cached {
         return reconcile_all_cache_hits(
             &closure_modules,
             &closure_names,
             source_indices,
-            typed_cache,
-            module_identity,
+            shared_caches,
         );
     }
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
@@ -3549,7 +3561,6 @@ fn reconcile_with_typed_cache(
             // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
             // authority — the guard must fire on genuinely different files, not path representations.
             let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-<<<<<<< HEAD
             {
                 let mut caches = shared_caches
                     .lock()
@@ -3565,9 +3576,7 @@ fn reconcile_with_typed_cache(
                     .lock()
                     .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
                 caches.typed_module_cache.get(&mod_name).cloned()
-=======
-            check_module_source_identity(module_identity, &mod_name, &decl_file)?;
-            let cached = typed_cache.borrow().get(&mod_name).cloned();
+            };
             let was_cache_hit = cached.is_some();
             let parent_diags = if was_cache_hit {
                 Rc::new(im_rc::Vector::new())
@@ -3582,7 +3591,6 @@ fn reconcile_with_typed_cache(
                     s.parent_envs += parent_envs_started.elapsed().as_nanos()
                 });
                 parent_result.diagnostics.clone()
->>>>>>> origin/main
             };
             let tc_result = match cached {
                 Some(hit) => hit,
