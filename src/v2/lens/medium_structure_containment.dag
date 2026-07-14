@@ -213,7 +213,7 @@ data medium_structure_exception_roster: List<String> = [
 
 data medium_structure_clean_tree_unquarantine_note: String = "Pre-existing rot surfaced by live host census at discovery-flip unquarantine (2026-07-09; not debt introduced by this PR): dag_compile_clean_shard_transport is shell-transport sibling to already-rostered seam/shard_totality transports; os_install_deduction + v1_dag_parse witness tests pair string_contains with emit-fn output (same pattern as ci_yaml_serializer_witness_test.dag)."
 
-data medium_structure_exception_roster_size_baseline: Int = 56
+data medium_structure_exception_roster_size_baseline: Int = 59
 
 fn roster_growth_ratchet_holds(live_size: Int, baseline: Int) -> Bool {
   live_size <= baseline
