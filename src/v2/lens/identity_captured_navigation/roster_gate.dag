@@ -9,7 +9,9 @@ import v2.lens.identity_captured_navigation { Finding }
 import v2.lens.identity_captured_navigation.analyze {
   finding_is_refusal,
   finding_is_suspect,
-  identity_captured_navigation_findings
+  identity_captured_navigation_findings,
+  identity_navigation_debug_match_expr_count,
+  identity_navigation_debug_scrutinee_hit_count
 }
 import v2.std.algebra { fold_list }
 import v2.std.collection { Absent, List, Optional, Present }
@@ -22,6 +24,39 @@ import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
 data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/identity_captured_navigation/roster_gate in gunbc.ci_layer_roots — same structural reason as complexity_accumulator_copy's roster gate: file_gate reads its roster targets via filesystem_read at runtime, a data dependency invisible to resolve-closure attribution). Local recipe, one test fn per invocation: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag --function <fn> --claim-run --wet."
+
+fn source_findings_tree(source_text: String) -> Optional<Node> {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^identity_captured_navigation_roster_gate_port)
+  match lm.grammar {
+    VoidGrammar => Absent
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(
+            text: source_text,
+            file: ^identity_captured_navigation_roster_subject,
+            rules: lm.lex
+          ) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => Absent
+                    Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+                  }
+              }
+          }
+      }
+  }
+}
 
 fn source_findings(source_text: String) -> Optional<List<Finding>> {
   let lm = dag_language_model()
@@ -110,6 +145,20 @@ fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
     RosterIngestRegressed => false
     RosterSuspectFound => false
     RosterRatchetExceeded { refusals: _, ceiling: _ } => false
+  }
+}
+
+fn debug_match_expr_count(source_text: String) -> Int {
+  match source_findings_tree(source_text: source_text) {
+    Absent => -1
+    Present { value: tree } => identity_navigation_debug_match_expr_count(root: tree)
+  }
+}
+
+fn debug_scrutinee_hit_count(source_text: String) -> Int {
+  match source_findings_tree(source_text: source_text) {
+    Absent => -1
+    Present { value: tree } => identity_navigation_debug_scrutinee_hit_count(root: tree)
   }
 }
 

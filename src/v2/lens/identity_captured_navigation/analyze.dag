@@ -163,9 +163,17 @@ fn match_arms_region_node(match_capture: Node) -> Optional<Node> {
   }
 }
 
+fn identity_navigation_call_found(cap: Node) -> Optional<Node> {
+  Present { value: cap }
+}
+
+fn no_identity_navigation_call() -> Optional<Node> {
+  Absent
+}
+
 fn scrutinee_identity_navigation_call(scrutinee: Node) -> Optional<Node> {
   match find_capture(root: scrutinee, emitted: ^dag_surface_primary_expr) {
-    Absent => Absent
+    Absent => no_identity_navigation_call()
     Present { value: cap } =>
       match sequence_left_symbol(cap: cap) {
         Present { value: head } =>
@@ -173,16 +181,16 @@ fn scrutinee_identity_navigation_call(scrutinee: Node) -> Optional<Node> {
             match arg_nth_value_symbol(call_capture: cap, index: 1) {
               Present { value: name_sym } =>
                 if name_sym == ^grammar_production_identity_node_projection {
-                  Present { value: cap }
+                  identity_navigation_call_found(cap: cap)
                 } else {
-                  Absent
+                  no_identity_navigation_call()
                 }
-              Absent => Absent
+              Absent => no_identity_navigation_call()
             }
           } else {
-            Absent
+            no_identity_navigation_call()
           }
-        Absent => Absent
+        Absent => no_identity_navigation_call()
       }
   }
 }
@@ -193,8 +201,38 @@ fn count_symbol(xs: List<Symbol>, needle: Symbol) -> Int {
 
 data classify_note: String = "Name-agnostic shape check (see identity_captured_navigation_wall_note): mentions is every value-reference identifier inside the guarding match's arm region. Removing every ^Absent (the legitimate empty-Optional literal a Rejected arm returns) and exactly one ^node_atom_identity_optional (the sanctioned reduction) should leave EXACTLY one mention - the binder passed as that reduction's sole argument. Zero reductions with a non-Absent mention present means the raw identity node was referenced without ever being reduced (the bare-return escape shape); more than one leftover mention after one reduction means something besides the reduction's own argument escaped; more than one reduction is an ambiguous shape this lens refuses rather than guesses at."
 
+fn empty_symbol_list() -> List<Symbol> {
+  Empty
+}
+
+fn no_identity_navigation_finding() -> Optional<Finding> {
+  Absent
+}
+
+fn suspect_identity_navigation_finding(
+  match_node: Node,
+  reduction_count: Int,
+  remaining: Int
+) -> Optional<Finding> {
+  Present {
+    value: Suspect {
+      violation: IdentityNodeEscapesAsValue {
+        at: match_node,
+        reduction_count: reduction_count,
+        extraneous_mentions: remaining
+      }
+    }
+  }
+}
+
+fn unclassifiable_identity_navigation_finding(match_node: Node, cause: Symbol) -> Optional<Finding> {
+  Present {
+    value: Unclassifiable { at: match_node, cause: cause }
+  }
+}
+
 fn classify_identity_match(match_node: Node, mentions: List<Symbol>) -> Optional<Finding> {
-  let non_absent = fold(mentions, init: Empty, f: fn(acc, s) {
+  let non_absent = fold(mentions, init: empty_symbol_list(), f: fn(acc, s) {
     if s == ^Absent { acc } else { symbol_list_prepend(item: s, xs: acc) }
   })
   let non_absent_total = symbol_list_length(xs: non_absent)
@@ -202,41 +240,87 @@ fn classify_identity_match(match_node: Node, mentions: List<Symbol>) -> Optional
   let remaining = non_absent_total - reduction_count
   if reduction_count == 0 {
     if remaining == 0 {
-      Absent
+      no_identity_navigation_finding()
     } else {
-      Present {
-        value: Suspect {
-          violation: IdentityNodeEscapesAsValue {
-            at: match_node,
-            reduction_count: reduction_count,
-            extraneous_mentions: remaining
-          }
-        }
-      }
+      suspect_identity_navigation_finding(
+        match_node: match_node,
+        reduction_count: reduction_count,
+        remaining: remaining
+      )
     }
   } else if reduction_count == 1 {
     if remaining == 1 {
-      Absent
+      no_identity_navigation_finding()
     } else if remaining == 0 {
-      Present {
-        value: Unclassifiable { at: match_node, cause: ^identity_navigation_reduction_argless }
-      }
+      unclassifiable_identity_navigation_finding(
+        match_node: match_node,
+        cause: ^identity_navigation_reduction_argless
+      )
     } else {
-      Present {
-        value: Suspect {
-          violation: IdentityNodeEscapesAsValue {
-            at: match_node,
-            reduction_count: reduction_count,
-            extraneous_mentions: remaining
-          }
-        }
-      }
+      suspect_identity_navigation_finding(
+        match_node: match_node,
+        reduction_count: reduction_count,
+        remaining: remaining
+      )
     }
   } else {
-    Present {
-      value: Unclassifiable { at: match_node, cause: ^identity_navigation_multiple_reductions }
-    }
+    unclassifiable_identity_navigation_finding(
+      match_node: match_node,
+      cause: ^identity_navigation_multiple_reductions
+    )
   }
+}
+
+fn identity_navigation_debug_match_expr_count_at(node: Node) -> Int {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } => if emitted == ^dag_surface_match_expr { 1 } else { 0 }
+    Absent => 0
+  }
+}
+
+fn identity_navigation_debug_scan(node: Node, acc: Int) -> Int {
+  let here = acc + identity_navigation_debug_match_expr_count_at(node: node)
+  fold(node.children, init: here, f: fn(a, e) {
+    identity_navigation_debug_scan(node: e.target, acc: a)
+  })
+}
+
+fn identity_navigation_debug_match_expr_count(root: Node) -> Int {
+  identity_navigation_debug_scan(node: root, acc: 0)
+}
+
+fn identity_navigation_debug_scrutinee_hit_count_at(node: Node) -> Int {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_match_expr {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: cap } =>
+            match match_scrutinee_node(match_capture: cap) {
+              Present { value: scrutinee } =>
+                match scrutinee_identity_navigation_call(scrutinee: scrutinee) {
+                  Present { value: _ } => 1
+                  Absent => 0
+                }
+              Absent => 0
+            }
+          Absent => 0
+        }
+      } else {
+        0
+      }
+    Absent => 0
+  }
+}
+
+fn identity_navigation_debug_scrutinee_scan(node: Node, acc: Int) -> Int {
+  let here = acc + identity_navigation_debug_scrutinee_hit_count_at(node: node)
+  fold(node.children, init: here, f: fn(a, e) {
+    identity_navigation_debug_scrutinee_scan(node: e.target, acc: a)
+  })
+}
+
+fn identity_navigation_debug_scrutinee_hit_count(root: Node) -> Int {
+  identity_navigation_debug_scrutinee_scan(node: root, acc: 0)
 }
 
 fn identity_navigation_findings_at(node: Node) -> List<Finding> {
