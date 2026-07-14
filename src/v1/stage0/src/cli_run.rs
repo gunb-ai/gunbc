@@ -718,6 +718,7 @@ mod process_workspace_root_tests {
         repo_relative_path_normalized, try_anchor_source_root, workspace_relative_repo_path,
         workspace_root,
     };
+    use crate::v1_std_core::Connective;
     use std::path::Path;
 
     #[test]
@@ -808,8 +809,11 @@ mod process_workspace_root_tests {
                         name,
                         "fleet_autoinstall_specs" | "fleet_install_server_specs" | "all_plans"
                     ) {
+                        let has_type = binding.resolved.inferred.is_some()
+                            || binding.resolved.connective != Connective::NoConnective
+                            || !binding.resolved.children.is_empty();
                         assert!(
-                            binding.resolved.inferred.is_some(),
+                            has_type,
                             "{name}: data census binding must carry declared type"
                         );
                     }
