@@ -119,7 +119,7 @@ The per-entry resolve cost was one lump (`resolve_nanos`); #6535 attributes it t
 
 | Stage | Time | Share | Routing |
 |---|---:|---:|---|
-| `typecheck_compute` (genuine cold computes) | 194.7s | 52% | cross-worker share prize — interface-summary Inc B ladder (resolver lane) |
+| `typecheck_compute` (genuine cold computes) | 194.7s | 52% | cross-worker share prize — interface-summary Inc B ladder (resolver lane). Inc B landed (#6543); post-merge resolve-split 2026-07-14: typecheck 201.6s — **neutral, prize still OPEN** (Inc B is the denomination rung; the displaced cost belongs to the cross-worker share increment it enables) |
 | `reconcile_assembly` (residue rerun per entry even at 100% cache hits) | 107.7s | 29% | resolver-graph-major lane |
 | `normalize` (pure per-module diags) | 28.5s | 8% | this lane — within-worker memo (next cut) |
 | `ownership` (per-typed-graph proofs) | 24.3s | 7% | this lane — within-worker memo (next cut) |
