@@ -19,6 +19,21 @@ data paths: List<String> = [
   "dag/std/bit.dag"
 ]
 
+test fn ambiguous_export_zero_holds() -> Bool {
+  ledger_cause_count(
+    rows: door_ledger(paths: paths, pool_roots: ["dag", "src/v2"]),
+    reason: ^resolve_ambiguous_export
+  ) == 0
+}
+
+test fn refused_count_two_holds() -> Bool {
+  ledger_refused_count(rows: door_ledger(paths: paths, pool_roots: ["dag", "src/v2"])) == 2
+}
+
+test fn refused_count_three_holds() -> Bool {
+  ledger_refused_count(rows: door_ledger(paths: paths, pool_roots: ["dag", "src/v2"])) == 3
+}
+
 test fn bit_compiled_after_flip_holds() -> Bool {
   let rows = door_ledger(paths: paths, pool_roots: ["dag", "src/v2"])
   ledger_refused_count(rows: rows) == 2
