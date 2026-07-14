@@ -1,10 +1,12 @@
 module v2.lens.module_graph
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
-import std.algebra { FreeMonoid }
-import v2.std.algebra { fold_list, contains, list_snoc_item, any }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { any, contains, fold_list, list_snoc_item }
 import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_get, map_insert }
+import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -19,7 +21,24 @@ type ImportResolutionFact {
   target_declared: Bool
 }
 
-data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today the module dependency relation is realized from IMPORT declarations (import_resolution_facts_live below; host twin build_import_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, THIS producer swaps to the reference-derived edge set and nothing above it changes: import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read edges as data, never import syntax). Do not add a second edge producer beside this one; the swap replaces it."
+type ModuleDependencyEdge {
+  path: String
+  target_module: String
+  target_declared: Bool
+}
+
+data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live delegates to import_resolution_facts_live (host twin build_import_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts_flagged and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
+
+data reference_derived_edge_source_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.lens.module_graph",
+    decl_name: "reference_derived_resolution_facts_flagged",
+    field: WholeDeclaration
+  }
+}
+
+data reference_derived_edge_source_dissolution_note: String = "Scaffold producer for namespace terminal step (docs/plans/namespace-resolution-design.md §8 step 5): module-graph dependency edges derived from parsed-tree container.member qualified-name use sites (v2.lens.reference_deps.reference_resolution_facts_live census today; symbol_index_fill projection at steady state). Not wired into dependency_resolution_facts_live until the import grammar is deleted — import_resolution_facts_live remains live. On the import-only corpus the reference census matches import facts at module-prefix grain (reference_closure_b2_safety_wall_holds); this scaffold maps import facts through ModuleDependencyEdge as an interim stand-in until the swap repoints dependency_resolution_facts_live here without changing closure consumers."
 
 fn import_resolution_facts_live(
   pool_roots: List<String>,
@@ -35,6 +54,54 @@ fn import_resolution_facts_live(
 
 fn module_declaration_facts_live(pool_roots: List<String>) -> List<ModuleDeclarationFact> {
   module_declaration_facts(pool_roots: pool_roots)
+}
+
+fn import_fact_to_dependency_edge(edge: ImportResolutionFact) -> ModuleDependencyEdge {
+  ModuleDependencyEdge {
+    path: edge.path,
+    target_module: edge.import_module,
+    target_declared: edge.target_declared
+  }
+}
+
+fn dependency_edges_from_import_facts(edges: List<ImportResolutionFact>) -> List<ModuleDependencyEdge> {
+  fold_list(
+    xs: edges,
+    empty: Empty,
+    cons: fn(acc, edge) {
+      list_snoc_item(xs: acc, item: import_fact_to_dependency_edge(edge: edge))
+    }
+  )
+}
+
+fn dependency_resolution_facts_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ModuleDependencyEdge> {
+  dependency_edges_from_import_facts(
+    edges: import_resolution_facts_live(
+      pool_roots: pool_roots,
+      importer_roots: importer_roots,
+      exclude_substrings: exclude_substrings
+    )
+  )
+}
+
+fn reference_derived_resolution_facts_flagged(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> Outcome<List<ModuleDependencyEdge>> {
+  outcome_accepted(
+    value: dependency_edges_from_import_facts(
+      edges: import_resolution_facts_live(
+        pool_roots: pool_roots,
+        importer_roots: importer_roots,
+        exclude_substrings: exclude_substrings
+      )
+    )
+  )
 }
 
 fn string_eq(a: String, b: String) -> Bool {
@@ -85,12 +152,12 @@ fn snoc_unseen_list(acc: List<String>, item: String) -> List<String> {
   }
 }
 
-fn extend_adjacency_for_edge(
+fn extend_adjacency_for_dependency_edge(
   acc: Map<String, List<String>>,
-  edge: ImportResolutionFact,
+  edge: ModuleDependencyEdge,
   module_to_path: Map<String, String>
 ) -> Map<String, List<String>> {
-  match map_lookup_where_rejected_unreachable(m: module_to_path, key: edge.import_module) {
+  match map_lookup_where_rejected_unreachable(m: module_to_path, key: edge.target_module) {
     Present { value: imported_path } =>
       match map_lookup_where_rejected_unreachable(m: acc, key: edge.path) {
         Present { value: existing } =>
@@ -110,8 +177,8 @@ fn extend_adjacency_for_edge(
   }
 }
 
-fn build_import_adjacency(
-  edges: List<ImportResolutionFact>,
+fn build_dependency_adjacency(
+  edges: List<ModuleDependencyEdge>,
   nodes: List<ModuleDeclarationFact>
 ) -> Map<String, List<String>> {
   let module_to_path = build_module_to_path(nodes: nodes)
@@ -119,12 +186,34 @@ fn build_import_adjacency(
     xs: edges,
     empty: empty_map(),
     cons: fn(acc, edge) {
-      extend_adjacency_for_edge(
+      extend_adjacency_for_dependency_edge(
         acc: acc,
         edge: edge,
         module_to_path: module_to_path
       )
     }
+  )
+}
+
+fn extend_adjacency_for_edge(
+  acc: Map<String, List<String>>,
+  edge: ImportResolutionFact,
+  module_to_path: Map<String, String>
+) -> Map<String, List<String>> {
+  extend_adjacency_for_dependency_edge(
+    acc: acc,
+    edge: import_fact_to_dependency_edge(edge: edge),
+    module_to_path: module_to_path
+  )
+}
+
+fn build_import_adjacency(
+  edges: List<ImportResolutionFact>,
+  nodes: List<ModuleDeclarationFact>
+) -> Map<String, List<String>> {
+  build_dependency_adjacency(
+    edges: dependency_edges_from_import_facts(edges: edges),
+    nodes: nodes
   )
 }
 
@@ -170,12 +259,12 @@ fn import_closure_bfs_walk(
   }
 }
 
-fn import_closure(
+fn dependency_closure(
   entry_path: String,
-  edges: List<ImportResolutionFact>,
+  edges: List<ModuleDependencyEdge>,
   nodes: List<ModuleDeclarationFact>
 ) -> FreeMonoid<String> {
-  let adjacency = build_import_adjacency(edges: edges, nodes: nodes)
+  let adjacency = build_dependency_adjacency(edges: edges, nodes: nodes)
   import_closure_bfs_walk(
     state: ImportClosureBfsState {
       reached: list_snoc_item(xs: no_paths, item: entry_path),
@@ -185,21 +274,45 @@ fn import_closure(
   )
 }
 
+fn import_closure(
+  entry_path: String,
+  edges: List<ImportResolutionFact>,
+  nodes: List<ModuleDeclarationFact>
+) -> FreeMonoid<String> {
+  dependency_closure(
+    entry_path: entry_path,
+    edges: dependency_edges_from_import_facts(edges: edges),
+    nodes: nodes
+  )
+}
+
 data module_graph_exclude_substrings: List<String> = []
+
+fn dependency_closure_live_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> FreeMonoid<String> {
+  dependency_closure(
+    entry_path: entry_path,
+    edges: dependency_resolution_facts_live(
+      pool_roots: pool_roots,
+      importer_roots: pool_roots,
+      exclude_substrings: exclude_substrings
+    ),
+    nodes: module_declaration_facts_live(pool_roots: pool_roots)
+  )
+}
 
 fn import_closure_live_excluding(
   entry_path: String,
   pool_roots: List<String>,
   exclude_substrings: List<String>
 ) -> FreeMonoid<String> {
-  import_closure(
+  dependency_closure_live_excluding(
     entry_path: entry_path,
-    edges: import_resolution_facts_live(
-      pool_roots: pool_roots,
-      importer_roots: pool_roots,
-      exclude_substrings: exclude_substrings
-    ),
-    nodes: module_declaration_facts_live(pool_roots: pool_roots)
+    pool_roots: pool_roots,
+    exclude_substrings: exclude_substrings
   )
 }
 
@@ -237,7 +350,7 @@ fn entry_affected_by_touched_paths_excluding(
   touched_paths: List<String>,
   exclude_substrings: List<String>
 ) -> Bool {
-  let closure = import_closure_live_excluding(
+  let closure = dependency_closure_live_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,
     exclude_substrings: exclude_substrings
