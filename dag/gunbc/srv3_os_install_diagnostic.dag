@@ -1,7 +1,7 @@
 module gunbc.srv3_os_install_diagnostic
 
 import std.types { NonEmptyStr, Bool, Int, String, ContentHash, Milliseconds, List }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, Millisecond }
 import std.disposition { Disposition, Terminal }
 import extdeps.bmc.types {
   RedfishPowerState,
@@ -54,6 +54,42 @@ data srv3_os_install_diagnostic_runbook_section: NonEmptyStr = "docs/runbooks/sr
 data srv3_install_hang_no_installer_progress_ms: Milliseconds = 900000
 
 data srv3_install_hang_no_router_lease_ms: Milliseconds = 4500000
+
+type OsInstallHangStallCause
+  = HangStallWithinBudget
+  | HangStallInstallerProgressSilent { elapsed_ms: Millisecond }
+  | HangStallRouterLeaseAbsent { elapsed_ms: Millisecond }
+
+type HangStallCauseFoldAcc {
+  dominant: OsInstallHangStallCause
+  priority: Int
+}
+
+fn hang_stall_cause_priority(cause: OsInstallHangStallCause) -> Int {
+  match cause {
+    HangStallWithinBudget => 0
+    HangStallInstallerProgressSilent { elapsed_ms: _ } => 1
+    HangStallRouterLeaseAbsent { elapsed_ms: _ } => 2
+  }
+}
+
+fn cause_fold_dominant_hang_stall(causes: List<OsInstallHangStallCause>) -> OsInstallHangStallCause {
+  fold(
+    causes,
+    init: HangStallCauseFoldAcc {
+      dominant: HangStallWithinBudget,
+      priority: hang_stall_cause_priority(cause: HangStallWithinBudget),
+    },
+    f: (acc, c) => {
+      let p = hang_stall_cause_priority(cause: c)
+      if p > acc.priority {
+        HangStallCauseFoldAcc { dominant: c, priority: p }
+      } else {
+        acc
+      }
+    },
+  ).dominant
+}
 
 type OsInstallObservationSurface
   = ObserveNbdServe

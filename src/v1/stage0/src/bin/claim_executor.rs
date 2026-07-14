@@ -955,6 +955,22 @@ fn run_discovery_batch_node(
                 summary.total_measured_nanos,
                 summary.roster_closure_nodes,
             );
+            let st = &summary.total_stage_nanos;
+            let ms = |n: u128| n as f64 / 1.0e6;
+            eprintln!(
+                "[resolve-split] load={:.1}ms parse={:.1}ms resolve={:.1}ms normalize={:.1}ms typecheck={:.1}ms parent_envs={:.1}ms reconcile_assembly={:.1}ms ownership={:.1}ms other={:.1}ms",
+                ms(st.load),
+                ms(st.parse),
+                ms(st.resolve),
+                ms(st.normalize),
+                ms(st.typecheck_compute),
+                ms(st.parent_envs),
+                ms(st.reconcile_assembly),
+                ms(st.ownership),
+                ms(summary
+                    .total_resolve_nanos
+                    .saturating_sub(st.attributed_total())),
+            );
             match compute_histogram_data(&summary) {
                 Ok(data) => match render_timing_histogram(&source_roots, &data) {
                     Ok(histogram) => eprintln!("{histogram}"),

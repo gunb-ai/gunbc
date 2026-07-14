@@ -177,6 +177,30 @@ pub fn check_bare_containers(
     })
 }
 
+pub fn normalize_module_diagnostics(
+    m: Rc<ResolvedModule>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let items = module_items(m.module.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in items.clone().iter().cloned() {
+                __result.extend(
+                    (*check_bare_containers(
+                        item.clone(),
+                        authored_name_at(source_indices.clone(), m.module.clone()),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
 pub fn normalize_graph(
     graph: Rc<ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -186,26 +210,9 @@ pub fn normalize_graph(
             let mut __result = Vec::new();
             for m in graph.modules.clone().iter().cloned() {
                 __result.extend(
-                    (*{
-                        let items = module_items(m.module.clone());
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for item in items.clone().iter().cloned() {
-                                __result.extend(
-                                    (*check_bare_containers(
-                                        item.clone(),
-                                        authored_name_at(source_indices.clone(), m.module.clone()),
-                                        source_indices.clone(),
-                                    ))
-                                    .iter()
-                                    .cloned(),
-                                );
-                            }
-                            __result
-                        })
-                    })
-                    .iter()
-                    .cloned(),
+                    (*normalize_module_diagnostics(m.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
                 );
             }
             __result

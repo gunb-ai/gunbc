@@ -87,6 +87,18 @@ import v1.compiler.infer_env {
   inductive_fields_list_to_map
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
+import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
+import std.interface_summary {
+  InterfaceSummary,
+  ExportEntry,
+  ExportFn,
+  ExportType,
+  ExportData,
+  ExportService,
+  ExportKind,
+  signature_contract,
+  interface_summary_rollup
+}
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown,
@@ -119,7 +131,7 @@ import v1.compiler.infer_emit_info {
 }
 import v1.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
-  ItemInfo, TypedModule, TypedGraph, ResolvedGraph,
+  ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface,
   inferred_to_outputs, item_kind
 }
 import v1.compiler.infer_service {
@@ -5500,7 +5512,7 @@ fn union_parent_type_env_caches(
 ) -> GuardedTypeEnvCacheMerge {
   let parent_caches = flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: parent } => [ParentCacheRow { import_path: imp.module_path, cache: parent.type_env_cache }]
+      Present { value: parent } => [ParentCacheRow { import_path: imp.module_path, cache: parent.interface.cache }]
       Absent => []
     }
   )
@@ -5615,6 +5627,100 @@ fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv
   }
 }
 
+data interface_summary_consumer_note: String = "S2a move 2 increment B (resolver-graph-major-design.md §7): build_type_env reads a direct import's ModuleInterface (std.interface_summary carrier + interface-grain env/cache realization) — never the parent's full TypeEnv+TypeEnvCache chains. interface.env is the export surface with parents: [] (ancestry-complete via flattened str_bindings/ancestry maps and merged inductive/recursive sets); interface.cache is the flattened import-union grain (variant_locals stripped — interpretation-local). Consumption still runs interface_env_for_import for importer-specific std.types filtering. Discriminating receipt: transitive_interface_binding_test."
+
+data interface_signature_fingerprint_v0_note: String = "Interim v0 export signature fingerprint (export_entry_from_item): content_hash of export name + authored_name_at(binding.resolved) under tag v1-interface-sig-v0 — NOT yet structural type shape. Two exports with the same name and resolved authored-name string collide in interface_hash even if types differ; increment-B receipt is binding transitivity (transitive_interface_binding_test), not hash-discriminated signature change. Structural fingerprint authority: std.interface_summary.interface_summary_v0_dissolution_trigger → export_entry_fingerprint when type-structure hashing lands."
+
+fn interface_env_surface(env: TypeEnv) -> TypeEnv {
+  TypeEnv {
+    bindings: env.bindings,
+    str_bindings: env.str_bindings,
+    ancestry_str_bindings: env.ancestry_str_bindings,
+    parents: [],
+    recursive_types: env.recursive_types,
+    recursive_type_set: env.recursive_type_set,
+    inductive_fields: env.inductive_fields,
+    source_indices: env.source_indices,
+    intern_table: env.intern_table,
+    source_visible_names: env.source_visible_names
+  }
+}
+
+fn interface_cache_from_module(cache: TypeEnvCache) -> TypeEnvCache {
+  TypeEnvCache {
+    deps_map: cache.deps_map,
+    str_bindings: cache.str_bindings,
+    cycle_set_str: cache.cycle_set_str,
+    variant_locals: empty_map()
+  }
+}
+
+fn export_kind_of_item_kind(kind: ItemKind) -> ExportKind? {
+  match kind {
+    FnItem => Present { value: ExportFn }
+    FuncItem => Present { value: ExportFn }
+    TypeItem => Present { value: ExportType }
+    DataItem => Present { value: ExportData }
+    ServiceItem => Present { value: ExportService }
+    OtherItem => Absent
+  }
+}
+
+fn export_entry_from_item(item: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> ExportEntry? {
+  let name = authored_name_at(source_indices: source_indices, node: item)
+  match export_kind_of_item_kind(kind: item_kind(item: item)) {
+    Absent => Absent
+    Present { value: kind } =>
+      match map_get(env.str_bindings, name) {
+        Present { value: binding } =>
+          Present {
+            value: ExportEntry {
+              name: name,
+              kind: kind,
+              contract: signature_contract(
+                signature: content_hash_tagged(
+                  tag: "v1-interface-sig-v0",
+                  payload: content_hash_combine(
+                    left: content_hash_atom(value: binding.name),
+                    right: content_hash_atom(value: authored_name_at(source_indices: source_indices, node: binding.resolved))
+                  )
+                )
+              )
+            }
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn export_entries_from_module(module: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> List<ExportEntry> {
+  flat_map(module_items(n: module), item =>
+    match export_entry_from_item(item: item, env: env, source_indices: source_indices) {
+      Present { value: entry } => [entry]
+      Absent => []
+    }
+  )
+}
+
+fn build_module_interface(
+  module_path: String,
+  module: Node,
+  env: TypeEnv,
+  cache: TypeEnvCache,
+  source_indices: Map<String, NewlineIndex>
+) -> ModuleInterface {
+  let exports = export_entries_from_module(module: module, env: env, source_indices: source_indices)
+  ModuleInterface {
+    summary: InterfaceSummary {
+      module_path: module_path,
+      exports: exports,
+      interface_hash: interface_summary_rollup(exports: exports)
+    },
+    env: interface_env_surface(env: env),
+    cache: interface_cache_from_module(cache: cache)
+  }
+}
+
 
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
@@ -5653,7 +5759,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.type_env)]
+      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.interface.env)]
       Absent => []
     }
   )
@@ -5754,7 +5860,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     match module.resolved_imports |> first {
       Present { value: imp } =>
         match map_get(parent_index, imp.module_path) {
-          Present { value: parent_mod } => map_merge(parent_mod.type_env.ancestry_str_bindings, parent_mod.type_env.str_bindings)
+          Present { value: parent_mod } => map_merge(parent_mod.interface.env.ancestry_str_bindings, parent_mod.interface.env.str_bindings)
           Absent => ancestry_cache.str_bindings
         }
       Absent => ancestry_cache.str_bindings
@@ -5768,8 +5874,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     if imp.is_all {
       match map_get(parent_index, imp.module_path) {
         Present { value: parent_mod } =>
-          let a1 = fold(map_keys(parent_mod.type_env.str_bindings), init: acc, f: (x, n) => map_insert(x, n, true))
-          fold(map_keys(parent_mod.type_env.ancestry_str_bindings), init: a1, f: (x, n) => map_insert(x, n, true))
+          let a1 = fold(map_keys(parent_mod.interface.env.str_bindings), init: acc, f: (x, n) => map_insert(x, n, true))
+          fold(map_keys(parent_mod.interface.env.ancestry_str_bindings), init: a1, f: (x, n) => map_insert(x, n, true))
         Absent => acc
       }
     } else {
@@ -5826,7 +5932,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.type_env)]
+      Present { value: typed_parent } => [interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.interface.env)]
       Absent => []
     }
   )
@@ -5888,7 +5994,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     match module.resolved_imports |> first {
       Present { value: imp } =>
         match map_get(parent_index, imp.module_path) {
-          Present { value: parent_mod } => map_merge(parent_mod.type_env.ancestry_str_bindings, parent_mod.type_env.str_bindings)
+          Present { value: parent_mod } => map_merge(parent_mod.interface.env.ancestry_str_bindings, parent_mod.interface.env.str_bindings)
           Absent => ancestry_cache.str_bindings
         }
       Absent => ancestry_cache.str_bindings
@@ -6277,6 +6383,13 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         items: [],
         type_env: env,
         type_env_cache: env_cache,
+        interface: build_module_interface(
+          module_path: authored_name_at(source_indices: source_indices, node: resolved.module),
+          module: resolved.module,
+          env: env,
+          cache: env_cache,
+          source_indices: source_indices
+        ),
         func_env: ResolvedFuncEnv { local: empty_map(), parents: [] },
         item_registry: empty_map()
       },
@@ -6356,6 +6469,18 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         cycle_set_str: env_cache.cycle_set_str,
         variant_locals: ctx.variant_locals
       },
+      interface: build_module_interface(
+        module_path: resolved_module_name,
+        module: typed_module,
+        env: env,
+        cache: TypeEnvCache {
+          deps_map: env_cache.deps_map,
+          str_bindings: env_cache.str_bindings,
+          cycle_set_str: env_cache.cycle_set_str,
+          variant_locals: ctx.variant_locals
+        },
+        source_indices: source_indices
+      ),
       func_env: updated_func_env,
       item_registry: ctx.item_registry
     },
@@ -6805,6 +6930,7 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
         source_visible_names: m.type_env.source_visible_names
       },
       type_env_cache: m.type_env_cache,
+      interface: m.interface,
       func_env: m.func_env,
       item_registry: m.item_registry
     }
@@ -6879,6 +7005,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
         source_visible_names: m.type_env.source_visible_names
       },
       type_env_cache: m.type_env_cache,
+      interface: m.interface,
       func_env: m.func_env,
       item_registry: m.item_registry
     }
@@ -6902,6 +7029,7 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
       items: m.items,
       type_env: m.type_env,
       type_env_cache: m.type_env_cache,
+      interface: m.interface,
       func_env: ResolvedFuncEnv { local: m.func_env.local, parents: parents },
       item_registry: m.item_registry
     }
