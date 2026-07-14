@@ -2156,6 +2156,19 @@ fn parse_production_prepared(
   }
 }
 
+fn parse_production(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  production_name: Symbol
+) -> Outcome<ParseArtifact> {
+  parse_production_prepared(
+    tokens: tokens,
+    validated: validated,
+    analysis: compute_grammar_first_analysis(root: validated.root),
+    production_name: production_name
+  )
+}
+
 fn parse_production_tree(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
@@ -2172,44 +2185,70 @@ fn parse_production_tree(
       Rejected { diagnostics: r }
   }
 }
-fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
+fn prepare_grammar(grammar: ParseGrammar) -> Outcome<PreparedGrammar> {
   let at = port_locus(port: ^parse_stage_locus_port)
-  let ntok = token_stream_remaining_count(stream: tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
   if well_formed(n: grammar_node) {
     match grammar {
       VoidGrammar =>
-        if ntok == 0 {
-          Accepted {
-            value: ParseArtifact { tree: grammar_node, span_index: span_index_empty() },
-            diagnostics: None
-          }
-        } else {
-          Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
-        }
+        Accepted { value: PreparedVoidGrammar, diagnostics: None }
       ModeledGrammar { root: root } =>
-        match grammar_validate_for_parse(root: root, at: at) {
+        match grammar_validate_and_analyze(root: root, at: at) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-          Accepted { value: validated, diagnostics: validation_residue } =>
-            match parse_production(
-              tokens: token_stream_remaining(stream: tokens),
-              validated: validated,
-              production_name: root.start
-            ) {
-              Accepted { value: artifact, diagnostics: parse_diags } =>
-                Accepted {
-                  value: artifact,
-                  diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
-                }
-              Rejected { diagnostics: parse_rejected } =>
-                Rejected {
-                  diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
-                }
+          Accepted { value: modeled, diagnostics: validation_residue } =>
+            Accepted {
+              value: PreparedModeled { modeled: modeled },
+              diagnostics: validation_residue
             }
         }
     }
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
+  }
+}
+
+fn parse_module_prepared(
+  tokens: TokenStream,
+  prepared: PreparedGrammar,
+  validation_residue: Diagnostics
+) -> Outcome<ParseArtifact> {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  let ntok = token_stream_remaining_count(stream: tokens)
+  match prepared {
+    PreparedVoidGrammar =>
+      if ntok == 0 {
+        Accepted {
+          value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty() },
+          diagnostics: validation_residue
+        }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+      }
+    PreparedModeled { modeled: modeled } =>
+      match parse_production_prepared(
+        tokens: token_stream_remaining(stream: tokens),
+        validated: modeled.validated,
+        analysis: modeled.analysis,
+        production_name: modeled.validated.root.start
+      ) {
+        Accepted { value: artifact, diagnostics: parse_diags } =>
+          Accepted {
+            value: artifact,
+            diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
+          }
+        Rejected { diagnostics: parse_rejected } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
+          }
+      }
+  }
+}
+
+fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
+  match prepare_grammar(grammar: grammar) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: prepared, diagnostics: validation_residue } =>
+      parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: validation_residue)
   }
 }
 
