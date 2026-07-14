@@ -29,6 +29,10 @@ import v2.std.collection {
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.extdeps.languages.dag {
+  dag_int_literal_magnitude_int_from_node,
+  dag_node_is_int_literal_atom
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -157,7 +161,19 @@ fn bind_runtime_int_is_two(value: RuntimeValue) -> Bool {
 }
 
 fn bind_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == bind_literal_one_node() {
+  if dag_node_is_int_literal_atom(node: node) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: mag, diagnostics: _ } =>
+        if mag == 1 {
+          outcome_accepted(value: bind_one_value())
+        } else if mag == 2 {
+          outcome_accepted(value: bind_two_value())
+        } else {
+          outcome_rejected(d: bind_runtime_diagnostic(n: node))
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
+  } else if node == bind_literal_one_node() {
     outcome_accepted(value: bind_one_value())
   } else if node == bind_literal_two_node() {
     outcome_accepted(value: bind_two_value())
