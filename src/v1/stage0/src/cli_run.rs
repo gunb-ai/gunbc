@@ -2851,34 +2851,25 @@ fn build_corpus_global_bare_census_from_index(
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     for source in &corpus_sources {
-        let cached = {
-            let caches = index
-                .shared_caches
-                .lock()
-                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-            caches.parse_cache.get(&source.path).cloned()
-        };
+        let cached = index.parse_cache.borrow().get(&source.path).cloned();
         let (parse_result, nl_index) = match cached {
             Some(entry) => entry,
             None => {
                 let tokens =
                     v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                 let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-                let mut caches = index
-                    .shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-                let current_table = caches.intern_table.clone();
+                let current_table = index.intern_table.borrow().clone();
                 let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
                     let mut m = HashMap::new();
                     m.insert(source.path.clone(), nl_index.clone());
                     m
                 });
                 let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-                caches.intern_table = parsed.intern_table.clone();
-                let entry = (parsed.result.clone(), nl_index);
-                caches
+                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+                let entry = (parsed.result.clone(), nl_index.clone());
+                index
                     .parse_cache
+                    .borrow_mut()
                     .insert(source.path.clone(), entry.clone());
                 entry
             }

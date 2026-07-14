@@ -1,5 +1,27 @@
 module gunbc.ci_fleet
 
+import gunbc.fleet_intent {
+  ComputeHost,
+  ExecutionSurface,
+  PerformanceReceipt,
+  ProviderIdentity,
+  CpuProcessor,
+  MemoryDevice,
+  fleet_intent_execution_surface,
+  srv1_host,
+  srv2_host,
+  srv3_host,
+}
+import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
+import extdeps.cpu.ampere { altra_q6430_catalog }
+import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
+import extdeps.memory.types { MemoryKind, Dram }
+import product.placement_supply { HostIdentity }
+import std.currency { CurrencyCode }
+import std.measure { byte_size, hertz, MoneyAmountMicro, money_amount_micro_count }
+import std.nat { Nat }
+import std.types { NonEmptyStr, List, LogicalTime }
+import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
 
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
 
@@ -119,4 +141,3 @@ data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
   available_window: AvailabilityWindow { open: "always-open", close: none },
   cost_quote: none,
 }
-
