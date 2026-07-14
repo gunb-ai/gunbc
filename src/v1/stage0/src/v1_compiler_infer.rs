@@ -4403,16 +4403,27 @@ match bare_s.clone() {
                         let else_diags = else_result.diagnostics.clone();
                         let then_rt = resolved_type(then_typed.clone());
                         let else_rt = resolved_type(else_typed.clone());
-                        let unified = prefer_specific_type(
+                        let coproduct_unified = coproduct_branches_compatible(
                             then_rt.clone(),
                             else_rt.clone(),
-                            scope.type_env.clone().source_indices.clone(),
+                            expected.clone(),
+                            scope.clone(),
                         );
-                        let branch_diags = if node_type_compatible(
-                            then_rt.clone(),
-                            else_rt.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        ) {
+                        let unified = match coproduct_unified.clone() {
+                            Some(cop) => cop.clone(),
+                            None => prefer_specific_type(
+                                then_rt.clone(),
+                                else_rt.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                        };
+                        let branch_diags = if (coproduct_unified.is_some()
+                            || node_type_compatible(
+                                then_rt.clone(),
+                                else_rt.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ))
+                        {
                             Rc::new(vec![])
                         } else {
                             Rc::new(vec![inference_error(
@@ -12093,11 +12104,18 @@ pub fn merge_kernel_variant_locals_low_priority(
         Rc::new(v1_rt::map_keys(&kernel_locals))
             .iter()
             .cloned()
-            .fold(
-                locals.clone(),
-                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, variant_name: String| {
-                    match v1_rt::map_get(&acc, variant_name.clone()) {
-                        Some(_) => acc.clone(),
+                .fold(locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, variant_name: String| {
+                    if v1_rt::map_get(&acc, variant_name.clone()).is_some() {
+                        return acc.clone();
+                    }
+                    // Pool-wide bare census (namespace PR-4): do not let kernel variant
+                    // locals shadow corpus homonyms — context/expected-type resolution owns them.
+                    match v1_rt::map_get(&env.global_bare.clone(), variant_name.clone())
+                        .as_deref()
+                        .cloned()
+                    {
+                        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => acc.clone(),
+                        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => acc.clone(),
                         None => match v1_rt::map_get(&kernel_locals, variant_name.clone()) {
                             Some(binding) => v1_rt::rc_map_insert(
                                 acc.clone(),
@@ -12107,8 +12125,7 @@ pub fn merge_kernel_variant_locals_low_priority(
                             None => acc.clone(),
                         },
                     }
-                },
-            )
+                })
     }
 }
 
@@ -12697,22 +12714,106 @@ pub fn try_resolve_variant_from_expected(
 ) -> Option<Rc<Node>> {
     match expected.clone() {
         Some(exp) => {
+            let type_name = authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                exp.clone(),
+            );
             let expanded = expand_type_for_field_access(
                 exp.clone(),
                 scope.type_env.clone(),
                 scope.module_name.clone(),
             );
-            let subject = pattern_subject_from_node(expanded.clone());
-            let lookup = lookup_variant_in_type(
-                subject,
-                name.clone(),
-                scope.module_name.clone(),
+            let mut candidates = vec![expanded.clone()];
+            match lookup_type_by_name(scope.type_env.clone(), type_name.clone()) {
+                Some(ty) => {
+                    let ty_expanded = expand_type_for_field_access(
+                        ty.clone(),
+                        scope.type_env.clone(),
+                        scope.module_name.clone(),
+                    );
+                    if !Rc::ptr_eq(&ty_expanded, &expanded) {
+                        candidates.push(ty_expanded);
+                    }
+                }
+                None => {}
+            }
+            for candidate in candidates.iter().cloned() {
+                let subject = pattern_subject_from_node(candidate.clone());
+                let lookup = lookup_variant_in_type(
+                    subject,
+                    name.clone(),
+                    scope.module_name.clone(),
+                    scope.type_env.clone(),
+                    0,
+                );
+                match &(*lookup_result_subject(lookup).clone()) {
+                    PatternSubject::PatternResolved { node: resolved, .. } => {
+                        return Some(resolved.clone());
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+        None => None,
+    }
+}
+
+pub fn branch_is_coproduct_member(
+    ty: Rc<Node>,
+    coproduct: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (coproduct.connective.clone() != Connective::Disj) {
+        return false;
+    }
+    if ((ty.connective.clone() == Connective::Disj)
+        && (authored_name_at(source_indices.clone(), ty.clone())
+            == authored_name_at(source_indices.clone(), coproduct.clone())))
+    {
+        return true;
+    }
+    let arm = authored_name_at(source_indices.clone(), ty.clone());
+    if (arm.clone() == "") {
+        return false;
+    }
+    has_child_named(
+        coproduct.clone(),
+        arm.clone(),
+        source_indices.clone(),
+    )
+}
+
+pub fn coproduct_branches_compatible(
+    then_rt: Rc<Node>,
+    else_rt: Rc<Node>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match expected.clone() {
+        Some(exp) => {
+            let coproduct = expand_type_for_field_access(
+                exp.clone(),
                 scope.type_env.clone(),
-                0,
+                scope.module_name.clone(),
             );
-            match &(*lookup_result_subject(lookup).clone()) {
-                PatternSubject::PatternResolved { node: resolved, .. } => Some(resolved.clone()),
-                _ => None,
+            if (coproduct.connective.clone() != Connective::Disj) {
+                return None;
+            }
+            let then_ok = branch_is_coproduct_member(
+                then_rt.clone(),
+                coproduct.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            let else_ok = branch_is_coproduct_member(
+                else_rt.clone(),
+                coproduct.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            if then_ok && else_ok {
+                Some(coproduct.clone())
+            } else {
+                None
             }
         }
         None => None,
