@@ -16,7 +16,6 @@ data orch_construct_procedure: Symbol = ^orch_construct_procedure
 data orch_construct_call: Symbol = ^orch_construct_call
 data orch_construct_cmdsubst_assign: Symbol = ^orch_construct_cmdsubst_assign
 data orch_construct_let_assign: Symbol = ^orch_construct_let_assign
-data orch_construct_arith: Symbol = ^orch_construct_arith
 
 type OrchRunEmitPlan {
   construct_tag: Symbol
@@ -44,5 +43,4 @@ type OrchestrationEmitMedium {
   realize_call: fn(String, String) -> TargetModel
   realize_cmdsubst_assign: fn(String, String) -> TargetModel
   realize_let_assign: fn(String, String) -> TargetModel
-  realize_arith: fn(String, String, String) -> TargetModel
 }

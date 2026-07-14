@@ -25,9 +25,7 @@ import v2.extdeps.languages.bash_orch_if {
   bash_log_matches_grep_target_model
 }
 import v2.extdeps.languages.bash_orch_tier2 {
-  orch_cmdsubst_assign_target_model,
-  orch_arith_target_model,
-  bash_orch_call_emitted
+  orch_cmdsubst_assign_target_model
 }
 import v2.std.collection { Map }
 import v2.std.compilers.target_model { TargetModel }
@@ -194,17 +192,6 @@ test fn orch_bash_cmdsubst_assign_row_holds() -> Bool {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == "dag_pin=\"$(converge_read_gunbc_host_pin \"$checkout\")\"")
         && (dg == None)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn orch_bash_arith_row_holds() -> Bool {
-  match orch_emit_bash(
-    root: bash_orch_call_emitted,
-    target: orch_arith_target_model(lhs: "applied", op: "+", rhs: "1")
-  ) {
-    Accepted { value: source, diagnostics: dg } =>
-      (source.carried == "$((applied + 1))") && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }
