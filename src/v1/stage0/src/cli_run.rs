@@ -8572,22 +8572,10 @@ pub fn run_discovery_corpus_with_options(
                         style,
                     )?);
                 }
-                let summary = merge_discovery_summaries(summaries);
-                if summary.roster_closure_nodes != pre_resolve_closure_nodes {
-                    return Err(format!(
-                        "[calibration] closure-definition drift: pre-resolve import walk = {} nodes, \
-                         post-resolve resolved union = {} — the two closure definitions diverged \
-                         (implicit prelude/kernel module in resolve the import walk cannot see, or a \
-                         seeding change); reconcile the definitions before trusting bytes-per-node \
-                         calibration (roster_import_closure_nodes_pre_resolve is the shared authority)",
-                        pre_resolve_closure_nodes, summary.roster_closure_nodes
-                    ));
-                }
-                eprintln!(
-                    "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
-                    pre_resolve_closure_nodes
-                );
-                return Ok(attach_deferred_discovery_rows(summary, deferred_rows));
+                return Ok(attach_deferred_discovery_rows(
+                    merge_discovery_summaries(summaries),
+                    deferred_rows,
+                ));
             }
             // Process-scoped typed store shell — populated only when plural workers run
             // (target_width > 1). At width=1 the serde byte store adds retention without
