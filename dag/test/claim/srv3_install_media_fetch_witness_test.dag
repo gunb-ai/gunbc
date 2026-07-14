@@ -26,21 +26,12 @@ import extdeps.os.ubuntu_install_media {
 }
 import extdeps.os.ubuntu_install_media_fetch {
   install_media_fetch_bash_emit_dissolution_trigger,
-  install_media_hash_matches,
-  observe_install_media_fetch,
-  InstallMediaFetchAbsent,
-  InstallMediaFetchVerified,
-  InstallMediaFetchHashMismatch,
 }
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data install_media_fetch_fixture_content: String = "gunbc-fetch-fixture\n"
-data install_media_fetch_fixture_sha256: NonEmptyStr = "eaa07ba0ed4429e01ecb4a645b81efd5cc718c1b5a4d3e021a63bdecc89290ba" as NonEmptyStr
-data install_media_fetch_fixture_wrong_sha256: NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr
+data real_execution_split_doc: String = "The three shell.Mktemp.Dir/Filesystem.Write real-execution witnesses formerly here moved to srv3_install_media_fetch_real_execution_witness_test.dag (no mock_response on those shell ops - dag/extdeps/shell/shell.dag - so they cannot run in CI's default Hermetic discovery corpus and are re-enrolled there as declared Wet entries)."
 
 test fn install_media_fetch_effect_is_create_if_absent_on_content_sha256() -> Bool {
   match install_media_fetch_effect_shape {
