@@ -1,5 +1,6 @@
 module v2.workflow.ci_floor_plan
 
+
 data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
 
 data ci_floor_compile_gate_fn: String = "dag_compile_clean_gate_passes"
@@ -61,7 +62,6 @@ fn gate_node(g: Gate) -> Node {
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
     SelfHostReadsRealBytesGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_reads_real_bytes } }, children: [] }
     SelfHostStalenessGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_staleness } }, children: [] }
-    EmitDeterminismGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit_determinism } }, children: [] }
   }
 }
 
@@ -109,13 +109,6 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
     SelfHostStalenessGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
-        spawns_host_compiler: true,
-        memory: substantial,
-        execution_mode: Wet
-      )
-    EmitDeterminismGate =>
-      runnable_resource_profile(
-        heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
         memory: substantial,
         execution_mode: Wet
@@ -168,7 +161,6 @@ fn gate_runnable(g: Gate) -> Runnable {
       function: "self_host_realized_comparison_staleness_gate_holds",
       profile: profile
     }
-    EmitDeterminismGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_determinism_gate_passes", profile: profile }
   }
 }
 
@@ -586,10 +578,6 @@ fn gunbc_ci_plan_artifact_batches() -> List<List<Runnable>> {
   })
 }
 
-fn gunbc_ci_emit_determinism_batches() -> List<List<Runnable>> {
-  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_emit_determinism_spec).schedule
-}
-
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
   match schedule_lens_verdict_for_ci_floor(
     plan: gunbc_ci_floor_realization_plan(),
@@ -659,3 +647,4 @@ fn witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: CiSpec) -> Bool
     ok && (edge.dependent != floor_compile_root_node())
   })
 }
+
