@@ -2,6 +2,8 @@ module gunbc.srv3_host_effect_script
 
 import gunbc.host_effect {
   HostEffect,
+  Srv3InstallDiagnosticObserve,
+  OsInstallActuatorToolchainEnsure,
   Srv3InstallReconcileObserve,
   DurableApprovalGrantRecord,
   DurableApprovalGrantRead,
@@ -19,8 +21,10 @@ import gunbc.host_effect {
   ConvergePlan,
 }
 import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
-import gunbc.srv3_install_diagnostic_checklist { srv3_install_diagnostic_observe_script }
-import gunbc.srv3_os_install_diagnostic { srv3_os_install_attempt_intent }
+import gunbc.srv3_os_install_diagnostic {
+  srv3_os_install_attempt_intent,
+  srv3_install_diagnostic_observe_script_for_intent,
+}
 import gunbc.srv3_os_install_reconcile_receipt { srv3_install_record_boot_once_approval_script }
 import gunbc.srv3_os_install_reconcile_types {
   srv3_boot_once_approval_grant_path,
@@ -33,10 +37,6 @@ import gunbc.srv3_actuate_shell_paths {
   srv3_nbd_proxy_serve_script_path,
   srv3_sol_console_log_path,
 }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
-import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
-import extdeps.os.ubuntu_install_media_fetch { install_media_fetch_script }
-import extdeps.os.ubuntu_seeded_install_media_remaster { install_media_remaster_script }
 import extdeps.languages.bash.program { serialize_bash }
 import extdeps.bmc.serial_console {
   sol_console_capture_script,
@@ -120,7 +120,7 @@ fn install_media_remaster_toolchain_ensure_script() -> String {
 }
 
 fn srv3_install_reconcile_observe_script(include_git_meta: Bool) -> String {
-  let diagnostic = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
+  let diagnostic = srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent)
   if include_git_meta {
     concat(diagnostic, srv3_install_reconcile_observe_meta_script())
   } else {
@@ -212,18 +212,8 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
           body: concat("cat ", concat(srv3_boot_once_approval_grant_path, " 2>/dev/null || true")),
         ),
       }
-    Srv3InstallMediaFetch =>
-      Present {
-        value: shell_exec_via_bash(
-          body: install_media_fetch_script(artifact: srv3_ubuntu_install_media_artifact),
-        ),
-      }
-    Srv3SeededInstallMediaRemaster =>
-      Present {
-        value: shell_exec_via_bash(
-          body: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
-        ),
-      }
+    Srv3InstallMediaFetch => Absent
+    Srv3SeededInstallMediaRemaster => Absent
     Srv3SeededInstallMediaToolchainEnsure =>
       Present {
         value: shell_exec_via_bash(body: install_media_remaster_toolchain_ensure_script()),
@@ -248,6 +238,8 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
       }
     Srv3ReceiptEmit { lines: lines } =>
       Present { value: shell_exec_via_bash(body: srv3_receipt_emit_script(lines: lines)) }
+    Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => Absent
+    OsInstallActuatorToolchainEnsure {} => Absent
     ShellCommand { script: _ } => Absent
     RedfishAction { action: _ } => Absent
     ConvergePlan { policy: _ } => Absent

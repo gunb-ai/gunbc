@@ -1,0 +1,32 @@
+module test.claim.srv3_seeded_install_media_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
+import extdeps.os.ubuntu_seeded_install_media_remaster { install_media_remaster_ensure_grub_cmdline }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_home_doc: String = "This witness drives real shell/filesystem effects (shell.Mktemp.Dir, Filesystem.Write/Read, shell.Remove.RecursiveForce have no mock_response - dag/extdeps/shell/shell.dag - so it cannot run in CI's default Hermetic discovery corpus, dag/std/execution_mode.dag). Split out of srv3_seeded_install_media_witness_test.dag so that file's pure witnesses keep hermetic per-PR discovery; excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled as a declared Wet explicit entry (bin_witness_wet_entries), same lane as the bin-execution witnesses."
+
+data grub_cfg_fixture_without_cmdline: String = "menuentry \"Ubuntu\" \{\n  linux /casper/vmlinuz ---\n\}\n"
+
+test fn install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let grub_cfg = concat(dir.path as String, "/grub.cfg") as NonEmptyStr
+  let wrote = Filesystem.Write(path: grub_cfg as String, content: grub_cfg_fixture_without_cmdline)
+  let cmdline = srv3_seeded_install_media_artifact.grub_kernel_cmdline
+  let applied = install_media_remaster_ensure_grub_cmdline(grub_cfg: grub_cfg, cmdline: cmdline)
+  let after = Filesystem.Read(path: grub_cfg as String)
+  let idempotent_reapply = install_media_remaster_ensure_grub_cmdline(grub_cfg: grub_cfg, cmdline: cmdline)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success
+    && wrote.success
+    && applied
+    && after.success
+    && string_contains(s: after.content, pattern: cmdline as String)
+    && idempotent_reapply
+}
