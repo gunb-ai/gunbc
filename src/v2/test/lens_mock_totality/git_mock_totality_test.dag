@@ -26,7 +26,9 @@ type MaterializedGitMock {
 data git_red_omit_keys: List<String> = ["git.Core.DiffNameOnlyMerge"]
 
 fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock> {
-  if case.operation_key == "git.Core.CurrentBranch" {
+  if case.operation_key == "git.Core.Toplevel" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_toplevel })
+  } else if case.operation_key == "git.Core.CurrentBranch" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_current_branch })
   } else if case.operation_key == "git.Core.RemoteBranches" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_remote_branches })

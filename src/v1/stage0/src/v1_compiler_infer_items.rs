@@ -2,6 +2,9 @@
 // Source module: v1.compiler.infer_items
 
 use self::ItemKind::*;
+use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
+pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
+pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
@@ -53,11 +56,28 @@ pub struct ItemInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleInterface {
+    pub summary: Rc<InterfaceSummary>,
+    pub env: Rc<TypeEnv>,
+    pub cache: Rc<TypeEnvCache>,
+}
+
+pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
     pub module: Rc<Node>,
     pub items: Rc<Vec<Rc<Node>>>,
     pub type_env: Rc<TypeEnv>,
     pub type_env_cache: Rc<TypeEnvCache>,
+    pub interface: Rc<ModuleInterface>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 }

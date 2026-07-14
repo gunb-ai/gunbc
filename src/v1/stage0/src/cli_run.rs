@@ -2284,6 +2284,7 @@ struct DiscoveryEntryResolve {
     touches_frontier: bool,
     entry_file_touched: bool,
     resolve_nanos: u128,
+    stage_nanos: ResolveStageNanos,
 }
 
 fn resolve_discovery_entry_for_corpus_row(
@@ -2309,6 +2310,8 @@ fn resolve_discovery_entry_for_corpus_row(
     let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)
         .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
     let resolve_nanos = resolve_started.elapsed().as_nanos();
+    // Same thread, immediately after the resolve that filled it: this entry's split.
+    let stage_nanos = resolve_stage_slot_snapshot();
     collect_typed_module_names(
         graph.modules.iter().cloned(),
         &source_indices,
@@ -2349,6 +2352,7 @@ fn resolve_discovery_entry_for_corpus_row(
         touches_frontier,
         entry_file_touched,
         resolve_nanos,
+        stage_nanos,
     })
 }
 
@@ -2691,6 +2695,18 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
+    // Per-module memo for the two per-entry recomputations the resolve-split receipt
+    // priced at ~15% of whole-corpus resolve (normalize 8% + ownership 7% — the
+    // "Track A denomination receipt", docs/plans/v1-run-stability-throughline.md §1).
+    // Normalize diagnostics are a pure function of the parsed module node
+    // (v1.compiler.normalize.normalize_module_diagnostics) and ownership diagnostics
+    // a pure function of the typed module (v1.compiler.compile.module_ownership_proofs)
+    // — both stable per declaring-file path within one process, the same in-process
+    // source-stability contract parse_cache and typed_module_cache already ride
+    // (module_source_identity walls name↔file divergence loud). Keyed by the module's
+    // declaring file (span.file, the parse_cache key's own identity).
+    normalize_diag_cache: RefCell<HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+    ownership_diag_cache: RefCell<HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
@@ -2754,6 +2770,8 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
         typed_module_cache: RefCell::new(HashMap::new()),
         module_source_identity: RefCell::new(HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
+        normalize_diag_cache: RefCell::new(HashMap::new()),
+        ownership_diag_cache: RefCell::new(HashMap::new()),
     }
 }
 
@@ -2773,6 +2791,8 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         typed_module_cache: RefCell::new(HashMap::new()),
         module_source_identity: RefCell::new(HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
+        normalize_diag_cache: RefCell::new(HashMap::new()),
+        ownership_diag_cache: RefCell::new(HashMap::new()),
     }
 }
 
@@ -2823,6 +2843,92 @@ fn resolve_entry_graph_with_index(
     resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
 }
 
+/// Per-entry stage attribution for the one-lump `resolve_nanos` (run-stability
+/// throughline, docs/plans/v1-run-stability-throughline.md): per-entry resolve cost
+/// was a single undifferentiated number, so which stage to memoize at module grain
+/// could not be chosen by receipt. Filled per entry by `resolve_entry_with_parse_cache`
+/// (reconcile internals accumulate their own rows) through a worker-local slot — each
+/// floor worker resolves its entries sequentially on its own thread, so a thread-local
+/// is per-worker-correct at width > 1, unlike the process-global last-writer-wins
+/// `phase_profile` sampler, which is explicitly not attribution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ResolveStageNanos {
+    /// `load_sources_for_entry_with_index` inside the timed window (closure walk over the index).
+    pub load: u128,
+    /// Parse-cache assembly loop: tokenize+parse on miss, cache clone on hit.
+    pub parse: u128,
+    /// `resolve_modules` + its blocking-diagnostic scan (per-module import resolution, closure topo/dup).
+    pub resolve: u128,
+    /// `normalize_graph` + its blocking-diagnostic scan (pure per-module diagnostics).
+    pub normalize: u128,
+    /// Genuine `typecheck_module` computes inside reconcile (typed-cache misses only).
+    pub typecheck_compute: u128,
+    /// `collect_parent_envs` calls inside reconcile (every module, cache hit or miss).
+    pub parent_envs: u128,
+    /// Reconcile total minus the two rows above: variant surfaces, registry merge,
+    /// transitive-service expansion, the three rewire passes, emit-graph info — the
+    /// whole-closure assembly residue that reruns per entry even at 100% cache hits.
+    pub reconcile_assembly: u128,
+    /// `extract_ownership_proofs` + its diagnostics walk.
+    pub ownership: u128,
+}
+
+impl ResolveStageNanos {
+    pub fn accumulate(&mut self, other: &ResolveStageNanos) {
+        self.load += other.load;
+        self.parse += other.parse;
+        self.resolve += other.resolve;
+        self.normalize += other.normalize;
+        self.typecheck_compute += other.typecheck_compute;
+        self.parent_envs += other.parent_envs;
+        self.reconcile_assembly += other.reconcile_assembly;
+        self.ownership += other.ownership;
+    }
+
+    /// Sum of the attributed stages; the caller's lump minus this is the
+    /// unattributed residue (early cache-hit returns, diagnostic formatting).
+    pub fn attributed_total(&self) -> u128 {
+        self.load
+            + self.parse
+            + self.resolve
+            + self.normalize
+            + self.typecheck_compute
+            + self.parent_envs
+            + self.reconcile_assembly
+            + self.ownership
+    }
+}
+
+thread_local! {
+    static RESOLVE_STAGE_SLOT: std::cell::Cell<ResolveStageNanos> =
+        const { std::cell::Cell::new(ResolveStageNanos {
+            load: 0,
+            parse: 0,
+            resolve: 0,
+            normalize: 0,
+            typecheck_compute: 0,
+            parent_envs: 0,
+            reconcile_assembly: 0,
+            ownership: 0,
+        }) };
+}
+
+fn resolve_stage_slot_reset() {
+    RESOLVE_STAGE_SLOT.with(|s| s.set(ResolveStageNanos::default()));
+}
+
+fn resolve_stage_slot_add(update: impl FnOnce(&mut ResolveStageNanos)) {
+    RESOLVE_STAGE_SLOT.with(|s| {
+        let mut v = s.get();
+        update(&mut v);
+        s.set(v);
+    });
+}
+
+fn resolve_stage_slot_snapshot() -> ResolveStageNanos {
+    RESOLVE_STAGE_SLOT.with(|s| s.get())
+}
+
 fn resolve_entry_with_parse_cache(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -2834,12 +2940,15 @@ fn resolve_entry_with_parse_cache(
     ),
     String,
 > {
+    resolve_stage_slot_reset();
     set_phase(FloorPhase::Resolve, entry_file);
+    let load_started = std::time::Instant::now();
     let sources = load_sources_for_entry_with_index(
         &index.source_files,
         &index.module_graph_facts,
         entry_file,
     )?;
+    resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
@@ -2866,6 +2975,7 @@ fn resolve_entry_with_parse_cache(
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
 
+    let parse_started = std::time::Instant::now();
     for source in &sources {
         let cached = index.parse_cache.borrow().get(&source.path).cloned();
 
@@ -2909,7 +3019,9 @@ fn resolve_entry_with_parse_cache(
 
     let source_indices = Rc::new(si_map);
     let global_table = index.intern_table.borrow().clone();
+    resolve_stage_slot_add(|s| s.parse += parse_started.elapsed().as_nanos());
 
+    let resolve_started = std::time::Instant::now();
     let graph =
         v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
 
@@ -2920,25 +3032,61 @@ fn resolve_entry_with_parse_cache(
     {
         return Err(format_error_nodes(&graph.diagnostics, &source_indices));
     }
+    resolve_stage_slot_add(|s| s.resolve += resolve_started.elapsed().as_nanos());
 
-    let norm = v1_compiler_normalize::normalize_graph(graph.clone(), source_indices.clone());
+    let normalize_started = std::time::Instant::now();
+    // Per-module memo (normalize_diag_cache): normalize is diagnostics-only — the
+    // authority passes the graph through unchanged (v1.compiler.normalize
+    // `NormalizeResult { graph: graph, .. }`) — and its per-module row
+    // `normalize_module_diagnostics` is a pure function of the parsed module node,
+    // so an entry pays only for modules this process has not normalized before
+    // (resolve-split receipt: normalize was 8% of whole-corpus resolve, recomputed
+    // per entry at zero marginal information).
+    let mut norm_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
+    for m in graph.modules.iter() {
+        let key = m.module.span.file.clone();
+        let cached = index.normalize_diag_cache.borrow().get(&key).cloned();
+        let module_diags = match cached {
+            Some(hit) => hit,
+            None => {
+                let computed = v1_compiler_normalize::normalize_module_diagnostics(
+                    m.clone(),
+                    source_indices.clone(),
+                );
+                index
+                    .normalize_diag_cache
+                    .borrow_mut()
+                    .insert(key, computed.clone());
+                computed
+            }
+        };
+        norm_diag_vec.extend(module_diags.iter().cloned());
+    }
+    let norm_diags = Rc::new(norm_diag_vec);
 
-    if norm
-        .diagnostics
+    if norm_diags
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&norm.diagnostics, &source_indices));
+        return Err(format_error_nodes(&norm_diags, &source_indices));
     }
+    resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
     set_phase(FloorPhase::Typecheck, entry_file);
+    let reconcile_started = std::time::Instant::now();
     let typed = reconcile_with_typed_cache(
-        norm.graph.clone(),
+        graph.clone(),
         source_indices.clone(),
         global_table,
         &index.typed_module_cache,
         &index.module_source_identity,
     )?;
+    // Assembly residue = reconcile wall minus the per-module rows its internals
+    // accumulated into the slot during this call (typecheck computes + parent envs).
+    let reconcile_total = reconcile_started.elapsed().as_nanos();
+    resolve_stage_slot_add(|s| {
+        s.reconcile_assembly += reconcile_total.saturating_sub(s.typecheck_compute + s.parent_envs);
+    });
 
     for d in typed.diagnostics.iter() {
         log_discovery_advisory_typecheck(d, &source_indices, typecheck_gate);
@@ -2957,14 +3105,41 @@ fn resolve_entry_with_parse_cache(
         return Err(msgs.join("\n"));
     }
 
-    let ownership = v1_compiler_compile::extract_ownership_proofs(typed.clone());
-    let ownership_diags = v1_compiler_compile::ownership_diagnostics(ownership);
+    let ownership_started = std::time::Instant::now();
+    // Per-module memo (ownership_diag_cache): ownership proofs are a pure per-module
+    // map (v1.compiler.compile `module_ownership_proofs`; the authority's graph fold
+    // is exactly this row flat_mapped in module order) and `ownership_diagnostics`
+    // distributes over per-module concatenation, so the diagnostic list assembled in
+    // `typed.modules` order is identical to the graph-grain computation — a module
+    // with no bodied items contributes the same empty row the authority's filter
+    // skips. First-touch per module; the per-entry graph-grain rerun (7% of
+    // whole-corpus resolve in the resolve-split receipt) collapses to cache reads.
+    let mut ownership_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
+    for m in typed.modules.iter() {
+        let key = m.module.span.file.clone();
+        let cached = index.ownership_diag_cache.borrow().get(&key).cloned();
+        let module_diags = match cached {
+            Some(hit) => hit,
+            None => {
+                let proofs = v1_compiler_compile::module_ownership_proofs(m.clone());
+                let computed = v1_compiler_compile::ownership_diagnostics(proofs);
+                index
+                    .ownership_diag_cache
+                    .borrow_mut()
+                    .insert(key, computed.clone());
+                computed
+            }
+        };
+        ownership_diag_vec.extend(module_diags.iter().cloned());
+    }
+    let ownership_diags = Rc::new(ownership_diag_vec);
     if ownership_diags
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
         return Err(format_error_nodes(&ownership_diags, &source_indices));
     }
+    resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
@@ -3191,11 +3366,13 @@ fn reconcile_with_typed_cache(
     for batch in &schedule {
         for &slot in batch {
             let resolved = closure_modules[slot].clone();
+            let parent_envs_started = std::time::Instant::now();
             let parent_result = v1_compiler_infer::collect_parent_envs(
                 resolved.clone(),
                 module_index.clone(),
                 source_indices.clone(),
             );
+            resolve_stage_slot_add(|s| s.parent_envs += parent_envs_started.elapsed().as_nanos());
             let mod_name = closure_names[slot].clone();
             // Collision-honesty guard (union-resolve receipt §6.3): the typed cache is keyed by
             // authored name and shared across every co-resident entry, so a name that resolves
@@ -3231,7 +3408,9 @@ fn reconcile_with_typed_cache(
                     // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
                     // parse+resolve+normalize). Threshold keeps the floor log quiet;
                     // anything over it is a pathology-lane candidate by name.
-                    let module_tc_ms = module_tc_started.elapsed().as_millis();
+                    let module_tc_elapsed = module_tc_started.elapsed();
+                    resolve_stage_slot_add(|s| s.typecheck_compute += module_tc_elapsed.as_nanos());
+                    let module_tc_ms = module_tc_elapsed.as_millis();
                     if module_tc_ms >= 2_000 {
                         eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
                     }
@@ -3896,6 +4075,172 @@ pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result
     let sources =
         load_sources_for_entry_with_index(&index.source_files, &index.module_graph_facts, entry)?;
     Ok(subject_digest_for_closure(&sources))
+}
+
+/// M0 ancestry-retention probe (v1-run-stability-throughline M0): per-module vs
+/// distinct-spine entry counts for the typecheck-env maps — the quadratic witness the
+/// deleted `cache_walk` (#5888, dissolved #5899) never measured (it counted payload-Rc
+/// sharing, which is healthy; the byte carrier is the per-module materialized map SPINES).
+/// Pure reader over one strict whole-tree resolve; prints `[ancestry]` lines and the peak
+/// RSS; no behavior change anywhere else. `retained` sums every module's map sizes (what
+/// the typed cache holds resident); `distinct` sums each unique Rc spine once (what is
+/// actually allocated). `dup_factor = retained/distinct` — a factor ≫1 on the ancestry
+/// maps is the located §2 duplication; flat ≈1 means spines are shared and M1 is done.
+pub fn whole_tree_ancestry_retention_probe(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<(), String> {
+    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
+    let modules_resolved = picked.modules_resolved;
+    let modules_excluded = picked.modules_excluded;
+    let (graph, source_indices) =
+        resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
+
+    struct FieldTally {
+        name: &'static str,
+        retained_entries: usize,
+        distinct_entries: usize,
+        distinct_spines: std::collections::HashSet<usize>,
+    }
+    impl FieldTally {
+        fn new(name: &'static str) -> Self {
+            FieldTally {
+                name,
+                retained_entries: 0,
+                distinct_entries: 0,
+                distinct_spines: std::collections::HashSet::new(),
+            }
+        }
+        fn add(&mut self, spine_ptr: usize, entries: usize) {
+            self.retained_entries += entries;
+            if self.distinct_spines.insert(spine_ptr) {
+                self.distinct_entries += entries;
+            }
+        }
+    }
+
+    let mut tallies = [
+        FieldTally::new("tec.str_bindings"),
+        FieldTally::new("tec.deps_map"),
+        FieldTally::new("tec.cycle_set_str"),
+        FieldTally::new("tec.variant_locals"),
+        FieldTally::new("te.str_bindings"),
+        FieldTally::new("te.ancestry_str_bindings"),
+        FieldTally::new("te.bindings"),
+        FieldTally::new("te.source_visible_names"),
+        FieldTally::new("te.inductive_fields.keys"),
+        FieldTally::new("te.recursive_type_set"),
+    ];
+    // Inductive-field LIST mass (Σ list lengths) tracked separately from key count —
+    // the concat-on-collision duplication class shows up in list length, not key count.
+    let mut ind_lists_retained: usize = 0;
+    let mut ind_lists_distinct: usize = 0;
+    let mut ind_list_spines: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+    let mut per_module: Vec<(String, usize, usize, usize)> = Vec::new();
+
+    for m in graph.modules.iter() {
+        let te = &m.type_env;
+        let tec = &m.type_env_cache;
+        tallies[0].add(
+            Rc::as_ptr(&tec.str_bindings) as usize,
+            tec.str_bindings.len(),
+        );
+        tallies[1].add(Rc::as_ptr(&tec.deps_map) as usize, tec.deps_map.len());
+        tallies[2].add(
+            Rc::as_ptr(&tec.cycle_set_str) as usize,
+            tec.cycle_set_str.len(),
+        );
+        tallies[3].add(
+            Rc::as_ptr(&tec.variant_locals) as usize,
+            tec.variant_locals.len(),
+        );
+        tallies[4].add(Rc::as_ptr(&te.str_bindings) as usize, te.str_bindings.len());
+        tallies[5].add(
+            Rc::as_ptr(&te.ancestry_str_bindings) as usize,
+            te.ancestry_str_bindings.len(),
+        );
+        tallies[6].add(Rc::as_ptr(&te.bindings) as usize, te.bindings.len());
+        tallies[7].add(
+            Rc::as_ptr(&te.source_visible_names) as usize,
+            te.source_visible_names.len(),
+        );
+        tallies[8].add(
+            Rc::as_ptr(&te.inductive_fields) as usize,
+            te.inductive_fields.len(),
+        );
+        tallies[9].add(
+            Rc::as_ptr(&te.recursive_type_set) as usize,
+            te.recursive_type_set.len(),
+        );
+
+        let module_ind_mass: usize = te.inductive_fields.iter().map(|(_, v)| v.len()).sum();
+        ind_lists_retained += module_ind_mass;
+        if ind_list_spines.insert(Rc::as_ptr(&te.inductive_fields) as usize) {
+            ind_lists_distinct += module_ind_mass;
+        }
+
+        per_module.push((
+            authored_name_at(source_indices.clone(), m.module.clone()),
+            tec.str_bindings.len(),
+            te.ancestry_str_bindings.len(),
+            module_ind_mass,
+        ));
+    }
+
+    eprintln!(
+        "[ancestry] modules={modules_resolved} excluded={modules_excluded} (strict whole-tree resolve)"
+    );
+    let mut retained_total = 0usize;
+    let mut distinct_total = 0usize;
+    for t in &tallies {
+        let dup = if t.distinct_entries > 0 {
+            t.retained_entries as f64 / t.distinct_entries as f64
+        } else {
+            1.0
+        };
+        eprintln!(
+            "[ancestry] field={} retained_entries={} distinct_spines={} distinct_entries={} dup_factor={:.2}",
+            t.name,
+            t.retained_entries,
+            t.distinct_spines.len(),
+            t.distinct_entries,
+            dup
+        );
+        retained_total += t.retained_entries;
+        distinct_total += t.distinct_entries;
+    }
+    let ind_dup = if ind_lists_distinct > 0 {
+        ind_lists_retained as f64 / ind_lists_distinct as f64
+    } else {
+        1.0
+    };
+    eprintln!(
+        "[ancestry] field=te.inductive_fields.list_mass retained={ind_lists_retained} distinct={ind_lists_distinct} dup_factor={ind_dup:.2}"
+    );
+    eprintln!(
+        "[ancestry] TOTAL retained_entries={retained_total} distinct_entries={distinct_total} dup_factor={:.2}",
+        if distinct_total > 0 {
+            retained_total as f64 / distinct_total as f64
+        } else {
+            1.0
+        }
+    );
+
+    per_module.sort_by(|a, b| (b.1 + b.2).cmp(&(a.1 + a.2)));
+    for (name, tec_str, anc_str, ind_mass) in per_module.iter().take(10) {
+        eprintln!(
+            "[ancestry] top module={name} tec.str_bindings={tec_str} te.ancestry_str_bindings={anc_str} inductive_list_mass={ind_mass}"
+        );
+    }
+
+    match peak_rss_vhwm_bytes() {
+        Some(bytes) => {
+            eprintln!("[ancestry] peak RSS: {bytes} bytes (VmHWM) modules={modules_resolved}")
+        }
+        None => eprintln!("[ancestry] peak RSS: unavailable (no /proc/self/status)"),
+    }
+    Ok(())
 }
 
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
@@ -5161,6 +5506,10 @@ pub struct EntryResolveReceipt {
     pub entry: String,
     pub closure_subject: String,
     pub resolve_nanos: u128,
+    /// Stage attribution of `resolve_nanos` (load/parse/resolve/normalize/
+    /// typecheck/parent-envs/assembly/ownership); the lump minus
+    /// `stage_nanos.attributed_total()` is the unattributed residue.
+    pub stage_nanos: ResolveStageNanos,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5198,6 +5547,8 @@ pub struct DiscoverySummary {
     pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
     pub total_resolve_nanos: u128,
+    /// Run-total stage attribution of `total_resolve_nanos` (per-entry rows summed).
+    pub total_stage_nanos: ResolveStageNanos,
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
     pub total_measured_nanos: u128,
     /// Distinct modules in this shard's union closure — the union of authored module names across
@@ -7844,6 +8195,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         witness_outcomes: Vec::new(),
         entry_resolve_receipts: Vec::new(),
         total_resolve_nanos: 0,
+        total_stage_nanos: ResolveStageNanos::default(),
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
@@ -7862,6 +8214,9 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
             .entry_resolve_receipts
             .extend(summary.entry_resolve_receipts);
         merged.total_resolve_nanos += summary.total_resolve_nanos;
+        merged
+            .total_stage_nanos
+            .accumulate(&summary.total_stage_nanos);
         merged
             .performance_receipts
             .extend(summary.performance_receipts);
@@ -8092,6 +8447,7 @@ fn run_discovery_rows(
         witness_outcomes: Vec::with_capacity(rows.len()),
         entry_resolve_receipts: Vec::new(),
         total_resolve_nanos: 0,
+        total_stage_nanos: ResolveStageNanos::default(),
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
@@ -8206,10 +8562,12 @@ fn run_discovery_rows(
                     &mut closure_modules,
                 )?;
                 summary.total_resolve_nanos += resolved.resolve_nanos;
+                summary.total_stage_nanos.accumulate(&resolved.stage_nanos);
                 summary.entry_resolve_receipts.push(EntryResolveReceipt {
                     entry: row.entry.clone(),
                     closure_subject: resolved.closure_subject.clone(),
                     resolve_nanos: resolved.resolve_nanos,
+                    stage_nanos: resolved.stage_nanos,
                 });
                 current_closure_subject = Some(resolved.closure_subject);
                 current_entry_frontier_nodes = resolved.frontier_nodes;
@@ -8298,10 +8656,12 @@ fn run_discovery_rows(
                 &mut closure_modules,
             )?;
             summary.total_resolve_nanos += resolved.resolve_nanos;
+            summary.total_stage_nanos.accumulate(&resolved.stage_nanos);
             summary.entry_resolve_receipts.push(EntryResolveReceipt {
                 entry: row.entry.clone(),
                 closure_subject: resolved.closure_subject.clone(),
                 resolve_nanos: resolved.resolve_nanos,
+                stage_nanos: resolved.stage_nanos,
             });
             current_closure_subject = Some(resolved.closure_subject);
             current_entry_frontier_nodes = resolved.frontier_nodes;
@@ -11157,6 +11517,7 @@ mod witness_timing_attribution_tests {
     use super::{
         compute_witness_timing_rows, merge_discovery_summaries, top_n_slowest_witnesses,
         ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
+        ResolveStageNanos,
     };
     use crate::v1_interpreter::PerformanceReceipt;
 
@@ -11191,14 +11552,17 @@ mod witness_timing_attribution_tests {
                     entry: "a.dag".to_string(),
                     closure_subject: "subj-a".to_string(),
                     resolve_nanos: 100,
+                    stage_nanos: ResolveStageNanos::default(),
                 },
                 EntryResolveReceipt {
                     entry: "b.dag".to_string(),
                     closure_subject: "subj-b".to_string(),
                     resolve_nanos: 200,
+                    stage_nanos: ResolveStageNanos::default(),
                 },
             ],
             total_resolve_nanos: 300,
+            total_stage_nanos: ResolveStageNanos::default(),
             performance_receipts: vec![
                 PerformanceReceipt {
                     subject_key: "subj-a".to_string(),
@@ -11603,6 +11967,13 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
     "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
+    // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
+    // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
+    // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
+    // (third instance of the masking class receipted on #6530). Declared here so the ratchet
+    // re-arms; burns down with the frontier probe's fold migration. (#6533's other wildcard
+    // fn, compiler_frontier_probe_entry_test.dag, is outside the scan universe — no row.)
+    "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.
