@@ -29,7 +29,13 @@ data wave1_gate1_b1_bare_call_module_source: String = "module wave1_gate1_b1_bar
 
 data wave1_gate1_b1_builtin_call_module_source: String = "module wave1_gate1_b1_builtin_call\n\nfn caller(x: Int) -> Int { fold(x, 0, fn(acc, _) { acc }) }\n"
 
+data wave1_gate1_b1_bare_call_infix_module_source: String = "module wave1_gate1_b1_bare_call\n\nfn helper(x: Int) -> Int { x + x }\n\nfn caller(x: Int) -> Int { helper(x) + x }\n"
+
 data wave1_gate1_b1_unbound_call_module_source: String = "module wave1_gate1_b1_unbound_call\n\nfn caller(x: Int) -> Int { totally_nonexistent_symbol_xyz(x) }\n"
+
+fn wave1_gate1_b1_infix_call_resolves_end_to_end_holds() -> Bool {
+  wave1_gate1_b1_resolve_source(source: wave1_gate1_b1_bare_call_infix_module_source)
+}
 
 fn wave1_gate1_b1_resolve_source(source: String) -> Bool {
   let lm = dag_language_model()
@@ -114,6 +120,26 @@ fn wave1_gate1_b1_caller_body_has_transform(source: String) -> Bool {
         Absent => false
       }
   }
+}
+
+fn wave1_gate1_b1_normalize_source(source: String) -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^wave1_gate1_b1_probe_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+          }
+      }
+  }
+}
+
+fn wave1_gate1_b1_bare_call_normalizes_holds() -> Bool {
+  wave1_gate1_b1_normalize_source(source: wave1_gate1_b1_bare_call_module_source)
 }
 
 fn wave1_gate1_b1_bare_call_lowers_to_transform_holds() -> Bool {
