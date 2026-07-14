@@ -1077,21 +1077,43 @@ fn global_bare_probe_universe_count() -> usize {
     build_module_path_index(&roots)
         .iter()
         .filter(|(module_path, rel_path)| {
-            let p = rel_path.replace('\\', "/");
-            (p.contains("src/v2/") || p.contains("dag/extdeps/"))
-                && !excludes
-                    .iter()
-                    .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+            is_global_bare_probe_universe_path(rel_path, module_path, &excludes)
         })
         .count()
 }
 
-fn is_global_bare_probe_universe_path(path: &str, module_path: &str) -> bool {
+fn global_bare_probe_universe_import_strip_exclusions() -> &'static [&'static str] {
+    // PR-5a calm-otter quartet: retain selective imports until namespace migration lands;
+    // union-loading them without their extdeps closure fails resolve (fail-closed).
+    &[
+        "src/v2/compiler/03_body_producer.dag",
+        "src/v2/compiler/03_resolve.dag",
+        "src/v2/compiler/05_eval.dag",
+        "src/v2/compiler/body_lowering_fold.dag",
+    ]
+}
+
+fn is_global_bare_probe_universe_path(
+    path: &str,
+    module_path: &str,
+    excludes: &[String],
+) -> bool {
     let p = path.replace('\\', "/");
-    (p.contains("src/v2/") || p.contains("dag/extdeps/"))
-        && !whole_tree_resolve_exclusion_substrings()
+    (p.contains("src/v2/compiler/") || p.contains("src/v2/std/"))
+        && !global_bare_probe_universe_import_strip_exclusions()
+            .iter()
+            .any(|sub| p.contains(sub))
+        && !excludes
             .iter()
             .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+}
+
+fn is_global_bare_probe_universe_module(path: &str, module_path: &str) -> bool {
+    is_global_bare_probe_universe_path(
+        path,
+        module_path,
+        &whole_tree_resolve_exclusion_substrings(),
+    )
 }
 
 /// Host census for `fn_arrow_decl_substrate_is_whole_tree` — probe-universe module count vs
@@ -2492,7 +2514,7 @@ fn load_sources_for_entry_with_index(
     let mut sources = resolve_transitively(vec![entry_source.clone()], index, facts)?;
     let mut seen: HashSet<String> = sources.iter().map(|sf| sf.path.clone()).collect();
     for (module_path, sf) in index.iter() {
-        if !is_global_bare_probe_universe_path(&sf.path, module_path) {
+        if !is_global_bare_probe_universe_module(&sf.path, module_path) {
             continue;
         }
         if seen.insert(sf.path.clone()) {
