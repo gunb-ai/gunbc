@@ -18,12 +18,16 @@ import v2.extdeps.languages.dag {
 import std.algebra { Cons, Empty }
 import v2.std.algebra { list_append, list_reverse }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.diagnostic { ByteRange, Textual, WholeFile }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Named, Node, Positional, Symbol }
+import v2.std.node { Edge, MintedOccurrence, Named, Node, Positional, Symbol, SyntheticOccurrence }
 import v2.std.node_query { find_named_child }
+import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
+import v2.std.witness { Holds, Violates }
 
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match find_named_child(root: cap, name: name) {
