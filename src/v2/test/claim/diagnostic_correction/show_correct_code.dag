@@ -1,33 +1,5 @@
 module v2.test.diagnostic_correction.show_correct_code
 
-import v2.std.diagnostic {
-  AmbiguousIntent,
-  ByteRange,
-  Diagnostic,
-  ExternalContractUnknown,
-  node_locus,
-  Outcome,
-  port_locus,
-  Rejected,
-  Suggested,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile,
-  diagnostics_singleton
-}
-import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
-import v2.std.verification {ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier3,
-  Integration,
-  CompilesClaim,
-  DiagnosticClaim,
-  EqualsClaim,
-  RoundTripClaim,
-  manual_claim_anchor
-}
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence

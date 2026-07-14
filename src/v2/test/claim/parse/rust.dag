@@ -1,21 +1,5 @@
 module v2.test.parse.rust
 
-import v2.compiler.tokenize { TokenStream, tokenize }
-import v2.compiler.parse { ParseTree, parse }
-import v2.extdeps.languages.rust { rust_lex, rust_grammar }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  manual_claim_anchor
-}
 data rust_extended_fn_source: String = "fn choose(x: i32, y: i32) -> i32 { let z = x + 1;\nif z > 0 { return z }\nreturn 0 }"
 
 data rust_return_semi_source: String = "fn r() -> i32 { return; }"

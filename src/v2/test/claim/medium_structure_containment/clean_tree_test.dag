@@ -1,13 +1,5 @@
 module v2.test.medium_structure_containment.clean_tree
 
-import v2.lens.medium_structure_containment {
-  medium_emit_side_scan_roots,
-  medium_check_side_scan_roots,
-  medium_structure_leak_count_live,
-  medium_structure_containment_clean_live
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

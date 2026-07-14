@@ -1,22 +1,5 @@
 module v2.test.manual.parse_mechanism_probe
 
-import extdeps.filesystem.filesystem_io
-import v2.compiler.parse {
-  ParseMemoStats,
-  grammar_validate_for_parse,
-  parse_module,
-  parse_production_memo_stats
-}
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.compilers.lexing { token_stream_remaining }
-import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.grammar { ModeledGrammar, VoidGrammar }
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 data pmp_anchor: Symbol = ^pmp_anchor
 

@@ -1,29 +1,5 @@
 module v2.test.round_trip.source_authority_contract
 
-import extdeps.communication.fidelity_carriers { medium_section_equal }
-import extdeps.communication.medium { Lossless, Lossy, Medium }
-import v2.compiler.source_authority { deterministic_dag_source_serializer_witness }
-import v2.compiler.target_carriers { decode_fidelity_from_target, target_source_medium }
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.dag {
-  dag_fixture_emitted_add_fn,
-  dag_source_text,
-  dag_target_model
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  manual_claim_anchor
-}
-import v2.std.witness { Holds, Violates }
 
 data source_authority_contract_target_model: TargetModel = dag_target_model()
 
