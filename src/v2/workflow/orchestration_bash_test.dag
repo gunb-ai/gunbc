@@ -11,7 +11,10 @@ import v2.extdeps.languages.bash {
   bash_stmt_env_unset_emitted,
   bash_stmt_env_unset_target_model,
   bash_stmt_if_emitted,
-  bash_stmt_if_target_model
+  bash_stmt_if_target_model,
+  bash_stmt_andor_emitted,
+  bash_stmt_andor_target_model,
+  bash_stmt_assign_emitted
 }
 import v2.extdeps.languages.bash_orch_if {
   bash_test_str_empty_emitted,
@@ -20,6 +23,9 @@ import v2.extdeps.languages.bash_orch_if {
   bash_test_str_nonempty_target_model,
   bash_log_matches_grep_emitted,
   bash_log_matches_grep_target_model
+}
+import v2.extdeps.languages.bash_orch_tier2 {
+  orch_cmdsubst_assign_target_model
 }
 import v2.std.collection { Map }
 import v2.std.compilers.target_model { TargetModel }
@@ -160,6 +166,32 @@ test fn orch_bash_stmt_if_row_holds() -> Bool {
   ) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == "if [ -z \"$1\" ]; then verdict=absent; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_stmt_andor_row_holds() -> Bool {
+  match orch_emit_bash(
+    root: bash_stmt_andor_emitted,
+    target: bash_stmt_andor_target_model(left: "[ -z \"$1\" ]", op: "&&", right: "[ -n \"$2\" ]")
+  ) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == "[ -z \"$1\" ] && [ -n \"$2\" ]") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bash_cmdsubst_assign_row_holds() -> Bool {
+  match orch_emit_bash(
+    root: bash_stmt_assign_emitted,
+    target: orch_cmdsubst_assign_target_model(
+      name: "dag_pin",
+      body: "converge_read_gunbc_host_pin \"$checkout\""
+    )
+  ) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == "dag_pin=\"$(converge_read_gunbc_host_pin \"$checkout\")\"")
+        && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }

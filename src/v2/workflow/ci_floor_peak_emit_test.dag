@@ -1,0 +1,123 @@
+module v2.workflow.ci_floor_peak_emit_test
+
+import v2.workflow.ci_floor_peak_emit {
+  ci_cgroup_peak_locate_shell,
+  ci_floor_peak_pre_script,
+  ci_floor_peak_post_script,
+  ci_floor_peak_pre_pipeline,
+  ci_floor_peak_post_pipeline,
+  ci_floor_peak_pre_reset_ok_command,
+  ci_floor_peak_echo_reset_redirect_command
+}
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  Do,
+  ExitZero,
+  FailFast,
+  If,
+  Pipeline,
+  PipelineStep,
+  Run
+}
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, None, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ci_floor_peak_emit_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of the orch_* grammar row spellings in src/v2/extdeps/languages/bash.dag: byte tests compare the emitter (and the production seam) against these literals so a row/segment/emitter regression cannot go green by perturbing both sides at once (#6467 ci_cargo_eagain_retry_core_golden pattern). The committed .github/workflows/ci.yml drift gate is the corpus-level twin of the production seam."
+
+data ci_floor_peak_locate_golden: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\"\nwhile [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done"
+
+data ci_floor_peak_pre_golden: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\"\nwhile [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done\nif [ -f \"$d/memory.peak\" ]; then if echo reset > \"$d/memory.peak\" 2>/dev/null; then echo \"[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d\"; else echo \"[calibration] floor_peak_pre reset=unsupported pre_peak=$(cat \"$d/memory.peak\") scope=span cgroup=$d (post>pre attributes the peak to the floor exactly; post==pre means floor peak <= pre, a job-scoped upper bound)\"; fi; else echo \"[calibration] floor_peak_pre scope=unavailable (no memory.peak ancestor)\"; fi"
+
+data ci_floor_peak_post_golden: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\"\nwhile [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done\nif [ -f \"$d/memory.peak\" ]; then echo \"[calibration] floor_peak_post=$(cat \"$d/memory.peak\") floor_outcome=$\{\{ steps.floor.outcome \}\} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)\"; else echo \"[calibration] floor_peak_post floor_outcome=$\{\{ steps.floor.outcome \}\} scope=unavailable (no memory.peak ancestor)\"; fi"
+
+fn ci_floor_peak_pre_perturbed_pipeline() -> Pipeline {
+  match ci_floor_peak_pre_pipeline() {
+    Pipeline { steps: s, on_failure: p } =>
+      Pipeline {
+        steps: concat(
+          s,
+          [Do {
+            run: Run {
+              command: "true",
+              env: [],
+              redirect: Absent,
+              capture: Absent
+            }
+          }]
+        ),
+        on_failure: p
+      }
+  }
+}
+
+fn ci_floor_peak_pre_reset_perturbed_if() -> PipelineStep {
+  If {
+    cond: ExitZero {
+      run: Run {
+        command: concat(ci_floor_peak_echo_reset_redirect_command, " # perturbed"),
+        env: [],
+        redirect: Absent,
+        capture: Absent
+      }
+    },
+    then_: Pipeline {
+      steps: [Do {
+        run: Run {
+          command: ci_floor_peak_pre_reset_ok_command,
+          env: [],
+          redirect: Absent,
+          capture: Absent
+        }
+      }],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+test fn ci_floor_peak_locate_emit_matches_golden_holds() -> Bool {
+  ci_cgroup_peak_locate_shell() == ci_floor_peak_locate_golden
+}
+
+test fn ci_floor_peak_pre_emit_matches_golden_holds() -> Bool {
+  ci_floor_peak_pre_script() == ci_floor_peak_pre_golden
+}
+
+test fn ci_floor_peak_post_emit_matches_golden_holds() -> Bool {
+  ci_floor_peak_post_script() == ci_floor_peak_post_golden
+}
+
+test fn ci_floor_peak_pre_emit_has_teeth_holds() -> Bool {
+  match orch_emit_pipeline(p: ci_floor_peak_pre_perturbed_pipeline(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != ci_floor_peak_pre_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ci_floor_peak_pre_reset_if_has_teeth_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: Pipeline {
+      steps: [ci_floor_peak_pre_reset_perturbed_if()],
+      on_failure: FailFast
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried != "if echo reset > \"$d/memory.peak\" 2>/dev/null; then echo \"[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d\"; fi")
+        && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ci_floor_peak_emit_band_holds() -> Bool {
+  ci_floor_peak_locate_emit_matches_golden_holds()
+    && ci_floor_peak_pre_emit_matches_golden_holds()
+    && ci_floor_peak_post_emit_matches_golden_holds()
+    && ci_floor_peak_pre_emit_has_teeth_holds()
+    && ci_floor_peak_pre_reset_if_has_teeth_holds()
+}

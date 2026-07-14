@@ -2,7 +2,7 @@
 // Source module: v1.compiler.dag_collect_support
 
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_emit::escape_json_string;
+pub use crate::v1_compiler_emit_core_support::escape_json_string;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

@@ -5,9 +5,8 @@ import v2.compiler.name_resolve {
   Import,
   ImportVisible,
   ResolutionSubject,
-  resolve_with_admission_grounded
+  resolve_with_admission_policy
 }
-import v2.compiler.program_assembly { assemble_program_from_module_roots }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_language_model_surface_empty_prelude,
@@ -34,6 +33,7 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.resolution_policy { ImportScoped }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -301,10 +301,13 @@ fn ct_dag_to_v2_index() -> SourceRootIndex {
 }
 
 fn witness_dag_same_tree_import_resolves_holds() -> Bool {
-  match assemble_program_from_module_roots(
+  match resolve_with_admission_policy(
+    lm: dag_language_model_surface_empty_prelude(),
     roots: ct_dag_same_tree_roots(),
     admission: ct_dag_same_tree_admission(),
-    lm: dag_language_model_surface_empty_prelude()
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -312,10 +315,13 @@ fn witness_dag_same_tree_import_resolves_holds() -> Bool {
 }
 
 fn witness_v2_same_tree_import_resolves_holds() -> Bool {
-  match assemble_program_from_module_roots(
+  match resolve_with_admission_policy(
+    lm: dag_language_model_surface_empty_prelude(),
     roots: ct_v2_same_tree_roots(),
     admission: ct_v2_same_tree_admission(),
-    lm: dag_language_model_surface_empty_prelude()
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -323,12 +329,13 @@ fn witness_v2_same_tree_import_resolves_holds() -> Bool {
 }
 
 fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
-  match resolve_with_admission_grounded(
+  match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: ct_cross_tree_roots(),
     admission: ct_cross_tree_admission(),
     index: ct_v2_to_dag_index(),
-    active_roots: ct_both_trees()
+    active_roots: ct_both_trees(),
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -336,12 +343,13 @@ fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
 }
 
 fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
-  match resolve_with_admission_grounded(
+  match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: ct_dag_to_v2_roots(),
     admission: ct_dag_to_v2_admission(),
     index: ct_dag_to_v2_index(),
-    active_roots: ct_both_trees()
+    active_roots: ct_both_trees(),
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>

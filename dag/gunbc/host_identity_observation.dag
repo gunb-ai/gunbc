@@ -11,6 +11,7 @@ import gunbc.host_effect {
   HostEffectIntent,
   HostEffectEvidence,
   ShellEffectApplied,
+  ConvergePlanApplied,
 }
 import gunbc.host_effect_realize { host_effect_apply }
 import std.realization_reconcile {
@@ -93,8 +94,12 @@ fn host_identity_observation_from_apply(
   probed_at: NonEmptyStr,
 ) -> HostIdentityObservation? {
   match r {
-    Converged { evidence: ShellEffectApplied { stdout: out, exit_code: _ }, applied: _ } =>
-      host_identity_observation_from_stdout(stdout: out, probed_at: probed_at)
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: out, exit_code: _ } =>
+          host_identity_observation_from_stdout(stdout: out, probed_at: probed_at)
+        ConvergePlanApplied { stdout: _, exit_code: _ } => none
+      }
     NotConverged { reason: _, applied: _ } => none
   }
 }

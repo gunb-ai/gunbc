@@ -1,0 +1,198 @@
+module v2.workflow.orchestration_tier2_emit_test
+
+import v2.compiler.emit_orchestration {
+  orch_emit_step,
+  orch_emit_procedure
+}
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  PipelineStep,
+  Let,
+  Call,
+  If,
+  Pipeline,
+  FailFast,
+  Procedure,
+  ExprLit,
+  ExprCmdSubst,
+  StrEmpty
+}
+import v2.std.collection { Absent }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data orch_tier2_golden_note: String = "Goldens below are hand-authored bytes from fleet_converge_emit.dag converge_gunbc_pinned_tree fresh_standup arm ONLY (docs/plans/shell-to-dag-residual-census-and-arc-completion.md §1B frontier rows). Ubuntu-media for/heredoc sites are EXCLUDED per purity-trap fence (FLAG B1). Each test compares emit against its golden independently of the grammar rows."
+
+fn fresh_standup_cmdsubst_assign_intent() -> PipelineStep {
+  Let {
+    name: "dag_pin",
+    value: ExprCmdSubst {
+      callee: "converge_read_gunbc_host_pin",
+      args: ["\"$checkout\""]
+    }
+  }
+}
+
+fn fresh_standup_cmdsubst_assign_golden() -> String {
+  "dag_pin=\"$(converge_read_gunbc_host_pin \"$checkout\")\""
+}
+
+test fn orch_tier2_fresh_standup_cmdsubst_assign_holds() -> Bool {
+  match orch_emit_step(
+    s: fresh_standup_cmdsubst_assign_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == fresh_standup_cmdsubst_assign_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn fresh_standup_decide_verdict_call_intent() -> PipelineStep {
+  Call {
+    callee: "decide_verdict",
+    args: ["\"$dag_pin\"", "\"$desired_pin\""]
+  }
+}
+
+fn fresh_standup_decide_verdict_call_golden() -> String {
+  "decide_verdict \"$dag_pin\" \"$desired_pin\""
+}
+
+test fn orch_tier2_fresh_standup_procedure_call_holds() -> Bool {
+  match orch_emit_step(
+    s: fresh_standup_decide_verdict_call_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == fresh_standup_decide_verdict_call_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn fresh_standup_read_pin_call_intent() -> PipelineStep {
+  Call {
+    callee: "converge_read_gunbc_host_pin",
+    args: ["\"$checkout\""]
+  }
+}
+
+fn fresh_standup_read_pin_call_golden() -> String {
+  "converge_read_gunbc_host_pin \"$checkout\""
+}
+
+test fn orch_tier2_fresh_standup_read_pin_call_holds() -> Bool {
+  match orch_emit_step(
+    s: fresh_standup_read_pin_call_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == fresh_standup_read_pin_call_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn fresh_standup_verdict_absent_let_intent() -> PipelineStep {
+  Let { name: "verdict", value: ExprLit { spelling: "absent" } }
+}
+
+fn fresh_standup_verdict_absent_let_golden() -> String {
+  "verdict=absent"
+}
+
+test fn orch_tier2_fresh_standup_verdict_absent_let_holds() -> Bool {
+  match orch_emit_step(
+    s: fresh_standup_verdict_absent_let_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == fresh_standup_verdict_absent_let_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn fresh_standup_effective_var_let_intent() -> PipelineStep {
+  Let { name: "effective", value: ExprLit { spelling: "\"$dag_pin\"" } }
+}
+
+fn fresh_standup_effective_var_let_golden() -> String {
+  "effective=\"$dag_pin\""
+}
+
+test fn orch_tier2_fresh_standup_effective_var_let_holds() -> Bool {
+  match orch_emit_step(
+    s: fresh_standup_effective_var_let_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == fresh_standup_effective_var_let_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn fresh_standup_dag_pin_empty_let_intent() -> PipelineStep {
+  Let { name: "dag_pin", value: ExprLit { spelling: "\"\"" } }
+}
+
+fn fresh_standup_dag_pin_empty_let_golden() -> String {
+  "dag_pin=\"\""
+}
+
+test fn orch_tier2_fresh_standup_dag_pin_empty_let_holds() -> Bool {
+  match orch_emit_step(
+    s: fresh_standup_dag_pin_empty_let_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == fresh_standup_dag_pin_empty_let_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn decide_verdict_procedure_body() -> Pipeline {
+  Pipeline {
+    steps: [
+      If {
+        cond: StrEmpty { operand: "\"$1\"" },
+        then_: Pipeline {
+          steps: [Let { name: "verdict", value: ExprLit { spelling: "absent" } }],
+          on_failure: FailFast
+        },
+        else_: Absent
+      }
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn decide_verdict_procedure_intent() -> Procedure {
+  Procedure { name: "decide_verdict", body: decide_verdict_procedure_body() }
+}
+
+fn decide_verdict_procedure_partial_golden() -> String {
+  "decide_verdict() {\n  if [ -z \"$1\" ]; then verdict=absent; fi\n}"
+}
+
+test fn orch_tier2_procedure_definition_band_holds() -> Bool {
+  match orch_emit_procedure(
+    proc: decide_verdict_procedure_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == decide_verdict_procedure_partial_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_tier2_cmdsubst_assign_has_teeth_holds() -> Bool {
+  match orch_emit_step(
+    s: fresh_standup_cmdsubst_assign_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: _ } =>
+      src.carried != "dag_pin=\"$(converge_read_gunbc_host_pin \"$ctrl_pin\")\""
+    Rejected { diagnostics: _ } => false
+  }
+}
