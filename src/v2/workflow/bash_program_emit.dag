@@ -442,40 +442,6 @@ fn bash_program_stmt_spelling(stmt: ShellStmt) -> Outcome<String> {
           )
         }
       )
-    SetShellOptions { errexit: _, nounset: _, pipefail: _ } =>
-      bash_program_serialize_stmt_direct(stmt: stmt)
-    Background { stmt: st } =>
-      bind_outcome(
-        o: bash_program_stmt_spelling(stmt: st),
-        f: fn(inner_spelling) {
-          Accepted { value: concat(inner_spelling, " &"), diagnostics: None }
-        }
-      )
-    CaptureLastBackgroundPid { var_name: v } =>
-      Accepted { value: concat(v, "=$!"), diagnostics: None }
-    TrapOnSignals { handler: h, signals: sigs } =>
-      bind_outcome(
-        o: bash_program_stmt_spelling(stmt: h),
-        f: fn(handler_spelling) {
-          Accepted {
-            value: concat(
-              concat("trap ", single_quote(s: handler_spelling)),
-              fold(
-                sigs,
-                init: "",
-                f: (acc, sig) => {
-                  if acc == "" {
-                    concat(" ", sig)
-                  } else {
-                    concat(acc, concat(" ", sig))
-                  }
-                },
-              ),
-            ),
-            diagnostics: None,
-          }
-        }
-      )
   }
 }
 

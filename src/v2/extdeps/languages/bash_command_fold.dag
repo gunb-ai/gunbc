@@ -660,14 +660,6 @@ fn bash_fold_stmt_bundle_witness(stmt: ShellStmt) -> Witness<BashFoldStmtBundle>
       Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
     RawLine { text: _ } =>
       Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    SetShellOptions { errexit: _, nounset: _, pipefail: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    Background { stmt: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    CaptureLastBackgroundPid { var_name: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    TrapOnSignals { handler: _, signals: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
   }
 }
 
@@ -1497,14 +1489,6 @@ fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetMod
       bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
     BraceGroup { body: _ } =>
       bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
-    SetShellOptions { errexit: _, nounset: _, pipefail: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    Background { stmt: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    CaptureLastBackgroundPid { var_name: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    TrapOnSignals { handler: _, signals: _ } =>
-      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
   }
 }
 
