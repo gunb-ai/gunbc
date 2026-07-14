@@ -1,0 +1,114 @@
+module v2.test.long.door_real_module_probe
+
+import std.algebra { Cons, Empty }
+import v2.compiler.compile { TranslateTo, validate_then_compile }
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_with_admission }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data door_real_module_probe_note: String = "PR-2 milestone-1 → 2 transition: the REAL-corpus feasibility receipts (std.determinism reaches the fact_density lens; std.error_primitives reds at resolve generics) proved the gated v2 door works on real modules — they have GRADUATED into the production path and now live as the cause histogram in v2.test.long.compile_door_ledger (re-pinned through the AuditOnly ledger, their durable home; DESIGN 2, one authority per receipt). This file retains ONLY the synthetic resolve-symbol experiment that has no real-module vehicle: the known-suspect quad snippet with a peer module defining list_append, driven tokenize → parse → normalize → resolve_with_admission → door. It answers whether the copied-port registry still matches call-head symbols POST-RESOLVE, and it reds at resolve_ambiguous_export — the migration-owned admit_named_exports flat-merge. Kept here because nimble-boar-198 tracks quad_with_peer_reds_at_resolve_ambiguous_export as a falsification witness they will update or delete at the namespace-only flip (see below)."
+
+data migration_owned_causes_note: String = "Cause ownership (sharp-bee-290 + nimble-boar-198 reconciliation 2026-07-13; the durable table is now DATA in v2.workflow.compile_door_ledger known_frontier_causes): resolve_ambiguous_export and the packaged-parse import-syntax red (parse_grammar_choice_overlap_residue vs parse_production accepting the same text) are MIGRATION-OWNED. Root cause of the ambiguity red: import-scoped admit_named_exports merges an imported (or, for a self-colliding module, an own-field) export into the admission table and collides on a repeated symbol — restructured by the phase-2 namespace-only-Y flip (containment projection, position-distinct, no flat merge); nimble-boar updates or deletes quad_with_peer_reds_at_resolve_ambiguous_export in that flip PR (it is a falsification witness, not something to preserve). The parse fork DISSOLVES BY CONSTRUCTION at phase-3 import-grammar deletion (the disagreeing input class IS import-decl syntax); residual non-import Choice-FIRST divergence gets its own discriminating receipt at grammar-surgery time before the production is deleted. The PR-2 ledger counts both causes with NO flip-per-cause trigger. resolve_reason_unbound_symbol (generics) is a shared self-host critical-path gap (sharp-bee std/logic thread). fact_density calibration is smart-eagle's burn-down: typed and counted, and calibration must never become relaxing the lens (the roster-narrowing trap)."
+
+type DoorProbeOutcome
+  = DoorAccepted
+  | DoorRejected { head_reason: Symbol }
+
+data quad_source: String = "module quadmod\n\nimport minialg { list_append }\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+data minialg_source: String = "module minialg\n\nfn list_append(left: Int, right: Int) -> Int {\n  left\n}\n"
+
+type PeerProbe
+  = PeerStageRejected { stage: String }
+  | PeerNormalized { root: Node }
+
+fn normalized_peer(source: String) -> PeerProbe {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^door_probe_grammar_port)
+  match lm.grammar {
+    VoidGrammar => PeerStageRejected { stage: "void_grammar" }
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => PeerStageRejected { stage: "grammar_validate" }
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: source, file: ^door_probe_peer_file, rules: lm.lex) {
+            Rejected { diagnostics: _ } => PeerStageRejected { stage: "tokenize" }
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => PeerStageRejected { stage: "parse" }
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => PeerStageRejected { stage: "normalize" }
+                    Accepted { value: normalized, diagnostics: _ } =>
+                      PeerNormalized { root: normalized }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn quad_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^quadmod, tail: Empty }
+    },
+    imports: Cons {
+      head: Import {
+        target: Cons { head: ^minialg, tail: Empty },
+        visibility: ImportVisible
+      },
+      tail: Empty
+    }
+  }
+}
+
+fn quad_door_outcome() -> DoorProbeOutcome {
+  match normalized_peer(source: minialg_source) {
+    PeerStageRejected { stage: _ } => DoorRejected { head_reason: ^door_probe_peer_front_end_rejected }
+    PeerNormalized { root: peer } =>
+      match normalized_peer(source: quad_source) {
+        PeerStageRejected { stage: _ } => DoorRejected { head_reason: ^door_probe_subject_front_end_rejected }
+        PeerNormalized { root: subject } =>
+          match resolve_with_admission(
+            lm: dag_language_model(),
+            roots: Cons { head: subject, tail: Cons { head: peer, tail: Empty } },
+            admission: quad_admission()
+          ) {
+            Rejected { diagnostics: d } => DoorRejected { head_reason: d.head.reason }
+            Accepted { value: resolved, diagnostics: _ } =>
+              match validate_then_compile(
+                source: resolved,
+                lenses: [],
+                mode: TranslateTo { target: rust_target_model() }
+              ) {
+                Accepted { value: _, diagnostics: _ } => DoorAccepted
+                Rejected { diagnostics: d } => DoorRejected { head_reason: d.head.reason }
+              }
+          }
+      }
+  }
+}
+
+test fn quad_with_peer_reds_at_resolve_ambiguous_export() -> Bool {
+  match quad_door_outcome() {
+    DoorAccepted => false
+    DoorRejected { head_reason: r } => r == ^resolve_ambiguous_export
+  }
+}
