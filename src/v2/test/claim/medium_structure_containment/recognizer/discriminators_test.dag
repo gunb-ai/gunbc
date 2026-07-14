@@ -16,6 +16,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+data discriminating_property_note: String = "DISCRIMINATING (parent-requested confirmation 2026-07-14): the 3 hole controls are a real red-to-green from the §5 Hole fix. Under the OLD assume-Clean rule, rec_hole_arg_unquoted_is_ambiguous asserted Clean (green then); after the fix it asserts Ambiguous, so the OLD result now FAILS this test -- a genuine flip, not a tautology. rec_hole_quoted_is_clean and rec_literal_dollar_var_const_is_clean pin the earnable escape and the runtime-var-is-a-ConstPart boundary so the fix cannot over-correct every hole to Ambiguous (they would RED if the fix blanket-flagged holes). rec_hole_between_two_cmds_is_violation pins P2-static-before-T3 (a hole present but a static ; still Violates)."
+
 test fn rec_stmt_sep_two_cmds_is_violation() -> Bool {
   disposition_is_violation(d: classify_bash_text(text: "echo a; echo b"))
 }
