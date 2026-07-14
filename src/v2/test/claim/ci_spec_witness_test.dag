@@ -51,7 +51,7 @@ fn witness_gate_roster_matches_coproduct_arms() -> Bool {
   match coproduct_nullary_inhabitants(type_name: reflect_gate_type) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       bag_eq(
-        xs: gate_arm_symbols(gates: concat(concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates), gunbc_ci_emit_determinism_floor_gates)),
+        xs: gate_arm_symbols(gates: concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates)),
         ys: arm_keys,
         eq: symbol_eq
       ) && bag_eq(
