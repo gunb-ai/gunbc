@@ -46,6 +46,7 @@ import gunbc.ci_deploy_access {
   deploy_access_decision_reason,
 }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
+import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
 import std.types { String, NonEmptyStr, List }
 
 type ResolvedHostEffectCell =
@@ -239,13 +240,6 @@ fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent:
     apply_effect: intent,
     show_read: ReadObserved { value: result },
     grounding: grounding
-  )
-}
-
-fn host_effect_set_hostname_cas_script(hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel) -> String {
-  concat(
-    concat("[ \"$(hostname -s)\" = \"", concat(base as String, "\" ] && sudo -n ")),
-    concat(hostnamectl_path as String, concat(" set-hostname ", desired as String))
   )
 }
 
