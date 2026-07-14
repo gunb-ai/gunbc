@@ -16,6 +16,7 @@ import std.numerical_contract {
   FmaContractionPermitted,
   FmaContractionRefused,
   float_contract,
+  integer_exact_contract,
 }
 import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
 import gunbc.accelerator_demo_plan {
@@ -29,7 +30,6 @@ import gunbc.accelerator_demo_plan {
   AcceleratorUnsupportedNumericalDomain,
   demo_plan_fused_op_count,
   demo_target_label,
-  integer_exact_contract,
 }
 import gunbc.accelerator_demo_program {
   AcceleratorDemoProgram,
