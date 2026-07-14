@@ -1362,12 +1362,8 @@ fn bash_fold_lex() -> LexRules {
   ModeledLexRules { root: bash_fold_lex_rules() }
 }
 
-# no-smuggled-programs HALF B: the INGEST-direction lex view. §4 asymmetry — ingest RECOGNIZES a
-# superset of what emit PRODUCES. These are recognized-but-UNMODELED control keywords (no production);
-# their mere presence marks an incompletely-modeled control form => AmbiguousParse (never a Violation).
-# The emit set (bash_fold_lex_rules) is UNCHANGED, so emit output stays byte-identical. Word boundaries
-# ride the spelling (trailing/leading space; "done"/"esac" terminal; maximal-munch takes "done" over " do").
-# newline reuses the existing statement-separator class ^bash_token_orch_seq_newline (bash.dag:1184).
+data bash_ingest_only_lex_rules_note: String = "no-smuggled-programs HALF B: INGEST-direction lex view. §4 asymmetry — ingest RECOGNIZES a superset of what emit PRODUCES. Recognized-but-UNMODELED control keywords (no production); presence marks an incompletely-modeled control form => AmbiguousParse, never Violation. Emit set (bash_fold_lex_rules) UNCHANGED so emit stays byte-identical. Word boundaries ride the spelling (trailing/leading space; done/esac terminal; maximal-munch takes done over do). newline reuses existing separator class bash_token_orch_seq_newline (bash.dag:1184)."
+
 fn bash_ingest_only_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
