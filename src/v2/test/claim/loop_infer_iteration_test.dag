@@ -7,6 +7,7 @@ import v2.compiler.infer {
   inferred_facts_witness_for_node,
   InferredTree
 }
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two }
 import v2.compiler.resolve { ResolvedTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -85,8 +86,8 @@ fn loop_infer_loop_type_is_int(tree: InferredTree, body: Node) -> Bool {
 
 test fn loop_infer_invariant_body_accepts_with_carrier_type() -> Bool {
   let body = loop_infer_two_stage_loop_node(
-    first: loop_infer_atom(s: ^dag_pick_lit_one),
-    second: loop_infer_atom(s: ^dag_pick_lit_two),
+    first: dag_int_literal_fixture_one(),
+    second: dag_int_literal_fixture_two(),
     measure: loop_infer_registered_measure()
   )
   match loop_infer_run(root: body) {
@@ -98,7 +99,7 @@ test fn loop_infer_invariant_body_accepts_with_carrier_type() -> Bool {
 
 test fn loop_infer_divergent_body_is_refused() -> Bool {
   let body = loop_infer_two_stage_loop_node(
-    first: loop_infer_atom(s: ^dag_pick_lit_one),
+    first: dag_int_literal_fixture_one(),
     second: loop_infer_atom(s: ^dag_token_kw_true),
     measure: loop_infer_registered_measure()
   )
@@ -110,7 +111,7 @@ test fn loop_infer_divergent_body_is_refused() -> Bool {
 
 test fn loop_infer_refinement_shaped_body_is_refused() -> Bool {
   let body = loop_infer_two_stage_loop_node(
-    first: loop_infer_atom(s: ^dag_pick_lit_one),
+    first: dag_int_literal_fixture_one(),
     second: loop_infer_atom(s: ^loop_infer_refined_int_carrier),
     measure: loop_infer_registered_measure()
   )
@@ -122,7 +123,7 @@ test fn loop_infer_refinement_shaped_body_is_refused() -> Bool {
 
 test fn loop_infer_unregistered_measure_is_refused() -> Bool {
   let body = loop_infer_one_stage_loop_node(
-    stage: loop_infer_atom(s: ^dag_pick_lit_one),
+    stage: dag_int_literal_fixture_one(),
     measure: loop_infer_atom(s: ^loop_infer_unregistered_measure)
   )
   match loop_infer_run(root: body) {
@@ -135,7 +136,7 @@ test fn loop_infer_missing_measure_is_refused() -> Bool {
   let body = Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: loop_infer_atom(s: ^dag_pick_lit_one) }
+      Edge { label: Positional, target: dag_int_literal_fixture_one() }
     ],
     occurrence_id: SyntheticOccurrence
   }
