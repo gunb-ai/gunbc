@@ -8,6 +8,10 @@
 //! module holds the interim **serde byte transport** for cross-worker share only.
 //! Encode/decode run **outside** the `RwLock`. 🟡 dissolve-on: store-path `Rc`→`Arc`
 //! on `TypecheckModuleResult` / nested infer carriers (design §4.2).
+//!
+//! **Cross-worker serde contract:** `TypecheckModuleResult` serializes authored module/type
+//! *names* and diagnostic trees — not per-worker `InternTable` indices — so worker B can decode
+//! worker A's byte snapshot against its own intern table without a cross-representation straddle.
 
 use std::collections::HashMap as StdHashMap;
 use std::rc::Rc;
@@ -40,6 +44,7 @@ impl SharedTypecheckCaches {
     }
 
     /// Decode a typed snapshot **without** holding the store lock.
+    /// Payload is name-keyed (no intern-table indices) — safe to materialize on any worker index.
     pub fn decode_typed_snapshot(
         bytes: &[u8],
     ) -> Result<Rc<TypecheckModuleResult>, String> {

@@ -12832,6 +12832,9 @@ mod reference_edge_producer_tests {
             !emits_any("imported.dag"),
             "an import-bearing file is import-covered — the reference producer skips it"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
 
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
 //
