@@ -1,12 +1,5 @@
 module gunbc.plans.ci_oom_reclassification
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown {
-  MarkdownBlock, MarkdownListItem,
-  HeadingBlock, ParagraphBlock, UnorderedListBlock,
-  TableBlock, MarkdownTableRow, MarkdownTableCell, MarkdownAlignment, AlignNone,
-  MarkdownInline, TextInline, H2,
-}
 
 fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
 fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }

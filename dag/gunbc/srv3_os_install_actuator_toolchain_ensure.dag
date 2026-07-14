@@ -1,20 +1,5 @@
 module gunbc.srv3_os_install_actuator_toolchain_ensure
 
-import gunbc.ci_deploy_access { ci_deploy_srv1_operator_access }
-import gunbc.host_effect {
-  OsInstallActuatorToolchainEnsure,
-  HostOs,
-  host_effect_identity_evidence,
-}
-import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import std.realization_reconcile { Converged, NotConverged }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { Bool }
-import std.resources { Network }
-import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-
 data srv3_os_install_actuator_toolchain_ensure_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {

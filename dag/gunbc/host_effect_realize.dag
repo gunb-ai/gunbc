@@ -72,6 +72,7 @@ import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
 import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
 import std.types { String, NonEmptyStr, List, Bool }
 
+
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
   | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }

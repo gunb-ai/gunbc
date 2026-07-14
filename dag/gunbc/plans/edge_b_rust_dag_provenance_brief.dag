@@ -1,8 +1,5 @@
 module gunbc.plans.edge_b_rust_dag_provenance_brief
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { h2, p, li, ul, ol }
 
 fn edge_b_rust_dag_provenance_brief_body() -> List<MarkdownBlock> {
   [

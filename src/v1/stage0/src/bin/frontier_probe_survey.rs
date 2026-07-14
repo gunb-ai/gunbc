@@ -113,7 +113,7 @@ fn symbol_to_manifest(sym: &str) -> String {
     }
 }
 
-fn value_symbol_name(ctx: &InterpContext, value: &Value) -> Result<String, String> {
+fn value_symbol_name(_ctx: &InterpContext, value: &Value) -> Result<String, String> {
     match value {
         Value::Str(s) => Ok(symbol_to_manifest(s)),
         other => Err(format!(

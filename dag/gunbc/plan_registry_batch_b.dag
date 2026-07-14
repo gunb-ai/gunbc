@@ -1,13 +1,5 @@
 module gunbc.plan_registry_batch_b
 
-import gunbc.plan { Plan }
-import gunbc.plans.algebraic_rewrite_optimization { algebraic_rewrite_optimization_plan }
-import gunbc.plans.dag_v2_defork_audit { dag_v2_defork_audit_plan }
-import gunbc.plans.v2_self_hosting { v2_self_hosting_plan }
-import gunbc.plans.m5_fixture_store_consolidation { m5_fixture_store_consolidation_plan }
-import gunbc.plans.model_realization_fork { model_realization_fork_plan }
-import gunbc.plans.ci_merge_freshness { ci_merge_freshness_plan }
-import gunbc.plans.seed_debt_bundle_item_2 { seed_debt_bundle_item_2_plan }
 
 data batch_b_plans: List<Plan> = [
   algebraic_rewrite_optimization_plan,

@@ -1171,6 +1171,7 @@ pub struct InterpContext {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
+    variant_parents: HashMap<String, String>,
     service_ops: HashMap<String, ServiceOp>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
@@ -1284,7 +1285,7 @@ impl InterpContext {
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
     ) -> Self {
-        Self::with_runtime_options(graph, source_indices, execution_mode, None, None)
+        Self::with_runtime_options(graph, source_indices, execution_mode, None, None, None, None, None)
     }
 
     pub fn with_fixture_store(
@@ -1293,7 +1294,16 @@ impl InterpContext {
         execution_mode: ExecutionMode,
         fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     ) -> Self {
-        Self::with_runtime_options(graph, source_indices, execution_mode, fixture_store, None)
+        Self::with_runtime_options(
+            graph,
+            source_indices,
+            execution_mode,
+            fixture_store,
+            None,
+            None,
+            None,
+            None,
+        )
     }
 
     pub fn with_runtime_options(
@@ -1302,6 +1312,9 @@ impl InterpContext {
         execution_mode: ExecutionMode,
         fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+        census_fn_nodes: Option<Rc<HashMap<String, Rc<Node>>>>,
+        census_item_registry: Option<Rc<HashMap<String, Rc<ItemInfo>>>>,
+        census_variant_parents: Option<Rc<HashMap<String, String>>>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
         let mut service_ops = HashMap::new();
@@ -1338,11 +1351,31 @@ impl InterpContext {
                 }
             }
         }
+        if let Some(overlay) = census_fn_nodes {
+            for (name, node) in overlay.iter() {
+                fn_nodes.entry(name.clone()).or_insert_with(|| node.clone());
+            }
+        }
+        let item_registry = if let Some(overlay) = census_item_registry {
+            overlay.iter().fold(graph.item_registry.clone(), |acc, (name, info)| {
+                if acc.contains_key(name) {
+                    acc
+                } else {
+                    v1_rt::rc_map_insert(acc, name.clone(), info.clone())
+                }
+            })
+        } else {
+            graph.item_registry.clone()
+        };
+        let variant_parents = census_variant_parents
+            .map(|overlay| overlay.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
         InterpContext {
             modules: graph.modules.clone(),
-            item_registry: graph.item_registry.clone(),
+            item_registry,
             source_indices,
             fn_nodes,
+            variant_parents,
             service_ops,
             execution_mode,
             fixture_store,
@@ -1901,6 +1934,14 @@ fn eval_var(
                 });
             }
         }
+    }
+
+    if let Some(parent_enum) = ctx.variant_parents.get(&name) {
+        return Ok(Value::Variant {
+            type_name: ctx.sym(parent_enum),
+            variant_name: sym,
+            fields: Rc::new(vec![]),
+        });
     }
 
     Err(InterpError::NoSuchVariable { name })
@@ -2865,6 +2906,9 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     match func_name.as_str() {
         "fold_list" => return eval_fold_list_native(&args, env, ctx),
         "fold_list_right" => return eval_fold_list_right_native(&args, env, ctx),
+        "map" | "filter" | "flat_map" | "fold" => {
+            return eval_standalone_algebra_call(&func_name, &args, env, ctx);
+        }
         _ => {}
     }
 
@@ -3862,6 +3906,44 @@ fn pure_call_memo_put(
         st.keepalive.push(v.clone());
     }
     st.map.insert(key, result);
+}
+
+/// Standalone `fold(xs, init:, f:)` / `map(xs, f)` surface — same algebra builtins as
+/// method/pipe calls (`eval_algebra_method`), which previously diverged (§3 fork).
+fn eval_standalone_algebra_call(
+    method: &str,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let receiver = args
+        .first()
+        .map(|(_, v)| v.clone())
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("{method} requires a collection as the first argument"),
+        })?;
+    let method_args = if method == "fold" {
+        let init = args
+            .iter()
+            .find(|(name, _)| name.as_deref() == Some("init"))
+            .map(|(_, v)| v.clone())
+            .or_else(|| args.get(1).map(|(_, v)| v.clone()))
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "fold requires an init argument".to_string(),
+            })?;
+        let f = args
+            .iter()
+            .find(|(name, _)| name.as_deref() == Some("f"))
+            .map(|(_, v)| v.clone())
+            .or_else(|| args.get(2).map(|(_, v)| v.clone()))
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "fold requires an f argument".to_string(),
+            })?;
+        vec![init, f]
+    } else {
+        args.iter().skip(1).map(|(_, v)| v.clone()).collect()
+    };
+    eval_algebra_method(method, receiver, &method_args, env, ctx)
 }
 
 fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
