@@ -70,8 +70,7 @@ fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity)
 fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> Int {
   match intent.effect {
     ConvergePlan { policy: p } => p.knobs.length()
-    ShellCommand { script: _ } => fallback
-    RedfishAction { action: _ } => fallback
+    _ => fallback
   }
 }
 

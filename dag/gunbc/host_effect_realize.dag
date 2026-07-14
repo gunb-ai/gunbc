@@ -1,7 +1,7 @@
 module gunbc.host_effect_realize
 
 import gunbc.host_effect {
-  HostEffect, ShellCommand, RedfishAction, ConvergePlan,
+  HostEffect, ShellCommand, RedfishAction, ConvergePlan, SetHostnameCas,
   Srv3InstallReconcileObserve,
   DurableApprovalGrantRecord,
   DurableApprovalGrantRead,
@@ -21,6 +21,7 @@ import gunbc.host_effect {
   EmitArtifactThenThinRun, BootstrapFragment,
   host_effect_drive,
 }
+import extdeps.dns.domain_name { DnsLabel }
 import std.effects { IdempotencyEvidence }
 import std.realization_reconcile {
   Reconciliation, Converged, NotConverged,
@@ -45,12 +46,14 @@ import gunbc.ci_deploy_access {
   deploy_access_decision_reason,
 }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
+import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
 import std.types { String, NonEmptyStr, List }
 
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
   | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }
   | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
+  | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -95,6 +98,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
             Srv3NbdProxyServe => srv3_host_effect_script_resolution_failed_cell()
             Srv3BootOnceReadBackSleep => srv3_host_effect_script_resolution_failed_cell()
             Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
+            SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
+              HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
           }
       }
     BmcController { node: n } =>
@@ -120,6 +125,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
             Srv3NbdProxyServe => srv3_host_effect_script_resolution_failed_cell()
             Srv3BootOnceReadBackSleep => srv3_host_effect_script_resolution_failed_cell()
             Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
+            SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
+              IncompatibleCell { reason: "host_effect: SetHostnameCas is in-band (shell hostnamectl) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
           }
       }
   }
@@ -236,6 +243,20 @@ fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent:
   )
 }
 
+fn realize_set_hostname_cas_on_host(
+  hostnamectl_path: NonEmptyStr,
+  base: DnsLabel,
+  desired: DnsLabel,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: host_effect_set_hostname_cas_script(hostnamectl_path: hostnamectl_path, base: base, desired: desired),
+    transport: transport,
+    intent: intent,
+  )
+}
+
 fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: IdempotencyEvidence, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let intent = HostEffectIntent {
     target: target,
@@ -248,6 +269,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
     ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
     ConvergeOnHost { node: _, host_converge: hc } =>
       realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
+    HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
+      realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -286,6 +309,8 @@ fn host_effect_apply_gated(
         ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
         ConvergeOnHost { node: _, host_converge: hc } =>
           realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
+        HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
+          realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -325,6 +350,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
             ShellOnHost { node: _, script: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }
