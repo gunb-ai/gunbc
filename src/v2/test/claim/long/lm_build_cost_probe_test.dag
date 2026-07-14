@@ -1,0 +1,29 @@
+module v2.test.long.lm_build_cost_probe
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.extdeps.languages.dag { dag_language_model }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn build_lm_and_force() -> Bool {
+  let lm = dag_language_model()
+  match lm.grammar {
+    ModeledGrammar { root: _ } => true
+    VoidGrammar => false
+  }
+}
+
+fn build_lm_n(n: Int, acc: Bool) -> Bool {
+  if n <= 0 {
+    acc
+  } else {
+    build_lm_n(n: n - 1, acc: acc && build_lm_and_force())
+  }
+}
+
+test fn time_build_lm_20x() -> Bool {
+  build_lm_n(n: 20, acc: true)
+}
