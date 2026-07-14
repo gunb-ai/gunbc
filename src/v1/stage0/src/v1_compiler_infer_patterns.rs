@@ -7,7 +7,7 @@ pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitBool;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name, find_coproduct_containing_arm};
+pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name};
 pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
 };
@@ -576,35 +576,12 @@ pub fn lookup_variant_in_type(
                                                 {
                                                     node_lookup_resolved(none_type())
                                                 } else {
-                                                    match find_coproduct_containing_arm(
-                                                        env.clone(),
-                                                        scrut_name.clone(),
+                                                    variant_not_found_result(
+                                                        scrut_node.clone(),
+                                                        variant_name.clone(),
+                                                        module_name.clone(),
                                                         source_indices.clone(),
-                                                    ) {
-                                                        Some(parent) => {
-                                                            match find_child_named(
-                                                                parent.clone(),
-                                                                variant_name.clone(),
-                                                                source_indices.clone(),
-                                                            ) {
-                                                                Some(v) => {
-                                                                    node_lookup_resolved(v.clone())
-                                                                }
-                                                                None => variant_not_found_result(
-                                                                    scrut_node.clone(),
-                                                                    variant_name.clone(),
-                                                                    module_name.clone(),
-                                                                    source_indices.clone(),
-                                                                ),
-                                                            }
-                                                        }
-                                                        None => variant_not_found_result(
-                                                            scrut_node.clone(),
-                                                            variant_name.clone(),
-                                                            module_name.clone(),
-                                                            source_indices.clone(),
-                                                        ),
-                                                    }
+                                                    )
                                                 }
                                             }
                                         };
