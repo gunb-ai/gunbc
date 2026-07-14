@@ -12438,23 +12438,10 @@ pub fn census_insert_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let census = match local_binding_for_item(item.clone(), source_indices.clone()) {
-            None => census.clone(),
-            Some(binding) => census_insert_binding(census.clone(), binding.clone()),
-        };
-        let is_coproduct = (item.connective.clone() == Connective::Disj);
-        if is_coproduct.clone() {
-            item.children.clone().iter().cloned().fold(
-                census.clone(),
-                |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, arm: Rc<Node>| {
-                    census_insert_item(acc, arm.clone(), source_indices.clone())
-                },
-            )
-        } else {
-            census.clone()
-        }
-    })
+    match local_binding_for_item(item.clone(), source_indices.clone()) {
+        None => census,
+        Some(binding) => census_insert_binding(census, binding.clone()),
+    }
 }
 
 pub fn build_global_bare_census(

@@ -5785,38 +5785,9 @@ fn census_insert_item(census: Map<String, GlobalBareLookupState>, item: Node, so
   }
 }
 
-fn census_flag_arm_collision(census: Map<String, GlobalBareLookupState>, arm: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
-  match local_binding_for_item(item: arm, source_indices: source_indices) {
-    Absent => census
-    Present { value: binding } =>
-      match map_get(census, binding.name) {
-        Present { value: GlobalBareUniqueBinding { binding: existing } } =>
-          if existing.resolved == binding.resolved {
-            census
-          } else {
-            map_insert(census, binding.name, GlobalBareAmbiguousBinding)
-          }
-        Present { value: GlobalBareAmbiguousBinding } => census
-        Absent => census
-      }
-  }
-}
-
-fn census_flag_arm_collisions_for_item(census: Map<String, GlobalBareLookupState>, item: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
-  let is_coproduct = item.connective == Disj
-  if is_coproduct {
-    fold(item.children, init: census, f: (acc, arm) => census_flag_arm_collision(census: acc, arm: arm, source_indices: source_indices))
-  } else {
-    census
-  }
-}
-
 fn build_global_bare_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
-  let top_level_census = fold(modules, init: empty_map(), f: (census, mod) =>
+  fold(modules, init: empty_map(), f: (census, mod) =>
     fold(module_items(n: mod.module), init: census, f: (acc, item) => census_insert_item(census: acc, item: item, source_indices: source_indices))
-  )
-  fold(modules, init: top_level_census, f: (census, mod) =>
-    fold(module_items(n: mod.module), init: census, f: (acc, item) => census_flag_arm_collisions_for_item(census: acc, item: item, source_indices: source_indices))
   )
 }
 
