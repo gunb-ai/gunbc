@@ -108,8 +108,6 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     Srv3NbdProxyServe => fallback
     Srv3BootOnceReadBackSleep => fallback
     Srv3ReceiptEmit { lines: _ } => fallback
-    Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => fallback
-    OsInstallActuatorToolchainEnsure => fallback
   }
 }
 
