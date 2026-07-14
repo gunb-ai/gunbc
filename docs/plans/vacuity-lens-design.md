@@ -29,9 +29,9 @@ The "2FA / independent oracle" framing is the *symptom*: an absent referent is e
 
 Census (2026-07-14): 386 `count/length/size == int` assertions in the corpus; 88 against 2+-digit literals — the *shape* is common, but most carry a behavioral referent (parse-output pins) and are legit. The vacuous residue is the **self-referential cardinality pin / read-back** (live instance: `coverage_domain_equivalence_test.dag:110`; the hand-deleted class: `bf3e33e15c`). The discriminator "absent vs behavioral/external referent" is the def-use / provenance question — see §2.1 for why the wall requires it.
 
-## 2. The decidable signal tiers (what is a wall, what only ranks)
+## 2. The one class, decomposed by decidability (what is a wall, what only ranks)
 
-Vacuity is decidable on a confidence spectrum. Three signals; the first two are hard walls (①, decidable and grounded), the third is a permanent advisory ratchet (②, needs a semantic link that is undecidable from the test alone — by Rice). Keeping them apart is the whole discipline (the §5 "never"-is-a-trap rule: a ratchet must not masquerade as a wall).
+The absent-referent class (§1.1) is one root, but its *sub-shapes* differ in how cheaply "absent referent" is decided — that is what sorts them into walls vs advisory. The first two sub-shapes prove absent-referent structurally (a hard wall, ①, decidable and grounded); the third needs a semantic def-use link that is undecidable from the test alone (a permanent advisory ratchet, ②, by Rice). Keeping them apart is the whole discipline (the §5 "never"-is-a-trap rule: a ratchet must not masquerade as a wall).
 
 | # | pattern | example | verdict |
 |---|---|---|---|
