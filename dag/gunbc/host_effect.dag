@@ -21,7 +21,6 @@ type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
-<<<<<<< HEAD
   | Srv3InstallDiagnosticObserve {
       bmc: NonEmptyStr,
       port: Int,
@@ -29,7 +28,6 @@ type HostEffect =
       iso_content_hash: ContentHash,
     }
   | OsInstallActuatorToolchainEnsure {}
-=======
   | Srv3InstallReconcileObserve { include_git_meta: Bool }
   | DurableApprovalGrantRecord
   | DurableApprovalGrantRead
@@ -42,7 +40,6 @@ type HostEffect =
   | Srv3NbdProxyServe
   | Srv3BootOnceReadBackSleep
   | Srv3ReceiptEmit { lines: List<String> }
->>>>>>> origin/main
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }

@@ -14,13 +14,8 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, Timestamp }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-<<<<<<< HEAD
-import std.measure { second_count }
-=======
 import std.resources { Network }
->>>>>>> origin/main
 import gunbc.srv3_os_install_diagnostic {
-  srv3_install_diagnostic_observe_script_for_intent,
   srv3_os_install_attempt_intent,
   parse_srv3_install_debug_observation,
 }
@@ -62,20 +57,7 @@ data srv3_os_install_reconcile_apply_shell_runner_scaffold: Disposition = Scaffo
   }
 }
 
-<<<<<<< HEAD
-fn load_durable_approval_grant_script() -> String {
-  concat("cat ", concat(srv3_boot_once_approval_grant_path, " 2>/dev/null || true"))
-}
 
-fn srv3_install_reconcile_run_observe_script() -> String {
-  concat(
-    srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent),
-    srv3_install_reconcile_observe_meta_script(),
-  )
-}
-
-=======
->>>>>>> origin/main
 fn process_exit_succeeded(exit: ProcessExit) -> Bool {
   match exit {
     ExitSuccess => true

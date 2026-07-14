@@ -2,12 +2,7 @@ module gunbc.srv3_install_diagnostic_checklist
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-<<<<<<< HEAD
 import gunbc.shell_bash_runner { shell_printf_line }
-=======
-import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
-import gunbc.srv3_actuate_shell_paths { srv3_bmcweb_token_path }
->>>>>>> origin/main
 import gunbc.srv3_os_install_diagnostic {
   srv3_os_install_attempt_intent,
   OsInstallAttemptIntent,
