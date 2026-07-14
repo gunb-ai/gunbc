@@ -4,14 +4,15 @@ import v2.compiler.body_lowering_fold {
   body_lower_arrow_domain_binding_symbols,
   body_lower_arrow_domain_matches_frontend_symbol_index,
   body_lower_arrow_domain_matches_ingest_param_bindings,
+  body_lower_find_captured,
   body_lower_fn_decl_ident_from_captured,
   body_lower_fn_decl_to_arrow,
   body_lower_outcome_frontier_disposition,
   body_lower_param_binding_symbols_from_fn_decl_module,
-  body_lower_unwrap_captured,
   body_lowering_domain_construction_disposition,
   body_lowering_interim_scaffold_seed_retained_count,
   BodyLoweringDomainParamListWalk,
+  BodyLoweringDomainSymbolIndexResolved,
   BodyLoweringLowered,
   BodyLoweringWrapperRetained
 }
@@ -20,7 +21,7 @@ import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_language_model,
-  parse_production_emitted_identity_optional
+  ParseSubtreeFound
 }
 import v2.std.algebra { length }
 import v2.std.collection { Absent, Optional, Present }
@@ -111,6 +112,7 @@ fn wave1_gate1_a1_domain_construction_frontier_holds() -> Bool {
   match body_lowering_domain_construction_disposition {
     BodyLoweringDomainParamListWalk =>
       body_lowering_interim_scaffold_seed_retained_count() == 3
+    BodyLoweringDomainSymbolIndexResolved => false
   }
 }
 
@@ -118,18 +120,17 @@ fn wave1_gate1_a1_symbol_index_frontend_blocked_red_control_holds() -> Bool {
   match wave1_gate1_a1_parsed_add_module() {
     Absent => false
     Present { value: parsed } =>
-      match wave1_gate1_a1_normalized_add_module() {
-        Absent => false
-        Present { value: normalized } =>
-          match wave1_gate1_a1_find_arrow_in_module(root: normalized) {
-            Absent => false
-            Present { value: arrow } =>
-              match body_lower_unwrap_captured(shell: parsed) {
+      match body_lower_find_captured(root: parsed, emitted: ^dag_surface_fn_decl) {
+        ParseSubtreeFound { captured: captured } =>
+          match body_lower_fn_decl_ident_from_captured(captured: captured) {
+            Absent => true
+            Present { value: fn_name } =>
+              match wave1_gate1_a1_normalized_add_module() {
                 Absent => false
-                Present { value: captured } =>
-                  match body_lower_fn_decl_ident_from_captured(captured: captured) {
+                Present { value: normalized } =>
+                  match wave1_gate1_a1_find_arrow_in_module(root: normalized) {
                     Absent => false
-                    Present { value: fn_name } =>
+                    Present { value: arrow } =>
                       !body_lower_arrow_domain_matches_frontend_symbol_index(
                         arrow: arrow,
                         module_tree: normalized,
@@ -138,6 +139,7 @@ fn wave1_gate1_a1_symbol_index_frontend_blocked_red_control_holds() -> Bool {
                   }
               }
           }
+        _ => false
       }
   }
 }
