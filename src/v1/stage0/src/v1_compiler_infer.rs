@@ -12514,6 +12514,32 @@ pub fn census_reserved_kernel_ambient_name(name: &str) -> bool {
     matches!(name, "Present" | "Absent" | "Optional")
 }
 
+/// PR-5c import strip: bare refs resolved via `global_bare` must appear in
+/// `source_visible_names` so selective-import masking does not emit
+/// `UnlistedImportUse` for census-backed gunbc lookups.
+fn source_visible_names_with_global_bare(
+    source_visible_names: Rc<HashMap<String, bool>>,
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+) -> Rc<HashMap<String, bool>> {
+    if v1_rt::map_is_empty(&global_bare) {
+        return source_visible_names;
+    }
+    Rc::new(v1_rt::map_keys(&global_bare))
+        .iter()
+        .cloned()
+        .fold(source_visible_names, |acc, name| {
+            match v1_rt::map_get(&global_bare, name.clone())
+                .as_deref()
+                .cloned()
+            {
+                Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {
+                    v1_rt::rc_map_insert(acc, name, true)
+                }
+                Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) | None => acc,
+            }
+        })
+}
+
 pub fn census_insert_binding(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     binding: Rc<TypeBinding>,
@@ -13331,6 +13357,10 @@ pub fn build_type_env(
                     )
                 }
             },
+        );
+        let source_visible_names = source_visible_names_with_global_bare(
+            source_visible_names.clone(),
+            global_bare.clone(),
         );
         let unresolved_env = Rc::new(TypeEnv {
             bindings: all_local_bindings.clone(),
