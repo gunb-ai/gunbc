@@ -4,7 +4,6 @@ import extdeps.os.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
   UbuntuInstallMediaMirrorHost,
   UbuntuInstallMediaMirrorRow,
-  noble_numbat_2404_3_live_server_arm64,
   ubuntu_install_media_install_path,
   ubuntu_install_media_mirror_rows,
   ubuntu_install_media_mirror_url,
@@ -12,6 +11,7 @@ import extdeps.os.ubuntu_install_media {
 import extdeps.os.ubuntu_install_media_fetch {
   install_media_fetch_bash_emit_dissolution_trigger,
 }
+import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
 import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.srv3_host_effect_apply {
@@ -43,8 +43,6 @@ data srv3_install_media_fetch_shell_runner_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
-
-data srv3_ubuntu_install_media_artifact: UbuntuInstallMediaArtifactRow = noble_numbat_2404_3_live_server_arm64
 
 data srv3_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_install_media_install_path(
   artifact: srv3_ubuntu_install_media_artifact,

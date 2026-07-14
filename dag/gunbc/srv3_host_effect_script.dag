@@ -34,9 +34,10 @@ import gunbc.srv3_actuate_shell_paths {
   srv3_sol_console_log_path,
 }
 import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
-import extdeps.os.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import extdeps.os.ubuntu_install_media_fetch { install_media_fetch_script }
 import extdeps.os.ubuntu_seeded_install_media_remaster { install_media_remaster_script }
+import extdeps.languages.bash.program { serialize_bash }
 import extdeps.bmc.serial_console {
   sol_console_capture_script,
 }
@@ -69,11 +70,13 @@ import std.measure { second_count }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
+data srv3_host_effect_script_dissolution_trigger: String = "🟡 dissolve-on: srv3_host_effect_script — concat-built bash bodies for srv3 observe/effect intents (centralized handler staging post-P5a call-site migration); DISSOLVES WHEN bash-emit (#5828 / shell-emission slice0) realizes srv3 observe/effect intents as typed argv invocations / grammar-emitted nodes and srv3_host_effect_script_for retires without concat-built transport strings; retire medium_structure_exception_roster entry for dag/gunbc/srv3_host_effect_script.dag. Wave 4 residue (shell→dag census §1C category C). NOT gated on shell_exec_via_bash executor deletion (P5b)."
+
 data srv3_host_effect_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.srv3_os_install_reconcile",
-    decl_name: "srv3_os_install_reconcile_shell_runner_dissolution_trigger",
+    module_path: "gunbc.srv3_host_effect_script",
+    decl_name: "srv3_host_effect_script_dissolution_trigger",
     field: WholeDeclaration,
   }
 }
@@ -185,66 +188,62 @@ fn srv3_receipt_emit_script(lines: List<String>) -> String {
   )
 }
 
-fn srv3_host_effect_is_srv3_variant(effect: HostEffect) -> Bool {
-  match effect {
-    Srv3InstallReconcileObserve { include_git_meta: _ } => true
-    DurableApprovalGrantRecord => true
-    DurableApprovalGrantRead => true
-    Srv3InstallMediaFetch => true
-    Srv3SeededInstallMediaRemaster => true
-    Srv3SeededInstallMediaToolchainEnsure => true
-    Srv3SolConsoleCapture => true
-    Srv3BmcwebSessionLogin => true
-    Srv3BmcwebTokenExtract => true
-    Srv3NbdProxyServe => true
-    Srv3BootOnceReadBackSleep => true
-    Srv3ReceiptEmit { lines: _ } => true
-    ShellCommand { script: _ } => false
-    RedfishAction { action: _ } => false
-    ConvergePlan { policy: _ } => false
-  }
-}
-
-fn srv3_host_effect_script_body(effect: HostEffect) -> String {
+fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
   match effect {
     Srv3InstallReconcileObserve { include_git_meta: meta } =>
-      srv3_install_reconcile_observe_script(include_git_meta: meta)
+      Present {
+        value: shell_exec_via_bash(
+          body: srv3_install_reconcile_observe_script(include_git_meta: meta),
+        ),
+      }
     DurableApprovalGrantRecord =>
-      srv3_install_record_boot_once_approval_script()
+      Present {
+        value: shell_exec_via_bash(body: srv3_install_record_boot_once_approval_script()),
+      }
     DurableApprovalGrantRead =>
-      concat("cat ", concat(srv3_boot_once_approval_grant_path, " 2>/dev/null || true"))
+      Present {
+        value: shell_exec_via_bash(
+          body: concat("cat ", concat(srv3_boot_once_approval_grant_path, " 2>/dev/null || true")),
+        ),
+      }
     Srv3InstallMediaFetch =>
-      install_media_fetch_script(artifact: noble_numbat_2404_3_live_server_arm64)
+      Present {
+        value: shell_exec_via_bash(
+          body: install_media_fetch_script(artifact: srv3_ubuntu_install_media_artifact),
+        ),
+      }
     Srv3SeededInstallMediaRemaster =>
-      install_media_remaster_script(artifact: srv3_seeded_install_media_artifact)
+      Present {
+        value: shell_exec_via_bash(
+          body: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
+        ),
+      }
     Srv3SeededInstallMediaToolchainEnsure =>
-      install_media_remaster_toolchain_ensure_script()
+      Present {
+        value: shell_exec_via_bash(body: install_media_remaster_toolchain_ensure_script()),
+      }
     Srv3SolConsoleCapture =>
-      sol_console_capture_script(intent: srv3_sol_console_capture_intent)
+      Present {
+        value: shell_exec_via_bash(
+          body: sol_console_capture_script(intent: srv3_sol_console_capture_intent),
+        ),
+      }
     Srv3BmcwebSessionLogin =>
-      srv3_bmcweb_session_login_script()
+      Present { value: shell_exec_via_bash(body: srv3_bmcweb_session_login_script()) }
     Srv3BmcwebTokenExtract =>
-      srv3_bmcweb_token_extract_script()
+      Present { value: shell_exec_via_bash(body: srv3_bmcweb_token_extract_script()) }
     Srv3NbdProxyServe =>
-      srv3_nbd_proxy_serve_wrapper_script()
+      Present { value: shell_exec_via_bash(body: srv3_nbd_proxy_serve_wrapper_script()) }
     Srv3BootOnceReadBackSleep =>
-      concat("sleep ", to_string(second_count(s: srv3_boot_once_apply_read_back_sleep)))
+      Present {
+        value: shell_exec_via_bash(
+          body: concat("sleep ", to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))),
+        ),
+      }
     Srv3ReceiptEmit { lines: lines } =>
-      srv3_receipt_emit_script(lines: lines)
-    ShellCommand { script: _ } => ""
-    RedfishAction { action: _ } => ""
-    ConvergePlan { policy: _ } => ""
+      Present { value: shell_exec_via_bash(body: srv3_receipt_emit_script(lines: lines)) }
+    ShellCommand { script: _ } => Absent
+    RedfishAction { action: _ } => Absent
+    ConvergePlan { policy: _ } => Absent
   }
-}
-
-fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
-  if srv3_host_effect_is_srv3_variant(effect: effect) {
-    Present { value: shell_exec_via_bash(body: srv3_host_effect_script_body(effect: effect)) }
-  } else {
-    none
-  }
-}
-
-fn srv3_host_effect_script_body_is_nonempty(effect: HostEffect) -> Bool {
-  srv3_host_effect_script_body(effect: effect) != ""
 }

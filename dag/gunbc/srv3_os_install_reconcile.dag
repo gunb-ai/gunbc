@@ -418,12 +418,6 @@ fn parse_observed_at_from_stdout(stdout: String) -> String? {
   }
 }
 
-fn srv3_install_reconcile_observe_meta_script() -> String {
-  concat(
-    "printf '%s\\n' \"Srv3InstallObserveReceipt: surface=observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\nprintf '%s\\n' \"Srv3InstallObserveReceipt: surface=git branch=$(git branch --show-current 2>/dev/null || echo unknown) commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)\"\n",
-  )
-}
-
 fn sol_has_new_installer_markers(
   pre: Srv3InstallDebugObservation,
   post: Srv3InstallDebugObservation,
