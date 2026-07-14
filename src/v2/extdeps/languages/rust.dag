@@ -48,6 +48,7 @@ import v2.std.collection {
   Absent,
   List,
   Map,
+  Optional,
   Present,
   Set,
   empty_map,
