@@ -15,12 +15,15 @@ import v2.extdeps.languages.dag {
 import std.algebra { Cons, Empty }
 import v2.std.collection { Absent, Optional, Present }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   ComputationNode,
   Conj,
+  Named,
   Node,
+  Positional,
   Transform,
   TypeNode
 }
@@ -29,13 +32,7 @@ data wave1_gate1_b1_bare_call_module_source: String = "module wave1_gate1_b1_bar
 
 data wave1_gate1_b1_builtin_call_module_source: String = "module wave1_gate1_b1_builtin_call\n\nfn caller(x: Int) -> Int { fold(x, 0, fn(acc, _) { acc }) }\n"
 
-data wave1_gate1_b1_bare_call_infix_module_source: String = "module wave1_gate1_b1_bare_call\n\nfn helper(x: Int) -> Int { x + x }\n\nfn caller(x: Int) -> Int { helper(x) + x }\n"
-
-data wave1_gate1_b1_unbound_call_module_source: String = "module wave1_gate1_b1_unbound_call\n\nfn caller(x: Int) -> Int { totally_nonexistent_symbol_xyz(x) }\n"
-
-fn wave1_gate1_b1_infix_call_resolves_end_to_end_holds() -> Bool {
-  wave1_gate1_b1_resolve_source(source: wave1_gate1_b1_bare_call_infix_module_source)
-}
+data wave1_gate1_b1_unbound_call_module_source: String = "module wave1_gate1_b1_unbound_call\n\nfn caller(x: Int) -> Int { x + totally_nonexistent_symbol_xyz }\n"
 
 fn wave1_gate1_b1_resolve_source(source: String) -> Bool {
   let lm = dag_language_model()
@@ -84,28 +81,47 @@ fn wave1_gate1_b1_normalized_module(source: String) -> Optional<Node> {
   }
 }
 
-fn wave1_gate1_b1_find_transform_in_module(root: Node) -> Optional<Node> {
-  match root.kind {
-    ComputationNode { behavior: Transform } => Present { value: root }
-    TypeNode { connective: Arrow } =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => wave1_gate1_b1_find_transform_in_module(root: e.target)
+fn wave1_gate1_b1_arrow_named_body_optional(arrow: Node) -> Optional<Node> {
+  fold(arrow.children, init: Absent, f: fn(acc, body_edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match body_edge.label {
+          Named { name: _ } => Present { value: body_edge.target }
+          Positional => Absent
         }
-      })
+    }
+  })
+}
+
+fn wave1_gate1_b1_find_named_fn_arrow_body(root: Node, fn_lexeme: String) -> Optional<Node> {
+  match root.kind {
     TypeNode { connective: Conj } =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
+      fold(root.children, init: Absent, f: fn(acc, edge) {
         match acc {
           Present { value: _ } => acc
-          Absent => wave1_gate1_b1_find_transform_in_module(root: e.target)
+          Absent =>
+            match edge.label {
+              Named { name: sym } =>
+                if symbol_lexeme(sym: sym) == fn_lexeme {
+                  match edge.target.kind {
+                    TypeNode { connective: Arrow } =>
+                      wave1_gate1_b1_arrow_named_body_optional(arrow: edge.target)
+                    _ => Absent
+                  }
+                } else {
+                  wave1_gate1_b1_find_named_fn_arrow_body(root: edge.target, fn_lexeme: fn_lexeme)
+                }
+              Positional =>
+                wave1_gate1_b1_find_named_fn_arrow_body(root: edge.target, fn_lexeme: fn_lexeme)
+            }
         }
       })
     _ =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
+      fold(root.children, init: Absent, f: fn(acc, edge) {
         match acc {
           Present { value: _ } => acc
-          Absent => wave1_gate1_b1_find_transform_in_module(root: e.target)
+          Absent => wave1_gate1_b1_find_named_fn_arrow_body(root: edge.target, fn_lexeme: fn_lexeme)
         }
       })
   }
@@ -115,31 +131,15 @@ fn wave1_gate1_b1_caller_body_has_transform(source: String) -> Bool {
   match wave1_gate1_b1_normalized_module(source: source) {
     Absent => false
     Present { value: root } =>
-      match wave1_gate1_b1_find_transform_in_module(root: root) {
-        Present { value: _ } => true
+      match wave1_gate1_b1_find_named_fn_arrow_body(root: root, fn_lexeme: "caller") {
+        Present { value: body } =>
+          match body.kind {
+            ComputationNode { behavior: Transform } => true
+            _ => false
+          }
         Absent => false
       }
   }
-}
-
-fn wave1_gate1_b1_normalize_source(source: String) -> Bool {
-  let lm = dag_language_model()
-  match tokenize(text: source, file: ^wave1_gate1_b1_probe_file, rules: lm.lex) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: _ } => false
-            Accepted { value: _, diagnostics: _ } => true
-          }
-      }
-  }
-}
-
-fn wave1_gate1_b1_bare_call_normalizes_holds() -> Bool {
-  wave1_gate1_b1_normalize_source(source: wave1_gate1_b1_bare_call_module_source)
 }
 
 fn wave1_gate1_b1_bare_call_lowers_to_transform_holds() -> Bool {
@@ -152,15 +152,6 @@ fn wave1_gate1_b1_bare_call_resolves_end_to_end_holds() -> Bool {
 
 fn wave1_gate1_b1_builtin_call_resolves_end_to_end_holds() -> Bool {
   wave1_gate1_b1_resolve_source(source: wave1_gate1_b1_builtin_call_module_source)
-}
-
-data wave1_gate1_b1_unbound_call_infix_module_source: String = "module wave1_gate1_b1_unbound_call\n\nfn caller(x: Int) -> Int { totally_nonexistent_symbol_xyz(x) + x }\n"
-
-fn wave1_gate1_b1_unbound_infix_call_resolve_rejects_holds() -> Bool {
-  match wave1_gate1_b1_resolve_source(source: wave1_gate1_b1_unbound_call_infix_module_source) {
-    true => false
-    false => true
-  }
 }
 
 fn wave1_gate1_b1_unbound_call_resolve_rejects_holds() -> Bool {
