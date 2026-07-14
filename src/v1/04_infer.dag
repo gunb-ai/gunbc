@@ -3102,7 +3102,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match lookup_func_sig(func_env: ctx.func_env, type_env: env, name: callee) {
+      match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
         Present { value: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -3120,7 +3120,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
       }
     ExprMethodCall { method_semantics: _ } =>
       let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match lookup_func_sig(func_env: ctx.func_env, type_env: env, name: callee) {
+      match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
         Present { value: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -3270,7 +3270,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      let from_provenance = match lookup_func_sig(func_env: ctx.func_env, type_env: env, name: callee) {
+      let from_provenance = match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
         Present { value: sig } =>
           match sig.output_provenance |> first {
             Present { value: param_map } =>
@@ -3537,7 +3537,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             ArithmeticDescent { param: _, factor: _ } => inner_rel
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              let from_provenance = match lookup_func_sig(func_env: ctx.func_env, type_env: env, name: callee) {
+              let from_provenance = match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
                 Present { value: sig } =>
                   match sig.output_provenance |> first {
                     Present { value: param_map } =>
@@ -3860,7 +3860,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
-          match lookup_func_sig(func_env: ctx.func_env, type_env: env, name: callee) {
+          match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
             Present { value: sig } =>
               if map_keys(sig.variant_provenance) |> count > 0 { Present { value: sig } }
               else { none }
