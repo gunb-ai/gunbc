@@ -1,29 +1,5 @@
 module v2.test.manual.body_lowering_infix
 
-import v2.std.node {
-  Atom,
-  Node,
-  TypeNode,
-  node_synthetic
-}
-import v2.std.compilers.body_lowering { lower_block_body_atoms }
-import v2.std.node_query {
-  call_argument_targets,
-  call_callee_target,
-  node_is_call
-}
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.logic { Bool }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn body_lowering_bool_node(pass: Bool) -> Node {
   if pass {

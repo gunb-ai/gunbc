@@ -1,30 +1,5 @@
 module v2.test.manual.int_literal_parse_smoke
 
-import v2.compiler.parse { parse_production_tree, grammar_validate_for_parse }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  dag_formal_production_fn_loop,
-  dag_formal_production_fn_pick,
-  dag_grammar_production_fn_loop,
-  dag_grammar_production_fn_pick,
-  dag_int_literal_magnitude_int_from_node,
-  dag_int_literal_node_from_lexeme,
-  dag_language_model,
-  dag_loop_source_text,
-  dag_pick_source_text
-}
-import v2.std.compilers.lexing { token_stream_all, token_stream_first, token_stream_remaining }
-import v2.std.grammar { GrammarProduction, GrammarRoot }
-import v2.std.collection { Absent, Optional, Present, Set, list_at_optional, optional_absent, optional_present }
-import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.integer {
-  decimal_digits_to_magnitude,
-  integer_decimal_magnitude_node,
-  integer_string_to_decimal_digits_optional
-}
-import v2.std.logic { Bool }
-import v2.std.node { SyntheticOccurrence, Symbol }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

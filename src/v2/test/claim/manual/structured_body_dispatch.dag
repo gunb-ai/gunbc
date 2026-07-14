@@ -1,34 +1,5 @@
 module v2.test.manual.structured_body_dispatch
 
-import v2.std.node {
-  Atom,
-  Node,
-  TypeNode,
-  node_synthetic,
-  well_formed
-}
-import v2.compiler.body_producer {
-  body_producer_dispatch_structured_body,
-  produce_arrow_with_structured_body
-}
-import v2.std.node_query { find_arrow_body_child }
-import v2.extdeps.languages.dag {
-  dag_add_arrow_signature_node,
-  dag_add_arrow_with_body_node,
-  dag_add_binary_body_node,
-  dag_pick_arrow_with_body_fixture
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn structured_body_bool_node(pass: Bool) -> Node {
   if pass {
