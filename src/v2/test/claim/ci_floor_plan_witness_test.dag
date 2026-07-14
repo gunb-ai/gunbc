@@ -82,7 +82,7 @@ data corpus_only_spec: CiSpec = ci_spec_with_witness_entries(
   entries: [synthetic_corpus_row]
 )
 
-data heavy_pair_spec_note: String = "The 2026-07-11 serial job split moved EmitDeterminismGate off the ci-floor surface (GithubActionsEmitDeterminismJob), leaving DagCompileCleanGate the floor's only heavy-whole-tree-resolve runnable — so the production spec can no longer exhibit the two-heavies-co-batch violation the serialize-heavy red control discriminates on. heavy_pair_spec restores the discriminating pair synthetically (optin_spec + EmitDeterminismGate as a second heavy row): the property under witness is the SCHEDULER's serialize-heavy behavior, which must stay pinned green-and-red regardless of which gates the production roster currently routes through the floor."
+data heavy_pair_spec_note: String = "Phase D (2026-07-14) DELETED EmitDeterminismGate along with its x2 sampling oracle (tools.emit_determinism_gate/_transport) and the GithubActionsEmitDeterminismJob surface. DagCompileCleanGate remains the production floor heavy-whole-tree-resolve runnable, so the production spec cannot exhibit the two-heavies-co-batch violation the serialize-heavy red control discriminates on. heavy_pair_spec restores the discriminating pair synthetically (optin_spec + RegenVerifyGate as a second heavy row — heavy_whole_tree_resolve, host-compiler-spawning, off the ci-floor surface: the faithful analog of the removed EmitDeterminismGate, preserving the exact heavy count the deleted gate contributed): the property under witness is the scheduler serialize-heavy behavior, which must stay pinned green-and-red regardless of which gates the production roster currently routes through the floor."
 
 fn ci_spec_with_extra_heavy_gate(spec: CiSpec) -> CiSpec {
   CiSpec {
