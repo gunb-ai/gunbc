@@ -12,6 +12,7 @@ import v2.compiler.eval {
   test_claim_typed_input_node
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.extdeps.languages.dag {
   dag_int_literal_magnitude_int_from_node,
   dag_int_literal_node_from_lexeme,
@@ -272,20 +273,30 @@ fn lazy_arm_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<
         }
       Rejected { diagnostics: d } => Rejected { diagnostics: d }
     }
-  } else if node == lazy_arm_kw_true() {
-    outcome_accepted(value: lazy_arm_bool_value(is_true: true))
-  } else if node == lazy_arm_kw_false() {
-    outcome_accepted(value: lazy_arm_bool_value(is_true: false))
-  } else if node == lazy_arm_divergent_value_node {
-    outcome_rejected(d: lazy_arm_diagnostic(n: node))
-  } else if node == lazy_arm_counted_value_node {
-    if lazy_arm_touch_from_env(env: env) >= 1 {
-      outcome_rejected(d: lazy_arm_diagnostic(n: node))
-    } else {
-      outcome_accepted(value: lazy_arm_one_value())
-    }
   } else {
-    outcome_rejected(d: lazy_arm_diagnostic(n: node))
+    match node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if id == ^dag_token_kw_true {
+          outcome_accepted(value: lazy_arm_bool_value(is_true: true))
+        } else if id == ^dag_token_kw_false {
+          outcome_accepted(value: lazy_arm_bool_value(is_true: false))
+        } else {
+          outcome_rejected(d: lazy_arm_diagnostic(n: node))
+        }
+      ComputationNode { behavior: Value } =>
+        if node == lazy_arm_counted_value_node {
+          if lazy_arm_touch_from_env(env: env) >= 1 {
+            outcome_rejected(d: lazy_arm_diagnostic(n: node))
+          } else {
+            outcome_accepted(value: lazy_arm_one_value())
+          }
+        } else if node == lazy_arm_divergent_value_node {
+          outcome_rejected(d: lazy_arm_diagnostic(n: node))
+        } else {
+          outcome_rejected(d: lazy_arm_diagnostic(n: node))
+        }
+      _ => outcome_rejected(d: lazy_arm_diagnostic(n: node))
+    }
   }
 }
 

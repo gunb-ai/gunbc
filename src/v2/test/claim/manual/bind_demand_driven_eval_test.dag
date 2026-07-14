@@ -134,18 +134,12 @@ data bind_eval_counted_value_node: Node = Node {
   children: []
 }
 
-data bind_eval_divergent_value_node: Node = Node {
-  kind: ComputationNode { behavior: Value },
-  occurrence_id: SyntheticOccurrence,
-  children: []
-}
-
 fn bind_eval_counted() -> Node {
   bind_eval_counted_value_node
 }
 
 fn bind_eval_divergent() -> Node {
-  bind_eval_divergent_value_node
+  bind_eval_atom(s: ^bind_eval_divergent_sym)
 }
 
 fn bind_eval_counted_slot_key() -> EnvironmentBindingKey {
@@ -197,16 +191,20 @@ fn bind_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome
         }
       Rejected { diagnostics: d } => Rejected { diagnostics: d }
     }
-  } else if node == bind_eval_counted_value_node {
-    if bind_eval_touch_from_env(env: env, key: bind_eval_touch_key()) >= 1 {
-      outcome_rejected(d: bind_eval_diagnostic(n: node))
-    } else {
-      outcome_accepted(value: bind_eval_one_value())
-    }
-  } else if node == bind_eval_divergent_value_node {
-    outcome_rejected(d: bind_eval_diagnostic(n: node))
   } else {
-    outcome_rejected(d: bind_eval_diagnostic(n: node))
+    match node.kind {
+      ComputationNode { behavior: Value } =>
+        if node == bind_eval_counted_value_node {
+          if bind_eval_touch_from_env(env: env, key: bind_eval_touch_key()) >= 1 {
+            outcome_rejected(d: bind_eval_diagnostic(n: node))
+          } else {
+            outcome_accepted(value: bind_eval_one_value())
+          }
+        } else {
+          outcome_rejected(d: bind_eval_diagnostic(n: node))
+        }
+      _ => outcome_rejected(d: bind_eval_diagnostic(n: node))
+    }
   }
 }
 
@@ -488,15 +486,12 @@ fn bind_eval_minted_occurrence_equal_reference_reads_holds() -> Bool {
 }
 
 fn bind_eval_unbound_reference_refuses_holds() -> Bool {
-  let body = bind_eval_atom(s: ^bind_eval_unbound_ref_sym)
-  let arrow = bind_eval_arrow_with_body(body: body)
-  let call = bind_eval_pick_call(callee: arrow)
-  let root = bind_eval_tree_root(call: call, expected: bind_eval_lit_one())
-  let tree = bind_eval_admitted_tree(root: root)
+  let ref_node = bind_eval_atom(s: ^bind_eval_unbound_ref_sym)
+  let tree = bind_eval_admitted_tree(root: ref_node)
   match eval_with_context(
     tree: tree,
     context: bind_eval_context(),
-    inputs: inputs_root_only(root: call)
+    inputs: inputs_root_only(root: ref_node)
   ) {
     Rejected { diagnostics: d } =>
       d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
