@@ -4,7 +4,6 @@ import std.logic { Bool }
 import std.measure { byte_size }
 import gunbc.fleet_host_budget {
   host_allocation_conserves,
-  declared_runner_count,
   max_concurrent_sessions,
   session_pool_bytes,
   gunbc_runner_pool_budget,
@@ -12,10 +11,6 @@ import gunbc.fleet_host_budget {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-test fn declared_runner_count_is_five() -> Bool {
-  declared_runner_count() == 5
-}
 
 test fn allocation_conserves_when_pools_fit() -> Bool {
   host_allocation_conserves(

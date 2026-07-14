@@ -185,7 +185,3 @@ fn os_install_actuator_toolchain_ensure_script_uses_github_release_not_apt_for_w
 fn os_install_actuator_toolchain_ensure_is_privileged_gated_for_apt() -> Bool {
   string_contains(s: os_install_actuator_toolchain_ensure_script(), pattern: "sudo -n /usr/bin/apt-get install -y")
 }
-
-fn os_install_actuator_toolchain_requirement_row_count() -> Int {
-  os_install_actuator_toolchain_requirement.required_tools.length()
-}
