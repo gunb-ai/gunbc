@@ -1,11 +1,12 @@
 module gunbc.host_effect_realize
 
 import gunbc.host_effect {
-  HostEffect, ShellCommand, RedfishAction,
+  HostEffect, ShellCommand, RedfishAction, ConvergePlan,
   NodeControlPlane, HostOs, BmcController,
   Drive, OneShot, ConvergeLoop,
-  HostEffectIntent, HostEffectEvidence, ShellEffectApplied,
+  HostEffectIntent, HostEffectEvidence, ShellEffectApplied, ConvergePlanApplied,
   HostEffectTransport, LocalShell, SshShell,
+  EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation,
   host_effect_drive,
 }
 import std.effects { IdempotencyEvidence }
@@ -29,7 +30,18 @@ import std.types { String, NonEmptyStr }
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
   | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }
+  | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
   | IncompatibleCell { reason: String }
+
+fn converge_plan_identity_mismatch_reason(host: ComputeHost, policy: HostConverge) -> String {
+  concat(
+    concat(
+      "host_effect: ConvergePlan host identity ",
+      host.identity as String
+    ),
+    concat(" does not match policy identity ", policy.identity as String)
+  )
+}
 
 fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> ResolvedHostEffectCell {
   match target {
@@ -38,12 +50,20 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         ShellCommand { script: s } => ShellOnHost { node: n, script: s }
         RedfishAction { action: _ } =>
           IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
+        ConvergePlan { policy: p, host: h } =>
+          if n.identity != p.identity || h.identity != p.identity {
+            IncompatibleCell { reason: converge_plan_identity_mismatch_reason(host: h, policy: p) }
+          } else {
+            ConvergeOnHost { node: n, host_converge: p }
+          }
       }
     BmcController { node: n } =>
       match effect {
         ShellCommand { script: _ } =>
           IncompatibleCell { reason: "host_effect: ShellCommand is in-band (shell/systemd) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
+        ConvergePlan { policy: _, host: _ } =>
+          IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
       }
   }
 }

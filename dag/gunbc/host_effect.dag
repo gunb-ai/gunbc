@@ -1,9 +1,10 @@
 module gunbc.host_effect
 
-import std.types { String, Int, NonEmptyStr }
+import std.types { String, Int, NonEmptyStr, List }
 import std.access { AccessDecision }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
+import gunbc.host_converge { HostConverge }
 import std.effects {
   EffectShape,
   ReadEffect,
@@ -17,6 +18,7 @@ import std.effects {
 type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: RedfishSystemAction }
+  | ConvergePlan { policy: HostConverge, host: ComputeHost }
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }
@@ -24,9 +26,18 @@ type NodeControlPlane =
 
 type Drive = OneShot | ConvergeLoop
 
+type BootstrapFragment {
+  script: String
+}
+
+type ThinInvocation {
+  argv: List<String>
+}
+
 type HostEffectTransport =
     LocalShell
   | SshShell { ssh_host: NonEmptyStr }
+  | EmitArtifactThenThinRun { bootstrap: BootstrapFragment, invocation: ThinInvocation }
 
 type HostEffectIntent {
   target: NodeControlPlane
@@ -38,6 +49,7 @@ type HostEffectIntent {
 
 type HostEffectEvidence =
     ShellEffectApplied { exit_code: Int, stdout: String }
+  | ConvergePlanApplied { exit_code: Int, stdout: String }
 
 fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {
   if host_effect_is_converge_loop_evidence(evidence: evidence) {
