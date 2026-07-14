@@ -6,9 +6,8 @@ import std.types { NonEmptyStr, List, String, Bool, FilePath }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
 import extdeps.tools.curl
-import extdeps.tools.sha256sum
+import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch }
 import extdeps.os.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
   ubuntu_install_media_install_path,
@@ -25,8 +24,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data install_media_fetch_bash_emit_dissolution_trigger: Disposition = Terminal {
-  reason: "in-process typed reconcile (shell.Test.IsFile, sha256sum.Sha256.CheckFile, curl.Http.DownloadToFile, shell.Move.File) replaces ShellProgram/serialize_bash - no shell text is built or serialized"
+  reason: "in-process typed reconcile (shell.Test.IsFile, sha256sum_verify_via_shell, curl.Http.DownloadToFile, shell.Move.File) replaces ShellProgram/serialize_bash - no shell text is built or serialized"
 }
+
+data install_media_fetch_hash_convergence_note: String = "§3 convergence note: this file verifies fetched content against Canonical's published cryptographic SHA-256 digest (extdeps_external_authority_anchor above) via the Sha256Verify shape - a genuine external-authority digest check, distinct from std.content_hash's fnv1a64 internal structural fingerprint (dag/std/content_hash.dag, used for our own generated-artifact freshness, e.g. srv3_seeded_install_media's remaster sidecar). Do not unify the two: one is a cryptographic authority citation, the other is an internal identity fingerprint with no external-authority meaning."
 
 type InstallMediaFetchObservation
   = InstallMediaFetchAbsent
@@ -39,16 +40,9 @@ type InstallMediaFetchReconcileOutcome
   | InstallMediaFetchRefused { reason: NonEmptyStr }
 
 fn install_media_hash_matches(path: NonEmptyStr, expected_hash: NonEmptyStr) -> Bool {
-  let checksum_dir = shell.Mktemp.Dir()
-  if checksum_dir.success == false {
-    false
-  } else {
-    let checksum_path = concat(checksum_dir.path as String, "/checksum") as NonEmptyStr
-    let checksum_line = concat(expected_hash as String, concat("  ", path as String))
-    let wrote = Filesystem.Write(path: checksum_path as String, content: checksum_line)
-    let checked = sha256sum.Sha256.CheckFile(checksum_file: checksum_path)
-    let cleaned = shell.Remove.RecursiveForce(path: checksum_dir.path)
-    wrote.success && checked.matches
+  match sha256sum_verify_via_shell(path: path, expected_digest: expected_hash) {
+    Sha256Matches => true
+    Sha256Mismatch => false
   }
 }
 
