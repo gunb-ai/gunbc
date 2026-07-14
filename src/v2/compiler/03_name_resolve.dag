@@ -532,41 +532,71 @@ fn namespace_for_subject(
         Accepted { value: subject_module_root, diagnostics: _ } =>
           if well_formed(n: subject_module_root) {
             let base = admission_namespace_base(lm: lm)
-            match admit_imports(
-              roots: validated_roots,
-              imports: admission.imports,
-              state: namespace_admission_initial_state(
-                policy: policy,
-                lm: lm,
-                subject_module_root: subject_module_root,
-                subject_qn: admission.subject.name
-              ),
-              subject_qn: admission.subject.name,
-              index: index,
-              active_roots: active_roots
-            ) {
-              AdmissionAccepted { bindings: b, origins: _ } =>
-                Accepted {
-                  value: AdmittedSubject {
-                    namespace: Namespace {
-                      bindings: namespace_bindings_augment_from_module_atoms(
-                        root: subject_module_root,
-                        bindings: b
-                      ),
-                      canonical_symbols: base.canonical_symbols,
-                      symbol_index: symbol_index_fill_module_roots(
-                        index: empty_symbol_index(),
-                        roots: validated_roots
-                      ),
-                      module_qn: admission.subject.name
-                    },
-                    subject_root: subject_module_root
-                  },
-                  diagnostics: validate_diag
+            let initial = namespace_admission_initial_state(
+              policy: policy,
+              lm: lm,
+              subject_module_root: subject_module_root,
+              subject_qn: admission.subject.name
+            )
+            match policy {
+              NamespaceOnlyY =>
+                match initial {
+                  AdmissionRejected { diagnostics: d } =>
+                    Rejected {
+                      diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
+                    }
+                  AdmissionAccepted { bindings: b, origins: _ } =>
+                    Accepted {
+                      value: AdmittedSubject {
+                        namespace: Namespace {
+                          bindings: namespace_bindings_augment_from_module_atoms(
+                            root: subject_module_root,
+                            bindings: b
+                          ),
+                          canonical_symbols: base.canonical_symbols,
+                          symbol_index: symbol_index_fill_module_roots(
+                            index: empty_symbol_index(),
+                            roots: validated_roots
+                          ),
+                          module_qn: admission.subject.name
+                        },
+                        subject_root: subject_module_root
+                      },
+                      diagnostics: validate_diag
+                    }
                 }
-              AdmissionRejected { diagnostics: d } =>
-                Rejected {
-                  diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
+              ImportScoped =>
+                match admit_imports(
+                  roots: validated_roots,
+                  imports: admission.imports,
+                  state: initial,
+                  subject_qn: admission.subject.name,
+                  index: index,
+                  active_roots: active_roots
+                ) {
+                  AdmissionAccepted { bindings: b, origins: _ } =>
+                    Accepted {
+                      value: AdmittedSubject {
+                        namespace: Namespace {
+                          bindings: namespace_bindings_augment_from_module_atoms(
+                            root: subject_module_root,
+                            bindings: b
+                          ),
+                          canonical_symbols: base.canonical_symbols,
+                          symbol_index: symbol_index_fill_module_roots(
+                            index: empty_symbol_index(),
+                            roots: validated_roots
+                          ),
+                          module_qn: admission.subject.name
+                        },
+                        subject_root: subject_module_root
+                      },
+                      diagnostics: validate_diag
+                    }
+                  AdmissionRejected { diagnostics: d } =>
+                    Rejected {
+                      diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
+                    }
                 }
             }
           } else {

@@ -22,11 +22,13 @@ import v2.std.node {
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
 import v2.compiler.symbol_index_fill {
   symbol_index_fill_containment_node,
-  symbol_index_fill_module_root
+  symbol_index_fill_module_root,
+  symbol_index_fill_module_roots
 }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
+  symbol_index_global_unique_lookup,
   symbol_index_lexical_lookup,
   symbol_index_lookup
 }
@@ -288,5 +290,51 @@ test fn symbol_index_variant_visibility_equivalence_holds() -> Bool {
         Absent => true
       }
     Absent => false
+  }
+}
+
+data si_orphan_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.symbol_index_orphan"
+)
+
+data si_orphan_module_root_node: Node = si_module_root(
+  qn_spine: si_qn_spine(segments: si_orphan_module_qn),
+  exports: [
+    Edge {
+      label: Named { name: ^OrphanPilotOnly },
+      target: Node {
+        kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  ]
+)
+
+data si_multi_root_index: SymbolIndex = symbol_index_fill_module_roots(
+  index: empty_symbol_index(),
+  roots: Cons {
+    head: si_module_root_node,
+    tail: Cons { head: si_orphan_module_root_node, tail: Empty }
+  }
+)
+
+test fn symbol_index_global_unique_lookup_resolves_globally_unique_holds() -> Bool {
+  match symbol_index_global_unique_lookup(
+    index: si_multi_root_index,
+    name: ^OrphanPilotOnly
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn symbol_index_global_unique_lookup_absent_on_ambiguous_leaf_holds() -> Bool {
+  match symbol_index_global_unique_lookup(
+    index: si_multi_root_index,
+    name: ^Yes
+  ) {
+    Present { value: _ } => false
+    Absent => true
   }
 }
