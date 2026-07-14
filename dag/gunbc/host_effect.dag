@@ -7,6 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
+import gunbc.srv3_os_install_diagnostic { OsInstallAttemptIntent }
 import std.effects {
   EffectShape,
   ReadEffect,
@@ -21,6 +22,8 @@ type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
+  | Srv3InstallDiagnosticObserve { intent: OsInstallAttemptIntent }
+  | OsInstallActuatorToolchainEnsure {}
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }

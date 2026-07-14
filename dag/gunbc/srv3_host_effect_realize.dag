@@ -1,0 +1,242 @@
+module gunbc.srv3_host_effect_realize
+
+import extdeps.shell
+import extdeps.gunbc
+import extdeps.apt { package_curl, package_nbdkit, package_socat }
+import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools.nbdkit { nbdkit_cli_tool }
+import extdeps.tools.socat { socat_cli_tool }
+import extdeps.tools.websocat {
+  websocat_cli_tool,
+  websocat_github_tag,
+  websocat_asset_aarch64,
+  websocat_install_path,
+  websocat_github_release_download_url,
+}
+import extdeps.diagnostic.ssh { ssh_session_exec_script }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.srv3_install_diagnostic_checklist { srv3_install_diagnostic_observe_script }
+import gunbc.srv3_os_install_diagnostic { OsInstallAttemptIntent }
+import gunbc.srv3_os_install_actuator_toolchain_ensure { gunbc_bin_dir }
+import gunbc.ci_deploy_access { deploy_access_apt_get_binary_path }
+import gunbc.host_effect {
+  HostEffectIntent,
+  HostEffectEvidence,
+  HostEffectTransport,
+  LocalShell,
+  SshShell,
+  EmitArtifactThenThinRun,
+  ShellEffectApplied,
+}
+import std.realization_reconcile {
+  Reconciliation,
+  Converged,
+  NotConverged,
+  ReadObserved,
+  Grounds,
+  DoesNotGround,
+  reconcile_grounded,
+}
+import std.types { String, NonEmptyStr, Bool, List, Int }
+
+type Srv3ShellExecObserved {
+  exit_code: Int
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+fn srv3_shell_exec_failure_reason(observed: Srv3ShellExecObserved) -> String {
+  let header = "srv3_host_effect: shell exec returned a nonzero exit code; fail-closed"
+  if observed.stdout == "" && observed.stderr == "" {
+    header
+  } else {
+    concat(
+      concat(concat(header, "\n--- stdout ---\n"), observed.stdout),
+      concat("\n--- stderr ---\n", observed.stderr)
+    )
+  }
+}
+
+fn srv3_run_shell_transport(script: String, transport: HostEffectTransport) -> Srv3ShellExecObserved {
+  match transport {
+    LocalShell => {
+      let result = shell.Exec.Run(script: script)
+      Srv3ShellExecObserved {
+        exit_code: result.exit_code,
+        success: result.success,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }
+    }
+    SshShell { ssh_host: h } => {
+      if script == "" {
+        Srv3ShellExecObserved {
+          exit_code: 1,
+          success: false,
+          stdout: "srv3_host_effect: empty shell script over SshShell; fail-closed",
+          stderr: "",
+        }
+      } else {
+        let result = ssh_session_exec_script(host: h, script: script)
+        Srv3ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.success,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        }
+      }
+    }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      Srv3ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: "srv3_host_effect: srv3 observe/toolchain effects cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        stderr: "",
+      }
+  }
+}
+
+fn srv3_run_multiline_bash(script: String, transport: HostEffectTransport) -> Srv3ShellExecObserved {
+  srv3_run_shell_transport(script: shell_exec_via_bash(body: script), transport: transport)
+}
+
+fn srv3_shell_reconcile(
+  observed: Srv3ShellExecObserved,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let grounding = if observed.success {
+      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
+    } else {
+      DoesNotGround { reason: srv3_shell_exec_failure_reason(observed: observed) }
+    }
+  reconcile_grounded(
+    apply_effect: intent,
+    show_read: ReadObserved { value: observed },
+    grounding: grounding
+  )
+}
+
+fn realize_srv3_install_diagnostic_observe(
+  intent: OsInstallAttemptIntent,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let script = srv3_install_diagnostic_observe_script(intent: intent)
+  let observed = srv3_run_multiline_bash(script: script, transport: transport)
+  srv3_shell_reconcile(observed: observed, intent: effect_intent)
+}
+
+fn srv3_apt_tool_present(tool_name: NonEmptyStr) -> Bool {
+  shell.Which.Check(command: tool_name).exists
+}
+
+fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr) -> Bool {
+  let probe = concat(tool_name as String, " --version >/dev/null 2>&1")
+  shell.Exec.Check(command: probe).exists
+}
+
+fn srv3_privileged_apt_install(package: NonEmptyStr) -> Bool {
+  gunbc.WitnessBin.Run(
+    workdir: "/",
+    bin_path: "/usr/bin/sudo",
+    args: [
+      "-n",
+      deploy_access_apt_get_binary_path as String,
+      "install",
+      "-y",
+      package as String,
+    ],
+  ).success
+}
+
+fn srv3_ensure_apt_tool(
+  tool_name: NonEmptyStr,
+  package: NonEmptyStr,
+  require_version_probe: Bool,
+) -> Bool {
+  if srv3_apt_tool_present(tool_name: tool_name)
+    && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name))
+  {
+    true
+  } else {
+    srv3_privileged_apt_install(package: package)
+      && srv3_apt_tool_present(tool_name: tool_name)
+      && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name))
+  }
+}
+
+fn srv3_ensure_websocat() -> Bool {
+  let install_path = websocat_install_path as String
+  if shell.Test.IsExecutable(path: install_path).executable {
+    true
+  } else {
+    let bin_dir = gunbc_bin_dir as String
+    let url = websocat_github_release_download_url(
+      tag: websocat_github_tag,
+      asset: websocat_asset_aarch64,
+    )
+    let mkdir = gunbc.WitnessBin.Run(
+      workdir: "/",
+      bin_path: "/usr/bin/sudo",
+      args: ["mkdir", "-p", bin_dir],
+    )
+    let chown = shell.Exec.Run(
+      script: concat(concat("sudo -n chown \"$(id -un):$(id -gn)\" ", bin_dir), ""),
+    )
+    let curl = gunbc.WitnessBin.Run(
+      workdir: "/",
+      bin_path: "/usr/bin/curl",
+      args: ["-fsSL", url, "-o", install_path],
+    )
+    let chmod = gunbc.WitnessBin.Run(
+      workdir: "/",
+      bin_path: "/bin/chmod",
+      args: ["+x", install_path],
+    )
+    mkdir.success
+      && chown.success
+      && curl.success
+      && chmod.success
+      && shell.Test.IsExecutable(path: install_path).executable
+  }
+}
+
+fn realize_os_install_actuator_toolchain_ensure(
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let curl_ok = srv3_ensure_apt_tool(
+    tool_name: curl_cli_tool.name,
+    package: package_curl,
+    require_version_probe: true,
+  )
+  let nbdkit_ok = srv3_ensure_apt_tool(
+    tool_name: nbdkit_cli_tool.name,
+    package: package_nbdkit,
+    require_version_probe: true,
+  )
+  let socat_ok = srv3_ensure_apt_tool(
+    tool_name: socat_cli_tool.name,
+    package: package_socat,
+    require_version_probe: false,
+  )
+  let websocat_ok = srv3_ensure_websocat()
+  let success = curl_ok && nbdkit_ok && socat_ok && websocat_ok
+  let stdout = concat(
+    concat(
+      concat(
+        concat("OsInstallActuatorToolchainReceipt: curl=", if curl_ok { "ok" } else { "fail" }),
+        concat(" nbdkit=", if nbdkit_ok { "ok" } else { "fail" }),
+      ),
+      concat(" socat=", if socat_ok { "ok" } else { "fail" }),
+    ),
+    concat(" websocat=", if websocat_ok { "ok" } else { "fail" }),
+  )
+  let observed = Srv3ShellExecObserved {
+    exit_code: if success { 0 } else { 1 },
+    success: success,
+    stdout: stdout,
+    stderr: if success { "" } else { "actuator-toolchain-ensure: one or more tools failed ensure" },
+  }
+  srv3_shell_reconcile(observed: observed, intent: effect_intent)
+}

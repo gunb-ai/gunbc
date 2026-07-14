@@ -2,6 +2,7 @@ module gunbc.host_effect_realize
 
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
+  Srv3InstallDiagnosticObserve, OsInstallActuatorToolchainEnsure,
   NodeControlPlane, HostOs, BmcController,
   Drive, OneShot, ConvergeLoop,
   HostEffectIntent, HostEffectEvidence, ShellEffectApplied, ConvergePlanApplied,
@@ -26,18 +27,25 @@ import gunbc.host_converge_realize {
   ConvergeHostInterpreted,
   converge_host_no_knobs_reason,
 }
+import gunbc.srv3_host_effect_realize {
+  realize_srv3_install_diagnostic_observe,
+  realize_os_install_actuator_toolchain_ensure,
+}
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.ci_deploy_access {
   DeployAccess, DeployAccessActor,
   deploy_access_check, deploy_access_check_observed,
   deploy_access_decision_reason,
 }
+import gunbc.srv3_os_install_diagnostic { OsInstallAttemptIntent }
 import std.types { String, NonEmptyStr, List }
 
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
   | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }
   | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
+  | Srv3DiagnosticObserveOnHost { node: ComputeHost, intent: OsInstallAttemptIntent }
+  | OsInstallActuatorToolchainOnHost { node: ComputeHost }
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -63,6 +71,10 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           } else {
             ConvergeOnHost { node: n, host_converge: p }
           }
+        Srv3InstallDiagnosticObserve { intent: i } =>
+          Srv3DiagnosticObserveOnHost { node: n, intent: i }
+        OsInstallActuatorToolchainEnsure {} =>
+          OsInstallActuatorToolchainOnHost { node: n }
       }
     BmcController { node: n } =>
       match effect {
@@ -71,6 +83,10 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
         ConvergePlan { policy: _ } =>
           IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        Srv3InstallDiagnosticObserve { intent: _ } =>
+          IncompatibleCell { reason: "host_effect: Srv3InstallDiagnosticObserve is in-band (actuator host shell observe) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        OsInstallActuatorToolchainEnsure {} =>
+          IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
       }
   }
 }
