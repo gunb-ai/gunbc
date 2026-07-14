@@ -198,25 +198,17 @@ fn body_lower_symbol_index_domain_binding_holds(
 }
 
 fn body_lower_arrow_domain_symbol_index_holds(
-  fn_name: Symbol,
   arrow: Node,
-  module_qn: QualifiedName
+  containment_path: QualifiedName
 ) -> Bool {
-  let fn_path = qualified_name_snoc(qn: module_qn, segment: fn_name)
-  let named_member = node_synthetic(
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: fn_name }, target: arrow }
-    ]
-  )
-  let idx = symbol_index_fill_containment_node(
-    index: empty_symbol_index(),
-    path: module_qn,
-    node: named_member
-  )
   if count(arrow.children) >= 1 {
     match first(arrow.children) {
       Present { value: domain_edge } =>
+        let idx = symbol_index_fill_containment_node(
+          index: empty_symbol_index(),
+          path: containment_path,
+          node: domain_edge.target
+        )
         fold(
           body_lower_arrow_domain_named_bindings(root: domain_edge.target),
           init: true,
@@ -224,7 +216,7 @@ fn body_lower_arrow_domain_symbol_index_holds(
             if ok {
               body_lower_symbol_index_domain_binding_holds(
                 index: idx,
-                fn_path: fn_path,
+                fn_path: containment_path,
                 binding: binding
               )
             } else {
@@ -1437,43 +1429,39 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_decl_ident_from_captured(captured: captured) {
-        Absent => body_lower_wrapper_retained_shell(shell: shell)
-        Present { value: _fn_name } =>
-          match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
-            ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
-            ParseSubtreeFound { captured: param_list } =>
-              match body_lower_domain_from_containment_named_edges(param_list: param_list) {
-                Absent => body_lower_wrapper_retained_shell(shell: shell)
-                Present { value: domain } =>
-                  match body_lower_body_from_fn_captured(captured: captured) {
-                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                    Accepted { value: body_opt, diagnostics: bd0 } =>
-                      match body_opt {
-                        Absent => body_lower_wrapper_retained_shell(shell: shell)
-                        Present { value: body } =>
-                          match body_lower_reify_arrow_body(body: body) {
-                            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                            Accepted { value: reified_body, diagnostics: bd } =>
-                              match body_lower_return_type_from_fn_captured(captured: captured) {
-                                Absent => body_lower_wrapper_retained_shell(shell: shell)
-                                Present { value: return_type } =>
-                                  outcome_accepted(
-                                    value: node_synthetic(
-                                      kind: TypeNode { connective: Arrow },
-                                      children: [
-                                        Edge { label: Positional, target: domain },
-                                        Edge { label: Positional, target: return_type },
-                                        Edge { label: Positional, target: return_type },
-                                        Edge {
-                                          label: Named { name: ^arrow_body_edge },
-                                          target: reified_body
-                                        }
-                                      ]
-                                    ),
-                                    diagnostics: diagnostics_merge(outer: bd0, inner: bd)
-                                  )
-                              }
+      match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
+        ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
+        ParseSubtreeFound { captured: param_list } =>
+          match body_lower_domain_from_containment_named_edges(param_list: param_list) {
+            Absent => body_lower_wrapper_retained_shell(shell: shell)
+            Present { value: domain } =>
+              match body_lower_body_from_fn_captured(captured: captured) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: body_opt, diagnostics: bd0 } =>
+                  match body_opt {
+                    Absent => body_lower_wrapper_retained_shell(shell: shell)
+                    Present { value: body } =>
+                      match body_lower_reify_arrow_body(body: body) {
+                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                        Accepted { value: reified_body, diagnostics: bd } =>
+                          match body_lower_return_type_from_fn_captured(captured: captured) {
+                            Absent => body_lower_wrapper_retained_shell(shell: shell)
+                            Present { value: return_type } =>
+                              outcome_accepted(
+                                value: node_synthetic(
+                                  kind: TypeNode { connective: Arrow },
+                                  children: [
+                                    Edge { label: Positional, target: domain },
+                                    Edge { label: Positional, target: return_type },
+                                    Edge { label: Positional, target: return_type },
+                                    Edge {
+                                      label: Named { name: ^arrow_body_edge },
+                                      target: reified_body
+                                    }
+                                  ]
+                                ),
+                                diagnostics: diagnostics_merge(outer: bd0, inner: bd)
+                              )
                           }
                       }
                   }
