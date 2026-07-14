@@ -14226,36 +14226,6 @@ mod witness_layer_roots_compile_clean_tests {
         }
     }
 
-    #[test]
-    fn debug_floor_compile_clean_emit_failure_diagnostics() {
-        with_env_test_lock(|| {
-            let _ga = EnvGuard::remove("GITHUB_ACTIONS");
-            let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
-            with_workspace_cwd(|| {
-                use crate::v1_compiler_artifact::RenderTarget;
-                match witness_layer_roots_compile_clean_sources_for_plan(
-                    &compile_clean_scope_plan_for_ci(),
-                ) {
-                    Ok(Some(sources)) => {
-                        eprintln!("compile-clean debug: sources={}", sources.len());
-                        let result = v1_compiler_compile::compile_sources(
-                            Rc::new(sources.into()),
-                            RenderTarget::Dag,
-                        );
-                        eprintln!(
-                            "compile-clean debug: files={} diagnostics={}",
-                            result.files.len(),
-                            result.diagnostics.len()
-                        );
-                        eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
-                    }
-                    Ok(None) => eprintln!("compile-clean debug: skipped"),
-                    Err(msg) => eprintln!("compile-clean debug: refused {msg}"),
-                }
-            });
-        });
-    }
-
     /// Hand-Rust receipt: the emit leg is a strict superset of resolve for the same sources.
     #[test]
     fn emit_success_implies_resolve_success_on_live_witness_roots() {

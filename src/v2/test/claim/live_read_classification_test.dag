@@ -12,7 +12,7 @@ import v2.lens.live_read_classification {
   runtime_read_touched_by_path_g1
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
-import v2.std.live_tree {
+import v2.std.live_read {
   LiveReadClassification,
   LiveReadCarrierHome,
   FilesystemReadCarrier,
