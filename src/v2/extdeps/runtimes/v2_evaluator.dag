@@ -215,8 +215,28 @@ fn v2_eval_bool_runtime_value(is_true: Bool) -> RuntimeValue {
   }
 }
 
-fn v2_eval_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+data v2_eval_literal_shape_predicate_note: String = "🟢 Terminal (FLAG D): v2_eval_is_literal_shaped_node is the sole admission predicate for eval_type_node_atom literal-vs-binding dispatch; v2_eval_represent_literal routes through it before allocate dispatch — one surface, not a parallel entry guard."
+
+fn v2_eval_is_literal_shaped_node(node: Node) -> Bool {
   if node == v2_eval_bool_literal_pin {
+    true
+  } else if node == v2_eval_unit_literal_pin {
+    true
+  } else if dag_node_is_int_literal_atom(node: node) {
+    true
+  } else {
+    match node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false)
+      _ => false
+    }
+  }
+}
+
+fn v2_eval_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if !v2_eval_is_literal_shaped_node(node: node) {
+    outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+  } else if node == v2_eval_bool_literal_pin {
     outcome_accepted(value: v2_eval_bool_runtime_value(is_true: true))
   } else if node == v2_eval_unit_literal_pin {
     outcome_accepted(value: v2_eval_unit_runtime_value())
