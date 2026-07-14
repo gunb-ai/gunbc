@@ -1,6 +1,6 @@
 # Live-read witness classification — closing the masking-class root
 
-> **Status:** P0–P3 landed (2026-07-14) — `v2.lens.live_read_classification` + fixture witnesses green by execution; P1 G2 call reachability; P2 floor axis (iv) `runtime_data_dependency_touched` (#6630); P3 re-enrolled `accumulator_copy_roster_gate` and `lever_a_local_receipt_witness` into floor discovery (exclusion rows deleted). Model-before-implement authority for how runtime tree/host reads become visible to affected-set attribution. Companion to [affected-set precompute pruning](affected-set-precompute-pruning.md), [witness cost locality](../src/v2/lens/witness_cost_locality.dag) (`v2.lens.witness_cost_locality`), and [v1 run-stability throughline](v1-run-stability-throughline.md) §1.
+> **Status:** P0–P2 landed (2026-07-14) — `v2.lens.live_read_classification` + fixture witnesses green by execution; P1 G2 call-reachability lens; P2 floor axis (iv) `runtime_data_dependency_touched` (#6630) with **G1-only module-closure interim** in `cli_run.rs` (`runtime_data_dependency_touched_via_carrier_closure`). **P3 (OFFLINE re-enrollment) remains open** — §8a/§8b require G2 path-intersection wired into floor admission plus carrier memoization before exclusion rows dissolve; G1-only axis (iv) over-selects on carrier-importing entries and would worsen CI cost vs the OFFLINE ruling. Model-before-implement authority for how runtime tree/host reads become visible to affected-set attribution. Companion to [affected-set precompute pruning](affected-set-precompute-pruning.md), [witness cost locality](../src/v2/lens/witness_cost_locality.dag) (`v2.lens.witness_cost_locality`), and [v1 run-stability throughline](v1-run-stability-throughline.md) §1.
 
 ---
 
@@ -222,6 +222,8 @@ Phases are ordered; each closes at a named consumer tier.
 **Accept:** harness on real merged diffs — roster-target touch selects roster gate witness; unrelated lens PR does not. Precompute-skip receipt on scoped diff.
 
 ### P3 — Re-enroll OFFLINE witnesses
+
+**Blocked on:** G2 path-intersection (not G1 module-closure alone) wired into `cli_run.rs` floor skip + carrier memoization receipts (§8a resolved-graph memo; §8b single-roster memo). P2's production axis (iv) is the G1-only `runtime_data_dependency_touched_via_carrier_closure` interim — fail-closed-safe (never under-selects) but over-selects on carrier-importing witnesses, so re-enrollment before G2 wiring would run ~15m roster-gate / 85m+ lever_a witnesses on most `.dag`-touching PRs.
 
 - Remove `witness_exclusion_substrings` rows for `accumulator_copy_roster_gate` and `lever_a_local_receipt_witness`.
 - Restore discovery enrollment; verify CI floor receipts within step budget.
