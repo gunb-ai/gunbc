@@ -41,7 +41,6 @@ data realization_vocab_exception_roster: List<String> = [
   "dag/gunbc/node_http_server_emit.dag",
   "dag/gunbc/srv3_os_install_actuate.dag",
   "dag/tools/build_step.dag",
-  "dag/tools/build_step_transport.dag",
   "dag/tools/host_prelude.dag",
   "src/v2/lens/duplicate_computation.dag",
   "src/v2/workflow/bash_program_emit.dag",

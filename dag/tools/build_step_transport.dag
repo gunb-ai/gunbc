@@ -1,42 +1,69 @@
 module tools.build_step_transport
 
 import extdeps.shell
-import extdeps.languages.bash.program { var_ref }
-import tools.build_step { BuildArtifact, verifications_script }
+import extdeps.filesystem.filesystem_io
+import extdeps.git
+import extdeps.gunbc
+import std.logic { Bool }
+import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
 
-fn probe_var_artifact() -> BuildArtifact {
-  BuildArtifact {
-    path: var_ref(name: "PROBE_BIN"),
-    name: "probe_bin"
+data bst_typed_transport_doc: String = "Build-artifact corruption-probe transport, typed. Each receipt is a composition of typed service operations (shell.Mktemp.Dir, Filesystem.Write, gunbc.WitnessBin.Run on /bin/chmod and claim_executor --verify-build-artifacts, shell.Remove.RecursiveForce) - no bash is serialized or executed. The former verifications_script serialize_bash harness dissolved with the flip: the probe exercises the same claim_executor verification path the CI floor uses, so the spelling-drift class between substrate shell AST and production verification is unwritable (DESIGN 5, construction over validation)."
+
+data claim_executor_bin_name: String = "claim_executor"
+
+fn probe_bin_path(tmp_dir: String) -> String {
+  concat(tmp_dir, "/probe_bin")
+}
+
+fn claim_executor_ready(root: String) -> Bool {
+  witness_bin_ensure_built_typed(
+    root: root,
+    bin: witness_bin(var_name: "CLAIM_EXECUTOR", bin_name: claim_executor_bin_name)
+  )
+}
+
+fn claim_executor_path(root: String) -> String {
+  witness_bin_release_path(root: root, bin_name: claim_executor_bin_name)
+}
+
+fn make_probe_executable(path: String) -> Bool {
+  let chmod = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/chmod", args: ["+x", path])
+  chmod.success
+}
+
+fn verify_artifacts_typed(root: String, paths: List<String>) -> Bool {
+  let args = concat(["--verify-build-artifacts"], paths)
+  let result = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: claim_executor_path(root: root),
+    args: args
+  )
+  result.success
+}
+
+fn corruption_probe_with_content(content: String, expect_verify_success: Bool) -> Bool {
+  let root = git.Core.Toplevel()
+  if claim_executor_ready(root: root.path) {
+    let tmp = shell.Mktemp.Dir()
+    if tmp.success {
+      let path = probe_bin_path(tmp_dir: tmp.path)
+      let wrote = Filesystem.Write(path: path, content: content)
+      let executable = make_probe_executable(path: path)
+      let verified = verify_artifacts_typed(root: root.path, paths: [path])
+      let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
+      wrote.success && executable && cleaned.success && (verified == expect_verify_success)
+    } else {
+      false
+    }
+  } else {
+    false
   }
 }
 
-fn probe_verification_script() -> String {
-  verifications_script(produces: [probe_var_artifact()])
-}
-
-fn corruption_probe_zero_byte_harness() -> String {
-  let verify = probe_verification_script()
-  concat(
-    concat("TMPDIR=$(mktemp -d)\n", concat("PROBE_BIN=\"$TMPDIR/probe_bin\"\n", "touch \"$PROBE_BIN\" && chmod +x \"$PROBE_BIN\"\n")),
-    concat("! (\n", concat(verify, "\n)\n"))
-  )
-}
-
-fn corruption_probe_nonempty_harness() -> String {
-  let verify = probe_verification_script()
-  concat(
-    concat("set -e\n", concat("TMPDIR=$(mktemp -d)\n", concat("PROBE_BIN=\"$TMPDIR/probe_bin\"\n", "printf 'x' > \"$PROBE_BIN\" && chmod +x \"$PROBE_BIN\"\n"))),
-    verify
-  )
-}
-
 fn witness_zero_byte_artifact_rejected_by_execution() -> Bool {
-  let result = shell.Exec.Run(script: corruption_probe_zero_byte_harness())
-  result.success
+  corruption_probe_with_content(content: "", expect_verify_success: false)
 }
 
 fn witness_nonempty_executable_accepted_by_execution() -> Bool {
-  let result = shell.Exec.Run(script: corruption_probe_nonempty_harness())
-  result.success
+  corruption_probe_with_content(content: "x", expect_verify_success: true)
 }
