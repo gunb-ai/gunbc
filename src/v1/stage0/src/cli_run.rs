@@ -10210,8 +10210,8 @@ mod floor_witness_a_prove {
 // (→ `edited_test_fns`); only non-data, non-test-fn declaration edits land in
 // `touched_entry_files`. A raw touched-path superset can diverge from this filtered set, so
 // proving equivalence against raw paths only proves a stronger/looser predicate, not the live
-// decision. This receipt runs `floor_diff_edits_from_diff_text(&index, &git_show_diff_text)`
-// on each commit's full unified diff (`git show <sha>`, not `--name-only`) and feeds
+// decision. This receipt runs `floor_diff_edits_from_diff_text(&index, &pinned_diff_text)`
+// on each commit's full unified diff (pinned in `testdata/`, not `--name-only`) and feeds
 // `.touched_entry_files` to both `dag_entry_affected` and `rust_entry_affected`.
 //
 // `floor_diff_edits_from_line_ranges` fail-closes (`Err`) when a touched `.dag` file's diff
@@ -10261,25 +10261,30 @@ mod module_grain_affected_equivalence_tests {
         ws.join(rel).to_string_lossy().into_owned()
     }
 
-    // Full unified diff for `sha` (NOT `--name-only`) — the same shape the live floor parses via
-    // `parse_unified_diff_line_ranges`/`parse_unified_diff_changed_new_lines`.
+    // Pinned unified diff fixtures for the two all-`M` commits below (NOT `--name-only`) — the
+    // same shape the live floor parses via `parse_unified_diff_line_ranges`/
+    // `parse_unified_diff_changed_new_lines`. Checked into `testdata/` so shallow clones and
+    // remote test runners (BuildBuddy depth-1 fetch) do not need the historical git objects —
+    // `git show <sha>` was the latent red on origin/main outside full-history worktrees.
     fn diff_text_for_commit(sha: &str) -> String {
-        let output = std::process::Command::new("git")
-            .args(["show", sha])
-            .current_dir(workspace_root())
-            .output()
-            .unwrap_or_else(|e| panic!("git show {sha}: {e}"));
-        assert!(
-            output.status.success(),
-            "git show {sha} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let text = String::from_utf8_lossy(&output.stdout).into_owned();
+        let text = match sha {
+            "6edafbb5e29370c0ac791038a1c64e1a4ddbd40d" => {
+                include_str!("../testdata/module_grain_affected_dag_only_6edafbb.diff")
+            }
+            "bb6e65649c9625d021467b0d7fe33ca7dd086e4f" => {
+                include_str!("../testdata/module_grain_affected_v2_only_bb6e656.diff")
+            }
+            other => panic!(
+                "module_grain_affected_equivalence: no pinned diff fixture for commit {other} — \
+                 add testdata/module_grain_affected_<label>_<shortsha>.diff and extend \
+                 diff_text_for_commit"
+            ),
+        };
         assert!(
             !text.trim().is_empty(),
-            "commit {sha} produced empty diff text"
+            "pinned diff fixture for commit {sha} is empty"
         );
-        text
+        text.to_string()
     }
 
     fn str_list_value(items: &[String]) -> Value {
@@ -13213,6 +13218,21 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/node_minimal.dag::node_superset_field_eq",
     "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
     "src/v2/std/qualified_name.dag::qn_fold_step",
+    // 2026-07-14 backfill (fourth instance of the masking class, siblings to the #6533/#6530
+    // receipts above): the nightly affected-set falsifier's whole-corpus cold sweep surfaced 3
+    // unrostered sites the per-PR affected-set selection did not run the nfr witness for at
+    // landing time. `orch_emit_let_step` landed with #6573 (Shell→dag P2b), the two live-read
+    // eq fns with #6582 (live-read classification P1) — the same PR that landed the orphan doc
+    // this sweep also caught. Declared here so the ratchet re-arms; each burns down with its
+    // owning file's fold migration.
+    //   - orch_emit_let_step: special-case `ExprCmdSubst` + general `Expr` dispatch via
+    //     orch_emit_expr_spelling; dissolves when emit is the backward grammar-row fold (§4).
+    //   - live_read_carrier_eq / path_pattern_eq: nested structural `==` (`_ => false` on the
+    //     off-variant arm), the same shape as the std `*_eq` rows above; dissolves with derived
+    //     equality from inhabitance (the cross-representation `==` grounding, DESIGN §3/§4).
+    "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
+    "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
+    "src/v2/lens/live_read_classification.dag::path_pattern_eq",
 ];
 
 fn nfr_strip_comments(content: &str) -> String {
