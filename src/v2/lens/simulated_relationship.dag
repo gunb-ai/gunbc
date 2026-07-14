@@ -1,14 +1,5 @@
 module v2.lens.simulated_relationship
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.std.node { Node }
-import std.algebra { FreeMonoid }
-import v2.std.algebra { length }
-import v2.std.anti_unification {
-  ChainGeneralization, anti_unify_chain, template_has_hole, fillings_all_leaves
-}
-import v2.std.logic { Bool }
 
 fn chain_is_simulated(steps: FreeMonoid<Node>) -> Bool {
   if length(xs: steps) < 3 {

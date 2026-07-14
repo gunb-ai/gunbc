@@ -1,14 +1,5 @@
 module v2.lens.enforcement.vocab
 
-import v2.std.logic { Bool }
-import v2.std.integer { Int }
-import v2.std.text { String }
-import v2.std.collection { List }
-import v2.std.algebra { for_all, contains }
-import v2.std.qualified_name { QualifiedName }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_schedule { ScheduleWitnessEntry }
 
 type SubjectRoster {
   entries: List<QualifiedName>

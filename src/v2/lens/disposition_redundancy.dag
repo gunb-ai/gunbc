@@ -1,12 +1,6 @@
 module v2.lens.disposition_redundancy
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
-import std.disposition { Disposition, Scaffold, Terminal, SubstrateMandatoryTag }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
-import v2.std.collection { List }
-import v2.std.algebra { count_where, any }
-import v2.std.logic { Bool }
 
 fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
   match a {

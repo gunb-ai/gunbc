@@ -1,28 +1,5 @@
 module v2.lens.discrimination
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SubstrateMandatoryTag }
 
-import v2.std.witness { Holds, Violates, Witness }
-import v2.std.verification {
-  CompilesClaim,
-  DiagnosticClaim,
-  EqualsClaim,
-  RoundTripClaim,
-  StructuralEqualsClaim,
-  TestClaim,
-  test_claim_input
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile
-}
-import v2.std.node { Node, Symbol }
-import v2.std.collection { List }
-import v2.std.algebra { any, filter, is_empty }
-import v2.std.logic { Bool }
 
 type WitnessPolarity
   = AssertsGreen
