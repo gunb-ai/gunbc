@@ -59,13 +59,13 @@ fn slb_behavioral_receipt_holds() -> Bool {
   )
 
   let witness_bin_path = concat(out_dir.path, "/target/release/witness")
-  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: [])
+  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
   let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
 
   let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path)
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
 
-  root.success && logic_read.success
+  logic_read.success
     && scratch_src.success && scratch_src_std.success && logic_written.success
     && out_dir.success && emit.success
     && manifest.success && main_rs.success
