@@ -106,7 +106,3 @@ data claim_arrow_body_cost_domain_excluded: TestClaim = EqualsClaim {
   rhs: arrow_body_cost_domain_excluded_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
-test fn arrow_body_cost_domain_excluded_claim_holds() -> Bool {
-  arrow_body_cost_domain_excluded_holds()
-}

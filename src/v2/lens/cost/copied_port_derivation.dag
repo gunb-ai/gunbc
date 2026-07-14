@@ -81,13 +81,16 @@ fn linear_param_indices(cost: SymbolicCost, params: List<Node>, idx: Int, acc: L
   match params {
     Empty => acc
     Cons { head: param, tail: rest } =>
-      let acc1 =
-        if cost_linear_in_node(cost: cost, n: param) {
+      linear_param_indices(
+        cost: cost,
+        params: rest,
+        idx: idx + 1,
+        acc: if cost_linear_in_node(cost: cost, n: param) {
           int_list_prepend(item: idx, xs: acc)
         } else {
           acc
         }
-      linear_param_indices(cost: cost, params: rest, idx: idx + 1, acc: acc1)
+      )
   }
 }
 
