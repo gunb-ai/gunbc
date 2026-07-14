@@ -604,8 +604,8 @@ fn body_producer_pick_if_body_from_atoms(
                   f: fn(condition) {
                     body_producer_branch_if_body(
                       condition: condition,
-                      then_arm: type_atom_node(identity: body_producer_pick_lit_one),
-                      else_arm: type_atom_node(identity: body_producer_pick_lit_two)
+                      then_arm: then_arm,
+                      else_arm: else_arm
                     )
                   }
                 )
@@ -776,7 +776,7 @@ fn body_producer_bind_let_body(
 
 fn body_producer_bind_value_lit_from_atom(val: Node, witness: Node) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: val) {
-    outcome_accepted(value: type_atom_node(identity: body_producer_pick_lit_one))
+    outcome_accepted(value: val)
   } else {
     match val.kind {
       TypeNode { connective: Atom { identity: id } } =>
@@ -805,7 +805,7 @@ fn body_producer_bind_value_lit_from_atom(val: Node, witness: Node) -> Outcome<N
 
 fn body_producer_value_lit_from_atom(val: Node, witness: Node) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: val) {
-    outcome_accepted(value: type_atom_node(identity: body_producer_pick_lit_one))
+    outcome_accepted(value: val)
   } else {
     match val.kind {
       TypeNode { connective: Atom { identity: id } } =>
