@@ -82,7 +82,7 @@ data qmpr_provider_index: SymbolIndex = symbol_index_fill_module_root(
 )
 
 data qmpr_consumer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
-  dotted: "v2.test.resolve.qualified_module_projection_stripped_witness"
+  dotted: "v2.test.resolve.qualified_module_projection_stripped_fixture"
 )
 
 data qmpr_qualified_ref: Node = qmpr_qn_spine(
