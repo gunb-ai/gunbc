@@ -173,6 +173,27 @@ fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_arg)
 }
 
+fn body_lower_is_identity_projection_edge(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: n } => n == ^grammar_production_identity_node_projection
+    Positional => false
+  }
+}
+
+fn body_lower_operand_fold_children_optional(node: Node) -> Optional<Node> {
+  fold(node.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if body_lower_is_identity_projection_edge(edge: e) {
+          Absent
+        } else {
+          body_lower_operand_ref_optional(node: e.target)
+        }
+    }
+  })
+}
+
 fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_fn_body)
     || (emitted == ^dag_surface_pattern)
@@ -233,6 +254,34 @@ fn body_lower_find_captured(root: Node, emitted: Symbol) -> ParseSubtreeFind {
   }
 }
 
+fn body_lower_find_production_shell_under_children(
+  root: Node,
+  emitted: Symbol
+) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => body_lower_find_production_shell_optional(root: edge.target, emitted: emitted)
+    }
+  })
+}
+
+fn body_lower_find_production_shell_optional(root: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      match id == emitted {
+        true => Present { value: root }
+        false =>
+          match body_lower_find_captured_prunable(id: id) {
+            true => Absent
+            false => body_lower_find_production_shell_under_children(root: root, emitted: emitted)
+          }
+      }
+    Absent =>
+      body_lower_find_production_shell_under_children(root: root, emitted: emitted)
+  }
+}
+
 fn body_lower_int_literal_with_magnitude_optional(node: Node) -> Optional<Node> {
   let unwrapped = body_lower_deep_unwrap_for_int_literal(node: node)
   if dag_node_is_int_literal_atom(node: unwrapped) {
@@ -265,23 +314,18 @@ fn body_lower_operand_from_shell_optional(shell: Node) -> Optional<Node> {
 }
 
 fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
-  if body_lower_is_core_substrate(node: node) {
-    optional_present(value: node)
-  } else {
+  match body_lower_is_core_substrate(node: node) {
+    true => Present { value: node }
+    false =>
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: emitted } =>
-      if body_lower_is_pass_through_emitted(emitted: emitted) {
-        match parse_production_captured_child_optional(node: node) {
-          Present { value: captured } => body_lower_operand_ref_optional(node: captured)
-          Absent => Absent
-        }
-      } else if emitted == ^dag_surface_primary_expr {
-        match parse_production_captured_child_optional(node: node) {
-          Present { value: captured } => body_lower_operand_ref_optional(node: captured)
-          Absent => Absent
-        }
-      } else {
-        Absent
+    Present { value: _emitted } =>
+      match parse_production_captured_child_optional(node: node) {
+        Present { value: captured } =>
+          match body_lower_operand_ref_optional(node: captured) {
+            Present { value: op } => Present { value: op }
+            Absent => body_lower_operand_fold_children_optional(node: node)
+          }
+        Absent => body_lower_operand_fold_children_optional(node: node)
       }
     Absent =>
       match dag_binding_branded_atom_identity(node: node) {
@@ -306,13 +350,7 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
                   match parse_production_captured_child_optional(node: node) {
                     Present { value: captured } =>
                       body_lower_operand_ref_optional(node: captured)
-                    Absent =>
-                      fold(node.children, init: Absent, f: fn(acc, e) {
-                        match acc {
-                          Present { value: _ } => acc
-                          Absent => body_lower_operand_ref_optional(node: e.target)
-                        }
-                      })
+                    Absent => body_lower_operand_fold_children_optional(node: node)
                   }
               }
           }
@@ -1331,14 +1369,34 @@ fn body_lower_literal_int_atom_optional(node: Node) -> Optional<Node> {
       fold(node.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
-          Absent => body_lower_literal_int_atom_optional(node: e.target)
+          Absent =>
+            if body_lower_is_identity_projection_edge(edge: e) {
+              Absent
+            } else {
+              body_lower_literal_int_atom_optional(node: e.target)
+            }
         }
       })
   }
 }
 
+fn body_lower_operand_ref_acceptable_optional(node: Node) -> Optional<Node> {
+  match body_lower_operand_ref_optional(node: node) {
+    Present { value: operand } =>
+      match body_lower_int_literal_with_magnitude_optional(node: operand) {
+        Present { value: lit } => Present { value: lit }
+        Absent =>
+          match dag_node_is_int_literal_atom(node: operand) {
+            true => Absent
+            false => Present { value: operand }
+          }
+      }
+    Absent => Absent
+  }
+}
+
 fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node> {
-  match body_lower_operand_ref_optional(node: captured) {
+  match body_lower_operand_ref_acceptable_optional(node: captured) {
     Present { value: operand } => outcome_accepted(value: operand)
     Absent =>
       match body_lower_literal_bool_atom_optional(node: captured) {
@@ -2241,21 +2299,27 @@ fn body_lower_if_arm_operand_optional(arm_capture: Node) -> Optional<Node> {
           Absent => Absent
         }
       } else if emitted == ^dag_surface_fn_body {
-        match body_lower_find_captured(root: arm_capture, emitted: ^dag_surface_stmt) {
-          ParseSubtreeFound { captured: stmt } =>
-            body_lower_if_arm_operand_optional(arm_capture: stmt)
-          ParseSubtreeAbsent =>
-            match body_lower_find_captured(root: arm_capture, emitted: ^dag_surface_expr) {
-              ParseSubtreeFound { captured: expr } =>
-                body_lower_if_arm_operand_optional(arm_capture: expr)
-              ParseSubtreeAbsent =>
-                match body_lower_find_captured(
+        match body_lower_find_production_shell_optional(
+          root: arm_capture,
+          emitted: ^dag_surface_stmt
+        ) {
+          Present { value: shell } =>
+            body_lower_operand_from_shell_optional(shell: shell)
+          Absent =>
+            match body_lower_find_production_shell_optional(
+              root: arm_capture,
+              emitted: ^dag_surface_expr
+            ) {
+              Present { value: shell } =>
+                body_lower_operand_from_shell_optional(shell: shell)
+              Absent =>
+                match body_lower_find_production_shell_optional(
                   root: arm_capture,
                   emitted: ^dag_surface_primary_expr
                 ) {
-                  ParseSubtreeFound { captured: primary } =>
-                    body_lower_if_arm_operand_optional(arm_capture: primary)
-                  ParseSubtreeAbsent =>
+                  Present { value: shell } =>
+                    body_lower_operand_from_shell_optional(shell: shell)
+                  Absent =>
                     body_lower_match_arm_body_optional(body_capture: arm_capture)
                 }
             }
@@ -2538,7 +2602,12 @@ fn body_lower_try_if_from_node(node: Node) -> Outcome<Optional<Node>> {
       }
     Absent =>
       match body_lower_if_condition_optional(captured: node) {
-        Present { value: _ } => body_lower_try_if_from_captured(captured: node)
+        Present { value: _ } =>
+          match body_lower_try_if_from_captured(captured: node) {
+            Accepted { value: lowered_opt, diagnostics: d } =>
+              Accepted { value: lowered_opt, diagnostics: d }
+            Rejected { diagnostics: _ } => outcome_accepted(value: optional_absent())
+          }
         Absent => outcome_accepted(value: optional_absent())
       }
   }
