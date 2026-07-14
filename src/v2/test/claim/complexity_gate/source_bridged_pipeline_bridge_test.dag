@@ -1,15 +1,5 @@
 module v2.test.complexity_gate.source_bridged_pipeline_bridge_test
 
-import v2.test.complexity_gate.source_bridged_pipeline_bridge { source_bridged_resolved_root }
-import v2.extdeps.languages.dag {
-  dag_grammar_production_fn_loop,
-  dag_loop_source_text
-}
-import v2.std.collection { Set }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { GrammarProduction, GrammarRoot }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

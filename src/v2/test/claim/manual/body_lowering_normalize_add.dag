@@ -1,50 +1,5 @@
 module v2.test.manual.body_lowering_normalize_add
 
-import v2.compiler.body_lowering_fold {
-  body_lower_body_from_fn_captured,
-  body_lower_domain_from_param_list,
-  body_lower_fn_decl_to_arrow,
-  body_lower_return_type_from_fn_captured,
-  body_lower_try_infix_transform,
-  body_lower_unwrap_captured
-}
-import v2.compiler.normalize { normalize }
-import v2.compiler.resolve { resolve }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  ParseSubtreeAbsent,
-  ParseSubtreeFound,
-  dag_add_arrow_with_body_fixture,
-  dag_language_model,
-  parse_production_emitted_identity_optional,
-  parse_subtree_find_production_captured
-}
-import std.algebra { Cons, Empty }
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.node {
-  Arrow,
-  Atom,
-  ComputationNode,
-  Node,
-  Transform,
-  TypeNode,
-  node_synthetic,
-  well_formed
-}
-import v2.std.node_query { find_arrow_body_child }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data body_lowering_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 

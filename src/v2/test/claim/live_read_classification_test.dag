@@ -1,27 +1,5 @@
 module v2.test.claim.live_read_classification_test
 
-import v2.lens.live_read_classification {
-  live_read_classification,
-  live_read_classification_from_facts,
-  live_read_classification_from_facts_v0,
-  classification_is_local,
-  classification_has_runtime_read,
-  classification_has_corpus_scan_carrier,
-  classification_has_filesystem_read_carrier,
-  runtime_read_carrier_module_names,
-  runtime_read_touched_by_path_g1
-}
-import v2.lens.witness_cost_locality { ModuleImportFact }
-import v2.std.live_read {
-  LiveReadClassification,
-  LiveReadCarrierHome,
-  FilesystemReadCarrier,
-  ModuleDeclarationFactsCarrier,
-  DeclFactsReflectionCarrier
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data fixture_carriers: List<LiveReadCarrierHome> = [
   LiveReadCarrierHome { module: "fix.corpus_reader", kind: DeclFactsReflectionCarrier },

@@ -1,51 +1,5 @@
 module v2.test.manual.find_witness_identity
 
-import v2.std.coercion {
-  CoercionCandidateSet,
-  Exact,
-  Identity,
-  CoercionQuality,
-  coercion_fold
-}
-import v2.std.constraints {
-  CanonicalGrounding,
-  CanonicalGroundingWitness
-}
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected
-}
-import v2.std.find_witness {
-  CandidateSet,
-  FindWitnessResult,
-  PreservationPredicate,
-  TargetDeclaredPriority,
-  TargetSelection,
-  UniqueOnly,
-  UserSelected,
-  find_witness,
-  verify_witness
-}
-import v2.std.node {
-  Atom,
-  Node,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.std.witness { StructuralPropertyWitness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn identity_source_node() -> Node {

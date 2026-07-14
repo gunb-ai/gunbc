@@ -1,51 +1,5 @@
 module v2.test.execution.emit_ingest_python_same_language_round_trip
 
-import v2.compiler.ingest {
-  cross_language_compile,
-  grammar_relation_row_forward_selection,
-  parse_tree_to_emitted_node,
-  parse_tree_to_target_model_bridge
-}
-import v2.compiler.translate { grammar_relation_row_for_emitted }
-import v2.extdeps.languages.dag {
-  dag_fixture_emitted_add_fn,
-  dag_target_model
-}
-import v2.extdeps.languages.python {
-  python_grammar_relation_row_node,
-  python_emitted_add_fn_node,
-  python_grammar_relation_row,
-  python_source_text,
-  python_target_model,
-  python_translation_rules_node
-}
-import v2.test.manual.python_grammar_claim {
-  python_grammar_parse_fixture
-}
-import std.algebra { Cons, Empty }
-import v2.std.algebra { list_append }
-import v2.std.collection { List }
-import v2.std.compilers.target_model {
-  concrete_syntax_token_class,
-  concrete_syntax_token_list_from_node,
-}
-import v2.std.diagnostic {
-  Accepted,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.grammar { ParseTree }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.node_query { find_named_child }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

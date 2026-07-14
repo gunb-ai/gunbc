@@ -1,6 +1,5 @@
 module synthetic.fn_family.planted_family
 
-import v2.std.nat { Nat }
 
 fn planted_alpha(x: Nat) -> Nat { x }
 

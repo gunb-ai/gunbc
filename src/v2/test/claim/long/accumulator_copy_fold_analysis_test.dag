@@ -1,26 +1,5 @@
 module v2.test.long.accumulator_copy_fold_analysis
 
-import std.algebra { Cons, Empty }
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.lens.complexity_accumulator_copy { Finding }
-import v2.lens.complexity_accumulator_copy.analyze {
-  accumulator_copy_findings,
-  accumulator_copy_report,
-  findings_have_refusal,
-  findings_have_refusal_cause,
-  findings_have_suspect
-}
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { list_reverse }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { node_atom_identity_optional }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

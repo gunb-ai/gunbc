@@ -1,12 +1,5 @@
 module v2.test.manual.machine_code_model_core_anchor
 
-import v2.extdeps.languages.machine_code {
-  mc_facts_int32,
-  mc_integer_facts_node,
-  machine_code_model_core
-}
-import v2.std.model_core { ModelCore }
-import v2.std.node { Node }
 
 data mc_anchor_core: ModelCore = machine_code_model_core()
 data mc_anchor_int32_facts: Node = mc_integer_facts_node(facts: mc_facts_int32)

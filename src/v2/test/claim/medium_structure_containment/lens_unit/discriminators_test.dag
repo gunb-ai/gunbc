@@ -1,17 +1,5 @@
 module v2.test.medium_structure_containment.lens_unit.discriminators
 
-import v2.lens.medium_structure_containment {
-  MediumLeakFace,
-  InlineSyntaxLiteral,
-  EmittedMediumStringOp,
-  MediumStructureLeakFact,
-  medium_structure_leak_count,
-  medium_structure_leak_count_canonical
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,52 +1,5 @@
 module v2.test.manual.connective_anchors
 
-import v2.compiler.eval { eval_diagnostic }
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected,
-  diagnostics_singleton
-}
-import v2.std.verification {
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  ManualTcConjEmpty,
-  ManualTcDisjEmpty,
-  ManualTcArrowTwoConj,
-  ManualTcCardinalityEmpty,
-  ManualTcInstantiationEmpty,
-  ManualTcArrowEmpty,
-  ManualTcTransformEmpty,
-  ManualTcBranchEmpty,
-  ManualTcLoopEmpty,
-  ManualTcBindZeroChildren,
-  ManualTcConjEqualsRefl,
-  CompilesClaim,
-  DiagnosticClaim,
-  EqualsClaim,
-  ManualAnchorKey,
-  manual_claim_anchor
-}
-import v2.std.node {
-  Arrow,
-  Bind,
-  Branch,
-  Cardinality,
-  ComputationNode,
-  Conj,
-  Disj,
-  Edge,
-  EdgeLabel,
-  Instantiation,
-  Loop,
-  Node,
-  Transform,
-  TypeNode,
-  SyntheticOccurrence
-}
 
 data stub_empty_conj: Node = Node {
   kind: TypeNode { connective: Conj },

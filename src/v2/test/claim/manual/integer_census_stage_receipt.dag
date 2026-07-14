@@ -1,22 +1,5 @@
 module v2.test.manual.integer_census_stage_receipt
 
-import extdeps.filesystem.filesystem_io
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.enforcement.cost_coverage {
-  IngestParsedClean,
-  IngestRejected,
-  cost_coverage_file_receipt,
-  cost_coverage_tree_census
-}
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 data ics_path: String = "src/v2/std/integer.dag"
 data ics_anchor: Symbol = ^ics_anchor

@@ -1,44 +1,5 @@
 module v2.test.execution.typescript_import_emit_by_execution
 
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
-import v2.std.collection {
-  Map,
-  empty_map,
-  map_insert
-}
-import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list_node, list_append }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.node_query { find_named_child, node_positional_child_targets }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
-import v2.std.compilers.target_model {
-  TargetImport,
-  TargetModel,
-  target_import_to_concrete_tokens,
-  target_model_emit_transforms_empty,
-  target_node_atom_identity
-}
-import extdeps.communication.medium { Medium }
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
-import v2.extdeps.languages.typescript {
-  ts_module_projection,
-  ts_target_model_node,
-  ts_lex
-}
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
