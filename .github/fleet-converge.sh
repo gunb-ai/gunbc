@@ -15,7 +15,7 @@ ctrl_pin="$(bash "$HOME/ctrl/scripts/session-dashboard/container/read-gunbc-pin.
 (cd "$checkout" && git checkout --detach "$ctrl_pin") >/dev/null 2>&1 || true
 mkdir -p "$HOME/.local/share/gunbc/pinned"
 (cd "$checkout" && cargo build -p v1-compiler --release --bin gunbc) >/dev/null 2>&1 || true
-cp "$HOME/ctrl/third_party/gunbc/target/release/gunbc" "$HOME/.local/share/gunbc/pinned/gunbc" 2>/dev/null || true
+cp "$HOME/ctrl/third_party/gunbc/target/release/gunbc" "$HOME/.local/share/gunbc/pinned/gunbc" >/dev/null 2>&1 || true
 if [ -x "$HOME/.local/share/gunbc/pinned/gunbc" ]; then export GUNBC_ROOT=$HOME/.local/share/gunbc/pinned; fi
 gunbc converge --host "srv3" || host_failed=1
 exit "$host_failed"
