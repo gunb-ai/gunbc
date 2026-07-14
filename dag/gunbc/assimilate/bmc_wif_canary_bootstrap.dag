@@ -21,6 +21,7 @@ import gunbc.assimilate.bmc_wif_delegation_chain {
   wif_canary_secret_name,
   bmc_wif_bootstrap_bindings
 }
+
 data bmc_wif_bootstrap_service_deps: List<GcpService> = [
   GcpServiceUsage,
   GcpIam,

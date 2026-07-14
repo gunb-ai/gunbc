@@ -46,6 +46,7 @@ import extdeps.languages.simd.kernel {
   contiguous_loop_elementwise_float_kernel,
   relu_mul_add_wire_op_codes,
 }
+
 type DifferentialVerdict
   = BitExact
   | Mismatch

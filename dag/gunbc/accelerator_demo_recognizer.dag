@@ -21,6 +21,7 @@ import gunbc.accelerator_demo_plan {
   recognize_with_contract,
 }
 import std.numerical_contract { NumericalContract, integer_exact_contract }
+
 fn recognize_accelerator_program(program: AcceleratorDemoProgram) -> AcceleratorRecognitionOutcome {
   recognize_accelerator_program_with_contract(
     program: program,

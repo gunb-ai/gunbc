@@ -18,7 +18,6 @@ import std.realization_schedule {
   WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams
 }
 
-
 data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness_test.dag"
 
 type LocalTidyCheck

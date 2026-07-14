@@ -47,6 +47,7 @@ import extdeps.languages.simd.kernel {
   simd_kernel_target_medium_name,
   witness_relu_mul_add_kernel_surface_shape,
 }
+
 data accelerator_demo_plan_doc_provenance: String = "bind: docs/plans/accelerator-demo-roundtrip.md"
 
 type ElementwiseFoldClass

@@ -9,6 +9,7 @@ import gunbc.accelerator_demo_program {
   ElementwiseArrayOp,
   pure_elementwise_ops_shape_recognizable,
 }
+
 fn float_relu(x: Float) -> Float {
   if x > 0.0 {
     x

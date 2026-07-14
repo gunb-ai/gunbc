@@ -17,7 +17,6 @@ import gunbc.merge_admission {
   merge_admission_would_block,
 }
 
-
 type InfraSignature
   = ResourceTemporarilyUnavailable
   | ProcessSpawnFailure

@@ -44,6 +44,7 @@ import gunbc.accelerator_demo_recognizer { recognize_accelerator_program_with_co
 import std.approximate_field { ToNearestEven }
 import std.realization_schedule { RealizationPlan }
 import std.measure { Nano }
+
 type AcceleratorDemoPlanView {
   target: String
   fused_op_count: Int
