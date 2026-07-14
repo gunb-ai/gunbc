@@ -1736,6 +1736,7 @@ mod compiler_tests {
                         module_index.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        std::rc::Rc::new(HashMap::new()),
                     );
                     let env_elapsed = t_env.elapsed();
                     let rss_after_env = get_rss_bytes();
@@ -1773,6 +1774,7 @@ mod compiler_tests {
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        std::rc::Rc::new(HashMap::new()),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();
