@@ -235,7 +235,11 @@ fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExp
     FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
       match binding {
         Present { value: b } =>
-          grammar_expr_terminal_bound(token_class: terminal.identity, binding: b)
+          if formal_binding_is_lexeme_stamp_slot(binding: b) {
+            grammar_expr_terminal_lexeme(token_class: terminal.identity)
+          } else {
+            grammar_expr_terminal_bound(token_class: terminal.identity, binding: b)
+          }
         Absent =>
           grammar_expr_terminal(token_class: terminal.identity)
       }
@@ -367,12 +371,27 @@ fn grammar_formal_terminal_bound(identity: Symbol, binding: Symbol) -> FormalGra
 
 data grammar_free_name_slot_binding: Symbol = ^grammar_free_name_slot
 
+data grammar_lexeme_stamp_slot_binding: Symbol = ^grammar_lexeme_stamp_slot
+
 fn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {
   binding == ^grammar_free_name_slot
 }
 
+fn formal_binding_is_lexeme_stamp_slot(binding: Symbol) -> Bool {
+  binding == ^grammar_lexeme_stamp_slot
+}
+
+fn formal_binding_is_emitted_atom_from_slot(binding: Symbol) -> Bool {
+  formal_binding_is_free_name_slot(binding: binding)
+    || formal_binding_is_lexeme_stamp_slot(binding: binding)
+}
+
 fn grammar_formal_terminal_free(identity: Symbol) -> FormalGrammarSymbol {
   grammar_formal_terminal_bound(identity: identity, binding: ^grammar_free_name_slot)
+}
+
+fn grammar_formal_terminal_lexeme(identity: Symbol) -> FormalGrammarSymbol {
+  grammar_formal_terminal_bound(identity: identity, binding: ^grammar_lexeme_stamp_slot)
 }
 
 fn grammar_formal_nonterminal_occurrence(identity: Symbol) -> FormalGrammarSymbol {
@@ -1110,7 +1129,7 @@ fn formal_production_rhs_matches_emitted_conj_step(
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Present { value: binding_symbol } =>
-              if formal_binding_is_free_name_slot(binding: binding_symbol) {
+              if formal_binding_is_emitted_atom_from_slot(binding: binding_symbol) {
                 match list_nth(
                   xs: children,
                   wanted: index,
@@ -1232,7 +1251,7 @@ fn formal_production_matches_emitted_child(
         Absent =>
           match formal_production_rhs_singleton_binding(production: production) {
             Present { value: binding } =>
-              if formal_binding_is_free_name_slot(binding: binding) {
+              if formal_binding_is_emitted_atom_from_slot(binding: binding) {
                 true
               } else {
                 atom_id == binding
@@ -1320,7 +1339,7 @@ fn derive_grammar_relation_token_edges_recursive_step(
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Present { value: binding_symbol } =>
-              if formal_binding_is_free_name_slot(binding: binding_symbol) {
+              if formal_binding_is_emitted_atom_from_slot(binding: binding_symbol) {
                 match list_nth(
                   xs: conj_children,
                   wanted: conj_index,
@@ -1900,7 +1919,7 @@ fn rebuild_emitted_rhs_walk_step(
                     BoundToken { token_class: token_class, binding: binding } =>
                       if token_class == terminal.identity &&
                         (
-                          formal_binding_is_free_name_slot(binding: binding_symbol) ||
+                          formal_binding_is_emitted_atom_from_slot(binding: binding_symbol) ||
                             binding_symbol == binding
                         ) {
                         RebuildRhsWalkOk {

@@ -4,9 +4,10 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
+use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -2672,12 +2673,22 @@ pub fn resolve_entry_graph_shared(
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
-    /// Increment C cache shell (C1-prep). `std::collections::HashMap` map shells avoid
-    /// `im_rc::HashMap` (`!Sync` in statics); payloads remain `Rc` and the struct is
-    /// `!Send` — `Arc<Mutex<_>>` does not cross threads until store-path `Rc`→`Arc`
-    /// (cross-worker-typecheck-share-design.md §4.1). Today each index owns one `Arc` on
-    /// its thread; worker spawn still builds a private index per shard.
-    shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
+    /// Per-index typed results — always `Rc` (main memory path).
+    typed_module_cache:
+        RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    /// Per-index collision registry when `cross_worker_store` is absent.
+    module_source_identity: RefCell<std::collections::HashMap<String, String>>,
+    /// Cross-worker serde-byte transport when increment C is explicitly armed (tests / future Arc).
+    cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
+    /// Per-index intern table — paired with `parse_cache` on this worker (never shared).
+    intern_table: RefCell<Rc<InternTable>>,
+    parse_cache: RefCell<
+        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
+    >,
+    normalize_diag_cache:
+        RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+    ownership_diag_cache:
+        RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -2697,41 +2708,51 @@ pub struct MultiEntryIndex {
     >,
 }
 
-/// S2a increment C typed/parse cache payloads (C1-prep). Target: one instance per
-/// `(process, source_roots)` cloned across worker index shells. Blocked on `Rc`→`Arc` for
-/// store-carried infer carriers — `Rc` payloads make this `!Send` today.
-struct SharedTypecheckCaches {
-    intern_table: Rc<InternTable>,
-    parse_cache: std::collections::HashMap<
-        String,
-        (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>),
-    >,
-    typed_module_cache: std::collections::HashMap<
-        String,
-        Rc<v1_compiler_infer::TypecheckModuleResult>,
-    >,
-    module_source_identity: std::collections::HashMap<String, String>,
-    normalize_diag_cache:
-        std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
-    ownership_diag_cache:
-        std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
+    shared_typecheck_store::new_shared_typecheck_caches()
 }
 
-impl SharedTypecheckCaches {
-    fn new() -> Self {
-        Self {
-            intern_table: seed_kernel_intern_names(empty_intern_table()),
-            parse_cache: std::collections::HashMap::new(),
-            typed_module_cache: std::collections::HashMap::new(),
-            module_source_identity: std::collections::HashMap::new(),
-            normalize_diag_cache: std::collections::HashMap::new(),
-            ownership_diag_cache: std::collections::HashMap::new(),
-        }
+pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
+    new_multi_entry_index_shell(
+        build_module_index(source_roots),
+        source_roots,
+        None,
+    )
+}
+
+pub fn build_multi_entry_index_with_shared_caches(
+    source_roots: &[String],
+    cross_worker_store: Arc<RwLock<SharedTypecheckCaches>>,
+) -> MultiEntryIndex {
+    // 🟡 dissolve-on: adaptive floor wiring must pair this with a live governor
+    // byte-codec width cap when serde transport is armed (re-land together post-Arc).
+    new_multi_entry_index_shell(
+        build_module_index(source_roots),
+        source_roots,
+        Some(cross_worker_store),
+    )
+}
+
+fn new_multi_entry_index_shell(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+    cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
+) -> MultiEntryIndex {
+    MultiEntryIndex {
+        source_files,
+        module_graph_facts: build_module_graph_facts_live(source_roots),
+        typed_module_cache: RefCell::new(std::collections::HashMap::new()),
+        module_source_identity: RefCell::new(std::collections::HashMap::new()),
+        cross_worker_store,
+        intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
+        parse_cache: RefCell::new(std::collections::HashMap::new()),
+        normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
+        ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
+        resolved_graph_memo: RefCell::new(HashMap::new()),
     }
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
-// docs/plans/resolver-graph-major-design.md; process-wide after increment C). Counts how
 // many module typechecks were actually COMPUTED (cache misses). When every consumer of
 // the process shares one typed_module_cache, this stays ≤ the distinct module count of
 // the process union.
@@ -2759,6 +2780,129 @@ pub fn reset_typecheck_compute_count() {
 
 fn bump_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+fn shared_caches_read<'a>(
+    lock: &'a Arc<RwLock<SharedTypecheckCaches>>,
+) -> Result<std::sync::RwLockReadGuard<'a, SharedTypecheckCaches>, String> {
+    lock.read()
+        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))
+}
+
+fn shared_caches_write<'a>(
+    lock: &'a Arc<RwLock<SharedTypecheckCaches>>,
+) -> Result<std::sync::RwLockWriteGuard<'a, SharedTypecheckCaches>, String> {
+    lock.write()
+        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))
+}
+
+/// Read the typed cache: per-index `Rc` first, then cross-worker byte snapshots.
+fn index_get_typed(
+    index: &MultiEntryIndex,
+    mod_name: &str,
+) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+    if let Some(hit) = index.typed_module_cache.borrow().get(mod_name).cloned() {
+        return Ok(Some(hit));
+    }
+    let Some(store) = index.cross_worker_store.as_ref() else {
+        return Ok(None);
+    };
+    let decoded = shared_get_typed(store, mod_name)?;
+    if let Some(rc) = decoded.as_ref() {
+        index
+            .typed_module_cache
+            .borrow_mut()
+            .insert(mod_name.to_string(), rc.clone());
+    }
+    Ok(decoded)
+}
+
+fn index_contains_typed(index: &MultiEntryIndex, mod_name: &str) -> Result<bool, String> {
+    if index.typed_module_cache.borrow().contains_key(mod_name) {
+        return Ok(true);
+    }
+    let Some(store) = index.cross_worker_store.as_ref() else {
+        return Ok(false);
+    };
+    let caches = shared_caches_read(store)?;
+    Ok(caches.contains_typed(mod_name))
+}
+
+fn check_index_module_source_identity(
+    index: &MultiEntryIndex,
+    mod_name: &str,
+    decl_file: &str,
+) -> Result<(), String> {
+    if let Some(store) = &index.cross_worker_store {
+        let mut caches = shared_caches_write(store)?;
+        check_module_source_identity_map(&mut caches.module_source_identity, mod_name, decl_file)
+    } else {
+        check_module_source_identity_map(
+            &mut index.module_source_identity.borrow_mut(),
+            mod_name,
+            decl_file,
+        )
+    }
+}
+
+fn index_insert_typed(
+    index: &MultiEntryIndex,
+    mod_name: String,
+    result: Rc<v1_compiler_infer::TypecheckModuleResult>,
+) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
+    index
+        .typed_module_cache
+        .borrow_mut()
+        .insert(mod_name.clone(), result.clone());
+    let Some(store) = index.cross_worker_store.as_ref() else {
+        return Ok(result);
+    };
+    if let Some(bytes) = {
+        let caches = shared_caches_read(store)?;
+        caches.clone_typed_bytes(&mod_name)
+    } {
+        let winner = SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice())?;
+        index
+            .typed_module_cache
+            .borrow_mut()
+            .insert(mod_name, winner.clone());
+        return Ok(winner);
+    }
+    let encoded = SharedTypecheckCaches::encode_typed_snapshot(&result)?;
+    let raced_bytes = {
+        let mut caches = shared_caches_write(store)?;
+        if let Some(existing) = caches.clone_typed_bytes(&mod_name) {
+            Some(existing)
+        } else {
+            caches.insert_typed_preencoded(mod_name.clone(), encoded);
+            None
+        }
+    };
+    if let Some(bytes) = raced_bytes {
+        let winner = SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice())?;
+        index
+            .typed_module_cache
+            .borrow_mut()
+            .insert(mod_name, winner.clone());
+        return Ok(winner);
+    }
+    Ok(result)
+}
+
+/// Read the shared typed cache with a brief lock hold; decode happens after the guard drops.
+fn shared_get_typed(
+    shared_caches: &Arc<RwLock<SharedTypecheckCaches>>,
+    mod_name: &str,
+) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+    let bytes = {
+        let caches = shared_caches_read(shared_caches)?;
+        caches.clone_typed_bytes(mod_name)
+    };
+    match bytes {
+        Some(snapshot) => SharedTypecheckCaches::decode_typed_snapshot(snapshot.as_slice())
+            .map(Some),
+        None => Ok(None),
+    }
 }
 
 /// Accumulate the authored module names of a set of typed modules into `out`.
@@ -2791,25 +2935,6 @@ fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
     t
 }
 
-pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
-    build_multi_entry_index_with_shared_caches(
-        source_roots,
-        Arc::new(Mutex::new(SharedTypecheckCaches::new())),
-    )
-}
-
-fn build_multi_entry_index_with_shared_caches(
-    source_roots: &[String],
-    shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
-) -> MultiEntryIndex {
-    MultiEntryIndex {
-        source_files: build_module_index(source_roots),
-        module_graph_facts: build_module_graph_facts_live(source_roots),
-        shared_caches,
-        resolved_graph_memo: RefCell::new(HashMap::new()),
-    }
-}
-
 /// Primary-precedence pool for affected-set attribution of `src/v1/*.dag` edits:
 /// witness_layer_roots (dag + src/v2) cannot resolve v1.compiler.* modules alone.
 fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
@@ -2818,12 +2943,11 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v2".to_string(),
         "src/v1".to_string(),
     ];
-    MultiEntryIndex {
-        source_files: build_module_index_primary_precedence(&roots),
-        module_graph_facts: build_module_graph_facts_live(&roots),
-        shared_caches: Arc::new(Mutex::new(SharedTypecheckCaches::new())),
-        resolved_graph_memo: RefCell::new(HashMap::new()),
-    }
+    new_multi_entry_index_shell(
+        build_module_index_primary_precedence(&roots),
+        &roots,
+        None,
+    )
 }
 
 pub fn resolve_entry_with_index(
@@ -2996,10 +3120,10 @@ fn resolve_entry_with_parse_cache(
                 eprintln!(
                     "[resolved-graph-cache] decode subject={subject} (installed into process share)"
                 );
-                index.resolved_graph_memo.borrow_mut().insert(
-                    subject,
-                    (hit.graph.clone(), hit.source_indices.clone()),
-                );
+                index
+                    .resolved_graph_memo
+                    .borrow_mut()
+                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -3011,13 +3135,7 @@ fn resolve_entry_with_parse_cache(
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
-        let cached = {
-            let caches = index
-                .shared_caches
-                .lock()
-                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-            caches.parse_cache.get(&source.path).cloned()
-        };
+        let cached = index.parse_cache.borrow().get(&source.path).cloned();
 
         let (parse_result, nl_index) = match cached {
             Some(entry) => entry,
@@ -3025,21 +3143,18 @@ fn resolve_entry_with_parse_cache(
                 let tokens =
                     v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                 let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-                let mut caches = index
-                    .shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-                let current_table = caches.intern_table.clone();
+                let current_table = index.intern_table.borrow().clone();
                 let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
                     let mut m = HashMap::new();
                     m.insert(source.path.clone(), nl_index.clone());
                     m
                 });
                 let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-                caches.intern_table = parsed.intern_table.clone();
-                let entry = (parsed.result.clone(), nl_index);
-                caches
+                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+                let entry = (parsed.result.clone(), nl_index.clone());
+                index
                     .parse_cache
+                    .borrow_mut()
                     .insert(source.path.clone(), entry.clone());
                 entry
             }
@@ -3061,12 +3176,7 @@ fn resolve_entry_with_parse_cache(
     }
 
     let source_indices = Rc::new(si_map);
-    let global_table = index
-        .shared_caches
-        .lock()
-        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
-        .intern_table
-        .clone();
+    let global_table = index.intern_table.borrow().clone();
     resolve_stage_slot_add(|s| s.parse += parse_started.elapsed().as_nanos());
 
     let resolve_started = std::time::Instant::now();
@@ -3093,13 +3203,7 @@ fn resolve_entry_with_parse_cache(
     let mut norm_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
     for m in graph.modules.iter() {
         let key = m.module.span.file.clone();
-        let cached = index
-            .shared_caches
-            .lock()
-            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
-            .normalize_diag_cache
-            .get(&key)
-            .cloned();
+        let cached = index.normalize_diag_cache.borrow().get(&key).cloned();
         let module_diags = match cached {
             Some(hit) => hit,
             None => {
@@ -3108,10 +3212,8 @@ fn resolve_entry_with_parse_cache(
                     source_indices.clone(),
                 );
                 index
-                    .shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
                     .normalize_diag_cache
+                    .borrow_mut()
                     .insert(key, computed.clone());
                 computed
             }
@@ -3134,7 +3236,7 @@ fn resolve_entry_with_parse_cache(
         graph.clone(),
         source_indices.clone(),
         global_table,
-        &index.shared_caches,
+        index,
     )?;
     // Assembly residue = reconcile wall minus the per-module rows its internals
     // accumulated into the slot during this call (typecheck computes + parent envs).
@@ -3172,23 +3274,15 @@ fn resolve_entry_with_parse_cache(
     let mut ownership_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
     for m in typed.modules.iter() {
         let key = m.module.span.file.clone();
-        let cached = index
-            .shared_caches
-            .lock()
-            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
-            .ownership_diag_cache
-            .get(&key)
-            .cloned();
+        let cached = index.ownership_diag_cache.borrow().get(&key).cloned();
         let module_diags = match cached {
             Some(hit) => hit,
             None => {
                 let proofs = v1_compiler_compile::module_ownership_proofs(m.clone());
                 let computed = v1_compiler_compile::ownership_diagnostics(proofs);
                 index
-                    .shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
                     .ownership_diag_cache
+                    .borrow_mut()
                     .insert(key, computed.clone());
                 computed
             }
@@ -3205,10 +3299,10 @@ fn resolve_entry_with_parse_cache(
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
     // Install into the in-process share so same-subject re-resolves skip assembly.
-    index.resolved_graph_memo.borrow_mut().insert(
-        subject.clone(),
-        (typed.clone(), source_indices.clone()),
-    );
+    index
+        .resolved_graph_memo
+        .borrow_mut()
+        .insert(subject.clone(), (typed.clone(), source_indices.clone()));
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
@@ -3439,7 +3533,7 @@ fn reconcile_all_cache_hits(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
+    index: &MultiEntryIndex,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut modules_vec = im_rc::Vector::new();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> =
@@ -3450,25 +3544,14 @@ fn reconcile_all_cache_hits(
 
     for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
         let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        let tc_result = {
-            let mut caches = shared_caches
-                .lock()
-                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-            check_module_source_identity_map(
-                &mut caches.module_source_identity,
-                mod_name,
-                &decl_file,
-            )?;
-            caches
-                .typed_module_cache
-                .get(mod_name)
-                .cloned()
-                .ok_or_else(|| {
-                    format!(
-                        "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
-                    )
-                })?
-        };
+        {
+            check_index_module_source_identity(index, mod_name, &decl_file)?;
+        }
+        let tc_result = index_get_typed(index, mod_name)?.ok_or_else(|| {
+            format!(
+                "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
+            )
+        })?;
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
@@ -3493,12 +3576,17 @@ fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
-    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
+    index: &MultiEntryIndex,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
+    // Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): built once,
+    // order-independent, over the whole graph before any module typechecks — see
+    // global_bare_fallback_invariant in v1_compiler_infer_env.
+    let global_bare =
+        v1_compiler_infer::build_global_bare_census(graph.modules.clone(), source_indices.clone());
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
@@ -3516,19 +3604,21 @@ fn reconcile_with_typed_cache(
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
     let all_cached = {
-        let caches = shared_caches
-            .lock()
-            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-        closure_names
-            .iter()
-            .all(|name| caches.typed_module_cache.contains_key(name))
+        let mut cached = true;
+        for name in &closure_names {
+            if !index_contains_typed(index, name)? {
+                cached = false;
+                break;
+            }
+        }
+        cached
     };
     if all_cached {
         return reconcile_all_cache_hits(
             &closure_modules,
             &closure_names,
             source_indices,
-            shared_caches,
+            index,
         );
     }
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
@@ -3556,21 +3646,9 @@ fn reconcile_with_typed_cache(
             // authority — the guard must fire on genuinely different files, not path representations.
             let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
             {
-                let mut caches = shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-                check_module_source_identity_map(
-                    &mut caches.module_source_identity,
-                    &mod_name,
-                    &decl_file,
-                )?;
+                check_index_module_source_identity(index, &mod_name, &decl_file)?;
             }
-            let cached = {
-                let caches = shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-                caches.typed_module_cache.get(&mod_name).cloned()
-            };
+            let cached = index_get_typed(index, &mod_name)?;
             let was_cache_hit = cached.is_some();
             let parent_diags = if was_cache_hit {
                 Rc::new(im_rc::Vector::new())
@@ -3601,6 +3679,7 @@ fn reconcile_with_typed_cache(
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        global_bare.clone(),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
                     // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
@@ -3612,11 +3691,7 @@ fn reconcile_with_typed_cache(
                     if module_tc_ms >= 2_000 {
                         eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
                     }
-                    shared_caches
-                        .lock()
-                        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
-                        .typed_module_cache
-                        .insert(mod_name.clone(), computed.clone());
+                    let computed = index_insert_typed(index, mod_name.clone(), computed)?;
                     computed
                 }
             };
@@ -6463,6 +6538,22 @@ fn build_floor_lens_hygiene_graph(
             ));
         }
     }
+    // Reference-derived reach edges (namespace terminal step), unioned onto the import edges above so
+    // a stripped file (no import edges) still reaches its lenses. STRICT set only (Qualified +
+    // UniqueBare, dropping AmbiguousBare) so an over-connected graph cannot silently clear a truly-
+    // inert lens (DESIGN §5 — no fail-open hygiene). Parsed-tree, not a substring scan, so comments/
+    // strings never fabricate a reach. Dedup keeps the BFS set honest.
+    for edge in reference_edges_as_import_facts(
+        &reference_resolution_facts(source_roots, source_roots, &excludes),
+        true,
+    ) {
+        let importer = repo_relative_dag_path(&edge.path);
+        let entry = path_imports.entry(importer).or_default();
+        if !entry.contains(&edge.import_module) {
+            entry.push(edge.import_module);
+        }
+    }
+
     rows.sort_by(|a, b| {
         a.entry
             .cmp(&b.entry)
@@ -8075,15 +8166,12 @@ pub fn run_discovery_corpus_with_options(
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let changed_paths: Vec<String> = name_status_changed_paths;
-    // Union-resolve S1 (docs/plans/resolver-graph-major-design.md §7): ONE index for the
-    // whole process step. Frontier attribution, the floor runner context, and every roster
-    // row resolve against this single MultiEntryIndex, so the union of their closures — the
-    // shared std/spec prefix above all — typechecks once per node instead of once per
-    // consumer. Previously the frontier build, the floor runner (via a separate thread-local
-    // store), and the rows each carried a private cold cache of that same prefix.
-    // The index is the THREAD's shared one (process_shared_index), not a private build:
-    // when the executor prelude already resolved its entries on this thread, discovery
-    // reuses that index's parse/typed caches instead of paying the union cold a second time.
+    // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
+    // process step on the pump thread — `process_shared_index` reuses prelude-warmed
+    // parse/typed caches instead of a private cold build. Increment C serde
+    // `cross_worker_store` is deferred on the floor until store-path `Rc`→`Arc` retires
+    // the byte codec (CI 29349125185 OOM); explicit oracles arm it via
+    // `build_multi_entry_index_with_shared_caches` (🟡 dissolve-on).
     let index = process_shared_index(source_roots);
     // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
     // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
@@ -8316,11 +8404,8 @@ pub fn run_discovery_corpus_with_options(
                 let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
                     governor_for_worker.clone(),
                 );
-                // Each worker is its own thread (`Rc` infer carriers are `!Send`, so the
-                // typed_module_cache cannot cross the worker boundary until store-path
-                // `Rc`→`Arc` migration lands — docs/plans/cross-worker-typecheck-share-design.md
-                // §4.1). Within the worker, union-resolve S1 still holds: the worker's floor
-                // runner and its rows resolve against ONE index.
+                // Per-index `Rc` typed cache (serde cross_worker_store deferred — see pump
+                // index arm above; oracles arm shared store explicitly).
                 let index = build_multi_entry_index(&roots);
                 let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                     match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
@@ -12265,6 +12350,490 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
         .collect();
     out.sort_by(|a, b| a.module.cmp(&b.module));
     out
+}
+
+// ── Reference-derived module edges (namespace terminal step, DESIGN "deps via container.member") ──
+//
+// SCAFFOLD (DESIGN §7). Replaces the import-parse module graph (`extract_import_paths` /
+// `import_resolution_facts`) with edges derived from where a module's body/type REFERENCES resolve,
+// so the module graph survives corpus-wide `import` deletion (namespace-only resolution, operator-
+// signed 2026-07-06; the reference is the sole representation of usage, Rule 1). One O(corpus) parse
+// pass over the pool (reusing the real front-end `tokenize` + `parse` — no substring scan), cached.
+// Consumers (`build_module_graph_facts_live`, the inert-lens reach) union these edges onto the import
+// edges during the transition; when the import grammar is deleted (parent's terminal step) the import
+// term is empty and the module graph is reference-only, the `src/v2/lens/module_graph.dag`
+// single-swap-point end state. Every closure/loader/lens consumer is edge-source-agnostic (reads edge
+// rows as data, never import syntax).
+//
+// Confidence tag (parent ruling, 2026-07-14; DESIGN §5): the LOADER closure and affected-set read
+// ALL edges (over-load is safe — a superset only compiles extra modules). The inert-lens reach reads
+// Qualified + UniqueBare only (dropping AmbiguousBare), so an over-connected graph can never silently
+// clear a truly-inert lens (no fail-open hygiene). AmbiguousBare is a bare identifier declared in >1
+// module; under namespace-only that is a Rule-2 ambiguity the source should qualify.
+//
+// Dissolve-on: `symbol_index_fill` (SymbolIndex lane) projects exact, scope-aware reference edges from
+// the filled containment tree; when that lands, this parse-and-index approximation (which is liberal
+// on bare-name reference collection — a local binder that shadows a globally-unique declared name
+// yields a spurious UniqueBare edge, safe for the loader, tolerated by the inert-lens grain) deletes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RefEdgeResolution {
+    Qualified,
+    UniqueBare,
+    AmbiguousBare,
+}
+
+impl RefEdgeResolution {
+    fn rank(self) -> u8 {
+        match self {
+            RefEdgeResolution::Qualified => 2,
+            RefEdgeResolution::UniqueBare => 1,
+            RefEdgeResolution::AmbiguousBare => 0,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ReferenceEdgeRaw {
+    pub path: String,
+    pub target_module: String,
+    pub resolution: RefEdgeResolution,
+}
+
+/// Project reference edges into the `ImportResolutionFactRaw` channel the module-graph adjacency and
+/// closure consumers already read (the `module_graph.dag` single-swap-point contract — downstream is
+/// edge-source-agnostic). `strict` drops `AmbiguousBare` edges: false for the loader/affected-set
+/// (superset-safe), true for the inert-lens reach (no fail-open hygiene, DESIGN §5).
+pub fn reference_edges_as_import_facts(
+    edges: &[ReferenceEdgeRaw],
+    strict: bool,
+) -> Vec<ImportResolutionFactRaw> {
+    edges
+        .iter()
+        .filter(|e| !strict || e.resolution != RefEdgeResolution::AmbiguousBare)
+        .map(|e| ImportResolutionFactRaw {
+            path: e.path.clone(),
+            import_module: e.target_module.clone(),
+            target_declared: true,
+        })
+        .collect()
+}
+
+/// Parse a `.dag` module's source text through the real front-end. Returns the module node, or
+/// `None` on a parse error (the whole-tree compile reports such errors loudly; the module graph
+/// simply omits its edges, and the corpus stays green because a syntax-broken file never resolves).
+fn parse_module_node_tolerant(rel: &str, content: &str) -> Option<Rc<crate::v1_std_core::Node>> {
+    let filename = rel.to_string();
+    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
+    let source_index =
+        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.clone(), source_index);
+    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
+    if result.error.is_some() {
+        return None;
+    }
+    result.module.clone()
+}
+
+/// The names a module EXPORTS (what an `import M { X }` could once have listed): every top-level
+/// item name, plus the direct child names of type declarations (variant constructors / record
+/// fields). Precise by construction — fn-body locals and params are never descended into — so the
+/// name→module index is not poisoned by incidental identifiers.
+fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<String> {
+    use crate::v1_compiler_emit_core_support::is_type_def_item;
+    let mut names = Vec::new();
+    for item in module.children.iter() {
+        if !item.name.is_empty() {
+            names.push(item.name.clone());
+        }
+        if is_type_def_item(item.clone()) {
+            for variant in item.children.iter() {
+                if !variant.name.is_empty() {
+                    names.push(variant.name.clone());
+                }
+            }
+        }
+    }
+    names
+}
+
+/// Reconstruct a qualified-name segment list from a `FieldAccess` chain (`A.B.c` → `[A, B, c]`).
+/// `None` when the base is not a plain identifier (e.g. a call result `f(x).field` — that is a
+/// value field access, not a module-qualified name).
+fn ref_field_chain(node: &Rc<crate::v1_std_core::Node>) -> Option<Vec<String>> {
+    use crate::v1_std_core::ExprData;
+    let mut segs: Vec<String> = vec![node.name.clone()];
+    let mut cur = node.children.get(0).cloned()?;
+    loop {
+        match &*cur.expr_data {
+            ExprData::ExprFieldAccess { .. } => {
+                segs.push(cur.name.clone());
+                cur = cur.children.get(0).cloned()?;
+            }
+            ExprData::ExprVar { .. } => {
+                segs.push(cur.name.clone());
+                break;
+            }
+            _ => return None,
+        }
+    }
+    segs.reverse();
+    if segs.iter().any(|s| s.is_empty()) {
+        return None;
+    }
+    Some(segs)
+}
+
+/// Walk a declaration subtree collecting every reference use site: bare identifiers (`node.name` on
+/// any node — over-collection is a safe superset for the loader) and qualified-name chains (for
+/// module-prefix matching). Recurses through every child-bearing field of `Node`.
+fn collect_node_refs(
+    node: &Rc<crate::v1_std_core::Node>,
+    bare: &mut std::collections::HashSet<String>,
+    chains: &mut Vec<Vec<String>>,
+) {
+    use crate::v1_std_core::{ExprData, MatchPattern};
+    if let ExprData::ExprFieldAccess { .. } = &*node.expr_data {
+        if let Some(chain) = ref_field_chain(node) {
+            chains.push(chain);
+        }
+    }
+    if !node.name.is_empty() {
+        bare.insert(node.name.clone());
+    }
+    if let Some(mp) = &node.match_pattern {
+        if let MatchPattern::VariantPattern {
+            name,
+            field_bindings,
+            ..
+        } = &**mp
+        {
+            if !name.is_empty() {
+                bare.insert(name.clone());
+            }
+            for fb in field_bindings.iter() {
+                collect_node_refs(fb, bare, chains);
+            }
+        }
+    }
+    for c in node.children.iter() {
+        collect_node_refs(c, bare, chains);
+    }
+    for p in node.params.iter() {
+        collect_node_refs(p, bare, chains);
+    }
+    if let Some(b) = &node.body {
+        collect_node_refs(b, bare, chains);
+    }
+    if let Some(t) = &node.type_annotation {
+        collect_node_refs(t, bare, chains);
+    }
+    for u in node.uses.iter() {
+        collect_node_refs(u, bare, chains);
+    }
+    for pr in node.properties.iter() {
+        collect_node_refs(pr, bare, chains);
+    }
+    if let Some(tr) = &node.transport {
+        collect_node_refs(tr, bare, chains);
+    }
+}
+
+/// Count of shared leading dot-separated segments between two module paths (containment proximity).
+fn module_prefix_shared_len(a: &str, b: &str) -> usize {
+    a.split('.')
+        .zip(b.split('.'))
+        .take_while(|(x, y)| x == y)
+        .count()
+}
+
+/// Longest module-path prefix of a qualified chain that names a declared module.
+fn longest_declared_module_prefix(
+    chain: &[String],
+    module_names: &std::collections::HashSet<String>,
+) -> Option<String> {
+    let mut k = chain.len();
+    while k >= 1 {
+        let candidate = chain[..k].join(".");
+        if module_names.contains(&candidate) {
+            return Some(candidate);
+        }
+        k -= 1;
+    }
+    None
+}
+
+thread_local! {
+    static REFERENCE_EDGE_CACHE: RefCell<HashMap<String, Vec<ReferenceEdgeRaw>>> =
+        RefCell::new(HashMap::new());
+}
+
+/// Reference-derived analogue of `import_resolution_facts`: emit one edge per (file, referenced
+/// module). Same row shape channel as import facts, plus a `resolution` confidence tag. Cached by
+/// (pool_roots, importer_roots, excludes).
+pub fn reference_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ReferenceEdgeRaw> {
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let abs_importer_roots = pool_roots_abs(importer_roots);
+    let cache_key = format!(
+        "{}\u{1f}{}\u{1f}{}",
+        abs_pool_roots.join("\u{1e}"),
+        abs_importer_roots.join("\u{1e}"),
+        exclude_substrings.join("\u{1e}")
+    );
+    if let Some(cached) =
+        REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned())
+    {
+        return cached;
+    }
+
+    // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
+    // wins, mirroring `build_module_path_index`) and the declared-module-name set. Keep each file's
+    // parsed tree so edge emission does not re-parse.
+    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // `has_imports` decides per-file whether reference edges are emitted at all: a file that still
+    // carries `import` lines is covered EXACTLY by `import_resolution_facts` (no regression, no
+    // over-connection). Only an import-less (stripped) file falls back to reference edges. So on the
+    // un-stripped tree this producer emits nothing and the module graph is byte-identical to before.
+    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
+        HashMap::new();
+    for root in &abs_pool_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let module_name = match extract_module_path(&content) {
+                Some(m) => m,
+                None => continue,
+            };
+            let tree = match parse_module_node_tolerant(&rel, &content) {
+                Some(t) => t,
+                None => continue,
+            };
+            let has_imports = !extract_import_paths(&content).is_empty();
+            // Precedence: a module name already claimed by an earlier root does not re-contribute
+            // exported names (first-root-wins, as `build_module_path_index`).
+            if seen_modules.insert(module_name.clone()) {
+                module_names.insert(module_name.clone());
+                for name in collect_module_decl_names(&tree) {
+                    decl_index.entry(name).or_default().insert(module_name.clone());
+                }
+            }
+            pool_trees
+                .entry(rel)
+                .or_insert((module_name, tree, has_imports));
+        }
+    }
+
+    // ── Pass 2: for each importer file, collect its reference use sites and resolve them to modules.
+    let mut edges: Vec<ReferenceEdgeRaw> = Vec::new();
+    for root in &abs_importer_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let (self_module, tree) = match pool_trees.get(&rel) {
+                // A file that still carries imports is covered exactly by `import_resolution_facts`;
+                // emitting reference edges for it would only over-connect. Skip — reference edges are
+                // for import-less (stripped) files.
+                Some((_, _, true)) => continue,
+                Some((m, t, false)) => (m.clone(), t.clone()),
+                None => {
+                    let content = match std::fs::read_to_string(&file) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    if !extract_import_paths(&content).is_empty() {
+                        continue;
+                    }
+                    let module_name = match extract_module_path(&content) {
+                        Some(m) => m,
+                        None => continue,
+                    };
+                    match parse_module_node_tolerant(&rel, &content) {
+                        Some(t) => (module_name, t),
+                        None => continue,
+                    }
+                }
+            };
+            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut chains: Vec<Vec<String>> = Vec::new();
+            for item in tree.children.iter() {
+                collect_node_refs(item, &mut bare, &mut chains);
+            }
+            // Resolve to per-file (target_module → strongest confidence).
+            let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
+                std::collections::BTreeMap::new();
+            let mut upgrade = |m: String, res: RefEdgeResolution| {
+                let entry = file_edges.entry(m).or_insert(res);
+                if res.rank() > entry.rank() {
+                    *entry = res;
+                }
+            };
+            for chain in &chains {
+                if let Some(m) = longest_declared_module_prefix(chain, &module_names) {
+                    if m != self_module {
+                        upgrade(m, RefEdgeResolution::Qualified);
+                    }
+                }
+            }
+            for name in &bare {
+                if let Some(mods) = decl_index.get(name) {
+                    // Same-module declaration wins by lexical scope (namespace-only): a bare name the
+                    // referencing file itself declares resolves LOCALLY — no cross-module edge. This
+                    // is what keeps a ubiquitous fixture `data` (e.g. `live_tree_disposition`,
+                    // declared top-level in ~670 test files) from fanning every referrer out to every
+                    // declarer.
+                    if mods.contains(&self_module) {
+                        continue;
+                    }
+                    // Proximity disambiguation (namespace-only "nearest in the containment tree"):
+                    // among declarers, prefer the one sharing the longest module-path prefix with the
+                    // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
+                    // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
+                    let mut best_len = 0usize;
+                    let mut winners: Vec<&String> = Vec::new();
+                    for m in mods.iter() {
+                        let shared = module_prefix_shared_len(&self_module, m);
+                        if winners.is_empty() || shared > best_len {
+                            best_len = shared;
+                            winners.clear();
+                            winners.push(m);
+                        } else if shared == best_len {
+                            winners.push(m);
+                        }
+                    }
+                    match winners.len() {
+                        0 => {}
+                        1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
+                        _ => {
+                            // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
+                            // AmbiguousBare is a bare ref, in a file that does not declare it, whose
+                            // nearest declarers tie — the definitive "needs qualification" site.
+                            if std::env::var("REFAMBIG_DUMP").is_ok() {
+                                let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
+                                let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
+                                eprintln!(
+                                    "REFAMBIG\t{}\t{}\t{}\t{}",
+                                    if is_witness { "witness" } else { "compile" },
+                                    rel,
+                                    name,
+                                    cands.join(",")
+                                );
+                            }
+                            for t in winners {
+                                upgrade(t.clone(), RefEdgeResolution::AmbiguousBare);
+                            }
+                        }
+                    }
+                }
+            }
+            for (m, res) in file_edges {
+                edges.push(ReferenceEdgeRaw {
+                    path: rel.clone(),
+                    target_module: m,
+                    resolution: res,
+                });
+            }
+        }
+    }
+
+    REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
+    edges
+}
+
+#[cfg(test)]
+mod reference_edge_producer_tests {
+    use super::reference_resolution_facts;
+
+    fn fixture_root(tag: &str) -> std::path::PathBuf {
+        // Under the workspace `target/` (gitignored): `rel_path_for_layer_import` fail-closes on
+        // paths outside the workspace root, and `target/` keeps the fixture out of version control.
+        super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-refedge-{tag}-{}", std::process::id()))
+    }
+
+    fn write(root: &std::path::Path, rel: &str, content: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
+        std::fs::write(&p, content).expect("write dag");
+    }
+
+    // Green-by-execution + discriminating RED: the producer must derive a cross-module edge from a
+    // bare reference in an import-LESS file (the stripped case), resolve a same-module name LOCALLY
+    // (no edge — the live_tree_disposition fan-out guard), and emit NOTHING for an import-bearing
+    // file (import-covered). A reader that ignored the parsed references would fail the first assert.
+    #[test]
+    fn reference_edges_derived_from_bare_refs_local_and_import_aware() {
+        let root = fixture_root("core");
+        let _ = std::fs::remove_dir_all(&root);
+        // Declares the shared name.
+        write(&root, "decl.dag", "module test.decl\n\nfn shared_fn() -> Bool {\n  true\n}\n");
+        // Import-LESS file that references it → edge to test.decl.
+        write(
+            &root,
+            "refless.dag",
+            "module test.refless\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
+        );
+        // Declares its OWN shared_fn and references it → resolves locally, NO edge.
+        write(
+            &root,
+            "reflocal.dag",
+            "module test.reflocal\n\nfn shared_fn() -> Bool {\n  true\n}\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
+        );
+        // Import-bearing file → covered by import facts, producer emits nothing for it.
+        write(
+            &root,
+            "imported.dag",
+            "module test.imported\n\nimport test.decl { shared_fn }\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
+        );
+
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let edges = reference_resolution_facts(&roots, &roots, &[]);
+        let has_edge = |from_sub: &str, to_mod: &str| {
+            edges
+                .iter()
+                .any(|e| e.path.contains(from_sub) && e.target_module == to_mod)
+        };
+        let emits_any = |from_sub: &str| edges.iter().any(|e| e.path.contains(from_sub));
+
+        assert!(
+            has_edge("refless.dag", "test.decl"),
+            "import-less file referencing shared_fn must yield an edge to its declaring module"
+        );
+        assert!(
+            !emits_any("reflocal.dag"),
+            "a same-module declaration resolves locally — no cross-module edge"
+        );
+        assert!(
+            !emits_any("imported.dag"),
+            "an import-bearing file is import-covered — the reference producer skips it"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
