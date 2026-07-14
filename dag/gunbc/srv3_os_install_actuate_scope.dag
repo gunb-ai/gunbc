@@ -6,7 +6,7 @@ import gunbc.os_install {
   srv3_os_install_plan_autoinstall,
   fleet_install_server_specs,
 }
-import gunbc.srv3_seeded_install_media { srv3_seeded_ubuntu_install_media_install_path }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_ubuntu_install_media_install_path }
 import gunbc.assimilate.bmc_wif_delegation_chain { bmc_srv3_admin_secret_ref }
 import gunbc.assimilate.bmc_token_federation { bmc_srv3_secret_name }
 import gunbc.os_install_mechanism { srv3_install_mechanism, NbdProxyVirtualMediaInstall }
