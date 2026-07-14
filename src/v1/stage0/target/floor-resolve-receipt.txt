@@ -1,3 +1,0 @@
-resolves_total=0
-resolve_ms_total=0
-discovery_corpus_resolve_ms=0
