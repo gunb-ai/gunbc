@@ -7,6 +7,7 @@ import v2.lens.identity_captured_navigation.roster_gate {
   debug_match_expr_count,
   debug_scrutinee_hit_count,
   file_gate,
+  file_suspect_count,
   source_findings,
   source_has_suspect
 }
@@ -181,4 +182,27 @@ test fn debug_probe_fixture_match_expr_count_is_one() -> Bool {
 
 test fn debug_probe_fixture_fn_decl_count_is_two_v2() -> Bool {
   debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 2
+}
+
+test fn debug_probe_fixture_exact_count() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 999
+}
+
+test fn debug_probe_fixture_ge_13() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 13
+}
+
+test fn debug_probe_fixture_ge_20() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 20
+}
+test fn debug_probe_fixture_eq_26() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 26
+}
+
+test fn debug_probe_fixture_fn_decl_count_is_three() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 3
+}
+
+test fn debug_probe_fixture_suspect_count_ge_one() -> Bool {
+  file_suspect_count(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 1
 }
