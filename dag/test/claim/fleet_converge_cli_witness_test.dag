@@ -7,11 +7,13 @@ import gunbc.fleet_converge_cli {
   ConvergeCliRefusalCause,
   PolicyUnsound,
   UnknownHost,
+  ComputeInventoryAbsent,
   KnobFrontier,
   converge_cli_run,
   converge_cli_receipt_line,
   converge_cli_receipt_converged,
   converge_cli_output,
+  converge_cli_refusal_message,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -30,6 +32,7 @@ fn witness_converge_cli_run_known_host_fails_closed_on_knob_frontier() -> Bool {
           KnobFrontier { reason: why } => string_contains(s: why, pattern: "host_converge_realize")
           PolicyUnsound { reason: _ } => false
           UnknownHost { host: _ } => false
+          ComputeInventoryAbsent { host: _ } => false
         }
       Absent => false
     }
@@ -48,9 +51,33 @@ fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
           UnknownHost { host: h } => h == "no-such-fleet-host"
           PolicyUnsound { reason: _ } => false
           KnobFrontier { reason: _ } => false
+          ComputeInventoryAbsent { host: _ } => false
         }
       Absent => false
     }
+}
+
+fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_distinct_causes() -> Bool {
+  let unknown = UnknownHost { host: "no-such-fleet-host" }
+  let inventory_absent = ComputeInventoryAbsent { host: "gunbc-ci-fleet" }
+  match unknown {
+    UnknownHost { host: _ } =>
+      match inventory_absent {
+        ComputeInventoryAbsent { host: _ } => true
+        UnknownHost { host: _ } => false
+        PolicyUnsound { reason: _ } => false
+        KnobFrontier { reason: _ } => false
+      }
+    ComputeInventoryAbsent { host: _ } => false
+    PolicyUnsound { reason: _ } => false
+    KnobFrontier { reason: _ } => false
+  }
+    && converge_cli_refusal_message(cause: unknown) != converge_cli_refusal_message(cause: inventory_absent)
+    && string_contains(s: converge_cli_refusal_message(cause: unknown), pattern: "unknown fleet host identity")
+    && string_contains(
+      s: converge_cli_refusal_message(cause: inventory_absent),
+      pattern: "absent from compute inventory"
+    )
 }
 
 fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
@@ -66,9 +93,11 @@ fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
                 UnknownHost { host: _ } => true
                 PolicyUnsound { reason: _ } => false
                 KnobFrontier { reason: _ } => false
+                ComputeInventoryAbsent { host: _ } => false
               }
             PolicyUnsound { reason: _ } => false
             UnknownHost { host: _ } => false
+            ComputeInventoryAbsent { host: _ } => false
           }
         Absent => false
       }
@@ -103,6 +132,7 @@ test fn fleet_converge_cli_witness_holds() -> Bool {
   witness_converge_cli_run_known_host_fails_closed_on_knob_frontier()
     && witness_converge_cli_run_unknown_host_refuses()
     && witness_converge_cli_refusal_causes_discriminate()
+    && witness_converge_cli_unknown_host_and_compute_inventory_absent_are_distinct_causes()
     && witness_converge_cli_receipt_line_matches_byte_locked_grammar()
     && witness_converge_cli_output_projects_receipt_and_exit_signal()
 }

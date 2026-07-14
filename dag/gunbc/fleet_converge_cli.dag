@@ -24,16 +24,22 @@ data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
 type ConvergeCliRefusalCause
   = PolicyUnsound { reason: String }
   | UnknownHost { host: String }
+  | ComputeInventoryAbsent { host: String }
   | KnobFrontier { reason: String }
 
 fn converge_cli_unknown_host_reason(host: String) -> String {
   concat("gunbc converge: unknown fleet host identity ", host)
 }
 
+fn converge_cli_compute_inventory_absent_reason(host: String) -> String {
+  concat("gunbc converge: host resolved by fleet converge policy but absent from compute inventory ", host)
+}
+
 fn converge_cli_refusal_message(cause: ConvergeCliRefusalCause) -> String {
   match cause {
     PolicyUnsound { reason: why } => concat("gunbc converge: fleet policy unsound — ", why)
     UnknownHost { host: h } => converge_cli_unknown_host_reason(host: h)
+    ComputeInventoryAbsent { host: h } => converge_cli_compute_inventory_absent_reason(host: h)
     KnobFrontier { reason: why } => why
   }
 }
@@ -96,7 +102,7 @@ fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliRece
         applied: 0,
         drifted: 0,
         verdict: Absent,
-        reason: Present { value: UnknownHost { host: host_converge.identity as String } },
+        reason: Present { value: ComputeInventoryAbsent { host: host_converge.identity as String } },
       }
   }
 }
