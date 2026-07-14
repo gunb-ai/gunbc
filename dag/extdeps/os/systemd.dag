@@ -1,7 +1,7 @@
 module extdeps.os.systemd
 
 import std.types { NonEmptyStr, String }
-import std.list { List }
+import std.types { List }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
