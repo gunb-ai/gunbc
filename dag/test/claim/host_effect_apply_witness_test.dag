@@ -261,18 +261,6 @@ fn witness_converge_plan_redrives_on_frontier() -> Bool {
   )))
 }
 
-test fn witness_converge_plan_fail_closed_only() -> Bool {
-  witness_converge_plan_fail_closed_on_knob_frontier()
-}
-
-test fn witness_converge_plan_bmc_mismatch_only() -> Bool {
-  witness_converge_plan_on_bmc_typed_mismatch()
-}
-
-test fn witness_converge_plan_redrive_only() -> Bool {
-  witness_converge_plan_redrives_on_frontier()
-}
-
 test fn host_effect_apply_holds() -> Bool {
   witness_shell_on_host_success_converges()
     && witness_shell_on_host_failure_fails_closed()
@@ -290,4 +278,7 @@ test fn host_effect_apply_holds() -> Bool {
     && witness_converge_loop_evidence_derives_converge_drive()
     && witness_arbitrary_non_idempotent_derives_oneshot_not_redrive()
     && witness_lattice_breaking_shape_derives_oneshot_not_redrive()
+    && witness_converge_plan_fail_closed_on_knob_frontier()
+    && witness_converge_plan_on_bmc_typed_mismatch()
+    && witness_converge_plan_redrives_on_frontier()
 }
