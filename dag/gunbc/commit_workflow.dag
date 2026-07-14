@@ -5,7 +5,7 @@ import gunbc.ci_gate {
   EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
@@ -28,7 +28,6 @@ type LocalTidyCheck
 type CommitWorkflowSurface
   = GithubActionsCiJob
   | GithubActionsCiRegenJob
-  | GithubActionsEmitDeterminismJob
   | GitPrePushHook
 
 type CommitCheckKind
@@ -91,10 +90,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SelfHostStalenessGate },
     surfaces: [GithubActionsCiRegenJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitSpecGate { gate: EmitDeterminismGate },
-    surfaces: [GithubActionsEmitDeterminismJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -374,6 +369,31 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/wave1_gate1_b1_bare_call_body_producer_witness_test.dag",
+      check_fns: [
+        "wave1_gate1_b1_bare_call_lowers_to_transform_witness_holds",
+        "wave1_gate1_b1_bare_call_resolves_end_to_end_witness_holds",
+        "wave1_gate1_b1_symbol_index_frontend_parity_no_regression_witness_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/wave1_gate1_a1_symbol_index_body_producer_witness_test.dag",
+      check_fns: [
+        "wave1_gate1_a1_symbol_index_frontend_parity_witness_holds",
+        "wave1_gate1_a1_real_ingest_lowers_witness_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
     check: CommitCargoFmtCheck,
     surfaces: [GitPrePushHook]
   }
@@ -398,8 +418,6 @@ fn commit_workflow_surface_eq(a: CommitWorkflowSurface, b: CommitWorkflowSurface
       match b { GithubActionsCiJob => true  _ => false }
     GithubActionsCiRegenJob =>
       match b { GithubActionsCiRegenJob => true  _ => false }
-    GithubActionsEmitDeterminismJob =>
-      match b { GithubActionsEmitDeterminismJob => true  _ => false }
     GitPrePushHook =>
       match b { GitPrePushHook => true  _ => false }
   }
@@ -424,7 +442,6 @@ fn gate_eq(a: Gate, b: Gate) -> Bool {
     RegenVerifyGate => match b { RegenVerifyGate => true  _ => false }
     SelfHostReadsRealBytesGate => match b { SelfHostReadsRealBytesGate => true  _ => false }
     SelfHostStalenessGate => match b { SelfHostStalenessGate => true  _ => false }
-    EmitDeterminismGate => match b { EmitDeterminismGate => true  _ => false }
   }
 }
 
@@ -447,12 +464,6 @@ fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
 fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
   gates_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiRegenJob))
-  )
-}
-
-fn project_ci_emit_determinism_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
-  gates_from_enrollments(
-    rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsEmitDeterminismJob))
   )
 }
 
@@ -613,7 +624,6 @@ fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   match surface {
     GithubActionsCiJob => artifact_path(a: CiYamlArtifact)
     GithubActionsCiRegenJob => artifact_path(a: CiYamlArtifact)
-    GithubActionsEmitDeterminismJob => artifact_path(a: CiYamlArtifact)
     GitPrePushHook => artifact_path(a: GithooksPrePushArtifact)
   }
 }
@@ -622,7 +632,6 @@ fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWork
   match surface {
     GithubActionsCiJob => CiYamlHandler
     GithubActionsCiRegenJob => CiYamlHandler
-    GithubActionsEmitDeterminismJob => CiYamlHandler
     GitPrePushHook => GitPrePushScriptHandler
   }
 }
@@ -631,7 +640,6 @@ fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> Generated
   match surface {
     GithubActionsCiJob => CiYamlArtifact
     GithubActionsCiRegenJob => CiYamlArtifact
-    GithubActionsEmitDeterminismJob => CiYamlArtifact
     GitPrePushHook => GithooksPrePushArtifact
   }
 }
