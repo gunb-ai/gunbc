@@ -306,6 +306,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
             ShellOnHost { node: _, script: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }
