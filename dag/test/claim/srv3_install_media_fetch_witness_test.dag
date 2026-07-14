@@ -85,45 +85,6 @@ test fn install_media_fetch_absent_plans_mirror_order() -> Bool {
   }
 }
 
-test fn install_media_hash_matches_true_by_real_execution() -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let path = concat(dir.path as String, "/fixture") as NonEmptyStr
-  let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
-  let matched = install_media_hash_matches(path: path, expected_hash: install_media_fetch_fixture_sha256)
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && wrote.success && matched
-}
-
-test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let path = concat(dir.path as String, "/fixture") as NonEmptyStr
-  let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
-  let matched = install_media_hash_matches(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256)
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && wrote.success && (matched == false)
-}
-
-test fn observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution() -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let missing_path = concat(dir.path as String, "/does-not-exist") as NonEmptyStr
-  let present_path = concat(dir.path as String, "/present") as NonEmptyStr
-  let wrote = Filesystem.Write(path: present_path as String, content: install_media_fetch_fixture_content)
-  let absent_ok = observe_install_media_fetch(
-    path: missing_path,
-    expected_hash: install_media_fetch_fixture_sha256,
-  ) == InstallMediaFetchAbsent
-  let verified_ok = observe_install_media_fetch(
-    path: present_path,
-    expected_hash: install_media_fetch_fixture_sha256,
-  ) == InstallMediaFetchVerified
-  let mismatch_ok = observe_install_media_fetch(
-    path: present_path,
-    expected_hash: install_media_fetch_fixture_wrong_sha256,
-  ) == InstallMediaFetchHashMismatch
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && wrote.success && absent_ok && verified_ok && mismatch_ok
-}
-
 test fn install_media_fetch_first_mirror_is_releases_then_cdimage() -> Bool {
   let url = install_media_fetch_first_mirror_url(artifact: srv3_ubuntu_install_media_artifact)
   string_contains(s: url as String, pattern: "releases.ubuntu.com/24.04/ubuntu-24.04.3-live-server-arm64.iso")
