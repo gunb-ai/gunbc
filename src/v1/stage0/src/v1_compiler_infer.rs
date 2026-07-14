@@ -12793,6 +12793,29 @@ pub fn try_resolve_variant_from_expected(
     }
 }
 
+pub fn shape_arm_name_from_type_shape(shape: String) -> Option<String> {
+    if let Some(inner) = shape.strip_prefix("Product(").and_then(|s| s.strip_suffix(")")) {
+        Some(inner.to_string())
+    } else if let Some(inner) = shape.strip_prefix("Primitive(").and_then(|s| s.strip_suffix(")")) {
+        Some(inner.to_string())
+    } else {
+        None
+    }
+}
+
+pub fn shape_parent_name_from_type_shape(shape: String) -> Option<String> {
+    if let Some(inner) = shape.strip_prefix("Node(").and_then(|s| s.strip_suffix(")")) {
+        Some(inner.to_string())
+    } else if let Some(inner) = shape
+        .strip_prefix("Coproduct(")
+        .and_then(|s| s.strip_suffix(")"))
+    {
+        Some(inner.to_string())
+    } else {
+        None
+    }
+}
+
 pub fn if_branch_shapes_compatible(
     then_rt: Rc<Node>,
     else_rt: Rc<Node>,
@@ -12814,6 +12837,24 @@ pub fn if_branch_shapes_compatible(
                 || (then_shape.clone() == "Product(ExitFailure)".to_string()))))
     {
         return true;
+    }
+    for (arm_shape, other_shape) in [
+        (then_shape.clone(), else_shape.clone()),
+        (else_shape.clone(), then_shape.clone()),
+    ] {
+        if let Some(arm_name) = shape_arm_name_from_type_shape(arm_shape.clone()) {
+            if let Some(parent_name) = shape_parent_name_from_type_shape(other_shape.clone()) {
+                if let Some(parent) = find_coproduct_containing_arm(
+                    scope.type_env.clone(),
+                    arm_name.clone(),
+                    si.clone(),
+                ) {
+                    if (authored_name_at(si.clone(), parent.clone()) == parent_name.clone()) {
+                        return true;
+                    }
+                }
+            }
+        }
     }
     for (arm_rt, other_rt) in [(then_rt.clone(), else_rt.clone()), (else_rt.clone(), then_rt.clone())]
     {
