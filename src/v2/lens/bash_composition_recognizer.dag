@@ -26,6 +26,8 @@ type AmbiguityCause
   | HoleStraddlesToken
   | NoLanguageDecision
 
+data p1_dominance_residue_note: String = "TRACKED RESIDUE (debt ledger, beside for-loop-grammar; parent-signed 2026-07-14, do NOT fix in HALF B): P1 UnmodeledKeywordPresent dominates P2 static composition, so a line that IS a decidable static composition but ALSO carries an unmodeled control keyword (e.g. echo a; for x in b; do ...) lands Ambiguous, not Violation. This is honest DecodeFidelity (counted, reported, never silently dropped) -- when a keyword is present the recognizer cannot know whether a ; is loop-internal syntax or a real separator, so Ambiguous is the honest answer and it avoids false-Violating every for-loop header (the P1-dominance property the parent validated as SOUND). It is ALSO a keyword-inclusion evasion vector: a determined smuggler could append an unmodeled keyword to demote a Violation to Ambiguous. Acceptable under the wall threat model (accidental hand-splicing, NOT adversarial). DISSOLVES-ON: the loop keywords (for/while/until/case/...) get grounded to real grammar PRODUCTIONS -- then P2 decides THROUGH them and the static composition Violates as it should. Same dissolution trigger as the for-loop grammar production work."
+
 type TokenRole
   = Separator
   | JoiningControl
