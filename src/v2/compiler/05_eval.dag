@@ -62,6 +62,7 @@ import v2.std.runtime {
   ReadResource,
   WriteResource,
   effect_handler_for_kind,
+  environment_binding_key_for_symbol,
   interpretation_behavior_dispatch,
   runtime_value_node_projection,
   runtime_value_resolved_type
@@ -168,6 +169,7 @@ import v2.extdeps.runtimes.v2_evaluator {
   v2_eval_bind_value,
   v2_eval_call_primitive,
   v2_eval_choose_branch,
+  v2_eval_is_literal_shaped_node,
   v2_eval_represent_literal,
   v2_eval_step_loop,
   v2_evaluator_interpretation_structure_witness,
@@ -944,7 +946,7 @@ fn runtime_binding_lookup_miss(key: EnvironmentBindingKey) -> Witness<RuntimeVal
   Violates {
     diagnostic: eval_diagnostic(
       reason: ^eval_rejected_runtime_binding_lookup_miss,
-      node: key.declaration
+      node: symbol_atom_node(sym: key.identity)
     )
   }
 }
@@ -1144,10 +1146,7 @@ fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
       absent_reason: ^eval_rejected_bind_key_absent
     ),
     f: fn(e) {
-      Accepted {
-        value: eval_environment_binding_key(declaration: e.target),
-        diagnostics: None
-      }
+      eval_environment_binding_key_from_node(declaration: e.target)
     }
   )
 }
@@ -1177,18 +1176,46 @@ fn eval_binding_key_node(sym: Symbol) -> Node {
   symbol_atom_node(sym: sym)
 }
 
-fn eval_environment_binding_key(declaration: Node) -> EnvironmentBindingKey {
-  EnvironmentBindingKey {
-    declaration: declaration
+fn eval_binding_key_from_atom(node: Node) -> Optional<EnvironmentBindingKey> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      optional_present(value: environment_binding_key_for_symbol(sym: sym))
+    _ => optional_absent()
+  }
+}
+
+fn eval_environment_binding_key_from_node(declaration: Node) -> Outcome<EnvironmentBindingKey> {
+  match eval_binding_key_from_atom(node: declaration) {
+    Present { value: key } =>
+      Accepted { value: key, diagnostics: None }
+    Absent =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_bind_key_absent, node: declaration)
+      )
   }
 }
 
 fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  eval_witness_outcome(
-    witness: environment.bindings.lookup(
-      eval_environment_binding_key(declaration: node)
-    )
+  bind_outcome(
+    o: eval_environment_binding_key_from_node(declaration: node),
+    f: fn(key) {
+      eval_witness_outcome(
+        witness: environment.bindings.lookup(key)
+      )
+    }
   )
+}
+
+fn eval_type_node_atom(
+  node: Node,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  if v2_eval_is_literal_shaped_node(node: node) {
+    interpretation.value.allocate_literal(node, environment)
+  } else {
+    eval_runtime_binding_lookup(node: node, environment: environment)
+  }
 }
 
 type EvalParamBindAcc {
@@ -1221,9 +1248,7 @@ fn eval_bind_param_edge_step(
               ),
               f: fn(value) {
                 bind.bind_value(
-                  eval_environment_binding_key(
-                    declaration: eval_binding_key_node(sym: binding_id)
-                  ),
+                  environment_binding_key_for_symbol(sym: binding_id),
                   value,
                   env
                 )
@@ -2005,11 +2030,11 @@ fn eval_interpret_node(
             effect_io: effect_io
           )
         TypeNode { connective: _ } =>
-          match eval_runtime_binding_lookup(node: node, environment: environment) {
-            Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
-            Rejected { diagnostics: _ } =>
-              interpretation.value.allocate_literal(node, environment)
-          }
+          eval_type_node_atom(
+            node: node,
+            interpretation: interpretation,
+            environment: environment
+          )
       }
     }
   )
