@@ -3132,6 +3132,7 @@ fn resolve_entry_with_parse_cache(
     set_phase(FloorPhase::Typecheck, entry_file);
     let reconcile_started = std::time::Instant::now();
     let typed = reconcile_with_typed_cache(
+        index,
         graph.clone(),
         source_indices.clone(),
         global_table,
@@ -3490,7 +3491,83 @@ fn reconcile_all_cache_hits(
     )
 }
 
+/// PR-4 global-bare census over the indexed witness pool, not the entry import closure.
+/// After import-strip, bare refs no longer pull definers into the closure; the census must
+/// still see every declared name in the pool (namespace-resolution-design.md §8).
+fn build_pool_global_bare_census(
+    index: &MultiEntryIndex,
+    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
+) -> Result<
+    (
+        Rc<HashMap<String, Rc<v1_compiler_infer::GlobalBareLookupState>>>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let mut modules: Vec<Rc<Node>> = Vec::new();
+    let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        index.source_files.values().cloned().collect();
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    for source in sources {
+        let cached = {
+            let caches = shared_caches
+                .lock()
+                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+            caches.parse_cache.get(&source.path).cloned()
+        };
+        let (parse_result, nl_index) = match cached {
+            Some(entry) => entry,
+            None => {
+                let tokens =
+                    v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+                let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+                let mut caches = shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+                let current_table = caches.intern_table.clone();
+                let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+                    let mut m = HashMap::new();
+                    m.insert(source.path.clone(), nl_index.clone());
+                    m
+                });
+                let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+                caches.intern_table = parsed.intern_table.clone();
+                let entry = (parsed.result.clone(), nl_index);
+                caches
+                    .parse_cache
+                    .insert(source.path.clone(), entry.clone());
+                entry
+            }
+        };
+        si_map.insert(nl_index.file.clone(), nl_index.clone());
+        if let Some(err) = &parse_result.error {
+            let span = diagnostic_to_span(err.diagnostic.clone());
+            let loc = format_error_loc(&span.file, span.start, &si_map);
+            return Err(format!(
+                "{}: error: {}",
+                loc,
+                diagnostic_to_message(err.diagnostic.clone())
+            ));
+        }
+        if let Some(module) = &parse_result.module {
+            modules.push(module.clone());
+        }
+    }
+    let source_indices = Rc::new(si_map);
+    let pool_graph =
+        v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
+    Ok((
+        v1_compiler_infer::build_global_bare_census(
+            pool_graph.modules.clone(),
+            source_indices.clone(),
+        ),
+        source_indices,
+    ))
+}
+
 fn reconcile_with_typed_cache(
+    index: &MultiEntryIndex,
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
@@ -3501,10 +3578,10 @@ fn reconcile_with_typed_cache(
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
     // Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): built once,
-    // order-independent, over the whole graph before any module typechecks — see
+    // order-independent, over the indexed witness pool (not the entry import closure) — see
     // global_bare_fallback_invariant in v1_compiler_infer_env.
-    let global_bare =
-        v1_compiler_infer::build_global_bare_census(graph.modules.clone(), source_indices.clone());
+    let (global_bare, _pool_source_indices) =
+        build_pool_global_bare_census(index, shared_caches)?;
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
