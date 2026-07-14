@@ -100,7 +100,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.types { BootOverrideDisabled, BootTargetNone, BootOverrideOnce, BootTargetCd }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
-import gunbc.srv3_seeded_install_media { srv3_seeded_install_media_content_hash }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
 import gunbc.srv3_os_install_actuate_workflow { srv3_boot_once_cd_escalation }
 import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 import gunbc.srv3_os_install_reconcile_types {

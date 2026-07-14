@@ -1,0 +1,78 @@
+module test.claim.srv3_host_effect_apply_witness
+
+import std.logic { Bool }
+import gunbc.host_effect {
+  Srv3InstallReconcileObserve,
+  DurableApprovalGrantRecord,
+  DurableApprovalGrantRead,
+  Srv3InstallMediaFetch,
+  Srv3SeededInstallMediaRemaster,
+  Srv3SeededInstallMediaToolchainEnsure,
+  Srv3SolConsoleCapture,
+  Srv3BmcwebSessionLogin,
+  Srv3BmcwebTokenExtract,
+  Srv3NbdProxyServe,
+  Srv3BootOnceReadBackSleep,
+  Srv3ReceiptEmit,
+}
+import gunbc.srv3_host_effect_script {
+  srv3_host_effect_script_body,
+  srv3_host_effect_script_body_is_nonempty,
+  srv3_receipt_emit_script,
+}
+import gunbc.srv3_host_effect_apply {
+  srv3_typed_receipt_from_lines,
+  srv3_typed_receipt,
+}
+import gunbc.shell_bash_runner { shell_bash_runner_dissolution_trigger }
+
+test fn srv3_host_effect_observe_script_is_nonempty() -> Bool {
+  srv3_host_effect_script_body_is_nonempty(
+    effect: Srv3InstallReconcileObserve { include_git_meta: true },
+  )
+    && string_contains(
+      s: srv3_host_effect_script_body(
+        effect: Srv3InstallReconcileObserve { include_git_meta: true },
+      ),
+      pattern: "Srv3InstallObserveReceipt: surface=serve",
+    )
+}
+
+test fn srv3_host_effect_mechanical_variants_resolve_nonempty_scripts() -> Bool {
+  srv3_host_effect_script_body_is_nonempty(effect: DurableApprovalGrantRecord)
+    && srv3_host_effect_script_body_is_nonempty(effect: DurableApprovalGrantRead)
+    && srv3_host_effect_script_body_is_nonempty(effect: Srv3InstallMediaFetch)
+    && srv3_host_effect_script_body_is_nonempty(effect: Srv3SeededInstallMediaRemaster)
+    && srv3_host_effect_script_body_is_nonempty(effect: Srv3SeededInstallMediaToolchainEnsure)
+    && srv3_host_effect_script_body_is_nonempty(effect: Srv3SolConsoleCapture)
+    && srv3_host_effect_script_body_is_nonempty(effect: Srv3BmcwebSessionLogin)
+    && srv3_host_effect_script_body_is_nonempty(effect: Srv3BmcwebTokenExtract)
+    && srv3_host_effect_script_body_is_nonempty(effect: Srv3NbdProxyServe)
+    && srv3_host_effect_script_body_is_nonempty(effect: Srv3BootOnceReadBackSleep)
+    && srv3_host_effect_script_body_is_nonempty(
+      effect: Srv3ReceiptEmit { lines: ["Srv3InstallReconcileReceipt: attempt_id=test"] },
+    )
+}
+
+test fn srv3_typed_receipt_emit_uses_printf_not_naive_echo() -> Bool {
+  let script = srv3_receipt_emit_script(lines: ["line-one", "line-two"])
+  string_contains(s: script, pattern: "printf '%s\\n'")
+    && !string_contains(s: script, pattern: "echo 'line-one'")
+}
+
+test fn srv3_typed_receipt_carrier_holds_lines() -> Bool {
+  let receipt = srv3_typed_receipt_from_lines(lines: ["a", "b"])
+  srv3_typed_receipt(receipt: receipt).lines.length() == 2
+}
+
+test fn shell_bash_runner_still_present_for_p5b() -> Bool {
+  string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "shell_exec_via_bash")
+}
+
+test fn srv3_host_effect_apply_holds() -> Bool {
+  srv3_host_effect_observe_script_is_nonempty()
+    && srv3_host_effect_mechanical_variants_resolve_nonempty_scripts()
+    && srv3_typed_receipt_emit_uses_printf_not_naive_echo()
+    && srv3_typed_receipt_carrier_holds_lines()
+    && shell_bash_runner_still_present_for_p5b()
+}

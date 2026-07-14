@@ -29,7 +29,18 @@ import gunbc.srv3_bmc_credential_resolve {
   UseFactoryCredential,
   UseRotatedSecretRef,
 }
-import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.srv3_host_effect_apply {
+  srv3_bmcweb_session_login_apply,
+  srv3_bmcweb_token_extract_apply,
+  srv3_nbd_proxy_serve_apply,
+  srv3_reconciliation_to_process_exit,
+}
+import gunbc.srv3_actuate_shell_paths {
+  srv3_bmcweb_login_body_path,
+  srv3_bmcweb_login_response_path,
+  srv3_bmcweb_token_path,
+  srv3_nbd_proxy_serve_script_path,
+}
 import gunbc.nbd_proxy_virtual_media_install {
   srv3_os_install_actuator_plan,
   os_install_actuator_step_count,
@@ -52,11 +63,6 @@ data srv3_os_install_actuate_shell_runner_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
-
-data srv3_bmcweb_login_body_path: String = "/tmp/srv3_bmcweb_login_body.json"
-data srv3_bmcweb_login_response_path: String = "/tmp/srv3_bmcweb_login_response.json"
-data srv3_bmcweb_token_path: String = "/tmp/srv3_bmcweb_token"
-data srv3_nbd_proxy_serve_script_path: String = "/tmp/srv3_nbd_proxy_serve.sh"
 
 data srv3_os_install_actuate_operator_runbook: NonEmptyStr = "docs/runbooks/srv3-os-install-actuate.md"
 
@@ -135,27 +141,22 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
     return exit_failure(reason: concat("bmcweb-login: body write failed: ", body_write.error))
   }
 
-  let login_prog = bmcweb_session_login_program(
-    bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
-    response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
+  let login_exit = srv3_reconciliation_to_process_exit(
+    r: srv3_bmcweb_session_login_apply(),
+    failure_prefix: "bmcweb-login: curl login failed: ",
   )
-  let login_script = serialize_bash(p: login_prog)
-  let login_run = shell.Exec.Run(script: shell_exec_via_bash(body: login_script))
-  if login_run.success == false {
-    return exit_failure(reason: concat("bmcweb-login: curl login failed: ", login_run.stderr))
+  match login_exit {
+    ExitSuccess => {}
+    _ => return login_exit
   }
 
-  let extract_script = concat(
-    concat(
-      concat("jq -r '.token // empty' ", srv3_bmcweb_login_response_path),
-      " > ",
-    ),
-    srv3_bmcweb_token_path,
+  let extract_exit = srv3_reconciliation_to_process_exit(
+    r: srv3_bmcweb_token_extract_apply(),
+    failure_prefix: "bmcweb-login: token extract failed: ",
   )
-  let extract_run = shell.Exec.Run(script: shell_exec_via_bash(body: extract_script))
-  if extract_run.success == false {
-    return exit_failure(reason: concat("bmcweb-login: token extract failed: ", extract_run.stderr))
+  match extract_exit {
+    ExitSuccess => {}
+    _ => return extract_exit
   }
 
   let verify_run = shell.Exec.Run(
@@ -177,19 +178,10 @@ func srv3_nbd_proxy_serve() -> ProcessExit
     return exit_failure(reason: concat("nbd-proxy-serve: script write failed: ", write.error))
   }
 
-  let serve_script = concat(
-    concat(
-      concat("export BMCWEB_SESSION_TOKEN=$(cat ", srv3_bmcweb_token_path),
-      "); bash ",
-    ),
-    srv3_nbd_proxy_serve_script_path,
+  srv3_reconciliation_to_process_exit(
+    r: srv3_nbd_proxy_serve_apply(),
+    failure_prefix: "nbd-proxy-serve: foreground pipeline exited: ",
   )
-  let serve_run = shell.Exec.Run(script: shell_exec_via_bash(body: serve_script))
-  if serve_run.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("nbd-proxy-serve: foreground pipeline exited: ", serve_run.stderr))
-  }
 }
 
 fn srv3_os_install_actuator_step_count_is_three() -> Bool {
