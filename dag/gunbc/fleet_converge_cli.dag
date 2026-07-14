@@ -72,6 +72,7 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     ConvergePlan { policy: p } => p.knobs.length()
     ShellCommand { script: _ } => fallback
     RedfishAction { action: _ } => fallback
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => fallback
     Srv3InstallReconcileObserve { include_git_meta: _ } => fallback
     DurableApprovalGrantRecord => fallback
     DurableApprovalGrantRead => fallback
