@@ -26,9 +26,13 @@ import v2.compiler.symbol_index_fill {
   symbol_index_fill_module_roots
 }
 import v2.std.symbol_index {
+  GlobalBareHit,
+  GlobalBareLookupAmbiguous,
+  GlobalBareLookupUnbound,
   SymbolIndex,
   empty_symbol_index,
   symbol_index_global_unique_lookup,
+  symbol_index_insert,
   symbol_index_lexical_lookup,
   symbol_index_lookup
 }
@@ -324,17 +328,42 @@ test fn symbol_index_global_unique_lookup_resolves_globally_unique_holds() -> Bo
     index: si_multi_root_index,
     name: ^OrphanPilotOnly
   ) {
-    Present { value: _ } => true
-    Absent => false
+    GlobalBareHit { node: _ } => true
+    _ => false
   }
 }
 
-test fn symbol_index_global_unique_lookup_absent_on_ambiguous_leaf_holds() -> Bool {
+test fn symbol_index_global_unique_lookup_ambiguous_leaf_holds() -> Bool {
   match symbol_index_global_unique_lookup(
     index: si_multi_root_index,
     name: ^Yes
   ) {
-    Present { value: _ } => false
-    Absent => true
+    GlobalBareLookupAmbiguous => true
+    _ => false
+  }
+}
+
+test fn symbol_index_global_unique_lookup_unbound_on_unknown_leaf_holds() -> Bool {
+  match symbol_index_global_unique_lookup(
+    index: si_multi_root_index,
+    name: ^NotInGlobalBareIndex
+  ) {
+    GlobalBareLookupUnbound => true
+    _ => false
+  }
+}
+
+test fn symbol_index_track_global_bare_idempotent_on_same_node_holds() -> Bool {
+  let bound = Node {
+    kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+  let path = qualified_name_snoc(qn: si_orphan_module_qn, segment: ^OrphanPilotOnly)
+  let once = symbol_index_insert(index: empty_symbol_index(), qualified_path: path, resolved: bound)
+  let twice = symbol_index_insert(index: once, qualified_path: path, resolved: bound)
+  match symbol_index_global_unique_lookup(index: twice, name: ^OrphanPilotOnly) {
+    GlobalBareHit { node: hit } => hit == bound
+    _ => false
   }
 }

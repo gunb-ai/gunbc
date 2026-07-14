@@ -26,6 +26,11 @@ type GlobalBareBindingState
   = GlobalBareUnique { node: Node }
   | GlobalBareAmbiguous
 
+type GlobalBareLookup
+  = GlobalBareHit { node: Node }
+  | GlobalBareLookupAmbiguous
+  | GlobalBareLookupUnbound
+
 type SymbolIndex {
   entries: Map<QualifiedName, Node>
   global_bare: Map<Symbol, GlobalBareBindingState>
@@ -56,14 +61,18 @@ fn symbol_index_track_global_bare(
       match map_get(index.global_bare, leaf) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: GlobalBareAmbiguous } => index
-          Present { value: GlobalBareUnique { node: _ } } =>
-            SymbolIndex {
-              entries: index.entries,
-              global_bare: map_insert(
-                m: index.global_bare,
-                key: leaf,
-                value: GlobalBareAmbiguous
-              )
+          Present { value: GlobalBareUnique { node: existing } } =>
+            if existing == resolved {
+              index
+            } else {
+              SymbolIndex {
+                entries: index.entries,
+                global_bare: map_insert(
+                  m: index.global_bare,
+                  key: leaf,
+                  value: GlobalBareAmbiguous
+                )
+              }
             }
           Absent =>
             SymbolIndex {
@@ -96,14 +105,14 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
   )
 }
 
-fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> Optional<Node> {
+fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
   match map_get(index.global_bare, name) {
     Accepted { value: opt, diagnostics: _ } => match opt {
-      Present { value: GlobalBareUnique { node: n } } => optional_present(value: n)
-      Present { value: GlobalBareAmbiguous } => optional_absent()
-      Absent => optional_absent()
+      Present { value: GlobalBareUnique { node: n } } => GlobalBareHit { node: n }
+      Present { value: GlobalBareAmbiguous } => GlobalBareLookupAmbiguous
+      Absent => GlobalBareLookupUnbound
     }
-    Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => GlobalBareLookupUnbound
   }
 }
 
