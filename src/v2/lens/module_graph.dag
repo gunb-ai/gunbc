@@ -27,18 +27,18 @@ type ModuleDependencyEdge {
   target_declared: Bool
 }
 
-data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live delegates to import_resolution_facts_live (host twin build_import_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts_flagged and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
+data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live delegates to import_resolution_facts_live (host twin build_import_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts_flagged_pending_reference_producer and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
 
 data reference_derived_edge_source_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "v2.lens.module_graph",
-    decl_name: "reference_derived_resolution_facts_flagged",
+    decl_name: "reference_derived_resolution_facts_flagged_pending_reference_producer",
     field: WholeDeclaration
   }
 }
 
-data reference_derived_edge_source_dissolution_note: String = "Scaffold producer for namespace terminal step (docs/plans/namespace-resolution-design.md §8 step 5): module-graph dependency edges derived from parsed-tree container.member qualified-name use sites (v2.lens.reference_deps.reference_resolution_facts_live census today; symbol_index_fill projection at steady state). Not wired into dependency_resolution_facts_live until the import grammar is deleted — import_resolution_facts_live remains live. On the import-only corpus the reference census matches import facts at module-prefix grain (reference_closure_b2_safety_wall_holds); this scaffold maps import facts through ModuleDependencyEdge as an interim stand-in until the swap repoints dependency_resolution_facts_live here without changing closure consumers."
+data reference_derived_edge_source_dissolution_note: String = "Scaffold producer for namespace terminal step (docs/plans/namespace-resolution-design.md §8 step 5): module-graph dependency edges derived from parsed-tree container.member qualified-name use sites (v2.lens.reference_deps.reference_resolution_facts_live census today; symbol_index_fill projection at steady state). Not wired into dependency_resolution_facts_live until the import grammar is deleted — import_resolution_facts_live remains live. Name suffix _pending_reference_producer marks that the body is still import-backed (interim stand-in), not parsed-tree reference-derived yet. On the import-only corpus the reference census matches import facts at module-prefix grain (reference_closure_b2_safety_wall_holds); this scaffold maps import facts through ModuleDependencyEdge until the swap repoints dependency_resolution_facts_live here without changing closure consumers."
 
 fn import_resolution_facts_live(
   pool_roots: List<String>,
@@ -88,7 +88,7 @@ fn dependency_resolution_facts_live(
   )
 }
 
-fn reference_derived_resolution_facts_flagged(
+fn reference_derived_resolution_facts_flagged_pending_reference_producer(
   pool_roots: List<String>,
   importer_roots: List<String>,
   exclude_substrings: List<String>
