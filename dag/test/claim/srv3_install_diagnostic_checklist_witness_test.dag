@@ -1,10 +1,12 @@
 module test.claim.srv3_install_diagnostic_checklist
 
 import std.logic { Bool }
-import gunbc.srv3_install_diagnostic_checklist {
-  srv3_install_diagnostic_observe_script_declares_five_surfaces,
-  srv3_install_diagnostic_checklist_entrypoint_is_declared,
+import gunbc.srv3_install_diagnostic_observe_script {
   srv3_install_diagnostic_observe_script,
+  srv3_install_diagnostic_observe_script_declares_five_surfaces,
+}
+import gunbc.srv3_install_diagnostic_checklist {
+  srv3_install_diagnostic_checklist_entrypoint_is_declared,
 }
 import gunbc.srv3_os_install_diagnostic {
   srv3_os_install_attempt_intent,

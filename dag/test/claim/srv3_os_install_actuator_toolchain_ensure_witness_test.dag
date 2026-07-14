@@ -7,6 +7,7 @@ import gunbc.srv3_os_install_actuator_toolchain_ensure {
   os_install_actuator_toolchain_ensure_script_uses_github_release_not_apt_for_websocat,
   os_install_actuator_toolchain_ensure_is_privileged_gated_for_apt,
   os_install_actuator_toolchain_ensure_dissolution_trigger,
+  os_install_actuator_toolchain_ensure_routes_through_host_effect_apply,
 }
 import extdeps.tools.websocat { websocat_install_path }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -27,7 +28,8 @@ test fn srv3_actuator_toolchain_ensure_websocat_installs_to_modeled_path_with_na
 
 test fn srv3_actuator_toolchain_ensure_dissolution_trigger_names_roster_retirement() -> Bool {
   match os_install_actuator_toolchain_ensure_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+    Terminal { reason: why } => string_contains(s: why, pattern: "OsInstallActuatorToolchainEnsure")
+    Scaffold { dissolves_to: _, bind: _ } => false
   }
+    && os_install_actuator_toolchain_ensure_routes_through_host_effect_apply()
 }

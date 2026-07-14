@@ -37,14 +37,14 @@ import gunbc.ci_deploy_access {
   deploy_access_check, deploy_access_check_observed,
   deploy_access_decision_reason,
 }
-import gunbc.srv3_os_install_diagnostic { OsInstallAttemptIntent }
+import gunbc.srv3_install_diagnostic_observe_script { srv3_bmcweb_token_path_for_observe, srv3_sol_console_log_path_for_observe }
 import std.types { String, NonEmptyStr, List }
 
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
   | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }
   | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
-  | Srv3DiagnosticObserveOnHost { node: ComputeHost, intent: OsInstallAttemptIntent }
+  | Srv3DiagnosticObserveOnHost { node: ComputeHost, bmc: String, port: String, iso_path: String, intent_content_hash: String }
   | OsInstallActuatorToolchainOnHost { node: ComputeHost }
   | IncompatibleCell { reason: String }
 
@@ -72,7 +72,13 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
             ConvergeOnHost { node: n, host_converge: p }
           }
         Srv3InstallDiagnosticObserve { intent: i } =>
-          Srv3DiagnosticObserveOnHost { node: n, intent: i }
+          Srv3DiagnosticObserveOnHost {
+            node: n,
+            bmc: i.bmc_endpoint as String,
+            port: i.serve_port as String,
+            iso_path: i.iso_path as String,
+            intent_content_hash: i.iso_content_hash as String,
+          }
         OsInstallActuatorToolchainEnsure {} =>
           OsInstallActuatorToolchainOnHost { node: n }
       }
@@ -214,6 +220,17 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
     ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
     ConvergeOnHost { node: _, host_converge: hc } =>
       realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
+    Srv3DiagnosticObserveOnHost { node: _, bmc: b, port: p, iso_path: ip, intent_content_hash: h } =>
+      realize_srv3_install_diagnostic_observe(
+        bmc: b,
+        port: p,
+        iso_path: ip,
+        intent_content_hash: h,
+        transport: transport,
+        effect_intent: intent,
+      )
+    OsInstallActuatorToolchainOnHost { node: _ } =>
+      realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -252,6 +269,10 @@ fn host_effect_apply_gated(
         ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
         ConvergeOnHost { node: _, host_converge: hc } =>
           realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
+        Srv3DiagnosticObserveOnHost { node: _, intent: i } =>
+          realize_srv3_install_diagnostic_observe(intent: i, transport: transport, effect_intent: intent)
+        OsInstallActuatorToolchainOnHost { node: _ } =>
+          realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -291,6 +312,8 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
             ShellOnHost { node: _, script: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            Srv3DiagnosticObserveOnHost { node: _, bmc: _, port: _, iso_path: _, intent_content_hash: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }

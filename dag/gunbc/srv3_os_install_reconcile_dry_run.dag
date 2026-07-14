@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.srv3_install_diagnostic_checklist {
+import gunbc.srv3_install_diagnostic_observe_script {
   srv3_install_diagnostic_observe_script,
 }
 import gunbc.srv3_os_install_diagnostic {

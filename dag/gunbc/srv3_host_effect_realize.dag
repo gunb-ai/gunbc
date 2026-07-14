@@ -15,9 +15,8 @@ import extdeps.tools.websocat {
 }
 import extdeps.diagnostic.ssh { ssh_session_exec_script }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.srv3_install_diagnostic_checklist { srv3_install_diagnostic_observe_script }
-import gunbc.srv3_os_install_diagnostic { OsInstallAttemptIntent }
-import gunbc.srv3_os_install_actuator_toolchain_ensure { gunbc_bin_dir }
+import gunbc.srv3_install_diagnostic_observe_script { srv3_install_diagnostic_observe_script, srv3_bmcweb_token_path_for_observe, srv3_sol_console_log_path_for_observe }
+import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
 import gunbc.ci_deploy_access { deploy_access_apt_get_binary_path }
 import gunbc.host_effect {
   HostEffectIntent,
@@ -118,11 +117,21 @@ fn srv3_shell_reconcile(
 }
 
 fn realize_srv3_install_diagnostic_observe(
-  intent: OsInstallAttemptIntent,
+  bmc: String,
+  port: String,
+  iso_path: String,
+  intent_content_hash: String,
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let script = srv3_install_diagnostic_observe_script(intent: intent)
+  let script = srv3_install_diagnostic_observe_script(
+    token_path: srv3_bmcweb_token_path_for_observe,
+    bmc: bmc,
+    port: port,
+    iso_path: iso_path,
+    intent_content_hash: intent_content_hash,
+    sol_log: srv3_sol_console_log_path_for_observe as String,
+  )
   let observed = srv3_run_multiline_bash(script: script, transport: transport)
   srv3_shell_reconcile(observed: observed, intent: effect_intent)
 }
