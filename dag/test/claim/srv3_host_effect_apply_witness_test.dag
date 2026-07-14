@@ -129,7 +129,6 @@ fn witness_srv3_typed_effect_on_bmc_refuses_typed() -> Bool {
   }
 }
 
-<<<<<<< HEAD
 fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
   match host_effect_apply(
     target: srv3_actuator_target(),
@@ -139,7 +138,10 @@ fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
   ) {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "SshShell transport is a fail-closed Unimplemented stub")
-=======
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
 fn witness_srv3_nbd_proxy_serve_script_for_absent() -> Bool {
   match srv3_host_effect_script_for(effect: srv3_nbd_proxy_serve_host_effect()) {
     Absent => true
@@ -171,7 +173,6 @@ fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
   ) {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "cannot target BmcController")
->>>>>>> 06ca375269 (Shell→dag P6 Part 2: typed nbd-proxy session lease on host_effect_apply)
     Converged { evidence: _, applied: _ } => false
   }
 }
