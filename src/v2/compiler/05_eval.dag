@@ -151,10 +151,7 @@ import v2.std.verification {
   test_claim_input
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-import v2.extdeps.languages.dag {
-  dag_node_is_int_literal_atom,
-  dag_round_trip_authorities_ready
-}
+import v2.extdeps.languages.dag { dag_round_trip_authorities_ready }
 import v2.extdeps.runtimes.v2_effect_io_pure {
   EffectIoFixtureStore,
   EffectIoResourceBackend,
@@ -1197,18 +1194,6 @@ fn eval_environment_binding_key_from_node(declaration: Node) -> Outcome<Environm
   }
 }
 
-fn eval_node_admits_literal_allocation(node: Node) -> Bool {
-  if dag_node_is_int_literal_atom(node: node) {
-    true
-  } else {
-    match node.kind {
-      TypeNode { connective: Atom { identity: id } } =>
-        (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false)
-      _ => false
-    }
-  }
-}
-
 fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   bind_outcome(
     o: eval_environment_binding_key_from_node(declaration: node),
@@ -2034,12 +2019,8 @@ fn eval_interpret_node(
         TypeNode { connective: _ } =>
           match eval_runtime_binding_lookup(node: node, environment: environment) {
             Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
-            Rejected { diagnostics: binding_miss } =>
-              if eval_node_admits_literal_allocation(node: node) {
-                interpretation.value.allocate_literal(node, environment)
-              } else {
-                Rejected { diagnostics: binding_miss }
-              }
+            Rejected { diagnostics: _ } =>
+              interpretation.value.allocate_literal(node, environment)
           }
       }
     }
