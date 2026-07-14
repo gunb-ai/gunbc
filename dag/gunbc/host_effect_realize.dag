@@ -43,9 +43,9 @@ import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.srv3_install_diagnostic_observe_script {
   srv3_install_diagnostic_observe_script,
-  srv3_bmcweb_token_path_for_observe,
-  srv3_sol_console_log_path_for_observe,
 }
+import gunbc.srv3_os_install_actuate { srv3_bmcweb_token_path }
+import gunbc.srv3_sol_console_capture { srv3_sol_console_log_path }
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.ci_deploy_access {
   DeployAccess, DeployAccessActor,
@@ -167,12 +167,12 @@ fn realize_srv3_install_diagnostic_observe(
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let script = srv3_install_diagnostic_observe_script(
-    token_path: srv3_bmcweb_token_path_for_observe,
+    token_path: srv3_bmcweb_token_path,
     bmc: bmc,
     port: port,
     iso_path: iso_path,
     intent_content_hash: intent_content_hash,
-    sol_log: srv3_sol_console_log_path_for_observe as String,
+    sol_log: srv3_sol_console_log_path as String,
   )
   let observed = run_shell_transport(script: shell_exec_via_bash(body: script), transport: transport)
   srv3_shell_reconcile(observed: observed, intent: effect_intent)

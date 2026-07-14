@@ -25,7 +25,7 @@ import gunbc.host_effect {
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import std.realization_reconcile { reconciliation_converged }
+import std.realization_reconcile { Converged, NotConverged }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, String, Bool }
 import std.resources { Network }
@@ -167,17 +167,16 @@ func srv3_os_install_actuator_toolchain_ensure() -> ProcessExit
 {
   let target = HostOs { node: srv3_os_install_actuator_host }
   let access = ci_deploy_srv1_operator_access
-  if reconciliation_converged(r: host_effect_apply_gated(
+  match host_effect_apply_gated(
     access: access,
     target: target,
     effect: OsInstallActuatorToolchainEnsure {},
     evidence: host_effect_identity_evidence,
     transport: access.transport,
     fixture_actor: none,
-  )) {
-    ExitSuccess
-  } else {
-    exit_failure(reason: "actuator-toolchain-ensure: host_effect_apply OsInstallActuatorToolchainEnsure did not converge")
+  ) {
+    Converged { evidence: _, applied: _ } => ExitSuccess
+    NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
   }
 }
 

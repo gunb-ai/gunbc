@@ -13,10 +13,6 @@ data srv3_install_diagnostic_observe_script_bash_emit_dissolution_trigger: Dispo
   }
 }
 
-data srv3_bmcweb_token_path_for_observe: String = "/tmp/srv3_bmcweb_token"
-
-data srv3_sol_console_log_path_for_observe: NonEmptyStr = "/var/lib/gunbc/logs/srv3-install-sol-console.log" as NonEmptyStr
-
 fn bash_var_ref(name: String) -> String {
   concat("$", concat("{", concat(name, "}")))
 }

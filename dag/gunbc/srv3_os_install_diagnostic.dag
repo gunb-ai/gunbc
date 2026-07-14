@@ -44,8 +44,6 @@ import gunbc.srv3_os_install_actuate { srv3_bmcweb_token_path }
 import gunbc.srv3_sol_console_capture { srv3_sol_console_log_path }
 import gunbc.srv3_install_diagnostic_observe_script {
   srv3_install_diagnostic_observe_script,
-  srv3_bmcweb_token_path_for_observe,
-  srv3_sol_console_log_path_for_observe,
 }
 
 data srv3_nbd_proxy_local_port: Int = 10809
@@ -141,12 +139,12 @@ data srv3_os_install_attempt_intent: OsInstallAttemptIntent = OsInstallAttemptIn
 
 fn srv3_install_diagnostic_observe_script_for_intent(intent: OsInstallAttemptIntent) -> String {
   srv3_install_diagnostic_observe_script(
-    token_path: srv3_bmcweb_token_path_for_observe,
+    token_path: srv3_bmcweb_token_path,
     bmc: intent.bmc_endpoint as String,
     port: intent.serve_port as String,
     iso_path: intent.iso_path as String,
     intent_content_hash: intent.iso_content_hash as String,
-    sol_log: srv3_sol_console_log_path_for_observe as String,
+    sol_log: srv3_sol_console_log_path as String,
   )
 }
 

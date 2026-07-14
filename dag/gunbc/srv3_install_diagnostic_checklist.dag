@@ -40,6 +40,10 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String }
 import std.disposition { Disposition, Terminal }
 
+type Srv3InstallDiagnosticObserveOutcome
+  = Srv3InstallDiagnosticObserved { stdout: String }
+  | Srv3InstallDiagnosticObserveRefused { reason: String }
+
 data srv3_install_diagnostic_checklist_scaffold: Disposition = Terminal {
   reason: "host_effect_apply binds Srv3InstallDiagnosticObserve via host_effect_realize; receipt echo remains shell.Exec until bash-emit (#5828)"
 }
@@ -58,9 +62,9 @@ func srv3_install_diagnostic_emit_observe_script() -> ProcessExit {
   }
 }
 
-fn srv3_install_diagnostic_observe_stdout(
+fn srv3_install_diagnostic_observe_outcome(
   intent: OsInstallAttemptIntent,
-) -> String? {
+) -> Srv3InstallDiagnosticObserveOutcome {
   let target = HostOs { node: srv3_os_install_actuator_host }
   match host_effect_apply(
     target: target,
@@ -74,16 +78,29 @@ fn srv3_install_diagnostic_observe_stdout(
     transport: LocalShell,
   ) {
     Converged { evidence: ShellEffectApplied { exit_code: _, stdout: out }, applied: _ } =>
-      Present { value: out }
-    Converged { evidence: ConvergePlanApplied { exit_code: _, stdout: _ }, applied: _ } => none
-    NotConverged { reason: _, applied: _ } => none
+      Srv3InstallDiagnosticObserved { stdout: out }
+    Converged { evidence: ConvergePlanApplied { exit_code: _, stdout: _ }, applied: _ } =>
+      Srv3InstallDiagnosticObserveRefused {
+        reason: "srv3-install-diagnostic-observe: unexpected ConvergePlanApplied evidence for Srv3InstallDiagnosticObserve",
+      }
+    NotConverged { reason: why, applied: _ } =>
+      Srv3InstallDiagnosticObserveRefused { reason: why }
+  }
+}
+
+fn srv3_install_diagnostic_observe_stdout(
+  intent: OsInstallAttemptIntent,
+) -> String? {
+  match srv3_install_diagnostic_observe_outcome(intent: intent) {
+    Srv3InstallDiagnosticObserved { stdout: out } => Present { value: out }
+    Srv3InstallDiagnosticObserveRefused { reason: _ } => none
   }
 }
 
 func srv3_install_diagnostic_checklist() -> ProcessExit {
   let intent = srv3_os_install_attempt_intent
-  match srv3_install_diagnostic_observe_stdout(intent: intent) {
-    Present { value: stdout } => {
+  match srv3_install_diagnostic_observe_outcome(intent: intent) {
+    Srv3InstallDiagnosticObserved { stdout } => {
       let observation = parse_srv3_install_debug_observation(
         stdout: stdout,
         intent: intent,
@@ -102,8 +119,8 @@ func srv3_install_diagnostic_checklist() -> ProcessExit {
         exit_failure(reason: concat("srv3-install-diagnostic-receipt: ", echo_run.stderr))
       }
     }
-    Absent =>
-      exit_failure(reason: "srv3-install-diagnostic-observe: host_effect_apply Srv3InstallDiagnosticObserve did not converge")
+    Srv3InstallDiagnosticObserveRefused { reason } =>
+      exit_failure(reason: reason)
   }
 }
 
