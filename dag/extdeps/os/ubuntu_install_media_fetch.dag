@@ -40,7 +40,7 @@ type InstallMediaFetchReconcileOutcome
   | InstallMediaFetchFetched { path: NonEmptyStr, mirror_url: NonEmptyStr }
   | InstallMediaFetchRefused { reason: NonEmptyStr }
 
-data refusal_shape_doc: String = "DESIGN §5 refusal-shape fix (cursor review, PR #6596): the fetch reconcile path now matches Sha256VerifyVerdict directly instead of collapsing it through a Bool predicate, so a mktemp/checksum-write infra failure stays distinguishable from a genuine digest mismatch (InstallMediaFetchVerifyInfraFailure vs InstallMediaFetchHashMismatch), and a post-download shell.Move.File failure aborts with its own typed refusal instead of falling through the mirror fold to a misleading 'all mirrors unreachable'. install_media_hash_matches (Bool) is retained only as a test-fixture convenience, never in this reconcile path."
+data refusal_shape_doc: String = "DESIGN §5 refusal-shape fix (cursor review, PR #6596): the fetch reconcile path now matches Sha256VerifyVerdict directly instead of collapsing it through a Bool predicate, so a mktemp/checksum-write infra failure stays distinguishable from a genuine digest mismatch (InstallMediaFetchVerifyInfraFailure vs InstallMediaFetchHashMismatch), and a post-download shell.Move.File failure aborts with its own typed refusal instead of falling through the mirror fold to a misleading 'all mirrors unreachable'. The Bool-collapsing install_media_hash_matches helper was deleted (cursor review, PR #6596) - its two wet witnesses now assert on observe_install_media_fetch's Sha256VerifyVerdict-derived outcome directly, so no predicate-dissolution surface remains anywhere in this module."
 
 type MirrorAttempt
   = MirrorTerminal { outcome: InstallMediaFetchReconcileOutcome }
@@ -50,14 +50,6 @@ type MirrorAttempt
 type MirrorFoldAcc = MirrorFoldAcc { terminal: InstallMediaFetchReconcileOutcome?, saw_mismatch: Bool }
 
 data mirror_fold_refusal_doc: String = "DESIGN §5 fix (cursor review, PR #6596): install_media_fetch_try_mirror previously returned `none` for BOTH an unreachable mirror (transport miss, keep trying) AND a Sha256Mismatch (a genuine digest failure), so a run where every mirror downloaded but none verified fell through the fold to 'all mirrors unreachable' - a state-space conflation between reachability and digest correctness. MirrorAttempt now names the three outcomes distinctly, and the fold tracks saw_mismatch so the final refusal reads 'digest verification failed' when that's what actually happened."
-
-fn install_media_hash_matches(path: NonEmptyStr, expected_hash: NonEmptyStr) -> Bool {
-  match sha256sum_verify_via_shell(path: path, expected_digest: expected_hash) {
-    Sha256Matches => true
-    Sha256Mismatch => false
-    Sha256VerifyInfraFailure { reason: _ } => false
-  }
-}
 
 fn observe_install_media_fetch(path: NonEmptyStr, expected_hash: NonEmptyStr) -> InstallMediaFetchObservation {
   let present = shell.Test.IsFile(path: path as FilePath)
