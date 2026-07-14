@@ -247,8 +247,8 @@ fn srv3_actuator_toolchain_websocat_release_download_url() -> String {
 }
 
 fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> Bool {
-  srv3_actuator_toolchain_privileged_apt_install_args(package: package_curl)
-    == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
+  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: package_curl)
+  args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
 }
 
 fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> Bool {
