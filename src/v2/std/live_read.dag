@@ -1,7 +1,4 @@
 module v2.std.live_read
-
-import v2.std.collection { List }
-
 data live_read_classification_authority_note: String = "G1 module-closure live-read classification (docs/plans/live-read-witness-classification-design.md P0): carrier homes are declared rows; v2.lens.live_read_classification walks import closure to detect runtime tree/host reads hidden behind carrier imports. Subsumes witness_cost_locality.ambient_read_carrier_modules_v0 at steady state; until G2 lands this is the structural over-approximation (module grain — a types-only carrier import over-flags, fail-closed default). Lives in v2.std.live_read (not v2.std.live_tree) so the widely-imported disposition module stays import-free."
 
 type LiveReadCarrierKind
