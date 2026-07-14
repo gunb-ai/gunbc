@@ -627,7 +627,7 @@ fn resolve_child_edge(
   }
 }
 
-data arrow_domain_param_scoping_note: String = "Wave 1 Gate 1 A1: param scoping is solely add_arrow_domain_named_params over lowered Arrow domain Named edges (general-body-producer-design Stage A). dag_fn_decl_param_binding_atoms and scope_with_fn_decl_params dissolved — normalize body_lowering_fold emits Arrow+domain pre-resolve; wrapper-retained fn_decl shells retain no lowered body with param refs."
+data arrow_domain_param_scoping_note: String = "Wave 1 Gate 1 A1: param scoping is add_arrow_domain_named_params over lowered Arrow domain Named edges (general-body-producer-design Stage A). dag_fn_decl_param_binding_atoms and scope_with_fn_decl_params dissolved. Domain construction remains interim param-list-walk (body_lower_domain_from_param_list) until fn_decl ident routes to binding_name_terminal and SymbolIndex carries module_qn.fn.param (^migrate_when_fn_decl_ident_binding_terminal_lands)."
 
 fn domain_root_has_named_bindings(root: Node) -> Bool {
   match root.kind {

@@ -2,7 +2,7 @@ module v2.test.manual.body_lowering_normalize_add
 
 import v2.compiler.body_lowering_fold {
   body_lower_body_from_fn_captured,
-  body_lower_domain_from_containment_named_edges,
+  body_lower_domain_from_param_list,
   body_lower_fn_decl_to_arrow,
   body_lower_return_type_from_fn_captured,
   body_lower_try_infix_transform,
@@ -273,7 +273,7 @@ fn body_lowering_domain_holds() -> Bool {
         Present { value: captured } =>
           match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
             ParseSubtreeFound { captured: param_list } =>
-              match body_lower_domain_from_containment_named_edges(param_list: param_list) {
+              match body_lower_domain_from_param_list(param_list: param_list) {
                 Present { value: _ } => true
                 Absent => false
               }
