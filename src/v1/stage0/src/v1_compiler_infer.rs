@@ -12510,10 +12510,17 @@ pub fn local_binding_for_item(
     }
 }
 
+pub fn census_reserved_kernel_ambient_name(name: &str) -> bool {
+    matches!(name, "Present" | "Absent" | "Optional")
+}
+
 pub fn census_insert_binding(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     binding: Rc<TypeBinding>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    if census_reserved_kernel_ambient_name(binding.name.as_str()) {
+        return census.clone();
+    }
     match v1_rt::map_get(&census, binding.name.clone())
         .as_deref()
         .cloned()
