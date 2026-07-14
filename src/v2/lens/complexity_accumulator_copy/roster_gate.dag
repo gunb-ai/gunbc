@@ -1,9 +1,6 @@
 module v2.lens.complexity_accumulator_copy.roster_gate
 
 import extdeps.filesystem.filesystem_io
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
-import v2.compiler.normalize { normalize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.complexity_accumulator_copy { Finding }
 import v2.lens.complexity_accumulator_copy.analyze {

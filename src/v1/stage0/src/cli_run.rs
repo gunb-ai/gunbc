@@ -2474,9 +2474,26 @@ fn load_sources_for_entry_with_index(
     let _entry_source = entry_source_from_index_or_disk(index, entry_path)?;
     let _ = facts;
     // namespace-resolution-design.md §8 PR-4/5: global_bare census is corpus-wide and
-    // order-independent — entry resolve must load the whole indexed module set so bare
-    // references in import-stripped modules still resolve via the census.
-    Ok(index.values().cloned().collect())
+    // order-independent — entry resolve loads the whole-tree probe universe (same exclude
+    // policy as compile-clean) so stripped compiler/std bare refs resolve without pulling
+    // in /test/ fixtures that still use selective imports against stripped re-export surfaces.
+    let excludes = whole_tree_resolve_exclusion_substrings();
+    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .iter()
+        .filter(|(module_path, sf)| {
+            let p = sf.path.replace('\\', "/");
+            !excludes
+                .iter()
+                .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+        })
+        .map(|(_, sf)| sf.clone())
+        .collect();
+    if sources.is_empty() {
+        return Err(
+            "entry resolve module set is empty after whole-tree exclusion policy".to_string(),
+        );
+    }
+    Ok(sources)
 }
 
 fn same_canonical_file(a: &str, b: &str) -> bool {
