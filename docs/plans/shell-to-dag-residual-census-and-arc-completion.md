@@ -35,7 +35,7 @@ These are correct as shell — the executor only understands shell text. Target 
 | `ubuntu_seeded_install_media_remaster.dag` | ISO remaster: `xorriso` extract/mkisofs, NoCloud `user-data`/`meta-data`, grub `sed`; heaviest raw shell | genuine emitter |
 | `fleet_converge` fresh-standup arm | `git fetch`/`cargo build`/`cp` greenfield bring-up (3 frontier rows: `orch_construct_procedure`, `…_cmdsubst_assign`, `…_let_assign`) | genuine emitter |
 
-These run before a gunbc runtime exists on the target, so shell is the honest lowest-dependency medium. They emit through the v2 bash rows (the If-band + the Procedure/Let/Arith band once modeled). **⚠ FLAG B1:** the ISO remaster/fetch may stay `ShellPayloadRequired` bootstrap *permanently* (they run on the provisioning host before any typed transport) — decide whether they're a permanent roster entry or a future typed-`Filesystem.Write` + typed-argv target. *(Working default 2026-07-14, pending explicit operator confirm: **typed target** — these scripts execute on the provisioning host where the gunbc runtime IS present, so under the bash-minimization rule they're runtime-present, not bootstrap; curl/xorriso/sed become typed argv ops and the NoCloud files become typed `Filesystem.Write`. Consequence: the for/heredoc emit band is never needed and the tier-2 band stays Procedure/Let-only.)*
+These run before a gunbc runtime exists on the target, so shell is the honest lowest-dependency medium. They emit through the v2 bash rows (the If-band + the tier-2 Procedure/Let band, #6566; the arith arm had no live site and is being pruned by the consumer slice). **⚠ FLAG B1:** the ISO remaster/fetch may stay `ShellPayloadRequired` bootstrap *permanently* (they run on the provisioning host before any typed transport) — decide whether they're a permanent roster entry or a future typed-`Filesystem.Write` + typed-argv target. *(Working default 2026-07-14, pending explicit operator confirm: **typed target** — these scripts execute on the provisioning host where the gunbc runtime IS present, so under the bash-minimization rule they're runtime-present, not bootstrap; curl/xorriso/sed become typed argv ops and the NoCloud files become typed `Filesystem.Write`. Consequence: the for/heredoc emit band is never needed and the tier-2 band stays Procedure/Let-only.)*
 
 ### C. Runtime-present shell — MUST become typed via `host_effect_apply` (the real work)
 
@@ -103,7 +103,7 @@ Two tracks run in parallel; deletion is the join.
 ### Track 1 — legitimate shell onto the v2 bash rows (bounded)
 
 - **P1 (ready now, no sign-off):** the `ci_workflow` concat-built floor-peak/cgroup runners → `emit(intent, Bash)` via the landed If-band + word support (they carry `…_shell_emit_dissolution_trigger` rows). Foreign-executor, so they *emit*; no `apply()`.
-- **P2:** the Procedure/Let/Arith emit band (the 3 fresh-standup frontier rows need it; the ubuntu-media files need `for`/heredoc). This is the one genuinely new *emitter* vocabulary the arc still needs — scoped by the bootstrap census, fail-closed where a construct isn't modeled.
+- **P2:** the Procedure/Let emit band for the 3 fresh-standup frontier rows — the one genuinely new *emitter* vocabulary the arc still needs, scoped by the bootstrap census, fail-closed where a construct isn't modeled. *(Tier-2 band LANDED #6566; the consumer slice — route the fresh-standup fragment, byte-oracle vs `.github/fleet-converge.sh`, retire the frontier rows, delete the site-less arith arm — is in flight. The former "ubuntu-media files need `for`/heredoc" clause is superseded by the FLAG B1 working default above: ubuntu-media dissolves to typed argv/`Filesystem.Write`, so the for/heredoc band is never built.)*
 - **P3:** `local_tidy_spec` pre-push hook + cron lines stay `serialize_bash`/foreign-executor **permanently** (roster entries, category (a)). These never dissolve — they're the honest residue.
 
 ### Track 2 — runtime-present shell onto `host_effect_apply` (the §2 keystone cascade)
@@ -117,7 +117,7 @@ Two tracks run in parallel; deletion is the join.
 
 When Track 1's emitters route through the v2 bash rows and Track 2's runtime-present shell is on `apply()` with typed effects, the `bash_program_importer_count` reaches the permanent-residue floor (the v2 replacement emitter + the foreign-executor roster). At that point `bash.program`/`serialize_bash` has no runtime importer, the ratchet's baseline hits the floor, and `program.dag` + `serialize_bash` delete — the arc's terminal step. The v2 bidirectional bash language is the single bash authority.
 
-**Critical-path summary:** everything non-foreign converges on **P4 (the `host_effect_apply` typed-effect + `EmitArtifactThenThinRun` mint)**. P5/P6 are mechanical once P4 lands; P1/P2 (emitter side) run independently. The one thing gating the operator's actual goal is the P4 sign-off (⚠ FLAG 2a/2b/2c).
+**Critical-path summary:** everything non-foreign converges on **P4 (the `host_effect_apply` typed-effect + `EmitArtifactThenThinRun` mint)**. P5/P6 are mechanical once P4 lands; P1/P2 (emitter side) run independently. The former gate — the P4 sign-off (⚠ FLAG 2a/2b/2c) — is **cleared**: signed/discharged 2026-07-14 (see §2) and the keystone worker is dispatched; the critical path is now P4's execution, not its authorization.
 
 ## Dissolution trigger
 
