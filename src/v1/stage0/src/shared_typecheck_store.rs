@@ -6,8 +6,9 @@
 //!
 //! Normal indexes keep typed results as per-index `Rc` maps (main memory path). This
 //! module holds the interim **serde byte transport** for cross-worker share only.
-//! When armed, the shared store is the sole typed-cache authority — per-index
-//! `typed_module_cache` is not populated (avoids Rc+JSON double retention). 🟡 dissolve-on:
+//! When armed, the shared store is the sole typed-cache authority — `index_insert_typed`
+//! never writes per-index `typed_module_cache` (reads decode shared bytes only; avoids
+//! Rc+JSON double retention). 🟡 dissolve-on:
 //! store-path `Rc`→`Arc` on `TypecheckModuleResult` / nested infer carriers (design §4.2).
 //!
 //! **Cross-worker serde contract:** `TypecheckModuleResult` serializes authored module/type

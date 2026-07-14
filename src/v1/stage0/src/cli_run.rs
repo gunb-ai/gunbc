@@ -2862,6 +2862,7 @@ fn index_insert_typed(
     if let Some(bytes) = raced_bytes {
         return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
     }
+    // Insert won the race: bytes live in the shared store only (no per-index Rc copy).
     Ok(result)
 }
 
