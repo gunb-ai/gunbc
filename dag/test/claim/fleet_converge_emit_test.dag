@@ -109,8 +109,13 @@ fn witness_live_converge_thin_run_emitted() -> Bool {
 }
 
 fn witness_drift_red_receipt() -> Bool {
-  !fleet_converge_drifted(committed: expected_fleet_converge_sh())
-    && fleet_converge_drifted(committed: concat(expected_fleet_converge_sh(), "x"))
+  let r = filesystem_read(path: ".github/fleet-converge.sh")
+  match r {
+    ReadOk { content: committed } =>
+      !fleet_converge_drifted(committed: committed)
+        && fleet_converge_drifted(committed: concat(committed, "x"))
+    _ => false
+  }
 }
 
 fn witness_thin_header() -> Bool {
