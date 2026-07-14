@@ -8252,7 +8252,7 @@ pub fn run_discovery_corpus_with_options(
             Some(ctx) => {
                 let touched_runtime_dependency_entry_count =
                     discovery_rows_runtime_dependency_touched_count(
-                        rows,
+                        &rows,
                         &index.module_graph_facts,
                         &changed_paths,
                     );
