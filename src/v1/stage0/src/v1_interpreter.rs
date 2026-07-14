@@ -5470,16 +5470,53 @@ fn shell_completion_trace_line(
 
 /// Post-wait completion trace for every shell transport: exit, stdout/stderr bytes,
 /// spawn-to-wait wall seconds. Pairs with `render_shell_trace` (pre-spawn).
+///
+/// On non-zero exit the captured stderr CONTENT is surfaced (tail-bounded), not just its
+/// byte count: a failing op whose error text is discarded is an undiagnosable failure
+/// (DESIGN §5 — a failure must be a visible, located diagnostic, never an opaque count;
+/// a whole self-host build failure was invisible in CI because only `stderr=N bytes` was
+/// logged). Success stays count-only so benign compiler warnings do not drown the trace.
 fn render_shell_completion_trace(
     exit_code: i32,
     stdout_bytes: usize,
-    stderr_bytes: usize,
+    stderr: &[u8],
     wall: std::time::Duration,
 ) {
     trace_emit(
         OutputChannel::ShellTrace,
-        &shell_completion_trace_line(exit_code, stdout_bytes, stderr_bytes, wall),
+        &shell_completion_trace_line(exit_code, stdout_bytes, stderr.len(), wall),
     );
+    if let Some(block) = shell_completion_stderr_trace_block(exit_code, stderr) {
+        trace_emit(OutputChannel::ShellTrace, &block);
+    }
+}
+
+/// Pure tail-bounding of captured stderr for the completion trace. Returns `None` when there
+/// is nothing to surface (success exit, or empty stderr); `Some(block)` is the `[shell] stderr`
+/// diagnostic, its content tail-bounded with a leading elision marker when it exceeds the cap.
+/// Kept pure (no `trace_emit`) so the surfacing decision is unit-testable with a RED control.
+fn shell_completion_stderr_trace_block(exit_code: i32, stderr: &[u8]) -> Option<String> {
+    if exit_code == 0 || stderr.is_empty() {
+        return None;
+    }
+    const MAX_STDERR_TRACE: usize = 16384;
+    let (elided, tail) = if stderr.len() > MAX_STDERR_TRACE {
+        (
+            stderr.len() - MAX_STDERR_TRACE,
+            &stderr[stderr.len() - MAX_STDERR_TRACE..],
+        )
+    } else {
+        (0, stderr)
+    };
+    let prefix = if elided > 0 {
+        format!("…<{elided} earlier stderr bytes elided>…\n")
+    } else {
+        String::new()
+    };
+    Some(format!(
+        "[shell] stderr (exit={exit_code}):\n{prefix}{}",
+        String::from_utf8_lossy(tail)
+    ))
 }
 
 fn shell_stdin_payload(val: &Value) -> InterpResult<Vec<u8>> {
@@ -5548,7 +5585,7 @@ fn dispatch_shell(
         render_shell_completion_trace(
             output.status.code().unwrap_or(-1),
             output.stdout.len(),
-            output.stderr.len(),
+            &output.stderr,
             wall_start.elapsed(),
         );
         output
@@ -5563,7 +5600,7 @@ fn dispatch_shell(
         render_shell_completion_trace(
             output.status.code().unwrap_or(-1),
             output.stdout.len(),
-            output.stderr.len(),
+            &output.stderr,
             wall_start.elapsed(),
         );
         output
@@ -8864,6 +8901,7 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
 #[cfg(test)]
 mod shell_completion_trace_tests {
     use super::hermetic_checkout_read_disposition_under;
+    use super::shell_completion_stderr_trace_block;
     use super::shell_completion_trace_line;
     use std::time::Duration;
 
@@ -8874,6 +8912,36 @@ mod shell_completion_trace_tests {
             line,
             "[shell] done exit=0 stdout=1234 stderr=56 bytes wall=5.150s"
         );
+    }
+
+    #[test]
+    fn stderr_block_surfaces_content_on_nonzero_exit() {
+        let block = shell_completion_stderr_trace_block(101, b"error: manifest not found\n")
+            .expect("non-zero exit with stderr must surface a diagnostic block");
+        assert!(block.starts_with("[shell] stderr (exit=101):\n"));
+        assert!(block.contains("error: manifest not found"));
+    }
+
+    #[test]
+    fn stderr_block_none_on_success_or_empty() {
+        // RED control: success (even with stderr) and empty-stderr failures surface nothing,
+        // so benign compiler warnings never drown the trace and there is no empty block noise.
+        assert_eq!(
+            shell_completion_stderr_trace_block(0, b"warning: unused\n"),
+            None
+        );
+        assert_eq!(shell_completion_stderr_trace_block(1, b""), None);
+    }
+
+    #[test]
+    fn stderr_block_tail_bounds_and_marks_elision() {
+        let big = vec![b'x'; 16384 + 500];
+        let block =
+            shell_completion_stderr_trace_block(1, &big).expect("oversized stderr surfaces");
+        assert!(block.contains("<500 earlier stderr bytes elided>"));
+        // Only the 16384-byte tail is carried, not the full 16884-byte body: the trailing
+        // contiguous run of stderr bytes is exactly the cap.
+        assert_eq!(block.chars().rev().take_while(|c| *c == 'x').count(), 16384);
     }
 
     #[test]

@@ -43,7 +43,7 @@ import gunbc.srv3_os_install_diagnostic {
   OsInstalledVerdict,
   OnlyBmcLeasePresent,
 }
-import gunbc.srv3_seeded_install_media { srv3_seeded_install_media_content_hash }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
 import gunbc.network_identity_subsumption {
   srv3_pre_install_lease_table,
   srv3_post_install_lease_table_fixture,
