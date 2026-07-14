@@ -2696,19 +2696,13 @@ pub struct MultiEntryIndex {
 /// store-carried infer carriers — `Rc` payloads make this `!Send` today.
 struct SharedTypecheckCaches {
     intern_table: Rc<InternTable>,
-    parse_cache: std::collections::HashMap<
-        String,
-        (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>),
-    >,
-    typed_module_cache: std::collections::HashMap<
-        String,
-        Rc<v1_compiler_infer::TypecheckModuleResult>,
-    >,
+    parse_cache:
+        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
+    typed_module_cache:
+        std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>,
     module_source_identity: std::collections::HashMap<String, String>,
-    normalize_diag_cache:
-        std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
-    ownership_diag_cache:
-        std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+    normalize_diag_cache: std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+    ownership_diag_cache: std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
 }
 
 impl SharedTypecheckCaches {
@@ -2990,10 +2984,10 @@ fn resolve_entry_with_parse_cache(
                 eprintln!(
                     "[resolved-graph-cache] decode subject={subject} (installed into process share)"
                 );
-                index.resolved_graph_memo.borrow_mut().insert(
-                    subject,
-                    (hit.graph.clone(), hit.source_indices.clone()),
-                );
+                index
+                    .resolved_graph_memo
+                    .borrow_mut()
+                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -3199,10 +3193,10 @@ fn resolve_entry_with_parse_cache(
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
     // Install into the in-process share so same-subject re-resolves skip assembly.
-    index.resolved_graph_memo.borrow_mut().insert(
-        subject.clone(),
-        (typed.clone(), source_indices.clone()),
-    );
+    index
+        .resolved_graph_memo
+        .borrow_mut()
+        .insert(subject.clone(), (typed.clone(), source_indices.clone()));
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only

@@ -192,6 +192,8 @@ pub fn render_rust_type(
                                 source_indices: source_indices.clone(),
                                 intern_table: empty_intern_table(),
                                 source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+                                global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(
+                                ),
                             }),
                         )
                     } else {
@@ -246,6 +248,7 @@ pub fn render_rust_type_without_applied_binding(
                     source_indices: source_indices.clone(),
                     intern_table: empty_intern_table(),
                     source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+                    global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
                 }),
             )
         } else {
@@ -8403,6 +8406,11 @@ pub fn render_rust_type_with_applied_binding(
                                             intern_table: empty_intern_table(),
                                             source_visible_names: v1_rt::rc_empty_map::<String, bool>(
                                             ),
+                                            global_bare: v1_rt::rc_empty_map::<
+                                                String,
+                                                Rc<GlobalBareLookupState>,
+                                            >(
+                                            ),
                                         }),
                                     )
                                 }
@@ -8432,6 +8440,10 @@ pub fn render_rust_type_with_applied_binding(
                                     source_indices: source_indices.clone(),
                                     intern_table: empty_intern_table(),
                                     source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+                                    global_bare: v1_rt::rc_empty_map::<
+                                        String,
+                                        Rc<GlobalBareLookupState>,
+                                    >(),
                                 }),
                             )
                         }
@@ -24066,6 +24078,7 @@ pub fn rust_test_signature_comment(
             source_indices: projection.source_indices.clone(),
             intern_table: empty_intern_table(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         });
         let params_str = Rc::new({
             let mut __result = Vec::new();

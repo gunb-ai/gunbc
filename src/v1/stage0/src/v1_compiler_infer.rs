@@ -48,6 +48,9 @@ pub use crate::v1_compiler_infer_emit_info::{
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, RustCorpusRepr, TypeRepr, TypeSummary,
 };
+use crate::v1_compiler_infer_env::GlobalBareLookupState::{
+    GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
+};
 pub use crate::v1_compiler_infer_env::{
     empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
     is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
@@ -55,7 +58,8 @@ pub use crate::v1_compiler_infer_env::{
     put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
 };
 pub use crate::v1_compiler_infer_env::{
-    GuardedTypeEnvCacheMerge, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
+    GlobalBareLookupState, GuardedTypeEnvCacheMerge, TypeBinding, TypeEnv, TypeEnvCache,
+    TypeEnvCacheMergeConflict,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
@@ -12100,6 +12104,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 source_indices: parent_env.source_indices.clone(),
                 intern_table: parent_env.intern_table.clone(),
                 source_visible_names: parent_env.source_visible_names.clone(),
+                global_bare: parent_env.global_bare.clone(),
             })
         }
     } else {
@@ -12130,6 +12135,7 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             source_indices: filtered.source_indices.clone(),
             intern_table: filtered.intern_table.clone(),
             source_visible_names: filtered.source_visible_names.clone(),
+            global_bare: filtered.global_bare.clone(),
         })
     }
 }
@@ -12164,6 +12170,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
         source_indices: env.source_indices.clone(),
         intern_table: env.intern_table.clone(),
         source_visible_names: env.source_visible_names.clone(),
+        global_bare: env.global_bare.clone(),
     })
 }
 
@@ -12260,11 +12267,192 @@ pub fn build_module_interface(
     }
 }
 
+pub fn local_binding_for_item(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<TypeBinding>> {
+    {
+        let has_structure = (item.connective.clone() != Connective::NoConnective);
+        if has_structure.clone() {
+            {
+                let type_node = Rc::new(Node {
+                    name: item.name.clone(),
+                    span: item.span.clone(),
+                    ident_span: item.ident_span.clone(),
+                    children: item.children.clone(),
+                    connective: item.connective.clone(),
+                    params: item.params.clone(),
+                    inferred: None,
+                    return_cardinality: item.return_cardinality.clone(),
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: item.properties.clone(),
+                    type_annotation: None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
+                });
+                Some(Rc::new(TypeBinding {
+                    name: authored_name_at(source_indices.clone(), item.clone()),
+                    resolved: type_node.clone(),
+                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                }))
+            }
+        } else {
+            if (((item.inferred.clone() != None) && ((item.params.clone().len() as i64) == 0))
+                && (item.body.clone() == None))
+            {
+                {
+                    let alias_node = Rc::new(Node {
+                        name: item.name.clone(),
+                        span: item.span.clone(),
+                        ident_span: item.ident_span.clone(),
+                        children: Rc::new(vec![]),
+                        connective: Connective::NoConnective,
+                        params: Rc::new(vec![]),
+                        inferred: item.inferred.clone(),
+                        return_cardinality: item.return_cardinality.clone(),
+                        uses: Rc::new(vec![]),
+                        body: None,
+                        transport: None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    });
+                    Some(Rc::new(TypeBinding {
+                        name: authored_name_at(source_indices.clone(), item.clone()),
+                        resolved: alias_node.clone(),
+                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                    }))
+                }
+            } else {
+                if ((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0))
+                {
+                    {
+                        let ref_node = nominal_ref_node(
+                            authored_name_at(source_indices.clone(), item.clone()),
+                            item.span.clone(),
+                            item.ident_span.clone(),
+                        );
+                        Some(Rc::new(TypeBinding {
+                            name: authored_name_at(source_indices.clone(), item.clone()),
+                            resolved: ref_node.clone(),
+                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        }))
+                    }
+                } else {
+                    if (((((item.params.clone().len() as i64) > 0)
+                        && (item.connective.clone() == Connective::NoConnective))
+                        && (item.body.clone() == None))
+                        && (item.transport.clone() == None))
+                    {
+                        {
+                            let bare_node = Rc::new(Node {
+                                name: item.name.clone(),
+                                span: item.span.clone(),
+                                ident_span: item.ident_span.clone(),
+                                children: Rc::new(vec![]),
+                                connective: Connective::NoConnective,
+                                params: item.params.clone(),
+                                inferred: item.inferred.clone(),
+                                return_cardinality: item.return_cardinality.clone(),
+                                uses: Rc::new(vec![]),
+                                body: None,
+                                transport: None,
+                                properties: Rc::new(vec![]),
+                                type_annotation: None,
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: None,
+                                expr_data: Rc::new(ExprData::NoExprData),
+                                ident: None,
+                            });
+                            Some(Rc::new(TypeBinding {
+                                name: authored_name_at(source_indices.clone(), item.clone()),
+                                resolved: bare_node.clone(),
+                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                            }))
+                        }
+                    } else {
+                        if ((((((item.properties.clone().len() as i64) > 0)
+                            && (item.connective.clone() == Connective::NoConnective))
+                            && (item.transport.clone() == None))
+                            && (item.inferred.clone() == None))
+                            && ((item.params.clone().len() as i64) == 0))
+                        {
+                            Some(nominal_type_binding(authored_name_at(
+                                source_indices.clone(),
+                                item.clone(),
+                            )))
+                        } else {
+                            None
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn build_global_bare_census(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+        |census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, mod_: Rc<ResolvedModule>| {
+            module_items(mod_.module.clone()).iter().cloned().fold(
+                census,
+                |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
+                    match local_binding_for_item(item.clone(), source_indices.clone()) {
+                        None => acc.clone(),
+                        Some(binding) => match v1_rt::map_get(&acc, binding.name.clone())
+                            .as_deref()
+                            .cloned()
+                        {
+                            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => acc.clone(),
+                            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                                binding: existing,
+                                ..
+                            }) => {
+                                if (existing.resolved.clone() == binding.resolved.clone()) {
+                                    acc.clone()
+                                } else {
+                                    v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        binding.name.clone(),
+                                        Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
+                                    )
+                                }
+                            }
+                            None => v1_rt::rc_map_insert(
+                                acc.clone(),
+                                binding.name.clone(),
+                                Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
+                                    binding: binding.clone(),
+                                }),
+                            ),
+                        },
+                    }
+                },
+            )
+        },
+    )
+}
+
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 ) -> Rc<BuildTypeEnvResult> {
     {
         let source_indices = Rc::new(v1_rt::map_keys(&kernel_type_set()))
@@ -12511,6 +12699,7 @@ pub fn build_type_env(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         });
         let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
         let import_parents = Rc::new({
@@ -12566,167 +12755,18 @@ pub fn build_type_env(
         });
         let local_bindings = module_items(module.module.clone()).iter().cloned().fold(
             v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
-                let item_ident = intern(
-                    intern_table.clone(),
-                    authored_name_at(source_indices.clone(), item.clone()),
-                )
-                .id
-                .clone();
-                let has_structure = (item.connective.clone() != Connective::NoConnective);
-                if has_structure.clone() {
-                    {
-                        let type_node = Rc::new(Node {
-                            name: item.name.clone(),
-                            span: item.span.clone(),
-                            ident_span: item.ident_span.clone(),
-                            children: item.children.clone(),
-                            connective: item.connective.clone(),
-                            params: item.params.clone(),
-                            inferred: None,
-                            return_cardinality: item.return_cardinality.clone(),
-                            uses: Rc::new(vec![]),
-                            body: None,
-                            transport: None,
-                            properties: item.properties.clone(),
-                            type_annotation: None,
-                            is_self_recursive: false,
-                            has_non_tail_self_call: false,
-                            match_pattern: None,
-                            expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
-                        });
-                        v1_rt::rc_map_insert(
-                            acc.clone(),
-                            item_ident.clone(),
-                            Rc::new(TypeBinding {
-                                name: authored_name_at(source_indices.clone(), item.clone()),
-                                resolved: type_node.clone(),
-                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            }),
-                        )
-                    }
-                } else {
-                    if (((item.inferred.clone() != None)
-                        && ((item.params.clone().len() as i64) == 0))
-                        && (item.body.clone() == None))
-                    {
-                        {
-                            let alias_node = Rc::new(Node {
-                                name: item.name.clone(),
-                                span: item.span.clone(),
-                                ident_span: item.ident_span.clone(),
-                                children: Rc::new(vec![]),
-                                connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
-                                inferred: item.inferred.clone(),
-                                return_cardinality: item.return_cardinality.clone(),
-                                uses: Rc::new(vec![]),
-                                body: None,
-                                transport: None,
-                                properties: Rc::new(vec![]),
-                                type_annotation: None,
-                                is_self_recursive: false,
-                                has_non_tail_self_call: false,
-                                match_pattern: None,
-                                expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
-                            });
-                            v1_rt::rc_map_insert(
-                                acc.clone(),
-                                item_ident.clone(),
-                                Rc::new(TypeBinding {
-                                    name: authored_name_at(source_indices.clone(), item.clone()),
-                                    resolved: alias_node.clone(),
-                                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                }),
-                            )
-                        }
-                    } else {
-                        if ((item.transport.clone() == None)
-                            && ((item.children.clone().len() as i64) > 0))
-                        {
-                            {
-                                let ref_node = nominal_ref_node(
-                                    authored_name_at(source_indices.clone(), item.clone()),
-                                    item.span.clone(),
-                                    item.ident_span.clone(),
-                                );
-                                v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    item_ident.clone(),
-                                    Rc::new(TypeBinding {
-                                        name: authored_name_at(
-                                            source_indices.clone(),
-                                            item.clone(),
-                                        ),
-                                        resolved: ref_node.clone(),
-                                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                    }),
-                                )
-                            }
-                        } else {
-                            if (((((item.params.clone().len() as i64) > 0)
-                                && (item.connective.clone() == Connective::NoConnective))
-                                && (item.body.clone() == None))
-                                && (item.transport.clone() == None))
-                            {
-                                {
-                                    let bare_node = Rc::new(Node {
-                                        name: item.name.clone(),
-                                        span: item.span.clone(),
-                                        ident_span: item.ident_span.clone(),
-                                        children: Rc::new(vec![]),
-                                        connective: Connective::NoConnective,
-                                        params: item.params.clone(),
-                                        inferred: item.inferred.clone(),
-                                        return_cardinality: item.return_cardinality.clone(),
-                                        uses: Rc::new(vec![]),
-                                        body: None,
-                                        transport: None,
-                                        properties: Rc::new(vec![]),
-                                        type_annotation: None,
-                                        is_self_recursive: false,
-                                        has_non_tail_self_call: false,
-                                        match_pattern: None,
-                                        expr_data: Rc::new(ExprData::NoExprData),
-                                        ident: None,
-                                    });
-                                    v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        item_ident.clone(),
-                                        Rc::new(TypeBinding {
-                                            name: authored_name_at(
-                                                source_indices.clone(),
-                                                item.clone(),
-                                            ),
-                                            resolved: bare_node.clone(),
-                                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                        }),
-                                    )
-                                }
-                            } else {
-                                if ((((((item.properties.clone().len() as i64) > 0)
-                                    && (item.connective.clone() == Connective::NoConnective))
-                                    && (item.transport.clone() == None))
-                                    && (item.inferred.clone() == None))
-                                    && ((item.params.clone().len() as i64) == 0))
-                                {
-                                    v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        item_ident.clone(),
-                                        nominal_type_binding(authored_name_at(
-                                            source_indices.clone(),
-                                            item.clone(),
-                                        )),
-                                    )
-                                } else {
-                                    acc.clone()
-                                }
-                            }
-                        }
-                    }
-                }
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| match local_binding_for_item(
+                item.clone(),
+                source_indices.clone(),
+            ) {
+                Some(binding) => v1_rt::rc_map_insert(
+                    acc.clone(),
+                    intern(intern_table.clone(), binding.name.clone())
+                        .id
+                        .clone(),
+                    binding.clone(),
+                ),
+                None => acc.clone(),
             },
         );
         let param_bindings = module_items(module.module.clone()).iter().cloned().fold(
@@ -13000,6 +13040,7 @@ pub fn build_type_env(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: source_visible_names.clone(),
+            global_bare: global_bare.clone(),
         });
         let resolved = resolve_env_bindings(
             unresolved_env.clone(),
@@ -13020,6 +13061,7 @@ pub fn build_type_env(
             source_indices: resolved_env_out.source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: source_visible_names.clone(),
+            global_bare: resolved_env_out.global_bare.clone(),
         });
         let cache_str_bindings = v1_rt::rc_map_merge(
             final_env.ancestry_str_bindings.clone(),
@@ -13200,6 +13242,7 @@ pub fn build_type_env_unresolved(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         });
         let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
         let import_parents = Rc::new({
@@ -13493,6 +13536,7 @@ pub fn build_type_env_unresolved(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         });
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
@@ -14211,6 +14255,7 @@ pub fn typecheck_module(
     variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 ) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
@@ -14218,6 +14263,7 @@ pub fn typecheck_module(
             parent_index.clone(),
             source_indices.clone(),
             intern_table.clone(),
+            global_bare.clone(),
         );
         let env = env_result.env.clone();
         let env_cache = env_result.cache.clone();
@@ -14428,6 +14474,7 @@ pub fn typecheck_module_isolated(
         v1_rt::rc_empty_map::<String, Rc<VariantExportSurface>>(),
         source_indices.clone(),
         intern_table.clone(),
+        v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
     )
 }
 
@@ -14601,6 +14648,7 @@ pub fn topo_resolve_types(
                         source_indices: env.source_indices.clone(),
                         intern_table: env.intern_table.clone(),
                         source_visible_names: env.source_visible_names.clone(),
+                        global_bare: env.global_bare.clone(),
                     }),
                     diagnostics: v1_rt::concat(
                         diagnostics.clone(),
@@ -14681,6 +14729,7 @@ pub fn topo_resolve_types(
                 source_indices: env.source_indices.clone(),
                 intern_table: env.intern_table.clone(),
                 source_visible_names: env.source_visible_names.clone(),
+                global_bare: env.global_bare.clone(),
             });
             let __tco_2 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
             let __tco_3 = (fuel - 1);
@@ -15038,6 +15087,7 @@ pub fn typecheck(
                 )
             },
         );
+        let global_bare = build_global_bare_census(graph.modules.clone(), source_indices.clone());
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -15052,6 +15102,7 @@ pub fn typecheck(
                     st,
                     source_indices.clone(),
                     intern_table.clone(),
+                    global_bare.clone(),
                 )
             },
         );
@@ -15109,6 +15160,7 @@ pub fn realize_module(
     state: Rc<RealizeState>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
@@ -15125,6 +15177,7 @@ pub fn realize_module(
                                 st,
                                 source_indices.clone(),
                                 intern_table.clone(),
+                                global_bare.clone(),
                             )
                         },
                     );
@@ -15139,6 +15192,7 @@ pub fn realize_module(
                         dep_state.variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        global_bare.clone(),
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
@@ -15445,6 +15499,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                             source_indices: m.type_env.clone().source_indices.clone(),
                             intern_table: m.type_env.clone().intern_table.clone(),
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
+                            global_bare: m.type_env.clone().global_bare.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
@@ -15656,6 +15711,7 @@ pub fn compiler_kernel_type_env(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         })
     }
 }
@@ -15749,6 +15805,7 @@ pub fn rewire_type_env_parent_links(
                             source_indices: m.type_env.clone().source_indices.clone(),
                             intern_table: m.type_env.clone().intern_table.clone(),
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
+                            global_bare: m.type_env.clone().global_bare.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
