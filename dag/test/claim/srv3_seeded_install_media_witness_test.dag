@@ -70,6 +70,7 @@ test fn install_media_remaster_scaffolds_dissolved() -> Bool {
       Scaffold { dissolves_to: _, bind: _ } => false
       Terminal { reason: _ } => true
     }
+    && install_media_remaster_probe_refusal_shape_doc_names_infra_failure()
 }
 
 test fn srv3_seeded_unattended_not_claimed_until_execution() -> Bool {

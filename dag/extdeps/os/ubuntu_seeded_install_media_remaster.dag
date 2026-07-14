@@ -46,7 +46,7 @@ data install_media_remaster_chmod_access_upsert_dissolution_trigger: Disposition
   reason: "install_media_remaster_build calls shell.Chmod.RecursiveWritable directly"
 }
 
-data install_media_remaster_probe_refusal_shape_doc: String = "DESIGN §5 refusal-shape fix (cursor review, PR #6596): install_media_remaster_probe_verdict now returns a 3-way InstallMediaRemasterProbeVerdict (Valid|Stale|InfraFailure{reason}) instead of collapsing the mktemp probe into a Bool, so a shell.Mktemp.Dir failure stays distinguishable from a genuine content/grub/seed mismatch (InstallMediaRemasterVerifyInfraFailure vs InstallMediaRemasterStale). observe_install_media_remaster matches this verdict directly, and install_media_remaster_reconcile refuses fail-closed on infra failure instead of silently treating an indeterminate probe as stale-and-rebuild."
+data install_media_remaster_probe_refusal_shape_doc: String = "DESIGN §5 refusal-shape fix (cursor review, PR #6596): install_media_remaster_probe_verdict now returns a 3-way InstallMediaRemasterProbeVerdict (Valid|Stale|InfraFailure\{reason\}) instead of collapsing the mktemp probe into a Bool, so a shell.Mktemp.Dir failure stays distinguishable from a genuine content/grub/seed mismatch (InstallMediaRemasterVerifyInfraFailure vs InstallMediaRemasterStale). observe_install_media_remaster matches this verdict directly, and install_media_remaster_reconcile refuses fail-closed on infra failure instead of silently treating an indeterminate probe as stale-and-rebuild."
 
 type InstallMediaRemasterProbeVerdict
   = InstallMediaRemasterProbeValid
