@@ -46,7 +46,7 @@ import v1.std.core {
   CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, GlobalBareLookupState }
 import std.induction { InductiveField, SubValueUnknown }
 import v1.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
 import std.types { is_container_type, container_template_algebra }

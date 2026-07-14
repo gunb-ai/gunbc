@@ -35,7 +35,7 @@ pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{build_params_scope, extend_scope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 pub use crate::v1_compiler_infer_env::authored_name;
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{

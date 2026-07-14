@@ -63,7 +63,7 @@ pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, RustCorpusRepr, TypeRepr, TypeSummary,
 };
 pub use crate::v1_compiler_infer_env::{authored_name, lookup_type_by_name, lookup_type_for};
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_resolve::{
