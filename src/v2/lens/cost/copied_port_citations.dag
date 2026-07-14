@@ -6,8 +6,10 @@ import v2.lens.cost.copied_port_derivation {
   derive_copied_port_fact,
   copied_port_index_from_registry
 }
-import v2.std.algebra { CopiedPortFact, fold_list }
+import v2.std.algebra { CopiedPortFact, fold_list, length }
 import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,

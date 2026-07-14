@@ -27,7 +27,7 @@ import v2.std.node {
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
 
-data copied_port_derivation_note: String = "Wave 1 Gate 1 C1: per-op copied-port facts are DERIVED by running the cost lens over each combiner's cited Arrow body (^arrow_body_edge only — edge_contributes_to_cost_fold), never hand-stamped indices. A combiner cites its lowered Arrow shape; derive_copied_port_index_from_arrow finds the unique parameter port whose size the body cost is linear in (SumCost with two linear ports picks the highest index — map_merge overlay). Unpriceable shapes return Absent — classify_call keeps ^combiner_unregistered_carrier_reaches fail-closed."
+data copied_port_derivation_note: String = "Wave 1 Gate 1 C1: per-op copied-port facts are DERIVED by running the cost lens over each combiner's cited Arrow body (^arrow_body_edge only — edge_contributes_to_cost_fold), never hand-stamped indices. derive_copied_port_index_from_arrow finds the unique parameter port whose size the body cost is linear in; multi-linear ambiguity (two or more linear ports) returns Absent — no tiebreak heuristic. Current stdlib citations (list_append, list_snoc_item, map_merge) are each uniquely-linear (map_merge index 1 because overlay alone is linear, not because a tiebreak fires). Unpriceable shapes return Absent — classify_call keeps ^combiner_unregistered_carrier_reaches fail-closed."
 
 type CombinerArrowCitation {
   combiner: Symbol
@@ -94,26 +94,6 @@ fn linear_param_indices(cost: SymbolicCost, params: List<Node>, idx: Int, acc: L
   }
 }
 
-fn max_int(a: Int, b: Int) -> Int {
-  if a >= b { a } else { b }
-}
-
-fn max_of_int_list(xs: List<Int>) -> Optional<Int> {
-  fold(xs, init: Absent, f: fn(acc, i) {
-    match acc {
-      Absent => Present { value: i }
-      Present { value: m } => Present { value: max_int(a: m, b: i) }
-    }
-  })
-}
-
-fn first_int_of_list(xs: List<Int>) -> Optional<Int> {
-  match xs {
-    Empty => Absent
-    Cons { head: h, tail: _ } => Present { value: h }
-  }
-}
-
 fn derive_copied_port_index_from_arrow(arrow: Node) -> Optional<Int> {
   match arrow_body_target_lookup(children: arrow.children) {
     Found { target: body } =>
@@ -123,7 +103,7 @@ fn derive_copied_port_index_from_arrow(arrow: Node) -> Optional<Int> {
       match linear_indices {
         Empty => Absent
         Cons { head: only, tail: Empty } => Present { value: only }
-        _ => max_of_int_list(xs: linear_indices)
+        _ => Absent
       }
     Ambiguous => Absent
     Absent => Absent
