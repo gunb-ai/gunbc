@@ -16,7 +16,7 @@ fn determinism_from_perturbation(verdict: PerturbationVerdict, reached: Declarat
 
 fn determinism_compose(outer: Determinism, inner: Determinism) -> Determinism {
   match outer {
-    NonDeterministic { source: s } => inner
+    NonDeterministic { source: s } => NonDeterministic { source: s }
     Deterministic => inner
   }
 }
