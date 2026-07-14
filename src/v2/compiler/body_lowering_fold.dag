@@ -1210,74 +1210,75 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                       diagnostics: lcd
                                     )
                                   Absent =>
-                                    match body_lower_try_primary_ident_call(node: node) {
-                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                      Accepted { value: primary_call, diagnostics: pcd } =>
-                        match primary_call {
-                          Present { value: lowered } =>
-                            outcome_accepted(
-                              value: optional_present(value: lowered),
-                              diagnostics: pcd
-                            )
-                          Absent =>
-                            match body_lower_try_postfix_projection(node: node) {
-                              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                              Accepted { value: projection, diagnostics: pd } =>
-                                match projection {
-                                  Present { value: lowered } =>
-                                    outcome_accepted(
-                                      value: optional_present(value: lowered),
-                                      diagnostics: pd
-                                    )
-                                  Absent =>
-                                    match body_lower_try_infix_transform(node: node) {
+                        match body_lower_try_primary_ident_call(node: node) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: primary_call, diagnostics: pcd } =>
+                            match primary_call {
+                              Present { value: lowered } =>
+                                outcome_accepted(
+                                  value: optional_present(value: lowered),
+                                  diagnostics: pcd
+                                )
+                              Absent =>
+                                match body_lower_try_postfix_projection(node: node) {
+                                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                  Accepted { value: projection, diagnostics: pd } =>
+                                    match projection {
                                       Present { value: lowered } =>
-                                        outcome_accepted(value: optional_present(value: lowered))
+                                        outcome_accepted(
+                                          value: optional_present(value: lowered),
+                                          diagnostics: pd
+                                        )
                                       Absent =>
-                                        match body_lower_try_fold_loop(node: node) {
-                                          Rejected { diagnostics: r } =>
-                                            Rejected { diagnostics: r }
-                                          Accepted { value: fold_result, diagnostics: _ } =>
-                                            match fold_result {
-                                              Present { value: lowered } =>
-                                                outcome_accepted(
-                                                  value: optional_present(value: lowered)
-                                                )
-                                              Absent =>
-                                                let stripped = body_lower_unwrap_surface_shell(node: node)
-                                                match body_lower_try_postfix_projection(node: stripped) {
-                                                  Rejected { diagnostics: r } =>
-                                                    Rejected { diagnostics: r }
-                                                  Accepted { value: stripped_proj, diagnostics: spd } =>
-                                                    match stripped_proj {
-                                                      Present { value: lowered } =>
-                                                        outcome_accepted(
-                                                          value: optional_present(value: lowered),
-                                                          diagnostics: spd
-                                                        )
-                                                      Absent =>
-                                                        match body_lower_try_primary_ident_call(node: stripped) {
-                                                          Rejected { diagnostics: r } =>
-                                                            Rejected { diagnostics: r }
-                                                          Accepted { value: stripped_call, diagnostics: scd } =>
-                                                            match stripped_call {
-                                                              Present { value: lowered } =>
-                                                                outcome_accepted(
-                                                                  value: optional_present(value: lowered),
-                                                                  diagnostics: scd
-                                                                )
-                                                              Absent =>
-                                                                match body_lower_try_infix_transform(node: stripped) {
+                                        match body_lower_try_infix_transform(node: node) {
+                                          Present { value: lowered } =>
+                                            outcome_accepted(value: optional_present(value: lowered))
+                                          Absent =>
+                                            match body_lower_try_fold_loop(node: node) {
+                                              Rejected { diagnostics: r } =>
+                                                Rejected { diagnostics: r }
+                                              Accepted { value: fold_result, diagnostics: _ } =>
+                                                match fold_result {
+                                                  Present { value: lowered } =>
+                                                    outcome_accepted(
+                                                      value: optional_present(value: lowered)
+                                                    )
+                                                  Absent =>
+                                                    let stripped = body_lower_unwrap_surface_shell(node: node)
+                                                    match body_lower_try_postfix_projection(node: stripped) {
+                                                      Rejected { diagnostics: r } =>
+                                                        Rejected { diagnostics: r }
+                                                      Accepted { value: stripped_proj, diagnostics: spd } =>
+                                                        match stripped_proj {
+                                                          Present { value: lowered } =>
+                                                            outcome_accepted(
+                                                              value: optional_present(value: lowered),
+                                                              diagnostics: spd
+                                                            )
+                                                          Absent =>
+                                                            match body_lower_try_primary_ident_call(node: stripped) {
+                                                              Rejected { diagnostics: r } =>
+                                                                Rejected { diagnostics: r }
+                                                              Accepted { value: stripped_call, diagnostics: scd } =>
+                                                                match stripped_call {
                                                                   Present { value: lowered } =>
                                                                     outcome_accepted(
-                                                                      value: optional_present(value: lowered)
+                                                                      value: optional_present(value: lowered),
+                                                                      diagnostics: scd
                                                                     )
                                                                   Absent =>
-                                                                    match body_lower_try_fold_loop(node: stripped) {
-                                                                      Rejected { diagnostics: r } =>
-                                                                        Rejected { diagnostics: r }
-                                                                      Accepted { value: stripped_fold, diagnostics: _ } =>
-                                                                        outcome_accepted(value: stripped_fold)
+                                                                    match body_lower_try_infix_transform(node: stripped) {
+                                                                      Present { value: lowered } =>
+                                                                        outcome_accepted(
+                                                                          value: optional_present(value: lowered)
+                                                                        )
+                                                                      Absent =>
+                                                                        match body_lower_try_fold_loop(node: stripped) {
+                                                                          Rejected { diagnostics: r } =>
+                                                                            Rejected { diagnostics: r }
+                                                                          Accepted { value: stripped_fold, diagnostics: _ } =>
+                                                                            outcome_accepted(value: stripped_fold)
+                                                                        }
                                                                     }
                                                                 }
                                                             }
@@ -1290,6 +1291,9 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                 }
                             }
                         }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1297,6 +1301,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
     }
   }
 }
+
 
 fn body_lower_reduce_passthrough(folded: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: folded) {
@@ -2912,14 +2917,14 @@ fn body_lower_let_in_prefix_before_in_optional(captured: Node) -> Optional<Node>
           match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
             Present { value: id } =>
               if id == ^dag_token_kw_in {
-                Absent
+                optional_absent()
               } else {
                 match body_lower_let_in_prefix_before_in_optional(captured: left) {
-                  Present { value: found } => Present { value: found }
+                  Present { value: found } => optional_present(value: found)
                   Absent =>
                     match body_lower_let_in_prefix_before_in_optional(captured: right) {
-                      Present { value: found } => Present { value: found }
-                      Absent => Present { value: captured }
+                      Present { value: found } => optional_present(value: found)
+                      Absent => optional_present(value: captured)
                     }
                 }
               }
@@ -2947,7 +2952,7 @@ fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
               match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
                 Present { value: id } =>
                   if id == ^dag_token_eq {
-                    Present { value: right }
+                    optional_present(value: right)
                   } else {
                     body_lower_let_in_value_capture_optional(captured: right)
                   }
@@ -3537,6 +3542,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
               }
           }
           }
+      }
       }
       }
       }
