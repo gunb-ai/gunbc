@@ -90,7 +90,7 @@ type BodyLoweringDomainConstructionDisposition
   = BodyLoweringDomainParamListWalk
   | BodyLoweringDomainSymbolIndexResolved
 
-data body_lowering_domain_construction_disposition: BodyLoweringDomainConstructionDisposition = BodyLoweringDomainSymbolIndexResolved
+data body_lowering_domain_construction_disposition: BodyLoweringDomainConstructionDisposition = BodyLoweringDomainParamListWalk
 
 data body_lowering_interim_scaffold_row_match_hand_walker: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
   site: ^body_lower_try_match_from_node,

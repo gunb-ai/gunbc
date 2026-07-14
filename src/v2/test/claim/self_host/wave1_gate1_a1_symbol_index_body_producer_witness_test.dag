@@ -32,7 +32,7 @@ import v2.std.node { Arrow, Atom, Conj, Node, TypeNode, node_synthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data wave1_gate1_a1_witness_note: String = "Wave 1 Gate 1 PR-A1 honest receipts: dag_fn_decl_param_binding_atoms deleted; scope_with_fn_decl_params dissolved; wrapper-retained frontier typed+counted; fn_decl ident routes through StampLexeme (grammar_formal_terminal_lexeme + dag_grammar_terminal_lexeme); body_lower_fn_decl_to_arrow wraps lowered Arrow as Named fn member at module scope; SymbolIndex fill recurses Arrow domain so module_qn.fn.param resolves. Proven by execution: producer Arrow domain matches ingest param bindings independently extracted from parse tree; frontend SymbolIndex parity holds on real ingest; real-ingest normalize lowers; wrapper-retained RED on invalid shell."
+data wave1_gate1_a1_witness_note: String = "Wave 1 Gate 1 PR-A1 honest receipts: dag_fn_decl_param_binding_atoms deleted; scope_with_fn_decl_params dissolved; wrapper-retained frontier typed+counted; fn_decl ident routes through StampLexeme; body_lower_fn_decl_to_arrow wraps lowered Arrow as Named fn member at module scope; SymbolIndex fill carries module_qn.fn.param (frontend parity witness). Domain construction disposition remains BodyLoweringDomainParamListWalk — body_lower_domain_from_param_list is still the producer path; SymbolIndex parity is proven separately, not conflated with construction. Real-ingest normalize lowers; wrapper-retained RED on invalid shell."
 
 data wave1_gate1_a1_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 
@@ -117,9 +117,9 @@ fn wave1_gate1_a1_domain_param_list_walk_holds() -> Bool {
 
 fn wave1_gate1_a1_domain_construction_frontier_holds() -> Bool {
   match body_lowering_domain_construction_disposition {
-    BodyLoweringDomainSymbolIndexResolved =>
+    BodyLoweringDomainParamListWalk =>
       body_lowering_interim_scaffold_seed_retained_count() == 2
-    BodyLoweringDomainParamListWalk => false
+    BodyLoweringDomainSymbolIndexResolved => false
   }
 }
 
