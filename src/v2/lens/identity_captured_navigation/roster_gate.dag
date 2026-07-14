@@ -8,27 +8,30 @@ import v2.lens.identity_captured_navigation { Finding }
 import v2.lens.identity_captured_navigation.analyze {
   finding_is_refusal,
   finding_is_suspect,
-  identity_captured_navigation_findings,
-  identity_navigation_debug_diag_sum,
-  identity_navigation_debug_fn_decl_count,
-  identity_navigation_debug_match_expr_count,
-  identity_navigation_debug_name_sym_probe_sum,
-  identity_navigation_debug_scrutinee_hit_count
+  identity_captured_navigation_findings
 }
 import v2.std.algebra { fold_list }
 import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.compilers.lexing { LexRules, token_stream_remaining }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
+import v2.std.provenance { SpanIndex }
 import v2.std.text { String }
 
 data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/identity_captured_navigation/roster_gate in gunbc.ci_layer_roots — same structural reason as complexity_accumulator_copy's roster gate: file_gate reads its roster targets via filesystem_read at runtime, a data dependency invisible to resolve-closure attribution). Local recipe, one test fn per invocation: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag --function <fn> --claim-run --wet."
 
 data source_findings_pre_normalize_note: String = "Reads the RAW parsed surface tree (parse_module, no normalize pass) rather than the normalized tree: this lens's target is a source-syntax defect (a find_named_child(name: ^grammar_production_identity_node_projection) call whose result escapes un-reduced) that must be located by the surface grammar's own ^dag_surface_match_expr production identity - the proven-working precedent (v2.test.claim.manual.body_lowering_match's body_lowering_find_match_expr) locates match_expr the same way, on the pre-normalize tree, because downstream body-lowering/normalize stages replace a match construct's surface identity with a ComputationNode\{behavior: Match\} - by the time a tree is normalized, ^dag_surface_match_expr is no longer a reliable anchor for this static-analysis walk."
 
-fn source_findings_tree(source_text: String) -> Optional<Node> {
+data parsed_source_span_index_note: String = "Carries artifact.span_index and the original source_text alongside the parsed tree, not just the tree: analyze.arg_value_symbol needs both to recover a caret literal's actual referenced identifier text (node_source_symbol_note in analyze.dag) - the grammar's caret-literal terminal is StampClass-stamped, so the Node tree's atom-identity field alone cannot distinguish e.g. ^grammar_production_identity_node_projection from any other caret literal."
+
+type ParsedSource {
+  tree: Node,
+  span_index: SpanIndex,
+  source_text: String
+}
+
+fn source_findings_tree(source_text: String) -> Optional<ParsedSource> {
   let lm = dag_language_model()
   match tokenize(
     text: source_text,
@@ -39,7 +42,14 @@ fn source_findings_tree(source_text: String) -> Optional<Node> {
     Accepted { value: stream, diagnostics: _ } =>
       match parse_module(tokens: stream, grammar: lm.grammar) {
         Rejected { diagnostics: _ } => Absent
-        Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+        Accepted { value: artifact, diagnostics: _ } =>
+          Present {
+            value: ParsedSource {
+              tree: artifact.tree,
+              span_index: artifact.span_index,
+              source_text: source_text
+            }
+          }
       }
   }
 }
@@ -47,7 +57,14 @@ fn source_findings_tree(source_text: String) -> Optional<Node> {
 fn source_findings(source_text: String) -> Optional<List<Finding>> {
   match source_findings_tree(source_text: source_text) {
     Absent => Absent
-    Present { value: tree } => Present { value: identity_captured_navigation_findings(root: tree) }
+    Present { value: parsed } =>
+      Present {
+        value: identity_captured_navigation_findings(
+          root: parsed.tree,
+          span_index: parsed.span_index,
+          source_text: parsed.source_text
+        )
+      }
   }
 }
 
@@ -104,53 +121,6 @@ fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
     RosterIngestRegressed => false
     RosterSuspectFound => false
     RosterRatchetExceeded { refusals: _, ceiling: _ } => false
-  }
-}
-
-fn debug_fn_decl_count_file(path: String) -> Int {
-  debug_fn_decl_count(source_text: filesystem_read(path: path).content)
-}
-
-fn debug_fn_decl_count(source_text: String) -> Int {
-  match source_findings_tree(source_text: source_text) {
-    Absent => -1
-    Present { value: tree } => identity_navigation_debug_fn_decl_count(root: tree)
-  }
-}
-
-fn debug_match_expr_count(source_text: String) -> Int {
-  match source_findings_tree(source_text: source_text) {
-    Absent => -1
-    Present { value: tree } => identity_navigation_debug_match_expr_count(root: tree)
-  }
-}
-
-fn debug_match_expr_count_file(path: String) -> Int {
-  debug_match_expr_count(source_text: filesystem_read(path: path).content)
-}
-
-fn debug_scrutinee_hit_count(source_text: String) -> Int {
-  match source_findings_tree(source_text: source_text) {
-    Absent => -1
-    Present { value: tree } => identity_navigation_debug_scrutinee_hit_count(root: tree)
-  }
-}
-
-fn debug_scrutinee_hit_count_file(path: String) -> Int {
-  debug_scrutinee_hit_count(source_text: filesystem_read(path: path).content)
-}
-
-fn debug_diag_sum(source_text: String) -> Int {
-  match source_findings_tree(source_text: source_text) {
-    Absent => -1
-    Present { value: tree } => identity_navigation_debug_diag_sum(root: tree)
-  }
-}
-
-fn debug_name_sym_probe_sum(source_text: String) -> Int {
-  match source_findings_tree(source_text: source_text) {
-    Absent => -1
-    Present { value: tree } => identity_navigation_debug_name_sym_probe_sum(root: tree)
   }
 }
 
