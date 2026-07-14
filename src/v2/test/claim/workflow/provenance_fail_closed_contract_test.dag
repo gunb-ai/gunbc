@@ -75,7 +75,8 @@ test fn provenance_fail_closed_contract_holds() -> Bool {
     frontier: scout_provenance_absent_frontier,
     touches_frontier: false,
     function_edited: false,
-    entry_file_touched: false
+    entry_file_touched: false,
+    runtime_data_dependency_touched: false
   ) {
     Refused { cause: cause } =>
       match cause {
@@ -90,7 +91,8 @@ test fn provenance_fail_closed_contract_holds() -> Bool {
     frontier: scout_provenance_present_frontier,
     touches_frontier: false,
     function_edited: false,
-    entry_file_touched: false
+    entry_file_touched: false,
+    runtime_data_dependency_touched: false
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
@@ -100,7 +102,8 @@ test fn provenance_fail_closed_contract_holds() -> Bool {
     diff: scout_nonempty_diff,
     frontier: scout_provenance_absent_frontier,
     edited_test_fn_count: 0,
-    touched_entry_file_count: 0
+    touched_entry_file_count: 0,
+    touched_runtime_dependency_entry_count: 0
   )
   manifest_absent && absent_witness_refuses && present_witness_skips && absent_precompute_runs_all
 }
