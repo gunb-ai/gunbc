@@ -3,7 +3,7 @@ module extdeps.os.os
 import extdeps.os.macos { macos_distribution_catalog_row }
 import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
 import extdeps.os.windows { windows_distribution_catalog_row }
-import std.list { List }
+import std.types { List }
 import std.os {
   operating_system_surface_macos,
   operating_system_surface_ubuntu,
