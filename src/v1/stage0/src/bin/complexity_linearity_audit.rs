@@ -15,9 +15,8 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     complexity_linearity_audit_corpus_default_roots, complexity_linearity_audit_corpus_parse_only,
-    complexity_linearity_wildcard_facts, non_fold_residue_count, non_fold_residue_live_sites,
-    non_fold_residue_site_is_rostered, non_fold_residue_stale_roster_count,
-    non_fold_residue_unrostered_count, ComplexityLinearityAuditSummary,
+    complexity_linearity_wildcard_facts, non_fold_residue_count, non_fold_residue_unrostered_count,
+    ComplexityLinearityAuditSummary,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -92,16 +91,6 @@ fn print_summary(
         on_roster,
         wildcard_facts.len() - on_roster,
     );
-    eprintln!(
-        "complexity_linearity_audit: nfr resolved sites unrostered_count={} stale_roster_count={}",
-        non_fold_residue_unrostered_count(),
-        non_fold_residue_stale_roster_count()
-    );
-    for site in non_fold_residue_live_sites() {
-        if !non_fold_residue_site_is_rostered(site) {
-            eprintln!("nfr-unrostered\t{site}");
-        }
-    }
     let cost_findings = summary.findings.iter().filter(|f| f.lens == "cost").count();
     eprintln!(
         "complexity_linearity_audit: cost syntactic proxy (Node.body walk) — \
