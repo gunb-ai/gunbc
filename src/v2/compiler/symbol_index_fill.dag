@@ -130,18 +130,14 @@ fn symbol_index_fill_containment_node(
         }
       })
     TypeNode { connective: Arrow } =>
-      match length(xs: node.children) >= 1 {
-        true =>
-          match list_at_optional(xs: node.children, index: 0) {
-            Present { value: domain_edge } =>
-              symbol_index_fill_containment_node(
-                index: index,
-                path: path,
-                node: domain_edge.target
-              )
-            Absent => index
-          }
-        false => index
+      match list_at_optional(xs: node.children, index: 0) {
+        Present { value: domain_edge } =>
+          symbol_index_fill_containment_node(
+            index: index,
+            path: path,
+            node: domain_edge.target
+          )
+        Absent => index
       }
     _ =>
       fold(node.children, init: index, f: fn(acc, edge) {

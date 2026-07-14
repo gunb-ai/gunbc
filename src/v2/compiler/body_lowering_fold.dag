@@ -104,12 +104,23 @@ data body_lowering_interim_scaffold_row_if_hand_walker: BodyLoweringInterimScaff
   }
 }
 
+data body_lowering_interim_scaffold_row_body_try_hand_walker: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
+  site: ^body_lower_try_body_lowered,
+  disposition: SeedRetained {
+    reason: ^body_lowering_body_try_interim_hand_walker_reason,
+    migration_trigger: ^migrate_when_general_body_producer_lands
+  }
+}
+
 fn body_lowering_interim_scaffold_rows() -> List<BodyLoweringInterimScaffoldRow> {
   Cons {
     head: body_lowering_interim_scaffold_row_match_hand_walker,
     tail: Cons {
       head: body_lowering_interim_scaffold_row_if_hand_walker,
-      tail: Empty
+      tail: Cons {
+        head: body_lowering_interim_scaffold_row_body_try_hand_walker,
+        tail: Empty
+      }
     }
   }
 }
