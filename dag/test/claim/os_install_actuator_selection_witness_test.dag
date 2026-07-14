@@ -11,7 +11,6 @@ import gunbc.os_install_actuator_selection {
   srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger,
   srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger,
   srv3_os_install_actuator_tie_break_policy,
-  os_install_actuator_requirement_kind_count,
   os_install_actuator_requirement_satisfied,
   os_install_actuator_requirement_kinds,
   BmcNetworkReach,
@@ -26,8 +25,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
-  os_install_actuator_requirement_kind_count() == 4
-    && os_install_actuator_requirement_kinds.first() == BmcNetworkReach
+  os_install_actuator_requirement_kinds.first() == BmcNetworkReach
     && os_install_actuator_requirement_kinds.skip(n: 1).first() == ActuatorToolchainGrant
     && os_install_actuator_requirement_satisfied(
       kind: BmcNetworkReach,

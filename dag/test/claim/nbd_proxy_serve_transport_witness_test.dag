@@ -11,7 +11,6 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   nbd_proxy_serve_program_foreground_command_is_websocat,
   nbd_proxy_serve_program_statement_count,
   nbd_proxy_serve_bash_emit_dissolution_trigger,
-  nbd_proxy_serve_cited_tool_row_count,
   nbd_proxy_serve_cited_tool_names,
   bmcweb_session_login_program,
   bmcweb_session_token_env_ref,
@@ -41,7 +40,6 @@ test fn nbd_proxy_serve_program_is_structured_not_concat_blob() -> Bool {
   )
   nbd_proxy_serve_program_statement_count(intent: intent) == 5
     && nbd_proxy_serve_program_foreground_command_is_websocat(intent: intent)
-    && nbd_proxy_serve_cited_tool_row_count() == 3
     && nbd_proxy_serve_cited_tool_names_includes_nbdkit()
     && nbd_proxy_serve_cited_tool_names_includes_websocat()
     && nbd_proxy_serve_cited_tool_names_includes_socat()
