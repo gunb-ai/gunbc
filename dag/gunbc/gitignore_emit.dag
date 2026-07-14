@@ -21,7 +21,9 @@ import gunbc.gitignore_model {
   OpenClawControlDir, OpenClawAgentsFile, OpenClawHeartbeatFile, OpenClawIdentityFile,
   OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
   OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
-  PythonLocalDevScriptFile, PythonAuditScriptAllowlisted, PythonBytecodeCacheDir, PythonCompiledBytecode,
+  PythonLocalDevScriptFile, PythonAuditScriptAllowlisted,
+  NamespaceMigrationDefinerCensusAllowlisted, NamespaceMigrationStripImportsAllowlisted,
+  PythonBytecodeCacheDir, PythonCompiledBytecode,
   ClaimMapDir, ScratchProbeFile,
   GunbcPlanningDir, ScriptsFixturesDir
 }
@@ -85,6 +87,8 @@ fn artifact_pattern(a: IgnoreArtifact) -> String {
     GithubCLICacheDir => ".gh-cache/"
     PythonLocalDevScriptFile => "*.py"
     PythonAuditScriptAllowlisted => "!docs/plans/witness-subject-execution-audit.py"
+    NamespaceMigrationDefinerCensusAllowlisted => "!scripts/namespace_migration/definer_census.py"
+    NamespaceMigrationStripImportsAllowlisted => "!scripts/namespace_migration/strip_imports.py"
     PythonBytecodeCacheDir => "__pycache__/"
     PythonCompiledBytecode => "*.pyc"
     ClaimMapDir => ".claim-map/"
