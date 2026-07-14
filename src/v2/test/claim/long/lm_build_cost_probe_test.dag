@@ -1,29 +1,77 @@
 module v2.test.long.lm_build_cost_probe
 
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import std.algebra { Cons, Empty }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.grammar { ModeledGrammar, VoidGrammar }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.program_assembly { program_assembly_read_to_normalized_root }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolve_with_admission }
+import v2.compiler.infer { infer }
+import v2.compiler.parse { grammar_validate_for_parse }
+import v2.compiler.compile { TranslateTo, validate_then_compile }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.diagnostic { port_locus }
 import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.rust { rust_target_model }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-fn build_lm_and_force() -> Bool {
+fn determinism_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: filesystem_read(path: "dag/std/determinism.dag").content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^det_unit, file_path: "dag/std/determinism.dag" },
+    compilation_unit: ^det_unit,
+    source_root: DagTree
+  }
+}
+
+fn determinism_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^std, tail: Cons { head: ^determinism, tail: Empty } } },
+    imports: Empty
+  }
+}
+
+test fn time_parse_normalize_determinism() -> Bool {
   let lm = dag_language_model()
-  match lm.grammar {
-    ModeledGrammar { root: _ } => true
-    VoidGrammar => false
+  match program_assembly_read_to_normalized_root(read: determinism_read(), lm: lm) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
-fn build_lm_n(n: Int, acc: Bool) -> Bool {
-  if n <= 0 {
-    acc
-  } else {
-    build_lm_n(n: n - 1, acc: acc && build_lm_and_force())
+test fn time_resolve_determinism() -> Bool {
+  let lm = dag_language_model()
+  match program_assembly_read_to_normalized_root(read: determinism_read(), lm: lm) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: root, diagnostics: _ } =>
+      match resolve_with_admission(lm: lm, roots: Cons { head: root, tail: Empty }, admission: determinism_admission()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
+      }
   }
 }
 
-test fn time_build_lm_20x() -> Bool {
-  build_lm_n(n: 20, acc: true)
+test fn time_resolve_infer_determinism() -> Bool {
+  let lm = dag_language_model()
+  match program_assembly_read_to_normalized_root(read: determinism_read(), lm: lm) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: root, diagnostics: _ } =>
+      match resolve_with_admission(lm: lm, roots: Cons { head: root, tail: Empty }, admission: determinism_admission()) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: resolved, diagnostics: _ } =>
+          match infer(tree: resolved) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => true
+          }
+      }
+  }
 }
