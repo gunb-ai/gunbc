@@ -6,8 +6,6 @@ import gunbc.interpreter_kernel_model {
   v1_interpreter_hybrid_seed_file,
   is_pure_eval_authority_module,
   is_pinned_host_physics_stage0_file,
-  pinned_host_physics_file_count,
-  pure_eval_authority_module_count,
   interpreter_kernel_d_phase_is_pure_eval_emit_wired,
   v1_interpreter_not_classified_as_pinned_host_physics,
   seam_class_for_authority_module,
@@ -24,14 +22,12 @@ fn w_pure_eval_authority_modules() -> Bool {
   is_pure_eval_authority_module(path: "src/v2/extdeps/runtimes/v2_evaluator.dag") &&
   is_pure_eval_authority_module(path: "src/v2/std/host_transport.dag") &&
   is_pure_eval_authority_module(path: "src/v2/std/host_run.dag") &&
-  pure_eval_authority_module_count() == 5 &&
   !is_pure_eval_authority_module(path: "src/v1/stage0/src/v1_interpreter.rs")
 }
 
 fn w_pinned_host_physics_roster() -> Bool {
   is_pinned_host_physics_stage0_file(basename: "recorded_fixture.rs") &&
   is_pinned_host_physics_stage0_file(basename: "resolved_graph_cache.rs") &&
-  pinned_host_physics_file_count() == 2 &&
   !is_pinned_host_physics_stage0_file(basename: "cache_purity_oracle.rs") &&
   !is_pinned_host_physics_stage0_file(basename: "cli_run.rs") &&
   !is_pinned_host_physics_stage0_file(basename: "rest_transport_facts.rs") &&

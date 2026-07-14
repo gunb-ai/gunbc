@@ -7,6 +7,7 @@ use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
+pub use crate::std_content_hash::{content_hash_atom, content_hash_combine, content_hash_tagged};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -19,6 +20,9 @@ pub use crate::std_induction::{
     sub_value_to_evidence,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
+pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
+pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
@@ -58,7 +62,7 @@ use crate::v1_compiler_infer_items::ItemKind::{
 };
 pub use crate::v1_compiler_infer_items::{inferred_to_outputs, item_kind};
 pub use crate::v1_compiler_infer_items::{
-    ItemInfo, ItemKind, ResolvedGraph, TypedGraph, TypedModule,
+    ItemInfo, ItemKind, ModuleInterface, ResolvedGraph, TypedGraph, TypedModule,
 };
 pub use crate::v1_compiler_infer_lookup::KnownMethodResolution;
 pub use crate::v1_compiler_infer_lookup::{
@@ -11891,7 +11895,7 @@ pub fn union_parent_type_env_caches(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(parent) => Rc::new(vec![Rc::new(ParentCacheRow {
                             import_path: imp.module_path.clone(),
-                            cache: parent.type_env_cache.clone(),
+                            cache: parent.interface.clone().cache.clone(),
                         })]),
                         None => Rc::new(vec![]),
                     })
@@ -12126,6 +12130,132 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             source_indices: filtered.source_indices.clone(),
             intern_table: filtered.intern_table.clone(),
             source_visible_names: filtered.source_visible_names.clone(),
+        })
+    }
+}
+
+pub fn interface_summary_consumer_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "S2a move 2 increment B (resolver-graph-major-design.md §7): build_type_env reads a direct import's ModuleInterface (std.interface_summary carrier + interface-grain env/cache realization) — never the parent's full TypeEnv+TypeEnvCache chains. interface.env is the export surface with parents: [] (ancestry-complete via flattened str_bindings/ancestry maps and merged inductive/recursive sets); interface.cache is the flattened import-union grain (variant_locals stripped — interpretation-local). Consumption still runs interface_env_for_import for importer-specific std.types filtering. Discriminating receipt: transitive_interface_binding_test.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn interface_signature_fingerprint_v0_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Interim v0 export signature fingerprint (export_entry_from_item): content_hash of export name + authored_name_at(binding.resolved) under tag v1-interface-sig-v0 — NOT yet structural type shape. Two exports with the same name and resolved authored-name string collide in interface_hash even if types differ; increment-B receipt is binding transitivity (transitive_interface_binding_test), not hash-discriminated signature change. Structural fingerprint authority: std.interface_summary.interface_summary_v0_dissolution_trigger → export_entry_fingerprint when type-structure hashing lands.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
+    Rc::new(TypeEnv {
+        bindings: env.bindings.clone(),
+        str_bindings: env.str_bindings.clone(),
+        ancestry_str_bindings: env.ancestry_str_bindings.clone(),
+        parents: Rc::new(vec![]),
+        recursive_types: env.recursive_types.clone(),
+        recursive_type_set: env.recursive_type_set.clone(),
+        inductive_fields: env.inductive_fields.clone(),
+        source_indices: env.source_indices.clone(),
+        intern_table: env.intern_table.clone(),
+        source_visible_names: env.source_visible_names.clone(),
+    })
+}
+
+pub fn interface_cache_from_module(cache: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
+    Rc::new(TypeEnvCache {
+        deps_map: cache.deps_map.clone(),
+        str_bindings: cache.str_bindings.clone(),
+        cycle_set_str: cache.cycle_set_str.clone(),
+        variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+    })
+}
+
+pub fn export_kind_of_item_kind(kind: ItemKind) -> Option<ExportKind> {
+    match kind.clone() {
+        ItemKind::FnItem => Some(ExportKind::ExportFn),
+        ItemKind::FuncItem => Some(ExportKind::ExportFn),
+        ItemKind::TypeItem => Some(ExportKind::ExportType),
+        ItemKind::DataItem => Some(ExportKind::ExportData),
+        ItemKind::ServiceItem => Some(ExportKind::ExportService),
+        ItemKind::OtherItem => None,
+    }
+}
+
+pub fn export_entry_from_item(
+    item: Rc<Node>,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<ExportEntry>> {
+    {
+        let name = authored_name_at(source_indices.clone(), item.clone());
+        match export_kind_of_item_kind(item_kind(item.clone())) {
+            None => None,
+            Some(kind) => match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
+                Some(binding) => Some(Rc::new(ExportEntry {
+                    name: name.clone(),
+                    kind: kind.clone(),
+                    contract: signature_contract(content_hash_tagged(
+                        "v1-interface-sig-v0".to_string(),
+                        content_hash_combine(
+                            content_hash_atom(binding.name.clone()),
+                            content_hash_atom(authored_name_at(
+                                source_indices.clone(),
+                                binding.resolved.clone(),
+                            )),
+                        ),
+                    )),
+                })),
+                None => None,
+            },
+        }
+    }
+}
+
+pub fn export_entries_from_module(
+    module: Rc<Node>,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ExportEntry>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for item in module_items(module.clone()).iter().cloned() {
+            __result.extend(
+                (*match export_entry_from_item(item.clone(), env.clone(), source_indices.clone()) {
+                    Some(entry) => Rc::new(vec![entry.clone()]),
+                    None => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn build_module_interface(
+    module_path: String,
+    module: Rc<Node>,
+    env: Rc<TypeEnv>,
+    cache: Rc<TypeEnvCache>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ModuleInterface> {
+    {
+        let exports =
+            export_entries_from_module(module.clone(), env.clone(), source_indices.clone());
+        Rc::new(ModuleInterface {
+            summary: Rc::new(InterfaceSummary {
+                module_path: module_path.clone(),
+                exports: exports.clone(),
+                interface_hash: interface_summary_rollup(exports.clone()),
+            }),
+            env: interface_env_surface(env.clone()),
+            cache: interface_cache_from_module(cache.clone()),
         })
     }
 }
@@ -12390,7 +12520,7 @@ pub fn build_type_env(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(typed_parent) => Rc::new(vec![interface_env_for_import(
                             imp.module_path.clone(),
-                            typed_parent.type_env.clone(),
+                            typed_parent.interface.clone().env.clone(),
                         )]),
                         None => Rc::new(vec![]),
                     })
@@ -12766,8 +12896,20 @@ pub fn build_type_env(
             match module.resolved_imports.clone().first().cloned() {
                 Some(imp) => match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                     Some(parent_mod) => v1_rt::rc_map_merge(
-                        parent_mod.type_env.clone().ancestry_str_bindings.clone(),
-                        parent_mod.type_env.clone().str_bindings.clone(),
+                        parent_mod
+                            .interface
+                            .clone()
+                            .env
+                            .clone()
+                            .ancestry_str_bindings
+                            .clone(),
+                        parent_mod
+                            .interface
+                            .clone()
+                            .env
+                            .clone()
+                            .str_bindings
+                            .clone(),
                     ),
                     None => ancestry_cache.str_bindings.clone(),
                 },
@@ -12801,7 +12943,13 @@ pub fn build_type_env(
                     match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(parent_mod) => {
                             let a1 = Rc::new(v1_rt::map_keys(
-                                &parent_mod.type_env.clone().str_bindings.clone(),
+                                &parent_mod
+                                    .interface
+                                    .clone()
+                                    .env
+                                    .clone()
+                                    .str_bindings
+                                    .clone(),
                             ))
                             .iter()
                             .cloned()
@@ -12812,7 +12960,13 @@ pub fn build_type_env(
                                 },
                             );
                             Rc::new(v1_rt::map_keys(
-                                &parent_mod.type_env.clone().ancestry_str_bindings.clone(),
+                                &parent_mod
+                                    .interface
+                                    .clone()
+                                    .env
+                                    .clone()
+                                    .ancestry_str_bindings
+                                    .clone(),
                             ))
                             .iter()
                             .cloned()
@@ -13055,7 +13209,7 @@ pub fn build_type_env_unresolved(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(typed_parent) => Rc::new(vec![interface_env_for_import(
                             imp.module_path.clone(),
-                            typed_parent.type_env.clone(),
+                            typed_parent.interface.clone().env.clone(),
                         )]),
                         None => Rc::new(vec![]),
                     })
@@ -13304,8 +13458,20 @@ pub fn build_type_env_unresolved(
             match module.resolved_imports.clone().first().cloned() {
                 Some(imp) => match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                     Some(parent_mod) => v1_rt::rc_map_merge(
-                        parent_mod.type_env.clone().ancestry_str_bindings.clone(),
-                        parent_mod.type_env.clone().str_bindings.clone(),
+                        parent_mod
+                            .interface
+                            .clone()
+                            .env
+                            .clone()
+                            .ancestry_str_bindings
+                            .clone(),
+                        parent_mod
+                            .interface
+                            .clone()
+                            .env
+                            .clone()
+                            .str_bindings
+                            .clone(),
                     ),
                     None => ancestry_cache.str_bindings.clone(),
                 },
@@ -14073,6 +14239,13 @@ pub fn typecheck_module(
                     items: Rc::new(vec![]),
                     type_env: env.clone(),
                     type_env_cache: env_cache.clone(),
+                    interface: build_module_interface(
+                        authored_name_at(source_indices.clone(), resolved.module.clone()),
+                        resolved.module.clone(),
+                        env.clone(),
+                        env_cache.clone(),
+                        source_indices.clone(),
+                    ),
                     func_env: Rc::new(ResolvedFuncEnv {
                         local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
                         parents: Rc::new(vec![]),
@@ -14216,6 +14389,18 @@ pub fn typecheck_module(
                     cycle_set_str: env_cache.cycle_set_str.clone(),
                     variant_locals: ctx.variant_locals.clone(),
                 }),
+                interface: build_module_interface(
+                    resolved_module_name.clone(),
+                    typed_module.clone(),
+                    env.clone(),
+                    Rc::new(TypeEnvCache {
+                        deps_map: env_cache.deps_map.clone(),
+                        str_bindings: env_cache.str_bindings.clone(),
+                        cycle_set_str: env_cache.cycle_set_str.clone(),
+                        variant_locals: ctx.variant_locals.clone(),
+                    }),
+                    source_indices.clone(),
+                ),
                 func_env: updated_func_env.clone(),
                 item_registry: ctx.item_registry.clone(),
             }),
@@ -15262,6 +15447,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
+                        interface: m.interface.clone(),
                         func_env: m.func_env.clone(),
                         item_registry: m.item_registry.clone(),
                     })
@@ -15565,6 +15751,7 @@ pub fn rewire_type_env_parent_links(
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
+                        interface: m.interface.clone(),
                         func_env: m.func_env.clone(),
                         item_registry: m.item_registry.clone(),
                     })
@@ -15617,6 +15804,7 @@ pub fn rewire_func_env_parent_links(
                         items: m.items.clone(),
                         type_env: m.type_env.clone(),
                         type_env_cache: m.type_env_cache.clone(),
+                        interface: m.interface.clone(),
                         func_env: Rc::new(ResolvedFuncEnv {
                             local: m.func_env.clone().local.clone(),
                             parents: parents.clone(),

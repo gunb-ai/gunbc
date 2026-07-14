@@ -203,7 +203,3 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
 fn os_install_actuator_step_count(plan: OsInstallActuatorPlan) -> Int {
   plan.steps.length()
 }
-
-fn srv3_os_install_actuator_toolchain_grant_row_count() -> Int {
-  srv3_os_install_actuator_toolchain_grant.required_tools.length()
-}

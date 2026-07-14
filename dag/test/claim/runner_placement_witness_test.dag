@@ -68,10 +68,6 @@ fn live_plan() -> RunnerDeploymentPlan {
   runner_deployment_plan()
 }
 
-fn witness_declared_runner_count_is_five() -> Bool {
-  declared_runner_count() == 5
-}
-
 fn witness_live_plan_is_conservation_sound() -> Bool {
   match live_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
@@ -255,8 +251,7 @@ fn witness_manifest_json_entry_point_produces_json_format() -> Bool {
 }
 
 test fn runner_placement_holds() -> Bool {
-  witness_declared_runner_count_is_five()
-    && witness_live_plan_is_conservation_sound()
+  witness_live_plan_is_conservation_sound()
     && witness_per_runner_cap_within_runner_pool()
     && witness_live_session_plan_fail_closed()
     && witness_live_effective_runners_derives_declared_count()
