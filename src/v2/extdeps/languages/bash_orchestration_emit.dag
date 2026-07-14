@@ -23,8 +23,6 @@ import v2.extdeps.languages.bash_orch_if {
 import v2.extdeps.languages.bash_orch_tier2 {
   bash_orch_procedure_emitted,
   bash_orch_call_emitted,
-  bash_orch_cmdsubst_assign_emitted,
-  bash_orch_arith_emitted,
   orch_procedure_target_model,
   orch_call_target_model,
   orch_cmdsubst_assign_target_model,
@@ -104,7 +102,7 @@ fn bash_orchestration_emit_registry_node() -> Node {
       ),
       bash_named_edge(
         name: orch_construct_cmdsubst_assign,
-        target: bash_orch_cmdsubst_assign_emitted
+        target: bash_stmt_assign_emitted
       ),
       bash_named_edge(
         name: orch_construct_let_assign,
@@ -112,7 +110,7 @@ fn bash_orchestration_emit_registry_node() -> Node {
       ),
       bash_named_edge(
         name: orch_construct_arith,
-        target: bash_orch_arith_emitted
+        target: bash_orch_call_emitted
       )
     ],
     occurrence_id: SyntheticOccurrence

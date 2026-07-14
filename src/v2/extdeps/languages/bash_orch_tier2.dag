@@ -14,7 +14,6 @@ import v2.extdeps.languages.bash {
   bash_conj_emitted_from_tokens,
   bash_relation_translation_rules_node,
   bash_make_bound_tokens_target_model,
-  bash_stmt_assign_emitted,
   bash_stmt_assign_target_model
 }
 
@@ -115,115 +114,6 @@ fn bash_orch_call_target_model(spelling: String) -> TargetModel {
   )
 }
 
-fn bash_orch_cmdsubst_assign_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_cmdsubst_assign_name },
-    FixedToken { token_class: ^bash_token_assign_eq },
-    FixedToken { token_class: ^bash_token_cmdsubst_open },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_cmdsubst_assign_body },
-    FixedToken { token_class: ^bash_token_cmdsubst_close }
-  ]
-}
-
-data bash_orch_cmdsubst_assign_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_orch_cmdsubst_assign_tokens()
-)
-
-fn bash_orch_cmdsubst_assign_source_text(name: String, body: String) -> String {
-  concat(name, concat("=$(", concat(body, ")")))
-}
-
-fn bash_orch_cmdsubst_assign_lex() -> LexRules {
-  phrase_to_lex_rules(p: phrase([
-    span(text: "=$(", class: ^bash_token_cmdsubst_open),
-    span(text: ")", class: ^bash_token_cmdsubst_close)
-  ]))
-}
-
-fn bash_orch_cmdsubst_assign_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_orch_cmdsubst_assign,
-    lhs: ^bash_production_orch_cmdsubst_assign,
-    tokens: bash_orch_cmdsubst_assign_tokens(),
-    emitted: bash_orch_cmdsubst_assign_emitted
-  )
-}
-
-fn bash_orch_cmdsubst_assign_binding_spellings(name: String, body: String) -> Map<Symbol, String> {
-  map_insert(
-    map_insert(empty_map(), ^bash_orch_cmdsubst_assign_name, name),
-    ^bash_orch_cmdsubst_assign_body, body
-  )
-}
-
-fn bash_orch_cmdsubst_assign_target_model(name: String, body: String) -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_orch_cmdsubst_assign_translation_rules_node(),
-    source_literal: ^bash_orch_cmdsubst_assign_source_literal,
-    production_name: ^bash_production_orch_cmdsubst_assign,
-    tokens: bash_orch_cmdsubst_assign_tokens(),
-    source_text: bash_orch_cmdsubst_assign_source_text(name: name, body: body),
-    lex: bash_orch_cmdsubst_assign_lex(),
-    binding_spellings: bash_orch_cmdsubst_assign_binding_spellings(name: name, body: body)
-  )
-}
-
-fn bash_orch_arith_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_arith_open },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_arith_lhs },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_arith_op },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_arith_rhs },
-    FixedToken { token_class: ^bash_token_arith_close }
-  ]
-}
-
-data bash_orch_arith_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_orch_arith_tokens()
-)
-
-fn bash_orch_arith_source_text(lhs: String, op: String, rhs: String) -> String {
-  concat("$((", concat(lhs, concat(" ", concat(op, concat(" ", concat(rhs, ")")))))))
-}
-
-fn bash_orch_arith_lex() -> LexRules {
-  phrase_to_lex_rules(p: phrase([
-    span(text: "=$((", class: ^bash_token_arith_open),
-    span(text: "))", class: ^bash_token_arith_close)
-  ]))
-}
-
-fn bash_orch_arith_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_orch_arith,
-    lhs: ^bash_production_orch_arith,
-    tokens: bash_orch_arith_tokens(),
-    emitted: bash_orch_arith_emitted
-  )
-}
-
-fn bash_orch_arith_binding_spellings(lhs: String, op: String, rhs: String) -> Map<Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(empty_map(), ^bash_orch_arith_lhs, lhs),
-      ^bash_orch_arith_op, op
-    ),
-    ^bash_orch_arith_rhs, rhs
-  )
-}
-
-fn bash_orch_arith_target_model(lhs: String, op: String, rhs: String) -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_orch_arith_translation_rules_node(),
-    source_literal: ^bash_orch_arith_source_literal,
-    production_name: ^bash_production_orch_arith,
-    tokens: bash_orch_arith_tokens(),
-    source_text: bash_orch_arith_source_text(lhs: lhs, op: op, rhs: rhs),
-    lex: bash_orch_arith_lex(),
-    binding_spellings: bash_orch_arith_binding_spellings(lhs: lhs, op: op, rhs: rhs)
-  )
-}
-
 fn orch_procedure_target_model(name: String, body: String) -> TargetModel {
   bash_orch_procedure_target_model(name: name, body: body)
 }
@@ -233,7 +123,10 @@ fn orch_call_target_model(callee: String, args_spelling: String) -> TargetModel 
 }
 
 fn orch_cmdsubst_assign_target_model(name: String, body: String) -> TargetModel {
-  bash_orch_cmdsubst_assign_target_model(name: name, body: body)
+  bash_stmt_assign_target_model(
+    name: name,
+    value: concat("\"$(", concat(body, ")\""))
+  )
 }
 
 fn orch_let_assign_target_model(name: String, value: String) -> TargetModel {
@@ -241,5 +134,6 @@ fn orch_let_assign_target_model(name: String, value: String) -> TargetModel {
 }
 
 fn orch_arith_target_model(lhs: String, op: String, rhs: String) -> TargetModel {
-  bash_orch_arith_target_model(lhs: lhs, op: op, rhs: rhs)
+  let inner = concat(lhs, concat(" ", concat(op, concat(" ", rhs))))
+  bash_orch_call_target_model(spelling: concat("$((", concat(inner, "))")))
 }

@@ -31,7 +31,7 @@ import v2.extdeps.languages.bash {
   bash_redir_stdout_to_stderr_source_text
 }
 import v2.extdeps.languages.bash_orch_tier2 {
-  bash_orch_arith_emitted
+  bash_orch_call_emitted
 }
 import v2.extdeps.languages.bash_orch_if {
   bash_test_str_eq_emitted,
@@ -335,7 +335,7 @@ fn orch_emit_predicate(p: Predicate, medium: OrchestrationEmitMedium) -> Outcome
 }
 
 fn orch_emit_call_args(args: List<String>) -> String {
-  fold(args, init: "", f: (acc, a) => {
+  fold(args, init: "", f: fn(acc, a) {
     if acc == "" { a } else { concat(acc, concat(" ", a)) }
   })
 }
@@ -351,18 +351,23 @@ fn orch_emit_expr_spelling(e: Expr, medium: OrchestrationEmitMedium) -> Outcome<
           bind_outcome(
             o: orch_emit_expr_spelling(e: rhs, medium: medium),
             f: fn(rhs_spelling) {
-              match op {
-                ArithAdd =>
-                  orch_emit_node_spelling(
-                    emitted_root: bash_orch_arith_emitted,
-                    target: medium.realize_arith(lhs_spelling, "+", rhs_spelling)
-                  )
-                ArithSub =>
-                  orch_emit_node_spelling(
-                    emitted_root: bash_orch_arith_emitted,
-                    target: medium.realize_arith(lhs_spelling, "-", rhs_spelling)
-                  )
-              }
+              bind_outcome(
+                o: match op {
+                  ArithAdd =>
+                    orch_emit_from_registry(
+                      medium: medium,
+                      construct_tag: orch_construct_arith,
+                      target: medium.realize_arith(lhs_spelling, "+", rhs_spelling)
+                    )
+                  ArithSub =>
+                    orch_emit_from_registry(
+                      medium: medium,
+                      construct_tag: orch_construct_arith,
+                      target: medium.realize_arith(lhs_spelling, "-", rhs_spelling)
+                    )
+                },
+                f: fn(m) { outcome_accepted(m.carried) }
+              )
             }
           )
         }
