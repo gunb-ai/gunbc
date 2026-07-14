@@ -81,18 +81,18 @@ claim_executor process
 
 ### 4.1 Store placement
 
-Introduce a **process-scoped shared index** created once before the worker pump starts:
+Introduce a **process-scoped shared cache** created once before the worker pump starts:
 
 ```text
 before worker loop:
-  shared = process_shared_floor_index(source_roots)  // Arc<Mutex<MultiEntryIndex>>
+  shared = process_shared_resolve_caches(source_roots)  // Arc<Mutex<SharedTypecheckCaches>>
 
-per worker thread (resolve only):
-  with_locked_floor_index(&shared, |index| resolve_entry_with_index(index, entry))
-  // eval runs on the returned Rc graph on-thread — no Rc crosses threads
+per worker thread:
+  index = build_multi_entry_index_with_shared_caches(roots, shared.clone())
+  // index shell is built on-thread; only shared_caches Arc crosses threads
 ```
 
-**C1 realization note (2026-07-14):** full `Rc`→`Arc` on cache payloads is deferred — `Rc` graphs are `!Send`, so cross-thread share uses `Arc<Mutex<MultiEntryIndex>>` with the lock held only during resolve. Workers snapshot `module_graph_facts` (immutable, `Clone`) for skip logic without holding the lock during eval. This buys the 52% prize without a seed-wide Arc migration; `RwLock`+`Arc` on payloads remains the S2b dissolve-on.
+**C1 realization note (2026-07-14, implementation attempt):** `SharedTypecheckCaches` must use `std::collections::HashMap` shells (not `im_rc::HashMap`) and **`Arc` not `Rc` for every payload** — `Rc<T>` is `!Send`, so a `Mutex` holding `Rc`-backed typecheck results cannot be shared across OS threads even with exclusive locking. Increment C host wiring (`cli_run.rs` worker spawn) is **blocked on store-path `Rc`→`Arc` migration** for `TypecheckModuleResult` / nested infer carriers; the design and process-wide `typecheck_compute_count` (atomic) land in #6561; worker rewire follows in C1-host PR once Arc bridge exists. Eval stays on-thread (`Rc<ResolvedGraph>` unchanged).
 
 ### 4.2 `Rc`→`Arc` migration scope (seed boundary)
 

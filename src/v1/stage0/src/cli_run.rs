@@ -2715,14 +2715,19 @@ impl SharedTypecheckCaches {
     }
 }
 
-static PROCESS_SHARED_TYPECHECK_CACHES: Mutex<
-    HashMap<String, Arc<Mutex<SharedTypecheckCaches>>>,
-> = Mutex::new(HashMap::new());
+static PROCESS_SHARED_TYPECHECK_CACHES: OnceLock<
+    Mutex<std::collections::HashMap<String, Arc<Mutex<SharedTypecheckCaches>>>>,
+> = OnceLock::new();
+
+fn process_shared_typecheck_caches_registry(
+) -> &'static Mutex<std::collections::HashMap<String, Arc<Mutex<SharedTypecheckCaches>>>> {
+    PROCESS_SHARED_TYPECHECK_CACHES.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
 
 /// One typed_module_cache per `(process, source_roots)` for the adaptive worker pool.
 pub fn process_shared_resolve_caches(source_roots: &[String]) -> Arc<Mutex<SharedTypecheckCaches>> {
     let roots_key = source_roots.join("\u{1f}");
-    let mut guard = PROCESS_SHARED_TYPECHECK_CACHES
+    let mut guard = process_shared_typecheck_caches_registry()
         .lock()
         .expect("process_shared_resolve_caches lock");
     if let Some(existing) = guard.get(&roots_key) {
@@ -3121,7 +3126,7 @@ fn resolve_entry_with_parse_cache(
         graph.clone(),
         source_indices.clone(),
         global_table,
-        index,
+        &index.shared_caches,
     )?;
     // Assembly residue = reconcile wall minus the per-module rows its internals
     // accumulated into the slot during this call (typecheck computes + parent envs).
@@ -3223,12 +3228,12 @@ fn resolve_entry_with_parse_cache(
 /// tree-wide module-path collisions at index build; this is the same wall at the cache seam
 /// the union widens (e.g. an on-disk entry whose module path shadows an indexed module,
 /// reached via `entry_source_from_index_or_disk`).
-fn check_module_source_identity(
-    registry: &RefCell<HashMap<String, String>>,
+fn check_module_source_identity_map(
+    registry: &mut std::collections::HashMap<String, String>,
     mod_name: &str,
     decl_file: &str,
 ) -> Result<(), String> {
-    if let Some(prev_file) = registry.borrow().get(mod_name).cloned() {
+    if let Some(prev_file) = registry.get(mod_name).cloned() {
         if prev_file != decl_file {
             return Err(format!(
                 "co-residence collision: module '{mod_name}' resolved from two files \
@@ -3239,10 +3244,16 @@ fn check_module_source_identity(
         }
         return Ok(());
     }
-    registry
-        .borrow_mut()
-        .insert(mod_name.to_string(), decl_file.to_string());
+    registry.insert(mod_name.to_string(), decl_file.to_string());
     Ok(())
+}
+
+fn check_module_source_identity(
+    registry: &RefCell<HashMap<String, String>>,
+    mod_name: &str,
+    decl_file: &str,
+) -> Result<(), String> {
+    check_module_source_identity_map(&mut registry.borrow_mut(), mod_name, decl_file)
 }
 
 /// Antichain batches (Kahn levels) over the closure's resolved import edges — the host
@@ -3380,8 +3391,7 @@ fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
-    typed_cache: &RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
-    module_identity: &RefCell<HashMap<String, String>>,
+    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut modules: Rc<im_rc::Vector<Rc<TypedModule>>> = Rc::new(im_rc::Vector::new());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
@@ -3436,8 +3446,22 @@ fn reconcile_with_typed_cache(
             // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
             // authority — the guard must fire on genuinely different files, not path representations.
             let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-            check_module_source_identity(module_identity, &mod_name, &decl_file)?;
-            let cached = typed_cache.borrow().get(&mod_name).cloned();
+            {
+                let mut caches = shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+                check_module_source_identity_map(
+                    &mut caches.module_source_identity,
+                    &mod_name,
+                    &decl_file,
+                )?;
+            }
+            let cached = {
+                let caches = shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+                caches.typed_module_cache.get(&mod_name).cloned()
+            };
             let tc_result = match cached {
                 Some(hit) => hit,
                 None => {
@@ -3464,8 +3488,10 @@ fn reconcile_with_typed_cache(
                     if module_tc_ms >= 2_000 {
                         eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
                     }
-                    typed_cache
-                        .borrow_mut()
+                    shared_caches
+                        .lock()
+                        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
+                        .typed_module_cache
                         .insert(mod_name.clone(), computed.clone());
                     computed
                 }
@@ -8027,7 +8053,7 @@ pub fn run_discovery_corpus_with_options(
         DiscoveryWidthPolicy::Serial => {
             let summary = run_discovery_rows(
                 &rows,
-                DiscoveryIndex::Local(&index),
+                &index,
                 execution_mode,
                 options.node_frontier_selection,
                 &changed_paths,
@@ -8073,7 +8099,6 @@ pub fn run_discovery_corpus_with_options(
     // resident structure across every group it pulls — admission of a worker (not of a
     // group) is therefore the memory-relevant act the governor decides.
     let groups = entry_row_groups(&rows);
-    let shared_floor_index = process_shared_floor_index(source_roots);
     eprintln!(
         "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
         groups.len(),
@@ -8114,10 +8139,10 @@ pub fn run_discovery_corpus_with_options(
         let queue_for_worker = queue.clone();
         let abort_for_worker = abort.clone();
         let governor_for_worker = governor.clone();
+        let roots = source_roots_owned.clone();
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
-        let shared_index_for_worker = shared_floor_index.clone();
         // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
         // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
         // admission window has no interleaving to disambiguate.
@@ -8135,17 +8160,14 @@ pub fn run_discovery_corpus_with_options(
                 let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
                     governor_for_worker.clone(),
                 );
-                // S2a increment C: workers share one process-scoped typed_module_cache
-                // (Mutex<MultiEntryIndex>). Resolve takes the lock; eval stays on-thread.
-                let module_graph_facts = shared_index_for_worker
-                    .lock()
-                    .map_err(|e| format!("shared floor index lock poisoned: {e}"))?
-                    .module_graph_facts
-                    .clone();
+                // Each worker is its own thread (`Rc` infer carriers are `!Send`, so the
+                // typed_module_cache cannot cross the worker boundary until store-path
+                // `Rc`→`Arc` migration lands — docs/plans/cross-worker-typecheck-share-design.md
+                // §4.1). Within the worker, union-resolve S1 still holds: the worker's floor
+                // runner and its rows resolve against ONE index.
+                let index = build_multi_entry_index(&roots);
                 let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
-                    match with_locked_floor_index(&shared_index_for_worker, |index| {
-                        resolve_entry_with_index(index, FLOOR_RUNNER_ENTRY)
-                    }) {
+                    match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
                         Ok((graph, source_indices)) => {
                             Some(make_eval_context(&graph, source_indices, execution_mode))
                         }
@@ -8178,10 +8200,7 @@ pub fn run_discovery_corpus_with_options(
                     };
                     match run_discovery_rows(
                         &group_rows,
-                        DiscoveryIndex::Shared(
-                            &shared_index_for_worker,
-                            &module_graph_facts,
-                        ),
+                        &index,
                         execution_mode,
                         selection_for_workers,
                         &paths,
@@ -8509,7 +8528,7 @@ impl ShardStyle {
 #[allow(clippy::too_many_arguments)]
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
-    discovery_index: DiscoveryIndex<'_>,
+    index: &MultiEntryIndex,
     execution_mode: v1_interpreter::ExecutionMode,
     selection: NodeFrontierSelectionMode,
     changed_paths: &[String],
@@ -8551,8 +8570,7 @@ fn run_discovery_rows(
         );
     }
     // Existence set for the entry_file_touched refuse-vs-answer decision, built once per shard.
-    let module_graph_facts = discovery_index.module_graph_facts();
-    let module_graph_declared_paths = module_graph_facts.declared_repo_paths();
+    let module_graph_declared_paths = index.module_graph_facts.declared_repo_paths();
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
@@ -8565,7 +8583,7 @@ fn run_discovery_rows(
     let entry_fast_skip = if selection == NodeFrontierSelectionMode::Applied {
         discovery_entry_fast_skip_without_resolve(
             rows,
-            module_graph_facts,
+            &index.module_graph_facts,
             &module_graph_declared_paths,
             &touched_entry_paths,
             diff_edits,
@@ -8587,7 +8605,7 @@ fn run_discovery_rows(
             if current_entry.as_deref() != Some(row.entry.as_str()) {
                 augment_closure_modules_from_import_facts(
                     &row.entry,
-                    module_graph_facts,
+                    &index.module_graph_facts,
                     &mut closure_modules,
                 );
                 current_entry = Some(row.entry.clone());
@@ -8611,7 +8629,7 @@ fn run_discovery_rows(
                 skip_enabled,
                 row.reads_live_tree,
                 &row.entry,
-                module_graph_facts,
+                &index.module_graph_facts,
                 &module_graph_declared_paths,
                 changed_paths,
                 diff_edits,
@@ -8624,7 +8642,7 @@ fn run_discovery_rows(
                 }
                 collect_import_closure_module_names_from_facts(
                     &row.entry,
-                    module_graph_facts,
+                    &index.module_graph_facts,
                     &mut closure_modules,
                 );
                 ctx = None;
@@ -8634,7 +8652,8 @@ fn run_discovery_rows(
                 current_entry_file_touched = false;
                 current_entry = Some(row.entry.clone());
             } else {
-                let resolved = discovery_index.resolve_discovery_entry(
+                let resolved = resolve_discovery_entry_for_corpus_row(
+                    index,
                     &row.entry,
                     execution_mode,
                     whole_tree_published_keys.clone(),
@@ -8727,7 +8746,8 @@ fn run_discovery_rows(
             }
         }
         if ctx.is_none() {
-            let resolved = discovery_index.resolve_discovery_entry(
+            let resolved = resolve_discovery_entry_for_corpus_row(
+                index,
                 &row.entry,
                 execution_mode,
                 whole_tree_published_keys.clone(),
