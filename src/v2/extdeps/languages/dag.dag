@@ -5735,42 +5735,6 @@ fn parse_subtree_find_production_captured(root: Node, emitted: Symbol) -> ParseS
   }
 }
 
-data dag_fn_decl_param_scope_note: String = "Interim param-scoping readers for the dag surface tree. The normalized dag surface tree preserves production Conj wrappers - no Arrow node exists before 03_body_producer - so resolve cannot scope fn params via add_arrow_domain_named_params (dead on this path). dag_fn_decl_param_binding_atoms locates the ^dag_surface_param_list capture under a fn_decl production wrapper and harvests exactly the binding-name atoms (lexeme-stamped by dag_grammar_binding_name_terminal), skipping preserved qualified_name/module_header subtrees (type annotations like Int are not param names) and lex token-class atoms (punctuation/keywords). Sole consumer: v2.compiler.resolve scope_with_fn_decl_params. Dissolution trigger: when body-lowering lands fn_decl -> Arrow lowering in normalize (the deferred general body producer, DESIGN body-lowering thread), add_arrow_domain_named_params becomes the single param-scoping authority and these readers plus the resolve-side frame dissolve with it."
-
-fn dag_param_binding_atom_harvest(root: Node, acc: List<Symbol>) -> List<Symbol> {
-  match dag_resolve_preserve_module_metadata_subtree(node: root) {
-    true => acc
-    false =>
-      let acc1 = match node_atom_identity_optional(node: root) {
-        Present { value: id } =>
-          match dag_lex_token_symbol(sym: id) {
-            true => acc
-            false => Cons { head: id, tail: acc }
-          }
-        Absent => acc
-      }
-      fold(root.children, init: acc1, f: fn(a, e) {
-        dag_param_binding_atom_harvest(root: e.target, acc: a)
-      })
-  }
-}
-
-fn dag_fn_decl_param_binding_atoms(node: Node) -> List<Symbol> {
-  match dag_node_is_fn_decl(node: node) {
-    false => Empty
-    true =>
-      match parse_production_captured_child_optional(node: node) {
-        Present { value: captured } =>
-          match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
-            ParseSubtreeFound { captured: params } =>
-              dag_param_binding_atom_harvest(root: params, acc: Empty)
-            ParseSubtreeAbsent => Empty
-          }
-        Absent => Empty
-      }
-  }
-}
-
 fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<Symbol> {
   match node_atom_identity_optional(node: sym_node) {
     Present { value: id } =>
