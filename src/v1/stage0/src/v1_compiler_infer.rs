@@ -107,7 +107,8 @@ pub use crate::v1_compiler_infer_types::{
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved, is_unit_like,
     make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
-    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
+    node_type_compatible, node_type_deps, node_type_equals, node_type_shape,
+    optional_shape_pair_compatible, nominal_type_ref,
     normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
     resolved_type, structural_carrier_template_name, template_return_has_variables,
     template_return_is_receiver_self,
@@ -12790,22 +12791,6 @@ pub fn try_resolve_variant_from_expected(
         }
         None => None,
     }
-}
-
-pub fn optional_shape_pair_compatible(left_shape: String, right_shape: String) -> bool {
-    let absent_shape = |shape: &str| {
-        ((shape == "Product(Unit)")
-            || (shape == "Product(Absent)")
-            || (shape == "Primitive(Absent)")
-            || (shape == "Primitive(Unit)")
-            || (shape == "Primitive(None)")
-            || (shape == "Primitive(none)"))
-    };
-    let present_shape = |shape: &str| {
-        ((shape == "Product(Present)") || (shape == "Primitive(Present)"))
-    };
-    ((absent_shape(left_shape.as_str()) && present_shape(right_shape.as_str()))
-        || (absent_shape(right_shape.as_str()) && present_shape(left_shape.as_str())))
 }
 
 pub fn if_branch_shapes_compatible(

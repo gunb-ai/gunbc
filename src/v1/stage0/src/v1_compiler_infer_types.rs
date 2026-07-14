@@ -1833,6 +1833,22 @@ pub fn node_type_shape(
     })
 }
 
+pub fn optional_shape_pair_compatible(left_shape: String, right_shape: String) -> bool {
+    let absent_shape = |shape: &str| {
+        ((shape == "Product(Unit)")
+            || (shape == "Product(Absent)")
+            || (shape == "Primitive(Absent)")
+            || (shape == "Primitive(Unit)")
+            || (shape == "Primitive(None)")
+            || (shape == "Primitive(none)"))
+    };
+    let present_shape = |shape: &str| {
+        ((shape == "Product(Present)") || (shape == "Primitive(Present)"))
+    };
+    ((absent_shape(left_shape.as_str()) && present_shape(right_shape.as_str()))
+        || (absent_shape(right_shape.as_str()) && present_shape(left_shape.as_str())))
+}
+
 pub fn node_type_compatible(
     mut left: Rc<Node>,
     mut right: Rc<Node>,
@@ -1859,6 +1875,12 @@ pub fn node_type_compatible(
         } else {
             false
         };
+        if optional_shape_pair_compatible(
+            node_type_shape(left.clone(), source_indices.clone()),
+            node_type_shape(right.clone(), source_indices.clone()),
+        ) {
+            break true;
+        }
         let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
         let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
         let right_is_unit = is_unit_like(right.clone());
