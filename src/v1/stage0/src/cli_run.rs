@@ -8149,10 +8149,7 @@ pub fn run_discovery_corpus_with_options(
     // (serde byte transport). The pump thread keeps `process_shared_index` (private per-
     // index `Rc`) so prelude work does not duplicate into the shared store; workers alone
     // read/write the shared store as the typed-cache authority (no local Rc duplicate).
-    let cross_worker_store = match &width_policy {
-        DiscoveryWidthPolicy::Adaptive(_) => Some(new_shared_typecheck_caches()),
-        DiscoveryWidthPolicy::Serial => None,
-    };
+    // Store creation lives in the Adaptive match arm below — unrepresentable on Serial.
     let index = process_shared_index(source_roots);
     // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
     // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
@@ -8274,7 +8271,7 @@ pub fn run_discovery_corpus_with_options(
     );
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
-    let governor = match width_policy {
+    return match width_policy {
         DiscoveryWidthPolicy::Serial => {
             let summary = run_discovery_rows(
                 &rows,
@@ -8315,10 +8312,10 @@ pub fn run_discovery_corpus_with_options(
                 "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
-            return Ok(attach_deferred_discovery_rows(summary, deferred_rows));
+            Ok(attach_deferred_discovery_rows(summary, deferred_rows))
         }
-        DiscoveryWidthPolicy::Adaptive(governor) => governor,
-    };
+        DiscoveryWidthPolicy::Adaptive(governor) => {
+            let cross_worker_store = new_shared_typecheck_caches();
     // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
     // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
     // resident structure across every group it pulls — admission of a worker (not of a
@@ -8345,10 +8342,6 @@ pub fn run_discovery_corpus_with_options(
                 .collect(),
         ));
     let abort = std::sync::Arc::new(AtomicBool::new(false));
-    let cross_worker_store_for_workers = cross_worker_store
-        .as_ref()
-        .expect("adaptive pool must arm cross_worker_store")
-        .clone();
     let source_roots_owned = source_roots.to_vec();
     let selection_for_workers = options.node_frontier_selection;
     let fast_lane_budget_for_workers = options.fast_lane_eval_budget_ms;
@@ -8372,7 +8365,7 @@ pub fn run_discovery_corpus_with_options(
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
-        let cross_worker_store = cross_worker_store_for_workers.clone();
+        let cross_worker_store = cross_worker_store.clone();
         // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
         // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
         // admission window has no interleaving to disambiguate.
@@ -8480,6 +8473,8 @@ pub fn run_discovery_corpus_with_options(
         merge_discovery_summaries(summaries),
         deferred_rows,
     ))
+        }
+    };
 }
 
 fn attach_deferred_discovery_rows(
