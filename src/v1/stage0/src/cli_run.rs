@@ -2073,6 +2073,20 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     const EXCLUDE: &[String] = &[];
     let roots = pool_roots_for_module_graph_closure(pool_roots);
+    // NOTE: the module-graph LOADER closure stays import-derived for now (Blocker-1 part 1). A
+    // reference-derived closure changes every witness's load set tree-wide and surfaces latent issues
+    // (import-less-but-referencing std files, witnesses that need src/v1 in their pool, the
+    // pre-existing fleet_converge Srv3 red, and homonyms the bright-cat lane must qualify), so the
+    // loader repoint is staged as a separate part after those land. The REFERENCE producer below is
+    // already live via the inert-lens reach (the strips' documented CI blocker), which is hygiene-
+    // only and cannot regress a compile.
+    //
+    // Attempted 2026-07-14 (this node, part 2): unioning `reference_edges_as_import_facts(..., false)`
+    // onto `edges` here balloons a single small witness entry's load set from 27 to 424 resolved
+    // sources (measured on `dag_import_closure_live_witness_bundle_holds`) — ubiquitous std bare names
+    // fan every import-less referrer out to nearly the whole pool, not a bounded superset. Reverted;
+    // the naive union is unsafe at this grain and needs a narrower fan-out bound (or a same-module/
+    // homonym-aware restriction) before the loader can repoint. See escalation on this node.
     let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
     let nodes = module_declaration_facts(&roots);
     let adjacency = build_import_adjacency(&edges, &nodes);
@@ -2193,6 +2207,133 @@ fn entry_file_touched_via_import_closure(
     }))
 }
 
+/// Receipted Rust mirror of the single authority `v2.std.live_read.live_read_carrier_homes_v0`
+/// (`src/v2/std/live_read.dag`) — the module names of the 8 declared live-read carrier homes.
+/// Kept in lockstep with that `.dag` roster by hand; a drift here under-approximates axis (iv)
+/// fail-closed-safe direction only if this list is a SUPERSET of the `.dag` roster, so any
+/// addition to the `.dag` roster must be mirrored here — the drift gate below
+/// (`live_read_carrier_home_modules_v0_is_superset_of_dag_authority`) evaluates the `.dag`
+/// authority through a real interpreter context and fails the build the moment this const falls
+/// behind, so the mismatch cannot silently pass.
+/// Dissolution trigger: every caller of `runtime_data_dependency_touched_via_carrier_closure`
+/// (the skip-before-resolve fast path and the precompute-count helpers below) is itself a named
+/// `SCAFFOLD (§7 hand-Rust shrink-to-zero)` whose own DELETE WHEN note ties dissolution to
+/// `v2.workflow.affected_set_floor_runner`'s `.dag` disposition owning the same predicate
+/// end-to-end. This const has no independent dissolution path or generator lane because it has
+/// no independent caller: when those scaffolds delete, this const and its drift gate delete with
+/// them, not before.
+const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
+    "v2.lens.enforcement.cost_coverage",
+    "v2.lens.enforcement.grammar_coverage",
+    "v2.lens.complexity_accumulator_copy.roster_gate",
+    "v2.compiler.self_host",
+    "v2.std.decl_index",
+    "v2.lens.module_graph",
+    "tools.dag_compile_clean_shard_roster",
+    "tools.dag_compile_clean_scope",
+];
+
+/// Axis (iv) of the fourth-axis law (`docs/plans/live-read-witness-classification-design.md`
+/// §7): does `entry_path`'s import closure reach a declared live-read carrier home, and is
+/// any path touched at all? This is a G1-only (module-closure) mirror of the landed G2
+/// call-reachability lens (`v2.lens.live_read_classification`) — G2's carrier set is always
+/// a superset of G1's under the same closure (`merge_g1_and_g2_carriers`), so this coarser
+/// Rust check is fail-closed-safe relative to the full `.dag` authority: it may over-report
+/// (an extra witness run) but never under-report (a missed run). It does not attempt to
+/// prove which touched path a reached carrier actually reads at runtime (that precision is
+/// G2/G3's job) — reachability plus any touch is treated as a hit.
+fn runtime_data_dependency_touched_via_carrier_closure(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    touched_paths: &[String],
+) -> bool {
+    if touched_paths.is_empty() {
+        return false;
+    }
+    let mut closure_modules: HashSet<String> = HashSet::new();
+    collect_import_closure_module_names_from_facts(entry_path, facts, &mut closure_modules);
+    LIVE_READ_CARRIER_HOME_MODULES_V0
+        .iter()
+        .any(|carrier_module| closure_modules.contains(*carrier_module))
+}
+
+#[cfg(test)]
+mod live_read_carrier_home_roster_drift_gate_tests {
+    use super::{
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
+        workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::collections::HashSet;
+
+    const LIVE_READ_ENTRY: &str = "src/v2/std/live_read.dag";
+
+    fn record_field<'a>(
+        ctx: &v1_interpreter::InterpContext,
+        fields: &'a [(v1_interpreter::Symbol, Value)],
+        field_name: &str,
+    ) -> Option<&'a Value> {
+        fields
+            .iter()
+            .find(|(sym, _)| ctx.sym_eq(*sym, field_name))
+            .map(|(_, v)| v)
+    }
+
+    // Reads the `.dag`-side single authority directly by evaluating
+    // `live_read_carrier_homes_v0` in a real interpreter context — not a re-hand-authored Rust
+    // copy of the roster — so this test's own expectation cannot drift the same way the
+    // production const can.
+    fn dag_carrier_home_modules() -> HashSet<String> {
+        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
+        let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
+        let (graph, indices) = resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+        let val = v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::eval_data_item_value(&ctx, "live_read_carrier_homes_v0")
+        })
+        .unwrap_or_else(|e| panic!("eval live_read_carrier_homes_v0: {e}"))
+        .unwrap_or_else(|| panic!("live_read_carrier_homes_v0 not found as a data item"));
+        let Value::List(items) = val else {
+            panic!("live_read_carrier_homes_v0 is not a List: {val:?}");
+        };
+        items
+            .iter()
+            .map(|item| {
+                let Value::Record { fields, .. } = item else {
+                    panic!("live_read_carrier_homes_v0 entry is not a Record: {item:?}");
+                };
+                match record_field(&ctx, fields, "module") {
+                    Some(Value::Str(s)) => s.clone(),
+                    other => panic!("LiveReadCarrierHome.module is not a String: {other:?}"),
+                }
+            })
+            .collect()
+    }
+
+    // The safety-critical drift direction (axis (iv)'s fail-closed-safe requirement, see the
+    // doc-comment on `LIVE_READ_CARRIER_HOME_MODULES_V0`): the Rust const must be a SUPERSET of
+    // the `.dag` roster. A `.dag`-only addition this const misses makes
+    // `runtime_data_dependency_touched_via_carrier_closure` return `false` for that carrier —
+    // silently fail-open on the exact axis this const backs.
+    #[test]
+    fn live_read_carrier_home_modules_v0_is_superset_of_dag_authority() {
+        let dag_modules = dag_carrier_home_modules();
+        let rust_modules: HashSet<String> = LIVE_READ_CARRIER_HOME_MODULES_V0
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let missing: Vec<&String> = dag_modules.difference(&rust_modules).collect();
+        assert!(
+            missing.is_empty(),
+            "`.dag` authority `live_read_carrier_homes_v0` declares carrier home module(s) \
+             {missing:?} not mirrored in Rust `LIVE_READ_CARRIER_HOME_MODULES_V0` \
+             (src/v1/stage0/src/cli_run.rs) — add them there or axis (iv) silently fails open \
+             for that carrier"
+        );
+    }
+}
+
 // SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
 // ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
 // docs/plans/affected-set-precompute-pruning.md Step 4 migrate floor) — host-side
@@ -2274,12 +2415,13 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
         return Ok(false);
     }
-    Ok(!entry_file_touched_via_import_closure(
-        entry_path,
-        facts,
-        declared_paths,
-        touched_paths,
-    )?)
+    if entry_file_touched_via_import_closure(entry_path, facts, declared_paths, touched_paths)? {
+        return Ok(false);
+    }
+    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_paths) {
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 struct DiscoveryEntryResolve {
@@ -2288,6 +2430,7 @@ struct DiscoveryEntryResolve {
     frontier_nodes: Vec<v1_interpreter::Value>,
     touches_frontier: bool,
     entry_file_touched: bool,
+    entry_runtime_dependency_touched: bool,
     resolve_nanos: u128,
     stage_nanos: ResolveStageNanos,
 }
@@ -2329,33 +2472,49 @@ fn resolve_discovery_entry_for_corpus_row(
         None,
         whole_tree_published_keys,
     );
-    let (frontier_nodes, touches_frontier, entry_file_touched) = if skip_enabled {
-        let frontier_nodes = rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
-        let touches_frontier = if frontier_nodes.is_empty() {
-            false
-        } else {
-            entry_touches_rerun_frontier(&entry_ctx, &list_value_from_vec(frontier_nodes.clone()))?
-        };
-        let entry_file_touched = if touched_entry_paths.is_empty() {
-            false
-        } else {
-            entry_file_touched_via_import_closure(
+    let (frontier_nodes, touches_frontier, entry_file_touched, entry_runtime_dependency_touched) =
+        if skip_enabled {
+            let frontier_nodes =
+                rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
+            let touches_frontier = if frontier_nodes.is_empty() {
+                false
+            } else {
+                entry_touches_rerun_frontier(
+                    &entry_ctx,
+                    &list_value_from_vec(frontier_nodes.clone()),
+                )?
+            };
+            let entry_file_touched = if touched_entry_paths.is_empty() {
+                false
+            } else {
+                entry_file_touched_via_import_closure(
+                    entry_path,
+                    &index.module_graph_facts,
+                    module_graph_declared_paths,
+                    touched_entry_paths,
+                )?
+            };
+            let entry_runtime_dependency_touched = runtime_data_dependency_touched_via_carrier_closure(
                 entry_path,
                 &index.module_graph_facts,
-                module_graph_declared_paths,
                 touched_entry_paths,
-            )?
+            );
+            (
+                frontier_nodes,
+                touches_frontier,
+                entry_file_touched,
+                entry_runtime_dependency_touched,
+            )
+        } else {
+            (Vec::new(), true, true, true)
         };
-        (frontier_nodes, touches_frontier, entry_file_touched)
-    } else {
-        (Vec::new(), true, true)
-    };
     Ok(DiscoveryEntryResolve {
         ctx: entry_ctx,
         closure_subject,
         frontier_nodes,
         touches_frontier,
         entry_file_touched,
+        entry_runtime_dependency_touched,
         resolve_nanos,
         stage_nanos,
     })
@@ -6543,8 +6702,11 @@ fn build_floor_lens_hygiene_graph(
     // UniqueBare, dropping AmbiguousBare) so an over-connected graph cannot silently clear a truly-
     // inert lens (DESIGN §5 — no fail-open hygiene). Parsed-tree, not a substring scan, so comments/
     // strings never fabricate a reach. Dedup keeps the BFS set honest.
+    // Long-lane discovery exclusions (`test/claim/long/`) must not suppress reference edges here:
+    // exclusion only removes a witness from per-PR enrollment; stripped long/ witnesses still wire
+    // lens reachability for this hygiene pass (the inert_lens_hygiene witness lives under long/).
     for edge in reference_edges_as_import_facts(
-        &reference_resolution_facts(source_roots, source_roots, &excludes),
+        &reference_resolution_facts(source_roots, source_roots, &[]),
         true,
     ) {
         let importer = repo_relative_dag_path(&edge.path);
@@ -7383,6 +7545,7 @@ fn call_floor_kernel_would_skip(
     touches_frontier: bool,
     function_edited: bool,
     entry_file_touched: bool,
+    runtime_data_dependency_touched: bool,
 ) -> Result<bool, String> {
     if !ctx.item_registry.contains_key("floor_kernel_would_skip") {
         return Err("floor_kernel_would_skip missing from floor runner context".to_string());
@@ -7411,6 +7574,10 @@ fn call_floor_kernel_would_skip(
         (
             Some("entry_file_touched".to_string()),
             v1_interpreter::Value::Bool(entry_file_touched),
+        ),
+        (
+            Some("runtime_data_dependency_touched".to_string()),
+            v1_interpreter::Value::Bool(runtime_data_dependency_touched),
         ),
     ];
     match v1_interpreter::run_in_context_with_args(ctx, "floor_kernel_would_skip", &args, false) {
@@ -7446,6 +7613,7 @@ fn call_floor_row_would_skip(
     touches_frontier: bool,
     function_edited: bool,
     entry_file_touched: bool,
+    runtime_data_dependency_touched: bool,
 ) -> Result<bool, String> {
     if !ctx.item_registry.contains_key("floor_row_would_skip") {
         return Err("floor_row_would_skip missing from floor runner context".to_string());
@@ -7479,6 +7647,10 @@ fn call_floor_row_would_skip(
             Some("entry_file_touched".to_string()),
             v1_interpreter::Value::Bool(entry_file_touched),
         ),
+        (
+            Some("runtime_data_dependency_touched".to_string()),
+            v1_interpreter::Value::Bool(runtime_data_dependency_touched),
+        ),
     ];
     match v1_interpreter::run_in_context_with_args(ctx, "floor_row_would_skip", &args, false) {
         Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
@@ -7497,6 +7669,7 @@ fn call_floor_row_precompute_would_skip(
     frontier_node_count: usize,
     edited_test_fn_count: usize,
     touched_entry_file_count: usize,
+    touched_runtime_dependency_entry_count: usize,
 ) -> Result<bool, String> {
     if !ctx
         .item_registry
@@ -7530,6 +7703,10 @@ fn call_floor_row_precompute_would_skip(
         (
             Some("touched_entry_file_count".to_string()),
             v1_interpreter::Value::Int(touched_entry_file_count as i64),
+        ),
+        (
+            Some("touched_runtime_dependency_entry_count".to_string()),
+            v1_interpreter::Value::Int(touched_runtime_dependency_entry_count as i64),
         ),
     ];
     match v1_interpreter::run_in_context_with_args(
@@ -7627,6 +7804,28 @@ fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
     rows.iter().filter(|r| r.reads_live_tree).count()
 }
 
+/// Precompute-grain count for axis (iv): the number of distinct entries among `rows` whose
+/// import closure reaches a declared live-read carrier home
+/// (`runtime_data_dependency_touched_via_carrier_closure`), given the full raw touched-path
+/// set. Feeds `floor_row_precompute_would_skip`'s `touched_runtime_dependency_entry_count` —
+/// nonzero pins the whole-tree precompute exactly as the other three axes do.
+fn discovery_rows_runtime_dependency_touched_count(
+    rows: &[DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+    touched_paths: &[String],
+) -> usize {
+    if touched_paths.is_empty() {
+        return 0;
+    }
+    let mut seen: HashSet<&str> = HashSet::new();
+    rows.iter()
+        .filter(|row| seen.insert(row.entry.as_str()))
+        .filter(|row| {
+            runtime_data_dependency_touched_via_carrier_closure(&row.entry, facts, touched_paths)
+        })
+        .count()
+}
+
 /// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
 /// when import-closure `entry_file_touched` is false and no declaration-level edit
 /// targets this entry, every kernel witness in the entry would skip — receipt:
@@ -7676,6 +7875,9 @@ fn entry_qualifies_for_skip_without_resolve(
         declared_paths,
         touched_entry_paths,
     )? {
+        return Ok(false);
+    }
+    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
@@ -8246,6 +8448,12 @@ pub fn run_discovery_corpus_with_options(
         let live_row_count = discovery_rows_live_tree_count(&rows);
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
+                let touched_runtime_dependency_entry_count =
+                    discovery_rows_runtime_dependency_touched_count(
+                        &rows,
+                        &index.module_graph_facts,
+                        &changed_paths,
+                    );
                 let precompute = call_floor_row_precompute_would_skip(
                     ctx,
                     live_row_count,
@@ -8253,6 +8461,7 @@ pub fn run_discovery_corpus_with_options(
                     diff_edits.overlapping_data_items.len(),
                     diff_edits.edited_test_fns.len(),
                     diff_edits.touched_entry_files.len(),
+                    touched_runtime_dependency_entry_count,
                 );
                 match precompute {
                     Ok(skip) => skip,
@@ -8818,6 +9027,7 @@ fn run_discovery_rows(
     let mut current_entry_touches = true;
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_file_touched = true;
+    let mut current_entry_runtime_dependency_touched = true;
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
@@ -8852,6 +9062,7 @@ fn run_discovery_rows(
                 current_entry = Some(row.entry.clone());
                 current_entry_touches = false;
                 current_entry_file_touched = false;
+                current_entry_runtime_dependency_touched = false;
                 current_entry_frontier_nodes.clear();
                 current_closure_subject = None;
                 ctx = None;
@@ -8891,6 +9102,7 @@ fn run_discovery_rows(
                 current_entry_frontier_nodes.clear();
                 current_entry_touches = false;
                 current_entry_file_touched = false;
+                current_entry_runtime_dependency_touched = false;
                 current_entry = Some(row.entry.clone());
             } else {
                 let resolved = resolve_discovery_entry_for_corpus_row(
@@ -8916,6 +9128,7 @@ fn run_discovery_rows(
                 current_entry_frontier_nodes = resolved.frontier_nodes;
                 current_entry_touches = resolved.touches_frontier;
                 current_entry_file_touched = resolved.entry_file_touched;
+                current_entry_runtime_dependency_touched = resolved.entry_runtime_dependency_touched;
                 ctx = Some(resolved.ctx);
                 if let Some(c) = ctx.as_ref() {
                     c.set_witness_eval_budget(fast_lane_eval_budget_ms);
@@ -8928,6 +9141,8 @@ fn run_discovery_rows(
                 diff_file_matches_entry(file, &row.entry) && func == &row.function
             });
         let entry_file_touched = skip_enabled && current_entry_file_touched;
+        let runtime_data_dependency_touched =
+            skip_enabled && current_entry_runtime_dependency_touched;
         let would_skip = if skip_enabled {
             match floor_runner_ctx {
                 Some(runner_ctx) => {
@@ -8939,6 +9154,7 @@ fn run_discovery_rows(
                         current_entry_touches,
                         function_edited,
                         entry_file_touched,
+                        runtime_data_dependency_touched,
                     );
                     match skip {
                         Ok(skip) => skip,
@@ -9010,6 +9226,7 @@ fn run_discovery_rows(
             current_entry_frontier_nodes = resolved.frontier_nodes;
             current_entry_touches = resolved.touches_frontier;
             current_entry_file_touched = resolved.entry_file_touched;
+            current_entry_runtime_dependency_touched = resolved.entry_runtime_dependency_touched;
             ctx = Some(resolved.ctx);
             if let Some(c) = ctx.as_ref() {
                 c.set_witness_eval_budget(fast_lane_eval_budget_ms);
@@ -9300,6 +9517,7 @@ new file mode 100644
             false,
             false,
             false,
+            false,
         )
         .expect("live-tree row skip");
         assert!(
@@ -9311,6 +9529,7 @@ new file mode 100644
             false,
             &changed_paths,
             &[],
+            false,
             false,
             false,
             false,
@@ -10773,12 +10992,12 @@ mod node_frontier_plumbing_controls {
             super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
         let changed_paths = vec![fixture_abs.clone()];
         assert!(
-            !call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, true)
+            !call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, true, false)
                 .expect("skip verdict for touched entry"),
             "helper-fn edit must RUN witnesses in the touched entry (entry_file_touched)"
         );
         assert!(
-            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false)
+            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false, false)
                 .expect("skip verdict for unrelated entry"),
             "helper-fn edit must SKIP witnesses in an unrelated entry when frontier is empty"
         );
@@ -10842,13 +11061,14 @@ mod node_frontier_plumbing_controls {
                 &nodes,
                 false,
                 false,
-                true
+                true,
+                false
             )
             .expect("skip verdict for importing entry"),
             "cross-file helper-fn edit must RUN witnesses in importing entry (import-closure entry_file_touched)"
         );
         assert!(
-            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false)
+            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false, false)
                 .expect("skip verdict for unrelated entry"),
             "cross-file helper-fn edit must SKIP witnesses in an unrelated entry when frontier is empty"
         );
@@ -12998,6 +13218,21 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/node_minimal.dag::node_superset_field_eq",
     "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
     "src/v2/std/qualified_name.dag::qn_fold_step",
+    // 2026-07-14 backfill (fourth instance of the masking class, siblings to the #6533/#6530
+    // receipts above): the nightly affected-set falsifier's whole-corpus cold sweep surfaced 3
+    // unrostered sites the per-PR affected-set selection did not run the nfr witness for at
+    // landing time. `orch_emit_let_step` landed with #6573 (Shell→dag P2b), the two live-read
+    // eq fns with #6582 (live-read classification P1) — the same PR that landed the orphan doc
+    // this sweep also caught. Declared here so the ratchet re-arms; each burns down with its
+    // owning file's fold migration.
+    //   - orch_emit_let_step: special-case `ExprCmdSubst` + general `Expr` dispatch via
+    //     orch_emit_expr_spelling; dissolves when emit is the backward grammar-row fold (§4).
+    //   - live_read_carrier_eq / path_pattern_eq: nested structural `==` (`_ => false` on the
+    //     off-variant arm), the same shape as the std `*_eq` rows above; dissolves with derived
+    //     equality from inhabitance (the cross-representation `==` grounding, DESIGN §3/§4).
+    "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
+    "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
+    "src/v2/lens/live_read_classification.dag::path_pattern_eq",
 ];
 
 fn nfr_strip_comments(content: &str) -> String {
