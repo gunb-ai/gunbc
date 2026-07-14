@@ -340,6 +340,14 @@ fn orch_emit_call_args(args: List<String>) -> String {
   })
 }
 
+fn orch_emit_cmdsubst_command_spelling(callee: String, args: List<String>) -> String {
+  concat(callee, concat(" ", orch_emit_call_args(args: args)))
+}
+
+fn orch_emit_cmdsubst_word_spelling(callee: String, args: List<String>) -> String {
+  concat("$(", concat(orch_emit_cmdsubst_command_spelling(callee: callee, args: args), ")"))
+}
+
 fn orch_emit_expr_spelling(e: Expr, medium: OrchestrationEmitMedium) -> Outcome<String> {
   match e {
     ExprLit { spelling: s } => outcome_accepted(s)
@@ -373,7 +381,7 @@ fn orch_emit_expr_spelling(e: Expr, medium: OrchestrationEmitMedium) -> Outcome<
         }
       )
     ExprCmdSubst { callee: c, args: args } =>
-      outcome_accepted(concat(c, concat(" ", orch_emit_call_args(args: args))))
+      outcome_accepted(orch_emit_cmdsubst_word_spelling(callee: c, args: args))
   }
 }
 
@@ -389,7 +397,7 @@ fn orch_emit_let_step(
         construct_tag: orch_construct_cmdsubst_assign,
         target: medium.realize_cmdsubst_assign(
           name,
-          concat(c, concat(" ", orch_emit_call_args(args: args)))
+          orch_emit_cmdsubst_command_spelling(callee: c, args: args)
         )
       )
     _ =>

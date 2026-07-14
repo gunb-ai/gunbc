@@ -214,6 +214,35 @@ test fn orch_tier2_arith_add_band_holds() -> Bool {
   }
 }
 
+fn expr_cmdsubst_in_arith_lhs_intent() -> PipelineStep {
+  Let {
+    name: "n",
+    value: ExprArith {
+      op: ArithAdd,
+      lhs: ExprCmdSubst {
+        callee: "wc",
+        args: ["-l", "\"$f\""]
+      },
+      rhs: ExprLit { spelling: "0" }
+    }
+  }
+}
+
+fn expr_cmdsubst_in_arith_lhs_golden() -> String {
+  "n=$(($(wc -l \"$f\") + 0))"
+}
+
+test fn orch_tier2_expr_cmdsubst_word_in_arith_lhs_holds() -> Bool {
+  match orch_emit_step(
+    s: expr_cmdsubst_in_arith_lhs_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == expr_cmdsubst_in_arith_lhs_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn orch_tier2_cmdsubst_assign_has_teeth_holds() -> Bool {
   match orch_emit_step(
     s: fresh_standup_cmdsubst_assign_intent(),
