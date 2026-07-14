@@ -30,6 +30,8 @@ data package_socat: NonEmptyStr = "socat"
 data package_websocat: NonEmptyStr = "websocat"
 data package_xorriso: NonEmptyStr = "xorriso"
 
+data apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
+
 data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
 
 

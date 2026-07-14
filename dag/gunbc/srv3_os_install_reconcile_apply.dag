@@ -57,6 +57,7 @@ data srv3_os_install_reconcile_apply_shell_runner_scaffold: Disposition = Scaffo
   }
 }
 
+
 fn process_exit_succeeded(exit: ProcessExit) -> Bool {
   match exit {
     ExitSuccess => true
