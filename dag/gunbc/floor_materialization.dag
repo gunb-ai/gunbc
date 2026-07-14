@@ -123,11 +123,11 @@ data floor_typecheck_store_share_provider: CacheProvider = provider_row(
 
 data floor_typecheck_store_share_providers: List<CacheProvider> = [floor_typecheck_store_share_provider]
 
-data floor_typecheck_store_consumer_sites_note: String = "The two minimum co-readers of the adaptive worker pool at W>=2 (cross-worker-typecheck-share-design.md §4.4). Runtime width may exceed 2 under the memory governor; the ladder counts declared readonly sites, not live W. Both the pump thread and every admitted worker shard clone the same Arc<RwLock<SharedTypecheckCaches>> — the first site is the pump/prelude consumer, the second is the worker-pool pattern (every shard is an equivalent reader)."
+data floor_typecheck_store_consumer_sites_note: String = "The two minimum co-readers of the adaptive worker pool at W>=2 (cross-worker-typecheck-share-design.md §4.4). Runtime width may exceed 2 under the memory governor; the ladder counts declared readonly sites, not live W. The pump thread uses private process_shared_index (P1); only admitted worker shards clone Arc<RwLock<SharedTypecheckCaches>> and read the shared typed store."
 
 data floor_typecheck_store_consumer_sites: List<String> = [
-  "cli_run.rs:run_discovery_corpus_with_options:adaptive-pump-thread",
-  "cli_run.rs:run_discovery_corpus_with_options:adaptive-worker-shard"
+  "cli_run.rs:run_discovery_corpus_with_options:adaptive-worker-shard",
+  "cli_run.rs:run_discovery_corpus_with_options:adaptive-worker-shard:co-reader"
 ]
 
 fn floor_typecheck_store_value_usage() -> ValueUsage {
