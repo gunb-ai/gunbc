@@ -12664,6 +12664,20 @@ pub fn reference_resolution_facts(
                         0 => {}
                         1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
                         _ => {
+                            // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
+                            // AmbiguousBare is a bare ref, in a file that does not declare it, whose
+                            // nearest declarers tie — the definitive "needs qualification" site.
+                            if std::env::var("REFAMBIG_DUMP").is_ok() {
+                                let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
+                                let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
+                                eprintln!(
+                                    "REFAMBIG\t{}\t{}\t{}\t{}",
+                                    if is_witness { "witness" } else { "compile" },
+                                    rel,
+                                    name,
+                                    cands.join(",")
+                                );
+                            }
                             for t in winners {
                                 upgrade(t.clone(), RefEdgeResolution::AmbiguousBare);
                             }
