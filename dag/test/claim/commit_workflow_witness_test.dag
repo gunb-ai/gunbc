@@ -16,9 +16,9 @@ import gunbc.commit_workflow {
   witness_span_wellformed
 }
 import std.realization_schedule {
-  WitnessSeam, SpanSeams, SpanUndeclared,
-  CorpusWitnessKind, witness_kind_eq
+  WitnessSeam, SpanSeams, SpanUndeclared
 }
+import v2.workflow.ci_floor_plan { witness_entries_kind_path_all_agree }
 import gunbc.ci_spec { gunbc_ci_floor_gates }
 import gunbc.local_tidy_spec { local_tidy_checks }
 import gunbc.generated_artifact {
@@ -98,9 +98,9 @@ fn witness_span_rejects_empty_seam_list() -> Bool {
 }
 
 fn witness_projected_ci_entries_kind_stamped() -> Bool {
-  fold(project_ci_floor_witness_entries(roster: commit_gate_roster), init: true, f: fn(acc, w) {
-    acc && witness_kind_eq(a: w.kind, b: CorpusWitnessKind)
-  })
+  witness_entries_kind_path_all_agree(
+    entries: project_ci_floor_witness_entries(roster: commit_gate_roster)
+  )
 }
 
 test fn commit_workflow_witnesses() -> Bool {
