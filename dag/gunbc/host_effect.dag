@@ -5,6 +5,7 @@ import std.access { AccessDecision }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.types { RedfishSystemAction }
+import extdeps.dns.domain_name { DnsLabel }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import std.effects {
@@ -21,6 +22,7 @@ type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
+  | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }
