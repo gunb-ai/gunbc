@@ -223,6 +223,27 @@ fn srv3_shell_reconcile(
   )
 }
 
+fn srv3_toolchain_ensure_reconcile(
+  observed: ShellExecObserved,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let grounding = if observed.success {
+      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
+    } else {
+      DoesNotGround {
+        reason: shell_exec_failure_reason_headered(
+          observed: observed,
+          header: "host_effect_apply: OsInstallActuatorToolchainEnsure synthesized receipt from typed per-tool ensure results; fail-closed",
+        ),
+      }
+    }
+  reconcile_grounded(
+    apply_effect: intent,
+    show_read: ReadObserved { value: observed },
+    grounding: grounding
+  )
+}
+
 fn realize_srv3_install_diagnostic_observe(
   bmc: String,
   port: String,
@@ -242,6 +263,8 @@ fn realize_srv3_install_diagnostic_observe(
   let observed = run_shell_transport(script: shell_exec_via_bash(body: script), transport: transport)
   srv3_shell_reconcile(observed: observed, intent: effect_intent)
 }
+
+data srv3_join_shell_words_controlled_args_note: String = "SshShell argv composer for toolchain transport helpers only; callers must pass controlled literals (package names, modeled paths) — no shell-quoting until typed argv dispatch lands."
 
 fn srv3_join_shell_words(words: List<String>) -> String {
   fold(
@@ -528,7 +551,7 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
     stdout: stdout,
     stderr: if success { "" } else { "actuator-toolchain-ensure: one or more tools failed ensure" },
   }
-  srv3_shell_reconcile(observed: observed, intent: effect_intent)
+  srv3_toolchain_ensure_reconcile(observed: observed, intent: effect_intent)
 }
 
 fn realize_os_install_actuator_toolchain_ensure(
