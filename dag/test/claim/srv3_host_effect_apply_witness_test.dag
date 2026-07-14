@@ -1,6 +1,7 @@
 module test.claim.srv3_host_effect_apply_witness
 
 import std.logic { Bool }
+import std.types { NonEmptyStr }
 import gunbc.host_effect {
   HostEffect,
   ShellCommand,
@@ -9,6 +10,7 @@ import gunbc.host_effect {
   BmcController,
   host_effect_identity_evidence,
   LocalShell,
+  SshShell,
   Srv3InstallReconcileObserve,
   DurableApprovalGrantRecord,
   DurableApprovalGrantRead,
@@ -119,6 +121,19 @@ fn witness_srv3_typed_effect_on_bmc_refuses_typed() -> Bool {
   }
 }
 
+fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
+  match host_effect_apply(
+    target: srv3_actuator_target(),
+    effect: Srv3InstallMediaFetch,
+    evidence: host_effect_identity_evidence,
+    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
+  ) {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "SshShell transport is a fail-closed Unimplemented stub")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
 fn witness_srv3_sibling_variants_still_resolve_after_apply_failure() -> Bool {
   witness_srv3_apply_shell_failure_refuses_typed()
     && srv3_host_effect_script_resolves(effect: DurableApprovalGrantRecord)
@@ -188,5 +203,6 @@ test fn srv3_host_effect_apply_holds() -> Bool {
     && witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated()
     && witness_srv3_apply_failure_no_fabricated_stdout()
     && witness_srv3_typed_effect_on_bmc_refuses_typed()
+    && witness_srv3_typed_reconcile_ssh_transport_refuses_typed()
     && witness_srv3_sibling_variants_still_resolve_after_apply_failure()
 }
