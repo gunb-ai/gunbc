@@ -789,6 +789,41 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn corpus_global_bare_census_includes_std_bare_refs() {
+        let roots = super::witness_layer_roots();
+        let index = super::build_multi_entry_index(&roots);
+        let (census, _, _) =
+            super::build_corpus_global_bare_census_from_index(&index).expect("census build");
+        use crate::v1_compiler_infer_env::GlobalBareLookupState::{
+            GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
+        };
+        for name in [
+            "Nat",
+            "EffectShape",
+            "Terminal",
+            "Disposition",
+            "money_amount_micro_count",
+            "Present",
+            "Absent",
+            "Optional",
+        ] {
+            match census.get(name) {
+                Some(entry) => match entry.as_ref() {
+                    GlobalBareUniqueBinding { .. } => {}
+                    GlobalBareAmbiguousBinding => panic!("{name}: ambiguous in census"),
+                },
+                None => {
+                    // Kernel-ambient Optional/Present/Absent are not census keys.
+                    if name == "Present" || name == "Absent" || name == "Optional" {
+                        continue;
+                    }
+                    panic!("{name}: missing from census");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn corpus_global_bare_census_indexes_gunbc_data_decls() {
         let roots = super::witness_layer_roots();
         let index = super::build_multi_entry_index(&roots);
@@ -2916,8 +2951,9 @@ fn global_bare_for_decl_file(
 }
 
 /// Paths whose top-level declarations feed the interim PR-5c `global_bare` census.
-/// Non-test `dag/**` is the stripped namespace authority surface; `src/v2` is included
-/// minus Wave-0 homonym files (artifact.dag, network.dag) that collide with gunbc/std.
+/// Non-test `dag/**` is the stripped namespace authority surface; other `src/v2/**`
+/// may contribute when needed, but `src/v2/std/**` is excluded — it homonyms `dag/std/**`
+/// (Nat, EffectShape, Terminal, …) and would mark census keys ambiguous.
 fn census_module_path_included(path: &str) -> bool {
     let p = path.replace('\\', "/");
     // PR-5c bare census: all non-test dag modules that gunbc may reference after
@@ -2925,10 +2961,10 @@ fn census_module_path_included(path: &str) -> bool {
     if p.contains("dag/") && !p.contains("dag/test/") {
         return true;
     }
-    if p.contains("src/v2/") {
-        return !(p.contains("src/v2/std/artifact.dag") || p.contains("src/v2/std/network.dag"));
+    if p.contains("src/v2/std/") {
+        return false;
     }
-    false
+    p.contains("src/v2/")
 }
 
 fn merge_source_indices(
