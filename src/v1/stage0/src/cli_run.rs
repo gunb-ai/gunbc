@@ -4545,6 +4545,11 @@ pub fn handle_ci() {
     );
 }
 
+/// Thin CLI transport handler for `gunbc converge --host <h>`: argv parse ->
+/// in-process `.dag` interpreter call -> stdout/exit-code projection, no
+/// converge logic here. Disposition receipt (DESIGN §3 transport-is-a-handler,
+/// §7 typed self-host frontier): `gunbc.fleet_converge_cli`'s
+/// `gunbc_converge_cli_stage0_receiver_disposition`.
 pub fn handle_converge(host: String) {
     let roots = witness_layer_roots();
     let (graph, indices) =

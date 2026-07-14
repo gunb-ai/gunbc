@@ -1,6 +1,7 @@
 module gunbc.fleet_converge_cli
 
 import std.types { String, List, Int }
+import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
 import gunbc.host_converge {
   ConvergePolicyDerived,
@@ -10,17 +11,39 @@ import gunbc.host_converge {
   VerdictConverged,
   converge_verdict_label,
   fleet_converge_policy,
+  find_by_identity,
 }
-import gunbc.host_effect { LocalShell }
+import gunbc.host_effect { LocalShell, HostEffectIntent, HostEffect, ConvergePlan, ShellCommand, RedfishAction }
 import gunbc.fleet_converge_apply { converge_apply_for_host }
 import std.realization_reconcile { Converged, NotConverged }
+
+data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
+  reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."
+}
+
+type ConvergeCliRefusalCause
+  = PolicyUnsound { reason: String }
+  | UnknownHost { host: String }
+  | KnobFrontier { reason: String }
+
+fn converge_cli_unknown_host_reason(host: String) -> String {
+  concat("gunbc converge: unknown fleet host identity ", host)
+}
+
+fn converge_cli_refusal_message(cause: ConvergeCliRefusalCause) -> String {
+  match cause {
+    PolicyUnsound { reason: why } => concat("gunbc converge: fleet policy unsound — ", why)
+    UnknownHost { host: h } => converge_cli_unknown_host_reason(host: h)
+    KnobFrontier { reason: why } => why
+  }
+}
 
 type ConvergeCliReceipt {
   host: String
   applied: Int
   drifted: Int
   verdict: ConvergeVerdict
-  reason: String?
+  reason: ConvergeCliRefusalCause?
 }
 
 fn converge_cli_receipt_line(r: ConvergeCliReceipt) -> String {
@@ -35,35 +58,25 @@ fn converge_cli_receipt_converged(r: ConvergeCliReceipt) -> Bool {
 }
 
 fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity) -> HostConverge? {
-  fold(
-    hosts,
-    init: none,
-    f: fn(acc, h) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if h.identity == identity {
-            Present { value: h }
-          } else {
-            none
-          }
-      }
-    }
-  )
+  find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
 }
 
-fn converge_cli_unknown_host_reason(host: String) -> String {
-  concat("gunbc converge: unknown fleet host identity ", host)
+fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> Int {
+  match intent.effect {
+    ConvergePlan { policy: p } => p.knobs.length()
+    ShellCommand { script: _ } => fallback
+    RedfishAction { action: _ } => fallback
+  }
 }
 
 fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliReceipt {
   match converge_apply_for_host(host_converge: host_converge, transport: LocalShell) {
     Present { value: r } =>
       match r {
-        Converged { evidence: _, applied: _ } =>
+        Converged { evidence: _, applied: intent } =>
           ConvergeCliReceipt {
             host: host_converge.identity as String,
-            applied: host_converge.knobs.length(),
+            applied: converge_cli_applied_knob_count(intent: intent, fallback: host_converge.knobs.length()),
             drifted: 0,
             verdict: VerdictConverged,
             reason: none,
@@ -74,7 +87,7 @@ fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliRece
             applied: 0,
             drifted: 0,
             verdict: Absent,
-            reason: Present { value: why },
+            reason: Present { value: KnobFrontier { reason: why } },
           }
       }
     Absent =>
@@ -83,7 +96,7 @@ fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliRece
         applied: 0,
         drifted: 0,
         verdict: Absent,
-        reason: Present { value: converge_cli_unknown_host_reason(host: host_converge.identity as String) },
+        reason: Present { value: UnknownHost { host: host_converge.identity as String } },
       }
   }
 }
@@ -99,7 +112,10 @@ fn converge_cli_output(host: String) -> ConvergeCliOutput {
   ConvergeCliOutput {
     line: converge_cli_receipt_line(r: r),
     converged: converge_cli_receipt_converged(r: r),
-    reason: r.reason,
+    reason: match r.reason {
+      Present { value: cause } => Present { value: converge_cli_refusal_message(cause: cause) }
+      Absent => none
+    },
   }
 }
 
@@ -111,7 +127,7 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
         applied: 0,
         drifted: 0,
         verdict: Absent,
-        reason: Present { value: concat("gunbc converge: fleet policy unsound — ", why) },
+        reason: Present { value: PolicyUnsound { reason: why } },
       }
     ConvergePolicyDerived { hosts: hosts } =>
       match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
@@ -122,7 +138,7 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
             applied: 0,
             drifted: 0,
             verdict: Absent,
-            reason: Present { value: converge_cli_unknown_host_reason(host: host) },
+            reason: Present { value: UnknownHost { host: host } },
           }
       }
   }
