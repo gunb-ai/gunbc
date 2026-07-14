@@ -1,9 +1,11 @@
 module extdeps.tools.sha256sum
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -12,8 +14,64 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data sha256_algorithm_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/pubs/fips/180-4/final"
+  }
+}
+
 data sha256sum_cli_tool: CliTool = CliTool {
   name: "sha256sum",
   min_version: none,
   installable_via: [SourceCoreutils],
+}
+
+service sha256sum.Sha256 {
+  operation CheckFile {
+    input { checksum_file: NonEmptyStr }
+    output { matches: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["sha256sum", "--check", "--status", "{checksum_file}"] }
+    exit {
+      0 => Unit "checksum matches"
+      nonzero => Unit "checksum mismatch or file missing"
+    }
+  }
+}
+
+data sha256_verify_shape_doc: String = "DESIGN §3 shape/transport/policy split: Sha256Verify(path, expected_digest) is the interface shape, cited to sha256_algorithm_authority (the SHA-256 algorithm itself, not a particular CLI). sha256sum_verify_via_shell is ONE transport handler realizing that shape via the coreutils sha256sum CLI (sha256sum_cli_tool / CheckFile above); a future native/library digest realization is another handler bound to the same shape, not a rewrite."
+
+type Sha256VerifyVerdict
+  = Sha256Matches
+  | Sha256Mismatch
+  | Sha256VerifyInfraFailure { reason: NonEmptyStr }
+
+data sha256_verify_infra_failure_doc: String = "Sha256VerifyInfraFailure is DESIGN §5 state-space de-conflation (cursor review, PR #6596): mktemp/checksum-file-write failures are environment/tooling failures, not evidence about path's digest, so they must not collapse into Sha256Mismatch alongside a genuine sha256sum mismatch - a caller that surfaces Sha256Mismatch as HashMismatchRefusal would otherwise mislabel a broken mktemp as a corrupted download."
+
+data structural_coverage_gap_sha256_verify_native_transport: List<String> = [
+  "closure:sha256_verify_native_transport|Sha256VerifyVerdict|transport:shell-only|trigger:a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape"
+]
+
+fn sha256sum_verify_via_shell(path: NonEmptyStr, expected_digest: NonEmptyStr) -> Sha256VerifyVerdict {
+  let checksum_dir = shell.Mktemp.Dir()
+  if checksum_dir.success == false {
+    Sha256VerifyInfraFailure { reason: "mktemp -d failed" as NonEmptyStr }
+  } else {
+    let checksum_path = concat(checksum_dir.path as String, "/checksum") as NonEmptyStr
+    let checksum_line = concat(expected_digest as String, concat("  ", path as String))
+    let wrote = Filesystem.Write(path: checksum_path as String, content: checksum_line)
+    if wrote.success == false {
+      let cleaned = shell.Remove.RecursiveForce(path: checksum_dir.path)
+      Sha256VerifyInfraFailure { reason: "checksum file write failed" as NonEmptyStr }
+    } else {
+      let checked = sha256sum.Sha256.CheckFile(checksum_file: checksum_path)
+      let cleaned = shell.Remove.RecursiveForce(path: checksum_dir.path)
+      if checked.matches {
+        Sha256Matches
+      } else {
+        Sha256Mismatch
+      }
+    }
+  }
 }
