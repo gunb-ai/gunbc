@@ -68,7 +68,7 @@ import gunbc.host_identity_assimilation {
 }
 import gunbc.host_identity_access { host_identity_srv1_access }
 import gunbc.ci_deploy_access { deploy_access_unprivileged_fixture_actor }
-import gunbc.host_effect { SshShell }
+import gunbc.host_effect { SshShell, EmitArtifactThenThinRun }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -179,6 +179,7 @@ fn witness_srv1_ssh_transport_targets_operator_host() -> Bool {
   match srv1_host_identity_ssh_transport() {
     SshShell { ssh_host: h } => h == operator_host_srv1
     LocalShell => false
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
 }
 

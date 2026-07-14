@@ -15,6 +15,7 @@ import gunbc.host_effect {
   HostEffectTransport,
   LocalShell,
   SshShell,
+  EmitArtifactThenThinRun,
 }
 import gunbc.host_identity_knob { HostIdentityKnobKey, host_identity_knob_key }
 import gunbc.host_identity_observation {
@@ -77,6 +78,7 @@ fn host_identity_transport_label(transport: HostEffectTransport) -> String {
   match transport {
     SshShell { ssh_host: h } => concat("SshShell:", h)
     LocalShell => "LocalShell"
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => "EmitArtifactThenThinRun"
   }
 }
 
