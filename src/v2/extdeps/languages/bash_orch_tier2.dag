@@ -132,9 +132,3 @@ fn orch_cmdsubst_assign_target_model(name: String, body: String) -> TargetModel 
 fn orch_let_assign_target_model(name: String, value: String) -> TargetModel {
   bash_stmt_assign_target_model(name: name, value: value)
 }
-
-fn orch_arith_target_model(lhs: String, op: String, rhs: String) -> TargetModel {
-  let inner = concat(lhs, concat(" ", concat(op, concat(" ", rhs))))
-  let arith_spelling = concat("$((", concat(inner, "))"))
-  bash_orch_call_target_model(spelling: arith_spelling)
-}
