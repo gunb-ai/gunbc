@@ -2,13 +2,32 @@
 
 > A lens that flags **tautological tests**: a test whose expected side is *not independent* of the code under test, so it can only ever agree — it re-affirms *what the code literally is*, never *what it should do*. DESIGN refs: §5 ("a check that re-states a constraint the model already carries is a second representation of it… satisfied by editing the declaration while the realizer still lies"; the "spec-without-execution" trap — a grep-passing, type-checking test that runs green but discriminates nothing), §6 (lens as residue over the Node tree; coverage-by-illusion), §3 (single authority — the vacuity concept already has a home, `coverage_defect_vacuous_arm`; do not fork it). Sibling of the [inert-layer lens](inert-layer-lens.md) family — inertness is *"nothing reaches this concept"*; vacuity is *"this check reaches the concept but cannot fail on it."* Successor mechanism to the one-shot [mechanism-inventory audit](mechanism-inventory-red-controls.md), whose finding #5 (~28 floor-wired lenses are synthetic-only; can execute yet catch no real corpus violation) is exactly the class this makes standing and observable.
 
-## 1. The definition — "2FA for testing" (the independent-oracle rule)
+## 1. The definition — a vacuous test is *redundant* with the code (the root)
 
-A real test needs an **oracle independent of the code under test**. A tautological test authenticates with the *same factor twice*: its expected value is derived from the same source-of-truth as its actual value, so the assertion is structurally incapable of going RED. Stated once:
+The root is **redundancy**, not testing technique. A vacuous test is a *second representation* of a fact the code already carries — it moves 1:1 with the code (edit the code, edit the test, lockstep), so it is a **change-detector, not a check**. Stated once (operator framing, 2026-07-14):
 
-> A test is **vacuous** iff its expected side is not independent of its actual side — no second factor. Independence is the property; vacuity is its absence.
+> A test is **vacuous** iff its assertion is a deterministic 1:1 function of the code's own structure with **no referent independent of it**. It carries zero information about *correctness* — only a duplicate encoding of *state*.
 
-This is the operator's framing (2026-07-14) and it is DESIGN §5 verbatim: a check that re-states a constraint the model already carries is a *second representation of it*, and a second representation of a fact is not a check of it — it is redundant work (§2) wearing a test's clothes.
+This is DESIGN §2 (minimize redundancy) / §3 (single authority) at the test↔code seam, and DESIGN §5 verbatim: "a check that re-states a constraint the model already carries is a second representation of it." Kin to the **duplicate-work** open thread — the same fact materialized twice.
+
+**The three consequences (the §1 time lens — this is the *lesson*, not just the definition):**
+- **complexity/cost** — a maintenance tax paid forever: every structural edit must touch two places (§2's "defers cost onto a later fixer").
+- **safety** — zero harm reduction: it cannot catch a *behavioral* error, only a transcription typo, so it *looks* like coverage while providing none (§5 coverage-by-illusion).
+- **the fix is not "delete the test" — it is §5 construction-over-validation.** A fact checkable by 1:1 restatement is *structural*, and structural facts should be **derived from one authority** (made unwritable-if-wrong), never validated after the fact by a mirror test. So the lens's *product* is the **located duplicated authority** (the "output is the root, not the symptom" discipline of the duplicate-work lens, §6 moat) — not a delete list.
+
+### 1.1 The discriminator — "independent referent" (a spectrum, not syntax)
+
+Vacuity turns entirely on whether the expected value has a **referent independent of the code's own structure**. This is *not* syntactic (`count == N` is legit or vacuous depending on the referent):
+
+| referent of the expected value | example | verdict |
+| --- | --- | --- |
+| **behavioral** — the correct output for a *specific input* | `parse(s).tokens.length() == 2` · `entries.length() == 1` (parse *this* diff) | legit |
+| **external authority** — a datasheet / spec the test independently transcribes | `watt_count(cpu.tdp_watts) == 183` (the datasheet) | legit (fragile 2FA — both sides hand-transcribe) |
+| **absent** — the code's own structure, nothing else | `length(perturb_receipt_rows) == 5` · `num_tests_in_file == 78` · a roster-size pin · `f(x) == f(x)` | **vacuous** |
+
+The "2FA / independent oracle" framing is the *symptom*: an absent referent is exactly "no second factor." Reflexive (`f(x)==f(x)`), shared-authority (`emit(n)==emit(n)`), and literal-restatement (`module_path == "..."`, `count == 78`) are all the **absent-referent** class — one root, not three signals.
+
+Census (2026-07-14): 386 `count/length/size == int` assertions in the corpus; 88 against 2+-digit literals — the *shape* is common, but most carry a behavioral referent (parse-output pins) and are legit. The vacuous residue is the **self-referential cardinality pin / read-back** (live instance: `coverage_domain_equivalence_test.dag:110`; the hand-deleted class: `bf3e33e15c`). The discriminator "absent vs behavioral/external referent" is the def-use / provenance question — see §2.1 for why the wall requires it.
 
 ## 2. The decidable signal tiers (what is a wall, what only ranks)
 
