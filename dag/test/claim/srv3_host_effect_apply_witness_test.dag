@@ -35,6 +35,7 @@ import gunbc.host_effect_nbd_proxy_serve {
   host_effect_nbd_proxy_serve_apply_with_observation,
   host_effect_nbd_proxy_serve_apply_refuses_foreign_port,
   host_effect_nbd_proxy_serve_apply_drains_stale_matching,
+  host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented,
   NbdProxyServeApplyRefused,
 }
 import gunbc.session_lease {
@@ -197,6 +198,18 @@ fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() -> Bool
   }
 }
 
+fn witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed() -> Bool {
+  let effect = srv3_nbd_proxy_serve_host_effect()
+  match effect {
+    Srv3NbdProxyServe { intent: i, lease_key: k } =>
+      host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented(
+        binding: host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k),
+        transport: LocalShell,
+      )
+    _ => false
+  }
+}
+
 fn witness_srv3_nbd_proxy_serve_script_for_absent() -> Bool {
   match srv3_host_effect_script_for(effect: srv3_nbd_proxy_serve_host_effect()) {
     Absent => true
@@ -306,6 +319,7 @@ test fn srv3_host_effect_apply_holds() -> Bool {
     && witness_srv3_nbd_proxy_serve_session_binding_carries_lease()
     && witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time()
     && witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill()
+    && witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed()
     && witness_srv3_nbd_proxy_on_bmc_refuses_typed()
     && witness_srv3_apply_shell_failure_refuses_typed()
     && witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated()

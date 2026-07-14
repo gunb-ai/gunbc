@@ -25,6 +25,7 @@ import gunbc.session_lease {
   ProcessPortScope,
   ProcessPortObservation,
   PortAbsent,
+  PortInaccessible,
   ProcessLeasePlan,
   Start,
   DrainMatchingStaleThenStart,
@@ -138,13 +139,24 @@ fn host_effect_nbd_proxy_serve_systemd_stop_unit(
 }
 
 fn host_effect_nbd_proxy_serve_observe_port(
-  scope: ProcessPortScope,
+  _scope: ProcessPortScope,
   transport: HostEffectTransport,
 ) -> ProcessPortObservation {
   match transport {
-    LocalShell => PortAbsent
-    SshShell { ssh_host: _ } => PortAbsent
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => PortAbsent
+    LocalShell => PortInaccessible
+    SshShell { ssh_host: _ } => PortInaccessible
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => PortInaccessible
+  }
+}
+
+fn host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented(
+  binding: NbdProxyServeSessionBinding,
+  transport: HostEffectTransport,
+) -> Bool {
+  match host_effect_nbd_proxy_serve_apply(binding: binding, transport: transport) {
+    NbdProxyServeApplyRefused { reason: why } =>
+      string_contains(s: why, pattern: "port inaccessible")
+    _ => false
   }
 }
 
