@@ -22,7 +22,8 @@
 use std::fs;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, make_eval_context, reset_typecheck_compute_count, resolve_entry_graph,
+    build_multi_entry_index, build_multi_entry_index_with_shared_caches, make_eval_context,
+    new_shared_typecheck_caches, reset_typecheck_compute_count, resolve_entry_graph,
     resolve_entry_with_index, run_claim, typecheck_compute_count,
     with_typecheck_compute_count_receipt, workspace_root, ClaimOutcome, MultiEntryIndex,
 };
@@ -338,4 +339,112 @@ fn typecheck_compute_count_accumulates_across_threads() {
         typecheck_compute_count()
     );
     });
+}
+
+/// S2a increment C — process once-per-node across workers: two threads sharing ONE
+/// `SharedTypecheckCaches` must not re-pay the overlapping prefix (u.common).
+#[test]
+fn cross_worker_shared_typecheck_cache_process_once_per_node() {
+    with_typecheck_compute_count_receipt(|| {
+        let fx = Fixture::new("cross-worker-once");
+        let shared = new_shared_typecheck_caches();
+        reset_typecheck_compute_count();
+
+        let idx_a = build_multi_entry_index(&fx.roots);
+        reset_typecheck_compute_count();
+        resolve_entry_with_index(&idx_a, &fx.entry_a).expect("private cold a");
+        let cold_a = typecheck_compute_count();
+
+        let idx_b = build_multi_entry_index(&fx.roots);
+        reset_typecheck_compute_count();
+        resolve_entry_with_index(&idx_b, &fx.entry_b).expect("private cold b");
+        let cold_b = typecheck_compute_count();
+
+        reset_typecheck_compute_count();
+        let shared_a = shared.clone();
+        let roots_a = fx.roots.clone();
+        let entry_a = fx.entry_a.clone();
+        std::thread::spawn(move || {
+            let index = build_multi_entry_index_with_shared_caches(&roots_a, shared_a);
+            resolve_entry_with_index(&index, &entry_a).expect("shared thread a");
+        })
+        .join()
+        .expect("thread a join");
+        let after_a = typecheck_compute_count();
+
+        let shared_b = shared.clone();
+        let roots_b = fx.roots.clone();
+        let entry_b = fx.entry_b.clone();
+        std::thread::spawn(move || {
+            let index = build_multi_entry_index_with_shared_caches(&roots_b, shared_b);
+            resolve_entry_with_index(&index, &entry_b).expect("shared thread b");
+        })
+        .join()
+        .expect("thread b join");
+        let union_total = typecheck_compute_count();
+
+        assert_eq!(
+            after_a, cold_a,
+            "first entry against the shared store pays exactly its private closure"
+        );
+        let b_added = union_total - after_a;
+        assert!(
+            b_added < cold_b,
+            "second worker's incremental cost ({b_added}) must be below its private closure \
+             ({cold_b}) — shared prefix is not re-paid across workers"
+        );
+        assert!(
+            union_total < cold_a + cold_b,
+            "cross-worker union ({union_total}) must be < sum of private closures ({})",
+            cold_a + cold_b
+        );
+    });
+}
+
+/// S2a increment C — cross-worker purity: shared-store verdicts match private resolve.
+#[test]
+fn cross_worker_shared_typecheck_cache_purity() {
+    let fx = Fixture::new("cross-worker-purity");
+    let witnesses: [(&str, &str, &str); 3] = [
+        (&fx.entry_a, "wit_a_pass", "PASS"),
+        (&fx.entry_a, "wit_a_fail", "FAIL"),
+        (&fx.entry_b, "wit_b_pass", "PASS"),
+    ];
+    for (entry, func, expected) in witnesses {
+        assert_eq!(
+            private_outcome(&fx.roots, entry, func),
+            expected,
+            "private baseline for {func}"
+        );
+    }
+
+    let shared = new_shared_typecheck_caches();
+    let shared_a = shared.clone();
+    let roots_a = fx.roots.clone();
+    let entry_a = fx.entry_a.clone();
+    std::thread::spawn(move || {
+        let index = build_multi_entry_index_with_shared_caches(&roots_a, shared_a);
+        resolve_entry_with_index(&index, &entry_a).expect("warm a on worker 1");
+    })
+    .join()
+    .expect("worker 1 join");
+
+    let shared_b = shared.clone();
+    let roots_b = fx.roots.clone();
+    let entry_b = fx.entry_b.clone();
+    std::thread::spawn(move || {
+        let index = build_multi_entry_index_with_shared_caches(&roots_b, shared_b);
+        resolve_entry_with_index(&index, &entry_b).expect("warm b on worker 2");
+    })
+    .join()
+    .expect("worker 2 join");
+
+    let index = build_multi_entry_index_with_shared_caches(&fx.roots, shared);
+    for (entry, func, expected) in witnesses {
+        assert_eq!(
+            union_outcome(&index, entry, func),
+            expected,
+            "cross-worker shared-store verdict for {func}"
+        );
+    }
 }
