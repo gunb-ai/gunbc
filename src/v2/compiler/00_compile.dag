@@ -24,7 +24,7 @@ import v2.std.compilers.lexing { TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.language_model { LanguageModel }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.target_carriers { TargetModel }
+import v2.std.compilers.target_model { TargetModel }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
