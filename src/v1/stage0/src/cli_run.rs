@@ -2709,19 +2709,13 @@ pub struct MultiEntryIndex {
 /// store-carried infer carriers — `Rc` payloads make this `!Send` today.
 struct SharedTypecheckCaches {
     intern_table: Rc<InternTable>,
-    parse_cache: std::collections::HashMap<
-        String,
-        (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>),
-    >,
-    typed_module_cache: std::collections::HashMap<
-        String,
-        Rc<v1_compiler_infer::TypecheckModuleResult>,
-    >,
+    parse_cache:
+        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
+    typed_module_cache:
+        std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>,
     module_source_identity: std::collections::HashMap<String, String>,
-    normalize_diag_cache:
-        std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
-    ownership_diag_cache:
-        std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+    normalize_diag_cache: std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+    ownership_diag_cache: std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
 }
 
 impl SharedTypecheckCaches {
@@ -3003,10 +2997,10 @@ fn resolve_entry_with_parse_cache(
                 eprintln!(
                     "[resolved-graph-cache] decode subject={subject} (installed into process share)"
                 );
-                index.resolved_graph_memo.borrow_mut().insert(
-                    subject,
-                    (hit.graph.clone(), hit.source_indices.clone()),
-                );
+                index
+                    .resolved_graph_memo
+                    .borrow_mut()
+                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -3212,10 +3206,10 @@ fn resolve_entry_with_parse_cache(
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
     // Install into the in-process share so same-subject re-resolves skip assembly.
-    index.resolved_graph_memo.borrow_mut().insert(
-        subject.clone(),
-        (typed.clone(), source_indices.clone()),
-    );
+    index
+        .resolved_graph_memo
+        .borrow_mut()
+        .insert(subject.clone(), (typed.clone(), source_indices.clone()));
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
@@ -3506,6 +3500,11 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
+    // Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): built once,
+    // order-independent, over the whole graph before any module typechecks — see
+    // global_bare_fallback_invariant in v1_compiler_infer_env.
+    let global_bare =
+        v1_compiler_infer::build_global_bare_census(graph.modules.clone(), source_indices.clone());
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
@@ -3608,6 +3607,7 @@ fn reconcile_with_typed_cache(
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        global_bare.clone(),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
                     // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
