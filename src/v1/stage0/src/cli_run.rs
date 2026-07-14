@@ -2674,6 +2674,14 @@ pub struct MultiEntryIndex {
     /// (cross-worker-typecheck-share-design.md §4.1). Today each index owns one `Arc` on
     /// its thread; worker spawn still builds a private index per shard.
     shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
+    // Per-process subject-digest → resolved-graph share, the ReferenceTier in
+    // front of the cross-process store (materialization-ladder tier ordering:
+    // the share serves repeats, the store serves the process's FIRST touch of a
+    // subject, and a store hit is INSTALLED here so every later demand takes the
+    // reference). Always populated on first assembly — not gated on
+    // GUNBC_RESOLVED_GRAPH_CACHE_DIR (the disk tier is opt-in separately).
+    // Without the install-back, N same-subject resolves each retained an independent
+    // graph — the reconcile_assembly per-entry rerun receipt (resolve-split #6535).
     resolved_graph_memo: RefCell<
         HashMap<
             String,
@@ -2956,22 +2964,26 @@ fn resolve_entry_with_parse_cache(
     )?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
 
+    let subject = subject_digest_for_closure(&sources);
+    // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in
+    // front of the opt-in cross-process store. A subject this process has already
+    // assembled is served by reference, eliminating the per-entry reconcile assembly
+    // residue on re-resolve (Track A denomination receipt, resolve-split #6535).
+    if let Some((graph, si)) = index.resolved_graph_memo.borrow().get(&subject) {
+        return Ok((graph.clone(), si.clone()));
+    }
+    // Cross-process store tier: opt-in via GUNBC_RESOLVED_GRAPH_CACHE_DIR; installs into
+    // the share above on hit so later same-subject demands never re-decode.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        let subject = subject_digest_for_closure(&sources);
-        // Share before store (ladder tier ordering): a subject this process has
-        // already decoded or built is served by reference — never re-decoded.
-        if let Some((graph, si)) = index.resolved_graph_memo.borrow().get(&subject) {
-            return Ok((graph.clone(), si.clone()));
-        }
         match cross_process_lookup(&cache_root, &subject) {
             CacheLookupResult::Hit(hit) => {
                 eprintln!(
                     "[resolved-graph-cache] decode subject={subject} (installed into process share)"
                 );
-                index
-                    .resolved_graph_memo
-                    .borrow_mut()
-                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
+                index.resolved_graph_memo.borrow_mut().insert(
+                    subject,
+                    (hit.graph.clone(), hit.source_indices.clone()),
+                );
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -3176,8 +3188,12 @@ fn resolve_entry_with_parse_cache(
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
+    // Install into the in-process share so same-subject re-resolves skip assembly.
+    index.resolved_graph_memo.borrow_mut().insert(
+        subject.clone(),
+        (typed.clone(), source_indices.clone()),
+    );
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        let subject = subject_digest_for_closure(&sources);
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
         // the prelude artifact ever existed), which mis-shaped a whole OOM
@@ -3186,12 +3202,6 @@ fn resolve_entry_with_parse_cache(
         {
             eprintln!("[resolved-graph-cache] write refused subject={subject}: {e}");
         }
-        // Build fills the share through the same seam as a store hit, so a
-        // same-subject re-resolve later in this process takes the reference.
-        index
-            .resolved_graph_memo
-            .borrow_mut()
-            .insert(subject, (typed.clone(), source_indices.clone()));
     }
 
     Ok((typed, source_indices))
@@ -3381,15 +3391,109 @@ mod module_schedule_batches_tests {
     }
 }
 
+fn finish_resolved_graph_assembly(
+    modules: Rc<im_rc::Vector<Rc<TypedModule>>>,
+    diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+    binding_fork_counts: (usize, usize),
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Result<Rc<ResolvedGraph>, String> {
+    let (same_tree_fork_count, cross_tree_fork_count) = binding_fork_counts;
+    let item_registry = modules.iter().fold(v1_rt::rc_empty_map(), |acc, typed| {
+        v1_rt::rc_map_merge(acc, typed.item_registry.clone())
+    });
+    let expanded_registry =
+        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    let diagnostics: Rc<im_rc::Vector<Rc<ErrorNode>>> = Rc::new({
+        let mut acc = im_rc::Vector::new();
+        for chunk in &diag_chunks {
+            acc.extend(chunk.iter().cloned());
+        }
+        acc
+    });
+    let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
+    if total_fork_count > 0 && floor_verbose() {
+        eprintln!(
+            "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
+        );
+    }
+    let modules =
+        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
+        modules.clone(),
+        source_indices.clone(),
+    );
+    let modules =
+        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
+    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
+    Ok(Rc::new(ResolvedGraph {
+        modules,
+        item_registry: expanded_registry,
+        diagnostics,
+        emit_graph_info,
+    }))
+}
+
+/// When every module in the closure is already in the typed cache, skip the
+/// schedule-dispatch loop's per-module `collect_parent_envs` and
+/// `build_variant_export_surface` work — both exist only to feed a cold
+/// `typecheck_module` — and jump straight to closure assembly (expand, rewire,
+/// emit). The assembled output matches the serial dispatch path because
+/// variant surfaces are not consulted on a cache hit and parent-env diagnostics
+/// are empty when every import parent is already in the store.
+fn reconcile_all_cache_hits(
+    closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
+    closure_names: &[String],
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    typed_cache: &RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    module_identity: &RefCell<HashMap<String, String>>,
+) -> Result<Rc<ResolvedGraph>, String> {
+    let mut modules_vec = im_rc::Vector::new();
+    let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> =
+        Vec::with_capacity(closure_modules.len() * 2);
+    let mut same_tree_fork_count: usize = 0;
+    let mut cross_tree_fork_count: usize = 0;
+    let empty_parent_diags = Rc::new(im_rc::Vector::new());
+
+    for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
+        let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+        check_module_source_identity(module_identity, mod_name, &decl_file)?;
+        let tc_result = typed_cache
+            .borrow()
+            .get(mod_name)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
+                )
+            })?;
+        modules_vec.push_back(tc_result.typed.clone());
+        diag_chunks.push(empty_parent_diags.clone());
+        diag_chunks.push(tc_result.diagnostics.clone());
+        for fork in tc_result.binding_forks.iter() {
+            if fork.same_tree {
+                same_tree_fork_count += 1;
+            } else {
+                cross_tree_fork_count += 1;
+            }
+        }
+    }
+
+    finish_resolved_graph_assembly(
+        Rc::new(modules_vec),
+        diag_chunks,
+        (same_tree_fork_count, cross_tree_fork_count),
+        source_indices,
+    )
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
-    let mut modules: Rc<im_rc::Vector<Rc<TypedModule>>> = Rc::new(im_rc::Vector::new());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
-    let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
@@ -3409,6 +3513,18 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
+    if closure_names
+        .iter()
+        .all(|name| typed_cache.borrow().contains_key(name))
+    {
+        return reconcile_all_cache_hits(
+            &closure_modules,
+            &closure_names,
+            source_indices,
+            typed_cache,
+            module_identity,
+        );
+    }
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
     let mut dispatched: Vec<
         Option<(
@@ -3420,13 +3536,6 @@ fn reconcile_with_typed_cache(
     for batch in &schedule {
         for &slot in batch {
             let resolved = closure_modules[slot].clone();
-            let parent_envs_started = std::time::Instant::now();
-            let parent_result = v1_compiler_infer::collect_parent_envs(
-                resolved.clone(),
-                module_index.clone(),
-                source_indices.clone(),
-            );
-            resolve_stage_slot_add(|s| s.parent_envs += parent_envs_started.elapsed().as_nanos());
             let mod_name = closure_names[slot].clone();
             // Collision-honesty guard (union-resolve receipt §6.3): the typed cache is keyed by
             // authored name and shared across every co-resident entry, so a name that resolves
@@ -3440,6 +3549,7 @@ fn reconcile_with_typed_cache(
             // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
             // authority — the guard must fire on genuinely different files, not path representations.
             let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+<<<<<<< HEAD
             {
                 let mut caches = shared_caches
                     .lock()
@@ -3455,6 +3565,24 @@ fn reconcile_with_typed_cache(
                     .lock()
                     .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
                 caches.typed_module_cache.get(&mod_name).cloned()
+=======
+            check_module_source_identity(module_identity, &mod_name, &decl_file)?;
+            let cached = typed_cache.borrow().get(&mod_name).cloned();
+            let was_cache_hit = cached.is_some();
+            let parent_diags = if was_cache_hit {
+                Rc::new(im_rc::Vector::new())
+            } else {
+                let parent_envs_started = std::time::Instant::now();
+                let parent_result = v1_compiler_infer::collect_parent_envs(
+                    resolved.clone(),
+                    module_index.clone(),
+                    source_indices.clone(),
+                );
+                resolve_stage_slot_add(|s| {
+                    s.parent_envs += parent_envs_started.elapsed().as_nanos()
+                });
+                parent_result.diagnostics.clone()
+>>>>>>> origin/main
             };
             let tc_result = match cached {
                 Some(hit) => hit,
@@ -3502,7 +3630,7 @@ fn reconcile_with_typed_cache(
                 ),
             );
             module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
-            dispatched[slot] = Some((parent_result.diagnostics.clone(), tc_result));
+            dispatched[slot] = Some((parent_diags, tc_result));
         }
     }
 
@@ -3524,6 +3652,7 @@ fn reconcile_with_typed_cache(
     // concern; the graph handed to consumers — module list, registry merge order, and
     // diagnostic order — is assembled in the exact order the serial fold produced, so the
     // result is byte-identical regardless of how the schedule batched the closure.
+    let mut modules_vec = im_rc::Vector::new();
     for (slot, entry) in dispatched.into_iter().enumerate() {
         let (parent_diags, tc_result) = entry.unwrap_or_else(|| {
             unreachable!(
@@ -3532,15 +3661,10 @@ fn reconcile_with_typed_cache(
                 closure_names[slot]
             )
         });
-        let typed = tc_result.typed.clone();
-        modules = v1_rt::rc_list_push(modules, typed.clone());
-        item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
+        modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
         for fork in tc_result.binding_forks.iter() {
-            // `same_tree` is computed on the `.dag` side (04_env `source_tree_of`, the single
-            // classification authority) and carried on the conflict — no parallel Rust
-            // classifier to drift (§3).
             if fork.same_tree {
                 same_tree_fork_count += 1;
             } else {
@@ -3549,40 +3673,12 @@ fn reconcile_with_typed_cache(
         }
     }
 
-    let expanded_registry =
-        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
-    let diagnostics: Rc<im_rc::Vector<Rc<ErrorNode>>> = Rc::new({
-        let mut acc = im_rc::Vector::new();
-        for chunk in &diag_chunks {
-            acc.extend(chunk.iter().cloned());
-        }
-        acc
-    });
-    let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
-    // Per-resolve §3 fork census — opt-in. The floor resolves once per entry, so an
-    // unconditional print streams one census line per entry (hundreds per run). The count is
-    // recomputed from source on demand; gate the narration behind the floor verbose flag.
-    if total_fork_count > 0 && floor_verbose() {
-        eprintln!(
-            "[binding-fork-ledger] same_tree={same_tree_fork_count} cross_tree={cross_tree_fork_count} total={total_fork_count}"
-        );
-    }
-    let modules =
-        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
-    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
-        modules.clone(),
-        source_indices.clone(),
-    );
-    let modules =
-        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
-    let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
-    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
-    Ok(Rc::new(ResolvedGraph {
-        modules,
-        item_registry: expanded_registry,
-        diagnostics,
-        emit_graph_info,
-    }))
+    finish_resolved_graph_assembly(
+        Rc::new(modules_vec),
+        diag_chunks,
+        (same_tree_fork_count, cross_tree_fork_count),
+        source_indices,
+    )
 }
 
 fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex>>) -> String {
@@ -12196,14 +12292,20 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
     "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
+    "src/v2/compiler/emit_host.dag::runtime_value_signed_i32_le_as_int",
+    "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
     "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
+    "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_bool_is_false",
+    "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_bool_is_true",
+    "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_value_as_int",
     "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
     "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
     "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
     "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
     "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    "src/v2/std/node.dag::connective_edge_discipline_for_children",
     "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
     "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
     "src/v2/lens/complexity.dag::complexity_bound_dominates",
@@ -12230,8 +12332,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
     "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
     "src/v2/std/effects.dag::key_source_eq",
-    "src/v2/std/determinism.dag::determinism_class_eq",
-    "src/v2/std/determinism.dag::non_det_source_eq",
     "src/v2/std/decl_index.dag::decl_facts_is_fn_like",
     "src/v2/std/float.dag::float_body_is_nan",
     "src/v2/std/node_minimal.dag::node_superset_field_eq",
