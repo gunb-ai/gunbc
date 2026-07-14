@@ -5,7 +5,7 @@ import gunbc.ci_gate {
   EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
 import gunbc.ci_layer_roots {
   witness_layer_roots,
@@ -16,7 +16,6 @@ import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_gates,
   project_ci_regen_job_gates,
-  project_ci_emit_determinism_job_gates,
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
@@ -88,8 +87,6 @@ data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_ga
 
 data gunbc_ci_regen_floor_gates: List<Gate> = project_ci_regen_job_gates(roster: commit_gate_roster)
 
-data gunbc_ci_emit_determinism_floor_gates: List<Gate> = project_ci_emit_determinism_job_gates(roster: commit_gate_roster)
-
 data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
 
 data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
@@ -132,19 +129,6 @@ data gunbc_ci_regen_spec: CiSpec = {
     mode: DiffMergeBase
   },
   notice_title: "self-host fixed-point (regen + staleness) — required; folded into ci job",
-  deploy_stages: [],
-}
-
-data gunbc_ci_emit_determinism_spec: CiSpec = {
-  gates: gunbc_ci_emit_determinism_floor_gates,
-  witness_entries: [],
-  discovery_scan_dirs: [],
-  diff_policy: {
-    base: ci_merge_base_ref,
-    head: "HEAD",
-    mode: DiffMergeBase
-  },
-  notice_title: "emit determinism (two full-corpus emits, diff -r byte-identity) — serial job, off the floor path",
   deploy_stages: [],
 }
 
@@ -287,7 +271,7 @@ data ci_floor_required_artifact_names: List<String> = [
   "parse_witness"
 ]
 
-data ci_floor_required_artifact_names_note: String = "This list is the single cross-job handoff manifest (operator job-split ruling 2026-07-11): ci_release_build_line derives its --bin flags from it (build/manifest skew is unwritable), the build job verifies these bins post-build, packs exactly these into the release-bins artifact, and every downstream job (ci floor, emit_determinism) unpacks and re-verifies the same list before running. Membership = the floor-invoked bins (claim_executor, gunbc, floor_skip_discovery_witness) plus the FULL bin_name universe of tools.host_prelude transports (witness_bin / ensure_bin_built_and_verified) that corpus witnesses can address — pre-split those fell back to in-job cargo builds against the build step's warm target/ (cheap); post-split the floor job has no build cache, so a bin missing here would silently re-absorb the ~33min monolith cold compile the job split exists to bound. The intentionally-absent negative control (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of scope: a same-run artifact is fresh by construction."
+data ci_floor_required_artifact_names_note: String = "This list is the single cross-job handoff manifest (operator job-split ruling 2026-07-11): ci_release_build_line derives its --bin flags from it (build/manifest skew is unwritable), the build job verifies these bins post-build, packs exactly these into the release-bins artifact, and the downstream ci floor job unpacks and re-verifies the same list before running (pre-Phase-D the emit_determinism job did too; removed 2026-07-14). Membership = the floor-invoked bins (claim_executor, gunbc, floor_skip_discovery_witness) plus the FULL bin_name universe of tools.host_prelude transports (witness_bin / ensure_bin_built_and_verified) that corpus witnesses can address — pre-split those fell back to in-job cargo builds against the build step's warm target/ (cheap); post-split the floor job has no build cache, so a bin missing here would silently re-absorb the ~33min monolith cold compile the job split exists to bound. The intentionally-absent negative control (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of scope: a same-run artifact is fresh by construction."
 
 fn artifact_shell_path(name: String) -> String {
   concat(concat("\"$ROOT/target/release/", name), "\"")
@@ -493,7 +477,6 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
 data regen_floor_plan_function: String = "gunbc_ci_regen_floor_batches"
-data emit_determinism_floor_plan_function: String = "gunbc_ci_emit_determinism_batches"
 
 fn scheduler_invoke_with(spec: CiSpec, plan_function: String) -> String {
   concat(
@@ -547,20 +530,6 @@ fn gunbc_ci_regen_floor_only_script(spec: CiSpec) -> String {
 
 fn gunbc_ci_regen_floor_run(spec: CiSpec) -> String {
   gunbc_ci_regen_floor_only_script(spec: spec)
-}
-
-fn gunbc_ci_emit_determinism_floor_only_script(spec: CiSpec) -> String {
-  concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    concat(
-      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
-      concat(scheduler_invoke_with(spec: spec, plan_function: emit_determinism_floor_plan_function), "\n")
-    )
-  )
-}
-
-fn gunbc_ci_emit_determinism_floor_run(spec: CiSpec) -> String {
-  gunbc_ci_emit_determinism_floor_only_script(spec: spec)
 }
 
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {

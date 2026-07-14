@@ -22,8 +22,8 @@
 use std::fs;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, make_eval_context, reset_typecheck_compute_count,
-    resolve_entry_graph, resolve_entry_with_index, run_claim, typecheck_compute_count,
+    build_multi_entry_index, make_eval_context, reset_typecheck_compute_count, resolve_entry_graph,
+    resolve_entry_with_index, run_claim, typecheck_compute_count,
     with_typecheck_compute_count_receipt, workspace_root, ClaimOutcome, MultiEntryIndex,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
@@ -125,62 +125,62 @@ fn union_outcome(index: &MultiEntryIndex, entry: &str, function: &str) -> String
 #[test]
 fn union_resolve_typechecks_each_node_once() {
     with_typecheck_compute_count_receipt(|| {
-    let fx = Fixture::new("once-per-node");
+        let fx = Fixture::new("once-per-node");
 
-    // Cold private closures — the request-major baseline, one fresh index each. cold_a and
-    // cold_b are |closure(a)| and |closure(b)|; each re-typechecks the shared prefix privately.
-    let idx_a = build_multi_entry_index(&fx.roots);
-    reset_typecheck_compute_count();
-    resolve_entry_with_index(&idx_a, &fx.entry_a).expect("cold resolve a");
-    let cold_a = typecheck_compute_count();
+        // Cold private closures — the request-major baseline, one fresh index each. cold_a and
+        // cold_b are |closure(a)| and |closure(b)|; each re-typechecks the shared prefix privately.
+        let idx_a = build_multi_entry_index(&fx.roots);
+        reset_typecheck_compute_count();
+        resolve_entry_with_index(&idx_a, &fx.entry_a).expect("cold resolve a");
+        let cold_a = typecheck_compute_count();
 
-    let idx_b = build_multi_entry_index(&fx.roots);
-    reset_typecheck_compute_count();
-    resolve_entry_with_index(&idx_b, &fx.entry_b).expect("cold resolve b");
-    let cold_b = typecheck_compute_count();
+        let idx_b = build_multi_entry_index(&fx.roots);
+        reset_typecheck_compute_count();
+        resolve_entry_with_index(&idx_b, &fx.entry_b).expect("cold resolve b");
+        let cold_b = typecheck_compute_count();
 
-    assert!(
-        cold_a > 0 && cold_b > 0,
-        "each closure must typecheck at least one module (cold_a={cold_a}, cold_b={cold_b})"
-    );
+        assert!(
+            cold_a > 0 && cold_b > 0,
+            "each closure must typecheck at least one module (cold_a={cold_a}, cold_b={cold_b})"
+        );
 
-    // Union — ONE shared index. Resolving a then b: the shared prefix (u.common, and any
-    // kernel modules) is typechecked once; b only pays for its private leaf.
-    let idx = build_multi_entry_index(&fx.roots);
-    reset_typecheck_compute_count();
-    resolve_entry_with_index(&idx, &fx.entry_a).expect("union resolve a");
-    let union_after_a = typecheck_compute_count();
-    resolve_entry_with_index(&idx, &fx.entry_b).expect("union resolve b");
-    let union_after_b = typecheck_compute_count();
+        // Union — ONE shared index. Resolving a then b: the shared prefix (u.common, and any
+        // kernel modules) is typechecked once; b only pays for its private leaf.
+        let idx = build_multi_entry_index(&fx.roots);
+        reset_typecheck_compute_count();
+        resolve_entry_with_index(&idx, &fx.entry_a).expect("union resolve a");
+        let union_after_a = typecheck_compute_count();
+        resolve_entry_with_index(&idx, &fx.entry_b).expect("union resolve b");
+        let union_after_b = typecheck_compute_count();
 
-    // A alone against the shared index costs exactly its private closure — the shared index
-    // adds no work, it only removes duplication downstream.
-    assert_eq!(
-        union_after_a, cold_a,
-        "first entry in the shared index computes exactly its own closure"
-    );
-    // b adds strictly fewer computes than its private closure: the overlap (>=1: u.common)
-    // was already typechecked by a and is NOT recomputed.
-    let b_added = union_after_b - union_after_a;
-    assert!(
-        b_added < cold_b,
-        "b's incremental cost ({b_added}) must be below its private closure ({cold_b}) — the \
+        // A alone against the shared index costs exactly its private closure — the shared index
+        // adds no work, it only removes duplication downstream.
+        assert_eq!(
+            union_after_a, cold_a,
+            "first entry in the shared index computes exactly its own closure"
+        );
+        // b adds strictly fewer computes than its private closure: the overlap (>=1: u.common)
+        // was already typechecked by a and is NOT recomputed.
+        let b_added = union_after_b - union_after_a;
+        assert!(
+            b_added < cold_b,
+            "b's incremental cost ({b_added}) must be below its private closure ({cold_b}) — the \
          shared prefix is not re-paid"
-    );
-    // The core minimum-upper-bound contract: the union costs strictly less than N private
-    // resolves. Each shared node is paid once across the whole process, never once per entry.
-    assert!(
-        union_after_b < cold_a + cold_b,
-        "union resolve cost ({union_after_b}) must be < sum of private closures \
+        );
+        // The core minimum-upper-bound contract: the union costs strictly less than N private
+        // resolves. Each shared node is paid once across the whole process, never once per entry.
+        assert!(
+            union_after_b < cold_a + cold_b,
+            "union resolve cost ({union_after_b}) must be < sum of private closures \
          ({}) — resolve cost ≤ 1× union closure, not N×",
-        cold_a + cold_b
-    );
+            cold_a + cold_b
+        );
 
-    // Once-per-node, made unrepresentable: re-resolving already-resolved entries computes
-    // NOTHING new. A private re-resolve sneaking back would bump the counter here.
-    resolve_entry_with_index(&idx, &fx.entry_a).expect("re-resolve a");
-    resolve_entry_with_index(&idx, &fx.entry_b).expect("re-resolve b");
-    assert_eq!(
+        // Once-per-node, made unrepresentable: re-resolving already-resolved entries computes
+        // NOTHING new. A private re-resolve sneaking back would bump the counter here.
+        resolve_entry_with_index(&idx, &fx.entry_a).expect("re-resolve a");
+        resolve_entry_with_index(&idx, &fx.entry_b).expect("re-resolve b");
+        assert_eq!(
         typecheck_compute_count(),
         union_after_b,
         "once-per-node: re-resolving computes zero new typechecks — the node is in the schedule once"
@@ -246,52 +246,56 @@ fn union_view_result_equals_private_resolve_in_every_order() {
 #[test]
 fn roster_closure_count_is_independent_of_thread_cache_warmth() {
     with_typecheck_compute_count_receipt(|| {
-    let fx = Fixture::new("warmth-independence");
+        let fx = Fixture::new("warmth-independence");
 
-    // The same fold `run_discovery_rows` applies to every graph it resolves.
-    macro_rules! closure_of {
-        ($graph:expr, $si:expr) => {
-            $graph
-                .modules
-                .iter()
-                .map(|m| v1_compiler::v1_std_core::authored_name_at($si.clone(), m.module.clone()))
-                .collect::<std::collections::BTreeSet<String>>()
-        };
-    }
+        // The same fold `run_discovery_rows` applies to every graph it resolves.
+        macro_rules! closure_of {
+            ($graph:expr, $si:expr) => {
+                $graph
+                    .modules
+                    .iter()
+                    .map(|m| {
+                        v1_compiler::v1_std_core::authored_name_at($si.clone(), m.module.clone())
+                    })
+                    .collect::<std::collections::BTreeSet<String>>()
+            };
+        }
 
-    // COLD: entry_b resolved against a fresh index, nothing typechecked before it.
-    let idx_cold = build_multi_entry_index(&fx.roots);
-    reset_typecheck_compute_count();
-    let (graph_cold, si_cold) = resolve_entry_with_index(&idx_cold, &fx.entry_b).expect("cold b");
-    let counter_cold = typecheck_compute_count();
-    let closure_cold: std::collections::BTreeSet<String> = closure_of!(graph_cold, si_cold);
+        // COLD: entry_b resolved against a fresh index, nothing typechecked before it.
+        let idx_cold = build_multi_entry_index(&fx.roots);
+        reset_typecheck_compute_count();
+        let (graph_cold, si_cold) =
+            resolve_entry_with_index(&idx_cold, &fx.entry_b).expect("cold b");
+        let counter_cold = typecheck_compute_count();
+        let closure_cold: std::collections::BTreeSet<String> = closure_of!(graph_cold, si_cold);
 
-    // WARM: a prior entry resolves on the SAME index/thread first, then entry_b.
-    let idx_warm = build_multi_entry_index(&fx.roots);
-    reset_typecheck_compute_count();
-    resolve_entry_with_index(&idx_warm, &fx.entry_a).expect("prior same-thread resolve");
-    let (graph_warm, si_warm) = resolve_entry_with_index(&idx_warm, &fx.entry_b).expect("warm b");
-    let counter_warm = typecheck_compute_count();
-    let closure_warm: std::collections::BTreeSet<String> = closure_of!(graph_warm, si_warm);
+        // WARM: a prior entry resolves on the SAME index/thread first, then entry_b.
+        let idx_warm = build_multi_entry_index(&fx.roots);
+        reset_typecheck_compute_count();
+        resolve_entry_with_index(&idx_warm, &fx.entry_a).expect("prior same-thread resolve");
+        let (graph_warm, si_warm) =
+            resolve_entry_with_index(&idx_warm, &fx.entry_b).expect("warm b");
+        let counter_warm = typecheck_compute_count();
+        let closure_warm: std::collections::BTreeSet<String> = closure_of!(graph_warm, si_warm);
 
-    assert!(
-        !closure_cold.is_empty(),
-        "fixture must resolve a non-empty closure, else this control proves nothing"
-    );
-    // The defect, made visible: the counter after the same measurement window differs purely
-    // because of what the thread happened to resolve earlier. Reading it as a closure size is the
-    // bug this test guards. (Cumulative: a's closure is folded in, so warm > cold.)
-    assert!(
-        counter_warm > counter_cold,
-        "precondition: the compute counter must be contaminated by the prior resolve \
+        assert!(
+            !closure_cold.is_empty(),
+            "fixture must resolve a non-empty closure, else this control proves nothing"
+        );
+        // The defect, made visible: the counter after the same measurement window differs purely
+        // because of what the thread happened to resolve earlier. Reading it as a closure size is the
+        // bug this test guards. (Cumulative: a's closure is folded in, so warm > cold.)
+        assert!(
+            counter_warm > counter_cold,
+            "precondition: the compute counter must be contaminated by the prior resolve \
          (cold={counter_cold}, warm={counter_warm}) — otherwise this control is not discriminating"
-    );
-    // The property that must hold: the graph-derived closure is identical either way.
-    assert_eq!(
-        closure_warm, closure_cold,
-        "roster_closure_nodes must count the union closure of the resolved graphs, which is \
+        );
+        // The property that must hold: the graph-derived closure is identical either way.
+        assert_eq!(
+            closure_warm, closure_cold,
+            "roster_closure_nodes must count the union closure of the resolved graphs, which is \
          independent of what this thread typechecked earlier"
-    );
+        );
     });
 }
 
@@ -302,31 +306,31 @@ fn roster_closure_count_is_independent_of_thread_cache_warmth() {
 #[test]
 fn typecheck_compute_count_accumulates_across_threads() {
     with_typecheck_compute_count_receipt(|| {
-    let fx = Fixture::new("process-wide-counter");
-    reset_typecheck_compute_count();
+        let fx = Fixture::new("process-wide-counter");
+        reset_typecheck_compute_count();
 
-    let roots_a = fx.roots.clone();
-    let entry_a = fx.entry_a.clone();
-    std::thread::spawn(move || {
-        let index = build_multi_entry_index(&roots_a);
-        resolve_entry_with_index(&index, &entry_a).expect("thread resolve a");
-    })
-    .join()
-    .expect("thread a join");
+        let roots_a = fx.roots.clone();
+        let entry_a = fx.entry_a.clone();
+        std::thread::spawn(move || {
+            let index = build_multi_entry_index(&roots_a);
+            resolve_entry_with_index(&index, &entry_a).expect("thread resolve a");
+        })
+        .join()
+        .expect("thread a join");
 
-    let after_a = typecheck_compute_count();
-    assert!(after_a > 0, "first thread must record typecheck computes");
+        let after_a = typecheck_compute_count();
+        assert!(after_a > 0, "first thread must record typecheck computes");
 
-    let roots_b = fx.roots.clone();
-    let entry_b = fx.entry_b.clone();
-    std::thread::spawn(move || {
-        let index = build_multi_entry_index(&roots_b);
-        resolve_entry_with_index(&index, &entry_b).expect("thread resolve b");
-    })
-    .join()
-    .expect("thread b join");
+        let roots_b = fx.roots.clone();
+        let entry_b = fx.entry_b.clone();
+        std::thread::spawn(move || {
+            let index = build_multi_entry_index(&roots_b);
+            resolve_entry_with_index(&index, &entry_b).expect("thread resolve b");
+        })
+        .join()
+        .expect("thread b join");
 
-    assert!(
+        assert!(
         typecheck_compute_count() > after_a,
         "second thread's computes must accumulate into the process-wide counter (got {} after {}, now {})",
         after_a,
