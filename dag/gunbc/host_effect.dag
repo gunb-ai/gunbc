@@ -21,6 +21,18 @@ type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
+  | Srv3InstallReconcileObserve { include_git_meta: Bool }
+  | DurableApprovalGrantRecord
+  | DurableApprovalGrantRead
+  | Srv3InstallMediaFetch
+  | Srv3SeededInstallMediaRemaster
+  | Srv3SeededInstallMediaToolchainEnsure
+  | Srv3SolConsoleCapture
+  | Srv3BmcwebSessionLogin
+  | Srv3BmcwebTokenExtract
+  | Srv3NbdProxyServe
+  | Srv3BootOnceReadBackSleep
+  | Srv3ReceiptEmit { lines: List<String> }
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }

@@ -60,7 +60,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_interface_summary.rs",
     "std_iteration.rs",
     "std_lens_verdict.rs",
-    "std_list.rs",
     "std_logic.rs",
     "std_machine_constraints.rs",
     "std_magnitude.rs",
