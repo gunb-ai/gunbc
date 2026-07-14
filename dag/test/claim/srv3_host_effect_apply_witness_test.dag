@@ -142,8 +142,7 @@ test fn srv3_host_effect_observe_script_resolves_via_script_for() -> Bool {
 test fn srv3_host_effect_mechanical_variants_resolve_via_script_for() -> Bool {
   srv3_host_effect_script_resolves(effect: DurableApprovalGrantRecord)
     && srv3_host_effect_script_resolves(effect: DurableApprovalGrantRead)
-    && srv3_host_effect_script_resolves(effect: Srv3InstallMediaFetch)
-    && srv3_host_effect_script_resolves(effect: Srv3SeededInstallMediaRemaster)
+    && witness_typed_reconcile_effects_script_for_absent()
     && srv3_host_effect_script_resolves(effect: Srv3SeededInstallMediaToolchainEnsure)
     && srv3_host_effect_script_resolves(effect: Srv3SolConsoleCapture)
     && srv3_host_effect_script_resolves(effect: Srv3BmcwebSessionLogin)
