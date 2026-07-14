@@ -100,6 +100,10 @@ fn fresh_standup_discard_fail_run(command: String) -> PipelineStep {
   }
 }
 
+fn fresh_standup_sh_quote(path: String) -> String {
+  concat("\"", concat(path, "\""))
+}
+
 fn fresh_standup_bootstrap_intent() -> Pipeline {
   Pipeline {
     steps: [
@@ -125,100 +129,36 @@ fn fresh_standup_bootstrap_intent() -> Pipeline {
           capture: Absent
         }
       },
-      If {
-        cond: ExitZero {
-          run: Run {
-            command: "[ -d \"$checkout/.git\" ]",
-            env: [],
-            redirect: Absent,
-            capture: Absent
-          }
-        },
-        then_: Pipeline {
-          steps: [
-            fresh_standup_discard_fail_run(
-              command: "(cd \"$checkout\" && git fetch --prune origin)"
-            ),
-            fresh_standup_discard_fail_run(
-              command: "(cd \"$checkout\" && git checkout --detach \"$ctrl_pin\")"
-            ),
-          ],
-          on_failure: FailFast
-        },
-        else_: Absent
-      },
+      fresh_standup_discard_fail_run(
+        command: "(cd \"$checkout\" && git fetch --prune origin)"
+      ),
+      fresh_standup_discard_fail_run(
+        command: "(cd \"$checkout\" && git checkout --detach \"$ctrl_pin\")"
+      ),
       Do {
         run: Run {
-          command: concat("mkdir -p ", gunbc_host_gunbc_root_path),
+          command: concat("mkdir -p ", fresh_standup_sh_quote(path: gunbc_host_gunbc_root_path)),
           env: [],
           redirect: Absent,
           capture: Absent
         }
       },
+      fresh_standup_discard_fail_run(
+        command: concat(
+          "(cd \"$checkout\" && cargo build -p v1-compiler --release --bin ",
+          concat(gunbc_fleet_pinned_binary_name, ")")
+        )
+      ),
+      fresh_standup_ignore_fail_run(
+        command: concat(
+          concat("cp ", fresh_standup_sh_quote(path: fresh_standup_built_binary_path())),
+          concat(" ", fresh_standup_sh_quote(path: fresh_standup_binary_path()))
+        )
+      ),
       If {
         cond: ExitZero {
           run: Run {
-            command: concat("[ ! -x ", fresh_standup_binary_path(), " ]"),
-            env: [],
-            redirect: Absent,
-            capture: Absent
-          }
-        },
-        then_: Pipeline {
-          steps: [
-            If {
-              cond: ExitZero {
-                run: Run {
-                  command: "[ -d \"$checkout\" ]",
-                  env: [],
-                  redirect: Absent,
-                  capture: Absent
-                }
-              },
-              then_: Pipeline {
-                steps: [
-                  fresh_standup_discard_fail_run(
-                    command: concat(
-                      "(cd \"$checkout\" && cargo build -p v1-compiler --release --bin ",
-                      concat(gunbc_fleet_pinned_binary_name, ")")
-                    )
-                  ),
-                  If {
-                    cond: ExitZero {
-                      run: Run {
-                        command: concat("[ -x ", fresh_standup_built_binary_path(), " ]"),
-                        env: [],
-                        redirect: Absent,
-                        capture: Absent
-                      }
-                    },
-                    then_: Pipeline {
-                      steps: [
-                        fresh_standup_ignore_fail_run(
-                          command: concat(
-                            concat("cp ", fresh_standup_built_binary_path()),
-                            concat(" ", fresh_standup_binary_path())
-                          )
-                        ),
-                      ],
-                      on_failure: FailFast
-                    },
-                    else_: Absent
-                  },
-                ],
-                on_failure: FailFast
-              },
-              else_: Absent
-            },
-          ],
-          on_failure: FailFast
-        },
-        else_: Absent
-      },
-      If {
-        cond: ExitZero {
-          run: Run {
-            command: concat("[ -x ", fresh_standup_binary_path(), " ]"),
+            command: concat("[ -x ", fresh_standup_sh_quote(path: fresh_standup_binary_path()), " ]"),
             env: [],
             redirect: Absent,
             capture: Absent
