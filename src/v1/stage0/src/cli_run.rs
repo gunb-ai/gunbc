@@ -2794,33 +2794,21 @@ fn shared_caches_write<'a>(
         .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))
 }
 
-/// Read the typed cache: per-index `Rc` first, then cross-worker byte snapshots.
+/// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
+/// cross-worker store is armed (no local duplicate — serde transport is one authority).
 fn index_get_typed(
     index: &MultiEntryIndex,
     mod_name: &str,
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-    if let Some(hit) = index.typed_module_cache.borrow().get(mod_name).cloned() {
-        return Ok(Some(hit));
-    }
     let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(None);
+        return Ok(index.typed_module_cache.borrow().get(mod_name).cloned());
     };
-    let decoded = shared_get_typed(store, mod_name)?;
-    if let Some(rc) = decoded.as_ref() {
-        index
-            .typed_module_cache
-            .borrow_mut()
-            .insert(mod_name.to_string(), rc.clone());
-    }
-    Ok(decoded)
+    shared_get_typed(store, mod_name)
 }
 
 fn index_contains_typed(index: &MultiEntryIndex, mod_name: &str) -> Result<bool, String> {
-    if index.typed_module_cache.borrow().contains_key(mod_name) {
-        return Ok(true);
-    }
     let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(false);
+        return Ok(index.typed_module_cache.borrow().contains_key(mod_name));
     };
     let caches = shared_caches_read(store)?;
     Ok(caches.contains_typed(mod_name))
@@ -2848,23 +2836,18 @@ fn index_insert_typed(
     mod_name: String,
     result: Rc<v1_compiler_infer::TypecheckModuleResult>,
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
-    index
-        .typed_module_cache
-        .borrow_mut()
-        .insert(mod_name.clone(), result.clone());
     let Some(store) = index.cross_worker_store.as_ref() else {
+        index
+            .typed_module_cache
+            .borrow_mut()
+            .insert(mod_name, result.clone());
         return Ok(result);
     };
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
         caches.clone_typed_bytes(&mod_name)
     } {
-        let winner = SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice())?;
-        index
-            .typed_module_cache
-            .borrow_mut()
-            .insert(mod_name, winner.clone());
-        return Ok(winner);
+        return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
     }
     let encoded = SharedTypecheckCaches::encode_typed_snapshot(&result)?;
     let raced_bytes = {
@@ -2877,12 +2860,7 @@ fn index_insert_typed(
         }
     };
     if let Some(bytes) = raced_bytes {
-        let winner = SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice())?;
-        index
-            .typed_module_cache
-            .borrow_mut()
-            .insert(mod_name, winner.clone());
-        return Ok(winner);
+        return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
     }
     Ok(result)
 }
@@ -8167,20 +8145,15 @@ pub fn run_discovery_corpus_with_options(
     // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
     // process step on the pump thread — prelude-warmed parse/typed caches instead of a
     // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
-    // design.md §4): adaptive pool runs arm ONE process-scoped typed_module_cache via
-    // serde byte transport on the pump thread and every worker shard (🟡 dissolve-on:
-    // store-path Rc→Arc retires the byte codec).
+    // design.md §4): adaptive worker shards arm ONE process-scoped typed_module_cache
+    // (serde byte transport). The pump thread keeps `process_shared_index` (private per-
+    // index `Rc`) so prelude work does not duplicate into the shared store; workers alone
+    // read/write the shared store as the typed-cache authority (no local Rc duplicate).
     let cross_worker_store = match &width_policy {
         DiscoveryWidthPolicy::Adaptive(_) => Some(new_shared_typecheck_caches()),
         DiscoveryWidthPolicy::Serial => None,
     };
-    let index = match &cross_worker_store {
-        Some(store) => Rc::new(build_multi_entry_index_with_shared_caches(
-            source_roots,
-            store.clone(),
-        )),
-        None => process_shared_index(source_roots),
-    };
+    let index = process_shared_index(source_roots);
     // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
     // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
     // in flight on PR #6442; consumer binds to roster_import_closure_nodes_pre_resolve):
