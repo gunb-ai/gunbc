@@ -251,5 +251,6 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
     ShellCommand { script: _ } => Absent
     RedfishAction { action: _ } => Absent
     ConvergePlan { policy: _ } => Absent
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => Absent
   }
 }
