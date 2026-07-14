@@ -2867,6 +2867,10 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
+    /// Corpus-wide SymbolIndex census (Grammar lane G1): entry-scoped import closures
+    /// omit provider modules for import-less qualified projections; the census authority
+    /// is the whole indexed pool, not the entry closure alone.
+    corpus_symbol_index: RefCell<Option<Rc<v1_compiler_infer_env::SymbolIndex>>>,
 }
 
 pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
@@ -2906,6 +2910,7 @@ fn new_multi_entry_index_shell(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
+        corpus_symbol_index: RefCell::new(None),
     }
 }
 
@@ -3720,6 +3725,64 @@ fn reconcile_all_cache_hits(
     )
 }
 
+fn get_or_build_corpus_symbol_index(
+    index: &MultiEntryIndex,
+) -> Result<Rc<v1_compiler_infer_env::SymbolIndex>, String> {
+    if let Some(cached) = index.corpus_symbol_index.borrow().clone() {
+        return Ok(cached);
+    }
+    let mut modules: Vec<Rc<Node>> = Vec::new();
+    let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        index.source_files.values().cloned().collect();
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    for source in sources {
+        let cached = index.parse_cache.borrow().get(&source.path).cloned();
+        let (parse_result, nl_index) = match cached {
+            Some(entry) => entry,
+            None => {
+                let tokens =
+                    v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+                let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+                let current_table = index.intern_table.borrow().clone();
+                let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+                    let mut m = HashMap::new();
+                    m.insert(source.path.clone(), nl_index.clone());
+                    m
+                });
+                let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+                let entry = (parsed.result.clone(), nl_index.clone());
+                index
+                    .parse_cache
+                    .borrow_mut()
+                    .insert(source.path.clone(), entry.clone());
+                entry
+            }
+        };
+        si_map.insert(nl_index.file.clone(), nl_index.clone());
+        if let Some(err) = &parse_result.error {
+            let span = diagnostic_to_span(err.diagnostic.clone());
+            let loc = format_error_loc(&span.file, span.start, &Rc::new(si_map.clone()));
+            return Err(format!(
+                "corpus symbol_index census refused: parse failed for {}: {}",
+                loc,
+                diagnostic_to_message(err.diagnostic.clone())
+            ));
+        }
+        if let Some(module) = &parse_result.module {
+            modules.push(module.clone());
+        }
+    }
+    let source_indices = Rc::new(si_map);
+    let graph =
+        v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
+    let symbol_index =
+        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices);
+    *index.corpus_symbol_index.borrow_mut() = Some(symbol_index.clone());
+    Ok(symbol_index)
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3735,8 +3798,7 @@ fn reconcile_with_typed_cache(
     // global_bare_fallback_invariant in v1_compiler_infer_env.
     let global_bare =
         v1_compiler_infer::build_global_bare_census(graph.modules.clone(), source_indices.clone());
-    let symbol_index =
-        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices.clone());
+    let symbol_index = get_or_build_corpus_symbol_index(index)?;
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
