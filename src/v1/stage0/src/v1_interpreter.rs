@@ -7349,44 +7349,6 @@ fn eval_builtin_inner(
             Ok(Some(list_value(items)))
         }
 
-        "medium_structure_leak_facts" => {
-            let emit_roots =
-                expect_str_list_flex(positional.first().copied(), "medium_structure_leak_facts")?;
-            let check_roots =
-                expect_str_list_flex(positional.get(1).copied(), "medium_structure_leak_facts")?;
-            let markers =
-                expect_str_list_flex(positional.get(2).copied(), "medium_structure_leak_facts")?;
-            let emit_fns =
-                expect_str_list_flex(positional.get(3).copied(), "medium_structure_leak_facts")?;
-            let string_ops =
-                expect_str_list_flex(positional.get(4).copied(), "medium_structure_leak_facts")?;
-            let facts =
-                crate::module_path_index::medium_structure_census::medium_structure_leak_facts(
-                    &emit_roots,
-                    &check_roots,
-                    &markers,
-                    &emit_fns,
-                    &string_ops,
-                );
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                let face = Value::Variant {
-                    type_name: ctx.sym("MediumLeakFace"),
-                    variant_name: ctx.sym(f.face),
-                    fields: Rc::new(vec![]),
-                };
-                items.push(Value::Record {
-                    type_name: ctx.sym("MediumStructureLeakFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("detail"), Value::Str(f.detail)),
-                        (ctx.sym("face"), face),
-                        (ctx.sym("path"), Value::Str(f.path)),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
         "medium_structure_literal_parts_facts" => {
             let roots = expect_str_list_flex(
                 positional.first().copied(),
