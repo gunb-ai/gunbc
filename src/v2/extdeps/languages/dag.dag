@@ -970,6 +970,17 @@ fn dag_formal_productions() -> List<FormalProduction> {
       ]
     ),
     grammar_formal_production(
+      lhs: ^dag_production_let_expr,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_kw_let),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_eq),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr),
+        grammar_formal_terminal(identity: ^dag_token_kw_in),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
       lhs: ^dag_production_expr,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_match_expr)
@@ -1093,6 +1104,13 @@ fn dag_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_comma_arg_list_suffix,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_comma)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_primary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_kw_loop),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
       ]
     ),
     grammar_formal_production(
@@ -2123,13 +2141,31 @@ fn dag_grammar_stmt_expr() -> GrammarExpr {
 }
 
 fn dag_grammar_let_expr() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_kw_let),
-    right: dag_grammar_sequence(
-      left: dag_grammar_binding_name_terminal(),
+  dag_grammar_choice(
+    left: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_kw_let),
       right: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_eq),
-        right: dag_grammar_nonterminal(production: ^dag_production_expr)
+        left: dag_grammar_binding_name_terminal(),
+        right: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_eq),
+          right: dag_grammar_nonterminal(production: ^dag_production_expr)
+        )
+      )
+    ),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_kw_let),
+      right: dag_grammar_sequence(
+        left: dag_grammar_binding_name_terminal(),
+        right: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_eq),
+          right: dag_grammar_sequence(
+            left: dag_grammar_nonterminal(production: ^dag_production_expr),
+            right: dag_grammar_sequence(
+              left: dag_grammar_terminal(token_class: ^dag_token_kw_in),
+              right: dag_grammar_nonterminal(production: ^dag_production_expr)
+            )
+          )
+        )
       )
     )
   )
@@ -2385,38 +2421,44 @@ data dag_grammar_int_literal_stamp_lexeme_scaffold_note: String = "Interim: prim
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
-      right: dag_grammar_primary_ident_suffix_expr()
+      left: dag_grammar_terminal(token_class: ^dag_token_kw_loop),
+      right: dag_grammar_nonterminal(production: ^dag_production_expr)
     ),
     right: dag_grammar_choice(
-      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+      left: dag_grammar_sequence(
+        left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+        right: dag_grammar_primary_ident_suffix_expr()
+      ),
       right: dag_grammar_choice(
-        left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
+        left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
         right: dag_grammar_choice(
-          left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
+          left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
           right: dag_grammar_choice(
-            left: dag_grammar_terminal(token_class: ^dag_token_kw_false),
+            left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
             right: dag_grammar_choice(
-              left: dag_grammar_sequence(
-                left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
-                right: dag_grammar_sequence(
-                  left: dag_grammar_expr_list_helper(),
-                  right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
-                )
-              ),
+              left: dag_grammar_terminal(token_class: ^dag_token_kw_false),
               right: dag_grammar_choice(
                 left: dag_grammar_sequence(
-                  left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+                  left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
                   right: dag_grammar_sequence(
-                    left: dag_grammar_field_init_list_helper(),
-                    right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+                    left: dag_grammar_expr_list_helper(),
+                    right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
                   )
                 ),
-                right: dag_grammar_sequence(
-                  left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+                right: dag_grammar_choice(
+                  left: dag_grammar_sequence(
+                    left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+                    right: dag_grammar_sequence(
+                      left: dag_grammar_field_init_list_helper(),
+                      right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+                    )
+                  ),
                   right: dag_grammar_sequence(
-                    left: dag_grammar_nonterminal(production: ^dag_production_expr),
-                    right: dag_grammar_terminal(token_class: ^dag_token_rparen)
+                    left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+                    right: dag_grammar_sequence(
+                      left: dag_grammar_nonterminal(production: ^dag_production_expr),
+                      right: dag_grammar_terminal(token_class: ^dag_token_rparen)
+                    )
                   )
                 )
               )
