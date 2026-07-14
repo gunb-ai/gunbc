@@ -17,7 +17,7 @@ import gunbc.fleet_posix_accounts {
   grounded_posix_principal_name,
   fleet_apt_get_binary_path,
 }
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.ci_deploy_target_host {
   DeployTargetHostProof,
   deploy_target_proof,
@@ -183,6 +183,7 @@ fn deploy_access_is_local_apply(access: DeployAccess) -> Bool {
   match access.transport {
     LocalShell => true
     SshShell { ssh_host: _ } => false
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
 }
 
@@ -191,6 +192,7 @@ fn deploy_access_sudo_check_cmd(access: DeployAccess, cmd: PrivilegedCommand) ->
   match access.transport {
     LocalShell => shell.Exec.Check(command: probe).exists
     SshShell { ssh_host: h } => ssh_session_exec(host: h, command: probe as NonEmptyStr).success
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
 }
 
@@ -221,6 +223,7 @@ fn deploy_access_observed_principal(access: DeployAccess) -> NonEmptyStr? {
       let result = ssh_session_exec(host: h, command: "whoami" as NonEmptyStr)
       deploy_access_principal_line(success: result.success, stdout: result.stdout)
     }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
   }
 }
 
