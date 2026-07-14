@@ -1,8 +1,8 @@
 module v2.test.emit.rust_bind_let_emit
 
-import v2.compiler.body_producer {
-  produce_bind_arrow_with_body,
-  produce_bind_arrow_with_body_wrong_value
+import v2.compiler.ingested_fixture_arrows {
+  ingested_bind_arrow_with_body,
+  ingested_bind_arrow_with_body_wrong_value
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -97,7 +97,7 @@ fn rust_bind_let_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn rust_bind_let_producer_tree() -> Outcome<InferredTree> {
-  match produce_bind_arrow_with_body() {
+  match ingested_bind_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_bind_let_inferred_tree_for(root: root),
@@ -108,7 +108,7 @@ fn rust_bind_let_producer_tree() -> Outcome<InferredTree> {
 }
 
 fn rust_bind_let_wrong_value_producer_tree() -> Outcome<InferredTree> {
-  match produce_bind_arrow_with_body_wrong_value() {
+  match ingested_bind_arrow_with_body_wrong_value() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_bind_let_inferred_tree_for(root: root),

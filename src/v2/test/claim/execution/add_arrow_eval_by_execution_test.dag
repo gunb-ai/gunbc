@@ -1,6 +1,6 @@
 module v2.test.execution.add_arrow_eval_by_execution
 
-import v2.compiler.body_producer { produce_add_arrow_with_body }
+import v2.compiler.ingested_fixture_arrows { ingested_add_arrow_with_body }
 import v2.test.complexity_gate.source_bridged_add_subject_producer {
   source_bridged_add_arrow_with_body,
   source_bridged_add_parse_tokens
@@ -617,7 +617,7 @@ fn add_arrow_eval_source_pipeline_admits_add_holds() -> Bool {
 }
 
 fn add_arrow_eval_canonical_tree_infers_holds() -> Bool {
-  match produce_add_arrow_with_body() {
+  match ingested_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_eval_inferred_run_tree(
         callee: arrow,
@@ -681,7 +681,7 @@ fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
 }
 
 fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
-  match produce_add_arrow_with_body() {
+  match ingested_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
@@ -726,7 +726,7 @@ fn add_arrow_eval_swapped_operands_claim_passes() -> Bool {
 }
 
 fn add_arrow_eval_wrong_value_red_holds() -> Bool {
-  match produce_add_arrow_with_body() {
+  match ingested_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
@@ -763,7 +763,7 @@ fn add_arrow_excess_body_red_holds() -> Bool {
 }
 
 fn add_arrow_excess_actual_executes_to_five() -> Bool {
-  match produce_add_arrow_with_body() {
+  match ingested_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_excess_actual_call_optional(callee: arrow) {
         Present { value: call_node } =>

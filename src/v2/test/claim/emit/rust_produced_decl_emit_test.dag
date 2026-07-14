@@ -1,6 +1,6 @@
 module v2.test.emit.rust_produced_decl_emit
 
-import v2.compiler.body_producer { produce_add_decl_node }
+import v2.compiler.ingested_fixture_arrows { ingested_add_decl_node }
 import v2.compiler.emit_produced { emit_produced_decl_rust }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -15,7 +15,7 @@ data rust_produced_add_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }
 data rust_produced_add2_golden: String = "fn add2(x: i32, y: i32) -> i32 { x + y }"
 
 fn rust_produced_decl_text(fn_name: Symbol) -> Outcome<String> {
-  match produce_add_decl_node(fn_name: fn_name) {
+  match ingested_add_decl_node(fn_name: fn_name) {
     Accepted { value: decl, diagnostics: _ } =>
       match emit_produced_decl_rust(decl: decl) {
         Accepted { value: medium, diagnostics: _ } =>

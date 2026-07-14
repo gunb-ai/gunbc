@@ -1903,12 +1903,6 @@ fn dag_grammar_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal_lexeme(token_class: token_class)
 }
 
-fn dag_grammar_terminal_from_concrete_token(token: ConcreteSyntaxToken) -> GrammarExpr {
-  formal_grammar_symbol_to_grammar_expr(
-    sym: dag_formal_grammar_symbol_from_token(token: token)
-  )
-}
-
 fn dag_grammar_nonterminal(production: Symbol) -> GrammarExpr {
   Nonterminal { production: production }
 }
@@ -3622,46 +3616,6 @@ fn dag_serialize_source_node() -> Node {
   )
 }
 
-type DagGramBuild1State
-  = DagGramBuild1StateInit
-  | DagGramBuild1StateReady { expr: GrammarExpr }
-
-fn dag_grammar_sequence_from_concrete_tokens(
-  tokens: List<ConcreteSyntaxToken>,
-  terminal_for_token: fn(ConcreteSyntaxToken) -> GrammarExpr
-) -> GrammarExpr {
-  match fold_list(
-    xs: tokens,
-    empty: DagGramBuild1StateInit,
-    cons: fn(state, token) {
-      match state {
-        DagGramBuild1StateInit =>
-          DagGramBuild1StateReady {
-            expr: terminal_for_token(token: token)
-          }
-        DagGramBuild1StateReady { expr: acc } =>
-          DagGramBuild1StateReady {
-            expr: Sequence {
-              left: acc,
-              right: terminal_for_token(token: token)
-            }
-          }
-      }
-    }
-  ) {
-    DagGramBuild1StateInit =>
-      dag_grammar_terminal(token_class: ^dag_token_kw_fn)
-    DagGramBuild1StateReady { expr: result } => result
-  }
-}
-
-fn dag_grammar_sequence_from_token_classes() -> GrammarExpr {
-  dag_grammar_sequence_from_concrete_tokens(
-    tokens: dag_concrete_tokens(),
-    terminal_for_token: dag_grammar_terminal_from_concrete_token
-  )
-}
-
 fn dag_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
   match token {
     FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
@@ -3722,192 +3676,6 @@ fn dag_formal_production_fn_field_access() -> FormalProduction {
   grammar_formal_production(
     lhs: ^dag_production_fn_field_access,
     rhs: dag_formal_rhs_from_tokens(tokens: dag_field_access_concrete_tokens())
-  )
-}
-
-fn dag_grammar_production_fn_add() -> GrammarProduction {
-  GrammarProduction {
-    name: ^dag_production_fn_add,
-    expression: dag_grammar_sequence_from_token_classes(),
-    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
-  }
-}
-
-fn dag_grammar_production_fn_pick() -> GrammarProduction {
-  GrammarProduction {
-    name: ^dag_production_fn_pick,
-    expression: dag_grammar_sequence_from_token_classes_pick(),
-    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
-  }
-}
-
-fn dag_grammar_loop_body_literal_binding(binding: Symbol) -> Bool {
-  (binding == ^dag_binding_pick_lit_one) || (binding == ^dag_binding_pick_lit_two)
-}
-
-fn dag_grammar_terminal_for_loop_token(token: ConcreteSyntaxToken) -> GrammarExpr {
-  let cls = concrete_syntax_token_class(token: token)
-  if cls == ^dag_token_kw_loop {
-    dag_grammar_terminal(token_class: ^dag_token_kw_loop)
-  } else {
-    match token {
-      FixedToken { token_class: _ } =>
-        dag_grammar_terminal_from_concrete_token(token: token)
-      BoundToken { token_class: c, binding: b } =>
-        if (c == ^dag_token_ident) && dag_grammar_loop_body_literal_binding(binding: b) {
-          dag_grammar_pick_arm_literal_terminal()
-        } else {
-          dag_grammar_terminal_from_concrete_token(token: token)
-        }
-    }
-  }
-}
-
-fn dag_grammar_sequence_from_token_classes_loop() -> GrammarExpr {
-  dag_grammar_sequence_from_concrete_tokens(
-    tokens: dag_loop_concrete_tokens(),
-    terminal_for_token: dag_grammar_terminal_for_loop_token
-  )
-}
-
-fn dag_grammar_production_fn_loop() -> GrammarProduction {
-  GrammarProduction {
-    name: ^dag_production_fn_loop,
-    expression: dag_grammar_sequence_from_token_classes_loop(),
-    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
-  }
-}
-
-fn dag_grammar_production_fn_match() -> GrammarProduction {
-  GrammarProduction {
-    name: ^dag_production_fn_match,
-    expression: dag_grammar_sequence_from_token_classes_match(),
-    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
-  }
-}
-
-fn dag_grammar_production_fn_rec() -> GrammarProduction {
-  GrammarProduction {
-    name: ^dag_production_fn_rec,
-    expression: dag_grammar_sequence_from_token_classes_rec(),
-    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
-  }
-}
-
-fn dag_grammar_production_fn_field_access() -> GrammarProduction {
-  GrammarProduction {
-    name: ^dag_production_fn_field_access,
-    expression: dag_grammar_sequence_from_token_classes_field_access(),
-    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
-  }
-}
-
-fn dag_grammar_pick_condition_terminal() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
-    right: dag_grammar_terminal(token_class: ^dag_token_kw_false)
-  )
-}
-
-fn dag_grammar_pick_arm_literal_terminal() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
-    right: dag_grammar_terminal(token_class: ^dag_token_ident)
-  )
-}
-
-fn dag_grammar_pick_arm_literal_binding(binding: Symbol) -> Bool {
-  (binding == ^dag_binding_pick_lit_one)
-    || (binding == ^dag_binding_pick_lit_two)
-}
-
-fn dag_grammar_terminal_for_pick_token(token: ConcreteSyntaxToken) -> GrammarExpr {
-  let cls = concrete_syntax_token_class(token: token)
-  if cls == ^dag_token_kw_true {
-    dag_grammar_pick_condition_terminal()
-  } else {
-    match token {
-      FixedToken { token_class: _ } =>
-        dag_grammar_terminal_from_concrete_token(token: token)
-      BoundToken { token_class: c, binding: b } =>
-        if (c == ^dag_token_ident) && dag_grammar_pick_arm_literal_binding(binding: b) {
-          dag_grammar_pick_arm_literal_terminal()
-        } else {
-          dag_grammar_terminal_from_concrete_token(token: token)
-        }
-    }
-  }
-}
-
-fn dag_grammar_sequence_from_token_classes_pick() -> GrammarExpr {
-  dag_grammar_sequence_from_concrete_tokens(
-    tokens: dag_pick_concrete_tokens(),
-    terminal_for_token: dag_grammar_terminal_for_pick_token
-  )
-}
-
-fn dag_grammar_match_arm_literal_binding(binding: Symbol) -> Bool {
-  dag_grammar_pick_arm_literal_binding(binding: binding)
-}
-
-fn dag_grammar_terminal_for_match_token(token: ConcreteSyntaxToken) -> GrammarExpr {
-  let cls = concrete_syntax_token_class(token: token)
-  if (cls == ^dag_token_kw_true) || (cls == ^dag_token_kw_false) {
-    dag_grammar_pick_condition_terminal()
-  } else {
-    match token {
-      FixedToken { token_class: _ } =>
-        dag_grammar_terminal(token_class: cls)
-      BoundToken { token_class: c, binding: b } =>
-        if (c == ^dag_token_ident) && dag_grammar_match_arm_literal_binding(binding: b) {
-          dag_grammar_pick_arm_literal_terminal()
-        } else {
-          dag_grammar_terminal(token_class: cls)
-        }
-    }
-  }
-}
-
-fn dag_grammar_sequence_from_token_classes_match() -> GrammarExpr {
-  dag_grammar_sequence_from_concrete_tokens(
-    tokens: dag_match_concrete_tokens(),
-    terminal_for_token: dag_grammar_terminal_for_match_token
-  )
-}
-
-fn dag_grammar_rec_field_literal_binding(binding: Symbol) -> Bool {
-  (binding == ^dag_binding_rec_lit_nine)
-}
-
-fn dag_grammar_terminal_for_rec_token(token: ConcreteSyntaxToken) -> GrammarExpr {
-  let cls = concrete_syntax_token_class(token: token)
-  match token {
-    FixedToken { token_class: _ } =>
-      dag_grammar_terminal(token_class: cls)
-    BoundToken { token_class: c, binding: b } =>
-      if (c == ^dag_token_ident) && dag_grammar_rec_field_literal_binding(binding: b) {
-        dag_grammar_pick_arm_literal_terminal()
-      } else {
-        dag_grammar_terminal(token_class: cls)
-      }
-  }
-}
-
-fn dag_grammar_sequence_from_token_classes_rec() -> GrammarExpr {
-  dag_grammar_sequence_from_concrete_tokens(
-    tokens: dag_rec_concrete_tokens(),
-    terminal_for_token: dag_grammar_terminal_for_rec_token
-  )
-}
-
-fn dag_grammar_terminal_for_field_access_token(token: ConcreteSyntaxToken) -> GrammarExpr {
-  dag_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
-}
-
-fn dag_grammar_sequence_from_token_classes_field_access() -> GrammarExpr {
-  dag_grammar_sequence_from_concrete_tokens(
-    tokens: dag_field_access_concrete_tokens(),
-    terminal_for_token: dag_grammar_terminal_for_field_access_token
   )
 }
 
@@ -4099,25 +3867,6 @@ fn dag_int_type_binding() -> Symbol {
   ^dag_binding_type_int
 }
 
-fn dag_captured_flat_atom_binding_miss_diagnostic(_flat_index: Int) -> Diagnostic {
-  Diagnostic {
-    reason: ^dag_captured_flat_atom_binding_miss,
-    at: port_locus(port: ^dag_captured_flat_atom_binding_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn dag_node_is_ident_atom(node: Node) -> Bool {
-  match dag_binding_branded_atom_identity(node: node) {
-    Present { value: _ } => true
-    Absent =>
-      match node.kind {
-        TypeNode { connective: Atom { identity: id } } => id == ^dag_token_ident
-        _ => false
-      }
-  }
-}
-
 fn dag_binding_branded_atom_identity(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -4126,44 +3875,6 @@ fn dag_binding_branded_atom_identity(node: Node) -> Optional<Symbol> {
         false => Present { value: id }
       }
     _ => Absent
-  }
-}
-
-fn dag_captured_flat_atom_binding_for_ident(
-  flat_index: Int,
-  ident_atom: Node
-) -> Outcome<Symbol> {
-  match dag_binding_branded_atom_identity(node: ident_atom) {
-    Present { value: binding } => outcome_accepted(binding)
-    Absent =>
-      if !dag_node_is_ident_atom(node: ident_atom) {
-        outcome_rejected(d: dag_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-      } else if flat_index == 5 {
-        outcome_accepted(^dag_binding_param_x)
-      } else if flat_index == 9 {
-        outcome_accepted(^dag_binding_param_y)
-      } else if flat_index == 12 {
-        outcome_accepted(^dag_binding_type_int)
-      } else {
-        outcome_rejected(d: dag_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-      }
-  }
-}
-
-fn dag_pick_captured_flat_atom_binding_for_ident(
-  flat_index: Int,
-  ident_atom: Node
-) -> Outcome<Symbol> {
-  match dag_binding_branded_atom_identity(node: ident_atom) {
-    Present { value: binding } => outcome_accepted(binding)
-    Absent =>
-      if !dag_node_is_ident_atom(node: ident_atom) {
-        outcome_rejected(d: dag_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-      } else if flat_index == 5 {
-        outcome_accepted(^dag_binding_type_int)
-      } else {
-        outcome_rejected(d: dag_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-      }
   }
 }
 
@@ -4216,23 +3927,6 @@ data dag_loop_body_fixture: Node = dag_loop_body_node()
 data dag_loop_arrow_with_body_fixture: Node = dag_loop_arrow_with_body_node()
 data dag_loop_arrow_with_body_wrong_value_fixture: Node = dag_loop_arrow_with_body_wrong_value_node()
 data dag_fixture_emitted_loop_fn: Node = dag_loop_arrow_with_body_fixture
-
-fn dag_loop_captured_flat_atom_binding_for_ident(
-  flat_index: Int,
-  ident_atom: Node
-) -> Outcome<Symbol> {
-  match dag_binding_branded_atom_identity(node: ident_atom) {
-    Present { value: binding } => outcome_accepted(binding)
-    Absent =>
-      if !dag_node_is_ident_atom(node: ident_atom) {
-        outcome_rejected(d: dag_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-      } else if flat_index == 5 {
-        outcome_accepted(^dag_binding_type_int)
-      } else {
-        outcome_rejected(d: dag_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-      }
-  }
-}
 
 fn dag_node_is_kw_true_atom(node: Node) -> Bool {
   match node.kind {
@@ -5020,62 +4714,6 @@ fn dag_formal_production_fn_bind() -> FormalProduction {
     lhs: ^dag_production_fn_bind,
     rhs: dag_formal_rhs_from_tokens(tokens: dag_bind_concrete_tokens())
   )
-}
-
-fn dag_grammar_bind_value_literal_binding(binding: Symbol) -> Bool {
-  (binding == ^dag_binding_pick_lit_one) || (binding == ^dag_binding_pick_lit_two)
-}
-
-fn dag_grammar_terminal_for_bind_token(token: ConcreteSyntaxToken) -> GrammarExpr {
-  let cls = concrete_syntax_token_class(token: token)
-  if cls == ^dag_token_kw_in {
-    dag_grammar_terminal(token_class: ^dag_token_kw_in)
-  } else {
-    match token {
-      FixedToken { token_class: _ } =>
-        dag_grammar_terminal_from_concrete_token(token: token)
-      BoundToken { token_class: c, binding: b } =>
-        if (c == ^dag_token_ident) && dag_grammar_bind_value_literal_binding(binding: b) {
-          dag_grammar_pick_arm_literal_terminal()
-        } else {
-          dag_grammar_terminal_from_concrete_token(token: token)
-        }
-    }
-  }
-}
-
-fn dag_grammar_sequence_from_token_classes_bind() -> GrammarExpr {
-  dag_grammar_sequence_from_concrete_tokens(
-    tokens: dag_bind_concrete_tokens(),
-    terminal_for_token: dag_grammar_terminal_for_bind_token
-  )
-}
-
-fn dag_grammar_production_fn_bind() -> GrammarProduction {
-  GrammarProduction {
-    name: ^dag_production_fn_bind,
-    expression: dag_grammar_sequence_from_token_classes_bind(),
-    emitted: dag_grammar_atom(id: ^dag_surface_fn_decl)
-  }
-}
-
-fn dag_bind_captured_flat_atom_binding_for_ident(
-  flat_index: Int,
-  ident_atom: Node
-) -> Outcome<Symbol> {
-  match dag_binding_branded_atom_identity(node: ident_atom) {
-    Present { value: binding } => outcome_accepted(binding)
-    Absent =>
-      if !dag_node_is_ident_atom(node: ident_atom) {
-        outcome_rejected(d: dag_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-      } else if flat_index == 5 {
-        outcome_accepted(^dag_binding_type_int)
-      } else if (flat_index == 8) || (flat_index == 12) {
-        outcome_accepted(^dag_binding_bind_x)
-      } else {
-        outcome_rejected(d: dag_captured_flat_atom_binding_miss_diagnostic(flat_index: flat_index))
-      }
-  }
 }
 
 fn dag_value_expression_projection() -> TargetValueExpressionProjection {

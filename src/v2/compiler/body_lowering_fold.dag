@@ -3490,6 +3490,13 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
       match body_lower_literal_int_atom_optional(node: captured) {
         Present { value: lit } => outcome_accepted(value: lit)
         Absent =>
+      match body_lower_try_loop_keyword_from_captured(captured: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: loop_opt, diagnostics: ld } =>
+          match loop_opt {
+            Present { value: loop_node } =>
+              Accepted { value: loop_node, diagnostics: ld }
+            Absent =>
       match body_lower_pattern_first_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
@@ -3528,6 +3535,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
                       }
                   }
               }
+          }
           }
       }
       }

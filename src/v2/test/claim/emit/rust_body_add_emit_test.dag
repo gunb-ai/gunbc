@@ -1,8 +1,8 @@
 module v2.test.emit.rust_body_add_emit
 
-import v2.compiler.body_producer {
-  produce_add_arrow_with_body,
-  produce_add_arrow_with_body_swapped_operands
+import v2.compiler.ingested_fixture_arrows {
+  ingested_add_arrow_with_body,
+  ingested_add_arrow_with_body_swapped_operands
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -61,7 +61,7 @@ fn rust_body_add_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn rust_body_add_producer_inferred_tree() -> Outcome<InferredTree> {
-  match produce_add_arrow_with_body() {
+  match ingested_add_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_body_add_inferred_tree_for(root: root),
@@ -72,7 +72,7 @@ fn rust_body_add_producer_inferred_tree() -> Outcome<InferredTree> {
 }
 
 fn rust_body_add_producer_swapped_inferred_tree() -> Outcome<InferredTree> {
-  match produce_add_arrow_with_body_swapped_operands() {
+  match ingested_add_arrow_with_body_swapped_operands() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_body_add_inferred_tree_for(root: root),

@@ -7,6 +7,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { Absent, Optional, Present }
 import v2.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
   Outcome,
@@ -19,6 +20,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node {
   Arrow,
+  ComputationNode,
   Conj,
   Edge,
   Named,
@@ -29,6 +31,7 @@ import v2.std.node {
   node_synthetic,
   well_formed
 }
+import v2.std.node_query { find_arrow_body_child }
 
 data ingested_fixture_arrows_note: String = "Wave 1 Gate 1 Stage D: census-ingest Arrow fixtures replacing produce_* flat-token MVP producers. Every arrow is tokenize→parse_module→normalize→resolve→extract; behavioral equivalence witnesses live in wave1_gate1_d_* tests."
 
@@ -36,6 +39,7 @@ data ingested_add_module_source: String = "module m\n\nfn add(x: Int, y: Int) ->
 data ingested_add_swapped_operands_module_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { y + x }\n"
 
 data ingested_pick_module_source: String = "module m\n\nfn pick() -> Int { if true { 1 } else { 2 } }\n"
+data ingested_pick_false_module_source: String = "module m\n\nfn pick() -> Int { if false { 1 } else { 2 } }\n"
 data ingested_pick_swapped_arms_module_source: String = "module m\n\nfn pick() -> Int { if true { 2 } else { 1 } }\n"
 
 data ingested_loop_module_source: String = "module m\n\nfn one() -> Int { loop 1 }\n"
@@ -144,6 +148,13 @@ fn ingested_pick_if_arrow_with_body_swapped_arms() -> Outcome<Node> {
   )
 }
 
+fn ingested_pick_if_arrow_with_body_false_condition() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_pick_false_module_source,
+    file: ^ingested_fixture_pick_false_file
+  )
+}
+
 fn ingested_loop_arrow_with_body() -> Outcome<Node> {
   ingested_arrow_from_source(
     source: ingested_loop_module_source,
@@ -203,4 +214,15 @@ fn ingested_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
       )
     }
   )
+}
+
+fn arrow_has_body_edge(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match body.kind {
+        ComputationNode { behavior: _ } => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }

@@ -413,6 +413,15 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
+      check_fns: ["wave1_gate1_d_all_fixture_families_witness_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
     check: CommitCargoFmtCheck,
     surfaces: [GitPrePushHook]
   }
