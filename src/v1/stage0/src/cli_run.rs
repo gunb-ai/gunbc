@@ -1724,7 +1724,13 @@ fn disable_floor_compile_clean_lazy_install_for_test() {
 fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
     let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
+    let has_hard_errors = compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
+    if has_hard_errors {
+        eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
+    } else if result.files.is_empty() {
+        eprintln!("compile-clean: whole-tree compile emitted zero files (no hard diagnostics)");
+    }
+    !has_hard_errors && !result.files.is_empty()
 }
 
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
