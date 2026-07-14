@@ -167,6 +167,10 @@ fn debug_match_expr_count(source_text: String) -> Int {
   }
 }
 
+fn debug_match_expr_count_file(path: String) -> Int {
+  debug_match_expr_count(source_text: filesystem_read(path: path).content)
+}
+
 fn debug_scrutinee_hit_count(source_text: String) -> Int {
   match source_findings_tree(source_text: source_text) {
     Absent => -1

@@ -5,6 +5,7 @@ import v2.lens.identity_captured_navigation.roster_gate {
   debug_fn_decl_count,
   debug_fn_decl_count_file,
   debug_match_expr_count,
+  debug_match_expr_count_file,
   debug_scrutinee_hit_count,
   file_gate,
   file_suspect_count,
@@ -205,4 +206,11 @@ test fn debug_probe_fixture_fn_decl_count_is_three() -> Bool {
 
 test fn debug_probe_fixture_suspect_count_ge_one() -> Bool {
   file_suspect_count(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 1
+}
+
+test fn debug_probe_fixture_match_expr_count_ge_one() -> Bool {
+  debug_match_expr_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 1
+}
+test fn debug_probe_fixture_fn_decl_count_is_27() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 27
 }
