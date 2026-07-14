@@ -1,6 +1,6 @@
 module gunbc.digest_render
 
-import extdeps.github.pulls { PullRequest, PullReview, PullRequestState, ReviewState, Open }import std.render { kv_pair, list_block }import std.types { NonEmptyStr }
+
 type PullRequestDigestSubject {
   number: Int
   title: String

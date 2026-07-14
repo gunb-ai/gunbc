@@ -1,6 +1,6 @@
 module gunbc.plans.ci_humming
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }import std.markdown { MarkdownBlock }import gunbc.plans.md_helpers { h2, p, li, ul }
+
 fn ci_humming_body() -> List<MarkdownBlock> {
   [
     p(text: "Home: ROADMAP §1 (CI as the substrate integration dogfood). This is the **▸ NOW — host-operation on `.dag`** milestone made concrete: placement, runner deployment, and caps are hand-managed and off-fabric today; this plan migrates them onto the modeled budget + carrier and uses that to un-throttle CI."),

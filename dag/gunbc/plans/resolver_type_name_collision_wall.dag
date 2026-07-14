@@ -1,6 +1,6 @@
 module gunbc.plans.resolver_type_name_collision_wall
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
+
 fn resolver_type_name_collision_wall_body() -> List<MarkdownBlock> {
   [
     p(text: "Status: **MODEL — SIGNED (parent bright-stag, 2026-06-23).** The model (mechanism + Q2 policy + activation) is signed; **no resolver edit lands** until the §4 grounding de-fork is clean — the resolver guard is a separate, operator-gated future PR that lands on the de-forked tree. This document is the signed model; §3/§4 record the final ruling."),

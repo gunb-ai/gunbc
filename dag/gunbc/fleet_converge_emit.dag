@@ -1,6 +1,6 @@
 module gunbc.fleet_converge_emit
 
-import std.types { String, List, Int, Bool }import product.placement_supply { HostIdentity }import std.layout {  Doc, DocConcat, DocEmpty,  LayoutProtocol,  doc_concat, doc_line_of,  render}import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }import std.decl_ref { DeclarationRef, WholeDeclaration }import gunbc.fleet_converge_apply {  converge_apply,  converge_apply_fleet,  FleetConvergeApplyResult,  fleet_converge_apply_result_converged,  fleet_converge_thin_invocation,}import gunbc.host_effect { LocalShell, HostEffectTransport }import gunbc.host_converge {  ConvergePolicy,  ConvergePolicyDerived,  ConvergePolicyUnsound,  HostConverge,  FreshStandup,  ExistingHostQuiescentReload,  gunbc_apply_mode_for_host,  gunbc_host_ctrl_checkout_path,  gunbc_dag_root_submodule_path,  gunbc_host_gunbc_root_path,  gunbc_root_env_key,  gunbc_ctrl_read_pin_script,  gunbc_fleet_pinned_binary_name,  fleet_converge_policy,}import v2.std.orchestration {  Pipeline,  PipelineStep,  Do,  If,  Run,  Let,  ExprLit,  FailFast,  ExitZero,  RedirectSpec,  CaptureSpec,  DiscardAll,  IgnoreFail,}import v2.std.collection { Absent, Present }import v2.std.diagnostic { Accepted, Rejected, None }import v2.compiler.emit_orchestration { orch_emit_pipeline }import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+
 data fleet_converge_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
 fn sh_arg(s: String) -> String {
