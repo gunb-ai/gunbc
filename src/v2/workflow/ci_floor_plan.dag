@@ -72,8 +72,6 @@ data floor_corpus_node: Node = Node {
   children: []
 }
 
-data execution_corpus_scope_prefix: String = "src/v2/test/claim/execution/"
-
 fn entry_kind_is_execution(w: ScheduleWitnessEntry) -> Bool {
   match w.kind {
     ExecutionWitnessKind => true
@@ -90,19 +88,6 @@ fn corpus_witness_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
 fn execution_witness_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
   filter(xs: spec.witness_entries, predicate: fn(w) {
     entry_kind_is_execution(w: w)
-  })
-}
-
-fn witness_entry_kind_path_agree(w: ScheduleWitnessEntry) -> Bool {
-  match w.kind {
-    ExecutionWitnessKind => starts_with(s: w.entry, prefix: execution_corpus_scope_prefix)
-    CorpusWitnessKind => !starts_with(s: w.entry, prefix: execution_corpus_scope_prefix)
-  }
-}
-
-fn witness_entries_kind_path_all_agree(entries: List<ScheduleWitnessEntry>) -> Bool {
-  fold(entries, init: true, f: fn(acc, w) {
-    acc && witness_entry_kind_path_agree(w: w)
   })
 }
 
