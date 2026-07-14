@@ -38,12 +38,18 @@ import gunbc.network_identity_subsumption {
   srv3_bmc_static_lease_row,
 }
 import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
-import gunbc.srv3_seeded_install_media { srv3_seeded_install_media_content_hash }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
 import product.placement_supply { HostIdentity }
+<<<<<<< HEAD
 import gunbc.srv3_os_install_actuate { srv3_bmcweb_token_path }
 import gunbc.srv3_sol_console_capture { srv3_sol_console_log_path }
 import gunbc.srv3_install_diagnostic_observe_script {
   srv3_install_diagnostic_observe_script,
+=======
+import gunbc.srv3_actuate_shell_paths {
+  srv3_bmcweb_token_path,
+  srv3_sol_console_log_path,
+>>>>>>> origin/main
 }
 
 data srv3_nbd_proxy_local_port: Int = 10809

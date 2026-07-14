@@ -5,8 +5,7 @@ import extdeps.container.oci.types {
   ContainerPortProtocol,
   Tcp,
 }
-import extdeps.container.oci.types { Architecture }
-import extdeps.toolchain.types { Os }
+import extdeps.toolchain.types { Architecture, Os }
 import std.types { Bool, ContentHash, FilePath, NonEmptyStr }
 
 import extdeps.external_authority { ExternalAuthority }

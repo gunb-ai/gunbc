@@ -2,7 +2,22 @@ module gunbc.host_effect_realize
 
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
+<<<<<<< HEAD
   Srv3InstallDiagnosticObserve, OsInstallActuatorToolchainEnsure,
+=======
+  Srv3InstallReconcileObserve,
+  DurableApprovalGrantRecord,
+  DurableApprovalGrantRead,
+  Srv3InstallMediaFetch,
+  Srv3SeededInstallMediaRemaster,
+  Srv3SeededInstallMediaToolchainEnsure,
+  Srv3SolConsoleCapture,
+  Srv3BmcwebSessionLogin,
+  Srv3BmcwebTokenExtract,
+  Srv3NbdProxyServe,
+  Srv3BootOnceReadBackSleep,
+  Srv3ReceiptEmit,
+>>>>>>> origin/main
   NodeControlPlane, HostOs, BmcController,
   Drive, OneShot, ConvergeLoop,
   HostEffectIntent, HostEffectEvidence, ShellEffectApplied, ConvergePlanApplied,
@@ -52,7 +67,12 @@ import gunbc.ci_deploy_access {
   deploy_access_check, deploy_access_check_observed,
   deploy_access_decision_reason,
 }
+<<<<<<< HEAD
 import std.types { String, NonEmptyStr, List, Bool }
+=======
+import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
+import std.types { String, NonEmptyStr, List }
+>>>>>>> origin/main
 
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
@@ -72,18 +92,38 @@ fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverg
   )
 }
 
+fn srv3_host_effect_script_resolution_failed_cell() -> ResolvedHostEffectCell {
+  IncompatibleCell { reason: "host_effect: srv3 typed effect script resolution failed; fail-closed" }
+}
+
 fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> ResolvedHostEffectCell {
   match target {
     HostOs { node: n } =>
-      match effect {
-        ShellCommand { script: s } => ShellOnHost { node: n, script: s }
-        RedfishAction { action: _ } =>
-          IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
-        ConvergePlan { policy: p } =>
-          if n.identity != p.identity {
-            IncompatibleCell { reason: converge_plan_identity_mismatch_reason(node: n, policy: p) }
-          } else {
-            ConvergeOnHost { node: n, host_converge: p }
+      match srv3_host_effect_script_for(effect: effect) {
+        Present { value: script } => ShellOnHost { node: n, script: script }
+        Absent =>
+          match effect {
+            ShellCommand { script: s } => ShellOnHost { node: n, script: s }
+            RedfishAction { action: _ } =>
+              IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
+            ConvergePlan { policy: p } =>
+              if n.identity != p.identity {
+                IncompatibleCell { reason: converge_plan_identity_mismatch_reason(node: n, policy: p) }
+              } else {
+                ConvergeOnHost { node: n, host_converge: p }
+              }
+            Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
+            DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
+            DurableApprovalGrantRead => srv3_host_effect_script_resolution_failed_cell()
+            Srv3InstallMediaFetch => srv3_host_effect_script_resolution_failed_cell()
+            Srv3SeededInstallMediaRemaster => srv3_host_effect_script_resolution_failed_cell()
+            Srv3SeededInstallMediaToolchainEnsure => srv3_host_effect_script_resolution_failed_cell()
+            Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
+            Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
+            Srv3BmcwebTokenExtract => srv3_host_effect_script_resolution_failed_cell()
+            Srv3NbdProxyServe => srv3_host_effect_script_resolution_failed_cell()
+            Srv3BootOnceReadBackSleep => srv3_host_effect_script_resolution_failed_cell()
+            Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
           }
         Srv3InstallDiagnosticObserve { bmc: b, port: p, iso_path: ip, iso_content_hash: h } =>
           Srv3DiagnosticObserveOnHost {
@@ -97,6 +137,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           OsInstallActuatorToolchainOnHost { node: n }
       }
     BmcController { node: n } =>
+<<<<<<< HEAD
       match effect {
         ShellCommand { script: _ } =>
           IncompatibleCell { reason: "host_effect: ShellCommand is in-band (shell/systemd) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -107,6 +148,31 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           IncompatibleCell { reason: "host_effect: Srv3InstallDiagnosticObserve is in-band (actuator host shell observe) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         OsInstallActuatorToolchainEnsure {} =>
           IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+=======
+      match srv3_host_effect_script_for(effect: effect) {
+        Present { value: _ } =>
+          IncompatibleCell { reason: "host_effect: srv3 shell effects are in-band (actuator host LocalShell) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        Absent =>
+          match effect {
+            ShellCommand { script: _ } =>
+              IncompatibleCell { reason: "host_effect: ShellCommand is in-band (shell/systemd) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
+            ConvergePlan { policy: _ } =>
+              IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
+            DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
+            DurableApprovalGrantRead => srv3_host_effect_script_resolution_failed_cell()
+            Srv3InstallMediaFetch => srv3_host_effect_script_resolution_failed_cell()
+            Srv3SeededInstallMediaRemaster => srv3_host_effect_script_resolution_failed_cell()
+            Srv3SeededInstallMediaToolchainEnsure => srv3_host_effect_script_resolution_failed_cell()
+            Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
+            Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
+            Srv3BmcwebTokenExtract => srv3_host_effect_script_resolution_failed_cell()
+            Srv3NbdProxyServe => srv3_host_effect_script_resolution_failed_cell()
+            Srv3BootOnceReadBackSleep => srv3_host_effect_script_resolution_failed_cell()
+            Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
+          }
+>>>>>>> origin/main
       }
   }
 }
