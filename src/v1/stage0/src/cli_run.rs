@@ -4566,8 +4566,7 @@ pub fn handle_converge(host: String) {
         v1_interpreter::Value::Str(host.clone()),
     )];
     let result =
-        match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false)
-        {
+        match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("runtime error: {e}");
@@ -4588,16 +4587,19 @@ pub fn handle_converge(host: String) {
             std::process::exit(1);
         }
     };
-    let converged = matches!(ctx.field(fields, "converged"), Some(v1_interpreter::Value::Bool(true)));
+    let converged = matches!(
+        ctx.field(fields, "converged"),
+        Some(v1_interpreter::Value::Bool(true))
+    );
     let reason = match ctx.field(fields, "reason") {
-        Some(v1_interpreter::Value::Variant { variant_name, fields: vf, .. })
-            if ctx.sym_eq(*variant_name, "Present") =>
-        {
-            match ctx.field(vf, "value") {
-                Some(v1_interpreter::Value::Str(s)) => Some(s.clone()),
-                _ => None,
-            }
-        }
+        Some(v1_interpreter::Value::Variant {
+            variant_name,
+            fields: vf,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
+            Some(v1_interpreter::Value::Str(s)) => Some(s.clone()),
+            _ => None,
+        },
         _ => None,
     };
     println!("{line}");
