@@ -2,6 +2,8 @@ module gunbc.srv3_host_effect_script
 
 import gunbc.host_effect {
   HostEffect,
+  Srv3InstallDiagnosticObserve,
+  OsInstallActuatorToolchainEnsure,
   Srv3InstallReconcileObserve,
   DurableApprovalGrantRecord,
   DurableApprovalGrantRead,
@@ -19,8 +21,10 @@ import gunbc.host_effect {
   ConvergePlan,
 }
 import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
-import gunbc.srv3_install_diagnostic_checklist { srv3_install_diagnostic_observe_script }
-import gunbc.srv3_os_install_diagnostic { srv3_os_install_attempt_intent }
+import gunbc.srv3_os_install_diagnostic {
+  srv3_os_install_attempt_intent,
+  srv3_install_diagnostic_observe_script_for_intent,
+}
 import gunbc.srv3_os_install_reconcile_receipt { srv3_install_record_boot_once_approval_script }
 import gunbc.srv3_os_install_reconcile_types {
   srv3_boot_once_approval_grant_path,
@@ -116,7 +120,7 @@ fn install_media_remaster_toolchain_ensure_script() -> String {
 }
 
 fn srv3_install_reconcile_observe_script(include_git_meta: Bool) -> String {
-  let diagnostic = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
+  let diagnostic = srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent)
   if include_git_meta {
     concat(diagnostic, srv3_install_reconcile_observe_meta_script())
   } else {
@@ -234,6 +238,8 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
       }
     Srv3ReceiptEmit { lines: lines } =>
       Present { value: shell_exec_via_bash(body: srv3_receipt_emit_script(lines: lines)) }
+    Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => Absent
+    OsInstallActuatorToolchainEnsure {} => Absent
     ShellCommand { script: _ } => Absent
     RedfishAction { action: _ } => Absent
     ConvergePlan { policy: _ } => Absent

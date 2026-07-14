@@ -1,7 +1,9 @@
 module gunbc.host_effect_realize
 
 import gunbc.host_effect {
-  HostEffect, ShellCommand, RedfishAction, ConvergePlan, SetHostnameCas,
+  HostEffect, ShellCommand, RedfishAction, ConvergePlan,
+  Srv3InstallDiagnosticObserve, OsInstallActuatorToolchainEnsure,
+  SetHostnameCas,
   Srv3InstallReconcileObserve,
   DurableApprovalGrantRecord,
   DurableApprovalGrantRead,
@@ -39,6 +41,27 @@ import gunbc.host_converge_realize {
   ConvergeHostInterpreted,
   converge_host_no_knobs_reason,
 }
+import extdeps.gunbc
+import extdeps.apt { package_curl, package_nbdkit, package_socat, apt_get_binary_path }
+import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools.nbdkit { nbdkit_cli_tool }
+import extdeps.tools.socat { socat_cli_tool }
+import extdeps.tools.websocat {
+  websocat_cli_tool,
+  websocat_github_tag,
+  websocat_asset_aarch64,
+  websocat_install_path,
+  websocat_github_release_download_url,
+}
+import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.srv3_install_diagnostic_observe_script {
+  srv3_install_diagnostic_observe_script,
+}
+import gunbc.srv3_actuate_shell_paths {
+  srv3_bmcweb_token_path,
+  srv3_sol_console_log_path,
+}
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.ci_deploy_access {
   DeployAccess, DeployAccessActor,
@@ -61,7 +84,7 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
   InstallMediaRemasterRefused,
 }
 import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Bool }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -69,7 +92,12 @@ type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
   | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }
   | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
+<<<<<<< HEAD
   | TypedReconcileOnHost { node: ComputeHost, kind: TypedReconcileKind }
+=======
+  | Srv3DiagnosticObserveOnHost { node: ComputeHost, bmc: String, port: String, iso_path: String, intent_content_hash: String }
+  | OsInstallActuatorToolchainOnHost { node: ComputeHost }
+>>>>>>> origin/main
   | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | IncompatibleCell { reason: String }
 
@@ -90,19 +118,51 @@ fn srv3_host_effect_script_resolution_failed_cell() -> ResolvedHostEffectCell {
 fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> ResolvedHostEffectCell {
   match target {
     HostOs { node: n } =>
-      match srv3_host_effect_script_for(effect: effect) {
-        Present { value: script } => ShellOnHost { node: n, script: script }
-        Absent =>
-          match effect {
-            ShellCommand { script: s } => ShellOnHost { node: n, script: s }
-            RedfishAction { action: _ } =>
-              IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
-            ConvergePlan { policy: p } =>
-              if n.identity != p.identity {
-                IncompatibleCell { reason: converge_plan_identity_mismatch_reason(node: n, policy: p) }
-              } else {
-                ConvergeOnHost { node: n, host_converge: p }
+      match effect {
+        Srv3InstallDiagnosticObserve { bmc: b, port: p, iso_path: ip, iso_content_hash: h } =>
+          Srv3DiagnosticObserveOnHost {
+            node: n,
+            bmc: b as String,
+            port: p as String,
+            iso_path: ip as String,
+            intent_content_hash: h as String,
+          }
+        OsInstallActuatorToolchainEnsure {} =>
+          OsInstallActuatorToolchainOnHost { node: n }
+        _ =>
+          match srv3_host_effect_script_for(effect: effect) {
+            Present { value: script } => ShellOnHost { node: n, script: script }
+            Absent =>
+              match effect {
+                ShellCommand { script: s } => ShellOnHost { node: n, script: s }
+                RedfishAction { action: _ } =>
+                  IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
+                ConvergePlan { policy: p } =>
+                  if n.identity != p.identity {
+                    IncompatibleCell { reason: converge_plan_identity_mismatch_reason(node: n, policy: p) }
+                  } else {
+                    ConvergeOnHost { node: n, host_converge: p }
+                  }
+                Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } =>
+                  srv3_host_effect_script_resolution_failed_cell()
+                OsInstallActuatorToolchainEnsure {} =>
+                  srv3_host_effect_script_resolution_failed_cell()
+                Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
+                DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
+                DurableApprovalGrantRead => srv3_host_effect_script_resolution_failed_cell()
+                Srv3InstallMediaFetch => srv3_host_effect_script_resolution_failed_cell()
+                Srv3SeededInstallMediaRemaster => srv3_host_effect_script_resolution_failed_cell()
+                Srv3SeededInstallMediaToolchainEnsure => srv3_host_effect_script_resolution_failed_cell()
+                Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
+                Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
+                Srv3BmcwebTokenExtract => srv3_host_effect_script_resolution_failed_cell()
+                Srv3NbdProxyServe => srv3_host_effect_script_resolution_failed_cell()
+                Srv3BootOnceReadBackSleep => srv3_host_effect_script_resolution_failed_cell()
+                Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
+                SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
+                  HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
               }
+<<<<<<< HEAD
             Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
             DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
             DurableApprovalGrantRead => srv3_host_effect_script_resolution_failed_cell()
@@ -146,6 +206,46 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
             Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
             SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
               IncompatibleCell { reason: "host_effect: SetHostnameCas is in-band (shell hostnamectl) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+=======
+          }
+      }
+    BmcController { node: n } =>
+      match effect {
+        Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } =>
+          IncompatibleCell { reason: "host_effect: Srv3InstallDiagnosticObserve is in-band (actuator host shell observe) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        OsInstallActuatorToolchainEnsure {} =>
+          IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        _ =>
+          match srv3_host_effect_script_for(effect: effect) {
+            Present { value: _ } =>
+              IncompatibleCell { reason: "host_effect: srv3 shell effects are in-band (actuator host LocalShell) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            Absent =>
+              match effect {
+                ShellCommand { script: _ } =>
+                  IncompatibleCell { reason: "host_effect: ShellCommand is in-band (shell/systemd) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
+                ConvergePlan { policy: _ } =>
+                  IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } =>
+                  srv3_host_effect_script_resolution_failed_cell()
+                OsInstallActuatorToolchainEnsure {} =>
+                  srv3_host_effect_script_resolution_failed_cell()
+                Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
+                DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
+                DurableApprovalGrantRead => srv3_host_effect_script_resolution_failed_cell()
+                Srv3InstallMediaFetch => srv3_host_effect_script_resolution_failed_cell()
+                Srv3SeededInstallMediaRemaster => srv3_host_effect_script_resolution_failed_cell()
+                Srv3SeededInstallMediaToolchainEnsure => srv3_host_effect_script_resolution_failed_cell()
+                Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
+                Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
+                Srv3BmcwebTokenExtract => srv3_host_effect_script_resolution_failed_cell()
+                Srv3NbdProxyServe => srv3_host_effect_script_resolution_failed_cell()
+                Srv3BootOnceReadBackSleep => srv3_host_effect_script_resolution_failed_cell()
+                Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
+                SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
+                  IncompatibleCell { reason: "host_effect: SetHostnameCas is in-band (shell hostnamectl) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+              }
+>>>>>>> origin/main
           }
       }
   }
@@ -158,8 +258,7 @@ type ShellExecObserved {
   stderr: String
 }
 
-fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
-  let header = "host_effect_apply: shell exec returned a nonzero exit code; fail-closed, no fabricated convergence"
+fn shell_exec_failure_reason_headered(observed: ShellExecObserved, header: String) -> String {
   if observed.stdout == "" && observed.stderr == "" {
     header
   } else {
@@ -167,6 +266,387 @@ fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
       concat(concat(header, "\n--- stdout ---\n"), observed.stdout),
       concat("\n--- stderr ---\n", observed.stderr)
     )
+  }
+}
+
+fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
+  shell_exec_failure_reason_headered(
+    observed: observed,
+    header: "host_effect_apply: shell exec returned a nonzero exit code; fail-closed, no fabricated convergence",
+  )
+}
+
+fn srv3_shell_reconcile(
+  observed: ShellExecObserved,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let grounding = if observed.success {
+      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
+    } else {
+      DoesNotGround {
+        reason: shell_exec_failure_reason_headered(
+          observed: observed,
+          header: "host_effect_apply: srv3 shell exec returned a nonzero exit code; fail-closed",
+        ),
+      }
+    }
+  reconcile_grounded(
+    apply_effect: intent,
+    show_read: ReadObserved { value: observed },
+    grounding: grounding
+  )
+}
+
+fn srv3_toolchain_ensure_reconcile(
+  observed: ShellExecObserved,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let grounding = if observed.success {
+      Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
+    } else {
+      DoesNotGround {
+        reason: shell_exec_failure_reason_headered(
+          observed: observed,
+          header: "host_effect_apply: OsInstallActuatorToolchainEnsure synthesized receipt from typed per-tool ensure results; fail-closed",
+        ),
+      }
+    }
+  reconcile_grounded(
+    apply_effect: intent,
+    show_read: ReadObserved { value: observed },
+    grounding: grounding
+  )
+}
+
+fn realize_srv3_install_diagnostic_observe(
+  bmc: String,
+  port: String,
+  iso_path: String,
+  intent_content_hash: String,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let script = srv3_install_diagnostic_observe_script(
+    token_path: srv3_bmcweb_token_path,
+    bmc: bmc,
+    port: port,
+    iso_path: iso_path,
+    intent_content_hash: intent_content_hash,
+    sol_log: srv3_sol_console_log_path as String,
+  )
+  let observed = run_shell_transport(script: shell_exec_via_bash(body: script), transport: transport)
+  srv3_shell_reconcile(observed: observed, intent: effect_intent)
+}
+
+data srv3_join_shell_words_controlled_args_note: String = "SshShell argv composer for toolchain transport helpers only; callers must pass controlled literals (package names, modeled paths) — no shell-quoting until typed argv dispatch lands."
+
+fn srv3_join_shell_words(words: List<String>) -> String {
+  fold(
+    words,
+    init: "",
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
+}
+
+data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "realize_os_install_actuator_toolchain_ensure refuses EmitArtifactThenThinRun at entry; srv3_actuator_toolchain_emit_artifact_transport_helper_refused false arms are fail-closed backstop only — not a silent widen (DESIGN §5)"
+
+fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused() -> Bool {
+  false
+}
+
+fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt() -> String? {
+  none
+}
+
+fn srv3_transport_witness_bin_success(
+  transport: HostEffectTransport,
+  workdir: String,
+  bin_path: String,
+  args: List<String>,
+) -> Bool {
+  match transport {
+    LocalShell =>
+      gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args).success
+    SshShell { ssh_host: h } => {
+      let argv = srv3_join_shell_words(words: args)
+      let cmd = if workdir == "/" {
+        if argv == "" { bin_path } else { concat(bin_path, concat(" ", argv)) }
+      } else {
+        concat(
+          concat("cd ", concat(workdir, " && ")),
+          if argv == "" { bin_path } else { concat(bin_path, concat(" ", argv)) },
+        )
+      }
+      ssh_session_exec(host: h, command: cmd as NonEmptyStr).success
+    }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
+  }
+}
+
+fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) -> Bool {
+  match transport {
+    LocalShell => shell.Test.IsExecutable(path: path).executable
+    SshShell { ssh_host: h } =>
+      ssh_session_exec(host: h, command: concat("test -x ", path) as NonEmptyStr).success
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
+  }
+}
+
+fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+  match transport {
+    LocalShell => shell.Which.Check(command: tool_name).exists
+    SshShell { ssh_host: h } =>
+      ssh_session_exec(
+        host: h,
+        command: concat("command -v ", tool_name as String) as NonEmptyStr,
+      ).success
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
+  }
+}
+
+fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> String? {
+  match transport {
+    LocalShell => {
+      let found = shell.Which.Check(command: tool_name)
+      if found.exists {
+        match found.path {
+          Present { value: tool_path } => Present { value: tool_path as String }
+          Absent => none
+        }
+      } else {
+        none
+      }
+    }
+    SshShell { ssh_host: h } => {
+      let result = ssh_session_exec(
+        host: h,
+        command: concat("command -v ", tool_name as String) as NonEmptyStr,
+      )
+      if result.success {
+        let tool_path = trim(result.stdout)
+        if tool_path == "" { none } else { Present { value: tool_path } }
+      } else {
+        none
+      }
+    }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt()
+  }
+}
+
+fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+  match srv3_tool_bin_path(tool_name: tool_name, transport: transport) {
+    Present { value: tool_path } =>
+      srv3_transport_witness_bin_success(
+        transport: transport,
+        workdir: "/",
+        bin_path: tool_path,
+        args: ["--version"],
+      )
+    Absent => false
+  }
+}
+
+fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTransport) -> Bool {
+  match transport {
+    LocalShell => {
+      let uid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-u"])
+      let gid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-g"])
+      if uid.success && gid.success {
+        let owner = concat(uid.stdout, concat(":", gid.stdout))
+        gunbc.WitnessBin.Run(
+          workdir: "/",
+          bin_path: "/usr/bin/sudo",
+          args: ["-n", "/usr/bin/chown", owner, path],
+        ).success
+      } else {
+        false
+      }
+    }
+    SshShell { ssh_host: h } => {
+      let uid = ssh_session_exec(host: h, command: "id -u" as NonEmptyStr)
+      let gid = ssh_session_exec(host: h, command: "id -g" as NonEmptyStr)
+      if uid.success && gid.success {
+        let owner = concat(trim(uid.stdout), concat(":", trim(gid.stdout)))
+        srv3_transport_witness_bin_success(
+          transport: transport,
+          workdir: "/",
+          bin_path: "/usr/bin/sudo",
+          args: ["-n", "/usr/bin/chown", owner, path],
+        )
+      } else {
+        false
+      }
+    }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
+  }
+}
+
+fn srv3_privileged_apt_install(package: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+  srv3_transport_witness_bin_success(
+    transport: transport,
+    workdir: "/",
+    bin_path: "/usr/bin/sudo",
+    args: srv3_actuator_toolchain_privileged_apt_install_args(package: package),
+  )
+}
+
+fn srv3_actuator_toolchain_privileged_apt_install_args(package: NonEmptyStr) -> List<String> {
+  [
+    "-n",
+    apt_get_binary_path as String,
+    "install",
+    "-y",
+    package as String,
+  ]
+}
+
+fn srv3_actuator_toolchain_websocat_release_download_url() -> String {
+  websocat_github_release_download_url(
+    tag: websocat_github_tag,
+    asset: websocat_asset_aarch64,
+  )
+}
+
+fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> Bool {
+  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: package_curl)
+  args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
+}
+
+fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> Bool {
+  string_contains(
+    s: srv3_actuator_toolchain_websocat_release_download_url(),
+    pattern: "github.com/vi/websocat/releases/download/",
+  )
+    && string_contains(s: websocat_install_path as String, pattern: gunbc_bin_dir as String)
+}
+
+fn srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_namespace_upsert() -> Bool {
+  string_contains(s: websocat_install_path as String, pattern: concat(gunbc_bin_dir as String, "/"))
+}
+
+fn srv3_ensure_apt_tool(
+  tool_name: NonEmptyStr,
+  package: NonEmptyStr,
+  require_version_probe: Bool,
+  transport: HostEffectTransport,
+) -> Bool {
+  if srv3_apt_tool_present(tool_name: tool_name, transport: transport)
+    && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport))
+  {
+    true
+  } else {
+    srv3_privileged_apt_install(package: package, transport: transport)
+      && srv3_apt_tool_present(tool_name: tool_name, transport: transport)
+      && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport))
+  }
+}
+
+fn srv3_ensure_websocat(transport: HostEffectTransport) -> Bool {
+  let install_path = websocat_install_path as String
+  if srv3_transport_test_executable(path: install_path, transport: transport) {
+    true
+  } else {
+    match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
+      Present { value: curl_path } => {
+        let bin_dir = gunbc_bin_dir as String
+        let url = srv3_actuator_toolchain_websocat_release_download_url()
+        let mkdir = srv3_transport_witness_bin_success(
+          transport: transport,
+          workdir: "/",
+          bin_path: "/usr/bin/sudo",
+          args: ["mkdir", "-p", bin_dir],
+        )
+        let chown = srv3_chown_directory_to_current_user(path: bin_dir, transport: transport)
+        let curl = srv3_transport_witness_bin_success(
+          transport: transport,
+          workdir: "/",
+          bin_path: curl_path,
+          args: ["-fsSL", url, "-o", install_path],
+        )
+        let chmod = srv3_transport_witness_bin_success(
+          transport: transport,
+          workdir: "/",
+          bin_path: "/bin/chmod",
+          args: ["+x", install_path],
+        )
+        mkdir
+          && chown
+          && curl
+          && chmod
+          && srv3_transport_test_executable(path: install_path, transport: transport)
+      }
+      Absent => false
+    }
+  }
+}
+
+fn srv3_realize_os_install_actuator_toolchain_ensure_body(
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let curl_ok = srv3_ensure_apt_tool(
+    tool_name: curl_cli_tool.name,
+    package: package_curl,
+    require_version_probe: true,
+    transport: transport,
+  )
+  let nbdkit_ok = srv3_ensure_apt_tool(
+    tool_name: nbdkit_cli_tool.name,
+    package: package_nbdkit,
+    require_version_probe: true,
+    transport: transport,
+  )
+  let socat_ok = srv3_ensure_apt_tool(
+    tool_name: socat_cli_tool.name,
+    package: package_socat,
+    require_version_probe: false,
+    transport: transport,
+  )
+  let websocat_ok = srv3_ensure_websocat(transport: transport)
+  let success = curl_ok && nbdkit_ok && socat_ok && websocat_ok
+  let stdout = concat(
+    concat(
+      concat(
+        concat("OsInstallActuatorToolchainReceipt: curl=", if curl_ok { "ok" } else { "fail" }),
+        concat(" nbdkit=", if nbdkit_ok { "ok" } else { "fail" }),
+      ),
+      concat(" socat=", if socat_ok { "ok" } else { "fail" }),
+    ),
+    concat(" websocat=", if websocat_ok { "ok" } else { "fail" }),
+  )
+  let observed = ShellExecObserved {
+    exit_code: if success { 0 } else { 1 },
+    success: success,
+    stdout: stdout,
+    stderr: if success { "" } else { "actuator-toolchain-ensure: one or more tools failed ensure" },
+  }
+  srv3_toolchain_ensure_reconcile(observed: observed, intent: effect_intent)
+}
+
+fn realize_os_install_actuator_toolchain_ensure(
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match effect_intent.transport {
+    LocalShell =>
+      srv3_realize_os_install_actuator_toolchain_ensure_body(
+        transport: effect_intent.transport,
+        effect_intent: effect_intent,
+      )
+    SshShell { ssh_host: _ } =>
+      srv3_realize_os_install_actuator_toolchain_ensure_body(
+        transport: effect_intent.transport,
+        effect_intent: effect_intent,
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: OsInstallActuatorToolchainEnsure cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        applied: effect_intent,
+      }
   }
 }
 
@@ -366,7 +846,21 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
     ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
     ConvergeOnHost { node: _, host_converge: hc } =>
       realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
+<<<<<<< HEAD
     TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
+=======
+    Srv3DiagnosticObserveOnHost { node: _, bmc: b, port: p, iso_path: ip, intent_content_hash: h } =>
+      realize_srv3_install_diagnostic_observe(
+        bmc: b,
+        port: p,
+        iso_path: ip,
+        intent_content_hash: h,
+        transport: transport,
+        effect_intent: intent,
+      )
+    OsInstallActuatorToolchainOnHost { node: _ } =>
+      realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
+>>>>>>> origin/main
     HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
       realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
@@ -407,7 +901,21 @@ fn host_effect_apply_gated(
         ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
         ConvergeOnHost { node: _, host_converge: hc } =>
           realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
+<<<<<<< HEAD
         TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
+=======
+        Srv3DiagnosticObserveOnHost { node: _, bmc: b, port: p, iso_path: ip, intent_content_hash: h } =>
+          realize_srv3_install_diagnostic_observe(
+            bmc: b,
+            port: p,
+            iso_path: ip,
+            intent_content_hash: h,
+            transport: transport,
+            effect_intent: intent,
+          )
+        OsInstallActuatorToolchainOnHost { node: _ } =>
+          realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
+>>>>>>> origin/main
         HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
           realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
@@ -449,7 +957,12 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
             ShellOnHost { node: _, script: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+<<<<<<< HEAD
             TypedReconcileOnHost { node: _, kind: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+=======
+            Srv3DiagnosticObserveOnHost { node: _, bmc: _, port: _, iso_path: _, intent_content_hash: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+>>>>>>> origin/main
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
