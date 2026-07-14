@@ -5,12 +5,19 @@ import v2.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   eval_context_with_semantics,
+  eval_with_context,
+  inputs_root_only,
   run_test_claim,
   test_claim_run_verdict,
   test_claim_typed_input_node
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.extdeps.languages.dag {
+  dag_int_literal_magnitude_int_from_node,
+  dag_int_literal_node_from_lexeme,
+  dag_node_is_int_literal_atom
+}
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
   Absent,
@@ -50,6 +57,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  Value,
   SyntheticOccurrence,
 }
 import v2.std.runtime {
@@ -109,15 +117,35 @@ fn bind_eval_one_value() -> RuntimeValue {
 }
 
 fn bind_eval_lit_one() -> Node {
-  bind_eval_atom(s: ^bind_eval_lit_one_sym)
+  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^bind_eval_lit_one_lexeme_invalid } },
+        occurrence_id: SyntheticOccurrence,
+        children: []
+      }
+  }
 }
 
-fn bind_eval_divergent() -> Node {
-  bind_eval_atom(s: ^bind_eval_divergent_sym)
+data bind_eval_counted_value_node: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  occurrence_id: SyntheticOccurrence,
+  children: []
+}
+
+data bind_eval_divergent_value_node: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  occurrence_id: SyntheticOccurrence,
+  children: []
 }
 
 fn bind_eval_counted() -> Node {
-  bind_eval_atom(s: ^bind_eval_counted_sym)
+  bind_eval_counted_value_node
+}
+
+fn bind_eval_divergent() -> Node {
+  bind_eval_divergent_value_node
 }
 
 fn bind_eval_counted_slot_key() -> EnvironmentBindingKey {
@@ -159,16 +187,24 @@ fn bind_eval_diagnostic(n: Node) -> Diagnostic {
 }
 
 fn bind_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == bind_eval_lit_one() {
-    outcome_accepted(value: bind_eval_one_value())
-  } else if node == bind_eval_divergent() {
-    outcome_rejected(d: bind_eval_diagnostic(n: node))
-  } else if node == bind_eval_counted() {
+  if dag_node_is_int_literal_atom(node: node) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: mag, diagnostics: _ } =>
+        if mag == 1 {
+          outcome_accepted(value: bind_eval_one_value())
+        } else {
+          outcome_rejected(d: bind_eval_diagnostic(n: node))
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
+  } else if node == bind_eval_counted_value_node {
     if bind_eval_touch_from_env(env: env, key: bind_eval_touch_key()) >= 1 {
       outcome_rejected(d: bind_eval_diagnostic(n: node))
     } else {
       outcome_accepted(value: bind_eval_one_value())
     }
+  } else if node == bind_eval_divergent_value_node {
+    outcome_rejected(d: bind_eval_diagnostic(n: node))
   } else {
     outcome_rejected(d: bind_eval_diagnostic(n: node))
   }
@@ -451,8 +487,26 @@ fn bind_eval_minted_occurrence_equal_reference_reads_holds() -> Bool {
   )
 }
 
+fn bind_eval_unbound_reference_refuses_holds() -> Bool {
+  let body = bind_eval_atom(s: ^bind_eval_unbound_ref_sym)
+  let arrow = bind_eval_arrow_with_body(body: body)
+  let call = bind_eval_pick_call(callee: arrow)
+  let root = bind_eval_tree_root(call: call, expected: bind_eval_lit_one())
+  let tree = bind_eval_admitted_tree(root: root)
+  match eval_with_context(
+    tree: tree,
+    context: bind_eval_context(),
+    inputs: inputs_root_only(root: call)
+  ) {
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
 test fn bind_reference_binding_protocol_witnesses_hold() -> Bool {
   bind_eval_bound_reference_reads_value_holds()
     && bind_eval_minted_occurrence_equal_reference_reads_holds()
     && bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds()
+    && bind_eval_unbound_reference_refuses_holds()
 }
