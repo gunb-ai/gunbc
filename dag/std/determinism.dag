@@ -1,6 +1,5 @@
 module std.determinism
 
-import std.types { Bool }
 import std.perturbation { PerturbationVerdict, ResponseConsistent, ResponseViolation }
 import std.decl_ref { DeclarationRef }
 
@@ -19,19 +18,5 @@ fn determinism_compose(outer: Determinism, inner: Determinism) -> Determinism {
   match outer {
     NonDeterministic { source: s } => NonDeterministic { source: s }
     Deterministic => inner
-  }
-}
-
-fn determinism_is_deterministic(c: Determinism) -> Bool {
-  match c {
-    Deterministic => true
-    NonDeterministic { source: _ } => false
-  }
-}
-
-fn determinism_reached(c: Determinism) -> DeclarationRef? {
-  match c {
-    Deterministic => Absent
-    NonDeterministic { source: s } => Present { value: s }
   }
 }
