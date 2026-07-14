@@ -40,6 +40,7 @@ pub mod memory_governor;
 pub mod module_path_index;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
+pub mod shared_typecheck_store;
 pub mod std_algebra;
 pub mod std_coercion;
 pub mod std_computation;

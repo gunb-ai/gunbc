@@ -13,7 +13,28 @@ import gunbc.host_converge {
   fleet_converge_policy,
   find_by_identity,
 }
-import gunbc.host_effect { LocalShell, HostEffectIntent, HostEffect, ConvergePlan, ShellCommand, RedfishAction }
+import gunbc.host_effect {
+  LocalShell,
+  HostEffectIntent,
+  HostEffect,
+  ConvergePlan,
+  ShellCommand,
+  RedfishAction,
+  Srv3InstallDiagnosticObserve,
+  OsInstallActuatorToolchainEnsure,
+  Srv3InstallReconcileObserve,
+  DurableApprovalGrantRecord,
+  DurableApprovalGrantRead,
+  Srv3InstallMediaFetch,
+  Srv3SeededInstallMediaRemaster,
+  Srv3SeededInstallMediaToolchainEnsure,
+  Srv3SolConsoleCapture,
+  Srv3BmcwebSessionLogin,
+  Srv3BmcwebTokenExtract,
+  Srv3NbdProxyServe,
+  Srv3BootOnceReadBackSleep,
+  Srv3ReceiptEmit,
+}
 import gunbc.fleet_converge_apply { converge_apply_for_host }
 import std.realization_reconcile { Converged, NotConverged }
 
@@ -72,6 +93,7 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     ConvergePlan { policy: p } => p.knobs.length()
     ShellCommand { script: _ } => fallback
     RedfishAction { action: _ } => fallback
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => fallback
     Srv3InstallReconcileObserve { include_git_meta: _ } => fallback
     DurableApprovalGrantRecord => fallback
     DurableApprovalGrantRead => fallback
