@@ -1,0 +1,13 @@
+keyed_calls=1780
+unkeyed_calls=48
+overflow_calls=0
+distinct_keys=1322
+duplicated_keys=286
+single_site_keys=103
+multi_site_keys=183
+wasted_ms_total=5
+wasted_ms_single_site=1
+wasted_ms_multi_site=4
+memo_hits=458
+memo_misses=1322
+memo_overflow=0
