@@ -714,13 +714,16 @@ fn filesystem_path_carrier_touched(
   }
 }
 
-fn carriers_have_filesystem_literal_pattern(carriers: List<LiveReadCarrier>) -> Bool {
-  any(xs: carriers, predicate: fn(c) {
-    match c {
-      FilesystemReadPath { path_pattern: LiteralPath { path: _ } } => true
-      _ => false
-    }
-  })
+fn live_read_carrier_touched_by_path(
+  carrier: LiveReadCarrier,
+  touched_path: String
+) -> Bool {
+  match carrier {
+    FilesystemReadPath { path_pattern: pa } =>
+      filesystem_path_carrier_touched(path_pattern: pa, touched_path: touched_path)
+    ModuleDeclarationFactsScan => true
+    DeclFactsReflection { home: _ } => true
+  }
 }
 
 fn runtime_read_touched_by_path_g2(
@@ -733,26 +736,9 @@ fn runtime_read_touched_by_path_g2(
     match classification {
       LocalRead => false
       RuntimeRead { carriers: carriers } =>
-        if carriers_have_filesystem_literal_pattern(carriers: carriers) {
-          any(xs: carriers, predicate: fn(carrier) {
-            match carrier {
-              FilesystemReadPath { path_pattern: LiteralPath { path: p } } =>
-                path_matches_touched(closure_path: p, touched_path: touched_path)
-              ModuleDeclarationFactsScan => true
-              DeclFactsReflection { home: _ } => true
-              _ => false
-            }
-          })
-        } else {
-          any(xs: carriers, predicate: fn(carrier) {
-            match carrier {
-              FilesystemReadPath { path_pattern: pa } =>
-                filesystem_path_carrier_touched(path_pattern: pa, touched_path: touched_path)
-              ModuleDeclarationFactsScan => true
-              DeclFactsReflection { home: _ } => true
-            }
-          })
-        }
+        any(xs: carriers, predicate: fn(carrier) {
+          live_read_carrier_touched_by_path(carrier: carrier, touched_path: touched_path)
+        })
     }
   }
 }

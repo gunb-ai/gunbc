@@ -239,10 +239,23 @@ test fn g2_roster_gate_literal_path_touched_selects() -> Bool {
     classification: c,
     touched_path: "src/v2/std/algebra.dag"
   )
-    && !runtime_read_touched_by_path_g2(
+    && runtime_read_touched_by_path_g2(
       classification: c,
-      touched_path: "src/v2/std/logic.dag"
+      touched_path: "src/v2/lens/complexity_accumulator_copy.dag"
     )
+}
+
+test fn g2_unknown_filesystem_path_widens_alongside_literal_paths() -> Bool {
+  let c = live_read_classification_g2_from_facts(
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    facts: roster_gate_corpus_facts,
+    decls: fn_arrow_decl_facts_live(),
+    carrier_homes: live_read_carrier_homes_v0
+  )
+  runtime_read_touched_by_path_g2(
+    classification: c,
+    touched_path: "src/v2/std/logic.dag"
+  )
 }
 
 test fn g2_implies_reads_live_tree_for_roster_gate() -> Bool {
