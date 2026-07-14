@@ -6,7 +6,7 @@ import gunbc.ci_gate {
   Gate,
   EmitHostGate, LayeringImportsGate, ExtdepsExternalAuthorityGate,
   DagCompileCleanGate, GeneratedArtifactDriftGate, SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
 import std.materialization_ladder {
   Frame, SharedStateFrame,
@@ -53,7 +53,6 @@ fn gate_consumer_site(g: Gate) -> String {
     RegenVerifyGate => "gate:RegenVerifyGate"
     SelfHostReadsRealBytesGate => "gate:SelfHostReadsRealBytesGate"
     SelfHostStalenessGate => "gate:SelfHostStalenessGate"
-    EmitDeterminismGate => "gate:EmitDeterminismGate"
   }
 }
 

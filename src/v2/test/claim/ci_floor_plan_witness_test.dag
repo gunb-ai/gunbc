@@ -25,7 +25,7 @@ import v2.workflow.ci_floor_plan {
   witness_regen_spec_carries_no_witness_corpus,
 }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, EmitDeterminismGate }
+import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, RegenVerifyGate }
 import std.realization_schedule {
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
@@ -86,7 +86,7 @@ data heavy_pair_spec_note: String = "The 2026-07-11 serial job split moved EmitD
 
 fn ci_spec_with_extra_heavy_gate(spec: CiSpec) -> CiSpec {
   CiSpec {
-    gates: concat(spec.gates, [EmitDeterminismGate]),
+    gates: concat(spec.gates, [RegenVerifyGate]),
     witness_entries: spec.witness_entries,
     discovery_scan_dirs: spec.discovery_scan_dirs,
     diff_policy: spec.diff_policy,
