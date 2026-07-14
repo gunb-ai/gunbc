@@ -800,12 +800,13 @@ mod process_workspace_root_tests {
         for name in [
             "Nat",
             "EffectShape",
-            "Terminal",
             "Disposition",
             "money_amount_micro_count",
             "Run",
             "Pipeline",
             "orch_emit_step",
+            "NetworkInterface",
+            "PersistenceKind",
         ] {
             let entry = census.get(name).unwrap_or_else(|| panic!("{name}: missing"));
             match entry.as_ref() {
@@ -2958,6 +2959,10 @@ fn census_module_path_included(path: &str) -> bool {
     // PR-5c bare census: all non-test dag modules that gunbc may reference after
     // import strip (std, extdeps, product, ctrl, tools, …).
     if p.contains("dag/") && !p.contains("dag/test/") {
+        // product.NetworkInterface is the gunbc authority; docker's homonym is excluded.
+        if p.contains("dag/extdeps/docker/container_stats.dag") {
+            return false;
+        }
         return true;
     }
     if p.contains("src/v2/std/") {
