@@ -1070,21 +1070,34 @@ pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
     excludes
 }
 
-/// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs
-/// `loaded` modules in the current resolve context (same exclude set as `whole_tree_resolved_ctx`).
-pub fn fn_arrow_decl_substrate_is_whole_tree_for_census(loaded: usize) -> bool {
+/// Modules always unioned into entry resolve for namespace-only `global_bare` (PR-5a).
+fn global_bare_probe_universe_count() -> usize {
     let roots = default_source_roots();
     let excludes = whole_tree_resolve_exclusion_substrings();
-    let index = build_module_path_index(&roots);
-    let expected = index
+    build_module_path_index(&roots)
         .iter()
         .filter(|(module_path, rel_path)| {
-            !excludes
-                .iter()
-                .any(|sub| rel_path.contains(sub) || module_path.contains(sub))
+            let p = rel_path.replace('\\', "/");
+            (p.contains("src/v2/") || p.contains("dag/extdeps/"))
+                && !excludes
+                    .iter()
+                    .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
         })
-        .count();
-    loaded >= expected
+        .count()
+}
+
+fn is_global_bare_probe_universe_path(path: &str, module_path: &str) -> bool {
+    let p = path.replace('\\', "/");
+    (p.contains("src/v2/") || p.contains("dag/extdeps/"))
+        && !whole_tree_resolve_exclusion_substrings()
+            .iter()
+            .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+}
+
+/// Host census for `fn_arrow_decl_substrate_is_whole_tree` — probe-universe module count vs
+/// `loaded` modules in the current resolve context (hybrid closure ∪ probe, not full `dag/`).
+pub fn fn_arrow_decl_substrate_is_whole_tree_for_census(loaded: usize) -> bool {
+    loaded >= global_bare_probe_universe_count()
 }
 
 pub fn census_corpus_roots_follow_layer_authority() -> bool {
@@ -2471,28 +2484,30 @@ fn load_sources_for_entry_with_index(
     facts: &ModuleGraphFactsLive,
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let _entry_source = entry_source_from_index_or_disk(index, entry_path)?;
-    let _ = facts;
+    let entry_source = entry_source_from_index_or_disk(index, entry_path)?;
     // namespace-resolution-design.md §8 PR-4/5: global_bare census is corpus-wide and
-    // order-independent — entry resolve loads the whole-tree probe universe (same exclude
-    // policy as compile-clean) so stripped compiler/std bare refs resolve without pulling
-    // in /test/ fixtures that still use selective imports against stripped re-export surfaces.
-    let excludes = whole_tree_resolve_exclusion_substrings();
-    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
-        .iter()
-        .filter(|(module_path, sf)| {
-            let p = sf.path.replace('\\', "/");
-            !excludes
-                .iter()
-                .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
-        })
-        .map(|(_, sf)| sf.clone())
-        .collect();
+    // order-independent — entry resolve unions import closure with the stripped src/v2 probe
+    // universe (same exclude policy as compile-clean) so bare refs resolve without loading the
+    // full `dag/` tree (homonym collisions with duplicate `std.*` authorities).
+    let mut sources = resolve_transitively(vec![entry_source.clone()], index, facts)?;
+    let mut seen: HashSet<String> = sources.iter().map(|sf| sf.path.clone()).collect();
+    for (module_path, sf) in index.iter() {
+        if !is_global_bare_probe_universe_path(&sf.path, module_path) {
+            continue;
+        }
+        if seen.insert(sf.path.clone()) {
+            sources.push(sf.clone());
+        }
+    }
+    if !seen.contains(&entry_source.path) {
+        sources.push(entry_source);
+    }
     if sources.is_empty() {
         return Err(
-            "entry resolve module set is empty after whole-tree exclusion policy".to_string(),
+            "entry resolve module set is empty after hybrid closure ∪ probe policy".to_string(),
         );
     }
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(sources)
 }
 

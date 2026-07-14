@@ -12521,47 +12521,125 @@ pub fn local_binding_for_item(
     }
 }
 
-pub fn census_insert_binding(
+fn global_bare_owner_priority(owner_module: &str) -> u8 {
+    if owner_module.starts_with("v2.") {
+        0
+    } else if owner_module.contains("extdeps.") {
+        1
+    } else if owner_module.starts_with("std.") {
+        2
+    } else {
+        3
+    }
+}
+
+fn census_insert_binding_with_owner(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    owners: Rc<HashMap<String, String>>,
     binding: Rc<TypeBinding>,
-) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    owner_module: String,
+) -> (
+    Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    Rc<HashMap<String, String>>,
+) {
+    let incoming_priority = global_bare_owner_priority(&owner_module);
     match v1_rt::map_get(&census, binding.name.clone())
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => census.clone(),
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => (census.clone(), owners.clone()),
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
             binding: existing, ..
         }) => {
-            if (existing.resolved.clone() == binding.resolved.clone()) {
-                census.clone()
+            if existing.resolved.clone() == binding.resolved.clone() {
+                (census.clone(), owners.clone())
             } else {
-                v1_rt::rc_map_insert(
-                    census.clone(),
-                    binding.name.clone(),
-                    Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
-                )
+                let existing_owner = v1_rt::map_get(&owners, binding.name.clone())
+                    .map(|o| (*o).clone())
+                    .unwrap_or_default();
+                let existing_priority = global_bare_owner_priority(&existing_owner);
+                if incoming_priority < existing_priority {
+                    (
+                        v1_rt::rc_map_insert(
+                            census.clone(),
+                            binding.name.clone(),
+                            Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
+                                binding: binding.clone(),
+                            }),
+                        ),
+                        v1_rt::rc_map_insert(owners.clone(), binding.name.clone(), owner_module),
+                    )
+                } else if incoming_priority > existing_priority {
+                    (census.clone(), owners.clone())
+                } else {
+                    (
+                        v1_rt::rc_map_insert(
+                            census.clone(),
+                            binding.name.clone(),
+                            Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
+                        ),
+                        owners.clone(),
+                    )
+                }
             }
         }
-        None => v1_rt::rc_map_insert(
-            census.clone(),
-            binding.name.clone(),
-            Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
-                binding: binding.clone(),
-            }),
+        None => (
+            v1_rt::rc_map_insert(
+                census.clone(),
+                binding.name.clone(),
+                Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
+                    binding: binding.clone(),
+                }),
+            ),
+            v1_rt::rc_map_insert(owners.clone(), binding.name.clone(), owner_module),
         ),
     }
 }
 
+pub fn census_insert_binding(
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    binding: Rc<TypeBinding>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    census_insert_binding_with_owner(
+        census,
+        v1_rt::rc_empty_map::<String, String>(),
+        binding,
+        String::new(),
+    )
+    .0
+}
+
 pub fn census_insert_item(
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    owners: Rc<HashMap<String, String>>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    owner_module: String,
+) -> (
+    Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    Rc<HashMap<String, String>>,
+) {
+    match local_binding_for_item(item.clone(), source_indices.clone()) {
+        None => (census, owners),
+        Some(binding) => {
+            census_insert_binding_with_owner(census, owners, binding.clone(), owner_module)
+        }
+    }
+}
+
+pub fn census_insert_item_legacy(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    match local_binding_for_item(item.clone(), source_indices.clone()) {
-        None => census,
-        Some(binding) => census_insert_binding(census, binding.clone()),
-    }
+    census_insert_item(
+        census,
+        v1_rt::rc_empty_map::<String, String>(),
+        item,
+        source_indices,
+        String::new(),
+    )
+    .0
 }
 
 pub fn census_binding_for_fn_decl(
@@ -12632,18 +12710,28 @@ pub fn census_arm_binding_for_census(
 
 pub fn census_insert_coproduct_arms(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    owners: Rc<HashMap<String, String>>,
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    owner_module: String,
+) -> (
+    Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    Rc<HashMap<String, String>>,
+) {
     match census_disj_source_node(item.clone()) {
-        None => census.clone(),
+        None => (census.clone(), owners.clone()),
         Some(disj) => disj.children.clone().iter().cloned().fold(
-            census.clone(),
-            |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, arm: Rc<Node>| {
-                census_insert_binding(
-                    acc.clone(),
-                    census_arm_binding_for_census(arm.clone(), source_indices.clone()),
-                )
+            (census.clone(), owners.clone()),
+            |(
+                acc: (
+                    Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+                    Rc<HashMap<String, String>>,
+                ),
+                arm: Rc<Node>,
+            )| {
+                let binding =
+                    census_arm_binding_for_census(arm.clone(), source_indices.clone());
+                census_insert_binding_with_owner(acc.0, acc.1, binding, owner_module.clone())
             },
         ),
     }
@@ -12651,26 +12739,51 @@ pub fn census_insert_coproduct_arms(
 
 pub fn census_insert_module_item(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    owners: Rc<HashMap<String, String>>,
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    {
-        let after_type = census_insert_item(census.clone(), item.clone(), source_indices.clone());
-        let after_arms =
-            census_insert_coproduct_arms(after_type.clone(), item.clone(), source_indices.clone());
-        match census_binding_for_fn_decl(item.clone(), source_indices.clone()) {
-            Some(fn_binding) => census_insert_binding(after_arms.clone(), fn_binding.clone()),
-            None => after_arms.clone(),
-        }
+    owner_module: String,
+) -> (
+    Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    Rc<HashMap<String, String>>,
+) {
+    let (after_type, owners) = census_insert_item(
+        census.clone(),
+        owners.clone(),
+        item.clone(),
+        source_indices.clone(),
+        owner_module.clone(),
+    );
+    let (after_arms, owners) = census_insert_coproduct_arms(
+        after_type.clone(),
+        owners.clone(),
+        item.clone(),
+        source_indices.clone(),
+        owner_module.clone(),
+    );
+    match census_binding_for_fn_decl(item.clone(), source_indices.clone()) {
+        Some(fn_binding) => census_insert_binding_with_owner(
+            after_arms.clone(),
+            owners.clone(),
+            fn_binding.clone(),
+            owner_module,
+        ),
+        None => (after_arms.clone(), owners.clone()),
     }
 }
 
 pub fn census_flag_arm_collision(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    owners: Rc<HashMap<String, String>>,
     arm: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    owner_module: String,
+) -> (
+    Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    Rc<HashMap<String, String>>,
+) {
     let binding = census_arm_binding_for_census(arm.clone(), source_indices.clone());
+    let arm_priority = global_bare_owner_priority(&owner_module);
     match v1_rt::map_get(&census, binding.name.clone())
         .as_deref()
         .cloned()
@@ -12678,32 +12791,67 @@ pub fn census_flag_arm_collision(
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
             binding: existing, ..
         }) => {
-            if (existing.resolved.clone() == binding.resolved.clone()) {
-                census.clone()
+            if existing.resolved.clone() == binding.resolved.clone() {
+                (census.clone(), owners.clone())
             } else {
-                v1_rt::rc_map_insert(
-                    census.clone(),
-                    binding.name.clone(),
-                    Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
-                )
+                let existing_owner = v1_rt::map_get(&owners, binding.name.clone())
+                    .map(|o| (*o).clone())
+                    .unwrap_or_default();
+                let existing_priority = global_bare_owner_priority(&existing_owner);
+                if arm_priority > existing_priority {
+                    (census.clone(), owners.clone())
+                } else if arm_priority < existing_priority {
+                    census_insert_binding_with_owner(
+                        census.clone(),
+                        owners.clone(),
+                        binding.clone(),
+                        owner_module,
+                    )
+                } else {
+                    (
+                        v1_rt::rc_map_insert(
+                            census.clone(),
+                            binding.name.clone(),
+                            Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
+                        ),
+                        owners.clone(),
+                    )
+                }
             }
         }
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => census.clone(),
-        None => census.clone(),
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => (census.clone(), owners.clone()),
+        None => (census.clone(), owners.clone()),
     }
 }
 
 pub fn census_flag_arm_collisions_for_item(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    owners: Rc<HashMap<String, String>>,
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    owner_module: String,
+) -> (
+    Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    Rc<HashMap<String, String>>,
+) {
     match census_disj_source_node(item.clone()) {
-        None => census.clone(),
+        None => (census.clone(), owners.clone()),
         Some(disj) => disj.children.clone().iter().cloned().fold(
-            census.clone(),
-            |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, arm: Rc<Node>| {
-                census_flag_arm_collision(acc, arm.clone(), source_indices.clone())
+            (census.clone(), owners.clone()),
+            |(
+                acc: (
+                    Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+                    Rc<HashMap<String, String>>,
+                ),
+                arm: Rc<Node>,
+            )| {
+                census_flag_arm_collision(
+                    acc.0,
+                    acc.1,
+                    arm.clone(),
+                    source_indices.clone(),
+                    owner_module.clone(),
+                )
             },
         ),
     }
@@ -12714,32 +12862,64 @@ pub fn build_global_bare_census(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
     {
-        let top_level_census = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
-            |census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, mod_: Rc<ResolvedModule>| {
+        let (top_level_census, owners) = modules.clone().iter().cloned().fold(
+            (
+                v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+                v1_rt::rc_empty_map::<String, String>(),
+            ),
+            |(
+                state: (
+                    Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+                    Rc<HashMap<String, String>>,
+                ),
+                mod_: Rc<ResolvedModule>,
+            )| {
+                let owner_module =
+                    authored_name_at(source_indices.clone(), mod_.module.clone());
                 module_items(mod_.module.clone()).iter().cloned().fold(
-                    census,
-                    |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
-                        census_insert_module_item(acc, item.clone(), source_indices.clone())
-                    },
-                )
-            },
-        );
-        modules.clone().iter().cloned().fold(
-            top_level_census.clone(),
-            |census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, mod_: Rc<ResolvedModule>| {
-                module_items(mod_.module.clone()).iter().cloned().fold(
-                    census,
-                    |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
-                        census_flag_arm_collisions_for_item(
-                            acc,
+                    state,
+                    |acc, item: Rc<Node>| {
+                        census_insert_module_item(
+                            acc.0,
+                            acc.1,
                             item.clone(),
                             source_indices.clone(),
+                            owner_module.clone(),
                         )
                     },
                 )
             },
-        )
+        );
+        modules
+            .clone()
+            .iter()
+            .cloned()
+            .fold(
+                (top_level_census.clone(), owners.clone()),
+                |(
+                    state: (
+                        Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+                        Rc<HashMap<String, String>>,
+                    ),
+                    mod_: Rc<ResolvedModule>,
+                )| {
+                    let owner_module =
+                        authored_name_at(source_indices.clone(), mod_.module.clone());
+                    module_items(mod_.module.clone()).iter().cloned().fold(
+                        state,
+                        |acc, item: Rc<Node>| {
+                            census_flag_arm_collisions_for_item(
+                                acc.0,
+                                acc.1,
+                                item.clone(),
+                                source_indices.clone(),
+                                owner_module.clone(),
+                            )
+                        },
+                    )
+                },
+            )
+            .0
     }
 }
 
