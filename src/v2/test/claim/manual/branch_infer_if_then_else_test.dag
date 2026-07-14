@@ -4,6 +4,7 @@ import v2.compiler.infer {
   infer,
 }
 import v2.extdeps.languages.dag {
+  dag_int_literal_fixture_one,
   dag_pick_if_body_fixture,
   dag_pick_if_body_from_arms,
   dag_type_atom_node
@@ -28,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn branch_infer_arm_mismatch_body() -> Node {
   dag_pick_if_body_from_arms(
     condition: dag_type_atom_node(identity: ^dag_token_kw_true),
-    then_arm: dag_type_atom_node(identity: ^dag_pick_lit_one),
+    then_arm: dag_int_literal_fixture_one(),
     else_arm: dag_type_atom_node(identity: ^dag_token_ident)
   )
 }

@@ -5,5 +5,5 @@ type NameResolutionPolicy
   | NamespaceOnlyY
 
 fn default_name_resolution_policy() -> NameResolutionPolicy {
-  ImportScoped
+  NamespaceOnlyY
 }
