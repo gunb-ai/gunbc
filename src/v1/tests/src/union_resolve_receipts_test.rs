@@ -22,9 +22,9 @@
 use std::fs;
 
 use v1_compiler::cli_run::{
-    self, build_multi_entry_index, make_eval_context, reset_typecheck_compute_count,
-    resolve_entry_graph, resolve_entry_with_index, run_claim, typecheck_compute_count,
-    workspace_root, ClaimOutcome,
+    build_multi_entry_index, make_eval_context, process_shared_floor_index,
+    reset_typecheck_compute_count, resolve_entry_graph, resolve_entry_with_index, run_claim,
+    typecheck_compute_count, workspace_root, ClaimOutcome,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -288,5 +288,81 @@ fn roster_closure_count_is_independent_of_thread_cache_warmth() {
         closure_warm, closure_cold,
         "roster_closure_nodes must count the union closure of the resolved graphs, which is \
          independent of what this thread typechecked earlier"
+    );
+}
+
+/// S2a increment C (cross-worker-typecheck-share-design.md): parallel workers share one
+/// process-scoped typed_module_cache — the shared prefix is typechecked once per process,
+/// not once per shard.
+#[test]
+fn cross_worker_share_typechecks_union_once() {
+    let fx = Fixture::new("cross-worker");
+
+    // Cold private baselines — isolated caches per index (no cross-index sharing).
+    let idx_a = build_multi_entry_index(&fx.roots);
+    reset_typecheck_compute_count();
+    resolve_entry_with_index(&idx_a, &fx.entry_a).expect("cold resolve a");
+    let cold_a = typecheck_compute_count();
+
+    let idx_b = build_multi_entry_index(&fx.roots);
+    reset_typecheck_compute_count();
+    resolve_entry_with_index(&idx_b, &fx.entry_b).expect("cold resolve b");
+    let cold_b = typecheck_compute_count();
+
+    assert!(cold_a > 0 && cold_b > 0);
+
+    // Cross-worker: two threads, same process_shared_floor_index, sequential resolves.
+    let shared = process_shared_floor_index(&fx.roots);
+    reset_typecheck_compute_count();
+
+    let entry_a = fx.entry_a.clone();
+    let shared_a = shared.clone();
+    std::thread::spawn(move || {
+        let index = shared_a.lock().expect("shared floor index lock");
+        resolve_entry_with_index(&index, &entry_a).expect("worker resolve a");
+    })
+    .join()
+    .expect("worker a join")
+    .expect("worker a ok");
+    let after_a = typecheck_compute_count();
+
+    let entry_b = fx.entry_b.clone();
+    std::thread::spawn(move || {
+        let index = shared.lock().expect("shared floor index lock");
+        resolve_entry_with_index(&index, &entry_b).expect("worker resolve b");
+    })
+    .join()
+    .expect("worker b join")
+    .expect("worker b ok");
+
+    let cross_worker_total = typecheck_compute_count();
+    assert_eq!(
+        after_a, cold_a,
+        "first worker on the shared cache pays exactly entry a's private closure ({cold_a})"
+    );
+    let b_added = cross_worker_total - after_a;
+    assert!(
+        b_added < cold_b,
+        "second worker's incremental cost ({b_added}) must be below its private closure \
+         ({cold_b}) — u.common was not re-typechecked"
+    );
+
+    // Purity: outcomes match the private baseline.
+    assert_eq!(
+        private_outcome(&fx.roots, &fx.entry_a, "wit_a_pass"),
+        "PASS"
+    );
+    assert_eq!(
+        private_outcome(&fx.roots, &fx.entry_b, "wit_b_pass"),
+        "PASS"
+    );
+    let index = build_multi_entry_index(&fx.roots);
+    assert_eq!(
+        union_outcome(&index, &fx.entry_a, "wit_a_pass"),
+        "PASS"
+    );
+    assert_eq!(
+        union_outcome(&index, &fx.entry_b, "wit_b_pass"),
+        "PASS"
     );
 }

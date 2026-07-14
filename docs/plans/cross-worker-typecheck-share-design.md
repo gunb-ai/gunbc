@@ -81,18 +81,18 @@ claim_executor process
 
 ### 4.1 Store placement
 
-Introduce a **process-scoped shared index** created once before the worker pump starts (sibling to the governor / work queue), cloned into each worker as `Arc<SharedMultiEntryIndex>`:
+Introduce a **process-scoped shared index** created once before the worker pump starts:
 
 ```text
 before worker loop:
-  shared = Arc::new(SharedMultiEntryIndex::new(source_roots))
+  shared = process_shared_floor_index(source_roots)  // Arc<Mutex<MultiEntryIndex>>
 
-per worker thread:
-  index = shared.clone()
-  resolve_entry_with_index(&index, entry)   // NOT build_multi_entry_index()
+per worker thread (resolve only):
+  with_locked_floor_index(&shared, |index| resolve_entry_with_index(index, entry))
+  // eval runs on the returned Rc graph on-thread — no Rc crosses threads
 ```
 
-`SharedMultiEntryIndex` is the existing `MultiEntryIndex` caches lifted to `Arc<RwLock<…>>` / `Arc` values — same keys, same collision-honesty (`module_source_identity`), same normalize/ownership diag memos — so within-process, cross-thread behavior matches today's within-thread behavior.
+**C1 realization note (2026-07-14):** full `Rc`→`Arc` on cache payloads is deferred — `Rc` graphs are `!Send`, so cross-thread share uses `Arc<Mutex<MultiEntryIndex>>` with the lock held only during resolve. Workers snapshot `module_graph_facts` (immutable, `Clone`) for skip logic without holding the lock during eval. This buys the 52% prize without a seed-wide Arc migration; `RwLock`+`Arc` on payloads remains the S2b dissolve-on.
 
 ### 4.2 `Rc`→`Arc` migration scope (seed boundary)
 
