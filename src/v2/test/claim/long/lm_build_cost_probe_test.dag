@@ -75,3 +75,31 @@ test fn time_resolve_infer_determinism() -> Bool {
       }
   }
 }
+
+test fn time_grammar_validate_determinism() -> Bool {
+  let lm = dag_language_model()
+  match lm.grammar {
+    VoidGrammar => true
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: port_locus(port: ^probe_at)) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
+      }
+  }
+}
+
+test fn time_validate_then_compile_determinism() -> Bool {
+  let lm = dag_language_model()
+  match program_assembly_read_to_normalized_root(read: determinism_read(), lm: lm) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: root, diagnostics: _ } =>
+      match resolve_with_admission(lm: lm, roots: Cons { head: root, tail: Empty }, admission: determinism_admission()) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: resolved, diagnostics: _ } =>
+          match validate_then_compile(source: resolved, lenses: Empty, mode: TranslateTo { target: rust_target_model() }) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => true
+          }
+      }
+  }
+}
