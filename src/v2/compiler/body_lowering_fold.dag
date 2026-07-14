@@ -6,7 +6,7 @@ import v2.compiler.fold_lowering {
   fold_call_to_loop,
   fold_family_head
 }
-import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFind,
@@ -86,6 +86,22 @@ type BodyLoweringInterimScaffoldRow {
   disposition: BodyLoweringInterimScaffoldDisposition
 }
 
+type BodyLoweringDomainConstructionDisposition
+  = BodyLoweringDomainParamListWalk
+  | BodyLoweringDomainSymbolIndexResolved
+
+data body_lowering_domain_construction_disposition: BodyLoweringDomainConstructionDisposition =
+  BodyLoweringDomainParamListWalk
+
+data body_lowering_domain_symbol_index_frontier_row: BodyLoweringInterimScaffoldRow =
+  BodyLoweringInterimScaffoldRow {
+    site: ^body_lower_domain_from_param_list,
+    disposition: SeedRetained {
+      reason: ^body_lowering_domain_param_list_walk_reason,
+      migration_trigger: ^migrate_when_fn_decl_ident_binding_terminal_lands
+    }
+  }
+
 data body_lowering_interim_scaffold_row_match_hand_walker: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
   site: ^body_lower_try_match_from_node,
   disposition: SeedRetained {
@@ -107,7 +123,10 @@ fn body_lowering_interim_scaffold_rows() -> List<BodyLoweringInterimScaffoldRow>
     head: body_lowering_interim_scaffold_row_match_hand_walker,
     tail: Cons {
       head: body_lowering_interim_scaffold_row_if_hand_walker,
-      tail: Empty
+      tail: Cons {
+        head: body_lowering_domain_symbol_index_frontier_row,
+        tail: Empty
+      }
     }
   }
 }
@@ -183,51 +202,119 @@ fn body_lower_arrow_domain_named_bindings(root: Node) -> List<Symbol> {
   }
 }
 
-fn body_lower_symbol_index_domain_binding_holds(
-  index: SymbolIndex,
-  fn_path: QualifiedName,
-  binding: Symbol
+fn body_lower_symbol_in_binding_list(sym: Symbol, bindings: List<Symbol>) -> Bool {
+  fold(bindings, init: false, f: fn(acc, binding) {
+    if acc {
+      acc
+    } else {
+      binding == sym
+    }
+  })
+}
+
+fn body_lower_binding_symbol_lists_match(
+  expected: List<Symbol>,
+  actual: List<Symbol>
 ) -> Bool {
-  match symbol_index_lookup(
-    index: index,
-    qualified_path: qualified_name_snoc(qn: fn_path, segment: binding)
-  ) {
-    Present { value: _ } => true
-    Absent => false
+  if length(xs: expected) != length(xs: actual) {
+    false
+  } else {
+    fold(expected, init: true, f: fn(ok, sym) {
+      if ok {
+        body_lower_symbol_in_binding_list(sym: sym, bindings: actual)
+      } else {
+        false
+      }
+    })
   }
 }
 
-fn body_lower_arrow_domain_symbol_index_holds(
-  arrow: Node,
-  containment_path: QualifiedName
-) -> Bool {
+fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<Symbol> {
+  match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
+    Absent => Empty
+    Present { value: comma_spine } =>
+      fold(
+        body_lower_collect_param_edges(sequence_capture: comma_spine),
+        init: Empty,
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: sym } => Cons { head: sym, tail: acc }
+            Positional => acc
+          }
+        }
+      )
+  }
+}
+
+fn body_lower_param_binding_symbols_from_fn_captured(captured: Node) -> List<Symbol> {
+  match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
+    ParseSubtreeFound { captured: param_list } =>
+      body_lower_param_binding_symbols_from_param_list(param_list: param_list)
+    ParseSubtreeAbsent => Empty
+  }
+}
+
+fn body_lower_param_binding_symbols_from_fn_decl_module(root: Node) -> List<Symbol> {
+  match body_lower_find_captured(root: root, emitted: ^dag_surface_fn_decl) {
+    ParseSubtreeFound { captured: captured } =>
+      body_lower_param_binding_symbols_from_fn_captured(captured: captured)
+    ParseSubtreeAbsent => Empty
+  }
+}
+
+fn body_lower_arrow_domain_binding_symbols(arrow: Node) -> List<Symbol> {
   if count(arrow.children) >= 1 {
     match first(arrow.children) {
       Present { value: domain_edge } =>
-        let idx = symbol_index_fill_containment_node(
-          index: empty_symbol_index(),
-          path: containment_path,
-          node: domain_edge.target
-        )
-        fold(
-          body_lower_arrow_domain_named_bindings(root: domain_edge.target),
-          init: true,
-          f: fn(ok, binding) {
-            if ok {
-              body_lower_symbol_index_domain_binding_holds(
-                index: idx,
-                fn_path: containment_path,
-                binding: binding
-              )
-            } else {
-              false
-            }
-          }
-        )
-      Absent => false
+        body_lower_arrow_domain_named_bindings(root: domain_edge.target)
+      Absent => Empty
     }
   } else {
-    false
+    Empty
+  }
+}
+
+fn body_lower_arrow_domain_matches_ingest_param_bindings(
+  arrow: Node,
+  ingest_bindings: List<Symbol>
+) -> Bool {
+  body_lower_binding_symbol_lists_match(
+    expected: ingest_bindings,
+    actual: body_lower_arrow_domain_binding_symbols(arrow: arrow)
+  )
+}
+
+fn body_lower_frontend_symbol_index_from_module(tree: Node) -> SymbolIndex {
+  symbol_index_fill_module_root(index: empty_symbol_index(), root: tree)
+}
+
+fn body_lower_arrow_domain_matches_frontend_symbol_index(
+  arrow: Node,
+  module_tree: Node,
+  fn_name: Symbol
+) -> Bool {
+  match qualified_name_from_module_node(root: module_tree) {
+    Accepted { value: module_qn, diagnostics: _ } =>
+      let fn_path = qualified_name_snoc(qn: module_qn, segment: fn_name)
+      let idx = body_lower_frontend_symbol_index_from_module(tree: module_tree)
+      fold(
+        body_lower_arrow_domain_binding_symbols(arrow: arrow),
+        init: true,
+        f: fn(ok, binding) {
+          if ok {
+            match symbol_index_lookup(
+              index: idx,
+              qualified_path: qualified_name_snoc(qn: fn_path, segment: binding)
+            ) {
+              Present { value: _ } => true
+              Absent => false
+            }
+          } else {
+            false
+          }
+        }
+      )
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -1014,7 +1101,7 @@ fn body_lower_return_type_after_arrow_walk(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_domain_from_containment_named_edges(param_list: Node) -> Optional<Node> {
+fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => Absent
     Present { value: comma_spine } =>
@@ -1432,7 +1519,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
       match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
         ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
         ParseSubtreeFound { captured: param_list } =>
-          match body_lower_domain_from_containment_named_edges(param_list: param_list) {
+          match body_lower_domain_from_param_list(param_list: param_list) {
             Absent => body_lower_wrapper_retained_shell(shell: shell)
             Present { value: domain } =>
               match body_lower_body_from_fn_captured(captured: captured) {
