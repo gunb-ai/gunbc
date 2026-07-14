@@ -47,6 +47,7 @@ pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
     NewlineIndex, Node,
 };
+use crate::v1_compiler_infer_env::TypeBinding;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -1694,15 +1695,31 @@ pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
-    match callable_inferred(n.clone()).inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: callable, .. }) => {
-            match callable.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
-                _ => error_type(),
-            }
+    if n.params.is_empty() {
+        match n.inferred.as_deref() {
+            Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
+            _ => error_type(),
         }
-        _ => error_type(),
+    } else {
+        match callable_inferred(n.clone()).inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: callable, .. }) => {
+                match callable.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
+                    _ => error_type(),
+                }
+            }
+            _ => error_type(),
+        }
     }
+}
+
+pub fn global_bare_callable_binding(binding: &TypeBinding) -> bool {
+    binding.resolved.transport.is_none()
+        && matches!(binding.resolved.expr_data.as_ref(), ExprData::NoExprData)
+        && binding.resolved.connective == Connective::NoConnective
+        && binding.resolved.inferred.is_some()
+        && binding.resolved.properties.is_empty()
+        && binding.resolved.type_annotation.is_none()
 }
 
 pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
