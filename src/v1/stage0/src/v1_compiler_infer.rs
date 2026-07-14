@@ -14602,10 +14602,7 @@ pub fn typecheck_module_isolated(
         source_indices.clone(),
         intern_table.clone(),
         v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
-        Rc::new(VariantFoldState {
-            locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            collision_errors: Rc::new(vec![]),
-        }),
+        v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
     )
 }
 
