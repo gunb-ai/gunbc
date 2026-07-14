@@ -652,7 +652,7 @@ pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
-    lookup_func_sig(scope.func_env.clone(), name.clone())
+    lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), name.clone())
 }
 
 pub fn typed_named_arg_matches(

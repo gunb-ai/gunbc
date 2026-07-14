@@ -1,10 +1,5 @@
 module v1.compiler.compiler_tests_rust
 
-import v1.compiler.artifact { RenderTarget, Rust, Python, Go }
-import v1.compiler.coercion {
-  extract_coercion_tests, CoercionTestEntry, CoercionAssertion,
-  CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion
-}
 
 fn ct_module_header() -> String {
   concat(
@@ -1201,6 +1196,7 @@ fn ct_profile_reconcile_test() -> String {
     "                        variant_surfaces.clone(),\n",
     "                        source_indices.clone(),\n",
     "                        intern_table.clone(),\n",
+    "                        std::rc::Rc::new(HashMap::new()),\n",
     "                        std::rc::Rc::new(HashMap::new()),\n",
     "                    );\n",
     "                    let full_elapsed = t_full.elapsed();\n",
