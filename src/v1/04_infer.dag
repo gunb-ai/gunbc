@@ -5866,7 +5866,7 @@ fn census_disj_source_node(item: Node) -> Node? {
   } else {
     match item.inferred {
       Present { value: Resolved { node: n } } =>
-        if n.connective == Disj { Present { value: n } } else { none }
+        if (n.connective == Disj) { Present { value: n } } else { none }
       _ => none
     }
   }

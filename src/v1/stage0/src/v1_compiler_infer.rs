@@ -12568,8 +12568,7 @@ pub fn census_binding_for_fn_decl(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<TypeBinding>> {
-    if (((((item.params.clone().len() as i64) > 0) && (item.body.clone() != None))
-        && (item.transport.clone() == None))
+    if (((item.body.clone() != None) && (item.transport.clone() == None))
         && (item.connective.clone() == Connective::NoConnective))
     {
         {
@@ -12604,23 +12603,49 @@ pub fn census_binding_for_fn_decl(
     }
 }
 
+pub fn census_disj_source_node(item: Rc<Node>) -> Option<Rc<Node>> {
+    if (item.connective.clone() == Connective::Disj) {
+        Some(item.clone())
+    } else {
+        match item.inferred.as_deref() {
+            Some(InferredNode::Resolved { node: n, .. }) => {
+                if (n.connective.clone() == Connective::Disj) {
+                    Some(n.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+pub fn census_arm_binding_for_census(
+    arm: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeBinding> {
+    match local_binding_for_item(arm.clone(), source_indices.clone()) {
+        Some(binding) => binding.clone(),
+        None => nominal_type_binding(authored_name_at(source_indices.clone(), arm.clone())),
+    }
+}
+
 pub fn census_insert_coproduct_arms(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    if (item.connective.clone() == Connective::Disj) {
-        item.children.clone().iter().cloned().fold(
+    match census_disj_source_node(item.clone()) {
+        None => census.clone(),
+        Some(disj) => disj.children.clone().iter().cloned().fold(
             census.clone(),
             |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, arm: Rc<Node>| {
-                match local_binding_for_item(arm.clone(), source_indices.clone()) {
-                    Some(binding) => census_insert_binding(acc.clone(), binding.clone()),
-                    None => acc.clone(),
-                }
+                census_insert_binding(
+                    acc.clone(),
+                    census_arm_binding_for_census(arm.clone(), source_indices.clone()),
+                )
             },
-        )
-    } else {
-        census.clone()
+        ),
     }
 }
 
@@ -12645,28 +12670,26 @@ pub fn census_flag_arm_collision(
     arm: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    match local_binding_for_item(arm.clone(), source_indices.clone()) {
-        None => census.clone(),
-        Some(binding) => match v1_rt::map_get(&census, binding.name.clone())
-            .as_deref()
-            .cloned()
-        {
-            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                binding: existing, ..
-            }) => {
-                if (existing.resolved.clone() == binding.resolved.clone()) {
-                    census.clone()
-                } else {
-                    v1_rt::rc_map_insert(
-                        census.clone(),
-                        binding.name.clone(),
-                        Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
-                    )
-                }
+    let binding = census_arm_binding_for_census(arm.clone(), source_indices.clone());
+    match v1_rt::map_get(&census, binding.name.clone())
+        .as_deref()
+        .cloned()
+    {
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            binding: existing, ..
+        }) => {
+            if (existing.resolved.clone() == binding.resolved.clone()) {
+                census.clone()
+            } else {
+                v1_rt::rc_map_insert(
+                    census.clone(),
+                    binding.name.clone(),
+                    Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
+                )
             }
-            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => census.clone(),
-            None => census.clone(),
-        },
+        }
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => census.clone(),
+        None => census.clone(),
     }
 }
 
@@ -12675,18 +12698,14 @@ pub fn census_flag_arm_collisions_for_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    {
-        let is_coproduct = (item.connective.clone() == Connective::Disj);
-        if is_coproduct.clone() {
-            item.children.clone().iter().cloned().fold(
-                census.clone(),
-                |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, arm: Rc<Node>| {
-                    census_flag_arm_collision(acc, arm.clone(), source_indices.clone())
-                },
-            )
-        } else {
-            census.clone()
-        }
+    match census_disj_source_node(item.clone()) {
+        None => census.clone(),
+        Some(disj) => disj.children.clone().iter().cloned().fold(
+            census.clone(),
+            |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, arm: Rc<Node>| {
+                census_flag_arm_collision(acc, arm.clone(), source_indices.clone())
+            },
+        ),
     }
 }
 
