@@ -16,7 +16,7 @@ import std.disposition { Disposition, Terminal, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data srv3_os_install_actuator_toolchain_ensure_scaffold: Disposition = Terminal {
-  reason: "host_effect_apply binds OsInstallActuatorToolchainEnsure via typed apt/curl/websocat argv effects in host_effect_realize"
+  reason: "host_effect_apply binds OsInstallActuatorToolchainEnsure via host_effect_realize; WitnessBin hand-built argv remains until extdeps.apt.PackageManager.Install and curl.Http dispatch land"
 }
 
 data os_install_actuator_toolchain_ensure_dissolution_trigger: Disposition = Scaffold {
