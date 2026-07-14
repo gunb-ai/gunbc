@@ -1,6 +1,6 @@
 # Dependency-Fidelity — making "CI green" mean *declared ≡ witnessed*
 
-Status: design draft (operator-directed, 2026-07-14). Companion to the *enforcement-intent* thread (the same "ask once, compile forever" spine, made quantitative). Reasoned serially per DESIGN.md; each section is a consequence of the ones before it.
+Status: design draft (operator-directed, 2026-07-14). Companion to the [*enforcement-intent* thread](enforcement-intent-design.md) (the same "ask once, compile forever" spine, made quantitative). Reasoned serially per DESIGN.md; each section is a consequence of the ones before it.
 
 ---
 
