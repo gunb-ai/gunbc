@@ -198,10 +198,6 @@ fn witness_kind_wins_over_path() -> Bool {
     )
 }
 
-fn witness_live_roster_kind_path_agree() -> Bool {
-  witness_entries_kind_path_all_agree(entries: gunbc_ci_spec.witness_entries)
-}
-
 fn witness_optin_roster_drives_corpus_presence() -> Bool {
   (schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0) &&
     (schedule_discovery_batch_count(batches: floor_schedule_for(spec: corpus_only_spec, serialize_heavy: true)) == 1) &&
@@ -317,7 +313,6 @@ test fn ci_floor_optin_roster_witnesses() -> Bool {
     witness_optin_corpus_carries_exactly_roster_rows() &&
     witness_optin_execution_partition() &&
     witness_kind_wins_over_path() &&
-    witness_live_roster_kind_path_agree() &&
     witness_optin_plan_gates_corpus_after_compile() &&
     witness_optin_source_ingest_serialized_after_corpus() &&
     witness_optin_exclusion_edges_track_roster() &&

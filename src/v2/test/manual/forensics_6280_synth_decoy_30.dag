@@ -1,5 +1,0 @@
-module v2.test.manual.forensics_6280_synth_decoy_30
-
-type SynthDecoy30
-  = SynthDecoy30One { note: String }
-  | SynthDecoy30Two { note: String }

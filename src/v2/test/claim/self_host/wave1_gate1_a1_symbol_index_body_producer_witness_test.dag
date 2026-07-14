@@ -1,0 +1,29 @@
+module v2.test.claim.self_host.wave1_gate1_a1_symbol_index_body_producer_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data wave1_gate1_a1_witness_note: String = "Wave 1 Gate 1 A1 fast-lane receipts (under 5s per-PR discovery budget): interim scaffold count (param-list-walk domain construction is terminal per body_lowering_domain_construction_disposition_note) and wrapper-retained RED control. Full tokenize→parse_module→normalize execution proofs (ingest parity, SymbolIndex parity, param-list-walk, real-ingest lowering) live in long/wave1_gate1_a1_symbol_index_body_producer_witness_test.dag."
+
+fn wave1_gate1_a1_domain_construction_frontier_holds() -> Bool {
+  body_lowering_interim_scaffold_seed_retained_count() == 3
+}
+
+fn wave1_gate1_a1_wrapper_retained_red_control_holds() -> Bool {
+  let shell = node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^wave1_gate1_a1_invalid_shell } },
+    children: []
+  )
+  match body_lower_outcome_frontier_disposition(o: body_lower_fn_decl_to_arrow(shell: shell)) {
+    BodyLoweringWrapperRetained { reason: r } => r == ^body_lowering_reason_wrapper_retained_emitted
+    BodyLoweringLowered => false
+  }
+}
+
+test fn wave1_gate1_a1_domain_construction_frontier_witness_holds() -> Bool {
+  wave1_gate1_a1_domain_construction_frontier_holds()
+}
+
+test fn wave1_gate1_a1_wrapper_retained_red_control_witness_holds() -> Bool {
+  wave1_gate1_a1_wrapper_retained_red_control_holds()
+}
