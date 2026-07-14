@@ -19,6 +19,7 @@ import v2.std.grammar {
   GrammarRoot,
   ModeledGrammar,
   Nonterminal,
+  Optional,
   ParseGrammar,
   Repeat,
   Sequence,
