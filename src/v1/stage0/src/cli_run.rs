@@ -2024,9 +2024,7 @@ pub(crate) fn module_graph_facts_build_count_for_test() -> usize {
 
 #[cfg(test)]
 mod shared_cache_collision_guard_tests {
-    use super::check_module_source_identity;
-    use im_rc::HashMap;
-    use std::cell::RefCell;
+    use super::check_module_source_identity_map;
 
     // Collision-honesty receipt (union-resolve §6.3): the shared typed-module cache's
     // source-identity guard fails LOUD when one module name resolves from two declaring files
@@ -2034,17 +2032,17 @@ mod shared_cache_collision_guard_tests {
     // This is the guard exercised by execution with a red control — not an inert wall.
     #[test]
     fn source_identity_flags_coresidence_collision_but_allows_reexport() {
-        let reg: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+        let mut reg = std::collections::HashMap::new();
         // First sight records the identity.
-        assert!(check_module_source_identity(&reg, "std.foo", "dag/std/foo.dag").is_ok());
+        assert!(check_module_source_identity_map(&mut reg, "std.foo", "dag/std/foo.dag").is_ok());
         // GREEN control: the SAME module reached again (a legitimate re-export / second
         // import path) is benign — one authority, many hops — so no error.
-        assert!(check_module_source_identity(&reg, "std.foo", "dag/std/foo.dag").is_ok());
+        assert!(check_module_source_identity_map(&mut reg, "std.foo", "dag/std/foo.dag").is_ok());
         // A distinct name from a distinct file is fine.
-        assert!(check_module_source_identity(&reg, "std.bar", "dag/std/bar.dag").is_ok());
+        assert!(check_module_source_identity_map(&mut reg, "std.bar", "dag/std/bar.dag").is_ok());
         // RED control: the same name from a DIFFERENT declaring file is the co-residence
         // surprise — a loud typed error, never a silently divergent resolution.
-        let err = check_module_source_identity(&reg, "std.foo", "src/v2/std/foo.dag")
+        let err = check_module_source_identity_map(&mut reg, "std.foo", "src/v2/std/foo.dag")
             .expect_err("a colliding module name from a second file must fail closed");
         assert!(
             err.contains("co-residence collision") && err.contains("std.foo"),
@@ -3235,28 +3233,6 @@ fn check_module_source_identity_map(
         return Ok(());
     }
     registry.insert(mod_name.to_string(), decl_file.to_string());
-    Ok(())
-}
-
-fn check_module_source_identity(
-    registry: &RefCell<HashMap<String, String>>,
-    mod_name: &str,
-    decl_file: &str,
-) -> Result<(), String> {
-    if let Some(prev_file) = registry.borrow().get(mod_name).cloned() {
-        if prev_file != decl_file {
-            return Err(format!(
-                "co-residence collision: module '{mod_name}' resolved from two files \
-                 ('{prev_file}' and '{decl_file}') in one process — one module, one authority \
-                 (DESIGN §3). The shared resolve store fails loud rather than silently serving \
-                 a divergent module (resolver-graph-major-design.md §6.3)."
-            ));
-        }
-        return Ok(());
-    }
-    registry
-        .borrow_mut()
-        .insert(mod_name.to_string(), decl_file.to_string());
     Ok(())
 }
 
