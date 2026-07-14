@@ -297,10 +297,6 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
   }
 }
 
-fn lookup_chain_for_policy(ctx: ResolveContext, name: Symbol) -> Outcome<Symbol?> {
-  lookup_chain(s: ctx.scope, name: name)
-}
-
 fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
   match s {
     ScopeFrame { locals: m, outer: o } =>
@@ -387,7 +383,7 @@ fn try_symbol_index_atom_identity(ctx: ResolveContext, name: Symbol) -> Optional
 }
 
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
-  match lookup_chain_for_policy(ctx: ctx, name: identity) {
+  match lookup_chain(s: ctx.scope, name: identity) {
     Accepted { value: found, diagnostics: pending } => match found {
       Present { value: canonical } =>
         Accepted {
