@@ -1,8 +1,9 @@
 module v2.test.lens_determinism.reach_witness
 
-import v2.lens.determinism { determinism_axis_for_node, determinism_contract_witness }
+import v2.lens.determinism { determinism_axis_for_node, determinism_contract_witness, determinism_compile_gate }
 import std.determinism { DeterminismAxis, Deterministic, NonDeterministic }
 import v2.std.determinism { DeterminismFact }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node {
   Atom,
   ComputationNode,
