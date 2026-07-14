@@ -1,6 +1,6 @@
 module v2.std.live_read
 
-data live_read_classification_authority_note: String = "G1 module-closure live-read classification (docs/plans/live-read-witness-classification-design.md P0): carrier homes are declared rows; v2.lens.live_read_classification walks import closure to detect runtime tree/host reads hidden behind carrier imports. Subsumes witness_cost_locality.ambient_read_carrier_modules_v0 at steady state; until G2 lands this is the structural over-approximation (module grain — a types-only carrier import over-flags, fail-closed default). Lives in v2.std.live_read (not v2.std.live_tree) so the widely-imported disposition module stays import-free."
+data live_read_classification_authority_note: String = "G2 call-reachability live-read classification (docs/plans/live-read-witness-classification-design.md P1): carrier invocations are derived from fn-arrow DependencyView facts (fn_arrow_decl_facts_live) over call-reachable bodies, not module import alone. Path patterns are LiteralPath when a string literal is statable in the reachable skeleton, ParamRef when a filesystem_read path argument is a parameter, UnknownPath fail-closed otherwise. Subsumes witness_cost_locality.ambient_read_carrier_modules_v0 at steady state. Lives in v2.std.live_read (not v2.std.live_tree) so the widely-imported disposition module stays import-free."
 
 type LiveReadCarrierKind
   = FilesystemReadCarrier
@@ -12,10 +12,20 @@ type LiveReadCarrierHome {
   kind: LiveReadCarrierKind
 }
 
+type PathPattern
+  = LiteralPath { path: String }
+  | ParamRef { name: String }
+  | UnknownPath
+
+type LiveReadCarrier
+  = FilesystemReadPath { path_pattern: PathPattern }
+  | ModuleDeclarationFactsScan
+  | DeclFactsReflection { home: String }
+
 type LiveReadClassification
   = LocalRead
   | RuntimeRead {
-      carrier_homes: List<LiveReadCarrierHome>
+      carriers: List<LiveReadCarrier>
     }
 
 data live_read_carrier_homes_v0: List<LiveReadCarrierHome> = [
@@ -27,4 +37,11 @@ data live_read_carrier_homes_v0: List<LiveReadCarrierHome> = [
   LiveReadCarrierHome { module: "v2.lens.module_graph", kind: ModuleDeclarationFactsCarrier },
   LiveReadCarrierHome { module: "tools.dag_compile_clean_shard_roster", kind: ModuleDeclarationFactsCarrier },
   LiveReadCarrierHome { module: "tools.dag_compile_clean_scope", kind: ModuleDeclarationFactsCarrier }
+]
+
+data live_read_carrier_callee_symbols_v0: List<String> = [
+  "filesystem_read",
+  "module_declaration_facts",
+  "module_declaration_facts_live",
+  "decl_facts"
 ]
