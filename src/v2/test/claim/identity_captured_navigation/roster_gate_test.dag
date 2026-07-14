@@ -248,6 +248,30 @@ test fn debug_planted_snippet_diag_sum_is_zero() -> Bool {
   debug_diag_sum(source_text: planted_identity_escape_snippet) == 0
 }
 
+test fn debug_planted_snippet_diag_sum_probe_3() -> Bool {
+  debug_diag_sum(source_text: planted_identity_escape_snippet) == 3
+}
+
+test fn debug_planted_snippet_diag_sum_probe_4() -> Bool {
+  debug_diag_sum(source_text: planted_identity_escape_snippet) == 4
+}
+
+test fn debug_planted_snippet_diag_sum_probe_5() -> Bool {
+  debug_diag_sum(source_text: planted_identity_escape_snippet) == 5
+}
+
+test fn debug_planted_snippet_diag_sum_probe_6() -> Bool {
+  debug_diag_sum(source_text: planted_identity_escape_snippet) == 6
+}
+
+test fn debug_planted_snippet_diag_sum_probe_7() -> Bool {
+  debug_diag_sum(source_text: planted_identity_escape_snippet) == 7
+}
+
+test fn debug_planted_snippet_diag_sum_probe_8() -> Bool {
+  debug_diag_sum(source_text: planted_identity_escape_snippet) == 8
+}
+
 test fn debug_dag_dag_scrutinee_hit_ge_one() -> Bool {
   debug_scrutinee_hit_count_file(path: "src/v2/extdeps/languages/dag.dag") >= 1
 }
