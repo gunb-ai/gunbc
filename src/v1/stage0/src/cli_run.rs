@@ -2668,9 +2668,11 @@ pub fn resolve_entry_graph_shared(
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
-    /// Process-shareable caches (increment C). `std::collections::HashMap` shells so
-    /// `Arc<Mutex<_>>` is `Send`; values remain `Rc`. Per-index `resolved_graph_memo`
-    /// stays thread-local.
+    /// Increment C cache shell (C1-prep). `std::collections::HashMap` map shells avoid
+    /// `im_rc::HashMap` (`!Sync` in statics); payloads remain `Rc` and the struct is
+    /// `!Send` — `Arc<Mutex<_>>` does not cross threads until store-path `Rc`→`Arc`
+    /// (cross-worker-typecheck-share-design.md §4.1). Today each index owns one `Arc` on
+    /// its thread; worker spawn still builds a private index per shard.
     shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
     resolved_graph_memo: RefCell<
         HashMap<
@@ -2683,8 +2685,9 @@ pub struct MultiEntryIndex {
     >,
 }
 
-/// Cross-worker shareable resolve caches (S2a increment C). One instance per
-/// `(process, source_roots)`; worker index shells clone the same `Arc`.
+/// S2a increment C typed/parse cache payloads (C1-prep). Target: one instance per
+/// `(process, source_roots)` cloned across worker index shells. Blocked on `Rc`→`Arc` for
+/// store-carried infer carriers — `Rc` payloads make this `!Send` today.
 struct SharedTypecheckCaches {
     intern_table: Rc<InternTable>,
     parse_cache: std::collections::HashMap<
