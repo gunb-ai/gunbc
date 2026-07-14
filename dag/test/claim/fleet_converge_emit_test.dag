@@ -45,7 +45,8 @@ import gunbc.host_converge {
   fleet_converge_policy,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import std.disposition { Scaffold, Terminal }
+import std.disposition { Scaffold, Terminal, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.fleet_converge_emit {
   expected_fleet_converge_sh,
   fleet_converge_sh_for,
@@ -233,10 +234,14 @@ fn witness_fresh_standup_bootstrap_emit_dissolution_scaffold() -> Bool {
   }
 }
 
-fn witness_steady_state_doc_projection_dissolved() -> Bool {
+fn witness_steady_state_doc_projection_still_scaffold_pending_cli() -> Bool {
   match fleet_converge_steady_state_doc_projection_dissolution_trigger {
-    Terminal { reason: _ } => true
-    Scaffold { dissolves_to: _, bind: _ } => false
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: d, field: WholeDeclaration },
+    } =>
+      m == "gunbc.fleet_converge_apply" && d == "fleet_converge_thin_invocation"
+    Terminal { reason: _ } => false
   }
 }
 
@@ -265,7 +270,7 @@ test fn fleet_converge_emit_policy_holds() -> Bool {
     && witness_gunbc_noop_predicate_process_and_green_place()
     && witness_gunbc_apply_mode_srv3_fresh_standup()
     && witness_gunbc_pinned_tree_runs_first()
-    && witness_steady_state_doc_projection_dissolved()
+    && witness_steady_state_doc_projection_still_scaffold_pending_cli()
 }
 
 test fn fleet_converge_emit_holds() -> Bool {
@@ -283,5 +288,5 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_gunbc_noop_predicate_process_and_green_place()
     && witness_gunbc_apply_mode_srv3_fresh_standup()
     && witness_gunbc_pinned_tree_runs_first()
-    && witness_steady_state_doc_projection_dissolved()
+    && witness_steady_state_doc_projection_still_scaffold_pending_cli()
 }

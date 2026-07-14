@@ -222,7 +222,7 @@ fn thin_invocation_shell_line(host: HostIdentity) -> String {
 }
 
 fn thin_invocation_failure_line(host: HostIdentity) -> String {
-  concat(concat(thin_invocation_shell_line(host: host), " || host_failed=1"))
+  concat(thin_invocation_shell_line(host: host), " || host_failed=1")
 }
 
 fn host_thin_run_lines(h: HostConverge) -> List<String> {
@@ -308,8 +308,13 @@ fn fleet_converge_fleet_apply_converged() -> Bool {
   fleet_converge_apply_result_converged(r: fleet_converge_fleet_via_apply())
 }
 
-data fleet_converge_steady_state_doc_projection_dissolution_trigger: Disposition = Terminal {
-  reason: "G3 landed: steady-state arms moved in-process via converge_apply/ConvergePlan; project_fleet_converge_to_doc emits thin-run + bootstrap only."
+data fleet_converge_steady_state_doc_projection_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_apply",
+    decl_name: "fleet_converge_thin_invocation",
+    field: WholeDeclaration,
+  }
 }
 
 data fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger: Disposition = Scaffold {
