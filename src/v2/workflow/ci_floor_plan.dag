@@ -1,60 +1,5 @@
 module v2.workflow.ci_floor_plan
 
-import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries }
-import gunbc.ci_spec {
-  gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
-  ci_spec_with_discovery_scan_dirs
-}
-import gunbc.ci_gate {
-  Gate, EmitHostGate, LayeringImportsGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate
-}
-import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
-import v2.std.collection { List, Optional, Absent, Present }
-import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
-import v2.std.node { Atom, Node, TypeNode }
-import v2.std.text { String }
-import std.types { ContentHash, Int }
-import std.nat { Nat }
-import std.measure { Second, second, second_count }
-import std.realization_width { width_fold_objective_goals }
-import std.realization_schedule {
-  SelectionApplied,
-  SelectionPredictOnly,
-  SelectionOff,
-  RealizationPlan,
-  RealizationObjective,
-  Runnable,
-  RunnableSingleClaim,
-  RunnableDiscoveryBatch,
-  ScheduleWitnessEntry,
-  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind,
-  RunnableResourceProfile,
-  runnable_resource_profile,
-  runnable_resource_profile_negligible,
-  runnable_memory_negligible,
-  runnable_memory_substantial,
-  runnable_excludes_corpus_co_residence,
-  runnable_heavy_whole_tree_resolve,
-  runnable_forbids_corpus_co_residence,
-  cost_account_predicted_zero,
-  schedule_lens_verdict_for_ci_floor,
-  runnable_selection_applied
-}
-import v2.workflow.executor {
-  ExecutorBatch
-}
-import v2.workflow.realization_runner {
-  RunnerScheduleBlocked,
-  RunnerScheduleComplete,
-  runner_ordering_only,
-  runner_schedule_plan_from_dependencies,
-  runner_schedule_store_covers_nodes
-}
-
 data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
 
 data ci_floor_compile_gate_fn: String = "dag_compile_clean_gate_passes"
@@ -116,6 +61,7 @@ fn gate_node(g: Gate) -> Node {
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
     SelfHostReadsRealBytesGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_reads_real_bytes } }, children: [] }
     SelfHostStalenessGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_staleness } }, children: [] }
+    EmitDeterminismGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit_determinism } }, children: [] }
   }
 }
 
@@ -163,6 +109,13 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
     SelfHostStalenessGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
+        spawns_host_compiler: true,
+        memory: substantial,
+        execution_mode: Wet
+      )
+    EmitDeterminismGate =>
+      runnable_resource_profile(
+        heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
         memory: substantial,
         execution_mode: Wet
@@ -215,6 +168,7 @@ fn gate_runnable(g: Gate) -> Runnable {
       function: "self_host_realized_comparison_staleness_gate_holds",
       profile: profile
     }
+    EmitDeterminismGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_determinism_gate_passes", profile: profile }
   }
 }
 
@@ -632,6 +586,10 @@ fn gunbc_ci_plan_artifact_batches() -> List<List<Runnable>> {
   })
 }
 
+fn gunbc_ci_emit_determinism_batches() -> List<List<Runnable>> {
+  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_emit_determinism_spec).schedule
+}
+
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
   match schedule_lens_verdict_for_ci_floor(
     plan: gunbc_ci_floor_realization_plan(),
@@ -701,4 +659,3 @@ fn witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: CiSpec) -> Bool
     ok && (edge.dependent != floor_compile_root_node())
   })
 }
-
