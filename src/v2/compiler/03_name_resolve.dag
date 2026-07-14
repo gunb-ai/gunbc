@@ -510,6 +510,30 @@ fn namespace_admission_initial_state(
   }
 }
 
+fn admitted_subject_from_bindings(
+  bindings: Map<Symbol, Symbol>,
+  base: Namespace,
+  subject_module_root: Node,
+  validated_roots: FreeMonoid<Node>,
+  module_qn: QualifiedName
+) -> AdmittedSubject {
+  AdmittedSubject {
+    namespace: Namespace {
+      bindings: namespace_bindings_augment_from_module_atoms(
+        root: subject_module_root,
+        bindings: bindings
+      ),
+      canonical_symbols: base.canonical_symbols,
+      symbol_index: symbol_index_fill_module_roots(
+        index: empty_symbol_index(),
+        roots: validated_roots
+      ),
+      module_qn: module_qn
+    },
+    subject_root: subject_module_root
+  }
+}
+
 fn namespace_for_subject(
   lm: LanguageModel,
   roots: FreeMonoid<Node>,
@@ -547,21 +571,13 @@ fn namespace_for_subject(
                     }
                   AdmissionAccepted { bindings: b, origins: _ } =>
                     Accepted {
-                      value: AdmittedSubject {
-                        namespace: Namespace {
-                          bindings: namespace_bindings_augment_from_module_atoms(
-                            root: subject_module_root,
-                            bindings: b
-                          ),
-                          canonical_symbols: base.canonical_symbols,
-                          symbol_index: symbol_index_fill_module_roots(
-                            index: empty_symbol_index(),
-                            roots: validated_roots
-                          ),
-                          module_qn: admission.subject.name
-                        },
-                        subject_root: subject_module_root
-                      },
+                      value: admitted_subject_from_bindings(
+                        bindings: b,
+                        base: base,
+                        subject_module_root: subject_module_root,
+                        validated_roots: validated_roots,
+                        module_qn: admission.subject.name
+                      ),
                       diagnostics: validate_diag
                     }
                 }
@@ -576,21 +592,13 @@ fn namespace_for_subject(
                 ) {
                   AdmissionAccepted { bindings: b, origins: _ } =>
                     Accepted {
-                      value: AdmittedSubject {
-                        namespace: Namespace {
-                          bindings: namespace_bindings_augment_from_module_atoms(
-                            root: subject_module_root,
-                            bindings: b
-                          ),
-                          canonical_symbols: base.canonical_symbols,
-                          symbol_index: symbol_index_fill_module_roots(
-                            index: empty_symbol_index(),
-                            roots: validated_roots
-                          ),
-                          module_qn: admission.subject.name
-                        },
-                        subject_root: subject_module_root
-                      },
+                      value: admitted_subject_from_bindings(
+                        bindings: b,
+                        base: base,
+                        subject_module_root: subject_module_root,
+                        validated_roots: validated_roots,
+                        module_qn: admission.subject.name
+                      ),
                       diagnostics: validate_diag
                     }
                   AdmissionRejected { diagnostics: d } =>
