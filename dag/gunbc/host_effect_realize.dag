@@ -299,10 +299,23 @@ fn realize_install_media_remaster_in_process(intent: HostEffectIntent) -> Reconc
   }
 }
 
-fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match kind {
-    TypedReconcileFetch => realize_install_media_fetch_in_process(intent: intent)
-    TypedReconcileRemaster => realize_install_media_remaster_in_process(intent: intent)
+fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match transport {
+    LocalShell =>
+      match kind {
+        TypedReconcileFetch => realize_install_media_fetch_in_process(intent: intent)
+        TypedReconcileRemaster => realize_install_media_remaster_in_process(intent: intent)
+      }
+    SshShell { ssh_host: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
+        applied: intent,
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; EmitArtifactThenThinRun is a fail-closed Unimplemented stub for this cell until the typed reconcile is realized over that transport.",
+        applied: intent,
+      }
   }
 }
 
@@ -332,7 +345,7 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
     ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
     ConvergeOnHost { node: _, host_converge: hc } =>
       realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
-    TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, intent: intent)
+    TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -371,7 +384,7 @@ fn host_effect_apply_gated(
         ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
         ConvergeOnHost { node: _, host_converge: hc } =>
           realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
-        TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, intent: intent)
+        TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
