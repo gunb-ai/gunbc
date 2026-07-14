@@ -118,8 +118,7 @@ type ShellExecObserved {
   stderr: String
 }
 
-fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
-  let header = "host_effect_apply: shell exec returned a nonzero exit code; fail-closed, no fabricated convergence"
+fn shell_exec_failure_reason_headered(observed: ShellExecObserved, header: String) -> String {
   if observed.stdout == "" && observed.stderr == "" {
     header
   } else {
@@ -130,16 +129,11 @@ fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
   }
 }
 
-fn srv3_shell_exec_failure_reason(observed: ShellExecObserved) -> String {
-  let header = "host_effect_apply: srv3 shell exec returned a nonzero exit code; fail-closed"
-  if observed.stdout == "" && observed.stderr == "" {
-    header
-  } else {
-    concat(
-      concat(concat(header, "\n--- stdout ---\n"), observed.stdout),
-      concat("\n--- stderr ---\n", observed.stderr)
-    )
-  }
+fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
+  shell_exec_failure_reason_headered(
+    observed: observed,
+    header: "host_effect_apply: shell exec returned a nonzero exit code; fail-closed, no fabricated convergence",
+  )
 }
 
 fn srv3_shell_reconcile(
@@ -149,7 +143,12 @@ fn srv3_shell_reconcile(
   let grounding = if observed.success {
       Grounds { evidence: ShellEffectApplied { exit_code: observed.exit_code, stdout: observed.stdout } }
     } else {
-      DoesNotGround { reason: srv3_shell_exec_failure_reason(observed: observed) }
+      DoesNotGround {
+        reason: shell_exec_failure_reason_headered(
+          observed: observed,
+          header: "host_effect_apply: srv3 shell exec returned a nonzero exit code; fail-closed",
+        ),
+      }
     }
   reconcile_grounded(
     apply_effect: intent,
