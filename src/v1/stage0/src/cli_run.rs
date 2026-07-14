@@ -12436,6 +12436,28 @@ mod nfr_tests {
     }
 
     #[test]
+    fn dump_nfr_gap() {
+        let live: std::collections::BTreeSet<&str> = nfr_build_report()
+            .sites
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        let stale: Vec<&str> = NON_FOLD_RESIDUE_ROSTER
+            .iter()
+            .filter(|s| !live.contains(*s))
+            .copied()
+            .collect();
+        let unrostered: Vec<&str> = nfr_build_report()
+            .sites
+            .iter()
+            .filter(|s| !NON_FOLD_RESIDUE_ROSTER.contains(&s.as_str()))
+            .map(|s| s.as_str())
+            .collect();
+        eprintln!("stale={:?} unrostered={:?}", stale, unrostered);
+        assert!(stale.is_empty() && unrostered.is_empty());
+    }
+
+    #[test]
     fn coproduct_index_finds_sums_not_records() {
         let f = files(&[(
             "t.dag",
