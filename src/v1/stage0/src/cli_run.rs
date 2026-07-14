@@ -2471,18 +2471,12 @@ fn load_sources_for_entry_with_index(
     facts: &ModuleGraphFactsLive,
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let entry_source = entry_source_from_index_or_disk(index, entry_path)?;
-    let rel_path = entry_source.path.clone();
-
-    let sources = resolve_transitively(vec![entry_source.clone()], index, facts)?;
-    let mut sources = sources;
-    if !sources
-        .iter()
-        .any(|s| s.path == rel_path || same_canonical_file(&s.path, &rel_path))
-    {
-        sources.push(entry_source);
-    }
-    Ok(sources)
+    let _entry_source = entry_source_from_index_or_disk(index, entry_path)?;
+    let _ = facts;
+    // namespace-resolution-design.md §8 PR-4/5: global_bare census is corpus-wide and
+    // order-independent — entry resolve must load the whole indexed module set so bare
+    // references in import-stripped modules still resolve via the census.
+    Ok(index.values().cloned().collect())
 }
 
 fn same_canonical_file(a: &str, b: &str) -> bool {
