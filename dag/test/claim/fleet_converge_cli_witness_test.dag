@@ -13,11 +13,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Green by EXECUTION: `gunbc converge --host srv1` against the real fleet policy
-// (`fleet_converge_policy()`, not a synthetic fixture) — srv1 is a real enrolled
-// host (`gunbc.fleet_intent.srv1_host`) whose knobs are all still `KnobUnimplemented`
-// (`host_converge_realize.dag`'s fail-closed frontier), so the receiver must refuse,
-// never fabricate convergence.
 fn witness_converge_cli_run_known_host_fails_closed_on_knob_frontier() -> Bool {
   let r = converge_cli_run(host: "srv1")
   r.host == "srv1"
@@ -31,10 +26,6 @@ fn witness_converge_cli_run_known_host_fails_closed_on_knob_frontier() -> Bool {
     }
 }
 
-// Discriminating RED control: an unenrolled host identity must refuse with an
-// "unknown fleet host identity" reason — distinct from the known-host knob-frontier
-// refusal above. If the receiver ever widened to "any host converges" (or collapsed
-// the two refusal reasons into one), this flips red.
 fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
   let r = converge_cli_run(host: "no-such-fleet-host")
   r.host == "no-such-fleet-host"
@@ -50,8 +41,6 @@ fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
     }
 }
 
-// Byte-locked receipt grammar: `converge-receipt host=%s applied=%s drifted=%s verdict=%s`
-// (single authority: `fleet_converge_emit.dag`'s `host_summary`/`emit_receipt` printf lines).
 fn witness_converge_cli_receipt_line_matches_byte_locked_grammar() -> Bool {
   let converged = ConvergeCliReceipt { host: "srv9", applied: 3, drifted: 0, verdict: VerdictConverged, reason: none }
   let refused = ConvergeCliReceipt { host: "srv1", applied: 0, drifted: 0, verdict: Absent, reason: Present { value: "refused" } }
@@ -59,9 +48,6 @@ fn witness_converge_cli_receipt_line_matches_byte_locked_grammar() -> Bool {
     && converge_cli_receipt_line(r: refused) == "converge-receipt host=srv1 applied=0 drifted=0 verdict=absent"
 }
 
-// CLI-boundary output (`converge_cli_output`) — the Rust receiver's exact
-// contract: `line` matches the byte-locked grammar, `converged` is false,
-// and `reason` carries the fail-closed explanation.
 fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
   let out = converge_cli_output(host: "no-such-fleet-host")
   out.line == "converge-receipt host=no-such-fleet-host applied=0 drifted=0 verdict=absent"

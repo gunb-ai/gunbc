@@ -15,11 +15,6 @@ import gunbc.host_effect { LocalShell }
 import gunbc.fleet_converge_apply { converge_apply_for_host }
 import std.realization_reconcile { Converged, NotConverged }
 
-// `gunbc converge --host <h>` receiver: looks up the typed policy for `host`,
-// applies it in-process (`converge_apply_for_host`), and projects the outcome
-// onto the byte-locked `converge-receipt` grammar (`fleet_converge_emit.dag`'s
-// `host_summary`: `converge-receipt host=%s applied=%s drifted=%s verdict=%s`).
-// `reason` carries the fail-closed explanation off the wire grammar (stderr, not stdout).
 type ConvergeCliReceipt {
   host: String
   applied: Int
@@ -93,9 +88,6 @@ fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliRece
   }
 }
 
-// CLI-boundary projection: the exact printable receipt line plus enough to
-// decide the process exit code and stderr, so the Rust receiver never
-// re-derives the byte-locked grammar or the verdict label mapping itself.
 type ConvergeCliOutput {
   line: String
   converged: Bool
