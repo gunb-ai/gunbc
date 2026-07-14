@@ -166,14 +166,6 @@ fn citation_arrow_two_param_loop(
         }
       },
       Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: ^copied_port_citation_return_type } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
         label: Named { name: ^arrow_body_edge },
         target: citation_loop_body_linear_in(measure: measure)
       }
