@@ -11,7 +11,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_generated_roster_count() -> Bool {
-  generated_stage0_file_count() == 92
+  generated_stage0_file_count() == 95
 }
 
 fn w_hand_maintained_not_classified_generated() -> Bool {
