@@ -1,0 +1,111 @@
+module v2.test.medium_structure_containment.recognizer.discriminators
+
+import v2.lens.bash_composition_recognizer {
+  ConstPart,
+  HolePart,
+  LiteralSkeleton,
+  classify_bash_skeleton,
+  classify_bash_text,
+  disposition_is_ambiguous,
+  disposition_is_clean,
+  disposition_is_violation
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn rec_stmt_sep_two_cmds_is_violation() -> Bool {
+  disposition_is_violation(d: classify_bash_text(text: "echo a; echo b"))
+}
+
+test fn rec_and_then_is_violation() -> Bool {
+  disposition_is_violation(d: classify_bash_text(text: "make build && make test"))
+}
+
+test fn rec_or_else_is_violation() -> Bool {
+  disposition_is_violation(d: classify_bash_text(text: "grep -q foo bar || exit 1"))
+}
+
+test fn rec_pipe_is_violation() -> Bool {
+  disposition_is_violation(d: classify_bash_text(text: "cat f | sort | uniq"))
+}
+
+test fn rec_if_then_fi_is_violation() -> Bool {
+  disposition_is_violation(d: classify_bash_text(text: "if [ -x ./x ]; then ./x; fi"))
+}
+
+test fn rec_single_command_is_clean() -> Bool {
+  disposition_is_clean(d: classify_bash_text(text: "echo hi"))
+}
+
+test fn rec_word_is_clean() -> Bool {
+  disposition_is_clean(d: classify_bash_text(text: "BUILD_LOG"))
+}
+
+test fn rec_trailing_semicolon_single_command_is_clean() -> Bool {
+  disposition_is_clean(d: classify_bash_text(text: "echo hi; "))
+}
+
+test fn rec_quoted_control_bytes_is_clean() -> Bool {
+  disposition_is_clean(d: classify_bash_text(text: "echo \"a; then b\""))
+}
+
+test fn rec_cmdsubst_assign_is_clean() -> Bool {
+  disposition_is_clean(d: classify_bash_text(text: "x=$(date)"))
+}
+
+test fn rec_bare_lexeme_semicolon_then_is_clean() -> Bool {
+  disposition_is_clean(d: classify_bash_text(text: "; then "))
+}
+
+test fn rec_for_do_is_ambiguous() -> Bool {
+  disposition_is_ambiguous(d: classify_bash_text(text: "for x in a b; do"))
+}
+
+test fn rec_done_is_ambiguous() -> Bool {
+  disposition_is_ambiguous(d: classify_bash_text(text: "done"))
+}
+
+test fn rec_newline_two_cmds_is_violation() -> Bool {
+  disposition_is_violation(d: classify_bash_text(text: "echo a\necho b"))
+}
+
+test fn rec_hole_arg_is_clean() -> Bool {
+  disposition_is_clean(
+    d: classify_bash_skeleton(
+      sk: LiteralSkeleton { parts: [ConstPart { text: "echo " }, HolePart] }
+    )
+  )
+}
+
+test fn rec_hole_for_loop_is_ambiguous() -> Bool {
+  disposition_is_ambiguous(
+    d: classify_bash_skeleton(
+      sk: LiteralSkeleton {
+        parts: [ConstPart { text: "for url in " }, HolePart, ConstPart { text: "; do" }]
+      }
+    )
+  )
+}
+
+test fn rec_concat_all_const_composition_is_violation() -> Bool {
+  disposition_is_violation(
+    d: classify_bash_skeleton(
+      sk: LiteralSkeleton {
+        parts: [ConstPart { text: "if x" }, ConstPart { text: "; then y; fi" }]
+      }
+    )
+  )
+}
+
+test fn rec_hole_between_two_cmds_is_violation() -> Bool {
+  disposition_is_violation(
+    d: classify_bash_skeleton(
+      sk: LiteralSkeleton {
+        parts: [ConstPart { text: "cmd1 " }, HolePart, ConstPart { text: "; cmd2" }]
+      }
+    )
+  )
+}
