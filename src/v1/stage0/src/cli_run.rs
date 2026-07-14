@@ -1724,7 +1724,13 @@ fn disable_floor_compile_clean_lazy_install_for_test() {
 fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
     let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
+    let has_hard_errors = compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
+    if has_hard_errors {
+        eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
+    } else if result.files.is_empty() {
+        eprintln!("floor compile-clean: refused — compile produced zero files (empty emit set)");
+    }
+    !has_hard_errors && !result.files.is_empty()
 }
 
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
@@ -12287,6 +12293,13 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // classification P1/P2, in flight, is the structural fix). Burns down with the
     // orchestration-emit fold migration.
     "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
+    // 2026-07-14 (no row): fleet_converge_cli.dag::converge_cli_applied_knob_count went
+    // wildcard the same day (#6598 enumerated HostEffect's then-3 variants; #6586 grew it to
+    // 15 on an independent base — green alone, red together; main went compile-red). The fn
+    // is one-special-variant dispatch (ConvergePlan knob count; else fallback). The nfr lens
+    // scans param-scrutinee matches only, so a field-scrutinee (`intent.effect`) site is
+    // lens-invisible and a row here would be STALE — recorded as a lens-precision note, not
+    // a roster entry.
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.
@@ -12370,6 +12383,13 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // classification P1/P2, in flight, is the structural fix). Burns down with the
     // orchestration-emit fold migration.
     "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
+    // 2026-07-14 (no row): fleet_converge_cli.dag::converge_cli_applied_knob_count went
+    // wildcard the same day (#6598 enumerated HostEffect's then-3 variants; #6586 grew it to
+    // 15 on an independent base — green alone, red together; main went compile-red). The fn
+    // is one-special-variant dispatch (ConvergePlan knob count; else fallback). The nfr lens
+    // scans param-scrutinee matches only, so a field-scrutinee (`intent.effect`) site is
+    // lens-invisible and a row here would be STALE — recorded as a lens-precision note, not
+    // a roster entry.
     "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
