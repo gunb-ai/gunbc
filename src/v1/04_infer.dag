@@ -84,7 +84,8 @@ import v1.compiler.infer_env {
   str_bindings_from_bindings,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
-  inductive_fields_list_to_map
+  inductive_fields_list_to_map,
+  GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
