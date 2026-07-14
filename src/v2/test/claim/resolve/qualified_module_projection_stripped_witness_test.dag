@@ -1,0 +1,42 @@
+module v2.test.resolve.qualified_module_projection_stripped_witness
+
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data g1_stripped_fixture_note: String = "Grammar lane G1 witness: no import lines — qualified type projection must resolve via corpus SymbolIndex (container.member), not import-scoped or value field-access."
+
+type LocalAlias = v2.test.resolve.qualified_module_projection_provider.ProviderType
+
+fn witness_uses_qualified_projection() -> LocalAlias {
+  Unit
+}
+
+test fn qualified_module_projection_stripped_type_resolves_holds() -> Bool {
+  witness_uses_qualified_projection() == Unit
+}
+
+data qmp_stripped_module_subject: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^qmp_stripped_module_subject } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data claim_qualified_module_projection_stripped_compiles: TestClaim = CompilesClaim {
+  label: "resolve/qualified_module_projection_stripped: import-less module compiles with qualified type projection",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: qmp_stripped_module_subject,
+  expected_value: qmp_stripped_module_subject,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

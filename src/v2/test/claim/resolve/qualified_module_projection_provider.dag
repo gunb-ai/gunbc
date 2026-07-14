@@ -1,0 +1,7 @@
+module v2.test.resolve.qualified_module_projection_provider
+
+type ProviderType = Unit
+
+fn provider_value() -> ProviderType {
+  Unit
+}

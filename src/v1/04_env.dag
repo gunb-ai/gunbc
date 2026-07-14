@@ -385,12 +385,7 @@ fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
 fn lookup_binding_after_global_bare(env: TypeEnv, name: String) -> TypeBinding? {
   match global_bare_lookup(env: env, name: name) {
     Present { value: binding } => Present { value: binding }
-    Absent =>
-      if contains(name, ".") {
-        lookup_qualified_module_projection(env: env, name: name)
-      } else {
-        Absent
-      }
+    Absent => lookup_qualified_module_projection(env: env, name: name)
   }
 }
 
