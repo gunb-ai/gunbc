@@ -24,7 +24,7 @@ use std::fs;
 use v1_compiler::cli_run::{
     build_multi_entry_index, make_eval_context, reset_typecheck_compute_count,
     resolve_entry_graph, resolve_entry_with_index, run_claim, typecheck_compute_count,
-    workspace_root, ClaimOutcome, MultiEntryIndex,
+    with_typecheck_compute_count_receipt, workspace_root, ClaimOutcome, MultiEntryIndex,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -124,6 +124,7 @@ fn union_outcome(index: &MultiEntryIndex, entry: &str, function: &str) -> String
 /// once. The receipt is the enforced form of "resolve cost ≤ 1× union closure, never N×".
 #[test]
 fn union_resolve_typechecks_each_node_once() {
+    with_typecheck_compute_count_receipt(|| {
     let fx = Fixture::new("once-per-node");
 
     // Cold private closures — the request-major baseline, one fresh index each. cold_a and
@@ -184,6 +185,7 @@ fn union_resolve_typechecks_each_node_once() {
         union_after_b,
         "once-per-node: re-resolving computes zero new typechecks — the node is in the schedule once"
     );
+    });
 }
 
 /// §6.1 — byte-identity oracle: the union-view result of an entry equals its private
@@ -243,6 +245,7 @@ fn union_view_result_equals_private_resolve_in_every_order() {
 /// thread. Here `entry_a` stands in for that prior work. The counter moves; the closure must not.
 #[test]
 fn roster_closure_count_is_independent_of_thread_cache_warmth() {
+    with_typecheck_compute_count_receipt(|| {
     let fx = Fixture::new("warmth-independence");
 
     // The same fold `run_discovery_rows` applies to every graph it resolves.
@@ -289,6 +292,7 @@ fn roster_closure_count_is_independent_of_thread_cache_warmth() {
         "roster_closure_nodes must count the union closure of the resolved graphs, which is \
          independent of what this thread typechecked earlier"
     );
+    });
 }
 
 /// C1-prep (cross-worker-typecheck-share-design.md §4.1): `typecheck_compute_count` is a
@@ -297,6 +301,7 @@ fn roster_closure_count_is_independent_of_thread_cache_warmth() {
 /// today; the counter still accumulates across threads.
 #[test]
 fn typecheck_compute_count_accumulates_across_threads() {
+    with_typecheck_compute_count_receipt(|| {
     let fx = Fixture::new("process-wide-counter");
     reset_typecheck_compute_count();
 
@@ -328,4 +333,5 @@ fn typecheck_compute_count_accumulates_across_threads() {
         after_a,
         typecheck_compute_count()
     );
+    });
 }

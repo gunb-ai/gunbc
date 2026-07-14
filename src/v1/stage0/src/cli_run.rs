@@ -2731,6 +2731,18 @@ impl SharedTypecheckCaches {
 // the process union.
 static TYPECHECK_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
+// Union-resolve receipt tests reset/read the process-wide counter; `cargo test` runs
+// `#[test]` fns in parallel by default — serialize those oracles (not production use).
+static TYPECHECK_COMPUTE_COUNT_RECEIPT_LOCK: Mutex<()> = Mutex::new(());
+
+/// Run a counter-based receipt test with exclusive access to `TYPECHECK_COMPUTE_COUNT`.
+pub fn with_typecheck_compute_count_receipt<R>(f: impl FnOnce() -> R) -> R {
+    let _guard = TYPECHECK_COMPUTE_COUNT_RECEIPT_LOCK
+        .lock()
+        .expect("typecheck_compute_count receipt lock poisoned");
+    f()
+}
+
 pub fn typecheck_compute_count() -> usize {
     TYPECHECK_COMPUTE_COUNT.load(Ordering::SeqCst)
 }
