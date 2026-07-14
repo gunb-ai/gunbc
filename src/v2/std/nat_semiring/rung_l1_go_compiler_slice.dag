@@ -1,18 +1,5 @@
 module v2.test.nat_semiring.rung_l1_go_compiler_slice
 
-import v2.std.collection { List }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.text { String }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  CompilesClaim,
-  TestClaim,
-  TestClassification,
-  Tier3,
-  Integration,
-  manual_claim_anchor
-}
-
 data go_l1_nat_semiring_rung2_l1_host_gate: String = "scripts/v2-nat-semiring-go-compiler-slice-gate.sh"
 
 data go_l1_nat_semiring_rung2_l1_receipt_schema: String = "scripts/v2-nat-semiring-go-compiler-slice-gate.sh::go_l1_compiler_slice_receipt_v1"

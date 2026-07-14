@@ -1,27 +1,5 @@
 module v2.std.generic_instantiation
 
-import v2.std.collection {
-  Absent,
-  Map,
-  Present,
-  empty_map,
-  map_get,
-  map_insert
-}
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.node { Node, Symbol, content_hash }
-import v2.std.text { String }
-
 type GenericSubstitution = Map<String, Node>
 
 data generic_substitution_bind_once_port: Symbol = generic_substitution_bind_once_port

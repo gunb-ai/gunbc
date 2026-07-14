@@ -1,25 +1,5 @@
 module v2.test.nat_semiring.rung_l1_python_runtime
 
-import v2.std.collection { List }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.text { String }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  Tier3,
-  Integration,
-  manual_claim_anchor
-}
-import v2.test.algebra_laws.nat_semiring {
-  nat_add_associativity_input,
-  nat_add_left_identity_input,
-  nat_add_right_identity_input,
-  nat_mul_annihilator_input,
-  nat_mul_associativity_input,
-  nat_mul_left_identity_input
-}
 data phase1_nat_semiring_l1_python_runtime_fixture_subject: Node = Node {
   kind: TypeNode {
     connective: Atom { identity: ^phase1_nat_semiring_l1_python_runtime_fixture_symbol }

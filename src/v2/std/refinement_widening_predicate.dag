@@ -1,12 +1,5 @@
 module v2.std.refinement_widening_predicate
 
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.integer_value_set {
-  integer_value_set_contains,
-  integer_value_set_strictly_contains
-}
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
-import v2.std.node_query { find_named_child }
 fn refinement_widening_predicate_algebra(
   source: Node,
   candidate: Node,

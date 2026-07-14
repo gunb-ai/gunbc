@@ -1,8 +1,5 @@
 module v2.std.diagnostic
 
-import v2.std.algebra { bag_eq, list_append, Magma, Monoid, Semigroup, list_snoc_item, fold_list, freemonoid_empty }
-import v2.std.node { Node, Symbol }
-
 type Extent
   = WholeFile
   | ByteRange { start: Int, end: Int }

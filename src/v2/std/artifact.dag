@@ -1,10 +1,5 @@
 module v2.std.artifact
 
-import v2.std.diagnostic { Accepted, Locus, Outcome, Rejected }
-import v2.std.node { Node, Symbol }
-import v2.std.refinement { Refined, Validation, refine }
-import v2.std.text { String }
-
 type ArtifactKind
   = SourceFile
   | GeneratedSource

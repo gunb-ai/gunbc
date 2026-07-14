@@ -1,16 +1,5 @@
 module v2.test.algebra_laws.field_patch_monoid
 
-import v2.std.patch { FieldPatch, Override, Inherit, compose_field_patch, apply_field_patch, field_patch_monoid }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 fn fp_pass_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^fp_pass_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
