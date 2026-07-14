@@ -1724,7 +1724,13 @@ fn disable_floor_compile_clean_lazy_install_for_test() {
 fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
     let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
+    let has_hard_errors = compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
+    if has_hard_errors {
+        eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
+    } else if result.files.is_empty() {
+        eprintln!("floor compile-clean: refused — compile produced zero files (empty emit set)");
+    }
+    !has_hard_errors && !result.files.is_empty()
 }
 
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
@@ -4543,6 +4549,70 @@ pub fn handle_ci() {
         false,
         false,
     );
+}
+
+/// Thin CLI transport handler for `gunbc converge --host <h>`: argv parse ->
+/// in-process `.dag` interpreter call -> stdout/exit-code projection, no
+/// converge logic here. Disposition receipt (DESIGN §3 transport-is-a-handler,
+/// §7 typed self-host frontier): `gunbc.fleet_converge_cli`'s
+/// `gunbc_converge_cli_stage0_receiver_disposition`.
+pub fn handle_converge(host: String) {
+    let roots = witness_layer_roots();
+    let (graph, indices) =
+        match resolve_entry_graph_shared(&roots, "dag/gunbc/fleet_converge_cli.dag") {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        };
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let args = [(
+        Some("host".to_string()),
+        v1_interpreter::Value::Str(host.clone()),
+    )];
+    let result =
+        match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("runtime error: {e}");
+                std::process::exit(1);
+            }
+        };
+    let v1_interpreter::Value::Record { fields, .. } = &result else {
+        eprintln!(
+            "error: converge_cli_output returned an unexpected shape: {:?}",
+            result
+        );
+        std::process::exit(1);
+    };
+    let line = match ctx.field(fields, "line") {
+        Some(v1_interpreter::Value::Str(s)) => s.clone(),
+        _ => {
+            eprintln!("error: converge_cli_output.line was not a String");
+            std::process::exit(1);
+        }
+    };
+    let converged = matches!(ctx.field(fields, "converged"), Some(v1_interpreter::Value::Bool(true)));
+    let reason = match ctx.field(fields, "reason") {
+        Some(v1_interpreter::Value::Variant { variant_name, fields: vf, .. })
+            if ctx.sym_eq(*variant_name, "Present") =>
+        {
+            match ctx.field(vf, "value") {
+                Some(v1_interpreter::Value::Str(s)) => Some(s.clone()),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    println!("{line}");
+    if let Some(reason) = &reason {
+        eprintln!("{reason}");
+    }
+    if !converged {
+        std::process::exit(1);
+    }
 }
 
 pub fn handle_run(
@@ -12215,6 +12285,27 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // re-arms; burns down with the frontier probe's fold migration. (#6533's other wildcard
     // fn, compiler_frontier_probe_entry_test.dag, is outside the scan universe — no row.)
     "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
+    // 2026-07-14 backfill: the shell->dag P2b/P4 slices landed orch_emit_let_step with a
+    // one-special-variant dispatch (ExprCmdSubst -> cmdsubst_assign; every other Expr through
+    // the uniform spelling path) — enumerating all Expr variants would clone the general arm.
+    // The nfr witness is a corpus-read host-fed row, so the landing PR predict-skipped it and
+    // the red surfaced on the 2026-07-14 nightly cold sweep (masking receipt #9; live-read
+    // classification P1/P2, in flight, is the structural fix). Burns down with the
+    // orchestration-emit fold migration.
+    "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
+    // 2026-07-14 (no row): fleet_converge_cli.dag::converge_cli_applied_knob_count went
+    // wildcard the same day (#6598 enumerated HostEffect's then-3 variants; #6586 grew it to
+    // 15 on an independent base — green alone, red together; main went compile-red). The fn
+    // is one-special-variant dispatch (ConvergePlan knob count; else fallback). The nfr lens
+    // scans param-scrutinee matches only, so a field-scrutinee (`intent.effect`) site is
+    // lens-invisible and a row here would be STALE — recorded as a lens-precision note, not
+    // a roster entry.
+    // 2026-07-14: #6582 (live-read P1) landed two nested structural-equality fns (param
+    // scrutinee, off-variant arm returns false) — same green-alone/red-together class as the
+    // rest of this batch (nfr is corpus-read; the landing PR predict-skipped it). Siblings to
+    // the std eq rows; dissolve with derived equality from inhabitance (dag/std/algebra).
+    "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
+    "src/v2/lens/live_read_classification.dag::path_pattern_eq",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.

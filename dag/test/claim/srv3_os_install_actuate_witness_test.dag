@@ -8,6 +8,8 @@ import gunbc.srv3_os_install_actuate {
   srv3_os_install_actuate_shell_runner_scaffold,
   srv3_nbd_proxy_serve_intent,
   srv3_bmcweb_login_body_content,
+}
+import gunbc.srv3_actuate_shell_paths {
   srv3_nbd_proxy_serve_script_path,
   srv3_bmcweb_token_path,
 }

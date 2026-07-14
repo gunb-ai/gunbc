@@ -4,7 +4,9 @@ import std.execution_mode { Hermetic, Wet }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, gunbc_ci_emit_determinism_spec, CiSpec,
-  ci_spec_with_discovery_scan_dirs,
+  ci_spec_with_discovery_scan_dirs
+}
+import gunbc.ci_gate {
   Gate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
@@ -449,24 +451,31 @@ fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView
   }
 }
 
-data gunbc_ci_corpus_discovery_batch_isolation_note: String = "Discovery-flip batch isolation (run 29120615071 receipt, retained under the adaptive-width regime): resource edges from floor_corpus_node to every gate when discovery_scan_dirs is non-empty isolate the corpus to its own batch so gates start only after discovery completes and walk_memo holds the shared index — the surviving justification is the walk_memo ORDERING (gates reuse the corpus's resolved whole-tree index instead of re-resolving it), not memory stacking, which the run-time memory governor now handles by admission (the original receipt: at pinned width the corpus's main-thread whole-tree resolve stacked with gate shard threads in one antichain batch). Dissolve-on: resolver graph-major makes per-entry resolve cheap enough that memo-order no longer matters, or the cross-process resolved-graph cache supersedes walk_memo."
+data gunbc_ci_corpus_discovery_batch_isolation_note: String = "Discovery-flip batch isolation (run 29120615071 receipt, retained under the adaptive-width regime): resource edges from every enrolled corpus plan node (floor_corpus_node, execution_corpus_node when ExecutionWitnessKind rows exist, bin_witness_corpus_node when enrolled) to every gate when discovery_scan_dirs is non-empty isolate corpus batches from gates so gates start only after discovery completes and walk_memo holds the shared index — the surviving justification is the walk_memo ORDERING (gates reuse the corpus's resolved whole-tree index instead of re-resolving it), not memory stacking, which the run-time memory governor now handles by admission (the original receipt: at pinned width the corpus's main-thread whole-tree resolve stacked with gate shard threads in one antichain batch). Dissolve-on: resolver graph-major makes per-entry resolve cheap enough that memo-order no longer matters, or the cross-process resolved-graph cache supersedes walk_memo."
 
 fn floor_discovery_flip_corpus_serializes_before_gates_edges(spec: CiSpec) -> List<DependencyView> {
   if length(xs: spec.discovery_scan_dirs) > 0 {
+    let corpus_nodes = corpus_plan_nodes(spec: spec)
     fold(spec.gates, init: [], f: fn(acc, g) {
       let node = gate_node(g: g)
       if floor_resource_anchor_node(node: node) {
         acc
       } else {
-        list_snoc_item(
-          xs: acc,
-          item: floor_resource_depends_on(source: floor_corpus_node, dependent: node)
-        )
+        fold(corpus_nodes, init: acc, f: fn(edges, corpus_node) {
+          list_snoc_item(
+            xs: edges,
+            item: floor_resource_depends_on(source: corpus_node, dependent: node)
+          )
+        })
       }
     })
   } else {
     []
   }
+}
+
+fn floor_discovery_flip_corpus_gate_serialization_edge_count(spec: CiSpec) -> Int {
+  floor_non_anchor_gate_count(spec: spec) * length(xs: corpus_plan_nodes(spec: spec))
 }
 
 fn floor_non_anchor_gate_count(spec: CiSpec) -> Int {
@@ -621,7 +630,7 @@ fn witness_floor_discovery_flip_serializes_gates_after_corpus(spec: CiSpec) -> B
   if length(xs: spec.discovery_scan_dirs) == 0 {
     true
   } else {
-    length(xs: floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec)) == floor_non_anchor_gate_count(spec: spec)
+    length(xs: floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec)) == floor_discovery_flip_corpus_gate_serialization_edge_count(spec: spec)
   }
 }
 

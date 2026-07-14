@@ -1,6 +1,6 @@
 # Affected-set de-fork: `v2.lens.affected_set` as single authority; dissolve Rust parallel implementation
 
-**Status: PARTIAL IMPLEMENTATION — prep (#6065) + witness (a) partial (#6072) landed; Step 4 consumer-1 landed (#6061); Steps 4–5 continuing.**
+**Status: PARTIAL IMPLEMENTATION — prep (#6065) + witness (a) partial (#6072) landed; Step 4 consumer-1 landed (#6061); Steps 4–5 continuing.** Companion (the live-read/masking axis of the same selection problem): [live-read-witness-classification-design.md](live-read-witness-classification-design.md) (P0 landed 2026-07-14; runtime tree/host reads made visible to affected-set attribution).
 
 **ROADMAP:** `1-affected-set-defork` (`dag/gunbc/roadmap_authority.dag:173`).
 

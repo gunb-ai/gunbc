@@ -11,7 +11,7 @@ import std.realization_schedule {
   cost_account_predicted_zero,
   runnable_resource_profile_negligible,
 }
-import std.realization {
+import std.realization_width {
   bounded_host_spawn_width,
   witness_spawn_width_capped_by_hardware,
   witness_width_fold_preserves_schedule_topology,

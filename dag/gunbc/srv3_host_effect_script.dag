@@ -1,0 +1,227 @@
+module gunbc.srv3_host_effect_script
+
+import gunbc.host_effect {
+  HostEffect,
+  Srv3InstallReconcileObserve,
+  DurableApprovalGrantRecord,
+  DurableApprovalGrantRead,
+  Srv3InstallMediaFetch,
+  Srv3SeededInstallMediaRemaster,
+  Srv3SeededInstallMediaToolchainEnsure,
+  Srv3SolConsoleCapture,
+  Srv3BmcwebSessionLogin,
+  Srv3BmcwebTokenExtract,
+  Srv3NbdProxyServe,
+  Srv3BootOnceReadBackSleep,
+  Srv3ReceiptEmit,
+  ShellCommand,
+  RedfishAction,
+  ConvergePlan,
+}
+import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
+import gunbc.srv3_install_diagnostic_checklist { srv3_install_diagnostic_observe_script }
+import gunbc.srv3_os_install_diagnostic { srv3_os_install_attempt_intent }
+import gunbc.srv3_os_install_reconcile_receipt { srv3_install_record_boot_once_approval_script }
+import gunbc.srv3_os_install_reconcile_types {
+  srv3_boot_once_approval_grant_path,
+  srv3_boot_once_apply_read_back_sleep,
+}
+import gunbc.srv3_actuate_shell_paths {
+  srv3_bmcweb_login_body_path,
+  srv3_bmcweb_login_response_path,
+  srv3_bmcweb_token_path,
+  srv3_nbd_proxy_serve_script_path,
+  srv3_sol_console_log_path,
+}
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
+import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
+import extdeps.os.ubuntu_install_media_fetch { install_media_fetch_script }
+import extdeps.os.ubuntu_seeded_install_media_remaster { install_media_remaster_script }
+import extdeps.languages.bash.program { serialize_bash }
+import extdeps.bmc.serial_console {
+  sol_console_capture_script,
+}
+import gunbc.srv3_sol_console_intent { srv3_sol_console_capture_intent }
+import extdeps.bmc.webui.nbd_proxy_serve {
+  bmcweb_session_login_program,
+}
+import extdeps.boards.asrock_rack {
+  asrock_srv3_live_bmc_host,
+}
+import gunbc.ci_deploy_access {
+  ci_deploy_srv1_access,
+  deploy_access_apt_get_privileged_command,
+  deploy_access_preflight_check_block,
+  deploy_access_sudo_n_apt_get_install_command,
+}
+import extdeps.tools.xorriso { xorriso_cli_tool }
+import extdeps.apt { package_xorriso }
+import std.types { String, NonEmptyStr, List, Bool }
+import std.measure { second_count }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data srv3_host_effect_script_dissolution_trigger: String = "🟡 dissolve-on: srv3_host_effect_script — concat-built bash bodies for srv3 observe/effect intents (centralized handler staging post-P5a call-site migration); DISSOLVES WHEN bash-emit (#5828 / shell-emission slice0) realizes srv3 observe/effect intents as typed argv invocations / grammar-emitted nodes and srv3_host_effect_script_for retires without concat-built transport strings; retire medium_structure_exception_roster entry for dag/gunbc/srv3_host_effect_script.dag. Wave 4 residue (shell→dag census §1C category C). NOT gated on shell_exec_via_bash executor deletion (P5b)."
+
+data srv3_host_effect_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_host_effect_script",
+    decl_name: "srv3_host_effect_script_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+fn srv3_install_reconcile_observe_meta_script() -> String {
+  concat(
+    "printf '%s\\n' \"Srv3InstallObserveReceipt: surface=observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\nprintf '%s\\n' \"Srv3InstallObserveReceipt: surface=git branch=$(git branch --show-current 2>/dev/null || echo unknown) commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)\"\n",
+  )
+}
+
+fn install_media_remaster_toolchain_ensure_script() -> String {
+  let tool_name = xorriso_cli_tool.name as String
+  let apt_package = package_xorriso as String
+  let apt_preflight = deploy_access_preflight_check_block(
+    access: ci_deploy_srv1_access,
+    cmd: deploy_access_apt_get_privileged_command(),
+  )
+  let privileged_install = deploy_access_sudo_n_apt_get_install_command(package: package_xorriso)
+  concat(
+    concat(
+      concat(
+        concat("#!/usr/bin/env bash\nset -euo pipefail\nif command -v ", tool_name),
+        " >/dev/null 2>&1 && ",
+      ),
+      concat(tool_name, " --version >/dev/null 2>&1; then\n"),
+    ),
+    concat(
+      concat(
+        concat(
+          concat("  echo \"InstallMediaRemasterToolchainReceipt: outcome=Present tool=", tool_name),
+          concat(" package=", apt_package),
+        ),
+        "\"\n  exit 0\nfi\n",
+      ),
+      concat(
+        concat(
+          concat(
+            concat(apt_preflight, privileged_install),
+            "\n",
+          ),
+          concat(tool_name, " --version >/dev/null\n"),
+        ),
+        concat(
+          concat("echo \"InstallMediaRemasterToolchainReceipt: outcome=Installed tool=", tool_name),
+          concat(" package=", apt_package, "\"\n"),
+        ),
+      ),
+    ),
+  )
+}
+
+fn srv3_install_reconcile_observe_script(include_git_meta: Bool) -> String {
+  let diagnostic = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
+  if include_git_meta {
+    concat(diagnostic, srv3_install_reconcile_observe_meta_script())
+  } else {
+    diagnostic
+  }
+}
+
+fn srv3_bmcweb_session_login_script() -> String {
+  let login_prog = bmcweb_session_login_program(
+    bmc_host: asrock_srv3_live_bmc_host,
+    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
+    response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
+  )
+  serialize_bash(p: login_prog)
+}
+
+fn srv3_bmcweb_token_extract_script() -> String {
+  concat(
+    concat(
+      concat("jq -r '.token // empty' ", srv3_bmcweb_login_response_path),
+      " > ",
+    ),
+    srv3_bmcweb_token_path,
+  )
+}
+
+fn srv3_nbd_proxy_serve_wrapper_script() -> String {
+  concat(
+    concat(
+      concat("export BMCWEB_SESSION_TOKEN=$(cat ", srv3_bmcweb_token_path),
+      "); bash ",
+    ),
+    srv3_nbd_proxy_serve_script_path,
+  )
+}
+
+fn srv3_receipt_emit_script(lines: List<String>) -> String {
+  fold(
+    lines,
+    init: "" as String,
+    f: (acc, line) => concat(acc, shell_printf_line(line: line)),
+  )
+}
+
+fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
+  match effect {
+    Srv3InstallReconcileObserve { include_git_meta: meta } =>
+      Present {
+        value: shell_exec_via_bash(
+          body: srv3_install_reconcile_observe_script(include_git_meta: meta),
+        ),
+      }
+    DurableApprovalGrantRecord =>
+      Present {
+        value: shell_exec_via_bash(body: srv3_install_record_boot_once_approval_script()),
+      }
+    DurableApprovalGrantRead =>
+      Present {
+        value: shell_exec_via_bash(
+          body: concat("cat ", concat(srv3_boot_once_approval_grant_path, " 2>/dev/null || true")),
+        ),
+      }
+    Srv3InstallMediaFetch =>
+      Present {
+        value: shell_exec_via_bash(
+          body: install_media_fetch_script(artifact: srv3_ubuntu_install_media_artifact),
+        ),
+      }
+    Srv3SeededInstallMediaRemaster =>
+      Present {
+        value: shell_exec_via_bash(
+          body: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
+        ),
+      }
+    Srv3SeededInstallMediaToolchainEnsure =>
+      Present {
+        value: shell_exec_via_bash(body: install_media_remaster_toolchain_ensure_script()),
+      }
+    Srv3SolConsoleCapture =>
+      Present {
+        value: shell_exec_via_bash(
+          body: sol_console_capture_script(intent: srv3_sol_console_capture_intent),
+        ),
+      }
+    Srv3BmcwebSessionLogin =>
+      Present { value: shell_exec_via_bash(body: srv3_bmcweb_session_login_script()) }
+    Srv3BmcwebTokenExtract =>
+      Present { value: shell_exec_via_bash(body: srv3_bmcweb_token_extract_script()) }
+    Srv3NbdProxyServe =>
+      Present { value: shell_exec_via_bash(body: srv3_nbd_proxy_serve_wrapper_script()) }
+    Srv3BootOnceReadBackSleep =>
+      Present {
+        value: shell_exec_via_bash(
+          body: concat("sleep ", to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))),
+        ),
+      }
+    Srv3ReceiptEmit { lines: lines } =>
+      Present { value: shell_exec_via_bash(body: srv3_receipt_emit_script(lines: lines)) }
+    ShellCommand { script: _ } => Absent
+    RedfishAction { action: _ } => Absent
+    ConvergePlan { policy: _ } => Absent
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => Absent
+  }
+}
