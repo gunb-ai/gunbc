@@ -251,6 +251,16 @@ fn srv3_join_shell_words(words: List<String>) -> String {
   )
 }
 
+data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "realize_os_install_actuator_toolchain_ensure refuses EmitArtifactThenThinRun at entry; srv3_actuator_toolchain_emit_artifact_transport_helper_refused false arms are fail-closed backstop only — not a silent widen (DESIGN §5)"
+
+fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused() -> Bool {
+  false
+}
+
+fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt() -> String? {
+  none
+}
+
 fn srv3_transport_witness_bin_success(
   transport: HostEffectTransport,
   workdir: String,
@@ -272,7 +282,8 @@ fn srv3_transport_witness_bin_success(
       }
       ssh_session_exec(host: h, command: cmd as NonEmptyStr).success
     }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
 }
 
@@ -281,7 +292,8 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
     LocalShell => shell.Test.IsExecutable(path: path).executable
     SshShell { ssh_host: h } =>
       ssh_session_exec(host: h, command: concat("test -x ", path) as NonEmptyStr).success
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
 }
 
@@ -293,7 +305,8 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
         host: h,
         command: concat("command -v ", tool_name as String) as NonEmptyStr,
       ).success
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
 }
 
@@ -322,7 +335,8 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
         none
       }
     }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt()
   }
 }
 
@@ -370,7 +384,8 @@ fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTrans
         false
       }
     }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
 }
 

@@ -38,14 +38,29 @@ import std.realization_reconcile {
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String }
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type Srv3InstallDiagnosticObserveOutcome
   = Srv3InstallDiagnosticObserved { stdout: String }
   | Srv3InstallDiagnosticObserveRefused { reason: String }
 
-data srv3_install_diagnostic_checklist_scaffold: Disposition = Terminal {
-  reason: "host_effect_apply binds Srv3InstallDiagnosticObserve via host_effect_realize; receipt echo remains shell.Exec until bash-emit (#5828)"
+data srv3_install_diagnostic_checklist_receipt_echo_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_install_diagnostic_checklist",
+    decl_name: "srv3_install_diagnostic_checklist",
+    field: WholeDeclaration,
+  }
+}
+
+data srv3_install_diagnostic_checklist_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_install_diagnostic_checklist",
+    decl_name: "srv3_install_diagnostic_checklist_receipt_echo_dissolution_trigger",
+    field: WholeDeclaration,
+  }
 }
 
 data srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger: String = "dissolved: observe path routes through host_effect_apply Srv3InstallDiagnosticObserve; receipt echo and observe-script oracle remain medium-as-string pending bash-emit (#5828)"
