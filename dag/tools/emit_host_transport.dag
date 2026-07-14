@@ -26,6 +26,8 @@ data emit_host_node_bootstrap_shell_dissolution_trigger: String = "🟡 dissolve
 
 data emit_host_node_bootstrap_script: String = "if ! command -v node >/dev/null 2>&1; then\n  NODEBOOT=\"$WORKDIR/nodeboot\"\n  mkdir -p \"$NODEBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) NODEARCH=arm64 ;; x86_64|amd64) NODEARCH=x64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://nodejs.org/dist/v22.22.3/node-v22.22.3-linux-$NODEARCH.tar.xz\" | tar -xJ -C \"$NODEBOOT\" --strip-components=1\n  PATH=\"$NODEBOOT/bin:$PATH\"\n  export PATH\nfi\n"
 
+data emit_host_node_http_probe_script: String = "cat > \"$WORKDIR/probe.js\" <<'PROBE_EOF'\nconst http = require('http');\nconst port = process.env.PORT;\nconst deadline = Date.now() + 5000;\nfunction probe(cb) {\n  http.get('http://127.0.0.1:' + port + '/', (res) => {\n    res.resume();\n    cb(res.statusCode === 200);\n  }).on('error', () => cb(false));\n}\n(function wait() {\n  probe((ok) => {\n    if (ok) process.exit(0);\n    if (Date.now() >= deadline) process.exit(1);\n    setTimeout(wait, 300);\n  });\n})();\nPROBE_EOF\nPORT=$PORT node \"$WORKDIR/probe.js\"\n"
+
 fn expected_stdout_nul_run() -> String {
   repeat_string(s: from_code_point(0), n: byte_size_count(stdout_byte_count))
 }
@@ -71,6 +73,6 @@ fn run_ts_smoke() -> Bool {
 
 fn run_node_http_serve_smoke() -> Bool {
   let server_source = gunbhub_node_http_server_source()
-  let script = "set -e\nWORKDIR=$(mktemp -d)\n{emit_host_node_bootstrap_script}command -v node >/dev/null 2>&1\ncommand -v curl >/dev/null 2>&1\ncat > \"$WORKDIR/server.js\" <<'GUNBC_EOF'\n{server_source}\nGUNBC_EOF\nPORT=18471\nHOST=127.0.0.1 PORT=$PORT node \"$WORKDIR/server.js\" &\nSERVER_PID=$!\ntrap 'kill $SERVER_PID 2>/dev/null; rm -rf \"$WORKDIR\"' EXIT\nfor i in 1 2 3 4 5; do\n  sleep 0.3\n  if curl -sf http://127.0.0.1:$PORT/ >/dev/null 2>&1; then break; fi\ndone\nSTATUS=$(curl -s -o /dev/null -w '%\{http_code\}' http://127.0.0.1:$PORT/)\ntest \"$STATUS\" -eq 200"
+  let script = "set -e\nWORKDIR=$(mktemp -d)\n{emit_host_node_bootstrap_script}command -v node >/dev/null 2>&1\ncat > \"$WORKDIR/server.js\" <<'GUNBC_EOF'\n{server_source}\nGUNBC_EOF\nPORT=$((19000 + ($$ % 1000)))\nHOST=127.0.0.1 PORT=$PORT node \"$WORKDIR/server.js\" &\nSERVER_PID=$!\ntrap 'kill $SERVER_PID 2>/dev/null; rm -rf \"$WORKDIR\"' EXIT\n{emit_host_node_http_probe_script}"
   toolchain_provision_shell_exec(script: script)
 }

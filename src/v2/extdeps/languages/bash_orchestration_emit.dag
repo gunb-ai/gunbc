@@ -26,8 +26,7 @@ import v2.extdeps.languages.bash_orch_tier2 {
   orch_procedure_target_model,
   orch_call_target_model,
   orch_cmdsubst_assign_target_model,
-  orch_let_assign_target_model,
-  orch_arith_target_model
+  orch_let_assign_target_model
 }
 import v2.extdeps.languages.bash_command_fold { bash_fold_raw_line_target_model }
 import std.algebra { FreeMonoid }
@@ -55,8 +54,7 @@ import v2.std.orchestration_emit {
   orch_construct_procedure,
   orch_construct_call,
   orch_construct_cmdsubst_assign,
-  orch_construct_let_assign,
-  orch_construct_arith
+  orch_construct_let_assign
 }
 import v2.std.text { String }
 
@@ -107,10 +105,6 @@ fn bash_orchestration_emit_registry_node() -> Node {
       bash_named_edge(
         name: orch_construct_let_assign,
         target: bash_stmt_assign_emitted
-      ),
-      bash_named_edge(
-        name: orch_construct_arith,
-        target: bash_orch_call_emitted
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -190,7 +184,6 @@ fn bash_orchestration_emit_medium() -> OrchestrationEmitMedium {
     realize_procedure: orch_procedure_target_model,
     realize_call: orch_call_target_model,
     realize_cmdsubst_assign: orch_cmdsubst_assign_target_model,
-    realize_let_assign: orch_let_assign_target_model,
-    realize_arith: orch_arith_target_model
+    realize_let_assign: orch_let_assign_target_model
   }
 }
