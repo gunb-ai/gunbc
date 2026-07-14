@@ -103,7 +103,7 @@ pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
     extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
-    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
+    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved, is_unit_like,
     make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
     node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
@@ -12792,6 +12792,29 @@ pub fn coproduct_branches_compatible(
 ) -> Option<Rc<Node>> {
     match expected.clone() {
         Some(exp) => {
+            if (exp.return_cardinality.clone() == Cardinality::CardOptional) {
+                let then_unit = is_unit_like(then_rt.clone());
+                let else_unit = is_unit_like(else_rt.clone());
+                let then_name = authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    then_rt.clone(),
+                );
+                let else_name = authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    else_rt.clone(),
+                );
+                let then_optional_arm = (then_unit.clone()
+                    || (then_name.clone() == "Absent".to_string())
+                    || (then_name.clone() == "Present".to_string())
+                    || (then_name.clone() == "Unit".to_string()));
+                let else_optional_arm = (else_unit.clone()
+                    || (else_name.clone() == "Absent".to_string())
+                    || (else_name.clone() == "Present".to_string())
+                    || (else_name.clone() == "Unit".to_string()));
+                if then_optional_arm && else_optional_arm {
+                    return Some(exp.clone());
+                }
+            }
             let coproduct = expand_type_for_field_access(
                 exp.clone(),
                 scope.type_env.clone(),
