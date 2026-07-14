@@ -1,34 +1,5 @@
 module gunbc.fleet_container
 
-import gunbc.fleet_intent {
-  IsolationBoundary,
-  SharedHostHome,
-  PerJobFilesystem,
-  ContainerHermetic,
-  Vm,
-  ContainerRuntime,
-  Docker,
-  Podman,
-  Gvisor,
-  Ubicloud,
-  GcloudRun,
-}
-import extdeps.toolchain.types { Architecture }
-import extdeps.gpu.types { GpuRuntime }
-import extdeps.storage.types { PersistenceKind }
-import product.network_topology { NetworkEgressClass }
-import std.types { String, Bool, List, Int }
-import std.nat { Nat }
-import std.measure {
-  ByteSize,
-  byte_size,
-  byte_size_count,
-  HardwareThreadCount,
-  hardware_thread_count,
-  hardware_thread_count_value,
-  measure_scale_fraction_ceil,
-}
-import std.realization_width { bounded_host_spawn_width, memory_aware_spawn_width }
 
 type CpuRequirement { min_threads: HardwareThreadCount, architecture: Architecture? }
 type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }

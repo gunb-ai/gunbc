@@ -1677,13 +1677,38 @@ pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
         let is_callable = ((n.params.clone().len() as i64) > 0);
         if is_callable.clone() {
             match n.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
+                Some(InferredNode::Resolved { node: ret, .. }) => {
+                    if (ret.connective.clone() == Connective::Arrow) {
+                        ret.clone()
+                    } else {
+                        make_callable_type(n.params.clone(), ret.clone())
+                    }
+                }
                 None => error_type(),
                 _ => error_type(),
             }
         } else {
             n.clone()
         }
+    }
+}
+
+pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
+    match callable_inferred(n.clone()).inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: callable, .. }) => {
+            match callable.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
+                _ => error_type(),
+            }
+        }
+        _ => error_type(),
+    }
+}
+
+pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
+    match resolved.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: ty, .. }) => ty.clone(),
+        _ => resolved.clone(),
     }
 }
 

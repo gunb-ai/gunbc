@@ -299,7 +299,6 @@ fn type_env_import_resolves_via_str_bindings_index() {
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::new()),
     });
     assert!(
         lookup_type_by_name(stripped, "Shared".to_string()).is_none(),
@@ -332,7 +331,6 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::new()),
     });
     assert!(
         lookup_type_by_name(stripped.clone(), "Shared".to_string()).is_some(),
@@ -349,7 +347,6 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::new()),
     });
     assert!(
         lookup_type_by_name(stripped_index, "Shared".to_string()).is_none(),
@@ -511,7 +508,6 @@ fn type_env_std_types_type_variable_filtered_from_import() {
         )])),
         intern_table: intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::new()),
     });
     let filtered = type_env_for_import("std.types".to_string(), parent);
     for tv in ["T", "K", "V", "MappedElement", "FoldAccumulator"] {
@@ -592,80 +588,4 @@ fn local_variant_over_glob_imported_variant_is_a_collision() {
             "variant locals must reference coproduct carriers"
         );
     }
-}
-
-// namespace-resolution-design.md §8 PR-4: lookup_binding_by_name's corpus-wide
-// bare-name fallback only fires after str_bindings/ancestry_str_bindings/
-// intern+bindings all miss, and only resolves a GlobalBareUniqueBinding — a
-// GlobalBareAmbiguousBinding must stay Absent (fail-closed, never guesses).
-#[test]
-fn global_bare_fallback_resolves_when_corpus_wide_unique() {
-    use v1_compiler::v1_compiler_infer_env::{
-        lookup_binding_by_name, GlobalBareLookupState, TypeBinding, TypeEnv,
-    };
-    use v1_compiler::v1_std_core::{
-        empty_intern_table, leaf_node_with_span, make_span, SubValueRelation,
-    };
-
-    let intern_table = empty_intern_table();
-    let binding = Rc::new(TypeBinding {
-        name: "Widget".to_string(),
-        resolved: leaf_node_with_span("Widget".to_string(), make_span(0, 0)),
-        provenance: Rc::new(SubValueRelation::SubValueUnknown),
-    });
-    let env = Rc::new(TypeEnv {
-        bindings: Rc::new(im_rc::HashMap::new()),
-        str_bindings: Rc::new(im_rc::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im_rc::HashMap::new()),
-        parents: Rc::new(im_rc::vector![]),
-        recursive_types: Rc::new(im_rc::vector![]),
-        recursive_type_set: Rc::new(im_rc::HashMap::new()),
-        inductive_fields: Rc::new(im_rc::HashMap::new()),
-        source_indices: Rc::new(im_rc::HashMap::new()),
-        intern_table,
-        source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::from_iter([(
-            "Widget".to_string(),
-            Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
-                binding: binding.clone(),
-            }),
-        )])),
-    });
-
-    let resolved = lookup_binding_by_name(env, "Widget".to_string())
-        .expect("a corpus-wide-unique bare name must resolve via the global fallback");
-    assert_eq!(
-        resolved.name, "Widget",
-        "the resolved binding must be the census's sole owner"
-    );
-}
-
-#[test]
-fn global_bare_fallback_stays_absent_when_corpus_wide_ambiguous() {
-    use v1_compiler::v1_compiler_infer_env::{
-        lookup_binding_by_name, GlobalBareLookupState, TypeEnv,
-    };
-    use v1_compiler::v1_std_core::empty_intern_table;
-
-    let env = Rc::new(TypeEnv {
-        bindings: Rc::new(im_rc::HashMap::new()),
-        str_bindings: Rc::new(im_rc::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im_rc::HashMap::new()),
-        parents: Rc::new(im_rc::vector![]),
-        recursive_types: Rc::new(im_rc::vector![]),
-        recursive_type_set: Rc::new(im_rc::HashMap::new()),
-        inductive_fields: Rc::new(im_rc::HashMap::new()),
-        source_indices: Rc::new(im_rc::HashMap::new()),
-        intern_table: empty_intern_table(),
-        source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::from_iter([(
-            "Widget".to_string(),
-            Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
-        )])),
-    });
-
-    assert!(
-        lookup_binding_by_name(env, "Widget".to_string()).is_none(),
-        "a corpus-wide-ambiguous bare name must never be guessed — fail-closed per §5"
-    );
 }

@@ -1,6 +1,5 @@
 module gunbc.test_node_wall_clock_ratchet
 
-import std.types { List }
 
 type WallClockWarnLibtestToken {
   test: String

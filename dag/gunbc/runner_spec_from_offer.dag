@@ -1,11 +1,5 @@
 module gunbc.runner_spec_from_offer
 
-import extdeps.github.actions { RunnerSpec, SelfHosted }
-import gunbc.ci_fleet { ComputeOffer, gunbc_ci_fleet_offer }
-import gunbc.fleet_intent { compute_host_primary_cpu }
-import extdeps.cpu { cpu_facts_architecture }
-import extdeps.toolchain.types { Architecture }
-import std.os.types { KernelFamily }
 
 fn kernel_runner_label(kernel: KernelFamily) -> String {
   match kernel {

@@ -1,8 +1,5 @@
 module gunbc.plans.fail_closed_lockdown
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone, Unchecked }
-import gunbc.plans.md_helpers { h2, p, li, ul, ol, task, tasks, cell, row }
 
 fn fail_closed_lockdown_body() -> List<MarkdownBlock> {
   [

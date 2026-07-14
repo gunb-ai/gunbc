@@ -1,12 +1,5 @@
 module gunbc.srv3_os_install_reconcile_record_approval
 
-import gunbc.srv3_host_effect_apply {
-  srv3_durable_approval_grant_record_apply,
-  srv3_reconciliation_to_process_exit,
-}
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data srv3_os_install_reconcile_record_approval_shell_runner_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

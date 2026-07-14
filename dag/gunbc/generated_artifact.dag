@@ -1,9 +1,6 @@
 
 module gunbc.generated_artifact
 
-import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServerSpec, fleet_install_server_specs }
-import gunbc.plan { Plan, plan_path }
-import gunbc.plan_registry { all_plans }
 
 type GeneratedArtifact
   = CiYamlArtifact

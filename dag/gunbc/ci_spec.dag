@@ -1,58 +1,5 @@
 module gunbc.ci_spec
 
-import gunbc.ci_gate {
-  Gate,
-  EmitHostGate, LayeringImportsGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate
-}
-import gunbc.ci_layer_roots {
-  witness_layer_roots,
-  witness_layer_source_flags_rooted,
-  witness_discovery_scan_dirs
-}
-import gunbc.commit_workflow {
-  commit_gate_roster,
-  project_ci_floor_gates,
-  project_ci_regen_job_gates,
-  project_ci_floor_witness_entries
-}
-import std.realization_schedule { ScheduleWitnessEntry }
-import gunbc.ci_diff_defaults { ci_merge_base_ref }
-import gunbc.ci_failure_class { infra_retry_grep_alternation }
-import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
-import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
-import gunbc.merge_admission_produce {
-  ci_floor_stamp_merge_admission_script,
-  ci_floor_disposition_marker_path,
-  ci_floor_disposition_marker_init_script,
-  merge_admission_floor_disposition_documentation_only_skipped,
-  merge_admission_floor_disposition_floor_running,
-  merge_admission_stamp_invoke,
-}
-import extdeps.github.actions { RunnerSpec }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.orchestration {
-  Do,
-  EnvSet,
-  EnvUnset,
-  EscalationLevel,
-  FailFast,
-  LogMatches,
-  Pipeline,
-  PipelineStep,
-  Retry,
-  Run,
-  StdoutAndStderr,
-  TeeTo
-}
-import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { EmitDirective, SeverityWarning }
-import v2.compiler.emit_orchestration { orch_emit_step }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-
 type DiffMode = DiffMergeBase | DiffTwoDot
 
 type DiffPolicy {
