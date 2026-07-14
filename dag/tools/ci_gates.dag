@@ -1,13 +1,14 @@
 module tools.ci_gates
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.ci_spec {
-  gunbc_ci_gates, CiSpec, Gate,
+import gunbc.ci_gate {
+  Gate,
   EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
+import gunbc.ci_spec { gunbc_ci_gates, CiSpec }
 import tools.emit_host_gate { run_emit_host_ci_gate }
 import tools.layering_imports_gate { run_layering_imports_ci_gate }
 import tools.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
