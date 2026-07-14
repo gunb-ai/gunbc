@@ -217,12 +217,20 @@ fn parse_args_with(args_str: String, sp: ExpressionSpellings) -> List<Expression
   }
 }
 
-fn parse_atom_with(s: String, sp: ExpressionSpellings) -> Expression? {
+fn parse_string_literal_atom(s: String, sp: ExpressionSpellings) -> Expression? {
   if expr_is_string_literal(s: s, sp: sp) {
     Present { value: StringLiteral {
       value: substring(s: s, start: sp.string_quote.length(), end: s.length() - sp.string_quote.length()),
     } }
-  } else if expr_is_call(s: s, sp: sp) {
+  } else {
+    none
+  }
+}
+
+fn parse_function_call_atom(s: String, sp: ExpressionSpellings) -> Expression? {
+  if !expr_is_call(s: s, sp: sp) {
+    none
+  } else {
     let segs = split(s: s, delimiter: sp.call_open)
     let after = join(segs.skip(n: 1), sp.call_open)
     let args_str = if ends_with(s: after, suffix: sp.call_close) {
@@ -237,12 +245,25 @@ fn parse_atom_with(s: String, sp: ExpressionSpellings) -> Expression? {
         Present { value: args } => Present { value: FunctionCall { function: fn_variant, args: args } }
       }
     }
-  } else {
-    let segs = split(s: s, delimiter: sp.path_sep)
-    match context_from_name(name: segs.first()) {
-      Absent => none
-      Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }
-    }
+  }
+}
+
+fn parse_context_access_atom(s: String, sp: ExpressionSpellings) -> Expression? {
+  let segs = split(s: s, delimiter: sp.path_sep)
+  match context_from_name(name: segs.first()) {
+    Absent => none
+    Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }
+  }
+}
+
+fn parse_atom_with(s: String, sp: ExpressionSpellings) -> Expression? {
+  match parse_string_literal_atom(s: s, sp: sp) {
+    Present { value: e } => Present { value: e }
+    Absent =>
+      match parse_function_call_atom(s: s, sp: sp) {
+        Present { value: e } => Present { value: e }
+        Absent => parse_context_access_atom(s: s, sp: sp)
+      }
   }
 }
 

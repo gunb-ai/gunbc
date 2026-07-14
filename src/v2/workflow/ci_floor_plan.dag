@@ -3,14 +3,14 @@ module v2.workflow.ci_floor_plan
 import std.execution_mode { Hermetic, Wet }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries }
 import gunbc.ci_spec {
-  gunbc_ci_spec, gunbc_ci_regen_spec, gunbc_ci_emit_determinism_spec, CiSpec,
+  gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs
 }
 import gunbc.ci_gate {
   Gate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate, EmitDeterminismGate
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
 import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List, Optional, Absent, Present }
@@ -72,8 +72,6 @@ data floor_corpus_node: Node = Node {
   children: []
 }
 
-data execution_corpus_scope_prefix: String = "src/v2/test/claim/execution/"
-
 fn entry_kind_is_execution(w: ScheduleWitnessEntry) -> Bool {
   match w.kind {
     ExecutionWitnessKind => true
@@ -90,19 +88,6 @@ fn corpus_witness_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
 fn execution_witness_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
   filter(xs: spec.witness_entries, predicate: fn(w) {
     entry_kind_is_execution(w: w)
-  })
-}
-
-fn witness_entry_kind_path_agree(w: ScheduleWitnessEntry) -> Bool {
-  match w.kind {
-    ExecutionWitnessKind => starts_with(s: w.entry, prefix: execution_corpus_scope_prefix)
-    CorpusWitnessKind => !starts_with(s: w.entry, prefix: execution_corpus_scope_prefix)
-  }
-}
-
-fn witness_entries_kind_path_all_agree(entries: List<ScheduleWitnessEntry>) -> Bool {
-  fold(entries, init: true, f: fn(acc, w) {
-    acc && witness_entry_kind_path_agree(w: w)
   })
 }
 
@@ -131,7 +116,6 @@ fn gate_node(g: Gate) -> Node {
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
     SelfHostReadsRealBytesGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_reads_real_bytes } }, children: [] }
     SelfHostStalenessGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_staleness } }, children: [] }
-    EmitDeterminismGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit_determinism } }, children: [] }
   }
 }
 
@@ -179,13 +163,6 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
     SelfHostStalenessGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
-        spawns_host_compiler: true,
-        memory: substantial,
-        execution_mode: Wet
-      )
-    EmitDeterminismGate =>
-      runnable_resource_profile(
-        heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
         memory: substantial,
         execution_mode: Wet
@@ -238,7 +215,6 @@ fn gate_runnable(g: Gate) -> Runnable {
       function: "self_host_realized_comparison_staleness_gate_holds",
       profile: profile
     }
-    EmitDeterminismGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_determinism_gate_passes", profile: profile }
   }
 }
 
@@ -654,10 +630,6 @@ fn gunbc_ci_plan_artifact_batches() -> List<List<Runnable>> {
   fold(gunbc_ci_floor_batches(), init: [], f: fn(acc, batch) {
     if length(xs: acc) == 0 { [batch] } else { acc }
   })
-}
-
-fn gunbc_ci_emit_determinism_batches() -> List<List<Runnable>> {
-  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_emit_determinism_spec).schedule
 }
 
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
