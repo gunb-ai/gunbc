@@ -1,7 +1,7 @@
 module v1.compiler.complexity
 
 import std.types { SourceSpan }
-import v1.compiler.emit { to_string }
+import v1.compiler.emit_core_support { to_string }
 import v1.compiler.parse {
   ParserResultWitness,
   ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque,
