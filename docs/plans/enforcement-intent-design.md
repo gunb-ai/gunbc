@@ -1,6 +1,6 @@
 # Enforcement intent — ask once, compile forever
 
-*Status: draft for operator review (2026-07-02). Extends the standing threads "model §1's axioms + enforce the syllogism" and the intent-linearity draft; does not supersede either. Quantitative companion: [dependency-fidelity-design.md](dependency-fidelity-design.md) (the same ask-once spine applied to "CI green means declared ≡ witnessed", 2026-07-14).*
+*Status: draft for operator review (2026-07-02). Extends the standing threads "model §1's axioms + enforce the syllogism" and the intent-linearity draft; does not supersede either. Quantitative companion: [dependency-fidelity design](dependency-fidelity-design.md) — the same "ask once, compile forever" spine turned into a measured coverage law (CI-green ⟺ declared ≡ witnessed across an affected-set-scoped, mutation-adequate coverage set).*
 
 ## 1. The displaced cost (why this is on-dial)
 
@@ -16,7 +16,7 @@ Per §2/§3, before minting vocabulary we map onto the concept DAG. The carriers
 
 - **Decidability boundary** — `v2.lens.common.construction_justification :: ConstructionJustification` (`WallNow` / `WallAfterGrounding` / `RatchetForever`). Reuse verbatim; do not add a parallel `declared_boundary` enum.
 - **Lens contract (V0)** — `v2.lens.registry :: LensRegistryEntryV0 { lens_id, module_path: Bound | Unbound }`. This is the seed of `LensContract`; **extend it**, don't fork a new type.
-- **Scope / subject set** — the per-lens `subject_roster` pattern (exemplar: `src/v2/lens/ownership/subject_roster.dag`; the idempotency twin was deleted 2026-07-13 as a zero-importer duplicate of `manual_corpus_roster`, #6545 — the pattern is a 10-line shape, trivially re-mintable per lens). Reuse the pattern; the scope of an intent is a `subject_roster` expression.
+- **Scope / subject set** — the per-lens `subject_roster` pattern (`v2.lens.idempotency.subject_roster`, `v2.lens.ownership.subject_roster`, …). Reuse the pattern; the scope of an intent is a `subject_roster` expression.
 - **Self-application / fractal** — `v2.lens.intent_linearity` + `dsl/gunbc/plans/self_applying_lenses.dag` + `axiom_syllogism_lens.dag`. The "apply the lens to the intent expression itself" layer is already being modeled here; the enforcement-intent gate **consumes** it, it does not re-invent it.
 - **Inertness backstop** — `dsl/test/claim/inert_lens_hygiene_witness_test.dag` (DESIGN §6's executable "wired-or-deleted" check, already live over the corpus). The meta-gate **strengthens** this from "is the lens wired at all?" to "does the lens satisfy the *declared scope* and self-apply?"
 
