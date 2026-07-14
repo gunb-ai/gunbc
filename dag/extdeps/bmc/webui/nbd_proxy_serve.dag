@@ -180,7 +180,3 @@ fn nbd_proxy_serve_program_foreground_command_is_websocat(intent: NbdProxyServeT
 fn nbd_proxy_serve_requires_host_as_nbd_server() -> Bool {
   nbd_proxy_role_assignment.host_program_role == NbdServer
 }
-
-fn nbd_proxy_serve_cited_tool_row_count() -> Int {
-  nbd_proxy_serve_cited_tool_names.length()
-}
