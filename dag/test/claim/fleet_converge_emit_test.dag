@@ -2,6 +2,7 @@ module test.claim.fleet_converge_emit
 
 import std.types { Bool, String, List, Int }
 import std.measure { byte_size, hardware_thread_count, second_count }
+import extdeps.filesystem.filesystem_io
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
@@ -57,9 +58,9 @@ import gunbc.fleet_converge_emit {
   fresh_standup_bootstrap_arm_golden,
   fresh_standup_bootstrap_script,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn fixture_runner_host() -> RunnerHostDeployment {
   RunnerHostDeployment {
@@ -110,12 +111,9 @@ fn witness_live_converge_thin_run_emitted() -> Bool {
 
 fn witness_drift_red_receipt() -> Bool {
   let r = filesystem_read(path: ".github/fleet-converge.sh")
-  match r {
-    ReadOk { content: committed } =>
-      !fleet_converge_drifted(committed: committed)
-        && fleet_converge_drifted(committed: concat(committed, "x"))
-    _ => false
-  }
+  r.success
+    && !fleet_converge_drifted(committed: r.content)
+    && fleet_converge_drifted(committed: concat(r.content, "x"))
 }
 
 fn witness_thin_header() -> Bool {
