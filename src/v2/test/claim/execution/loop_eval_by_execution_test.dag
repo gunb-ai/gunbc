@@ -34,6 +34,12 @@ import v2.std.cardinality {
   structural_node_size_termination_proof
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.extdeps.languages.dag {
+  dag_int_literal_fixture_one,
+  dag_int_literal_fixture_two,
+  dag_int_literal_magnitude_int_from_node,
+  dag_node_is_int_literal_atom
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -133,11 +139,11 @@ fn loop_two_value() -> RuntimeValue {
 }
 
 fn loop_literal_one_node() -> Node {
-  loop_atom(s: ^dag_pick_lit_one)
+  dag_int_literal_fixture_one()
 }
 
 fn loop_literal_two_node() -> Node {
-  loop_atom(s: ^dag_pick_lit_two)
+  dag_int_literal_fixture_two()
 }
 
 fn loop_runtime_diagnostic(n: Node) -> Diagnostic {
@@ -165,10 +171,18 @@ fn loop_runtime_int_is_two(value: RuntimeValue) -> Bool {
 }
 
 fn loop_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == loop_literal_one_node() {
-    outcome_accepted(value: loop_one_value())
-  } else if node == loop_literal_two_node() {
-    outcome_accepted(value: loop_two_value())
+  if dag_node_is_int_literal_atom(node: node) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: mag, diagnostics: _ } =>
+        if mag == 1 {
+          outcome_accepted(value: loop_one_value())
+        } else if mag == 2 {
+          outcome_accepted(value: loop_two_value())
+        } else {
+          outcome_rejected(d: loop_runtime_diagnostic(n: node))
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
   } else {
     outcome_rejected(d: loop_runtime_diagnostic(n: node))
   }
@@ -402,11 +416,10 @@ fn loop_source_driven_executes_holds() -> Bool {
 fn loop_source_driven_wrong_value_red_holds() -> Bool {
   match source_bridged_loop_wrong_value_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-
       loop_run_passes(
         run: loop_run(
           callee: arrow,
-          expected: loop_literal_two_node()
+          expected: loop_literal_one_node()
         )
       ) == false
     Rejected { diagnostics: _ } => false

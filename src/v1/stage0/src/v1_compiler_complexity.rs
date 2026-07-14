@@ -56,7 +56,7 @@ pub use crate::std_termination::{
     TerminationProof,
 };
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_emit::to_string;
+pub use crate::v1_compiler_emit_core_support::to_string;
 pub use crate::v1_compiler_infer_sigs::CallEdge;
 pub use crate::v1_compiler_infer_types::{node_is_collection, resolved_type};
 use crate::v1_compiler_parse::ParserCallIdentity::{ParserCallFunction, ParserCallHelper};
