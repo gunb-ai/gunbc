@@ -161,11 +161,40 @@ fn srv3_nbd_proxy_serve_wrapper_script() -> String {
   )
 }
 
+fn srv3_join_adjacent_pairs(parts: List<String>) -> List<String> {
+  let paired = fold(
+    parts,
+    init: JoinPairAcc { pending: Absent, joined: [] },
+    f: (acc, part) => match acc.pending {
+      Absent => JoinPairAcc { pending: Present { value: part }, joined: acc.joined },
+      Present { value: left } =>
+        JoinPairAcc { pending: Absent, joined: list_push(acc.joined, concat(left, part)) },
+    },
+  )
+  match paired.pending {
+    Absent => paired.joined
+    Present { value: last } => list_push(paired.joined, last)
+  }
+}
+
+type JoinPairAcc {
+  pending: String?
+  joined: List<String>
+}
+
+fn srv3_concat_balanced(parts: List<String>) -> String {
+  if list_length(items: parts) == 0 {
+    ""
+  } else if list_length(items: parts) == 1 {
+    fold(parts, init: "" as String, f: (acc, part) => concat(acc, part))
+  } else {
+    srv3_concat_balanced(parts: srv3_join_adjacent_pairs(parts: parts))
+  }
+}
+
 fn srv3_receipt_emit_script(lines: List<String>) -> String {
-  fold(
-    lines,
-    init: "" as String,
-    f: (acc, line) => concat(acc, shell_printf_line(line: line)),
+  srv3_concat_balanced(
+    parts: map(lines, line => shell_printf_line(line: line)),
   )
 }
 
@@ -228,5 +257,6 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
     ShellCommand { script: _ } => Absent
     RedfishAction { action: _ } => Absent
     ConvergePlan { policy: _ } => Absent
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => Absent
   }
 }
