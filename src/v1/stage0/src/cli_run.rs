@@ -4569,7 +4569,7 @@ pub fn handle_converge(host: String) {
                 std::process::exit(1);
             }
         };
-    let v1_interpreter::Value::Variant { fields, .. } = &result else {
+    let v1_interpreter::Value::Record { fields, .. } = &result else {
         eprintln!(
             "error: converge_cli_output returned an unexpected shape: {:?}",
             result
