@@ -2186,6 +2186,46 @@ fn entry_file_touched_via_import_closure(
     }))
 }
 
+/// Receipted Rust mirror of the single authority `v2.std.live_read.live_read_carrier_homes_v0`
+/// (`src/v2/std/live_read.dag`) — the module names of the 8 declared live-read carrier homes.
+/// Kept in lockstep with that `.dag` roster by hand (no generator yet); a drift here
+/// under-approximates axis (iv) fail-closed-safe direction only if this list is a SUBSET of
+/// the `.dag` roster, so any addition to the `.dag` roster must be mirrored here.
+const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
+    "v2.lens.enforcement.cost_coverage",
+    "v2.lens.enforcement.grammar_coverage",
+    "v2.lens.complexity_accumulator_copy.roster_gate",
+    "v2.compiler.self_host",
+    "v2.std.decl_index",
+    "v2.lens.module_graph",
+    "tools.dag_compile_clean_shard_roster",
+    "tools.dag_compile_clean_scope",
+];
+
+/// Axis (iv) of the fourth-axis law (`docs/plans/live-read-witness-classification-design.md`
+/// §7): does `entry_path`'s import closure reach a declared live-read carrier home, and is
+/// any path touched at all? This is a G1-only (module-closure) mirror of the landed G2
+/// call-reachability lens (`v2.lens.live_read_classification`) — G2's carrier set is always
+/// a superset of G1's under the same closure (`merge_g1_and_g2_carriers`), so this coarser
+/// Rust check is fail-closed-safe relative to the full `.dag` authority: it may over-report
+/// (an extra witness run) but never under-report (a missed run). It does not attempt to
+/// prove which touched path a reached carrier actually reads at runtime (that precision is
+/// G2/G3's job) — reachability plus any touch is treated as a hit.
+fn runtime_data_dependency_touched_via_carrier_closure(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    touched_paths: &[String],
+) -> bool {
+    if touched_paths.is_empty() {
+        return false;
+    }
+    let mut closure_modules: HashSet<String> = HashSet::new();
+    collect_import_closure_module_names_from_facts(entry_path, facts, &mut closure_modules);
+    LIVE_READ_CARRIER_HOME_MODULES_V0
+        .iter()
+        .any(|carrier_module| closure_modules.contains(*carrier_module))
+}
+
 // SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
 // ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
 // docs/plans/affected-set-precompute-pruning.md Step 4 migrate floor) — host-side
@@ -2267,12 +2307,13 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
         return Ok(false);
     }
-    Ok(!entry_file_touched_via_import_closure(
-        entry_path,
-        facts,
-        declared_paths,
-        touched_paths,
-    )?)
+    if entry_file_touched_via_import_closure(entry_path, facts, declared_paths, touched_paths)? {
+        return Ok(false);
+    }
+    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_paths) {
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 struct DiscoveryEntryResolve {
@@ -2281,6 +2322,7 @@ struct DiscoveryEntryResolve {
     frontier_nodes: Vec<v1_interpreter::Value>,
     touches_frontier: bool,
     entry_file_touched: bool,
+    entry_runtime_dependency_touched: bool,
     resolve_nanos: u128,
     stage_nanos: ResolveStageNanos,
 }
@@ -2322,33 +2364,49 @@ fn resolve_discovery_entry_for_corpus_row(
         None,
         whole_tree_published_keys,
     );
-    let (frontier_nodes, touches_frontier, entry_file_touched) = if skip_enabled {
-        let frontier_nodes = rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
-        let touches_frontier = if frontier_nodes.is_empty() {
-            false
-        } else {
-            entry_touches_rerun_frontier(&entry_ctx, &list_value_from_vec(frontier_nodes.clone()))?
-        };
-        let entry_file_touched = if touched_entry_paths.is_empty() {
-            false
-        } else {
-            entry_file_touched_via_import_closure(
+    let (frontier_nodes, touches_frontier, entry_file_touched, entry_runtime_dependency_touched) =
+        if skip_enabled {
+            let frontier_nodes =
+                rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
+            let touches_frontier = if frontier_nodes.is_empty() {
+                false
+            } else {
+                entry_touches_rerun_frontier(
+                    &entry_ctx,
+                    &list_value_from_vec(frontier_nodes.clone()),
+                )?
+            };
+            let entry_file_touched = if touched_entry_paths.is_empty() {
+                false
+            } else {
+                entry_file_touched_via_import_closure(
+                    entry_path,
+                    &index.module_graph_facts,
+                    module_graph_declared_paths,
+                    touched_entry_paths,
+                )?
+            };
+            let entry_runtime_dependency_touched = runtime_data_dependency_touched_via_carrier_closure(
                 entry_path,
                 &index.module_graph_facts,
-                module_graph_declared_paths,
                 touched_entry_paths,
-            )?
+            );
+            (
+                frontier_nodes,
+                touches_frontier,
+                entry_file_touched,
+                entry_runtime_dependency_touched,
+            )
+        } else {
+            (Vec::new(), true, true, true)
         };
-        (frontier_nodes, touches_frontier, entry_file_touched)
-    } else {
-        (Vec::new(), true, true)
-    };
     Ok(DiscoveryEntryResolve {
         ctx: entry_ctx,
         closure_subject,
         frontier_nodes,
         touches_frontier,
         entry_file_touched,
+        entry_runtime_dependency_touched,
         resolve_nanos,
         stage_nanos,
     })
@@ -7286,6 +7344,7 @@ fn call_floor_kernel_would_skip(
     touches_frontier: bool,
     function_edited: bool,
     entry_file_touched: bool,
+    runtime_data_dependency_touched: bool,
 ) -> Result<bool, String> {
     if !ctx.item_registry.contains_key("floor_kernel_would_skip") {
         return Err("floor_kernel_would_skip missing from floor runner context".to_string());
@@ -7314,6 +7373,10 @@ fn call_floor_kernel_would_skip(
         (
             Some("entry_file_touched".to_string()),
             v1_interpreter::Value::Bool(entry_file_touched),
+        ),
+        (
+            Some("runtime_data_dependency_touched".to_string()),
+            v1_interpreter::Value::Bool(runtime_data_dependency_touched),
         ),
     ];
     match v1_interpreter::run_in_context_with_args(ctx, "floor_kernel_would_skip", &args, false) {
@@ -7349,6 +7412,7 @@ fn call_floor_row_would_skip(
     touches_frontier: bool,
     function_edited: bool,
     entry_file_touched: bool,
+    runtime_data_dependency_touched: bool,
 ) -> Result<bool, String> {
     if !ctx.item_registry.contains_key("floor_row_would_skip") {
         return Err("floor_row_would_skip missing from floor runner context".to_string());
@@ -7382,6 +7446,10 @@ fn call_floor_row_would_skip(
             Some("entry_file_touched".to_string()),
             v1_interpreter::Value::Bool(entry_file_touched),
         ),
+        (
+            Some("runtime_data_dependency_touched".to_string()),
+            v1_interpreter::Value::Bool(runtime_data_dependency_touched),
+        ),
     ];
     match v1_interpreter::run_in_context_with_args(ctx, "floor_row_would_skip", &args, false) {
         Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
@@ -7400,6 +7468,7 @@ fn call_floor_row_precompute_would_skip(
     frontier_node_count: usize,
     edited_test_fn_count: usize,
     touched_entry_file_count: usize,
+    touched_runtime_dependency_entry_count: usize,
 ) -> Result<bool, String> {
     if !ctx
         .item_registry
@@ -7433,6 +7502,10 @@ fn call_floor_row_precompute_would_skip(
         (
             Some("touched_entry_file_count".to_string()),
             v1_interpreter::Value::Int(touched_entry_file_count as i64),
+        ),
+        (
+            Some("touched_runtime_dependency_entry_count".to_string()),
+            v1_interpreter::Value::Int(touched_runtime_dependency_entry_count as i64),
         ),
     ];
     match v1_interpreter::run_in_context_with_args(
@@ -7530,6 +7603,28 @@ fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
     rows.iter().filter(|r| r.reads_live_tree).count()
 }
 
+/// Precompute-grain count for axis (iv): the number of distinct entries among `rows` whose
+/// import closure reaches a declared live-read carrier home
+/// (`runtime_data_dependency_touched_via_carrier_closure`), given the full raw touched-path
+/// set. Feeds `floor_row_precompute_would_skip`'s `touched_runtime_dependency_entry_count` —
+/// nonzero pins the whole-tree precompute exactly as the other three axes do.
+fn discovery_rows_runtime_dependency_touched_count(
+    rows: &[DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+    touched_paths: &[String],
+) -> usize {
+    if touched_paths.is_empty() {
+        return 0;
+    }
+    let mut seen: HashSet<&str> = HashSet::new();
+    rows.iter()
+        .filter(|row| seen.insert(row.entry.as_str()))
+        .filter(|row| {
+            runtime_data_dependency_touched_via_carrier_closure(&row.entry, facts, touched_paths)
+        })
+        .count()
+}
+
 /// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
 /// when import-closure `entry_file_touched` is false and no declaration-level edit
 /// targets this entry, every kernel witness in the entry would skip — receipt:
@@ -7579,6 +7674,9 @@ fn entry_qualifies_for_skip_without_resolve(
         declared_paths,
         touched_entry_paths,
     )? {
+        return Ok(false);
+    }
+    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
@@ -8152,6 +8250,12 @@ pub fn run_discovery_corpus_with_options(
         let live_row_count = discovery_rows_live_tree_count(&rows);
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
+                let touched_runtime_dependency_entry_count =
+                    discovery_rows_runtime_dependency_touched_count(
+                        rows,
+                        &index.module_graph_facts,
+                        &changed_paths,
+                    );
                 let precompute = call_floor_row_precompute_would_skip(
                     ctx,
                     live_row_count,
@@ -8159,6 +8263,7 @@ pub fn run_discovery_corpus_with_options(
                     diff_edits.overlapping_data_items.len(),
                     diff_edits.edited_test_fns.len(),
                     diff_edits.touched_entry_files.len(),
+                    touched_runtime_dependency_entry_count,
                 );
                 match precompute {
                     Ok(skip) => skip,
@@ -8727,6 +8832,7 @@ fn run_discovery_rows(
     let mut current_entry_touches = true;
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_file_touched = true;
+    let mut current_entry_runtime_dependency_touched = true;
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
@@ -8761,6 +8867,7 @@ fn run_discovery_rows(
                 current_entry = Some(row.entry.clone());
                 current_entry_touches = false;
                 current_entry_file_touched = false;
+                current_entry_runtime_dependency_touched = false;
                 current_entry_frontier_nodes.clear();
                 current_closure_subject = None;
                 ctx = None;
@@ -8800,6 +8907,7 @@ fn run_discovery_rows(
                 current_entry_frontier_nodes.clear();
                 current_entry_touches = false;
                 current_entry_file_touched = false;
+                current_entry_runtime_dependency_touched = false;
                 current_entry = Some(row.entry.clone());
             } else {
                 let resolved = resolve_discovery_entry_for_corpus_row(
@@ -8825,6 +8933,7 @@ fn run_discovery_rows(
                 current_entry_frontier_nodes = resolved.frontier_nodes;
                 current_entry_touches = resolved.touches_frontier;
                 current_entry_file_touched = resolved.entry_file_touched;
+                current_entry_runtime_dependency_touched = resolved.entry_runtime_dependency_touched;
                 ctx = Some(resolved.ctx);
                 if let Some(c) = ctx.as_ref() {
                     c.set_witness_eval_budget(fast_lane_eval_budget_ms);
@@ -8837,6 +8946,8 @@ fn run_discovery_rows(
                 diff_file_matches_entry(file, &row.entry) && func == &row.function
             });
         let entry_file_touched = skip_enabled && current_entry_file_touched;
+        let runtime_data_dependency_touched =
+            skip_enabled && current_entry_runtime_dependency_touched;
         let would_skip = if skip_enabled {
             match floor_runner_ctx {
                 Some(runner_ctx) => {
@@ -8848,6 +8959,7 @@ fn run_discovery_rows(
                         current_entry_touches,
                         function_edited,
                         entry_file_touched,
+                        runtime_data_dependency_touched,
                     );
                     match skip {
                         Ok(skip) => skip,
@@ -8919,6 +9031,7 @@ fn run_discovery_rows(
             current_entry_frontier_nodes = resolved.frontier_nodes;
             current_entry_touches = resolved.touches_frontier;
             current_entry_file_touched = resolved.entry_file_touched;
+            current_entry_runtime_dependency_touched = resolved.entry_runtime_dependency_touched;
             ctx = Some(resolved.ctx);
             if let Some(c) = ctx.as_ref() {
                 c.set_witness_eval_budget(fast_lane_eval_budget_ms);
@@ -9209,6 +9322,7 @@ new file mode 100644
             false,
             false,
             false,
+            false,
         )
         .expect("live-tree row skip");
         assert!(
@@ -9220,6 +9334,7 @@ new file mode 100644
             false,
             &changed_paths,
             &[],
+            false,
             false,
             false,
             false,
@@ -10677,12 +10792,12 @@ mod node_frontier_plumbing_controls {
             super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
         let changed_paths = vec![fixture_abs.clone()];
         assert!(
-            !call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, true)
+            !call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, true, false)
                 .expect("skip verdict for touched entry"),
             "helper-fn edit must RUN witnesses in the touched entry (entry_file_touched)"
         );
         assert!(
-            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false)
+            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false, false)
                 .expect("skip verdict for unrelated entry"),
             "helper-fn edit must SKIP witnesses in an unrelated entry when frontier is empty"
         );
@@ -10746,13 +10861,14 @@ mod node_frontier_plumbing_controls {
                 &nodes,
                 false,
                 false,
-                true
+                true,
+                false
             )
             .expect("skip verdict for importing entry"),
             "cross-file helper-fn edit must RUN witnesses in importing entry (import-closure entry_file_touched)"
         );
         assert!(
-            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false)
+            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false, false)
                 .expect("skip verdict for unrelated entry"),
             "cross-file helper-fn edit must SKIP witnesses in an unrelated entry when frontier is empty"
         );

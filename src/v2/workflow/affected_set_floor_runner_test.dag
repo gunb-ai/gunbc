@@ -281,7 +281,8 @@ test fn floor_test_live_row_never_skips_when_kernel_would_holds() -> Bool {
     frontier_nodes: [floor_test_touched_node],
     touches_frontier: false,
     function_edited: false,
-    entry_file_touched: false
+    entry_file_touched: false,
+    runtime_data_dependency_touched: false
   )
     && !floor_row_would_skip(
       reads_live_tree: ReadsLiveTree,
@@ -289,7 +290,8 @@ test fn floor_test_live_row_never_skips_when_kernel_would_holds() -> Bool {
       frontier_nodes: [floor_test_touched_node],
       touches_frontier: false,
       function_edited: false,
-      entry_file_touched: false
+      entry_file_touched: false,
+      runtime_data_dependency_touched: false
     )
 }
 
@@ -300,7 +302,8 @@ test fn floor_test_live_row_runs_when_kernel_runs_holds() -> Bool {
     frontier_nodes: [floor_test_touched_node],
     touches_frontier: true,
     function_edited: false,
-    entry_file_touched: false
+    entry_file_touched: false,
+    runtime_data_dependency_touched: false
   )
     && !floor_row_would_skip(
       reads_live_tree: ReadsLiveTree,
@@ -308,8 +311,34 @@ test fn floor_test_live_row_runs_when_kernel_runs_holds() -> Bool {
       frontier_nodes: [floor_test_touched_node],
       touches_frontier: true,
       function_edited: false,
-      entry_file_touched: false
+      entry_file_touched: false,
+      runtime_data_dependency_touched: false
     )
+}
+
+test fn floor_test_runtime_data_dependency_touched_runs_holds() -> Bool {
+  !floor_row_would_skip(
+    reads_live_tree: SubstrateInputsOnly,
+    changed_paths: ["src/v2/lens/affected_set.dag"],
+    frontier_nodes: [floor_test_touched_node],
+    touches_frontier: false,
+    function_edited: false,
+    entry_file_touched: false,
+    runtime_data_dependency_touched: true
+  )
+    && match floor_witness_run_disposition(
+      diff: floor_test_diff_nonempty,
+      frontier: floor_test_frontier_touched,
+      touches_frontier: false,
+      function_edited: false,
+      entry_file_touched: false,
+      runtime_data_dependency_touched: true
+    ) {
+      RunWitness { reason: reason } =>
+        reason == "witness entry's proven runtime-read closure intersects a touched path"
+      SkipAssumedGreen => false
+      Refused { cause: _ } => false
+    }
 }
 
 test fn floor_test_precompute_skip_holds() -> Bool {
@@ -317,31 +346,43 @@ test fn floor_test_precompute_skip_holds() -> Bool {
     diff: floor_test_diff_nonempty,
     frontier: FrontierProduced { nodes: [] },
     edited_test_fn_count: 0,
-    touched_entry_file_count: 0
+    touched_entry_file_count: 0,
+    touched_runtime_dependency_entry_count: 0
   )
     && floor_precompute_would_skip(
       diff: floor_test_diff_empty,
       frontier: FrontierProduced { nodes: [] },
       edited_test_fn_count: 0,
-      touched_entry_file_count: 0
+      touched_entry_file_count: 0,
+      touched_runtime_dependency_entry_count: 0
     )
     && !floor_precompute_would_skip(
       diff: floor_test_diff_nonempty,
       frontier: floor_test_frontier_touched,
       edited_test_fn_count: 0,
-      touched_entry_file_count: 0
+      touched_entry_file_count: 0,
+      touched_runtime_dependency_entry_count: 0
     )
     && !floor_precompute_would_skip(
       diff: floor_test_diff_nonempty,
       frontier: FrontierProduced { nodes: [] },
       edited_test_fn_count: 1,
-      touched_entry_file_count: 0
+      touched_entry_file_count: 0,
+      touched_runtime_dependency_entry_count: 0
     )
     && !floor_precompute_would_skip(
       diff: floor_test_diff_nonempty,
       frontier: FrontierProduced { nodes: [] },
       edited_test_fn_count: 0,
-      touched_entry_file_count: 1
+      touched_entry_file_count: 1,
+      touched_runtime_dependency_entry_count: 0
+    )
+    && !floor_precompute_would_skip(
+      diff: floor_test_diff_nonempty,
+      frontier: FrontierProduced { nodes: [] },
+      edited_test_fn_count: 0,
+      touched_entry_file_count: 0,
+      touched_runtime_dependency_entry_count: 1
     )
 }
 
@@ -351,21 +392,32 @@ test fn floor_test_precompute_live_corpus_never_skips_holds() -> Bool {
     changed_paths: ["src/v2/lens/affected_set.dag"],
     frontier_node_count: 0,
     edited_test_fn_count: 0,
-    touched_entry_file_count: 0
+    touched_entry_file_count: 0,
+    touched_runtime_dependency_entry_count: 0
   )
     && !floor_row_precompute_would_skip(
       live_row_count: 1,
       changed_paths: ["src/v2/lens/affected_set.dag"],
       frontier_node_count: 0,
       edited_test_fn_count: 0,
-      touched_entry_file_count: 0
+      touched_entry_file_count: 0,
+      touched_runtime_dependency_entry_count: 0
     )
     && !floor_row_precompute_would_skip(
       live_row_count: 1,
       changed_paths: ["src/v2/lens/affected_set.dag"],
       frontier_node_count: 0,
       edited_test_fn_count: 0,
-      touched_entry_file_count: 1
+      touched_entry_file_count: 1,
+      touched_runtime_dependency_entry_count: 0
+    )
+    && !floor_row_precompute_would_skip(
+      live_row_count: 1,
+      changed_paths: ["src/v2/lens/affected_set.dag"],
+      frontier_node_count: 0,
+      edited_test_fn_count: 0,
+      touched_entry_file_count: 0,
+      touched_runtime_dependency_entry_count: 1
     )
 }
 
@@ -478,6 +530,7 @@ test fn floor_runner_node_frontier_policy_holds() -> Bool {
     && floor_test_inner_frontier_discriminates_holds()
     && floor_test_live_row_never_skips_when_kernel_would_holds()
     && floor_test_live_row_runs_when_kernel_runs_holds()
+    && floor_test_runtime_data_dependency_touched_runs_holds()
     && floor_test_precompute_skip_holds()
     && floor_test_precompute_live_corpus_never_skips_holds()
     && floor_test_eval_nodes_from_claims_holds()
