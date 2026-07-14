@@ -334,10 +334,28 @@ test fn symbol_index_global_unique_lookup_resolves_globally_unique_holds() -> Bo
 }
 
 test fn symbol_index_global_unique_lookup_ambiguous_leaf_holds() -> Bool {
-  match symbol_index_global_unique_lookup(
-    index: si_multi_root_index,
-    name: ^Yes
-  ) {
+  let yes_a = Node {
+    kind: TypeNode { connective: Atom { identity: ^Yes } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+  let yes_b = Node {
+    kind: TypeNode { connective: Atom { identity: ^Yes } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+  let mood_yes = qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Mood.Yes")
+  let classical_yes = qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.Yes")
+  let idx = symbol_index_insert(
+    index: symbol_index_insert(
+      index: empty_symbol_index(),
+      qualified_path: mood_yes,
+      resolved: yes_a
+    ),
+    qualified_path: classical_yes,
+    resolved: yes_b
+  )
+  match symbol_index_global_unique_lookup(index: idx, name: ^Yes) {
     GlobalBareLookupAmbiguous => true
     _ => false
   }
@@ -349,6 +367,13 @@ test fn symbol_index_global_unique_lookup_unbound_on_unknown_leaf_holds() -> Boo
     name: ^NotInGlobalBareIndex
   ) {
     GlobalBareLookupUnbound => true
+    _ => false
+  }
+}
+
+test fn symbol_index_fill_marks_duplicate_leaf_ambiguous_holds() -> Bool {
+  match symbol_index_global_unique_lookup(index: si_index, name: ^Yes) {
+    GlobalBareLookupAmbiguous => true
     _ => false
   }
 }
