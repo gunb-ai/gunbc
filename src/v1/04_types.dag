@@ -586,14 +586,30 @@ fn callable_inferred(n: Node) -> Node {
 }
 
 fn callable_return_type(n: Node) -> Node {
-  match callable_inferred(n: n).inferred {
-    Present { value: Resolved { node: callable } } =>
-      match callable.inferred {
-        Present { value: Resolved { node: ret } } => ret
-        _ => error_type
-      }
-    _ => error_type
+  if n.params |> count == 0 {
+    match n.inferred {
+      Present { value: Resolved { node: ret } } => ret
+      _ => error_type
+    }
+  } else {
+    match callable_inferred(n: n).inferred {
+      Present { value: Resolved { node: callable } } =>
+        match callable.inferred {
+          Present { value: Resolved { node: ret } } => ret
+          _ => error_type
+        }
+      _ => error_type
+    }
   }
+}
+
+fn global_bare_callable_binding(binding: TypeBinding) -> Bool {
+  binding.resolved.transport == none
+    && binding.resolved.expr_data == NoExprData
+    && binding.resolved.connective == NoConnective
+    && binding.resolved.inferred != none
+    && binding.resolved.properties |> count == 0
+    && binding.resolved.type_annotation == none
 }
 
 fn value_binding_expr_type_node(resolved: Node) -> Node {

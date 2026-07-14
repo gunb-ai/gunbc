@@ -102,7 +102,7 @@ pub use crate::v1_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, 
 pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, callable_return_type,
-    value_binding_expr_type_node, child_type_node,
+    value_binding_expr_type_node, global_bare_callable_binding, child_type_node,
     emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
     make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
@@ -2803,7 +2803,7 @@ pub fn infer_expr(
                                 span.clone(),
                             )),
                             None => {
-                                if ((binding.resolved.clone().params.clone().len() as i64) > 0) {
+                                if global_bare_callable_binding(&binding) {
                                     ok_infer(make_named_expr_node(
                                         name.clone(),
                                         Rc::new(ExprData::ExprVar {
@@ -3793,15 +3793,7 @@ match bare_s.clone() {
                                                     func_name.clone(),
                                                 ) {
                                                     Some(binding) => {
-                                                        if ((binding
-                                                            .resolved
-                                                            .clone()
-                                                            .params
-                                                            .clone()
-                                                            .len()
-                                                            as i64)
-                                                            > 0)
-                                                        {
+                                                        if global_bare_callable_binding(&binding) {
                                                             Some(binding.resolved.clone())
                                                         } else {
                                                             None
@@ -12555,9 +12547,32 @@ pub fn census_insert_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    match local_binding_for_item(item.clone(), source_indices.clone()) {
-        None => census,
-        Some(binding) => census_insert_binding(census, binding.clone()),
+    match census_binding_for_data_decl(item.clone(), source_indices.clone()) {
+        Some(binding) => census_insert_binding(census, binding),
+        None => match local_binding_for_item(item.clone(), source_indices.clone()) {
+            None => census,
+            Some(binding) => census_insert_binding(census, binding.clone()),
+        },
+    }
+}
+
+pub fn census_binding_for_data_decl(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<TypeBinding>> {
+    if item.body.is_some()
+        && item.params.is_empty()
+        && item.type_annotation.is_some()
+        && item.transport.is_none()
+    {
+        let ta = item.type_annotation.as_ref()?.clone();
+        Some(Rc::new(TypeBinding {
+            name: authored_name_at(source_indices.clone(), item.clone()),
+            resolved: ta,
+            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        }))
+    } else {
+        None
     }
 }
 
@@ -12590,7 +12605,7 @@ pub fn census_binding_for_fn_decl(
                 body: None,
                 transport: None,
                 properties: Rc::new(vec![]),
-                type_annotation: item.type_annotation.clone(),
+                type_annotation: None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
