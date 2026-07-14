@@ -618,45 +618,6 @@ fn marshal_skeleton(
     }
 }
 
-// SCAFFOLD (§7 hand-Rust shrink-to-zero): G2 live-read skeleton marshal expansion
-// (`marshal_string_literal_atom`, `hoist_call_arg_string_literal_edges`, callee atoms on
-// `ExprCall`) — see `v2.std.fn_index::fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger`.
-// Host SOURCE half for P1 G2 call-reachability (docs/plans/live-read-witness-classification-design.md §9 P1 / §14).
-// Dissolves when fn-arrow body projection is a modeled substrate fold (same #5364 corridor as
-// `eval_fn_arrow_decl_facts_live`) rather than hand-Rust marshal in this module.
-fn marshal_string_literal_atom(
-    ctx: &InterpContext,
-    node: &Rc<Node>,
-) -> Option<Value> {
-    match node.expr_data.as_ref() {
-        ExprData::ExprLiteral { value, .. } => match value.as_ref() {
-            crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
-                Some(edge_positional(ctx, atom_identity_node(ctx, s)))
-            }
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-fn hoist_call_arg_string_literal_edges(
-    ctx: &InterpContext,
-    node: &Rc<Node>,
-    edges: &mut Vec<Value>,
-) {
-    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
-        edges.push(literal_edge);
-        return;
-    }
-    if let Some(child0) = node.children.first() {
-        if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
-            edges.push(literal_edge);
-        } else {
-            hoist_call_arg_string_literal_edges(ctx, child0, edges);
-        }
-    }
-}
-
 fn marshal_generic(
     ctx: &InterpContext,
     node: &Rc<Node>,
@@ -668,13 +629,6 @@ fn marshal_generic(
     let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     if node_references_param(node, &name, param_names) {
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
-    } else if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty() {
-        // G2 live-read call reachability: callee atoms make cross-fn carrier chains
-        // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
-        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
-    }
-    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
-        edges.push(literal_edge);
     }
     if let Some(ref_name) = node_local_reference_name(node, &name) {
         refs.insert(ref_name);
@@ -683,11 +637,6 @@ fn marshal_generic(
         let (child_skel, child_refs) = marshal_skeleton(ctx, child, param_names, si);
         edges.push(edge_positional(ctx, child_skel));
         refs.extend(child_refs);
-    }
-    if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) {
-        for child in node.children.iter() {
-            hoist_call_arg_string_literal_edges(ctx, child, &mut edges);
-        }
     }
     if let Some(inner) = node.body.as_ref() {
         let (inner_skel, inner_refs) = marshal_skeleton(ctx, inner, param_names, si);
