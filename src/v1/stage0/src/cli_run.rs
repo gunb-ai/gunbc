@@ -2715,29 +2715,6 @@ impl SharedTypecheckCaches {
     }
 }
 
-static PROCESS_SHARED_TYPECHECK_CACHES: OnceLock<
-    Mutex<std::collections::HashMap<String, Arc<Mutex<SharedTypecheckCaches>>>>,
-> = OnceLock::new();
-
-fn process_shared_typecheck_caches_registry(
-) -> &'static Mutex<std::collections::HashMap<String, Arc<Mutex<SharedTypecheckCaches>>>> {
-    PROCESS_SHARED_TYPECHECK_CACHES.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
-}
-
-/// One typed_module_cache per `(process, source_roots)` for the adaptive worker pool.
-pub fn process_shared_resolve_caches(source_roots: &[String]) -> Arc<Mutex<SharedTypecheckCaches>> {
-    let roots_key = source_roots.join("\u{1f}");
-    let mut guard = process_shared_typecheck_caches_registry()
-        .lock()
-        .expect("process_shared_resolve_caches lock");
-    if let Some(existing) = guard.get(&roots_key) {
-        return existing.clone();
-    }
-    let caches = Arc::new(Mutex::new(SharedTypecheckCaches::new()));
-    guard.insert(roots_key, caches.clone());
-    caches
-}
-
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
 // docs/plans/resolver-graph-major-design.md; process-wide after increment C). Counts how
 // many module typechecks were actually COMPUTED (cache misses). When every consumer of
@@ -3253,7 +3230,21 @@ fn check_module_source_identity(
     mod_name: &str,
     decl_file: &str,
 ) -> Result<(), String> {
-    check_module_source_identity_map(&mut registry.borrow_mut(), mod_name, decl_file)
+    if let Some(prev_file) = registry.borrow().get(mod_name).cloned() {
+        if prev_file != decl_file {
+            return Err(format!(
+                "co-residence collision: module '{mod_name}' resolved from two files \
+                 ('{prev_file}' and '{decl_file}') in one process — one module, one authority \
+                 (DESIGN §3). The shared resolve store fails loud rather than silently serving \
+                 a divergent module (resolver-graph-major-design.md §6.3)."
+            ));
+        }
+        return Ok(());
+    }
+    registry
+        .borrow_mut()
+        .insert(mod_name.to_string(), decl_file.to_string());
+    Ok(())
 }
 
 /// Antichain batches (Kahn levels) over the closure's resolved import edges — the host
