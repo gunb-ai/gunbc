@@ -9,6 +9,13 @@ import std.layout {
 }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.fleet_converge_apply {
+  converge_apply,
+  converge_apply_fleet,
+  FleetConvergeApplyResult,
+  fleet_converge_apply_result_converged,
+}
+import gunbc.host_effect { LocalShell, HostEffectTransport }
 import gunbc.host_converge {
   ConvergePolicy,
   ConvergePolicyDerived,
@@ -598,6 +605,18 @@ fn expected_fleet_converge_sh() -> String {
 
 fn fleet_converge_drifted(committed: String) -> Bool {
   !(committed == expected_fleet_converge_sh())
+}
+
+fn fleet_converge_via_apply(policy: ConvergePolicy) -> FleetConvergeApplyResult {
+  converge_apply(policy: policy, transport: LocalShell)
+}
+
+fn fleet_converge_fleet_via_apply() -> FleetConvergeApplyResult {
+  fleet_converge_via_apply(policy: fleet_converge_policy())
+}
+
+fn fleet_converge_fleet_apply_converged() -> Bool {
+  fleet_converge_apply_result_converged(r: fleet_converge_fleet_via_apply())
 }
 
 data fleet_converge_steady_state_doc_projection_dissolution_trigger: Disposition = Scaffold {

@@ -1,6 +1,6 @@
 module v2.std.runtime
 
-import v2.std.collection { List, Map }
+import v2.std.collection { List, Map, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -35,7 +35,13 @@ type RuntimeFieldValue {
 }
 
 type EnvironmentBindingKey {
-  declaration: Node
+  identity: Symbol
+}
+
+fn environment_binding_key_for_symbol(sym: Symbol) -> EnvironmentBindingKey {
+  EnvironmentBindingKey {
+    identity: sym
+  }
 }
 
 type EvaluationEnvironment {

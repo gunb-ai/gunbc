@@ -1,9 +1,12 @@
 module gunbc.host_effect
 
-import std.types { String, Int, NonEmptyStr }
+import std.types { String, Int, NonEmptyStr, List }
 import std.access { AccessDecision }
+import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
+import gunbc.host_converge { HostConverge }
 import std.effects {
   EffectShape,
   ReadEffect,
@@ -17,6 +20,7 @@ import std.effects {
 type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: RedfishSystemAction }
+  | ConvergePlan { policy: HostConverge }
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }
@@ -24,9 +28,49 @@ type NodeControlPlane =
 
 type Drive = OneShot | ConvergeLoop
 
+type BootstrapFragment {
+  script: String
+}
+
+type ThinInvocation {
+  argv: List<String>
+}
+
 type HostEffectTransport =
     LocalShell
   | SshShell { ssh_host: NonEmptyStr }
+  | EmitArtifactThenThinRun { bootstrap: BootstrapFragment, invocation: ThinInvocation }
+
+data host_effect_emit_artifact_transport_scope_disposition: Disposition = Terminal {
+  reason: "EmitArtifactThenThinRun transport mint (shell-emission slice 1+2): BootstrapFragment.script and ThinInvocation.argv are medium-as-string scaffolds until bash-emit (#5828) routes fresh-standup bootstrap through emit(intent,Bash) and steady-state thin-run through typed argv dispatch; carrier scaffolds bind the dissolution rows below."
+}
+
+data bootstrap_fragment_script_carrier_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_emit",
+    decl_name: "fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data thin_invocation_argv_carrier_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_apply",
+    decl_name: "fleet_converge_thin_invocation",
+    field: WholeDeclaration,
+  }
+}
+
+data emit_artifact_then_thin_run_transport_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_emit",
+    decl_name: "fleet_converge_steady_state_doc_projection_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
 
 type HostEffectIntent {
   target: NodeControlPlane
@@ -38,6 +82,7 @@ type HostEffectIntent {
 
 type HostEffectEvidence =
     ShellEffectApplied { exit_code: Int, stdout: String }
+  | ConvergePlanApplied { exit_code: Int, stdout: String }
 
 fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {
   if host_effect_is_converge_loop_evidence(evidence: evidence) {

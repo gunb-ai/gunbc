@@ -5,7 +5,6 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
-  dag_fn_decl_param_binding_atoms,
   dag_language_model_canonical_symbols,
   dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
@@ -628,7 +627,7 @@ fn resolve_child_edge(
   }
 }
 
-data scope_with_fn_decl_params_interim_note: String = "Interim-for-FLAG-D: bare sym→sym merge of dag_fn_decl_param_binding_atoms + add_arrow_domain_named_params until fn_decl→Arrow lowering dissolves the fn_decl reader; dissolve this hunk when FLAG D lands (eager-ram-612 Track 5)."
+data scope_with_fn_decl_params_dissolution_note: String = "Dissolved 2026-07-14 (Wave 1 gates 1+3): fn_decl param scoping via dag_fn_decl_param_binding_atoms deleted — normalize body_lowering_fold emits Arrow+domain pre-resolve; add_arrow_domain_named_params is the sole param-scoping authority. Wrapper-retained fn_decl shells retain no lowered body with param refs."
 
 fn domain_root_has_named_bindings(root: Node) -> Bool {
   match root.kind {
@@ -664,28 +663,13 @@ fn arrow_domain_has_named_bindings(n: Node) -> Bool {
 }
 
 fn scope_with_fn_decl_params(n: Node, scope: Scope) -> Scope {
-  let params = dag_fn_decl_param_binding_atoms(node: n)
-  if length(xs: params) == 0 {
-    if arrow_domain_has_named_bindings(n: n) {
-      ScopeFrame {
-        locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
-        outer: scope
-      }
-    } else {
-      scope
-    }
-  } else {
-    let merged = fold(
-      params,
-      init: add_arrow_domain_named_params(n: n, acc: empty_map()),
-      f: fn(m, sym) {
-        map_insert(m, sym, sym)
-      }
-    )
+  if arrow_domain_has_named_bindings(n: n) {
     ScopeFrame {
-      locals: merged,
+      locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
       outer: scope
     }
+  } else {
+    scope
   }
 }
 
