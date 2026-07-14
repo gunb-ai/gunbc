@@ -1,8 +1,8 @@
 module identity_escape_probe
 
-fn probe_j(node: Node) -> Optional<Node> {
-  match find_named_child(root: node, name: some_name) {
-    Accepted { value: id_node } => Absent
-    Rejected {} => Absent
+fn leaky_identity_probe(node: Node) -> Optional<Node> {
+  match node.children {
+    Foo { value: id_node, diagnostics: _ } => Absent
+    Bar { diagnostics: _ } => Absent
   }
 }

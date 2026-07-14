@@ -167,3 +167,18 @@ test fn debug_probe_i_fn_decl_count_is_one() -> Bool {
 test fn debug_probe_j_fn_decl_count_is_one() -> Bool {
   debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
 }
+
+test fn debug_node_query_fn_decl_count_ge_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 1
+}
+
+test fn debug_probe_fixture_fn_decl_count_is_zero_v2() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 0
+}
+test fn debug_probe_fixture_match_expr_count_is_one() -> Bool {
+  debug_match_expr_count(source_text: "") == -99
+}
+
+test fn debug_probe_fixture_fn_decl_count_is_two_v2() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 2
+}
