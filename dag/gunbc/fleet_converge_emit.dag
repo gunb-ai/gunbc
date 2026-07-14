@@ -60,10 +60,6 @@ fn sh_arg(s: String) -> String {
   concat(concat("\"", s), "\"")
 }
 
-fn sh_cmd(cmd: String, args: List<String>) -> String {
-  fold(args, init: cmd, f: (acc, p) => concat(concat(acc, " "), sh_arg(s: p)))
-}
-
 data fresh_standup_bootstrap_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ fresh-standup bootstrap intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid fleet-converge shell, so the committed .github/fleet-converge.sh drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
 
 fn fresh_standup_checkout_path() -> String {
@@ -209,16 +205,9 @@ fn fresh_standup_bootstrap_arm_golden() -> String {
   )
 }
 
-fn thin_invocation_argv_to_shell(inv: ThinInvocation) -> String {
-  if inv.argv.length() == 0 {
-    "false"
-  } else {
-    sh_cmd(cmd: inv.argv.first(), args: inv.argv.skip(n: 1))
-  }
-}
-
 fn thin_invocation_shell_line(host: HostIdentity) -> String {
-  thin_invocation_argv_to_shell(inv: fleet_converge_thin_invocation(host: host))
+  let inv = fleet_converge_thin_invocation(host: host)
+  concat("gunbc converge --host ", sh_arg(s: inv.argv.last()))
 }
 
 fn thin_invocation_failure_line(host: HostIdentity) -> String {
