@@ -19,12 +19,12 @@ import gunbc.ci_deploy_access {
   gunbc_deploy_sudoers_dropin,
   deploy_access_sudoers_line,
   srv1_live_deploy_privileged_commands,
-  grounded_posix_principal_name,
 }
 
 import gunbc.fleet_posix_accounts {
   FleetAccountCiRunner,
   fleet_posix_principal,
+  grounded_posix_principal_name,
 }
 import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
