@@ -618,6 +618,12 @@ fn marshal_skeleton(
     }
 }
 
+// SCAFFOLD (§7 hand-Rust shrink-to-zero): G2 live-read skeleton marshal expansion
+// (`marshal_string_literal_atom`, `hoist_call_arg_string_literal_edges`, callee atoms on
+// `ExprCall`) — see `v2.std.fn_index::fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger`.
+// Host SOURCE half for P1 G2 call-reachability (docs/plans/live-read-witness-classification-design.md §9 P1 / §14).
+// Dissolves when fn-arrow body projection is a modeled substrate fold (same #5364 corridor as
+// `eval_fn_arrow_decl_facts_live`) rather than hand-Rust marshal in this module.
 fn marshal_string_literal_atom(
     ctx: &InterpContext,
     node: &Rc<Node>,

@@ -26,7 +26,11 @@ import v2.std.live_read {
   live_read_carrier_homes_v0
 }
 import v2.std.collection { List }
-import v2.std.fn_index { fn_arrow_decl_facts_live }
+import v2.std.fn_index {
+  fn_arrow_decl_facts_live,
+  fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger
+}
+import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -189,6 +193,27 @@ data roster_gate_corpus_facts: List<ModuleImportFact> = [
   }
 ]
 
+data g2_union_corpus_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    imports: [
+      "v2.lens.complexity_accumulator_copy.roster_gate",
+      "tools.dag_compile_clean_scope",
+      "v2.std.logic",
+      "v2.std.text",
+      "v2.std.live_tree"
+    ]
+  },
+  ModuleImportFact {
+    module: "v2.lens.complexity_accumulator_copy.roster_gate",
+    imports: []
+  },
+  ModuleImportFact {
+    module: "tools.dag_compile_clean_scope",
+    imports: []
+  }
+]
+
 test fn g2_roster_gate_entry_classifies_literal_paths() -> Bool {
   let c = live_read_classification_g2_from_facts(
     entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
@@ -245,5 +270,26 @@ test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {
         touched_path: "dag/unrelated.dag"
       )
     LocalRead => false
+  }
+}
+
+test fn g2_union_retains_g1_import_carriers_with_g2_literal_paths() -> Bool {
+  let c = live_read_classification_g2_from_facts(
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    facts: g2_union_corpus_facts,
+    decls: fn_arrow_decl_facts_live(),
+    carrier_homes: live_read_carrier_homes_v0
+  )
+  classification_has_corpus_scan_carrier(classification: c)
+    && classification_has_literal_path(
+      classification: c,
+      path: "src/v2/std/algebra.dag"
+    )
+}
+
+test fn g2_fn_arrow_marshal_host_scaffold_receipt_is_checkable() -> Bool {
+  match fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
   }
 }

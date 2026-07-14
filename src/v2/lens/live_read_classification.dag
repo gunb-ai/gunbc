@@ -150,25 +150,25 @@ fn live_read_classification_from_facts_v0(
   )
 }
 
-fn decl_module_prefix(module: String) -> String {
-  concat(module, ".")
+fn decl_module_prefix(mod_path: String) -> String {
+  concat(mod_path, ".")
 }
 
-fn decl_belongs_to_module(decl: FnArrowDecl, module: String) -> Bool {
-  starts_with(s: decl.qualified_name, prefix: decl_module_prefix(module: module))
-    || string_eq(a: decl.qualified_name, b: module)
+fn decl_belongs_to_module(decl: FnArrowDecl, mod_path: String) -> Bool {
+  starts_with(s: decl.qualified_name, prefix: decl_module_prefix(mod_path: mod_path))
+    || string_eq(a: decl.qualified_name, b: mod_path)
 }
 
-fn decls_in_module(decls: List<FnArrowDecl>, module: String) -> List<FnArrowDecl> {
+fn decls_in_module(decls: List<FnArrowDecl>, mod_path: String) -> List<FnArrowDecl> {
   filter(
     xs: decls,
-    predicate: fn(decl) { decl_belongs_to_module(decl: decl, module: module) }
+    predicate: fn(decl) { decl_belongs_to_module(decl: decl, mod_path: mod_path) }
   )
 }
 
 fn decls_in_modules(decls: List<FnArrowDecl>, modules: List<String>) -> List<FnArrowDecl> {
   fold_list(xs: modules, empty: empty_decl_list, cons: fn(acc, mod_path) {
-    list_append(left: acc, right: decls_in_module(decls: decls, module: mod_path))
+    list_append(left: acc, right: decls_in_module(decls: decls, mod_path: mod_path))
   })
 }
 
@@ -526,7 +526,7 @@ fn call_reachable_decls(
   decls: List<FnArrowDecl>
 ) -> List<FnArrowDecl> {
   call_reachable_decls_go(
-    seeds: decls_in_module(decls: decls, module: entry_module),
+    seeds: decls_in_module(decls: decls, mod_path: entry_module),
     closure_modules: closure_modules,
     decls: decls,
     reached: empty_decl_list
@@ -542,18 +542,21 @@ fn carriers_from_reachable_decls(reachable: List<FnArrowDecl>) -> List<LiveReadC
   })
 }
 
-fn g2_carriers_or_g1_fallback(
-  g2_carriers: List<LiveReadCarrier>,
-  g1: LiveReadClassification
-) -> List<LiveReadCarrier> {
-  if length(xs: g2_carriers) > 0 {
-    g2_carriers
-  } else {
-    match g1 {
-      LocalRead => empty_carrier_list
-      RuntimeRead { carriers: cs } => cs
-    }
+fn g1_carriers_from_classification(g1: LiveReadClassification) -> List<LiveReadCarrier> {
+  match g1 {
+    LocalRead => empty_carrier_list
+    RuntimeRead { carriers: cs } => cs
   }
+}
+
+fn merge_g1_and_g2_carriers(
+  g1: LiveReadClassification,
+  g2_carriers: List<LiveReadCarrier>
+) -> List<LiveReadCarrier> {
+  merge_carriers(
+    left: g1_carriers_from_classification(g1: g1),
+    right: g2_carriers
+  )
 }
 
 fn live_read_classification_g2_from_facts(
@@ -573,7 +576,7 @@ fn live_read_classification_g2_from_facts(
     decls: decls
   )
   let g2_carriers = carriers_from_reachable_decls(reachable: reachable)
-  let carriers = g2_carriers_or_g1_fallback(g2_carriers: g2_carriers, g1: g1)
+  let carriers = merge_g1_and_g2_carriers(g1: g1, g2_carriers: g2_carriers)
   if length(xs: carriers) == 0 {
     LocalRead
   } else {
@@ -700,6 +703,26 @@ fn runtime_read_touched_by_path_g1(
   }
 }
 
+fn filesystem_path_carrier_touched(
+  path_pattern: PathPattern,
+  touched_path: String
+) -> Bool {
+  match path_pattern {
+    LiteralPath { path: p } => path_matches_touched(closure_path: p, touched_path: touched_path)
+    UnknownPath => true
+    ParamRef { name: _ } => true
+  }
+}
+
+fn carriers_have_filesystem_literal_pattern(carriers: List<LiveReadCarrier>) -> Bool {
+  any(xs: carriers, predicate: fn(c) {
+    match c {
+      FilesystemReadPath { path_pattern: LiteralPath { path: _ } } => true
+      _ => false
+    }
+  })
+}
+
 fn runtime_read_touched_by_path_g2(
   classification: LiveReadClassification,
   touched_path: String
@@ -710,16 +733,26 @@ fn runtime_read_touched_by_path_g2(
     match classification {
       LocalRead => false
       RuntimeRead { carriers: carriers } =>
-        any(xs: carriers, predicate: fn(carrier) {
-          match carrier {
-            FilesystemReadPath { path_pattern: LiteralPath { path: p } } =>
-              path_matches_touched(closure_path: p, touched_path: touched_path)
-            FilesystemReadPath { path_pattern: UnknownPath } => true
-            FilesystemReadPath { path_pattern: ParamRef { name: _ } } => true
-            ModuleDeclarationFactsScan => true
-            DeclFactsReflection { home: _ } => true
-          }
-        })
+        if carriers_have_filesystem_literal_pattern(carriers: carriers) {
+          any(xs: carriers, predicate: fn(carrier) {
+            match carrier {
+              FilesystemReadPath { path_pattern: LiteralPath { path: p } } =>
+                path_matches_touched(closure_path: p, touched_path: touched_path)
+              ModuleDeclarationFactsScan => true
+              DeclFactsReflection { home: _ } => true
+              _ => false
+            }
+          })
+        } else {
+          any(xs: carriers, predicate: fn(carrier) {
+            match carrier {
+              FilesystemReadPath { path_pattern: pa } =>
+                filesystem_path_carrier_touched(path_pattern: pa, touched_path: touched_path)
+              ModuleDeclarationFactsScan => true
+              DeclFactsReflection { home: _ } => true
+            }
+          })
+        }
     }
   }
 }
