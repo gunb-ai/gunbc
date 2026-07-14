@@ -8,11 +8,11 @@ import gunbc.srv3_seeded_install_media {
   srv3_seeded_autoinstall_delivery_is_on_iso,
   srv3_seeded_grub_cmdline_names_nocloud,
   srv3_seeded_install_media_unattended_not_proven_yet,
-  srv3_autoinstall_user_data_body,
   srv3_seeded_install_media_remaster_toolchain_is_modeled,
   srv3_seeded_install_media_toolchain_ensure_is_privileged_gated,
-  install_media_remaster_toolchain_ensure_script,
 }
+import gunbc.srv3_seeded_install_media_artifact { srv3_autoinstall_user_data_body }
+import gunbc.srv3_host_effect_script { install_media_remaster_toolchain_ensure_script }
 import extdeps.os.ubuntu_seeded_install_media_remaster {
   install_media_remaster_bash_emit_dissolution_trigger,
   install_media_remaster_classification_scaffold,

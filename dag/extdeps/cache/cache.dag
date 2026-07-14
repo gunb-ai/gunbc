@@ -34,18 +34,16 @@ import extdeps.realization.reconcile_in_process {
   typed_module_cache_id,
 }
 import extdeps.realization.resolved_graph { resolved_graph_cache_facts, resolved_graph_cache_id }
-import std.cache_identity { CacheInterfaceProduct }
+import std.cache_identity { CacheInterfaceId, CacheInterfaceProduct }
 import std.cache_interface {
   ArtifactIdentity,
   ProducerReceipt,
   CacheInterfaceFacts,
-  CacheInterfaceId,
   OpaqueStringEncoding,
   CasContentEncoding,
   NativeInternalEncoding,
 }
-import std.types { ContentHash }
-import std.list { List }
+import std.types { ContentHash, List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

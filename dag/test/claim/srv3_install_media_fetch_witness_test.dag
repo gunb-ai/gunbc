@@ -3,8 +3,8 @@ module test.claim.srv3_install_media_fetch
 import std.logic { Bool }
 import std.disposition { Scaffold, Terminal }
 import std.effects { CreateEffect, CreateIfAbsent, InputField }
+import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import gunbc.srv3_install_media_fetch {
-  srv3_ubuntu_install_media_artifact,
   srv3_ubuntu_install_media_install_path,
   install_media_fetch_effect_shape,
   classify_install_media_fetch,
