@@ -10213,8 +10213,8 @@ mod floor_witness_a_prove {
 // (→ `edited_test_fns`); only non-data, non-test-fn declaration edits land in
 // `touched_entry_files`. A raw touched-path superset can diverge from this filtered set, so
 // proving equivalence against raw paths only proves a stronger/looser predicate, not the live
-// decision. This receipt runs `floor_diff_edits_from_diff_text(&index, &git_show_diff_text)`
-// on each commit's full unified diff (`git show <sha>`, not `--name-only`) and feeds
+// decision. This receipt runs `floor_diff_edits_from_diff_text(&index, &pinned_diff_text)`
+// on each commit's full unified diff (pinned in `testdata/`, not `--name-only`) and feeds
 // `.touched_entry_files` to both `dag_entry_affected` and `rust_entry_affected`.
 //
 // `floor_diff_edits_from_line_ranges` fail-closes (`Err`) when a touched `.dag` file's diff
@@ -10264,25 +10264,30 @@ mod module_grain_affected_equivalence_tests {
         ws.join(rel).to_string_lossy().into_owned()
     }
 
-    // Full unified diff for `sha` (NOT `--name-only`) — the same shape the live floor parses via
-    // `parse_unified_diff_line_ranges`/`parse_unified_diff_changed_new_lines`.
+    // Pinned unified diff fixtures for the two all-`M` commits below (NOT `--name-only`) — the
+    // same shape the live floor parses via `parse_unified_diff_line_ranges`/
+    // `parse_unified_diff_changed_new_lines`. Checked into `testdata/` so shallow clones and
+    // remote test runners (BuildBuddy depth-1 fetch) do not need the historical git objects —
+    // `git show <sha>` was the latent red on origin/main outside full-history worktrees.
     fn diff_text_for_commit(sha: &str) -> String {
-        let output = std::process::Command::new("git")
-            .args(["show", sha])
-            .current_dir(workspace_root())
-            .output()
-            .unwrap_or_else(|e| panic!("git show {sha}: {e}"));
-        assert!(
-            output.status.success(),
-            "git show {sha} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let text = String::from_utf8_lossy(&output.stdout).into_owned();
+        let text = match sha {
+            "6edafbb5e29370c0ac791038a1c64e1a4ddbd40d" => {
+                include_str!("../testdata/module_grain_affected_dag_only_6edafbb.diff")
+            }
+            "bb6e65649c9625d021467b0d7fe33ca7dd086e4f" => {
+                include_str!("../testdata/module_grain_affected_v2_only_bb6e656.diff")
+            }
+            other => panic!(
+                "module_grain_affected_equivalence: no pinned diff fixture for commit {other} — \
+                 add testdata/module_grain_affected_<label>_<shortsha>.diff and extend \
+                 diff_text_for_commit"
+            ),
+        };
         assert!(
             !text.trim().is_empty(),
-            "commit {sha} produced empty diff text"
+            "pinned diff fixture for commit {sha} is empty"
         );
-        text
+        text.to_string()
     }
 
     fn str_list_value(items: &[String]) -> Value {

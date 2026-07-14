@@ -69,14 +69,30 @@ import gunbc.ci_deploy_access {
   deploy_access_decision_reason,
 }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
+import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
+import extdeps.os.ubuntu_install_media_fetch {
+  install_media_fetch_reconcile,
+  InstallMediaFetchAlreadyPresent,
+  InstallMediaFetchFetched,
+  InstallMediaFetchRefused,
+}
+import extdeps.os.ubuntu_seeded_install_media_remaster {
+  install_media_remaster_reconcile,
+  InstallMediaRemasterAlreadyPresent,
+  InstallMediaRemasterRemastered,
+  InstallMediaRemasterRefused,
+}
 import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
 import std.types { String, NonEmptyStr, List, Bool }
 
+type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
   | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }
   | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
+  | TypedReconcileOnHost { node: ComputeHost, kind: TypedReconcileKind }
   | Srv3DiagnosticObserveOnHost { node: ComputeHost, bmc: String, port: String, iso_path: String, intent_content_hash: String }
   | OsInstallActuatorToolchainOnHost { node: ComputeHost }
   | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
@@ -131,8 +147,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRead => srv3_host_effect_script_resolution_failed_cell()
-                Srv3InstallMediaFetch => srv3_host_effect_script_resolution_failed_cell()
-                Srv3SeededInstallMediaRemaster => srv3_host_effect_script_resolution_failed_cell()
+                Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
+                Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
                 Srv3SeededInstallMediaToolchainEnsure => srv3_host_effect_script_resolution_failed_cell()
                 Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
@@ -169,8 +185,10 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRead => srv3_host_effect_script_resolution_failed_cell()
-                Srv3InstallMediaFetch => srv3_host_effect_script_resolution_failed_cell()
-                Srv3SeededInstallMediaRemaster => srv3_host_effect_script_resolution_failed_cell()
+                Srv3InstallMediaFetch =>
+                  IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                Srv3SeededInstallMediaRemaster =>
+                  IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3SeededInstallMediaToolchainEnsure => srv3_host_effect_script_resolution_failed_cell()
                 Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
@@ -663,6 +681,84 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
   }
 }
 
+fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match install_media_fetch_reconcile(artifact: srv3_ubuntu_install_media_artifact) {
+    InstallMediaFetchAlreadyPresent { path: p } =>
+      reconcile_grounded(
+        apply_effect: intent,
+        show_read: ReadObserved { value: p as String },
+        grounding: Grounds {
+          evidence: ConvergePlanApplied {
+            exit_code: 0,
+            stdout: concat("install-media-fetch: already present at ", p as String),
+          }
+        }
+      )
+    InstallMediaFetchFetched { path: p, mirror_url: u } =>
+      reconcile_grounded(
+        apply_effect: intent,
+        show_read: ReadObserved { value: p as String },
+        grounding: Grounds {
+          evidence: ConvergePlanApplied {
+            exit_code: 0,
+            stdout: concat(concat("install-media-fetch: fetched from ", u as String), concat(" to ", p as String)),
+          }
+        }
+      )
+    InstallMediaFetchRefused { reason: why } =>
+      NotConverged { reason: concat("install-media-fetch: ", why as String), applied: intent }
+  }
+}
+
+fn realize_install_media_remaster_in_process(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match install_media_remaster_reconcile(artifact: srv3_seeded_install_media_artifact) {
+    InstallMediaRemasterAlreadyPresent { path: p } =>
+      reconcile_grounded(
+        apply_effect: intent,
+        show_read: ReadObserved { value: p as String },
+        grounding: Grounds {
+          evidence: ConvergePlanApplied {
+            exit_code: 0,
+            stdout: concat("install-media-remaster: already present at ", p as String),
+          }
+        }
+      )
+    InstallMediaRemasterRemastered { path: p } =>
+      reconcile_grounded(
+        apply_effect: intent,
+        show_read: ReadObserved { value: p as String },
+        grounding: Grounds {
+          evidence: ConvergePlanApplied {
+            exit_code: 0,
+            stdout: concat("install-media-remaster: remastered at ", p as String),
+          }
+        }
+      )
+    InstallMediaRemasterRefused { reason: why } =>
+      NotConverged { reason: concat("install-media-remaster: ", why as String), applied: intent }
+  }
+}
+
+fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match transport {
+    LocalShell =>
+      match kind {
+        TypedReconcileFetch => realize_install_media_fetch_in_process(intent: intent)
+        TypedReconcileRemaster => realize_install_media_remaster_in_process(intent: intent)
+      }
+    SshShell { ssh_host: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
+        applied: intent,
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; EmitArtifactThenThinRun is a fail-closed Unimplemented stub for this cell until the typed reconcile is realized over that transport.",
+        applied: intent,
+      }
+  }
+}
+
 fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let result = run_shell_transport(script: script, transport: transport)
   let grounding = if result.success {
@@ -703,6 +799,7 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
     ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
     ConvergeOnHost { node: _, host_converge: hc } =>
       realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
+    TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
     Srv3DiagnosticObserveOnHost { node: _, bmc: b, port: p, iso_path: ip, intent_content_hash: h } =>
       realize_srv3_install_diagnostic_observe(
         bmc: b,
@@ -754,6 +851,7 @@ fn host_effect_apply_gated(
         ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
         ConvergeOnHost { node: _, host_converge: hc } =>
           realize_converge_on_host(host_converge: hc, transport: transport, intent: intent)
+        TypedReconcileOnHost { node: _, kind: k } => realize_srv3_typed_reconcile(kind: k, transport: transport, intent: intent)
         Srv3DiagnosticObserveOnHost { node: _, bmc: b, port: p, iso_path: ip, intent_content_hash: h } =>
           realize_srv3_install_diagnostic_observe(
             bmc: b,
@@ -806,6 +904,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
             ShellOnHost { node: _, script: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ConvergeOnHost { node: _, host_converge: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            TypedReconcileOnHost { node: _, kind: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             Srv3DiagnosticObserveOnHost { node: _, bmc: _, port: _, iso_path: _, intent_content_hash: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
