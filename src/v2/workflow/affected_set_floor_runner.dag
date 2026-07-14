@@ -119,7 +119,8 @@ fn floor_witness_run_disposition(
   frontier: FloorRerunFrontier,
   touches_frontier: Bool,
   function_edited: Bool,
-  entry_file_touched: Bool
+  entry_file_touched: Bool,
+  runtime_data_dependency_touched: Bool
 ) -> WitnessRunDisposition {
   match diff {
     DiffObservationFailClosed { reason: reason } =>
@@ -135,6 +136,8 @@ fn floor_witness_run_disposition(
             RunWitness { reason: "witness test fn declaration directly edited" }
           } else if entry_file_touched {
             RunWitness { reason: "witness entry import-closure has non-data fn edit in diff" }
+          } else if runtime_data_dependency_touched {
+            RunWitness { reason: "witness entry's proven runtime-read closure intersects a touched path" }
           } else {
             SkipAssumedGreen
           }
@@ -147,14 +150,16 @@ fn floor_kernel_would_skip(
   frontier_nodes: List<Node>,
   touches_frontier: Bool,
   function_edited: Bool,
-  entry_file_touched: Bool
+  entry_file_touched: Bool,
+  runtime_data_dependency_touched: Bool
 ) -> Bool {
   match floor_witness_run_disposition(
     diff: DiffPathsProduced { changed_paths: changed_paths },
     frontier: FrontierProduced { nodes: frontier_nodes },
     touches_frontier: touches_frontier,
     function_edited: function_edited,
-    entry_file_touched: entry_file_touched
+    entry_file_touched: entry_file_touched,
+    runtime_data_dependency_touched: runtime_data_dependency_touched
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
@@ -168,7 +173,8 @@ fn floor_row_would_skip(
   frontier_nodes: List<Node>,
   touches_frontier: Bool,
   function_edited: Bool,
-  entry_file_touched: Bool
+  entry_file_touched: Bool,
+  runtime_data_dependency_touched: Bool
 ) -> Bool {
   match reads_live_tree {
     ReadsLiveTree => false
@@ -178,7 +184,8 @@ fn floor_row_would_skip(
         frontier_nodes: frontier_nodes,
         touches_frontier: touches_frontier,
         function_edited: function_edited,
-        entry_file_touched: entry_file_touched
+        entry_file_touched: entry_file_touched,
+        runtime_data_dependency_touched: runtime_data_dependency_touched
       )
   }
 }
@@ -187,7 +194,8 @@ fn floor_precompute_would_skip(
   diff: FloorDiffObservation,
   frontier: FloorRerunFrontier,
   edited_test_fn_count: Int,
-  touched_entry_file_count: Int
+  touched_entry_file_count: Int,
+  touched_runtime_dependency_entry_count: Int
 ) -> Bool {
   match diff {
     DiffObservationFailClosed { reason: _ } => false
@@ -198,6 +206,7 @@ fn floor_precompute_would_skip(
           (length(xs: nodes) == 0)
             && (edited_test_fn_count == 0)
             && (touched_entry_file_count == 0)
+            && (touched_runtime_dependency_entry_count == 0)
       }
   }
 }
@@ -206,7 +215,8 @@ fn floor_kernel_precompute_would_skip(
   changed_paths: List<String>,
   frontier_node_count: Int,
   edited_test_fn_count: Int,
-  touched_entry_file_count: Int
+  touched_entry_file_count: Int,
+  touched_runtime_dependency_entry_count: Int
 ) -> Bool {
   if frontier_node_count > 0 {
     false
@@ -215,7 +225,8 @@ fn floor_kernel_precompute_would_skip(
       diff: DiffPathsProduced { changed_paths: changed_paths },
       frontier: FrontierProduced { nodes: [] },
       edited_test_fn_count: edited_test_fn_count,
-      touched_entry_file_count: touched_entry_file_count
+      touched_entry_file_count: touched_entry_file_count,
+      touched_runtime_dependency_entry_count: touched_runtime_dependency_entry_count
     )
   }
 }
@@ -227,7 +238,8 @@ fn floor_row_precompute_would_skip(
   changed_paths: List<String>,
   frontier_node_count: Int,
   edited_test_fn_count: Int,
-  touched_entry_file_count: Int
+  touched_entry_file_count: Int,
+  touched_runtime_dependency_entry_count: Int
 ) -> Bool {
   if live_row_count > 0 {
     false
@@ -236,7 +248,8 @@ fn floor_row_precompute_would_skip(
       changed_paths: changed_paths,
       frontier_node_count: frontier_node_count,
       edited_test_fn_count: edited_test_fn_count,
-      touched_entry_file_count: touched_entry_file_count
+      touched_entry_file_count: touched_entry_file_count,
+      touched_runtime_dependency_entry_count: touched_runtime_dependency_entry_count
     )
   }
 }
