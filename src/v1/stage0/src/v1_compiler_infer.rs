@@ -52,9 +52,9 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
-    is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
-    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
+    empty_type_env_cache, global_bare_lookup, inductive_fields_for, inductive_fields_list_to_map,
+    is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name,
+    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
     put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
 };
 pub use crate::v1_compiler_infer_env::{
@@ -93,6 +93,7 @@ pub use crate::v1_compiler_infer_resolve::{
 pub use crate::v1_compiler_infer_resolve::{ItemResolveResult, NodeResolveResult};
 pub use crate::v1_compiler_infer_service::{
     check_service_field_access_node, check_service_method_call_node, collect_called_func_names,
+    service_op_entry,
     collect_typed_service_calls, expand_transitive_services, extract_typed_service_name,
     is_typed_service_call_receiver, service_op_entry,
 };
@@ -2742,7 +2743,93 @@ pub fn infer_expr(
                             }
                         }
                     }
-                    None => match lookup_func_sig(scope.func_env.clone(), name.clone()) {
+                    None => {
+                        let variant_from_expected = try_resolve_variant_from_expected(
+                            name.clone(),
+                            expected.clone(),
+                            scope.clone(),
+                        );
+                        if let Some(variant_node) = variant_from_expected.clone() {
+                            let parent_enum = match expected.clone() {
+                                Some(exp) => authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    expand_type_for_field_access(
+                                        exp.clone(),
+                                        scope.type_env.clone(),
+                                        scope.module_name.clone(),
+                                    ),
+                                ),
+                                None => name.clone(),
+                            };
+                            ok_infer(make_named_expr_node(
+                                name.clone(),
+                                Rc::new(ExprData::ExprVar {
+                                    binding_kind: Some(Rc::new(
+                                        VarBindingKind::VariantValueBinding {
+                                            parent_enum: parent_enum.clone(),
+                                        },
+                                    )),
+                                }),
+                                Rc::new(vec![]),
+                                Some(Rc::new(InferredNode::Resolved {
+                                    node: variant_node.clone(),
+                                })),
+                                span.clone(),
+                                span.clone(),
+                            ))
+                        } else {
+                            match global_bare_lookup(scope.type_env.clone(), name.clone()) {
+                                Some(binding)
+                                    if global_bare_binding_is_expr_value(binding.clone()) =>
+                                {
+                                    if ((binding.resolved.clone().body.clone() != None)
+                                        || ((binding.resolved.clone().params.clone().len() as i64)
+                                            > 0))
+                                    {
+                                        ok_infer(make_named_expr_node(
+                                            name.clone(),
+                                            Rc::new(ExprData::ExprVar {
+                                                binding_kind: Some(Rc::new(
+                                                    VarBindingKind::FunctionValueBinding,
+                                                )),
+                                            }),
+                                            Rc::new(vec![]),
+                                            Some(Rc::new(InferredNode::Resolved {
+                                                node: resolved_callable_type(
+                                                    binding.resolved.clone().params.clone(),
+                                                    binding
+                                                        .resolved
+                                                        .clone()
+                                                        .inferred
+                                                        .clone()
+                                                        .unwrap_or(Rc::new(
+                                                            InferredNode::Resolved {
+                                                                node: unit_type(),
+                                                            },
+                                                        )),
+                                                ),
+                                            })),
+                                            span.clone(),
+                                            span.clone(),
+                                        ))
+                                    } else {
+                                        let binding_kind =
+                                            infer_var_binding_kind(scope.clone(), name.clone());
+                                        ok_infer(make_named_expr_node(
+                                            name.clone(),
+                                            Rc::new(ExprData::ExprVar {
+                                                binding_kind: Some(binding_kind.clone()),
+                                            }),
+                                            Rc::new(vec![]),
+                                            Some(Rc::new(InferredNode::Resolved {
+                                                node: binding.resolved.clone(),
+                                            })),
+                                            span.clone(),
+                                            span.clone(),
+                                        ))
+                                    }
+                                }
+                                _ => match lookup_func_sig(scope.func_env.clone(), name.clone()) {
                         Some(fsig) => {
                             if ((fsig.params.clone().len() as i64) == 0) {
                                 ok_infer(make_named_expr_node(
@@ -2801,6 +2888,9 @@ pub fn infer_expr(
                                     scope.module_name.clone(),
                                 )]),
                             })
+                        }
+                                },
+                            }
                         }
                     },
                 }
@@ -12381,7 +12471,16 @@ pub fn local_binding_for_item(
                             }))
                         }
                     } else {
-                        if ((((((item.properties.clone().len() as i64) > 0)
+                        if (((item.body.clone() != None)
+                            && (item.connective.clone() == Connective::NoConnective))
+                            && (item.transport.clone() == None))
+                        {
+                            Some(Rc::new(TypeBinding {
+                                name: authored_name_at(source_indices.clone(), item.clone()),
+                                resolved: item.clone(),
+                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                            }))
+                        } else if ((((((item.properties.clone().len() as i64) > 0)
                             && (item.connective.clone() == Connective::NoConnective))
                             && (item.transport.clone() == None))
                             && (item.inferred.clone() == None))
@@ -12443,11 +12542,8 @@ pub fn build_global_bare_census_pool(
                 .iter()
                 .cloned()
                 .fold(items_census, |acc, arm_name: String| {
-                    match (
-                        v1_rt::map_get(&surface.arm_owners.clone(), arm_name.clone()),
-                        v1_rt::map_get(&surface.enum_items.clone(), arm_name.clone()),
-                    ) {
-                        (Some(coproduct), Some(_)) => {
+                    match v1_rt::map_get(&surface.arm_owners.clone(), arm_name.clone()) {
+                        Some(coproduct) => {
                             let variant = coproduct.children.clone().iter().cloned().find(|v| {
                                 authored_name_at(source_indices.clone(), v.clone()) == arm_name
                             });
@@ -12463,12 +12559,169 @@ pub fn build_global_bare_census_pool(
                                 None => acc,
                             }
                         }
-                        _ => acc,
+                        None => acc,
                     }
                 })
         },
     );
     census
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PoolServiceComponents {
+    pub registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+}
+
+pub fn empty_pool_service_components() -> Rc<PoolServiceComponents> {
+    Rc::new(PoolServiceComponents {
+        registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+        locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+    })
+}
+
+pub fn build_pool_service_components(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<PoolServiceComponents> {
+    modules.clone().iter().cloned().fold(
+        empty_pool_service_components(),
+        |acc: Rc<PoolServiceComponents>, mod_: Rc<ResolvedModule>| {
+            module_items(mod_.module.clone()).iter().cloned().fold(
+                acc,
+                |acc: Rc<PoolServiceComponents>, item: Rc<Node>| {
+                    if ((item.transport.clone() != None)
+                        && ((item.children.clone().len() as i64) > 0))
+                    {
+                        let entries = Rc::new({
+                            let mut __result = Vec::new();
+                            for c in item.children.clone().iter().cloned() {
+                                __result.push(service_op_entry(
+                                    c.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let service_key =
+                            authored_name_at(source_indices.clone(), item.clone());
+                        let root = namespace_root_from_properties(
+                            item.properties.clone(),
+                            service_key.clone(),
+                            source_indices.clone(),
+                        );
+                        let registry = match v1_rt::map_get(&acc.registry.clone(), service_key.clone())
+                        {
+                            Some(_) => acc.registry.clone(),
+                            None => v1_rt::rc_map_insert(
+                                acc.registry.clone(),
+                                service_key.clone(),
+                                entries.clone(),
+                            ),
+                        };
+                        let locals = match v1_rt::map_get(&acc.locals.clone(), root.clone()) {
+                            Some(_) => acc.locals.clone(),
+                            None => v1_rt::rc_map_insert(
+                                acc.locals.clone(),
+                                root.clone(),
+                                nominal_type_binding(root.clone()),
+                            ),
+                        };
+                        Rc::new(PoolServiceComponents {
+                            registry: registry.clone(),
+                            locals: locals.clone(),
+                        })
+                    } else {
+                        acc.clone()
+                    }
+                },
+            )
+        },
+    )
+}
+
+pub fn global_bare_binding_is_expr_value(binding: Rc<TypeBinding>) -> bool {
+    let r = binding.resolved.clone();
+    if (r.body.clone() != None) {
+        return true;
+    }
+    if (r.connective.clone() == Connective::Disj) {
+        return false;
+    }
+    if (((r.params.clone().len() as i64) > 0) && (r.body.clone() == None)) {
+        return false;
+    }
+    if (((r.inferred.clone() != None) && (r.body.clone() == None))
+        && ((r.params.clone().len() as i64) == 0))
+    {
+        return false;
+    }
+    if (((r.children.clone().len() as i64) > 0)
+        && (r.connective.clone() == Connective::NoConnective))
+        && (r.body.clone() == None)
+    {
+        return false;
+    }
+    true
+}
+
+pub fn merge_global_bare_expr_locals(
+    env: Rc<TypeEnv>,
+    locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(v1_rt::map_keys(&env.global_bare.clone()))
+        .iter()
+        .cloned()
+        .fold(locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
+            if v1_rt::map_get(&acc, name.clone()).is_some() {
+                acc.clone()
+            } else {
+                match v1_rt::map_get(&env.global_bare.clone(), name.clone())
+                    .as_deref()
+                    .cloned()
+                {
+                    Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                        binding: binding, ..
+                    }) => {
+                        if global_bare_binding_is_expr_value(binding.clone()) {
+                            v1_rt::rc_map_insert(acc.clone(), name.clone(), binding.clone())
+                        } else {
+                            acc.clone()
+                        }
+                    }
+                    _ => acc.clone(),
+                }
+            }
+        })
+}
+
+pub fn try_resolve_variant_from_expected(
+    name: String,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match expected.clone() {
+        Some(exp) => {
+            let expanded = expand_type_for_field_access(
+                exp.clone(),
+                scope.type_env.clone(),
+                scope.module_name.clone(),
+            );
+            let subject = pattern_subject_from_node(expanded.clone());
+            let lookup = lookup_variant_in_type(
+                subject,
+                name.clone(),
+                scope.module_name.clone(),
+                scope.type_env.clone(),
+                0,
+            );
+            match (*lookup_result_subject(lookup).clone()) {
+                PatternSubject::PatternResolved { node: resolved, .. } => Some(resolved.clone()),
+                _ => None,
+            }
+        }
+        None => None,
+    }
 }
 
 pub fn census_insert_binding(
@@ -13449,7 +13702,23 @@ pub fn build_type_env_unresolved(
                                 )
                             }
                         } else {
-                            if ((((((item.properties.clone().len() as i64) > 0)
+                            if (((item.body.clone() != None)
+                                && (item.connective.clone() == Connective::NoConnective))
+                                && (item.transport.clone() == None))
+                            {
+                                v1_rt::rc_map_insert(
+                                    acc.clone(),
+                                    item_ident.clone(),
+                                    Rc::new(TypeBinding {
+                                        name: authored_name_at(
+                                            source_indices.clone(),
+                                            item.clone(),
+                                        ),
+                                        resolved: item.clone(),
+                                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                    }),
+                                )
+                            } else if ((((((item.properties.clone().len() as i64) > 0)
                                 && (item.connective.clone() == Connective::NoConnective))
                                 && (item.transport.clone() == None))
                                 && (item.inferred.clone() == None))
@@ -14340,6 +14609,7 @@ pub fn typecheck_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    pool_services: Rc<PoolServiceComponents>,
 ) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
