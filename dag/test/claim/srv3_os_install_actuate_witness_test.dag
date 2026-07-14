@@ -80,7 +80,7 @@ test fn srv3_nbd_proxy_serve_argv_is_emittable_from_intent() -> Bool {
   string_contains(s: websocat_argv, pattern: websocat_install_path as String)
     && string_contains(s: nbdkit_argv, pattern: "nbdkit")
     && string_contains(s: websocat_argv, pattern: "/vm/0/0")
-    && nbd_proxy_serve_has_no_shell_supervision_grammar()
+    && nbd_proxy_serve_has_no_shell_supervision_grammar(intent: intent)
 }
 
 test fn nbd_proxy_serve_session_token_is_literal_in_websocat_argv() -> Bool {

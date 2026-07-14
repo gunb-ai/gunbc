@@ -161,8 +161,33 @@ fn nbd_proxy_serve_nbdkit_argv_includes_iso(intent: NbdProxyServeTransportIntent
   )
 }
 
-fn nbd_proxy_serve_has_no_shell_supervision_grammar() -> Bool {
-  true
+fn nbd_proxy_serve_append_argv(acc: List<String>, argv: List<String>) -> List<String> {
+  fold(argv, init: acc, f: (xs, arg) => list_push(xs, arg))
+}
+
+fn nbd_proxy_serve_argv_surface_text(intent: NbdProxyServeTransportIntent) -> String {
+  fold(
+    nbd_proxy_serve_append_argv(
+      acc: nbd_proxy_serve_nbdkit_argv(intent: intent),
+      argv: nbd_proxy_serve_websocat_argv(intent: intent),
+    ),
+    init: "",
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
+}
+
+fn nbd_proxy_serve_argv_surface_contains_supervision_marker(surface: String) -> Bool {
+  string_contains(s: surface, pattern: "trap")
+    || string_contains(s: surface, pattern: "$!")
+    || string_contains(s: surface, pattern: " &")
+    || string_contains(s: surface, pattern: "& ")
+    || string_contains(s: surface, pattern: "nohup")
+}
+
+fn nbd_proxy_serve_has_no_shell_supervision_grammar(intent: NbdProxyServeTransportIntent) -> Bool {
+  !nbd_proxy_serve_argv_surface_contains_supervision_marker(
+    surface: nbd_proxy_serve_argv_surface_text(intent: intent),
+  )
 }
 
 fn nbd_proxy_serve_requires_host_as_nbd_server() -> Bool {
