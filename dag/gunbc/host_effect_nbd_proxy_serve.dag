@@ -25,8 +25,6 @@ import gunbc.session_lease {
   ProcessPortScope,
   ProcessPortObservation,
   PortAbsent,
-  PortObserved,
-  PortObservedStaleExpected,
   ProcessLeasePlan,
   Start,
   DrainMatchingStaleThenStart,
@@ -97,20 +95,6 @@ fn host_effect_nbd_proxy_serve_append_argv(
   argv: List<String>,
 ) -> List<String> {
   fold(argv, init: acc, f: (xs, arg) => list_push(xs, arg))
-}
-
-fn host_effect_nbd_proxy_serve_systemd_run_argv(
-  unit: NonEmptyStr,
-  command_argv: List<String>,
-) -> List<String> {
-  let prefix = [
-    "systemd-run",
-    "--unit",
-    unit as String,
-    "--collect",
-    "--",
-  ]
-  host_effect_nbd_proxy_serve_append_argv(acc: prefix, argv: command_argv)
 }
 
 fn host_effect_nbd_proxy_serve_witness_bin_run_argv(

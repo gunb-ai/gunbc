@@ -85,7 +85,7 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
 }
 import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
 import gunbc.host_effect_nbd_proxy_serve {
-  host_effect_nbd_proxy_serve_apply_script,
+  host_effect_nbd_proxy_serve_apply,
   host_effect_nbd_proxy_serve_session_binding,
 }
 import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
@@ -807,11 +807,25 @@ fn realize_nbd_proxy_session_on_host(
   intent_record: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let binding = host_effect_nbd_proxy_serve_session_binding(intent: intent, lease_key: lease_key)
-  realize_shell_on_host(
-    script: host_effect_nbd_proxy_serve_apply_script(binding: binding),
-    transport: transport,
-    intent: intent_record,
-  )
+  match host_effect_nbd_proxy_serve_apply(binding: binding, transport: transport) {
+    NbdProxyServeApplyConverged { stdout: out } =>
+      reconcile_grounded(
+        apply_effect: intent_record,
+        show_read: ReadObserved {
+          value: ShellExecObserved {
+            exit_code: 0,
+            success: true,
+            stdout: out,
+            stderr: "",
+          },
+        },
+        grounding: Grounds {
+          evidence: ShellEffectApplied { exit_code: 0, stdout: out },
+        },
+      )
+    NbdProxyServeApplyRefused { reason: why } =>
+      NotConverged { reason: why, applied: intent_record }
+  }
 }
 
 fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: IdempotencyEvidence, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
