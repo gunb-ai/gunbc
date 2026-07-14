@@ -13213,6 +13213,21 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/node_minimal.dag::node_superset_field_eq",
     "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
     "src/v2/std/qualified_name.dag::qn_fold_step",
+    // 2026-07-14 backfill (fourth instance of the masking class, siblings to the #6533/#6530
+    // receipts above): the nightly affected-set falsifier's whole-corpus cold sweep surfaced 3
+    // unrostered sites the per-PR affected-set selection did not run the nfr witness for at
+    // landing time. `orch_emit_let_step` landed with #6573 (Shell→dag P2b), the two live-read
+    // eq fns with #6582 (live-read classification P1) — the same PR that landed the orphan doc
+    // this sweep also caught. Declared here so the ratchet re-arms; each burns down with its
+    // owning file's fold migration.
+    //   - orch_emit_let_step: special-case `ExprCmdSubst` + general `Expr` dispatch via
+    //     orch_emit_expr_spelling; dissolves when emit is the backward grammar-row fold (§4).
+    //   - live_read_carrier_eq / path_pattern_eq: nested structural `==` (`_ => false` on the
+    //     off-variant arm), the same shape as the std `*_eq` rows above; dissolves with derived
+    //     equality from inhabitance (the cross-representation `==` grounding, DESIGN §3/§4).
+    "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
+    "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
+    "src/v2/lens/live_read_classification.dag::path_pattern_eq",
 ];
 
 fn nfr_strip_comments(content: &str) -> String {
