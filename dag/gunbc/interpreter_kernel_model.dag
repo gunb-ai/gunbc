@@ -1,6 +1,6 @@
 module gunbc.interpreter_kernel_model
 
-import std.types { List, String, Bool, Int }
+import std.types { List, String, Bool }
 
 type InterpreterSeamClass
   = PureEvalAuthority
@@ -38,14 +38,6 @@ fn is_pure_eval_authority_module(path: String) -> Bool {
 
 fn is_pinned_host_physics_stage0_file(basename: String) -> Bool {
   list_contains_string(xs: pinned_host_physics_stage0_files, needle: basename)
-}
-
-fn pinned_host_physics_file_count() -> Int {
-  pinned_host_physics_stage0_files.length()
-}
-
-fn pure_eval_authority_module_count() -> Int {
-  pure_eval_authority_modules.length()
 }
 
 fn interpreter_kernel_d_phase_is_model_only() -> Bool {
