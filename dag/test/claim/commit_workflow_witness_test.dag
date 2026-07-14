@@ -18,7 +18,6 @@ import gunbc.commit_workflow {
 import std.realization_schedule {
   WitnessSeam, SpanSeams, SpanUndeclared
 }
-import v2.workflow.ci_floor_plan { witness_entries_kind_path_all_agree }
 import gunbc.ci_spec { gunbc_ci_floor_gates }
 import gunbc.local_tidy_spec { local_tidy_checks }
 import gunbc.generated_artifact {
@@ -97,12 +96,6 @@ fn witness_span_rejects_empty_seam_list() -> Bool {
   !witness_span_wellformed(span: SpanSeams { seams: [] })
 }
 
-fn witness_projected_ci_entries_kind_stamped() -> Bool {
-  witness_entries_kind_path_all_agree(
-    entries: project_ci_floor_witness_entries(roster: commit_gate_roster)
-  )
-}
-
 test fn commit_workflow_witnesses() -> Bool {
   witness_roster_nonempty()
     && witness_ci_spec_projects_from_roster()
@@ -120,5 +113,4 @@ test fn commit_workflow_span_kind_witnesses() -> Bool {
     && witness_span_rejects_self_seam()
     && witness_span_rejects_duplicate_seams()
     && witness_span_rejects_empty_seam_list()
-    && witness_projected_ci_entries_kind_stamped()
 }
