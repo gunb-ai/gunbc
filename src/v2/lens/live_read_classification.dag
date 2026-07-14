@@ -516,7 +516,7 @@ fn call_reachable_decls_go(
 fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
   match list_tail(xs: xs) {
     TailFound { tail: t } => t
-    TailAbsent => empty_node_list
+    TailAbsent => empty_decl_list
   }
 }
 
