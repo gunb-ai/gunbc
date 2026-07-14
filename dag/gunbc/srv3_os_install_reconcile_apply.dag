@@ -11,9 +11,6 @@ import std.measure { second_count }
 import gunbc.srv3_os_install_diagnostic {
   srv3_install_diagnostic_observe_script_for_intent,
   srv3_os_install_attempt_intent,
-}
-import gunbc.srv3_os_install_diagnostic {
-  srv3_os_install_attempt_intent,
   parse_srv3_install_debug_observation,
 }
 import gunbc.srv3_os_install_reconcile {

@@ -225,14 +225,42 @@ fn srv3_privileged_apt_install(package: NonEmptyStr) -> Bool {
   gunbc.WitnessBin.Run(
     workdir: "/",
     bin_path: "/usr/bin/sudo",
-    args: [
-      "-n",
-      apt_get_binary_path as String,
-      "install",
-      "-y",
-      package as String,
-    ],
+    args: srv3_actuator_toolchain_privileged_apt_install_args(package: package),
   ).success
+}
+
+fn srv3_actuator_toolchain_privileged_apt_install_args(package: NonEmptyStr) -> List<String> {
+  [
+    "-n",
+    apt_get_binary_path as String,
+    "install",
+    "-y",
+    package as String,
+  ]
+}
+
+fn srv3_actuator_toolchain_websocat_release_download_url() -> String {
+  websocat_github_release_download_url(
+    tag: websocat_github_tag,
+    asset: websocat_asset_aarch64,
+  )
+}
+
+fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> Bool {
+  srv3_actuator_toolchain_privileged_apt_install_args(package: package_curl)
+    == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
+}
+
+fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> Bool {
+  string_contains(
+    s: srv3_actuator_toolchain_websocat_release_download_url(),
+    pattern: "github.com/vi/websocat/releases/download/",
+  )
+    && string_contains(s: websocat_install_path as String, pattern: gunbc_bin_dir as String)
+}
+
+fn srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_namespace_upsert() -> Bool {
+  string_contains(s: websocat_install_path as String, pattern: concat(gunbc_bin_dir as String, "/"))
 }
 
 fn srv3_ensure_apt_tool(
@@ -259,10 +287,7 @@ fn srv3_ensure_websocat() -> Bool {
     match srv3_tool_bin_path(tool_name: curl_cli_tool.name) {
       Present { value: curl_path } => {
         let bin_dir = gunbc_bin_dir as String
-        let url = websocat_github_release_download_url(
-          tag: websocat_github_tag,
-          asset: websocat_asset_aarch64,
-        )
+        let url = srv3_actuator_toolchain_websocat_release_download_url()
         let mkdir = gunbc.WitnessBin.Run(
           workdir: "/",
           bin_path: "/usr/bin/sudo",
