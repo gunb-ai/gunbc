@@ -2072,19 +2072,21 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     const EXCLUDE: &[String] = &[];
     let roots = pool_roots_for_module_graph_closure(pool_roots);
-    // Blocker-1 part 2: the module-graph LOADER closure is now reference-derived too, unioned onto
-    // the import edges (superset-safe: an extra load-set edge only compiles an extra module, never
-    // drops one — DESIGN §5, the loader/affected-set confidence tag on `ReferenceEdgeRaw` above).
-    // `reference_resolution_facts` already no-ops on any file that still carries `import` lines (the
-    // producer's `has_imports` guard), so this is byte-identical on the un-stripped tree and only
-    // takes effect for import-less (stripped) files reaching into the pool by reference.
-    let mut edges = import_resolution_facts(&roots, &roots, EXCLUDE);
-    for edge in reference_edges_as_import_facts(
-        &reference_resolution_facts(&roots, &roots, EXCLUDE),
-        false,
-    ) {
-        edges.push(edge);
-    }
+    // NOTE: the module-graph LOADER closure stays import-derived for now (Blocker-1 part 1). A
+    // reference-derived closure changes every witness's load set tree-wide and surfaces latent issues
+    // (import-less-but-referencing std files, witnesses that need src/v1 in their pool, the
+    // pre-existing fleet_converge Srv3 red, and homonyms the bright-cat lane must qualify), so the
+    // loader repoint is staged as a separate part after those land. The REFERENCE producer below is
+    // already live via the inert-lens reach (the strips' documented CI blocker), which is hygiene-
+    // only and cannot regress a compile.
+    //
+    // Attempted 2026-07-14 (this node, part 2): unioning `reference_edges_as_import_facts(..., false)`
+    // onto `edges` here balloons a single small witness entry's load set from 27 to 424 resolved
+    // sources (measured on `dag_import_closure_live_witness_bundle_holds`) — ubiquitous std bare names
+    // fan every import-less referrer out to nearly the whole pool, not a bounded superset. Reverted;
+    // the naive union is unsafe at this grain and needs a narrower fan-out bound (or a same-module/
+    // homonym-aware restriction) before the loader can repoint. See escalation on this node.
+    let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
     let nodes = module_declaration_facts(&roots);
     let adjacency = build_import_adjacency(&edges, &nodes);
     let declared_paths = nodes
