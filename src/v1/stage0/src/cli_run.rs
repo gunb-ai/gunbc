@@ -4,10 +4,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -166,6 +165,589 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
         }
     }
     imports
+}
+
+// SCAFFOLD (§7 HAND-RUST — `cli_run_namespace_import_synthesis`):
+// Namespace PR-5b interim bridge while `src/v2/workflow/**` and `src/v2/extdeps/**` import
+// lines are stripped ahead of namespace-only resolution (docs/plans/namespace-resolution-design.md
+// §1 Rule 1 / terminal step 5 — delete `import` grammar; migration_trigger:
+// ^migrate_when_namespace_only_resolution_lands in v2.compiler.self_host.frontier.dag).
+// Host restores origin/main import blocks at compile time (fail-closed when `git show`
+// refuses — §5, no silent compile without restored imports) plus bare-export /
+// qualified-prefix closure for module-graph facts and inert-lens hygiene until SymbolIndex containment replaces
+// import-scoped visibility (#6046 hard-gates net-new seed logic).
+// DELETE WHEN dissolved: `extract_qualified_lens_module_prefixes` through
+// `extract_lens_hygiene_dependency_paths`, `augment_sources_with_synthesized_namespace_imports`,
+// `expand_sources_with_synthesized_import_targets`
+// wiring in `load_sources_for_entry_with_index`, `load_compile_clean_entry_sources`,
+// and `import_resolution_facts` module-graph scan,
+// `import_resolution_facts`, and the lens-hygiene export-index walk (~430 LOC).
+// Receipt: `rg cli_run_namespace_import_synthesis src/v1/stage0/src/cli_run.rs` == 1 until
+// deletion; witness: `namespace_import_synthesis_scaffold_marker_is_declared` below.
+pub(crate) const CLI_RUN_NAMESPACE_IMPORT_SYNTHESIS_SCAFFOLD_MARKER: &str =
+    "cli_run_namespace_import_synthesis";
+
+/// Bare-export / qualified-prefix dependency edges for import-closure while import lines are
+/// stripped (`CLI_RUN_NAMESPACE_IMPORT_SYNTHESIS_SCAFFOLD_MARKER` / §7).
+fn extract_qualified_lens_module_prefixes(content: &str) -> Vec<String> {
+    let mut modules: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for line in content.lines() {
+        let line = line.split("//").next().unwrap_or(line);
+        let mut rest = line;
+        while let Some(pos) = rest.find("v2.lens.") {
+            let after = &rest[pos + "v2.lens.".len()..];
+            let segment: String = after
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !segment.is_empty() {
+                modules.insert(format!("v2.lens.{segment}"));
+            }
+            rest = if segment.is_empty() {
+                &after[1..]
+            } else {
+                &after[segment.len()..]
+            };
+        }
+    }
+    modules.into_iter().collect()
+}
+
+fn lens_hygiene_authority_module(module: &str) -> Option<String> {
+    if let Some(rest) = module.strip_prefix("v2.lens.") {
+        if rest.is_empty() {
+            return None;
+        }
+        let top = rest.split('.').next()?;
+        return Some(format!("v2.lens.{top}"));
+    }
+    if let Some(rest) = module.strip_prefix("v2.test.lens_") {
+        if rest.is_empty() {
+            return None;
+        }
+        let top = rest.split('.').next()?;
+        return Some(format!("v2.lens.{top}"));
+    }
+    None
+}
+
+fn build_lens_top_level_export_index(
+    source_roots: &[String],
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let corpus_index = build_corpus_top_level_export_index(source_roots);
+    let mut index: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for (name, homes) in corpus_index {
+        for module in homes {
+            if let Some(authority) = lens_hygiene_authority_module(&module) {
+                index.insert(name.clone(), authority);
+                break;
+            }
+        }
+    }
+    Ok(index)
+}
+
+fn select_homonym_export_homes(importer_module: &str, homes: &[String]) -> Vec<String> {
+    // INTERIM import-scoped homonym policy (`CLI_RUN_NAMESPACE_IMPORT_SYNTHESIS_SCAFFOLD_MARKER`):
+    // namespace-only resolution replaces this with containment lookup; behavior locked by
+    // homonym_export_homes_* tests below.
+    let homes: Vec<String> = if importer_module.starts_with("v2.test.") {
+        homes.to_vec()
+    } else {
+        let without_test: Vec<String> = homes
+            .iter()
+            .filter(|home| !home.starts_with("v2.test."))
+            .cloned()
+            .collect();
+        if without_test.is_empty() {
+            homes.to_vec()
+        } else {
+            without_test
+        }
+    };
+    if homes.is_empty() {
+        return Vec::new();
+    }
+    if homes.len() == 1 {
+        return homes;
+    }
+    let importer_segments: Vec<&str> = importer_module.split('.').collect();
+    let mut best_common = 0usize;
+    let mut selected: Vec<String> = Vec::new();
+    for home in &homes {
+        let common = importer_segments
+            .iter()
+            .zip(home.split('.'))
+            .take_while(|(left, right)| *left == right)
+            .count();
+        if common > best_common {
+            best_common = common;
+            selected.clear();
+            selected.push(home.clone());
+        } else if common == best_common && common > 0 {
+            selected.push(home.clone());
+        }
+    }
+    if !selected.is_empty() {
+        return selected;
+    }
+    if importer_module.starts_with("v2.") {
+        let v2_std: Vec<String> = homes
+            .iter()
+            .filter(|home| home.starts_with("v2.std."))
+            .cloned()
+            .collect();
+        if !v2_std.is_empty() {
+            return v2_std;
+        }
+        let v2_non_test: Vec<String> = homes
+            .iter()
+            .filter(|home| home.starts_with("v2.") && !home.starts_with("v2.test."))
+            .cloned()
+            .collect();
+        if v2_non_test.len() == 1 {
+            return v2_non_test;
+        }
+    }
+    if importer_module.starts_with("gunbc.")
+        || importer_module.starts_with("extdeps.")
+        || importer_module.starts_with("std.")
+        || importer_module.starts_with("test.")
+        || importer_module.starts_with("tools.")
+    {
+        let std_layer: Vec<String> = homes
+            .iter()
+            .filter(|home| home.starts_with("std.") && !home.starts_with("v2."))
+            .cloned()
+            .collect();
+        if std_layer.len() == 1 {
+            return std_layer;
+        }
+    }
+    homes
+}
+
+fn extract_bare_export_module_refs(
+    content: &str,
+    importer_module: &str,
+    export_index: &std::collections::HashMap<String, Vec<String>>,
+) -> Vec<String> {
+    if export_index.is_empty() {
+        return Vec::new();
+    }
+    let mut modules: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (token, _, _) in collect_bare_reference_tokens(content) {
+        if let Some(homes) = export_index.get(&token) {
+            for home in select_homonym_export_homes(importer_module, homes) {
+                modules.insert(home);
+            }
+        }
+    }
+    modules.into_iter().collect()
+}
+
+fn extract_bare_named_export_module_refs(
+    content: &str,
+    export_index: &std::collections::HashMap<String, String>,
+) -> Vec<String> {
+    if export_index.is_empty() {
+        return Vec::new();
+    }
+    let mut modules: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut token = String::new();
+    for ch in content.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            token.push(ch);
+        } else {
+            if !token.is_empty() {
+                if let Some(module) = export_index.get(&token) {
+                    modules.insert(module.clone());
+                }
+                token.clear();
+            }
+        }
+    }
+    if !token.is_empty() {
+        if let Some(module) = export_index.get(&token) {
+            modules.insert(module.clone());
+        }
+    }
+    modules.into_iter().collect()
+}
+
+fn extract_declared_module_prefix_refs(
+    content: &str,
+    declared_modules: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    let mut modules: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for module in declared_modules {
+        let needle = format!("{module}.");
+        if content.contains(needle.as_str()) {
+            modules.insert(module.clone());
+        }
+    }
+    modules.into_iter().collect()
+}
+
+fn extract_top_level_bare_export_names(content: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for line in content.lines() {
+        if line.starts_with("test ") || line.trim_start().starts_with("service ") {
+            continue;
+        }
+        let Some(kw) = FACT_CARDINALITY_ITEM_KEYWORDS
+            .iter()
+            .find(|kw| line.starts_with(*kw) && **kw != "service ")
+        else {
+            continue;
+        };
+        let rest = &line[kw.len()..];
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() {
+            names.push(name);
+        }
+    }
+    names
+}
+
+fn token_is_bare_reference_context(content: &str, token_start: usize, token_end: usize) -> bool {
+    let prev = content.as_bytes().get(token_start.wrapping_sub(1)).copied();
+    let next = content.as_bytes().get(token_end).copied();
+    if prev == Some(b'.') || next == Some(b'.') {
+        return false;
+    }
+    if next == Some(b':') {
+        return false;
+    }
+    true
+}
+
+fn collect_bare_reference_tokens(content: &str) -> Vec<(String, usize, usize)> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
+    let mut token_start = 0usize;
+    for (idx, ch) in content.char_indices() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            if token.is_empty() {
+                token_start = idx;
+            }
+            token.push(ch);
+        } else if !token.is_empty() {
+            let token_end = idx;
+            if token_is_bare_reference_context(content, token_start, token_end) {
+                tokens.push((token.clone(), token_start, token_end));
+            }
+            token.clear();
+        }
+    }
+    if !token.is_empty() {
+        let token_end = content.len();
+        if token_is_bare_reference_context(content, token_start, token_end) {
+            tokens.push((token, token_start, token_end));
+        }
+    }
+    tokens
+}
+
+fn build_corpus_top_level_export_index(
+    pool_roots: &[String],
+) -> std::collections::HashMap<String, Vec<String>> {
+    let mut index: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    for root in &abs_pool_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        dag_files.sort();
+        for path in dag_files {
+            let content = match std::fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            if let Some(module) = extract_module_path(&content) {
+                for name in extract_top_level_bare_export_names(&content) {
+                    index.entry(name).or_default().push(module.clone());
+                }
+            }
+        }
+    }
+    index
+}
+
+/// Module dependency edges for import-closure under namespace-only import strip.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_NAMESPACE_IMPORT_SYNTHESIS_SCAFFOLD_MARKER` / §7):
+/// dissolves when namespace-only resolution lands and the import grammar deletes.
+/// Bare-export homonym edges apply only to stripped `src/v2/workflow/**` and
+/// `src/v2/extdeps/**` paths; import-bearing modules keep explicit-import edges only
+/// so stamped convention rows like `live_tree_disposition` do not widen closure.
+pub(crate) fn extract_module_dependency_paths(
+    content: &str,
+    importer_path: &str,
+    importer_module: &str,
+    export_index: &std::collections::HashMap<String, Vec<String>>,
+    declared_modules: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    let mut deps: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for module in extract_import_paths(content) {
+        deps.insert(module);
+    }
+    for module in extract_qualified_lens_module_prefixes(content) {
+        deps.insert(module);
+    }
+    for module in extract_declared_module_prefix_refs(content, declared_modules) {
+        deps.insert(module);
+    }
+    if needs_namespace_import_synthesis(importer_path) {
+        for module in extract_bare_export_module_refs(content, importer_module, export_index) {
+            deps.insert(module);
+        }
+    }
+    deps.into_iter().collect()
+}
+
+fn needs_namespace_import_synthesis(path: &str) -> bool {
+    let path = path.replace('\\', "/");
+    path.contains("src/v2/workflow/") || path.contains("src/v2/extdeps/")
+}
+
+fn extract_import_source_blocks(content: &str) -> Vec<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut blocks = Vec::new();
+    let mut i = 0usize;
+    while i < lines.len() {
+        if !lines[i].trim_start().starts_with("import ") {
+            i += 1;
+            continue;
+        }
+        let mut block = String::new();
+        let mut depth = 0i32;
+        loop {
+            if i >= lines.len() {
+                break;
+            }
+            let line = lines[i];
+            if !block.is_empty() {
+                block.push('\n');
+            }
+            block.push_str(line);
+            depth += line.matches('{').count() as i32;
+            depth -= line.matches('}').count() as i32;
+            i += 1;
+            if depth <= 0 {
+                break;
+            }
+        }
+        blocks.push(block);
+    }
+    blocks
+}
+
+fn inject_import_blocks_after_module(content: &str, import_blocks: &[String]) -> String {
+    if import_blocks.is_empty() {
+        return content.to_string();
+    }
+    let mut lines: Vec<String> = content.lines().map(str::to_string).collect();
+    let insert_at = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("module "))
+        .map(|idx| idx + 1)
+        .unwrap_or(lines.len());
+    let mut offset = 0usize;
+    for block in import_blocks {
+        for line in block.lines() {
+            lines.insert(insert_at + offset, line.to_string());
+            offset += 1;
+        }
+    }
+    if content.ends_with('\n') {
+        lines.join("\n") + "\n"
+    } else {
+        lines.join("\n")
+    }
+}
+
+fn restore_stripped_imports_from_main(path: &str, content: &str) -> Result<String, String> {
+    if !extract_import_paths(content).is_empty() {
+        return Ok(content.to_string());
+    }
+    if !needs_namespace_import_synthesis(path) {
+        return Ok(content.to_string());
+    }
+    let rel = workspace_relative_repo_path(path);
+    let object = format!("origin/main:{rel}");
+    let output = std::process::Command::new("git")
+        .args(["show", &object])
+        .current_dir(workspace_root())
+        .output()
+        .map_err(|e| {
+            format!(
+                "namespace import restore: git show {object} for stripped import-free {rel}: {e}"
+            )
+        })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = stderr.trim();
+        return Err(format!(
+            "namespace import restore: git show {object} refused for stripped import-free {rel} \
+             (§5 fail-closed — no silent compile without restored imports): {stderr}"
+        ));
+    }
+    let main_content = String::from_utf8_lossy(&output.stdout);
+    let import_blocks = extract_import_source_blocks(&main_content);
+    if import_blocks.is_empty() {
+        return Ok(content.to_string());
+    }
+    Ok(inject_import_blocks_after_module(content, &import_blocks))
+}
+
+fn module_declaration_line_from_origin_main(rel: &str) -> Result<String, String> {
+    let rel = workspace_relative_repo_path(rel);
+    let object = format!("origin/main:{rel}");
+    let output = std::process::Command::new("git")
+        .args(["show", &object])
+        .current_dir(workspace_root())
+        .output()
+        .map_err(|e| format!("git show {object} for module-line compare: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!(
+            "git show {object} refused for module-line compare: {stderr}"
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .to_string())
+}
+
+/// Import-strip PRs delete pre-declaration import blocks; unified-diff hunk anchors can
+/// falsely mark line 1 even when the module declaration is byte-identical to main.
+fn scrub_false_positive_module_line_for_import_strip(
+    rel: &str,
+    path: &str,
+    changed: &mut HashSet<i64>,
+) -> Result<(), String> {
+    if !needs_namespace_import_synthesis(rel) {
+        return Ok(());
+    }
+    let on_disk = std::fs::read_to_string(path)
+        .map_err(|e| format!("read {path} for import-strip diff scrub: {e}"))?;
+    let on_disk_module = on_disk.lines().next().unwrap_or("").to_string();
+    let main_module = module_declaration_line_from_origin_main(rel)?;
+    if on_disk_module == main_module {
+        changed.remove(&1);
+    }
+    Ok(())
+}
+
+fn content_for_module_graph_scan(path: &str, on_disk: &str) -> String {
+    restore_stripped_imports_from_main(path, on_disk).unwrap_or_else(|e| {
+        panic!("namespace import restore for module-graph scan of {path}: {e}");
+    })
+}
+
+fn augment_sources_with_synthesized_namespace_imports(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    _pool_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    sources
+        .into_iter()
+        .map(|source| {
+            if !needs_namespace_import_synthesis(&source.path) {
+                return Ok(source);
+            }
+            let content = restore_stripped_imports_from_main(&source.path, &source.content)?;
+            if content == source.content {
+                Ok(source)
+            } else {
+                Ok(Rc::new(v1_compiler_compile::SourceFile {
+                    path: source.path.clone(),
+                    content,
+                }))
+            }
+        })
+        .collect()
+}
+
+/// After import blocks are restored on stripped workflow/extdeps files, pull direct
+/// (transitive) import targets into the resolve source set even when
+/// `witness_exclusion_substrings` kept them out of the facts import-closure walk.
+fn expand_sources_with_synthesized_import_targets(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index: &ModuleSourceIndex,
+    pool_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let mut by_module: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    for source in &sources {
+        if let Some(module) = extract_module_path(&source.content) {
+            by_module.insert(module, source.clone());
+        }
+    }
+
+    let mut queue: VecDeque<String> = VecDeque::new();
+    for source in &sources {
+        if !needs_namespace_import_synthesis(&source.path) {
+            continue;
+        }
+        for module in extract_import_paths(&source.content) {
+            if !by_module.contains_key(&module) {
+                queue.push_back(module);
+            }
+        }
+    }
+
+    while let Some(module) = queue.pop_front() {
+        if by_module.contains_key(&module) {
+            continue;
+        }
+        let imported = index
+            .get(&module)
+            .ok_or_else(|| {
+                format!(
+                    "namespace import synthesis: restored import `{module}` has no module index entry"
+                )
+            })?
+            .clone();
+        let augmented =
+            augment_sources_with_synthesized_namespace_imports(vec![imported], pool_roots)?;
+        let imported = augmented
+            .into_iter()
+            .next()
+            .expect("single-module augment");
+        if needs_namespace_import_synthesis(&imported.path) {
+            for dep in extract_import_paths(&imported.content) {
+                if !by_module.contains_key(&dep) {
+                    queue.push_back(dep);
+                }
+            }
+        }
+        by_module.insert(module, imported);
+    }
+
+    let mut result: Vec<_> = by_module.values().cloned().collect();
+    result.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(result)
+}
+
+fn extract_lens_hygiene_dependency_paths(
+    content: &str,
+    lens_export_index: &std::collections::HashMap<String, String>,
+) -> Vec<String> {
+    let mut deps: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for module in extract_import_paths(content) {
+        deps.insert(module);
+    }
+    for module in extract_qualified_lens_module_prefixes(content) {
+        deps.insert(module);
+    }
+    for module in extract_bare_named_export_module_refs(content, lens_export_index) {
+        deps.insert(module);
+    }
+    deps.into_iter().collect()
 }
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
@@ -653,6 +1235,14 @@ mod process_workspace_root_tests {
         assert_eq!(
             super::CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER,
             "cli_run_discovery_skip_before_resolve"
+        );
+    }
+
+    #[test]
+    fn namespace_import_synthesis_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_NAMESPACE_IMPORT_SYNTHESIS_SCAFFOLD_MARKER,
+            "cli_run_namespace_import_synthesis"
         );
     }
 
@@ -1369,7 +1959,11 @@ fn load_compile_clean_entry_sources(
             sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
         }
     }
-    Ok(sources)
+    augment_sources_with_synthesized_namespace_imports(sources, &facts.pool_roots).and_then(
+        |sources| {
+            expand_sources_with_synthesized_import_targets(sources, index, &facts.pool_roots)
+        },
+    )
 }
 
 fn compile_clean_resolve_has_hard_errors(
@@ -2013,6 +2607,7 @@ pub struct ModuleGraphFactsLive {
     // `resolve_transitively`), so deriving it per call would rebuild an O(corpus)
     // set per entry (bare-minimum-cost, DESIGN §6).
     declared_paths: HashSet<String>,
+    pool_roots: Vec<String>,
 }
 
 #[cfg(test)]
@@ -2099,6 +2694,7 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         nodes,
         adjacency,
         declared_paths,
+        pool_roots: pool_roots_for_module_graph_closure(pool_roots),
     }
 }
 
@@ -2605,8 +3201,12 @@ fn resolve_transitively(
                  module universe is workspace-anchored"
             ));
         }
+        let excludes = witness_exclusion_substrings();
         for path in import_closure_live_paths_with_facts(&entry_rel, facts) {
-            all_paths.insert(workspace_relative_repo_path(&path));
+            let rel = workspace_relative_repo_path(&path);
+            if !is_excluded_import_path(&rel, &excludes) {
+                all_paths.insert(rel);
+            }
         }
     }
 
@@ -2648,7 +3248,11 @@ fn load_sources_for_entry_with_index(
     {
         sources.push(entry_source);
     }
-    Ok(sources)
+    let sources = augment_sources_with_synthesized_namespace_imports(
+        sources,
+        &facts.pool_roots,
+    )?;
+    expand_sources_with_synthesized_import_targets(sources, index, &facts.pool_roots)
 }
 
 fn same_canonical_file(a: &str, b: &str) -> bool {
@@ -2832,22 +3436,12 @@ pub fn resolve_entry_graph_shared(
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
-    /// Per-index typed results — always `Rc` (main memory path).
-    typed_module_cache:
-        RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
-    /// Per-index collision registry when `cross_worker_store` is absent.
-    module_source_identity: RefCell<std::collections::HashMap<String, String>>,
-    /// Cross-worker serde-byte transport when increment C is explicitly armed (tests / future Arc).
-    cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
-    /// Per-index intern table — paired with `parse_cache` on this worker (never shared).
-    intern_table: RefCell<Rc<InternTable>>,
-    parse_cache: RefCell<
-        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
-    >,
-    normalize_diag_cache:
-        RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
-    ownership_diag_cache:
-        RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+    /// Increment C cache shell (C1-prep). `std::collections::HashMap` map shells avoid
+    /// `im_rc::HashMap` (`!Sync` in statics); payloads remain `Rc` and the struct is
+    /// `!Send` — `Arc<Mutex<_>>` does not cross threads until store-path `Rc`→`Arc`
+    /// (cross-worker-typecheck-share-design.md §4.1). Today each index owns one `Arc` on
+    /// its thread; worker spawn still builds a private index per shard.
+    shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -2867,51 +3461,41 @@ pub struct MultiEntryIndex {
     >,
 }
 
-pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
-    shared_typecheck_store::new_shared_typecheck_caches()
+/// S2a increment C typed/parse cache payloads (C1-prep). Target: one instance per
+/// `(process, source_roots)` cloned across worker index shells. Blocked on `Rc`→`Arc` for
+/// store-carried infer carriers — `Rc` payloads make this `!Send` today.
+struct SharedTypecheckCaches {
+    intern_table: Rc<InternTable>,
+    parse_cache: std::collections::HashMap<
+        String,
+        (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>),
+    >,
+    typed_module_cache: std::collections::HashMap<
+        String,
+        Rc<v1_compiler_infer::TypecheckModuleResult>,
+    >,
+    module_source_identity: std::collections::HashMap<String, String>,
+    normalize_diag_cache:
+        std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+    ownership_diag_cache:
+        std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
 }
 
-pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
-    new_multi_entry_index_shell(
-        build_module_index(source_roots),
-        source_roots,
-        None,
-    )
-}
-
-pub fn build_multi_entry_index_with_shared_caches(
-    source_roots: &[String],
-    cross_worker_store: Arc<RwLock<SharedTypecheckCaches>>,
-) -> MultiEntryIndex {
-    // 🟡 dissolve-on: adaptive floor wiring must pair this with a live governor
-    // byte-codec width cap when serde transport is armed (re-land together post-Arc).
-    new_multi_entry_index_shell(
-        build_module_index(source_roots),
-        source_roots,
-        Some(cross_worker_store),
-    )
-}
-
-fn new_multi_entry_index_shell(
-    source_files: ModuleSourceIndex,
-    source_roots: &[String],
-    cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
-) -> MultiEntryIndex {
-    MultiEntryIndex {
-        source_files,
-        module_graph_facts: build_module_graph_facts_live(source_roots),
-        typed_module_cache: RefCell::new(std::collections::HashMap::new()),
-        module_source_identity: RefCell::new(std::collections::HashMap::new()),
-        cross_worker_store,
-        intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
-        parse_cache: RefCell::new(std::collections::HashMap::new()),
-        normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
-        ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
-        resolved_graph_memo: RefCell::new(HashMap::new()),
+impl SharedTypecheckCaches {
+    fn new() -> Self {
+        Self {
+            intern_table: seed_kernel_intern_names(empty_intern_table()),
+            parse_cache: std::collections::HashMap::new(),
+            typed_module_cache: std::collections::HashMap::new(),
+            module_source_identity: std::collections::HashMap::new(),
+            normalize_diag_cache: std::collections::HashMap::new(),
+            ownership_diag_cache: std::collections::HashMap::new(),
+        }
     }
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
+// docs/plans/resolver-graph-major-design.md; process-wide after increment C). Counts how
 // many module typechecks were actually COMPUTED (cache misses). When every consumer of
 // the process shares one typed_module_cache, this stays ≤ the distinct module count of
 // the process union.
@@ -2939,129 +3523,6 @@ pub fn reset_typecheck_compute_count() {
 
 fn bump_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
-}
-
-fn shared_caches_read<'a>(
-    lock: &'a Arc<RwLock<SharedTypecheckCaches>>,
-) -> Result<std::sync::RwLockReadGuard<'a, SharedTypecheckCaches>, String> {
-    lock.read()
-        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))
-}
-
-fn shared_caches_write<'a>(
-    lock: &'a Arc<RwLock<SharedTypecheckCaches>>,
-) -> Result<std::sync::RwLockWriteGuard<'a, SharedTypecheckCaches>, String> {
-    lock.write()
-        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))
-}
-
-/// Read the typed cache: per-index `Rc` first, then cross-worker byte snapshots.
-fn index_get_typed(
-    index: &MultiEntryIndex,
-    mod_name: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-    if let Some(hit) = index.typed_module_cache.borrow().get(mod_name).cloned() {
-        return Ok(Some(hit));
-    }
-    let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(None);
-    };
-    let decoded = shared_get_typed(store, mod_name)?;
-    if let Some(rc) = decoded.as_ref() {
-        index
-            .typed_module_cache
-            .borrow_mut()
-            .insert(mod_name.to_string(), rc.clone());
-    }
-    Ok(decoded)
-}
-
-fn index_contains_typed(index: &MultiEntryIndex, mod_name: &str) -> Result<bool, String> {
-    if index.typed_module_cache.borrow().contains_key(mod_name) {
-        return Ok(true);
-    }
-    let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(false);
-    };
-    let caches = shared_caches_read(store)?;
-    Ok(caches.contains_typed(mod_name))
-}
-
-fn check_index_module_source_identity(
-    index: &MultiEntryIndex,
-    mod_name: &str,
-    decl_file: &str,
-) -> Result<(), String> {
-    if let Some(store) = &index.cross_worker_store {
-        let mut caches = shared_caches_write(store)?;
-        check_module_source_identity_map(&mut caches.module_source_identity, mod_name, decl_file)
-    } else {
-        check_module_source_identity_map(
-            &mut index.module_source_identity.borrow_mut(),
-            mod_name,
-            decl_file,
-        )
-    }
-}
-
-fn index_insert_typed(
-    index: &MultiEntryIndex,
-    mod_name: String,
-    result: Rc<v1_compiler_infer::TypecheckModuleResult>,
-) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
-    index
-        .typed_module_cache
-        .borrow_mut()
-        .insert(mod_name.clone(), result.clone());
-    let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(result);
-    };
-    if let Some(bytes) = {
-        let caches = shared_caches_read(store)?;
-        caches.clone_typed_bytes(&mod_name)
-    } {
-        let winner = SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice())?;
-        index
-            .typed_module_cache
-            .borrow_mut()
-            .insert(mod_name, winner.clone());
-        return Ok(winner);
-    }
-    let encoded = SharedTypecheckCaches::encode_typed_snapshot(&result)?;
-    let raced_bytes = {
-        let mut caches = shared_caches_write(store)?;
-        if let Some(existing) = caches.clone_typed_bytes(&mod_name) {
-            Some(existing)
-        } else {
-            caches.insert_typed_preencoded(mod_name.clone(), encoded);
-            None
-        }
-    };
-    if let Some(bytes) = raced_bytes {
-        let winner = SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice())?;
-        index
-            .typed_module_cache
-            .borrow_mut()
-            .insert(mod_name, winner.clone());
-        return Ok(winner);
-    }
-    Ok(result)
-}
-
-/// Read the shared typed cache with a brief lock hold; decode happens after the guard drops.
-fn shared_get_typed(
-    shared_caches: &Arc<RwLock<SharedTypecheckCaches>>,
-    mod_name: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-    let bytes = {
-        let caches = shared_caches_read(shared_caches)?;
-        caches.clone_typed_bytes(mod_name)
-    };
-    match bytes {
-        Some(snapshot) => SharedTypecheckCaches::decode_typed_snapshot(snapshot.as_slice())
-            .map(Some),
-        None => Ok(None),
-    }
 }
 
 /// Accumulate the authored module names of a set of typed modules into `out`.
@@ -3094,6 +3555,25 @@ fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
     t
 }
 
+pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
+    build_multi_entry_index_with_shared_caches(
+        source_roots,
+        Arc::new(Mutex::new(SharedTypecheckCaches::new())),
+    )
+}
+
+fn build_multi_entry_index_with_shared_caches(
+    source_roots: &[String],
+    shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
+) -> MultiEntryIndex {
+    MultiEntryIndex {
+        source_files: build_module_index(source_roots),
+        module_graph_facts: build_module_graph_facts_live(source_roots),
+        shared_caches,
+        resolved_graph_memo: RefCell::new(HashMap::new()),
+    }
+}
+
 /// Primary-precedence pool for affected-set attribution of `src/v1/*.dag` edits:
 /// witness_layer_roots (dag + src/v2) cannot resolve v1.compiler.* modules alone.
 fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
@@ -3102,11 +3582,12 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v2".to_string(),
         "src/v1".to_string(),
     ];
-    new_multi_entry_index_shell(
-        build_module_index_primary_precedence(&roots),
-        &roots,
-        None,
-    )
+    MultiEntryIndex {
+        source_files: build_module_index_primary_precedence(&roots),
+        module_graph_facts: build_module_graph_facts_live(&roots),
+        shared_caches: Arc::new(Mutex::new(SharedTypecheckCaches::new())),
+        resolved_graph_memo: RefCell::new(HashMap::new()),
+    }
 }
 
 pub fn resolve_entry_with_index(
@@ -3279,10 +3760,10 @@ fn resolve_entry_with_parse_cache(
                 eprintln!(
                     "[resolved-graph-cache] decode subject={subject} (installed into process share)"
                 );
-                index
-                    .resolved_graph_memo
-                    .borrow_mut()
-                    .insert(subject, (hit.graph.clone(), hit.source_indices.clone()));
+                index.resolved_graph_memo.borrow_mut().insert(
+                    subject,
+                    (hit.graph.clone(), hit.source_indices.clone()),
+                );
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -3294,7 +3775,13 @@ fn resolve_entry_with_parse_cache(
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
-        let cached = index.parse_cache.borrow().get(&source.path).cloned();
+        let cached = {
+            let caches = index
+                .shared_caches
+                .lock()
+                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+            caches.parse_cache.get(&source.path).cloned()
+        };
 
         let (parse_result, nl_index) = match cached {
             Some(entry) => entry,
@@ -3302,18 +3789,21 @@ fn resolve_entry_with_parse_cache(
                 let tokens =
                     v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                 let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-                let current_table = index.intern_table.borrow().clone();
+                let mut caches = index
+                    .shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+                let current_table = caches.intern_table.clone();
                 let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
                     let mut m = HashMap::new();
                     m.insert(source.path.clone(), nl_index.clone());
                     m
                 });
                 let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-                let entry = (parsed.result.clone(), nl_index.clone());
-                index
+                caches.intern_table = parsed.intern_table.clone();
+                let entry = (parsed.result.clone(), nl_index);
+                caches
                     .parse_cache
-                    .borrow_mut()
                     .insert(source.path.clone(), entry.clone());
                 entry
             }
@@ -3335,7 +3825,12 @@ fn resolve_entry_with_parse_cache(
     }
 
     let source_indices = Rc::new(si_map);
-    let global_table = index.intern_table.borrow().clone();
+    let global_table = index
+        .shared_caches
+        .lock()
+        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
+        .intern_table
+        .clone();
     resolve_stage_slot_add(|s| s.parse += parse_started.elapsed().as_nanos());
 
     let resolve_started = std::time::Instant::now();
@@ -3362,7 +3857,13 @@ fn resolve_entry_with_parse_cache(
     let mut norm_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
     for m in graph.modules.iter() {
         let key = m.module.span.file.clone();
-        let cached = index.normalize_diag_cache.borrow().get(&key).cloned();
+        let cached = index
+            .shared_caches
+            .lock()
+            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
+            .normalize_diag_cache
+            .get(&key)
+            .cloned();
         let module_diags = match cached {
             Some(hit) => hit,
             None => {
@@ -3371,8 +3872,10 @@ fn resolve_entry_with_parse_cache(
                     source_indices.clone(),
                 );
                 index
+                    .shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
                     .normalize_diag_cache
-                    .borrow_mut()
                     .insert(key, computed.clone());
                 computed
             }
@@ -3395,7 +3898,7 @@ fn resolve_entry_with_parse_cache(
         graph.clone(),
         source_indices.clone(),
         global_table,
-        index,
+        &index.shared_caches,
     )?;
     // Assembly residue = reconcile wall minus the per-module rows its internals
     // accumulated into the slot during this call (typecheck computes + parent envs).
@@ -3433,15 +3936,23 @@ fn resolve_entry_with_parse_cache(
     let mut ownership_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
     for m in typed.modules.iter() {
         let key = m.module.span.file.clone();
-        let cached = index.ownership_diag_cache.borrow().get(&key).cloned();
+        let cached = index
+            .shared_caches
+            .lock()
+            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
+            .ownership_diag_cache
+            .get(&key)
+            .cloned();
         let module_diags = match cached {
             Some(hit) => hit,
             None => {
                 let proofs = v1_compiler_compile::module_ownership_proofs(m.clone());
                 let computed = v1_compiler_compile::ownership_diagnostics(proofs);
                 index
+                    .shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
                     .ownership_diag_cache
-                    .borrow_mut()
                     .insert(key, computed.clone());
                 computed
             }
@@ -3458,10 +3969,10 @@ fn resolve_entry_with_parse_cache(
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
     // Install into the in-process share so same-subject re-resolves skip assembly.
-    index
-        .resolved_graph_memo
-        .borrow_mut()
-        .insert(subject.clone(), (typed.clone(), source_indices.clone()));
+    index.resolved_graph_memo.borrow_mut().insert(
+        subject.clone(),
+        (typed.clone(), source_indices.clone()),
+    );
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
@@ -3692,7 +4203,7 @@ fn reconcile_all_cache_hits(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    index: &MultiEntryIndex,
+    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut modules_vec = im_rc::Vector::new();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> =
@@ -3703,14 +4214,25 @@ fn reconcile_all_cache_hits(
 
     for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
         let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        {
-            check_index_module_source_identity(index, mod_name, &decl_file)?;
-        }
-        let tc_result = index_get_typed(index, mod_name)?.ok_or_else(|| {
-            format!(
-                "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
-            )
-        })?;
+        let tc_result = {
+            let mut caches = shared_caches
+                .lock()
+                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+            check_module_source_identity_map(
+                &mut caches.module_source_identity,
+                mod_name,
+                &decl_file,
+            )?;
+            caches
+                .typed_module_cache
+                .get(mod_name)
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
+                    )
+                })?
+        };
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
@@ -3735,7 +4257,7 @@ fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
-    index: &MultiEntryIndex,
+    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
@@ -3763,21 +4285,19 @@ fn reconcile_with_typed_cache(
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
     let all_cached = {
-        let mut cached = true;
-        for name in &closure_names {
-            if !index_contains_typed(index, name)? {
-                cached = false;
-                break;
-            }
-        }
-        cached
+        let caches = shared_caches
+            .lock()
+            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+        closure_names
+            .iter()
+            .all(|name| caches.typed_module_cache.contains_key(name))
     };
     if all_cached {
         return reconcile_all_cache_hits(
             &closure_modules,
             &closure_names,
             source_indices,
-            index,
+            shared_caches,
         );
     }
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
@@ -3805,9 +4325,21 @@ fn reconcile_with_typed_cache(
             // authority — the guard must fire on genuinely different files, not path representations.
             let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
             {
-                check_index_module_source_identity(index, &mod_name, &decl_file)?;
+                let mut caches = shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+                check_module_source_identity_map(
+                    &mut caches.module_source_identity,
+                    &mod_name,
+                    &decl_file,
+                )?;
             }
-            let cached = index_get_typed(index, &mod_name)?;
+            let cached = {
+                let caches = shared_caches
+                    .lock()
+                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
+                caches.typed_module_cache.get(&mod_name).cloned()
+            };
             let was_cache_hit = cached.is_some();
             let parent_diags = if was_cache_hit {
                 Rc::new(im_rc::Vector::new())
@@ -3850,7 +4382,11 @@ fn reconcile_with_typed_cache(
                     if module_tc_ms >= 2_000 {
                         eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
                     }
-                    let computed = index_insert_typed(index, mod_name.clone(), computed)?;
+                    shared_caches
+                        .lock()
+                        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
+                        .typed_module_cache
+                        .insert(mod_name.clone(), computed.clone());
                     computed
                 }
             };
@@ -6615,6 +7151,7 @@ fn build_floor_lens_hygiene_graph(
 
     let mut sidecar_violations: Vec<Vec<String>> =
         SIDECAR_PLACEMENT_RULES.iter().map(|_| Vec::new()).collect();
+    let lens_export_index = build_lens_top_level_export_index(source_roots)?;
     let mut path_imports: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     let mut module_to_path: std::collections::HashMap<String, String> =
@@ -6636,7 +7173,7 @@ fn build_floor_lens_hygiene_graph(
                 }
                 module_to_path.insert(m, rel.clone());
             }
-            path_imports.insert(rel, extract_import_paths(&content));
+            path_imports.insert(rel, extract_lens_hygiene_dependency_paths(&content, &lens_export_index));
             if excludes.iter().any(|sub| entry.contains(sub.as_str())) {
                 continue;
             }
@@ -8121,6 +8658,7 @@ fn floor_diff_edits_from_line_ranges(
         }
         // Module-line edits (line 1) stay fail-closed for modifies — renaming can
         // change entry identity. Wholly-added files necessarily touch line 1.
+        scrub_false_positive_module_line_for_import_strip(&file_norm, file_path, &mut changed)?;
         if changed.contains(&1) && !added_paths.contains(&file_norm) {
             return Err(format!("diff before first declaration in {file_path}"));
         }
@@ -8368,12 +8906,15 @@ pub fn run_discovery_corpus_with_options(
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let changed_paths: Vec<String> = name_status_changed_paths;
-    // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
-    // process step on the pump thread — `process_shared_index` reuses prelude-warmed
-    // parse/typed caches instead of a private cold build. Increment C serde
-    // `cross_worker_store` is deferred on the floor until store-path `Rc`→`Arc` retires
-    // the byte codec (CI 29349125185 OOM); explicit oracles arm it via
-    // `build_multi_entry_index_with_shared_caches` (🟡 dissolve-on).
+    // Union-resolve S1 (docs/plans/resolver-graph-major-design.md §7): ONE index for the
+    // whole process step. Frontier attribution, the floor runner context, and every roster
+    // row resolve against this single MultiEntryIndex, so the union of their closures — the
+    // shared std/spec prefix above all — typechecks once per node instead of once per
+    // consumer. Previously the frontier build, the floor runner (via a separate thread-local
+    // store), and the rows each carried a private cold cache of that same prefix.
+    // The index is the THREAD's shared one (process_shared_index), not a private build:
+    // when the executor prelude already resolved its entries on this thread, discovery
+    // reuses that index's parse/typed caches instead of paying the union cold a second time.
     let index = process_shared_index(source_roots);
     // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
     // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
@@ -8613,8 +9154,11 @@ pub fn run_discovery_corpus_with_options(
                 let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
                     governor_for_worker.clone(),
                 );
-                // Per-index `Rc` typed cache (serde cross_worker_store deferred — see pump
-                // index arm above; oracles arm shared store explicitly).
+                // Each worker is its own thread (`Rc` infer carriers are `!Send`, so the
+                // typed_module_cache cannot cross the worker boundary until store-path
+                // `Rc`→`Arc` migration lands — docs/plans/cross-worker-typecheck-share-design.md
+                // §4.1). Within the worker, union-resolve S1 still holds: the worker's floor
+                // runner and its rows resolve against ONE index.
                 let index = build_multi_entry_index(&roots);
                 let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                     match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
@@ -11175,6 +11719,33 @@ mod node_frontier_plumbing_controls {
     }
 
     #[test]
+    fn namespace_import_strip_preamble_does_not_fail_closed_on_unchanged_module_line() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let rel = "src/v2/extdeps/languages/rust_test.dag";
+        let diff = std::process::Command::new("git")
+            .args(["diff", "origin/main", "HEAD", "--", rel])
+            .current_dir(&ws)
+            .output()
+            .expect("git diff rust_test import strip");
+        assert!(
+            diff.status.success(),
+            "git diff rust_test import strip: {}",
+            String::from_utf8_lossy(&diff.stderr)
+        );
+        let diff = String::from_utf8_lossy(&diff.stdout);
+        assert!(
+            !diff.is_empty(),
+            "expected non-empty import-strip diff for {rel}"
+        );
+        floor_diff_edits_from_diff_text(&index, &diff).unwrap_or_else(|e| {
+            panic!("import-strip-only diff must not fail-closed on false-positive module line: {e}")
+        });
+    }
+
+    #[test]
     fn mixed_dag_and_non_dag_diff_scopes_from_dag_only() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
@@ -11751,9 +12322,8 @@ mod source_root_ingest_manifest_tests {
 #[cfg(test)]
 mod inert_lens_hygiene_tests {
     use super::{
-        default_source_roots, discover_floor_corpus_rows, inert_lens_modules,
-        is_top_level_lens_module, witness_discovery_scan_dirs, witness_exclusion_substrings,
-        DiscoveryRow,
+        default_source_roots, discover_floor_corpus_rows, inert_lens_modules, is_top_level_lens_module, witness_discovery_scan_dirs,
+        witness_exclusion_substrings, DiscoveryRow,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -11827,6 +12397,321 @@ mod inert_lens_hygiene_tests {
         assert!(
             inert_lens_modules(&rows, &path_imports, &module_to_path).is_empty(),
             "a transitively-reached sibling lens must count as wired"
+        );
+    }
+
+    #[test]
+    fn lens_export_index_maps_test_lens_support_modules_to_authority() {
+        let roots = default_source_roots();
+        let index = super::build_lens_top_level_export_index(&roots).expect("export index");
+        assert_eq!(
+            index.get("effect_depends_on_claim_passes").map(String::as_str),
+            Some("v2.lens.effect"),
+            "v2.test.lens_effect support decls must wire the effect lens authority"
+        );
+        assert_eq!(
+            index
+                .get("ownership_resource_dependency_claim_passes")
+                .map(String::as_str),
+            Some("v2.lens.ownership")
+        );
+        assert_eq!(
+            index.get("rust_r1_fixture_pair").map(String::as_str),
+            Some("v2.lens.leaf_model_verification")
+        );
+    }
+
+    #[test]
+    fn namespace_only_bare_export_ref_reaches_lens_without_import() {
+        let mut module_to_path: HashMap<String, String> = HashMap::new();
+        let mut path_imports: HashMap<String, Vec<String>> = HashMap::new();
+        let mut export_index: HashMap<String, String> = HashMap::new();
+        module_to_path.insert(
+            "v2.lens.demo".to_string(),
+            "src/v2/lens/demo.dag".to_string(),
+        );
+        export_index.insert("demo_witness".to_string(), "v2.lens.demo".to_string());
+        module_to_path.insert(
+            "v2.test.lens_demo.w".to_string(),
+            "src/v2/workflow/lens_demo_family_eval_test.dag".to_string(),
+        );
+        let witness_source = "module v2.test.lens_demo.w\n\ntest fn w() -> Bool { demo_witness() }\n";
+        path_imports.insert(
+            "src/v2/workflow/lens_demo_family_eval_test.dag".to_string(),
+            super::extract_lens_hygiene_dependency_paths(witness_source, &export_index),
+        );
+        let rows = vec![row("src/v2/workflow/lens_demo_family_eval_test.dag", "w")];
+        assert!(
+            inert_lens_modules(&rows, &path_imports, &module_to_path).is_empty(),
+            "bare export references must reach lens modules after import strip"
+        );
+    }
+
+    #[test]
+    fn stripped_workflow_extdeps_on_disk_have_no_import_lines() {
+        let ws = workspace_root();
+        for path in [
+            "src/v2/extdeps/languages/bash.dag",
+            "src/v2/workflow/ci_floor_plan.dag",
+        ] {
+            let content = std::fs::read_to_string(ws.join(path))
+                .unwrap_or_else(|e| panic!("read {path}: {e}"));
+            assert!(
+                super::extract_import_paths(&content).is_empty(),
+                "PR-5b on-disk corpus must have import lines stripped: {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn restore_stripped_imports_from_main_replays_bash_imports() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let path = "src/v2/extdeps/languages/bash.dag";
+        let content = std::fs::read_to_string(ws.join(path)).expect("read bash.dag");
+        let restored = super::restore_stripped_imports_from_main(path, &content)
+            .expect("restore stripped imports from origin/main");
+        assert!(
+            restored.contains("import v2.std.node"),
+            "compile-time restore must replay main-branch imports for stripped extdeps"
+        );
+    }
+
+    #[test]
+    fn load_sources_restores_stripped_imports_in_memory_not_on_disk() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let path = "src/v2/extdeps/languages/bash.dag";
+        let on_disk = std::fs::read_to_string(ws.join(path)).expect("read bash.dag");
+        assert!(
+            super::extract_import_paths(&on_disk).is_empty(),
+            "on-disk bash.dag stays import-stripped"
+        );
+        let sources = super::load_sources_for_entry(&default_source_roots(), path)
+            .expect("load bash.dag closure");
+        let loaded = sources
+            .iter()
+            .find(|sf| sf.path.replace('\\', "/").ends_with(path))
+            .expect("bash.dag in closure");
+        assert!(
+            super::extract_import_paths(&loaded.content)
+                .iter()
+                .any(|m| m.starts_with("v2.std.")),
+            "in-memory compile view must restore main imports for stripped extdeps"
+        );
+    }
+
+    #[test]
+    fn restore_stripped_imports_from_main_refuses_missing_origin_main_object() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let path = "src/v2/workflow/__namespace_restore_fail_closed_probe__.dag";
+        let content = "module v2.workflow.__namespace_restore_fail_closed_probe__\n";
+        let err = super::restore_stripped_imports_from_main(path, content)
+            .expect_err("stripped import-free workflow file must refuse when origin/main has no object");
+        assert!(
+            err.contains("namespace import restore"),
+            "typed located diagnostic: {err}"
+        );
+        assert!(
+            err.contains("fail-closed"),
+            "must not silently widen to import-free compile: {err}"
+        );
+    }
+
+    #[test]
+    fn homonym_export_homes_exclude_v2_test_manual_for_workflow_importers() {
+        let homes = vec![
+            "test.claim.materialization_ladder_witness".to_string(),
+            "v2.test.manual.ownership_movable".to_string(),
+        ];
+        let selected =
+            super::select_homonym_export_homes("v2.workflow.ci_floor_plan", &homes);
+        assert_eq!(
+            selected,
+            vec!["test.claim.materialization_ladder_witness".to_string()]
+        );
+    }
+
+    #[test]
+    fn homonym_export_homes_prefer_v2_std_for_v2_importers() {
+        let homes = vec!["std.nat".to_string(), "v2.std.nat".to_string()];
+        let selected = super::select_homonym_export_homes("v2.extdeps.coordination", &homes);
+        assert_eq!(selected, vec!["v2.std.nat".to_string()]);
+    }
+
+    #[test]
+    fn homonym_export_homes_prefer_std_layer_for_dag_importers() {
+        let homes = vec!["std.types".to_string(), "v2.std.collection".to_string()];
+        let selected = super::select_homonym_export_homes("gunbc.ci_spec", &homes);
+        assert_eq!(selected, vec!["std.types".to_string()]);
+    }
+
+    #[test]
+    fn ci_floor_plan_closure_excludes_offpath_manual_witnesses() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = default_source_roots();
+        let entry = "src/v2/workflow/ci_floor_plan.dag";
+        let sources = super::load_sources_for_entry(&roots, entry).expect("ci_floor_plan closure");
+        let modules: std::collections::BTreeSet<String> = sources
+            .iter()
+            .filter_map(|sf| super::extract_module_path(&sf.content))
+            .collect();
+        assert!(
+            !modules.contains("v2.test.manual.ownership_movable"),
+            "witness_exclusion_substrings must keep off-path manual witnesses out of import closure"
+        );
+    }
+
+    #[test]
+    fn ci_floor_plan_closure_includes_stripped_import_targets() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = default_source_roots();
+        let entry = "src/v2/workflow/ci_floor_plan.dag";
+        let sources = super::load_sources_for_entry(&roots, entry).expect("ci_floor_plan closure");
+        let modules: std::collections::BTreeSet<String> = sources
+            .iter()
+            .filter_map(|sf| super::extract_module_path(&sf.content))
+            .collect();
+        assert!(
+            modules.contains("gunbc.ci_spec"),
+            "namespace-only closure must reach gunbc.ci_spec without import lines"
+        );
+        assert!(
+            modules.contains("std.types"),
+            "namespace-only closure must reach std.types for ContentHash"
+        );
+    }
+
+    #[test]
+    fn import_closure_from_facts_includes_glob_discovery_law() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        super::reset_module_graph_facts_cache_for_test();
+        let roots = default_source_roots();
+        let facts = super::build_module_graph_facts_live(&roots);
+        let closure = super::import_closure_live_paths_with_facts(
+            "src/v2/workflow/glob_discovery.dag",
+            &facts,
+        );
+        assert!(
+            closure.iter().any(|p| p.replace('\\', "/").ends_with("glob_discovery_law.dag")),
+            "adjacency closure missing glob_discovery_law: {closure:?}"
+        );
+    }
+
+    #[test]
+    fn import_resolution_facts_restore_stripped_workflow_imports() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        super::reset_module_graph_facts_cache_for_test();
+        let roots = default_source_roots();
+        let edges = super::import_resolution_facts(&roots, &roots, &[]);
+        let glob_edges: Vec<String> = edges
+            .iter()
+            .filter(|e| e.path.replace('\\', "/") == "src/v2/workflow/glob_discovery.dag")
+            .map(|e| e.import_module.clone())
+            .collect();
+        assert!(
+            glob_edges.iter().any(|m| m == "v2.test.workflow.glob_discovery_law"),
+            "expected restored import edge for glob_discovery_law, got {glob_edges:?}"
+        );
+    }
+
+    #[test]
+    fn glob_discovery_load_sources_restores_imports_on_entry_but_witness_excludes_law_manifest() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        super::reset_module_graph_facts_cache_for_test();
+        let roots = default_source_roots();
+        let entry = "src/v2/workflow/glob_discovery.dag";
+        let sources = super::load_sources_for_entry(&roots, entry).expect("glob_discovery closure");
+        let paths: std::collections::BTreeSet<String> = sources
+            .iter()
+            .map(|sf| sf.path.replace('\\', "/"))
+            .collect();
+        let glob_source = sources
+            .iter()
+            .find(|sf| sf.path.replace('\\', "/").ends_with("glob_discovery.dag"))
+            .expect("entry must appear in its own closure");
+        let import_modules = super::extract_import_paths(&glob_source.content);
+        assert!(
+            import_modules
+                .iter()
+                .any(|m| m == "v2.test.workflow.glob_discovery_law"),
+            "augment must restore stripped import edges on the entry file: {import_modules:?}"
+        );
+        assert!(
+            import_modules
+                .iter()
+                .any(|m| m == "v2.test.workflow.host_discovered_owned_data_manifest"),
+            "augment must restore stripped import edges on the entry file: {import_modules:?}"
+        );
+        // Restored import targets are pulled in via `expand_sources_with_synthesized_import_targets`
+        // even though `witness_exclusion_substrings` kept them out of the facts closure walk.
+        assert!(
+            paths.iter().any(|p| p.ends_with("glob_discovery_law.dag")),
+            "synthesized import expand must load glob_discovery_law: {paths:?}"
+        );
+        assert!(
+            paths
+                .iter()
+                .any(|p| p.ends_with("host_discovered_owned_data_manifest.dag")),
+            "synthesized import expand must load host_discovered_owned_data_manifest: {paths:?}"
+        );
+        let resolved = super::resolve_entry_graph(&roots, entry);
+        assert!(
+            resolved.is_ok(),
+            "glob_discovery must resolve after synthesized import expand: {:?}",
+            resolved.err()
+        );
+    }
+
+    #[test]
+    fn unified_test_claim_substrate_equivalence_resolves_after_import_synthesis() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        super::reset_module_graph_facts_cache_for_test();
+        let roots = default_source_roots();
+        let entry = "src/v2/workflow/unified_test_claim_substrate_equivalence.dag";
+        let resolved = super::resolve_entry_graph(&roots, entry);
+        assert!(
+            resolved.is_ok(),
+            "witness-excluded substrate equivalence entry must resolve for affected-set attribution: {:?}",
+            resolved.err()
+        );
+    }
+
+    #[test]
+    fn import_closure_for_manual_witness_does_not_homonym_widen_live_tree_stamp() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = default_source_roots();
+        let entry = "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag";
+        let sources = super::load_sources_for_entry(&roots, entry).expect("manual witness closure");
+        let modules: std::collections::BTreeSet<String> = sources
+            .iter()
+            .filter_map(|sf| super::extract_module_path(&sf.content))
+            .collect();
+        assert!(
+            !modules.contains("test.claim.generated_artifact_drift"),
+            "import-bearing manual witnesses must not pick up homonym live_tree_disposition stamps via bare-export closure"
+        );
+    }
+
+    #[test]
+    fn discover_with_empty_scan_dirs_has_no_inert_lenses_after_import_strip() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = default_source_roots();
+        let excludes = witness_exclusion_substrings();
+        let result = discover_floor_corpus_rows(&roots, &[], &excludes);
+        assert!(
+            result.is_ok(),
+            "claim_executor pre-plan walk (empty scan_dirs) must succeed: {}",
+            result.err().unwrap_or_default()
         );
     }
 
@@ -12529,6 +13414,7 @@ pub fn import_resolution_facts(
         .into_iter()
         .map(|(k, _)| k)
         .collect();
+    let export_index = build_corpus_top_level_export_index(pool_roots);
     let mut out = Vec::new();
     for root in &abs_importer_roots {
         let root_path = Path::new(root);
@@ -12547,7 +13433,15 @@ pub fn import_resolution_facts(
                 Ok(c) => c,
                 Err(_) => continue,
             };
-            for import_module in extract_import_paths(&content) {
+            let content = content_for_module_graph_scan(&rel, &content);
+            let importer_module = extract_module_path(&content).unwrap_or_default();
+            for import_module in extract_module_dependency_paths(
+                &content,
+                &rel,
+                &importer_module,
+                &export_index,
+                &declared,
+            ) {
                 let target_declared = declared.contains(&import_module);
                 out.push(ImportResolutionFactRaw {
                     path: rel.clone(),
@@ -12572,30 +13466,7 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
-// ── Reference-derived module edges (namespace terminal step, DESIGN "deps via container.member") ──
-//
-// SCAFFOLD (DESIGN §7). Replaces the import-parse module graph (`extract_import_paths` /
-// `import_resolution_facts`) with edges derived from where a module's body/type REFERENCES resolve,
-// so the module graph survives corpus-wide `import` deletion (namespace-only resolution, operator-
-// signed 2026-07-06; the reference is the sole representation of usage, Rule 1). One O(corpus) parse
-// pass over the pool (reusing the real front-end `tokenize` + `parse` — no substring scan), cached.
-// Consumers (`build_module_graph_facts_live`, the inert-lens reach) union these edges onto the import
-// edges during the transition; when the import grammar is deleted (parent's terminal step) the import
-// term is empty and the module graph is reference-only, the `src/v2/lens/module_graph.dag`
-// single-swap-point end state. Every closure/loader/lens consumer is edge-source-agnostic (reads edge
-// rows as data, never import syntax).
-//
-// Confidence tag (parent ruling, 2026-07-14; DESIGN §5): the LOADER closure and affected-set read
-// ALL edges (over-load is safe — a superset only compiles extra modules). The inert-lens reach reads
-// Qualified + UniqueBare only (dropping AmbiguousBare), so an over-connected graph can never silently
-// clear a truly-inert lens (no fail-open hygiene). AmbiguousBare is a bare identifier declared in >1
-// module; under namespace-only that is a Rule-2 ambiguity the source should qualify.
-//
-// Dissolve-on: `symbol_index_fill` (SymbolIndex lane) projects exact, scope-aware reference edges from
-// the filled containment tree; when that lands, this parse-and-index approximation (which is liberal
-// on bare-name reference collection — a local binder that shadows a globally-unique declared name
-// yields a spurious UniqueBare edge, safe for the loader, tolerated by the inert-lens grain) deletes.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RefEdgeResolution {
     Qualified,
     UniqueBare,
@@ -15198,6 +16069,33 @@ mod witness_layer_roots_compile_clean_tests {
         if let Some(p) = prior {
             let _ = std::env::set_current_dir(p);
         }
+    }
+
+    /// Hand-Rust receipt: compile-clean must restore stripped workflow/extdeps imports
+    /// (same augment path as plan resolve — without it whole-tree compile sees import-free sources).
+    #[test]
+    fn compile_clean_entry_sources_restore_stripped_extdeps_imports() {
+        with_workspace_cwd(|| {
+            let roots = witness_layer_roots();
+            let index = build_module_index_primary_precedence(&roots);
+            let facts = build_module_graph_facts_live(&roots);
+            let sources =
+                load_compile_clean_entry_sources(&roots, &index, &facts, None).expect("sources");
+            let bash = sources
+                .iter()
+                .find(|sf| {
+                    sf.path
+                        .replace('\\', "/")
+                        .ends_with("src/v2/extdeps/languages/bash.dag")
+                })
+                .expect("bash.dag in compile-clean closure");
+            assert!(
+                extract_import_paths(&bash.content)
+                    .iter()
+                    .any(|m| m.starts_with("v2.std.")),
+                "compile-clean load must augment stripped extdeps with restored imports"
+            );
+        });
     }
 
     /// Hand-Rust receipt: the emit leg is a strict superset of resolve for the same sources.
