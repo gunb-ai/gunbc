@@ -221,7 +221,7 @@ type EdgeDiscipline
 
   | ArrowBodyEdges
 
-data atom_payload_labeled_edges_scaffold_note: String = "🟡 dissolve-on: Wave-1 A1 interim — ^dag_token_int_literal Atoms carry a single ^integer_literal_magnitude_field child; well_formed uses int_literal_atom_edges_conform (Atom substrate stays NoEdges in connective_edge_discipline). DISSOLVES WHEN dedicated IntLiteral connective lands in std/connectives (Track B #6542 fn_decl→Arrow keystone) — delete int_literal_atom_edges_conform special-case and magnitude-on-Atom payload."
+data atom_payload_labeled_edges_scaffold_note: String = "🟡 dissolve-on: Wave-1 A1 interim — ^dag_token_int_literal Atoms carry a mandatory ^integer_literal_magnitude_field child; int_literal_atom_edges_conform + node_edge_discipline both read LabeledEdges (Atom connective_edge_discipline stays NoEdges for generic Atoms). DISSOLVES WHEN dedicated IntLiteral connective lands in std/connectives (Track B #6542 fn_decl→Arrow keystone) — delete int_literal_atom_edges_conform special-case and magnitude-on-Atom payload."
 
 fn node_is_int_literal_atom(node: Node) -> Bool {
   match node.kind {
@@ -552,7 +552,7 @@ fn node_edge_discipline(n: Node) -> EdgeDiscipline {
     TypeNode { connective: c } =>
       match c {
         Atom { identity: id } =>
-          if id == ^dag_token_int_literal && count(n.children) > 0 {
+          if id == ^dag_token_int_literal {
             LabeledEdges
           } else {
             NoEdges

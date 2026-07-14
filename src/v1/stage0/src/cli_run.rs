@@ -12059,7 +12059,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
     "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
     "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
-    "src/v2/std/node.dag::locally_well_formed",
     "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
     "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
     "src/v2/lens/complexity.dag::complexity_bound_dominates",
@@ -12434,29 +12433,6 @@ mod nfr_tests {
             .iter()
             .map(|(p, c)| (p.to_string(), c.to_string()))
             .collect()
-    }
-
-    #[test]
-    fn dump_nfr_stale_roster_entries() {
-        let live: std::collections::BTreeSet<&str> = nfr_build_report()
-            .sites
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
-        let stale: Vec<&str> = NON_FOLD_RESIDUE_ROSTER
-            .iter()
-            .filter(|s| !live.contains(*s))
-            .copied()
-            .collect();
-        let unrostered: Vec<&str> = nfr_build_report()
-            .sites
-            .iter()
-            .filter(|s| !NON_FOLD_RESIDUE_ROSTER.contains(&s.as_str()))
-            .map(|s| s.as_str())
-            .collect();
-        eprintln!("stale_roster={:?}", stale);
-        eprintln!("unrostered={:?}", unrostered);
-        assert!(false, "dump only");
     }
 
     #[test]

@@ -4244,18 +4244,6 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: OccurrenceId)
   }
 }
 
-fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
-  match edge {
-    Edge { label: Named { name: field }, target: magnitude } =>
-      if field == ^integer_literal_magnitude_field {
-        optional_present(value: magnitude)
-      } else {
-        optional_absent()
-      }
-    Edge { label: Positional, target: _ } => optional_absent()
-  }
-}
-
 fn dag_int_literal_magnitude_node_optional(node: Node) -> Optional<Node> {
   node_int_literal_magnitude_node_optional(node: node)
 }
