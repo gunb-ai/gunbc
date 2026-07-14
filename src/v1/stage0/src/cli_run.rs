@@ -12690,7 +12690,11 @@ mod reference_edge_producer_tests {
     use super::reference_resolution_facts;
 
     fn fixture_root(tag: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("gunbc-refedge-{tag}-{}", std::process::id()))
+        // Under the workspace `target/` (gitignored): `rel_path_for_layer_import` fail-closes on
+        // paths outside the workspace root, and `target/` keeps the fixture out of version control.
+        super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-refedge-{tag}-{}", std::process::id()))
     }
 
     fn write(root: &std::path::Path, rel: &str, content: &str) {
