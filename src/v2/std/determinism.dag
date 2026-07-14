@@ -1,25 +1,17 @@
 module v2.std.determinism
 
-import std.determinism { Determinism, Deterministic, NonDeterministic }
-import v2.std.logic { Bool }
+import std.determinism { DeterminismAxis }
 import v2.std.node { Symbol }
 
 type DeterminismFact {
   signature: Symbol,
-  classification: Determinism
+  classification: DeterminismAxis
 }
 
-fn determinism_fact_classification(fact: DeterminismFact) -> Determinism {
+fn determinism_fact_classification(fact: DeterminismFact) -> DeterminismAxis {
   fact.classification
 }
 
 fn determinism_fact_signature(fact: DeterminismFact) -> Symbol {
   fact.signature
-}
-
-fn determinism_is_deterministic(c: Determinism) -> Bool {
-  match c {
-    Deterministic => true
-    NonDeterministic { source: _ } => false
-  }
 }
