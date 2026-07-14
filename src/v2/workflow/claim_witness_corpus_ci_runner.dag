@@ -499,21 +499,21 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
 
 data corpus_ci_gate_row_spice_rc_ngspice_op: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "SP-M1 spice RC tran ngspice emit matches golden",
-  entry: "src/v2/extdeps/formats/spice_rc_ngspice_oracle_test.dag",
+  entry: "src/v2/test/claim/extdeps/spice_rc_ngspice_oracle_test.dag",
   function: "spice_rc_ngspice_op_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_spice_rc_ngspice_nonempty: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "SP-M1 spice RC tran ngspice emit nonempty",
-  entry: "src/v2/extdeps/formats/spice_rc_ngspice_oracle_test.dag",
+  entry: "src/v2/test/claim/extdeps/spice_rc_ngspice_oracle_test.dag",
   function: "spice_rc_tran_emit_ngspice_nonempty_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_spice_rc_passive_deck_authority: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "spice RC passive deck fixture authority (vin-R1-mid-C1-ground + .op)",
-  entry: "src/v2/extdeps/spice_rc_passive_deck_claims.dag",
+  entry: "src/v2/test/claim/extdeps/spice_rc_passive_deck_claims_test.dag",
   function: "spice_rc_passive_deck_authority_holds",
   expected: ExpectPass
 }
