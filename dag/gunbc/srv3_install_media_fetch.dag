@@ -27,21 +27,15 @@ import std.effects {
 import std.measure { ByteSize }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String, NonEmptyStr, Sha256, Milliseconds, List }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Terminal }
 import std.resources { Network }
 
 data gunbc_srv3_install_media_fetch_scope_disposition: Disposition = Terminal {
   reason: "srv3 Ubuntu 24.04.3 live-server arm64 ISO acquisition — CreateIfAbsent keyed on content_sha256; N mirror transport handlers on one cited artifact row; runnable on srv1 actuator host before nbd-proxy serve."
 }
 
-data srv3_install_media_fetch_shell_runner_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "extdeps.os.ubuntu_install_media_fetch",
-    decl_name: "install_media_fetch_bash_emit_dissolution_trigger",
-    field: WholeDeclaration,
-  }
+data srv3_install_media_fetch_shell_runner_scaffold: Disposition = Terminal {
+  reason: "srv3_install_media_fetch() routes through host_effect_apply to install_media_fetch_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
 data srv3_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_install_media_install_path(
