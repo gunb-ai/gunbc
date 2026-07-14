@@ -627,7 +627,7 @@ fn resolve_child_edge(
   }
 }
 
-data scope_with_fn_decl_params_dissolution_note: String = "Dissolved 2026-07-14 (Wave 1 gates 1+3): fn_decl param scoping via dag_fn_decl_param_binding_atoms deleted — normalize body_lowering_fold emits Arrow+domain pre-resolve; add_arrow_domain_named_params is the sole param-scoping authority. Wrapper-retained fn_decl shells retain no lowered body with param refs."
+data arrow_domain_param_scoping_note: String = "Wave 1 Gate 1 A1: param scoping is add_arrow_domain_named_params over lowered Arrow domain Named edges (general-body-producer-design Stage A). dag_fn_decl_param_binding_atoms and scope_with_fn_decl_params dissolved. fn_decl ident now routes through StampLexeme and SymbolIndex fill carries module_qn.fn.param (parity proven by execution); domain construction remains interim param-list-walk (body_lower_domain_from_param_list) until domain is built from SymbolIndex lookup rather than walked from the param list."
 
 fn domain_root_has_named_bindings(root: Node) -> Bool {
   match root.kind {
@@ -662,23 +662,19 @@ fn arrow_domain_has_named_bindings(n: Node) -> Bool {
   }
 }
 
-fn scope_with_fn_decl_params(n: Node, scope: Scope) -> Scope {
-  if arrow_domain_has_named_bindings(n: n) {
-    ScopeFrame {
-      locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
-      outer: scope
-    }
-  } else {
-    scope
-  }
-}
-
 fn resolve_children_homogeneous_scope(
   ctx: ResolveContext,
   n: Node
 ) -> Outcome<Node> {
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
-  let scope_here = scope_with_fn_decl_params(n: n, scope: ctx.scope)
+  let scope_here = match arrow_domain_has_named_bindings(n: n) {
+    true =>
+      ScopeFrame {
+        locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
+        outer: ctx.scope
+      }
+    false => ctx.scope
+  }
   let child_ctx = resolve_ctx_with_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here

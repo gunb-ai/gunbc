@@ -7,18 +7,20 @@ import v2.extdeps.languages.dag {
   dag_surface_module_header_metadata_edge,
   qualified_name_from_module_node
 }
-import v2.std.algebra { fold_list }
+import v2.std.algebra { fold_list, length }
 import v2.std.collection {
   Absent,
   Map,
   Present,
   empty_map,
+  list_at_optional,
   map_get,
   map_insert
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.logic { Int }
 import v2.std.node {
+  Arrow,
   Conj,
   Disj,
   Edge,
@@ -50,6 +52,12 @@ data symbol_index_containment_disposition: Disposition = Scaffold {
   }
 }
 
+fn symbol_index_parse_projection_edge(name: Symbol) -> Bool {
+  (name == ^grammar_production_identity_node_projection)
+    || (name == ^grammar_production_captured_node_projection)
+    || ends_with(s: symbol_lexeme(sym: name), suffix: "_node_projection")
+}
+
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
@@ -58,6 +66,12 @@ fn symbol_index_fill_containment_edge(
   match edge.label {
     Named { name: sym } =>
       if dag_surface_module_header_metadata_edge(name: sym) {
+        symbol_index_fill_containment_node(
+          index: index,
+          path: path,
+          node: edge.target
+        )
+      } else if symbol_index_parse_projection_edge(name: sym) {
         symbol_index_fill_containment_node(
           index: index,
           path: path,
@@ -84,6 +98,8 @@ fn symbol_index_fill_containment_edge(
       )
   }
 }
+
+data symbol_index_fill_transparent_wrapper_note: String = "Default arm: transparent descent through parse/grammar wrapper nodes (production shells, sequence/repeat spines) at the current qualified path — edges are still filtered by symbol_index_fill_containment_edge (metadata + _node_projection projections skip path extension). Conj/Disj/Arrow retain explicit semantics; this arm is intentionally NOT a typed refusal so lowered members nested under top_level_item shells remain reachable. New TypeNode connectives that carry real named bindings must get an explicit arm before relying on this fallback."
 
 fn symbol_index_fill_containment_node(
   index: SymbolIndex,
@@ -113,7 +129,20 @@ fn symbol_index_fill_containment_node(
           Positional => acc
         }
       })
-    _ => index
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: node.children, index: 0) {
+        Present { value: domain_edge } =>
+          symbol_index_fill_containment_node(
+            index: index,
+            path: path,
+            node: domain_edge.target
+          )
+        Absent => index
+      }
+    _ =>
+      fold(node.children, init: index, f: fn(acc, edge) {
+        symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+      })
   }
 }
 
