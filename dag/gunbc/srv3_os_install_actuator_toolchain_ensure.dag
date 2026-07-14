@@ -29,14 +29,20 @@ import std.realization_reconcile { reconciliation_converged }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, String, Bool }
 import std.resources { Network }
-import std.disposition { Disposition, Terminal, Scaffold }
+import std.disposition { Disposition, Terminal, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data srv3_os_install_actuator_toolchain_ensure_scaffold: Disposition = Terminal {
   reason: "host_effect_apply binds OsInstallActuatorToolchainEnsure via typed apt/curl/websocat argv effects in host_effect_realize"
 }
 
-data os_install_actuator_toolchain_ensure_dissolution_trigger: Disposition = Terminal {
-  reason: "dissolved: os_install_actuator_toolchain_ensure routes through host_effect_apply OsInstallActuatorToolchainEnsure; retire medium_structure_exception_roster entry for dag/gunbc/srv3_os_install_actuator_toolchain_ensure.dag"
+data os_install_actuator_toolchain_ensure_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_os_install_actuator_toolchain_ensure",
+    decl_name: "os_install_actuator_toolchain_ensure_script",
+    field: WholeDeclaration,
+  }
 }
 
 fn os_install_actuator_apt_tool_ensure_block(tool_name: String, package: NonEmptyStr) -> String {

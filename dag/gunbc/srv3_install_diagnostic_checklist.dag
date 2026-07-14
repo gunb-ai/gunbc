@@ -41,10 +41,10 @@ import std.types { String }
 import std.disposition { Disposition, Terminal }
 
 data srv3_install_diagnostic_checklist_scaffold: Disposition = Terminal {
-  reason: "host_effect_apply binds Srv3InstallDiagnosticObserve — frozen observe script realized via host_effect_realize without checklist-level shell_exec_via_bash runner glue"
+  reason: "host_effect_apply binds Srv3InstallDiagnosticObserve via host_effect_realize; receipt echo remains shell.Exec until bash-emit (#5828)"
 }
 
-data srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger: String = "dissolved: srv3_install_diagnostic_checklist observe path routes through host_effect_apply Srv3InstallDiagnosticObserve; retire medium_structure_exception_roster entry for dag/gunbc/srv3_install_diagnostic_checklist.dag"
+data srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger: String = "dissolved: observe path routes through host_effect_apply Srv3InstallDiagnosticObserve; receipt echo and observe-script oracle remain medium-as-string pending bash-emit (#5828)"
 
 data srv3_install_diagnostic_observe_script_path: String = "/tmp/srv3_install_diagnostic_observe.sh"
 

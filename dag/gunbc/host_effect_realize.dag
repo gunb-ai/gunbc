@@ -183,8 +183,35 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr) -> Bool {
 }
 
 fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr) -> Bool {
-  let probe = concat(tool_name as String, " --version >/dev/null 2>&1")
-  shell.Exec.Check(command: probe).exists
+  let found = shell.Which.Check(command: tool_name)
+  if found.exists {
+    match found.path {
+      Present { value: tool_path } =>
+        gunbc.WitnessBin.Run(
+          workdir: "/",
+          bin_path: tool_path,
+          args: ["--version"],
+        ).success
+      Absent => false
+    }
+  } else {
+    false
+  }
+}
+
+fn srv3_chown_directory_to_current_user(path: String) -> Bool {
+  let uid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-u"])
+  let gid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-g"])
+  if uid.success && gid.success {
+    let owner = concat(uid.stdout, concat(":", gid.stdout))
+    gunbc.WitnessBin.Run(
+      workdir: "/",
+      bin_path: "/usr/bin/sudo",
+      args: ["-n", "/usr/bin/chown", owner, path],
+    ).success
+  } else {
+    false
+  }
 }
 
 fn srv3_privileged_apt_install(package: NonEmptyStr) -> Bool {
@@ -232,9 +259,7 @@ fn srv3_ensure_websocat() -> Bool {
       bin_path: "/usr/bin/sudo",
       args: ["mkdir", "-p", bin_dir],
     )
-    let chown = shell.Exec.Run(
-      script: concat(concat("sudo -n chown \"$(id -un):$(id -gn)\" ", bin_dir), ""),
-    )
+    let chown = srv3_chown_directory_to_current_user(path: bin_dir)
     let curl = gunbc.WitnessBin.Run(
       workdir: "/",
       bin_path: "/usr/bin/curl",
@@ -246,7 +271,7 @@ fn srv3_ensure_websocat() -> Bool {
       args: ["+x", install_path],
     )
     mkdir.success
-      && chown.success
+      && chown
       && curl.success
       && chmod.success
       && shell.Test.IsExecutable(path: install_path).executable

@@ -1,10 +1,16 @@
 module gunbc.srv3_install_diagnostic_observe_script
 
 import std.types { String, NonEmptyStr }
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data srv3_install_diagnostic_observe_script_scope_disposition: Disposition = Terminal {
-  reason: "FROZEN terminal observe-script concat — no further shell growth; realized via host_effect_apply Srv3InstallDiagnosticObserve in host_effect_realize"
+data srv3_install_diagnostic_observe_script_bash_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_install_diagnostic_observe_script",
+    decl_name: "srv3_install_diagnostic_observe_script",
+    field: WholeDeclaration,
+  }
 }
 
 data srv3_bmcweb_token_path_for_observe: String = "/tmp/srv3_bmcweb_token"
