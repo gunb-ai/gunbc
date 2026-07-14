@@ -1,0 +1,111 @@
+module v2.lens.determinism
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.determinism { DeterminismAxis, Deterministic, NonDeterministic, determinism_compose }
+import v2.std.determinism { DeterminismFact }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, node_locus }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
+import v2.std.node_query { node_is_call, node_positional_child_targets }
+import v2.std.witness { Holds, Violates, Witness }
+
+type DeterminismRoot {
+  signature: Symbol,
+  source: DeclarationRef,
+  citation: String
+}
+
+fn map_keys_leak_source() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v1.runtime_rust",
+    decl_name: "map_keys",
+    field: WholeDeclaration
+  }
+}
+
+data determinism_root_map_keys: DeterminismRoot = DeterminismRoot {
+  signature: ^map_keys,
+  source: map_keys_leak_source(),
+  citation: "map_keys iterates hash-ordered keys (src/v1/runtime_rust.dag:176), a host-nondeterministic root; sorted_map_keys is its deterministic sibling. Grounds the single NonDeterministic leaf; unregistered callees contribute Deterministic at the within-function boundary (map_keys is always a readable atom, never missed). Extend with clock/entropy roots when Phase B grounds kind:Observation."
+}
+
+data determinism_root_registry: List<DeterminismRoot> = [
+  determinism_root_map_keys
+]
+
+fn determinism_root_for_symbol(registry: List<DeterminismRoot>, s: Symbol) -> Optional<DeterminismRoot> {
+  fold(registry, init: Absent, f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if row.signature == s { Present { value: row } } else { Absent }
+    }
+  })
+}
+
+fn node_callee_symbol(n: Node) -> Optional<Symbol> {
+  if node_is_call(node: n) {
+    match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+      Present { value: callee } => match callee.kind {
+        TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
+        _ => Absent
+      }
+      Absent => Absent
+    }
+  } else {
+    Absent
+  }
+}
+
+fn local_determinism_axis(n: Node) -> DeterminismAxis {
+  match node_callee_symbol(n: n) {
+    Present { value: sym } => match determinism_root_for_symbol(registry: determinism_root_registry, s: sym) {
+      Present { value: root } => NonDeterministic { source: root.source }
+      Absent => Deterministic
+    }
+    Absent => Deterministic
+  }
+}
+
+fn determinism_axis_fold_step(acc: DeterminismAxis, _: Edge, child: DeterminismAxis) -> DeterminismAxis {
+  determinism_compose(outer: acc, inner: child)
+}
+
+fn determinism_axis_for_node(n: Node) -> DeterminismAxis {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) { local_determinism_axis(n: n0) },
+      step: fn(acc, e, child) { determinism_axis_fold_step(acc: acc, e: e, child: child) }
+    }
+  )
+}
+
+fn determinism_fact_for_node(signature: Symbol, n: Node) -> DeterminismFact {
+  DeterminismFact {
+    signature: signature,
+    classification: determinism_axis_for_node(n: n)
+  }
+}
+
+fn determinism_leak_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^determinism_nondeterministic_root_reach,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn determinism_contract_witness(signature: Symbol, n: Node) -> Witness<DeterminismFact> {
+  let fact = determinism_fact_for_node(signature: signature, n: n)
+  match fact.classification {
+    NonDeterministic { source: _ } => Violates { diagnostic: determinism_leak_diagnostic(n: n) }
+    Deterministic => Holds { value: fact }
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
