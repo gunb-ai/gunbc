@@ -12759,14 +12759,149 @@ pub fn try_resolve_variant_from_expected(
     }
 }
 
+pub fn branch_coproduct_arm_name(
+    ty: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    if (ty.connective.clone() == Connective::Disj) {
+        return None;
+    }
+    let name = authored_name_at(source_indices.clone(), ty.clone());
+    if (name.clone() == "") {
+        None
+    } else {
+        Some(name.clone())
+    }
+}
+
+pub fn is_optional_arm_shape(
+    ty: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if is_unit_like(ty.clone()) {
+        return true;
+    }
+    let name = authored_name_at(source_indices.clone(), ty.clone());
+    (name.clone() == "Absent".to_string())
+        || (name.clone() == "Present".to_string())
+        || (name.clone() == "Unit".to_string())
+        || (name.clone() == "none".to_string())
+}
+
+pub fn resolve_coproduct_type_ref(
+    ty: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    if (ty.connective.clone() == Connective::Disj) {
+        return ty.clone();
+    }
+    let name = authored_name_at(env.source_indices.clone(), ty.clone());
+    if (name.clone() == "") {
+        return ty.clone();
+    }
+    match lookup_type_by_name(env.clone(), name.clone()) {
+        Some(resolved) => {
+            if (resolved.connective.clone() == Connective::Disj) {
+                resolved.clone()
+            } else {
+                ty.clone()
+            }
+        }
+        None => ty.clone(),
+    }
+}
+
+pub fn find_coproduct_containing_arm(
+    env: Rc<TypeEnv>,
+    arm_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    let mut found: Option<Rc<Node>> = None;
+    let mut binding_names: Vec<String> = Rc::new(v1_rt::map_keys(&env.str_bindings.clone()))
+        .iter()
+        .cloned()
+        .collect();
+    for key in Rc::new(v1_rt::map_keys(&env.ancestry_str_bindings.clone()))
+        .iter()
+        .cloned()
+    {
+        binding_names.push(key);
+    }
+    for binding_name in binding_names.iter().cloned() {
+        if let Some(ty) = lookup_type_by_name(env.clone(), binding_name.clone()) {
+            if ((ty.connective.clone() == Connective::Disj)
+                && has_child_named(
+                    ty.clone(),
+                    arm_name.clone(),
+                    source_indices.clone(),
+                ))
+            {
+                match found.clone() {
+                    Some(existing) => {
+                        if (authored_name_at(source_indices.clone(), existing.clone())
+                            != authored_name_at(source_indices.clone(), ty.clone()))
+                        {
+                            return None;
+                        }
+                    }
+                    None => {
+                        found = Some(ty.clone());
+                    }
+                }
+            }
+        }
+    }
+    found
+}
+
+pub fn find_shared_coproduct_for_branch_arms(
+    then_rt: Rc<Node>,
+    else_rt: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    let si = scope.type_env.clone().source_indices.clone();
+    match (
+        branch_coproduct_arm_name(then_rt.clone(), si.clone()),
+        branch_coproduct_arm_name(else_rt.clone(), si.clone()),
+    ) {
+        (Some(then_arm), Some(else_arm)) => {
+            let then_parent = find_coproduct_containing_arm(
+                scope.type_env.clone(),
+                then_arm.clone(),
+                si.clone(),
+            );
+            let else_parent = find_coproduct_containing_arm(
+                scope.type_env.clone(),
+                else_arm.clone(),
+                si.clone(),
+            );
+            match (then_parent.clone(), else_parent.clone()) {
+                (Some(tp), Some(ep)) => {
+                    if (authored_name_at(si.clone(), tp.clone())
+                        == authored_name_at(si.clone(), ep.clone()))
+                    {
+                        Some(tp.clone())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 pub fn branch_is_coproduct_member(
     ty: Rc<Node>,
     coproduct: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if (coproduct.connective.clone() != Connective::Disj) {
+    let coproduct = if (coproduct.connective.clone() != Connective::Disj) {
         return false;
-    }
+    } else {
+        coproduct.clone()
+    };
     if ((ty.connective.clone() == Connective::Disj)
         && (authored_name_at(source_indices.clone(), ty.clone())
             == authored_name_at(source_indices.clone(), coproduct.clone())))
@@ -12790,57 +12925,60 @@ pub fn coproduct_branches_compatible(
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
 ) -> Option<Rc<Node>> {
+    let si = scope.type_env.clone().source_indices.clone();
+    let then_optional_arm = is_optional_arm_shape(then_rt.clone(), si.clone());
+    let else_optional_arm = is_optional_arm_shape(else_rt.clone(), si.clone());
+    if then_optional_arm && else_optional_arm {
+        return match expected.clone() {
+            Some(exp) if (exp.return_cardinality.clone() == Cardinality::CardOptional) => {
+                Some(exp.clone())
+            }
+            Some(exp) => Some(with_optional_cardinality(extract_optional_inner_node(exp.clone()))),
+            None => Some(with_optional_cardinality(prefer_specific_type(
+                then_rt.clone(),
+                else_rt.clone(),
+                si.clone(),
+            ))),
+        };
+    }
     match expected.clone() {
         Some(exp) => {
-            if (exp.return_cardinality.clone() == Cardinality::CardOptional) {
-                let then_unit = is_unit_like(then_rt.clone());
-                let else_unit = is_unit_like(else_rt.clone());
-                let then_name = authored_name_at(
-                    scope.type_env.clone().source_indices.clone(),
-                    then_rt.clone(),
-                );
-                let else_name = authored_name_at(
-                    scope.type_env.clone().source_indices.clone(),
-                    else_rt.clone(),
-                );
-                let then_optional_arm = (then_unit.clone()
-                    || (then_name.clone() == "Absent".to_string())
-                    || (then_name.clone() == "Present".to_string())
-                    || (then_name.clone() == "Unit".to_string()));
-                let else_optional_arm = (else_unit.clone()
-                    || (else_name.clone() == "Absent".to_string())
-                    || (else_name.clone() == "Present".to_string())
-                    || (else_name.clone() == "Unit".to_string()));
-                if then_optional_arm && else_optional_arm {
-                    return Some(exp.clone());
-                }
-            }
             let coproduct = expand_type_for_field_access(
                 exp.clone(),
                 scope.type_env.clone(),
                 scope.module_name.clone(),
             );
-            if (coproduct.connective.clone() != Connective::Disj) {
-                return None;
-            }
-            let then_ok = branch_is_coproduct_member(
-                then_rt.clone(),
-                coproduct.clone(),
-                scope.type_env.clone().source_indices.clone(),
-            );
-            let else_ok = branch_is_coproduct_member(
-                else_rt.clone(),
-                coproduct.clone(),
-                scope.type_env.clone().source_indices.clone(),
-            );
-            if then_ok && else_ok {
-                Some(coproduct.clone())
-            } else {
-                None
+            if (coproduct.connective.clone() == Connective::Disj) {
+                let then_ok = branch_is_coproduct_member(
+                    then_rt.clone(),
+                    coproduct.clone(),
+                    si.clone(),
+                );
+                let else_ok = branch_is_coproduct_member(
+                    else_rt.clone(),
+                    coproduct.clone(),
+                    si.clone(),
+                );
+                if then_ok && else_ok {
+                    return Some(coproduct.clone());
+                }
             }
         }
-        None => None,
+        None => {}
     }
+    let then_coproduct = resolve_coproduct_type_ref(then_rt.clone(), scope.type_env.clone());
+    let else_coproduct = resolve_coproduct_type_ref(else_rt.clone(), scope.type_env.clone());
+    if (then_coproduct.connective.clone() == Connective::Disj) {
+        if branch_is_coproduct_member(else_rt.clone(), then_coproduct.clone(), si.clone()) {
+            return Some(then_coproduct.clone());
+        }
+    }
+    if (else_coproduct.connective.clone() == Connective::Disj) {
+        if branch_is_coproduct_member(then_rt.clone(), else_coproduct.clone(), si.clone()) {
+            return Some(else_coproduct.clone());
+        }
+    }
+    find_shared_coproduct_for_branch_arms(then_rt.clone(), else_rt.clone(), scope.clone())
 }
 
 pub fn census_insert_binding(
