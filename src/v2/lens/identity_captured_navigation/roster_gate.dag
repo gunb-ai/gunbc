@@ -12,6 +12,7 @@ import v2.lens.identity_captured_navigation.analyze {
   identity_navigation_debug_diag_sum,
   identity_navigation_debug_fn_decl_count,
   identity_navigation_debug_match_expr_count,
+  identity_navigation_debug_name_sym_probe_sum,
   identity_navigation_debug_scrutinee_hit_count
 }
 import v2.std.algebra { fold_list }
@@ -143,6 +144,13 @@ fn debug_diag_sum(source_text: String) -> Int {
   match source_findings_tree(source_text: source_text) {
     Absent => -1
     Present { value: tree } => identity_navigation_debug_diag_sum(root: tree)
+  }
+}
+
+fn debug_name_sym_probe_sum(source_text: String) -> Int {
+  match source_findings_tree(source_text: source_text) {
+    Absent => -1
+    Present { value: tree } => identity_navigation_debug_name_sym_probe_sum(root: tree)
   }
 }
 

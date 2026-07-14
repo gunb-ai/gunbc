@@ -7,6 +7,7 @@ import v2.lens.identity_captured_navigation.roster_gate {
   debug_match_expr_count,
   debug_match_expr_count_file,
   debug_diag_sum,
+  debug_name_sym_probe_sum,
   debug_scrutinee_hit_count,
   debug_scrutinee_hit_count_file,
   file_gate,
@@ -271,6 +272,59 @@ test fn debug_planted_snippet_diag_sum_probe_7() -> Bool {
 test fn debug_planted_snippet_diag_sum_probe_8() -> Bool {
   debug_diag_sum(source_text: planted_identity_escape_snippet) == 8
 }
+
+test fn debug_planted_snippet_name_sym_probe() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == -99999
+}
+
+test fn debug_name_sym_probe_val_100() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == 100
+}
+
+test fn debug_name_sym_probe_val_101() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == 101
+}
+
+test fn debug_name_sym_probe_val_102() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == 102
+}
+
+test fn debug_name_sym_probe_val_103() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == 103
+}
+
+test fn debug_name_sym_probe_val_104() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == 104
+}
+
+test fn debug_name_sym_probe_val_105() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == 105
+}
+
+test fn debug_name_sym_probe_val_106() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == 106
+}
+
+test fn debug_name_sym_probe_val_107() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == 107
+}
+
+test fn debug_name_sym_probe_val_neg1() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == -1
+}
+
+test fn debug_name_sym_probe_val_neg2() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == -2
+}
+
+test fn debug_name_sym_probe_val_neg3() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == -3
+}
+
+test fn debug_name_sym_probe_val_neg4() -> Bool {
+  debug_name_sym_probe_sum(source_text: planted_identity_escape_snippet) == -4
+}
+
 
 test fn debug_dag_dag_scrutinee_hit_ge_one() -> Bool {
   debug_scrutinee_hit_count_file(path: "src/v2/extdeps/languages/dag.dag") >= 1
