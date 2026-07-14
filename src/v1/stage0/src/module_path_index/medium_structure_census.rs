@@ -133,6 +133,14 @@ fn project_field_expr_parts(node: &Rc<Node>, si: &SourceIndices, out: &mut Vec<L
     }
 }
 
+// An empty literal (RawLine{text:""}, a fold sentinel/no-op line) has no program to classify, so
+// it is not emitted as a fact — "must not classify" (parent review 2026-07-14). Match-arm PATTERNS
+// (`RawLine{text:t} =>`) are `MatchPattern::VariantPattern`, not `ExprData::ExprRecordLit`, so this
+// walk excludes them by construction — only genuine record CONSTRUCTIONS reach here.
+fn parts_are_empty(parts: &[LiteralPartRaw]) -> bool {
+    parts.iter().all(|p| !p.is_hole && p.text.is_empty())
+}
+
 fn walk_record_lit_parts(
     node: &Rc<Node>,
     targets: &[(String, String)],
@@ -150,12 +158,14 @@ fn walk_record_lit_parts(
                             let value = field_init_node_value(f.clone());
                             let mut parts: Vec<LiteralPartRaw> = Vec::new();
                             project_field_expr_parts(&value, si, &mut parts);
-                            out.push(RawLiteralPartsFact {
-                                path: path.to_string(),
-                                constructor: type_name.clone(),
-                                field: fname.clone(),
-                                parts,
-                            });
+                            if !parts_are_empty(&parts) {
+                                out.push(RawLiteralPartsFact {
+                                    path: path.to_string(),
+                                    constructor: type_name.clone(),
+                                    field: fname.clone(),
+                                    parts,
+                                });
+                            }
                         }
                     }
                 }
