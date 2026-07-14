@@ -2916,11 +2916,13 @@ fn global_bare_for_decl_file(
 }
 
 /// Paths whose top-level declarations feed the interim PR-5c `global_bare` census.
-/// gunbc/std/extdeps are the stripped namespace authorities; src/v2 is included
+/// Non-test `dag/**` is the stripped namespace authority surface; `src/v2` is included
 /// minus Wave-0 homonym files (artifact.dag, network.dag) that collide with gunbc/std.
 fn census_module_path_included(path: &str) -> bool {
     let p = path.replace('\\', "/");
-    if p.contains("dag/gunbc/") || p.contains("dag/std/") || p.contains("dag/extdeps/") {
+    // PR-5c bare census: all non-test dag modules that gunbc may reference after
+    // import strip (std, extdeps, product, ctrl, tools, …).
+    if p.contains("dag/") && !p.contains("dag/test/") {
         return true;
     }
     if p.contains("src/v2/") {
