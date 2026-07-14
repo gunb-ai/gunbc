@@ -1,0 +1,85 @@
+module v2.test.lens_mutation_adequacy.mutation_adequacy_test
+
+import v2.std.logic { Bool }
+import std.algebra { Empty }
+import v2.std.node { Node, node_synthetic, TypeNode, Atom }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.diagnostic {
+  Diagnostic,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  diagnostics_singleton
+}
+import v2.std.verification {
+  CompilesClaim,
+  DiagnosticClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.lens.mutation_adequacy {
+  MutationCoverage,
+  StructureMutation,
+  is_adequate
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn node_a() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^a } }, children: Empty)
+}
+
+fn node_b() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^b } }, children: Empty)
+}
+
+fn green_claim() -> TestClaim {
+  CompilesClaim {
+    label: "green: R compiles on the real input",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    input: node_a(),
+    expected_value: node_a(),
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+fn red_claim() -> TestClaim {
+  DiagnosticClaim {
+    label: "red: rejects the one-step mutant (perturbed input)",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    input: node_b(),
+    expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^mutation_adequacy_test_mutant_rejected,
+        at: Textual { file: ^mutation_adequacy_virtual_file, extent: WholeFile },
+        correction: Unavailable { reason: UserInputBoundary }
+      }
+    ),
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+test fn adequate_when_every_mutation_has_a_discriminating_witness() -> Bool {
+  let coverage = [
+    MutationCoverage {
+      mutation: StructureMutation { mutated: ^drop_input_edge },
+      discriminating_unit: [green_claim(), red_claim()]
+    }
+  ]
+  return is_adequate(coverage: coverage)
+}
+
+test fn surviving_mutation_is_inadequate() -> Bool {
+  let coverage = [
+    MutationCoverage {
+      mutation: StructureMutation { mutated: ^drop_input_edge },
+      discriminating_unit: Empty
+    }
+  ]
+  return !is_adequate(coverage: coverage)
+}

@@ -22,9 +22,9 @@
 use std::fs;
 
 use v1_compiler::cli_run::{
-    self, build_multi_entry_index, make_eval_context, reset_typecheck_compute_count,
+    build_multi_entry_index, make_eval_context, reset_typecheck_compute_count,
     resolve_entry_graph, resolve_entry_with_index, run_claim, typecheck_compute_count,
-    workspace_root, ClaimOutcome,
+    with_typecheck_compute_count_receipt, workspace_root, ClaimOutcome, MultiEntryIndex,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -114,7 +114,7 @@ fn private_outcome(roots: &[String], entry: &str, function: &str) -> String {
 
 /// Union-view resolve: the entry assembled over the shared index (already warmed by the
 /// other entries in this process).
-fn union_outcome(index: &cli_run::MultiEntryIndex, entry: &str, function: &str) -> String {
+fn union_outcome(index: &MultiEntryIndex, entry: &str, function: &str) -> String {
     let (graph, si) = resolve_entry_with_index(index, entry).expect("union-view resolve");
     let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     outcome_tag(&run_claim(&ctx, function))
@@ -124,6 +124,7 @@ fn union_outcome(index: &cli_run::MultiEntryIndex, entry: &str, function: &str) 
 /// once. The receipt is the enforced form of "resolve cost ≤ 1× union closure, never N×".
 #[test]
 fn union_resolve_typechecks_each_node_once() {
+    with_typecheck_compute_count_receipt(|| {
     let fx = Fixture::new("once-per-node");
 
     // Cold private closures — the request-major baseline, one fresh index each. cold_a and
@@ -184,6 +185,7 @@ fn union_resolve_typechecks_each_node_once() {
         union_after_b,
         "once-per-node: re-resolving computes zero new typechecks — the node is in the schedule once"
     );
+    });
 }
 
 /// §6.1 — byte-identity oracle: the union-view result of an entry equals its private
@@ -243,6 +245,7 @@ fn union_view_result_equals_private_resolve_in_every_order() {
 /// thread. Here `entry_a` stands in for that prior work. The counter moves; the closure must not.
 #[test]
 fn roster_closure_count_is_independent_of_thread_cache_warmth() {
+    with_typecheck_compute_count_receipt(|| {
     let fx = Fixture::new("warmth-independence");
 
     // The same fold `run_discovery_rows` applies to every graph it resolves.
@@ -289,4 +292,46 @@ fn roster_closure_count_is_independent_of_thread_cache_warmth() {
         "roster_closure_nodes must count the union closure of the resolved graphs, which is \
          independent of what this thread typechecked earlier"
     );
+    });
+}
+
+/// C1-prep (cross-worker-typecheck-share-design.md §4.1): `typecheck_compute_count` is a
+/// process-wide atomic — prerequisite for summing misses across floor workers once the
+/// shared typed_module_cache lands (`Rc`→`Arc` migration). Private per-thread indexes
+/// today; the counter still accumulates across threads.
+#[test]
+fn typecheck_compute_count_accumulates_across_threads() {
+    with_typecheck_compute_count_receipt(|| {
+    let fx = Fixture::new("process-wide-counter");
+    reset_typecheck_compute_count();
+
+    let roots_a = fx.roots.clone();
+    let entry_a = fx.entry_a.clone();
+    std::thread::spawn(move || {
+        let index = build_multi_entry_index(&roots_a);
+        resolve_entry_with_index(&index, &entry_a).expect("thread resolve a");
+    })
+    .join()
+    .expect("thread a join");
+
+    let after_a = typecheck_compute_count();
+    assert!(after_a > 0, "first thread must record typecheck computes");
+
+    let roots_b = fx.roots.clone();
+    let entry_b = fx.entry_b.clone();
+    std::thread::spawn(move || {
+        let index = build_multi_entry_index(&roots_b);
+        resolve_entry_with_index(&index, &entry_b).expect("thread resolve b");
+    })
+    .join()
+    .expect("thread b join");
+
+    assert!(
+        typecheck_compute_count() > after_a,
+        "second thread's computes must accumulate into the process-wide counter (got {} after {}, now {})",
+        after_a,
+        after_a,
+        typecheck_compute_count()
+    );
+    });
 }

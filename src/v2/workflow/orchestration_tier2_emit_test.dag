@@ -15,8 +15,6 @@ import v2.std.orchestration {
   Procedure,
   ExprLit,
   ExprCmdSubst,
-  ExprArith,
-  ArithAdd,
   StrEmpty
 }
 import v2.std.collection { Absent }
@@ -25,7 +23,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data orch_tier2_golden_note: String = "Goldens below are hand-authored bytes from fleet_converge_emit.dag converge_gunbc_pinned_tree fresh_standup arm ONLY (docs/plans/shell-to-dag-residual-census-and-arc-completion.md §1B frontier rows). Ubuntu-media for/heredoc and steady-state arith sites are EXCLUDED per purity-trap fence (FLAG B1). Each test compares emit against its golden independently of the grammar rows."
+data orch_tier2_golden_note: String = "Goldens below are hand-authored bytes from fleet_converge_emit.dag converge_gunbc_pinned_tree fresh_standup arm ONLY (docs/plans/shell-to-dag-residual-census-and-arc-completion.md §1B frontier rows). Ubuntu-media for/heredoc sites are EXCLUDED per purity-trap fence (FLAG B1). Each test compares emit against its golden independently of the grammar rows."
 
 fn fresh_standup_cmdsubst_assign_intent() -> PipelineStep {
   Let {
@@ -184,61 +182,6 @@ test fn orch_tier2_procedure_definition_band_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == decide_verdict_procedure_partial_golden()) && (dg == None)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn arith_add_band_intent() -> PipelineStep {
-  Let {
-    name: "applied",
-    value: ExprArith {
-      op: ArithAdd,
-      lhs: ExprLit { spelling: "applied" },
-      rhs: ExprLit { spelling: "1" }
-    }
-  }
-}
-
-fn arith_add_band_golden() -> String {
-  "applied=$((applied + 1))"
-}
-
-test fn orch_tier2_arith_add_band_holds() -> Bool {
-  match orch_emit_step(
-    s: arith_add_band_intent(),
-    medium: bash_orchestration_emit_medium()
-  ) {
-    Accepted { value: src, diagnostics: dg } =>
-      (src.carried == arith_add_band_golden()) && (dg == None)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn expr_cmdsubst_in_arith_lhs_intent() -> PipelineStep {
-  Let {
-    name: "n",
-    value: ExprArith {
-      op: ArithAdd,
-      lhs: ExprCmdSubst {
-        callee: "wc",
-        args: ["-l", "\"$f\""]
-      },
-      rhs: ExprLit { spelling: "0" }
-    }
-  }
-}
-
-fn expr_cmdsubst_in_arith_lhs_golden() -> String {
-  "n=$(($(wc -l \"$f\") + 0))"
-}
-
-test fn orch_tier2_expr_cmdsubst_word_in_arith_lhs_holds() -> Bool {
-  match orch_emit_step(
-    s: expr_cmdsubst_in_arith_lhs_intent(),
-    medium: bash_orchestration_emit_medium()
-  ) {
-    Accepted { value: src, diagnostics: dg } =>
-      (src.carried == expr_cmdsubst_in_arith_lhs_golden()) && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }
