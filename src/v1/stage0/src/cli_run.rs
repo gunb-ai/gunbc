@@ -167,6 +167,25 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+/// Namespace migration: after import-strip, module edges also live as qualified
+/// `container.member` references. Augment import-derived deps so inert-lens hygiene
+/// stays accurate when `import` lines are deleted but references remain.
+fn augment_path_imports_with_qualified_module_refs(
+    path_imports: &mut std::collections::HashMap<String, Vec<String>>,
+    path_contents: &std::collections::HashMap<String, String>,
+    module_to_path: &std::collections::HashMap<String, String>,
+) {
+    for (path, content) in path_contents {
+        let deps = path_imports.entry(path.clone()).or_default();
+        for module in module_to_path.keys() {
+            let needle = format!("{}.", module);
+            if content.contains(&needle) && !deps.iter().any(|d| d == module) {
+                deps.push(module.clone());
+            }
+        }
+    }
+}
+
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
 // witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
@@ -6377,6 +6396,8 @@ fn build_floor_lens_hygiene_graph(
         SIDECAR_PLACEMENT_RULES.iter().map(|_| Vec::new()).collect();
     let mut path_imports: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
+    let mut path_contents: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     let mut module_to_path: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
     let mut lens_with_justification: std::collections::BTreeSet<String> =
@@ -6396,6 +6417,7 @@ fn build_floor_lens_hygiene_graph(
                 }
                 module_to_path.insert(m, rel.clone());
             }
+            path_contents.insert(rel.clone(), content.clone());
             path_imports.insert(rel, extract_import_paths(&content));
             if excludes.iter().any(|sub| entry.contains(sub.as_str())) {
                 continue;
@@ -6462,6 +6484,11 @@ fn build_floor_lens_hygiene_graph(
             .cmp(&b.entry)
             .then_with(|| a.function.cmp(&b.function))
     });
+    augment_path_imports_with_qualified_module_refs(
+        &mut path_imports,
+        &path_contents,
+        &module_to_path,
+    );
     Ok(FloorLensHygieneGraph {
         rows,
         path_imports,
@@ -6707,6 +6734,13 @@ fn inert_lens_modules(
             .collect();
         for path in path_imports.keys() {
             if path.ends_with("_test.dag") {
+                s.insert(path.clone());
+            }
+        }
+        // Lens witness fixtures under src/v2/lens/** wire top-level lenses directly;
+        // seed them so hygiene does not depend on compile.dag retaining import lines.
+        for (path, imports) in path_imports {
+            if imports.iter().any(|m| is_top_level_lens_module(m)) {
                 s.insert(path.clone());
             }
         }
