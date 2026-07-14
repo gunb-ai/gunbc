@@ -80,8 +80,6 @@ type IgnoreArtifact
   | GithubCLICacheDir
   | PythonLocalDevScriptFile
   | PythonAuditScriptAllowlisted
-  | NamespaceMigrationDefinerCensusAllowlisted
-  | NamespaceMigrationStripImportsAllowlisted
   | PythonBytecodeCacheDir
   | PythonCompiledBytecode
   | ClaimMapDir
