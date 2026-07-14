@@ -5643,14 +5643,38 @@ fn build_global_bare_census(modules: List<ResolvedModule>, source_indices: Map<S
   )
 }
 
-fn build_global_variant_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> VariantFoldState {
-  fold(modules, init: VariantFoldState { locals: empty_map(), collision_errors: [] }, f: (acc, mod) =>
-    build_local_variants(
-      items: module_items(n: mod.module),
-      source_indices: source_indices,
-      module_name: authored_name_at(source_indices: source_indices, node: mod.module),
-      init: acc
+fn census_insert_coproduct_arms(census: Map<String, GlobalBareLookupState>, item: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
+  if item.connective != Disj {
+    census
+  } else {
+    fold(item.children, init: census, f: (acc, child) =>
+      census_insert_binding(
+        census: acc,
+        binding: TypeBinding {
+          name: authored_name_at(source_indices: source_indices, node: child),
+          resolved: item,
+          provenance: SubValueUnknown
+        }
+      )
     )
+  }
+}
+
+fn build_global_variant_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
+  fold(modules, init: empty_map(), f: (census, mod) =>
+    fold(module_items(n: mod.module), init: census, f: (acc, item) =>
+      census_insert_coproduct_arms(census: acc, item: item, source_indices: source_indices)
+    )
+  )
+}
+
+fn global_variant_locals_from_census(census: Map<String, GlobalBareLookupState>) -> Map<String, TypeBinding> {
+  fold(map_keys(census), init: empty_map(), f: (acc, name) =>
+    match map_get(census, name) {
+      Present { value: GlobalBareUniqueBinding { binding: binding } } => map_insert(acc, name, binding)
+      Present { value: GlobalBareAmbiguousBinding } => acc
+      Absent => acc
+    }
   )
 }
 
@@ -6199,7 +6223,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     variant_surfaces: Map<String, VariantExportSurface>,
     resolved_imports: List<ResolvedImport>,
-    global_variant: VariantFoldState,
+    global_variant: Map<String, GlobalBareLookupState>,
     env: TypeEnv,
     module_name: String) -> ModuleContext {
   let local = fold_module_contributions(
@@ -6219,7 +6243,16 @@ fn build_module_context(contributions: List<ItemContribution>,
     init: VariantFoldState { locals: empty_map(), collision_errors: [] }
   )
   let variant_fold = if resolved_imports |> count == 0 {
-    global_variant
+    let global_locals = global_variant_locals_from_census(census: global_variant)
+    VariantFoldState {
+      locals: fold(global_locals |> map_values, init: local_variant_fold.locals, f: (acc, binding) =>
+        match map_get(acc, binding.name) {
+          Present { value: _ } => acc
+          Absent => map_insert(acc, binding.name, binding)
+        }
+      ),
+      collision_errors: []
+    }
   } else {
     build_imported_variants(
       resolved_imports: resolved_imports,
@@ -6272,7 +6305,7 @@ type TypecheckModuleResult {
   binding_forks: List<TypeEnvCacheMergeConflict>
 }
 
-fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, global_bare: Map<String, GlobalBareLookupState>, global_variant: VariantFoldState) -> TypecheckModuleResult {
+fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, global_bare: Map<String, GlobalBareLookupState>, global_variant: Map<String, GlobalBareLookupState>) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, global_bare: global_bare)
   let env = env_result.env
   let env_cache = env_result.cache
@@ -6395,7 +6428,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 }
 
 fn typecheck_module_isolated(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckModuleResult {
-  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, global_bare: empty_map(), global_variant: VariantFoldState { locals: empty_map(), collision_errors: [] })
+  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, global_bare: empty_map(), global_variant: empty_map())
 }
 
 type EnvResolveResult {
@@ -6677,7 +6710,7 @@ fn realize_module(
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
   global_bare: Map<String, GlobalBareLookupState>,
-  global_variant: VariantFoldState
+  global_variant: Map<String, GlobalBareLookupState>
 ) -> RealizeState {
   match map_get(state.module_index, name) {
     Present { value: _ } => state

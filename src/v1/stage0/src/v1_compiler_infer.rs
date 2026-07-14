@@ -12489,24 +12489,67 @@ pub fn build_global_bare_census(
     )
 }
 
+pub fn census_insert_coproduct_arms(
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    if item.connective != Connective::Disj {
+        census
+    } else {
+        item.children.clone().iter().cloned().fold(
+            census,
+            |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, child: Rc<Node>| {
+                census_insert_binding(
+                    acc,
+                    Rc::new(TypeBinding {
+                        name: authored_name_at(source_indices.clone(), child.clone()),
+                        resolved: item.clone(),
+                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                    }),
+                )
+            },
+        )
+    }
+}
+
 pub fn build_global_variant_census(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<VariantFoldState> {
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
     modules.clone().iter().cloned().fold(
-        Rc::new(VariantFoldState {
-            locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            collision_errors: Rc::new(vec![]),
-        }),
-        |acc: Rc<VariantFoldState>, mod_: Rc<ResolvedModule>| {
-            build_local_variants(
-                module_items(mod_.module.clone()),
-                source_indices.clone(),
-                authored_name_at(source_indices.clone(), mod_.module.clone()),
-                acc,
+        v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+        |census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, mod_: Rc<ResolvedModule>| {
+            module_items(mod_.module.clone()).iter().cloned().fold(
+                census,
+                |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
+                    census_insert_coproduct_arms(acc, item.clone(), source_indices.clone())
+                },
             )
         },
     )
+}
+
+pub fn global_variant_locals_from_census(
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(v1_rt::map_keys(&census))
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
+                match v1_rt::map_get(&census, name.clone())
+                    .as_deref()
+                    .cloned()
+                {
+                    Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
+                        v1_rt::rc_map_insert(acc, name, binding.clone())
+                    }
+                    Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) | None => acc,
+                }
+            },
+        )
 }
 
 pub fn build_type_env(
@@ -14209,7 +14252,7 @@ pub fn build_module_context(
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
     variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    global_variant: Rc<VariantFoldState>,
+    global_variant: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<ModuleContext> {
@@ -14234,7 +14277,22 @@ pub fn build_module_context(
             }),
         );
         let variant_fold = if (resolved_imports.clone().len() as i64) == 0 {
-            global_variant.clone()
+            let global_locals = global_variant_locals_from_census(global_variant.clone());
+            Rc::new(VariantFoldState {
+                locals: Rc::new(v1_rt::map_values(&global_locals))
+                    .iter()
+                    .cloned()
+                    .fold(
+                        local_variant_fold.locals.clone(),
+                        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
+                            match v1_rt::map_get(&acc, binding.name.clone()) {
+                                Some(_) => acc,
+                                None => v1_rt::rc_map_insert(acc, binding.name.clone(), binding),
+                            }
+                        },
+                    ),
+                collision_errors: Rc::new(vec![]),
+            })
         } else {
             build_imported_variants(
                 resolved_imports.clone(),
@@ -14323,7 +14381,7 @@ pub fn typecheck_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    global_variant: Rc<VariantFoldState>,
+    global_variant: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 ) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
@@ -15237,7 +15295,7 @@ pub fn realize_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    global_variant: Rc<VariantFoldState>,
+    global_variant: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {

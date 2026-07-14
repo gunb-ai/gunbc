@@ -1775,10 +1775,7 @@ mod compiler_tests {
                         source_indices.clone(),
                         intern_table.clone(),
                         std::rc::Rc::new(HashMap::new()),
-                        std::rc::Rc::new(crate::v1_compiler_infer::VariantFoldState {
-                            locals: std::rc::Rc::new(HashMap::new()),
-                            collision_errors: std::rc::Rc::new(vec![]),
-                        }),
+                        std::rc::Rc::new(HashMap::new()),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();
