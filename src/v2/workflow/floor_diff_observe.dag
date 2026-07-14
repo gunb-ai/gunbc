@@ -15,7 +15,8 @@ import gunbc.host_effect {
   LocalShell,
   HostEffectIntent,
   HostEffectEvidence,
-  ShellEffectApplied
+  ShellEffectApplied,
+  ConvergePlanApplied
 }
 import gunbc.host_effect_realize { host_effect_apply }
 import std.realization_reconcile {
@@ -188,6 +189,8 @@ fn floor_unified_diff_from_reconciliation(
           } else {
             UnifiedDiffFail { reason: "git diff -U0 exited nonzero: invalid ref or not a git repository" }
           }
+        ConvergePlanApplied { stdout: _, exit_code: _ } =>
+          UnifiedDiffFail { reason: "floor_diff_observe: ConvergePlanApplied evidence is not a shell git-diff observation; typed mismatch" }
       }
     NotConverged { reason: why, applied: _ } =>
       UnifiedDiffFail { reason: why }
@@ -322,6 +325,8 @@ fn floor_name_status_diff_from_reconciliation(
                 }
             }
           }
+        ConvergePlanApplied { stdout: _, exit_code: _ } =>
+          NameStatusDiffFail { reason: "floor_diff_observe: ConvergePlanApplied evidence is not a shell git-diff observation; typed mismatch" }
       }
     NotConverged { reason: why, applied: _ } =>
       NameStatusDiffFail { reason: why }

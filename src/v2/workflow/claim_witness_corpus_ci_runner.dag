@@ -93,7 +93,7 @@ data corpus_ci_gate_row_pick2_ingested_eval_generality: ClaimWitnessCorpusClaimR
 
 data corpus_ci_gate_row_branch_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "branch eval by execution keystone",
-  entry: "src/v2/test/claim/manual/branch_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/execution/branch_eval_by_execution_test.dag",
   function: "branch_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
@@ -114,7 +114,7 @@ data corpus_ci_gate_row_branch_if_then_else_emit_keystone: ClaimWitnessCorpusCla
 
 data corpus_ci_gate_row_bind_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "bind eval by execution keystone",
-  entry: "src/v2/test/claim/manual/bind_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
   function: "bind_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
@@ -135,7 +135,7 @@ data corpus_ci_gate_row_bind_round_trip_keystone: ClaimWitnessCorpusClaimRunRow 
 
 data corpus_ci_gate_row_loop_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "loop eval by execution keystone",
-  entry: "src/v2/test/claim/manual/loop_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/execution/loop_eval_by_execution_test.dag",
   function: "loop_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
