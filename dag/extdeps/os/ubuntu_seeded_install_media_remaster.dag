@@ -31,7 +31,7 @@ data install_media_remaster_bash_emit_dissolution_trigger: Disposition = Termina
 }
 
 data install_media_remaster_classification_scaffold: Disposition = Terminal {
-  reason: "InstallMediaRemasterObservation (Absent|Valid|Stale) is the single classification authority, derived by observe_install_media_remaster - no parallel ad hoc staleness check remains"
+  reason: "InstallMediaRemasterObservation (Absent|Valid|Stale|VerifyInfraFailure) is the single classification authority, derived by observe_install_media_remaster - no parallel ad hoc staleness check remains"
 }
 
 data install_media_remaster_classification_dissolution_trigger: Disposition = Terminal {
@@ -46,10 +46,18 @@ data install_media_remaster_chmod_access_upsert_dissolution_trigger: Disposition
   reason: "install_media_remaster_build calls shell.Chmod.RecursiveWritable directly"
 }
 
+data install_media_remaster_probe_refusal_shape_doc: String = "DESIGN §5 refusal-shape fix (cursor review, PR #6596): install_media_remaster_probe_verdict now returns a 3-way InstallMediaRemasterProbeVerdict (Valid|Stale|InfraFailure{reason}) instead of collapsing the mktemp probe into a Bool, so a shell.Mktemp.Dir failure stays distinguishable from a genuine content/grub/seed mismatch (InstallMediaRemasterVerifyInfraFailure vs InstallMediaRemasterStale). observe_install_media_remaster matches this verdict directly, and install_media_remaster_reconcile refuses fail-closed on infra failure instead of silently treating an indeterminate probe as stale-and-rebuild."
+
+type InstallMediaRemasterProbeVerdict
+  = InstallMediaRemasterProbeValid
+  | InstallMediaRemasterProbeStale
+  | InstallMediaRemasterProbeInfraFailure { reason: NonEmptyStr }
+
 type InstallMediaRemasterObservation
   = InstallMediaRemasterAbsent
   | InstallMediaRemasterValid
   | InstallMediaRemasterStale
+  | InstallMediaRemasterVerifyInfraFailure { reason: NonEmptyStr }
 
 type InstallMediaRemasterOutcome
   = InstallMediaRemasterAlreadyPresent { path: NonEmptyStr }
@@ -65,10 +73,10 @@ fn install_media_remaster_sidecar_matches(final_path: NonEmptyStr, expected_hash
   read.success && (read.content == expected_hash as String)
 }
 
-fn install_media_remaster_probe_valid(artifact: UbuntuSeededInstallMediaArtifactRow, final_path: NonEmptyStr) -> Bool {
+fn install_media_remaster_probe_verdict(artifact: UbuntuSeededInstallMediaArtifactRow, final_path: NonEmptyStr) -> InstallMediaRemasterProbeVerdict {
   let probe = shell.Mktemp.Dir()
   if probe.success == false {
-    false
+    InstallMediaRemasterProbeInfraFailure { reason: "mktemp -d failed for staleness probe" as NonEmptyStr }
   } else {
     let grub_probe = concat(probe.path as String, "/grub.cfg") as NonEmptyStr
     let user_probe = concat(probe.path as String, "/user-data") as NonEmptyStr
@@ -92,7 +100,11 @@ fn install_media_remaster_probe_valid(artifact: UbuntuSeededInstallMediaArtifact
       && grep.Grep.MatchesFixedString(pattern: artifact.grub_kernel_cmdline, path: grub_probe).matches
     let user_nonempty = shell.Test.IsNonEmpty(path: user_probe as FilePath).nonempty
     let cleaned = shell.Remove.RecursiveForce(path: probe.path)
-    sidecar_matches && grub_has_cmdline && user_nonempty
+    if sidecar_matches && grub_has_cmdline && user_nonempty {
+      InstallMediaRemasterProbeValid
+    } else {
+      InstallMediaRemasterProbeStale
+    }
   }
 }
 
@@ -101,10 +113,12 @@ fn observe_install_media_remaster(artifact: UbuntuSeededInstallMediaArtifactRow)
   let present = shell.Test.IsFile(path: final_path as FilePath)
   if present.is_file == false {
     InstallMediaRemasterAbsent
-  } else if install_media_remaster_probe_valid(artifact: artifact, final_path: final_path) {
-    InstallMediaRemasterValid
   } else {
-    InstallMediaRemasterStale
+    match install_media_remaster_probe_verdict(artifact: artifact, final_path: final_path) {
+      InstallMediaRemasterProbeValid => InstallMediaRemasterValid
+      InstallMediaRemasterProbeStale => InstallMediaRemasterStale
+      InstallMediaRemasterProbeInfraFailure { reason: r } => InstallMediaRemasterVerifyInfraFailure { reason: r }
+    }
   }
 }
 
@@ -254,5 +268,8 @@ fn install_media_remaster_reconcile(artifact: UbuntuSeededInstallMediaArtifactRo
     InstallMediaRemasterValid => InstallMediaRemasterAlreadyPresent { path: final_path }
     InstallMediaRemasterAbsent => install_media_remaster_apply(artifact: artifact)
     InstallMediaRemasterStale => install_media_remaster_apply(artifact: artifact)
+    InstallMediaRemasterVerifyInfraFailure { reason: r } => InstallMediaRemasterRefused {
+      reason: concat("VerifyInfraFailureRefusal: ", r as String) as NonEmptyStr
+    }
   }
 }

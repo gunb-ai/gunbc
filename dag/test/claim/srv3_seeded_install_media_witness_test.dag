@@ -17,6 +17,7 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
   install_media_remaster_bash_emit_dissolution_trigger,
   install_media_remaster_classification_scaffold,
   install_media_remaster_chmod_access_upsert_scaffold,
+  install_media_remaster_probe_refusal_shape_doc,
 }
 import std.disposition { Scaffold, Terminal }
 import gunbc.os_install_emit { autoinstall_user_data }
@@ -52,6 +53,12 @@ test fn srv3_seeded_install_media_remaster_dissolution_trigger_is_terminal() -> 
     Scaffold { dissolves_to: _, bind: _ } => false
     Terminal { reason: _ } => true
   }
+}
+
+test fn install_media_remaster_probe_refusal_shape_doc_names_infra_failure() -> Bool {
+  string_contains(s: install_media_remaster_probe_refusal_shape_doc, pattern: "InstallMediaRemasterVerifyInfraFailure")
+    && string_contains(s: install_media_remaster_probe_refusal_shape_doc, pattern: "InstallMediaRemasterStale")
+    && string_contains(s: install_media_remaster_probe_refusal_shape_doc, pattern: "fail-closed")
 }
 
 test fn install_media_remaster_scaffolds_dissolved() -> Bool {
