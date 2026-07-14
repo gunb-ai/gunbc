@@ -1,16 +1,5 @@
 module test.claim.measure_lifted_algebra
 
-import std.measure {
-  byte_size,
-  byte_size_count,
-  hertz,
-  hertz_count,
-  measure_scale_fraction_floor,
-  measure_fit_count_floor,
-  measure_scale_fraction_ceil,
-}
-import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

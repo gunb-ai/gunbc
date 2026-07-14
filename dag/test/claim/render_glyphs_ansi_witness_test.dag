@@ -1,11 +1,5 @@
 module test.claim.render_glyphs_ansi_witness
 
-import extdeps.render.ansi { ansi_code }
-import extdeps.render.glyph { glyph }
-import extdeps.render.glyphs { resolve_symbol, symbol_color }
-import extdeps.render.tier_glyphs { glyph_at, glyphs_for_tiers }
-import std.symbols { Ascii, Emoji, Error, NodeCompleted, NodeFailed, Success, Unicode }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

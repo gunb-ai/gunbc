@@ -1,22 +1,5 @@
 module test.claim.typescript_program_serializer
 
-import std.logic { Bool }
-import extdeps.languages.typescript.program {
-  TsProgram,
-  serialize_typescript_program,
-  ts_ident,
-  ts_lit_str,
-  ts_lit_num,
-  ts_lit_regex,
-  ts_member,
-  ts_call,
-  ts_binop,
-  ts_const,
-  ts_expr_stmt,
-  ts_block,
-  ts_arrow,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

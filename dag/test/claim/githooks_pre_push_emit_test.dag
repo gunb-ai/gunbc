@@ -1,11 +1,5 @@
 module test.claim.githooks_pre_push_emit
 
-import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
-import gunbc.local_tidy_spec {
-  doc_reachability_trigger_globs, generated_artifact_trigger_globs, cargo_fmt_trigger_globs
-}
-import extdeps.git.hooks { pre_push_zero_sha, pre_push_stdin_read_vars }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

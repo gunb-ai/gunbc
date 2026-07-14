@@ -1,22 +1,5 @@
 module test.claim.ci_materialization_witness
 
-import std.types { Bool, Int, List, String }
-import gunbc.ci_materialization { ci_catalog_projection_refusals }
-import gunbc.ci_materialization_gate {
-  ci_materialization_ladder_holds_live,
-  ci_materialization_holds_without_sccache,
-  ci_materialization_exempt_identities,
-  ci_release_build_demand_count,
-  ci_discharged_verdict_count,
-  ci_release_build_discharged_by_sccache_count,
-  ci_release_build_single_recompute_count,
-  ci_below_cost_floor_verdict_count,
-  ci_exempt_fresh_verdict_count,
-  ci_release_build_refused_without_provider_count,
-  ci_uses_steps_skipped_count,
-  ci_run_step_natures_claimed_not_derived_count
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

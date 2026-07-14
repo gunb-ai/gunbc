@@ -6543,8 +6543,11 @@ fn build_floor_lens_hygiene_graph(
     // UniqueBare, dropping AmbiguousBare) so an over-connected graph cannot silently clear a truly-
     // inert lens (DESIGN §5 — no fail-open hygiene). Parsed-tree, not a substring scan, so comments/
     // strings never fabricate a reach. Dedup keeps the BFS set honest.
+    // Long-lane discovery exclusions (`test/claim/long/`) must not suppress reference edges here:
+    // exclusion only removes a witness from per-PR enrollment; stripped long/ witnesses still wire
+    // lens reachability for this hygiene pass (the inert_lens_hygiene witness lives under long/).
     for edge in reference_edges_as_import_facts(
-        &reference_resolution_facts(source_roots, source_roots, &excludes),
+        &reference_resolution_facts(source_roots, source_roots, &[]),
         true,
     ) {
         let importer = repo_relative_dag_path(&edge.path);

@@ -1,5 +1,4 @@
 module test.claim.doc_reachability_witness
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

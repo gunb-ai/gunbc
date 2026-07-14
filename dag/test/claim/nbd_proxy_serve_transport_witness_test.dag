@@ -1,28 +1,5 @@
 module test.claim.nbd_proxy_serve_transport
 
-import std.logic { Bool }
-import std.disposition { Scaffold, Terminal }
-import extdeps.bmc.webui.nbd_proxy {
-  VmSlotIndexEndpoint,
-  bmcweb_nbd_proxy_ws_path,
-}
-import extdeps.bmc.webui.nbd_proxy_serve {
-  nbd_proxy_serve_transport_intent,
-  nbd_proxy_serve_program_foreground_command_is_websocat,
-  nbd_proxy_serve_program_statement_count,
-  nbd_proxy_serve_bash_emit_dissolution_trigger,
-  nbd_proxy_serve_cited_tool_names,
-  bmcweb_session_login_program,
-  bmcweb_session_token_env_ref,
-  srv3_nbd_proxy_local_port,
-  nbd_proxy_serve_requires_host_as_nbd_server,
-}
-import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
-import extdeps.tools.curl { curl_cli_tool }
-import extdeps.tools.websocat { websocat_cli_tool }
-import extdeps.tools.nbdkit { nbdkit_cli_tool }
-import extdeps.tools.socat { socat_cli_tool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

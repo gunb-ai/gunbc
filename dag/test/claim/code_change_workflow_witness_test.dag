@@ -1,27 +1,5 @@
 module test.claim.code_change_workflow_witness_test
 
-import ctrl.code_change_workflow {
-  CodeChangeFacts, CodeChangeStage, CodeChangeActiveStage, CodeChangeTerminalStage,
-  CodeChangeBinding, CodeChangeTransitionRequest, CodeChangeGithubPrContext,
-  CodeChangeEventTag, MarkReadyForReview, RecordMergeReady,
-  ChangeOpen, ChangeUnderReview, ChangeMergeReady, ChangeMerged, ChangeClosed,
-  CodeChangeActive, CodeChangeTerminal,
-  ChangeDraftBlocksReview, CodeChangeDigestNotReady, CodeChangePolicyNotPermitted,
-  CodeChangeMissingReviewTally, CodeChangeMissingDigestVerdict, CodeChangeHeadShaMismatch,
-  CodeChangeTallyRequestChanges, CodeChangeTallyBlockingFindings, CodeChangeNotMergeableClean,
-  CodeChangeAlreadyTerminal,
-  CanTransition, TransitionRefused,
-  decide_code_change_transition, classify_github_pr_terminal_anchor,
-}
-import ctrl.pr_digests { Ready, NotReady }
-import ctrl.review_verdict { MergeReadinessTally }
-import ctrl.process_algebra { ProcessNodeId }
-import extdeps.github.pulls {
-  PullRequest, PullRequestRef, PullRequestState, Open, Closed,
-}
-import extdeps.github.github { GitHubUser, User }
-import std.types { CommitSha, NonEmptyStr, Timestamp }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
