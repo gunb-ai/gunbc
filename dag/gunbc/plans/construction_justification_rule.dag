@@ -1,6 +1,6 @@
 module gunbc.plans.construction_justification_rule
 
-
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 fn construction_justification_rule_body() -> List<MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "ROADMAP §0 meta-item. The authoring-time judgment that layers **on top of** the executable #5433 inert-lens backstop. DESIGN refs: §5 (construction over validation; the decidability trichotomy; the \"never\" trap), §6 (\"construction first\"; lenses are the residue mechanism; coverage-by-illusion), §7 (the recursion — make the lens discipline itself fail-closed). Sibling frame: [expressibility-frontier.md](expressibility-frontier.md) (the same three regions, generalized).")] },

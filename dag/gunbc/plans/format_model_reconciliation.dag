@@ -1,6 +1,6 @@
 module gunbc.plans.format_model_reconciliation
 
-
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone, CodeBlock }import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 fn format_model_reconciliation_body() -> List<MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "Record-spelling reconciliation: one concept — how a format spells records — was forked across three models, and no text format routes serialization through any of them today. DESIGN refs: §2 (one concept every scale — decompress the leaf, map to existing carriers, reduce duplicates), §3 (single authority — field-by-field decomposition onto ConfigFormat, CommentSyntax, LayoutProtocol; delete uninhabited scaffolds), §5 (construction over validation — the swap test is execution-grounded), §6 (complementary to [regime-2 shared emission fold](regime2-shared-emission-fold.md), not a parallel ledger).")] },

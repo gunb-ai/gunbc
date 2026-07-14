@@ -1,6 +1,6 @@
 module gunbc.auth.patterns
 
-
+import std.resources { Filesystem, Network, AuthContext }import std.types {  AccessToken,  AuthScheme,  NonEmptyStr}import extdeps.cloud.gcp.gcp {  GcpProjectId,  ServiceAccountEmail}import extdeps.cloud.gcp.secret_managerimport extdeps.cloud.gcp.iamimport extdeps.cloud.gcp.stsimport extdeps.cloud.gcp.sts { MetadataRuntime }import extdeps.github.actions { GitHubActionsRuntime }import extdeps.runtime.local { LocalDevRuntime }import extdeps.shellimport gunbc.auth.optional_impersonation { optional_impersonation }
 type AuthRuntime
   = GitHubActions { runtime: GitHubActionsRuntime }
   | GcpMetadata { runtime: MetadataRuntime }

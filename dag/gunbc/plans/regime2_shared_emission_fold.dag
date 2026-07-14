@@ -1,6 +1,6 @@
 module gunbc.plans.regime2_shared_emission_fold
 
-
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 fn regime2_shared_emission_fold_body() -> List<MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "Kills the boutique `*_emit.dag` proliferation by collapsing the **pure-projection** serializers (`serialize_yaml`, `serialize_gitignore`, `serialize_runner_deploy`) into **one** fold of a protocol over a shared emission model. DESIGN refs: §2 (no duplicated layout logic — one concept, every format), §3 (single authority — the layout primitive lives once in `std`), §4 (the destination is emission = ingestion⁻¹; this is the seed-layer, forward-only *subset* of it), §5 (emit-only formats have no round-trip oracle — be honest at the boundary), §6 (DFS the concept DAG before minting; price the work as the displaced boutique-duplication pain, not elegance).")] },

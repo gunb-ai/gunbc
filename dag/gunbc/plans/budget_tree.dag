@@ -1,6 +1,6 @@
 module gunbc.plans.budget_tree
 
-
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }import std.markdown { MarkdownBlock }import gunbc.plans.md_helpers { h2, p, li, ul }
 fn budget_tree_body() -> List<MarkdownBlock> {
   [
     p(text: "Carriers: [dag/extdeps/accounting/budget.dag](../../dag/extdeps/accounting/budget.dag) (the §3 authority), [dag/product/budget_tree.dag](../../dag/product/budget_tree.dag) (the memory instantiation). Roadmap node: §1 `1-budget-tree`. PR #5582."),

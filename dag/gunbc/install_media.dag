@@ -1,6 +1,6 @@
 module gunbc.install_media
 
-
+import std.types { String, NonEmptyStr }import std.upsert_decision {  ObservationVerdict,  Converged,  Absent,  Drifted,  UpsertDecision,  UpsertClassification,  Noop,  Apply,}
 type SeededInstallMediaObservation
   = MediaAbsent
   | MediaConverged
