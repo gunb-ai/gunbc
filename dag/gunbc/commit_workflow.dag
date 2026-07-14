@@ -286,6 +286,33 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
+      check_fns: ["bind_eval_by_execution_keystone_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/execution/loop_eval_by_execution_test.dag",
+      check_fns: ["loop_eval_by_execution_keystone_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/manual/bind_demand_driven_eval_test.dag",
+      check_fns: ["bind_reference_binding_protocol_witnesses_hold"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/realization_vocabulary_containment/corpus/importer_count_ratchet_test.dag",
       check_fns: [
         "corpus_bash_program_importer_count_ratchet_holds",

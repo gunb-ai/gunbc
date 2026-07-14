@@ -119,7 +119,7 @@ fn always_required_lenses() -> List<CompileLens> {
   [fact_density_lens, unit_modeling_lens]
 }
 
-data required_lens_grain_note: String = "Two required-roster grains, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). always_required_lenses runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling). always_required_root_lenses runs ONCE at the tree root — the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). Root-required lenses fire on every validate_then_compile call regardless of caller-supplied lenses, exactly like the subtree roster."
+data required_lens_grain_note: String = "Two required-roster grains, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). always_required_lenses runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling — each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). always_required_root_lenses runs ONCE at the tree root — the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). Witness accumulation on the subtree fold uses prepend-then-reverse, not append-in-step. Root-required lenses fire on every validate_then_compile call regardless of caller-supplied lenses, exactly like the subtree roster."
 
 data accumulator_copy_lens: CompileLens = CompileLens { gate: accumulator_copy_root_gate }
 
@@ -223,26 +223,29 @@ fn run_required_lens_gates_on_subtree(
   inferred: InferredTree,
   lenses: List<CompileLens>
 ) -> Outcome<List<LensGateWitness>> {
-  fold_node(
-    n: inferred.root,
-    algebra: NodeFold {
-      init: fn(n0) {
-        run_required_lens_gates(
-          inferred: InferredTree { root: n0, facts: inferred.facts },
-          lenses: lenses
-        )
-      },
-      step: fn(acc, _, child) {
-        bind_outcome(o: acc, f: fn(ws) {
-          bind_outcome(
-            o: child,
-            f: fn(child_ws) {
-              outcome_accepted(value: list_append(left: ws, right: child_ws))
-            }
+  bind_outcome(
+    o: fold_node(
+      n: inferred.root,
+      algebra: NodeFold {
+        init: fn(n0) {
+          run_required_lens_gates(
+            inferred: InferredTree { root: n0, facts: inferred.facts },
+            lenses: lenses
           )
-        })
+        },
+        step: fn(acc, _, child) {
+          bind_outcome(o: acc, f: fn(ws) {
+            bind_outcome(
+              o: child,
+              f: fn(child_ws) {
+                outcome_accepted(value: list_append(left: child_ws, right: ws))
+              }
+            )
+          })
+        }
       }
-    }
+    ),
+    f: fn(collected) { outcome_accepted(value: list_reverse(xs: collected)) }
   )
 }
 

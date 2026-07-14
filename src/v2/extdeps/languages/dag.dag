@@ -4129,13 +4129,13 @@ fn dag_loop_measure_node() -> Node {
   dag_type_atom_node(identity: ^dag_loop_measure_sym)
 }
 
-fn dag_loop_body_from_literal(lit: Symbol) -> Node {
+fn dag_loop_body_from_literal(lit: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: lit)
+        target: lit
       },
       Edge {
         label: Named { name: ^loop_bound_edge },
@@ -4147,11 +4147,11 @@ fn dag_loop_body_from_literal(lit: Symbol) -> Node {
 }
 
 fn dag_loop_body_node() -> Node {
-  dag_loop_body_from_literal(lit: ^dag_pick_lit_one)
+  dag_loop_body_from_literal(lit: dag_int_literal_fixture_one())
 }
 
 fn dag_loop_body_wrong_value_node() -> Node {
-  dag_loop_body_from_literal(lit: ^dag_pick_lit_two)
+  dag_loop_body_from_literal(lit: dag_int_literal_fixture_two())
 }
 
 fn dag_loop_arrow_with_body_node() -> Node {
@@ -4913,7 +4913,7 @@ data dag_fixture_emitted_field_access_fn: Node = dag_field_access_arrow_with_bod
 
 fn dag_bind_let_body_from_parts(
   key_binding: Symbol,
-  value_lit: Symbol,
+  value: Node,
   body_binding: Symbol
 ) -> Node {
   Node {
@@ -4925,7 +4925,7 @@ fn dag_bind_let_body_from_parts(
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: value_lit)
+        target: value
       },
       Edge {
         label: Positional,
@@ -4939,7 +4939,7 @@ fn dag_bind_let_body_from_parts(
 fn dag_bind_let_body_node() -> Node {
   dag_bind_let_body_from_parts(
     key_binding: ^dag_binding_bind_x,
-    value_lit: ^dag_pick_lit_one,
+    value: dag_int_literal_fixture_one(),
     body_binding: ^dag_binding_bind_x
   )
 }
@@ -4947,7 +4947,7 @@ fn dag_bind_let_body_node() -> Node {
 fn dag_bind_let_body_wrong_value_node() -> Node {
   dag_bind_let_body_from_parts(
     key_binding: ^dag_binding_bind_x,
-    value_lit: ^dag_pick_lit_two,
+    value: dag_int_literal_fixture_two(),
     body_binding: ^dag_binding_bind_x
   )
 }

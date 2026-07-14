@@ -5,8 +5,9 @@ import v2.compiler.name_resolve {
   Import,
   ImportVisible,
   ResolutionSubject,
-  resolve_with_admission
+  resolve_with_admission_policy
 }
+import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
@@ -32,6 +33,7 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.resolution_policy { ImportScoped }
 import v2.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -291,7 +293,7 @@ fn resolve_import_target() -> QualifiedName {
 }
 
 fn resolve_with_admission_imported_binding_accepts() -> Bool {
-  match resolve_with_admission(
+  match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: resolve_roots_single_import(),
     admission: Admission {
@@ -305,7 +307,10 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
         },
         tail: Empty
       }
-    }
+    },
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

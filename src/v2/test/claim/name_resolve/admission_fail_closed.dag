@@ -10,6 +10,7 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
   admit_import_entry,
   resolve_with_admission,
+  resolve_with_admission_policy,
   validate_module_roots
 }
 import v2.std.cross_tree.resolution { source_root_index_empty }
@@ -25,6 +26,7 @@ import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_eq }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.resolution_policy { ImportScoped }
 import v2.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -241,7 +243,7 @@ fn fc_dual_import_roots() -> FreeMonoid<Node> {
 }
 
 fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
-  match resolve_with_admission(
+  match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: fc_dual_import_roots(),
     admission: Admission {
@@ -255,7 +257,10 @@ fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
           tail: Empty
         }
       }
-    }
+    },
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -265,7 +270,7 @@ fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
 fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
   match validate_module_roots(roots: fc_dual_import_roots()) {
     Accepted { value: _, diagnostics: validate_diag } =>
-      match resolve_with_admission(
+      match resolve_with_admission_policy(
         lm: dag_language_model_surface_empty_prelude(),
         roots: fc_dual_import_roots(),
         admission: Admission {
@@ -279,7 +284,10 @@ fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
               tail: Empty
             }
           }
-        }
+        },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: ImportScoped
       ) {
         Accepted { value: _, diagnostics: resolve_diag } =>
           diagnostics_eq(a: resolve_diag, b: validate_diag)

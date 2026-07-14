@@ -61,7 +61,8 @@ import v2.std.node {
   match_arm_body,
   match_arm_pattern,
   node_rebuild,
-  node_synthetic
+  node_synthetic,
+  node_with_occurrence_id
 }
 import v2.std.node_query { find_named_child }
 
@@ -215,10 +216,11 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_import_block)
 }
 
-fn body_lower_param_ref_atom(identity: Symbol) -> Node {
-  node_synthetic(
+fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
+  node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: identity } },
-    children: []
+    children: [],
+    occurrence_id: source.occurrence_id
   )
 }
 
@@ -330,18 +332,18 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
     Absent =>
       match dag_binding_branded_atom_identity(node: node) {
         Present { value: binding } =>
-          Present { value: body_lower_param_ref_atom(identity: binding) }
+          Present { value: body_lower_param_ref_atom(source: node, identity: binding) }
         Absent =>
           match node_atom_identity_optional(node: node) {
             Present { value: id } =>
               if dag_lex_token_symbol(sym: id) {
                 if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
-                  optional_present(value: body_lower_param_ref_atom(identity: id))
+                  optional_present(value: body_lower_param_ref_atom(source: node, identity: id))
                 } else {
                   body_lower_int_literal_with_magnitude_optional(node: node)
                 }
               } else {
-                optional_present(value: body_lower_param_ref_atom(identity: id))
+                optional_present(value: body_lower_param_ref_atom(source: node, identity: id))
               }
             Absent =>
               match sugar_sequence_pair_optional(node: node) {
@@ -1348,7 +1350,7 @@ fn body_lower_literal_bool_atom_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: unwrapped) {
     Present { value: id } =>
       if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
-        optional_present(value: body_lower_param_ref_atom(identity: id))
+        optional_present(value: body_lower_param_ref_atom(source: unwrapped, identity: id))
       } else {
         body_lower_int_literal_with_magnitude_optional(node: unwrapped)
       }
@@ -1797,7 +1799,7 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match dag_binding_branded_atom_identity(node: stripped) {
     Present { value: binding } =>
-      optional_present(value: body_lower_param_ref_atom(identity: binding))
+      optional_present(value: body_lower_param_ref_atom(source: stripped, identity: binding))
     Absent =>
       match parse_production_emitted_identity_optional(node: stripped) {
         Present { value: emitted } =>
@@ -1820,12 +1822,12 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
             Present { value: id } =>
               if dag_lex_token_symbol(sym: id) {
                 if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
-                  optional_present(value: body_lower_param_ref_atom(identity: id))
+                  optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
                 } else {
                   body_lower_int_literal_with_magnitude_optional(node: stripped)
                 }
               } else {
-                optional_present(value: body_lower_param_ref_atom(identity: id))
+                optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
               }
             Absent =>
               fold(stripped.children, init: Absent, f: fn(acc, e) {
@@ -1911,7 +1913,9 @@ fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
           match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: body_capture)) {
             Present { value: id } =>
               if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
-                optional_present(value: body_lower_param_ref_atom(identity: id))
+                optional_present(
+                  value: body_lower_param_ref_atom(source: body_capture, identity: id)
+                )
               } else if dag_node_is_int_literal_atom(
                 node: body_lower_deep_unwrap_optional(node: body_capture)
               ) {
@@ -1919,7 +1923,9 @@ fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
               } else if dag_lex_token_symbol(sym: id) {
                 optional_absent()
               } else {
-                optional_present(value: body_lower_param_ref_atom(identity: id))
+                optional_present(
+                  value: body_lower_param_ref_atom(source: body_capture, identity: id)
+                )
               }
             Absent => body_lower_operand_from_shell_optional(shell: body_capture)
           }
