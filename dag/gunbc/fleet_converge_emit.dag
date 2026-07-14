@@ -145,20 +145,12 @@ fn fresh_standup_bootstrap_intent() -> Pipeline {
           concat(gunbc_fleet_pinned_binary_name, ")")
         )
       ),
-      Do {
-        run: Run {
-          command: concat(
-            concat(
-              concat("cp ", fresh_standup_sh_quote(path: fresh_standup_built_binary_path())),
-              concat(" ", fresh_standup_sh_quote(path: fresh_standup_binary_path()))
-            ),
-            " 2>/dev/null || true"
-          ),
-          env: [],
-          redirect: Absent,
-          capture: Absent
-        }
-      },
+      fresh_standup_discard_fail_run(
+        command: concat(
+          concat("cp ", fresh_standup_sh_quote(path: fresh_standup_built_binary_path())),
+          concat(" ", fresh_standup_sh_quote(path: fresh_standup_binary_path()))
+        )
+      ),
       If {
         cond: ExitZero {
           run: Run {
