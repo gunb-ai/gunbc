@@ -17,3 +17,16 @@ data sha256sum_cli_tool: CliTool = CliTool {
   min_version: none,
   installable_via: [SourceCoreutils],
 }
+
+service sha256sum.Sha256 {
+  operation CheckFile {
+    input { checksum_file: NonEmptyStr }
+    output { matches: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["sha256sum", "--check", "--status", "{checksum_file}"] }
+    exit {
+      0 => Unit "checksum matches"
+      nonzero => Unit "checksum mismatch or file missing"
+    }
+  }
+}
