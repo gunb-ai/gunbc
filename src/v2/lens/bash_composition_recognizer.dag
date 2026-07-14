@@ -6,8 +6,14 @@ import v2.std.logic { Bool }
 import v2.std.text { Char, String, string_is_empty, string_tail }
 import v2.std.compilers.lexing { LexRule, LexRuleSet, LiteralPattern, TokenRule, TriviaRule }
 import v2.extdeps.languages.bash_command_fold { bash_ingest_lex_rules }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 
-data bash_composition_recognizer_note: String = "no-smuggled-programs HALF B: grammar-as-classifier. A bash-classified substrate literal (RawLine.text) is a COMPOSITION iff it PARSES to >=2 statements / a control production joining content, an ATOM otherwise. Quote-aware maximal-munch lexer over bash_ingest_lex_rules (single authority); a Hole (dynamic $var expansion) is an OPAQUE OPERAND because bash does NOT re-parse an expansion's value as control operators. Disposition precedence P1 unmodeled-keyword -> AmbiguousParse; T2 munch-cannot-cover; T3 hole-straddles-token; P2 composition -> Violation; else Clean."
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}
+
+data bash_composition_recognizer_note: String = "no-smuggled-programs HALF B: grammar-as-classifier. A bash-classified substrate literal (RawLine.text) is a COMPOSITION iff it PARSES to >=2 statements / a control production joining content, an ATOM otherwise. Quote-aware maximal-munch lexer over bash_ingest_lex_rules (single authority). A Hole is a .dag COMPOSE-TIME value spliced INTO the source string BEFORE bash parses it (NOT a bash-runtime $var expansion, which is a literal ConstPart bash does not re-parse); an UNQUOTED Hole could itself BE or COMPLETE a separator (its value may contain '; cmd'), so it is UNDECIDABLE -> AmbiguousParse (T3), never assume-Clean. A Hole inside quotes (double/single) is bounded/separator-free (operators cannot apply inside quotes) -> safe operand. Disposition precedence P1 unmodeled-keyword -> AmbiguousParse; T2 munch-cannot-cover; P2 static-token composition -> Violation (decides before T3); T3 unquoted-hole -> AmbiguousParse; else Clean."
 
 type BashCompositionDisposition
   = Violation
@@ -337,7 +343,7 @@ fn classify_scan_state(st: ScanState) -> BashCompositionDisposition {
   }
 }
 
-data hole_straddle_deferral_note: String = "T3 HoleStraddlesToken detection is conservatively DEFERRED in this increment: a Hole is treated as an opaque operand (bash-sound — an expansion's value is not re-parsed as control operators), so hole_straddle stays false and holes never fabricate a cross-boundary token. The narrow deliberate-split case (a const segment ending in a dangling ; & | before a Hole) is a tracked refinement; it can only move a Clean to AmbiguousParse (reported-not-gated), never change a Violation."
+data hole_straddle_note: String = "T3 HoleStraddlesToken is ACTIVE, not deferred (correcting the assume-Clean absorbing fallback, DESIGN.md §5): a parts-projection Hole is a .dag compose-time value concatenated into the source string before bash parses it, so an UNQUOTED Hole (quote_is_out at the hole position) could contain a separator and is set as hole_straddle. classify_scan_state routes hole_straddle -> AmbiguousParse{HoleStraddlesToken} AFTER P2 static-token composition (a line already decided a Violation by real tokens stays Violation; a line decidable Clean by static tokens becomes AmbiguousParse when an unquoted Hole could still introduce a separator). The earnable escape to Clean: a Hole in QUOTED context (double/single) is bounded — word-splitting and control operators cannot apply inside quotes — so quote_is_out is false and hole_straddle is not set."
 
 fn quote_is_out(q: QuoteMode) -> Bool {
   match q {

@@ -72,12 +72,26 @@ test fn rec_newline_two_cmds_is_violation() -> Bool {
   disposition_is_violation(d: classify_bash_text(text: "echo a\necho b"))
 }
 
-test fn rec_hole_arg_is_clean() -> Bool {
-  disposition_is_clean(
+test fn rec_hole_arg_unquoted_is_ambiguous() -> Bool {
+  disposition_is_ambiguous(
     d: classify_bash_skeleton(
       sk: LiteralSkeleton { parts: [ConstPart { text: "echo " }, HolePart] }
     )
   )
+}
+
+test fn rec_hole_quoted_is_clean() -> Bool {
+  disposition_is_clean(
+    d: classify_bash_skeleton(
+      sk: LiteralSkeleton {
+        parts: [ConstPart { text: "echo \"" }, HolePart, ConstPart { text: "\"" }]
+      }
+    )
+  )
+}
+
+test fn rec_literal_dollar_var_const_is_clean() -> Bool {
+  disposition_is_clean(d: classify_bash_text(text: "echo $x"))
 }
 
 test fn rec_hole_for_loop_is_ambiguous() -> Bool {
