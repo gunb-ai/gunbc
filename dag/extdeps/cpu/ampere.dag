@@ -1,6 +1,7 @@
 module extdeps.cpu.ampere
 
-import extdeps.cpu.types { Architecture, CpuModelCatalogRow, CpuSocket, SocketPackage }
+import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket, SocketPackage }
+import extdeps.toolchain.types { Architecture }
 import extdeps.vendor.ampere { ampere }
 import std.measure { hardware_thread_count, hertz, watt }
 

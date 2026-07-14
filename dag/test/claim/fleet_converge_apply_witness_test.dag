@@ -36,7 +36,7 @@ import gunbc.host_effect { LocalShell, EmitArtifactThenThinRun, BootstrapFragmen
   thin_invocation_argv_carrier_scaffold,
   emit_artifact_then_thin_run_transport_scaffold,
 }
-import std.disposition { Scaffold, RealizationDispatch }
+import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
