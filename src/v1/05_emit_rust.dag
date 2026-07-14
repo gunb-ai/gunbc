@@ -1586,8 +1586,8 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Set<String>) -> Bo
     StructRepr =>
       if is_recursive || has_generics || summary.has_fn_fields { false }
       else {
-        let field_count = map_keys(summary.field_summaries) |> count
-        let ft_count = map_keys(summary.field_type_map) |> count
+        let field_count = sorted_map_keys(summary.field_summaries) |> count
+        let ft_count = sorted_map_keys(summary.field_type_map) |> count
         if ft_count < field_count { false }
         else { map_values(summary.field_type_map) |> all(tn => is_dag_value_type_name(name: tn)) }
       }
@@ -1613,7 +1613,7 @@ fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_s
     maybe_mark_shared_type(acc: acc, summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing)
   )
 
-  let collection_keys = map_keys(rust_container_templates)
+  let collection_keys = sorted_map_keys(rust_container_templates)
     |> filter(k => sharing.needs_sharing && k != "optional" && k != "boolean_algebra")
   collection_keys |> fold(init: user_shared, f: (acc, key) =>
     let pascal = to_pascal(name: key)
@@ -2130,7 +2130,7 @@ fn import_module_enum_scope(import_module: String, registry: Map<String, ItemInf
   let physical = enum_names_in_module(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, type_summaries: type_summaries, module_index: module_index)
   let reexport_parents = match map_get(export_sets, import_module) {
     Present { value: exported } =>
-      map_keys(exported) |> sort_by(k => k) |> filter(n =>
+      sorted_map_keys(exported) |> filter(n =>
         is_known_variant(type_summaries: type_summaries, name: n)
         && is_enum_in_summaries(type_summaries: type_summaries, type_name: n) == false
       ) |> map(n =>
@@ -2187,7 +2187,7 @@ fn wildcard_import_pool_surface_names(module_name: String, visited: List<String>
           |> flat_map(imp =>
             let src_mod = authored_name_at(source_indices: source_indices, node: imp)
             let direct = match map_get(export_sets, src_mod) {
-              Present { value: exported } => map_keys(exported) |> sort_by(k => k)
+              Present { value: exported } => sorted_map_keys(exported)
               Absent => []
             }
             concat(
@@ -2207,7 +2207,7 @@ fn wildcard_import_pool_surface_names(module_name: String, visited: List<String>
 
 fn wildcard_reexport_surface_names(import_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   let local_candidates = match map_get(export_sets, import_module) {
-    Present { value: exported } => map_keys(exported) |> sort_by(k => k)
+    Present { value: exported } => sorted_map_keys(exported)
     Absent => []
   }
   let wildcard_pool_candidates = wildcard_import_pool_surface_names(
@@ -4203,7 +4203,7 @@ fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, t
 }
 
 fn unique_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name: String) -> String? {
-  let parent_matches = map_keys(type_summaries)
+  let parent_matches = sorted_map_keys(type_summaries)
     |> filter(type_name =>
       is_enum_type_name(type_name: type_name, type_summaries: type_summaries) &&
       variant_belongs_to_enum(type_summaries: type_summaries, variant_name: variant_name, enum_name: type_name)
@@ -6554,7 +6554,7 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
   map_values(type_summaries) |> filter(summary =>
     match summary.repr {
       StructRepr =>
-        let ftm_keys = map_keys(summary.field_type_map)
+        let ftm_keys = sorted_map_keys(summary.field_type_map)
         if ftm_keys |> count == n_fields {
           field_names |> all(fn_name => map_contains_key(summary.field_type_map, fn_name))
         } else { false }
@@ -6572,7 +6572,7 @@ fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<S
     }
   } else {
     let typed_candidates = candidates |> filter(cand =>
-      map_keys(field_type_hints) |> all(fname =>
+      sorted_map_keys(field_type_hints) |> all(fname =>
         match map_get(field_type_hints, fname) {
           Present { value: hint_type } =>
             match map_get(cand.field_type_map, fname) {
@@ -6781,7 +6781,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           Present { value: s } =>
             let fs = s.field_summaries
             let ftm = s.field_type_map
-            let missing = map_keys(fs) |> filter(k => !emit_map_has(m: provided_set, key: k))
+            let missing = sorted_map_keys(fs) |> filter(k => !emit_map_has(m: provided_set, key: k))
             let all_defaultable = missing |> all(fname =>
               let has_zv = match map_get(ftm, fname) {
                 Present { value: ft } => match rust_zero_value(type_name: ft, corpus_repr: emit_info.corpus_repr) { Present { value: _ } => true, Absent => false }

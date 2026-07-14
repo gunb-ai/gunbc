@@ -3376,11 +3376,13 @@ pub fn is_type_constant(
                     false
                 } else {
                     {
-                        let field_count =
-                            (Rc::new(v1_rt::map_keys(&summary.field_summaries.clone())).len()
+                        let field_count = (Rc::new(v1_rt::sorted_map_keys(
+                            &summary.field_summaries.clone(),
+                        ))
+                        .len() as i64);
+                        let ft_count =
+                            (Rc::new(v1_rt::sorted_map_keys(&summary.field_type_map.clone())).len()
                                 as i64);
-                        let ft_count = (Rc::new(v1_rt::map_keys(&summary.field_type_map.clone()))
-                            .len() as i64);
                         if (ft_count.clone() < field_count.clone()) {
                             false
                         } else {
@@ -3453,7 +3455,7 @@ pub fn build_shared_types(
             );
         let collection_keys = Rc::new({
             let mut __result = Vec::new();
-            for k in Rc::new(v1_rt::map_keys(&rust_container_templates()))
+            for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
                 .iter()
                 .cloned()
             {
@@ -4963,21 +4965,7 @@ pub fn import_module_enum_scope(
                     let mut __result = Vec::new();
                     for n in Rc::new({
                         let mut __result = Vec::new();
-                        for n in Rc::new({
-                            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&exported))
-                                .iter()
-                                .cloned()
-                                .collect();
-                            __sorted.sort_by(|a: &String, b: &String| {
-                                let __ka = (|k: String| k.clone())(a.clone());
-                                let __kb = (|k: String| k.clone())(b.clone());
-                                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
-                            });
-                            __sorted
-                        })
-                        .iter()
-                        .cloned()
-                        {
+                        for n in Rc::new(v1_rt::sorted_map_keys(&exported)).iter().cloned() {
                             if (is_known_variant(type_summaries.clone(), n.clone())
                                 && (is_enum_in_summaries(type_summaries.clone(), n.clone())
                                     == false))
@@ -5145,20 +5133,7 @@ pub fn wildcard_import_pool_surface_names(
                             (*{
                                 let src_mod = authored_name_at(source_indices.clone(), imp.clone());
                                 let direct = match v1_rt::map_get(&export_sets, src_mod.clone()) {
-                                    Some(exported) => Rc::new({
-                                        let mut __sorted: Vec<_> =
-                                            Rc::new(v1_rt::map_keys(&exported))
-                                                .iter()
-                                                .cloned()
-                                                .collect();
-                                        __sorted.sort_by(|a: &String, b: &String| {
-                                            let __ka = (|k: String| k.clone())(a.clone());
-                                            let __kb = (|k: String| k.clone())(b.clone());
-                                            __ka.partial_cmp(&__kb)
-                                                .unwrap_or(std::cmp::Ordering::Equal)
-                                        });
-                                        __sorted
-                                    }),
+                                    Some(exported) => Rc::new(v1_rt::sorted_map_keys(&exported)),
                                     None => Rc::new(vec![]),
                                 };
                                 v1_rt::concat(
@@ -5196,18 +5171,7 @@ pub fn wildcard_reexport_surface_names(
 ) -> Rc<Vec<String>> {
     {
         let local_candidates = match v1_rt::map_get(&export_sets, import_module.clone()) {
-            Some(exported) => Rc::new({
-                let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&exported))
-                    .iter()
-                    .cloned()
-                    .collect();
-                __sorted.sort_by(|a: &String, b: &String| {
-                    let __ka = (|k: String| k.clone())(a.clone());
-                    let __kb = (|k: String| k.clone())(b.clone());
-                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
-                });
-                __sorted
-            }),
+            Some(exported) => Rc::new(v1_rt::sorted_map_keys(&exported)),
             None => Rc::new(vec![]),
         };
         let wildcard_pool_candidates = wildcard_import_pool_surface_names(
@@ -11097,7 +11061,10 @@ pub fn unique_variant_parent(
     {
         let parent_matches = Rc::new({
             let mut __result = Vec::new();
-            for type_name in Rc::new(v1_rt::map_keys(&type_summaries)).iter().cloned() {
+            for type_name in Rc::new(v1_rt::sorted_map_keys(&type_summaries))
+                .iter()
+                .cloned()
+            {
                 if (is_enum_type_name(type_name.clone(), type_summaries.clone())
                     && variant_belongs_to_enum(
                         type_summaries.clone(),
@@ -18409,7 +18376,8 @@ pub fn struct_candidates_by_field_names(
             for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
                 if match (*summary.repr.clone()).clone() {
                     TypeRepr::StructRepr => {
-                        let ftm_keys = Rc::new(v1_rt::map_keys(&summary.field_type_map.clone()));
+                        let ftm_keys =
+                            Rc::new(v1_rt::sorted_map_keys(&summary.field_type_map.clone()));
                         if ((ftm_keys.clone().len() as i64) == n_fields.clone()) {
                             {
                                 let mut __all = true;
@@ -18458,7 +18426,9 @@ pub fn find_struct_name_by_fields(
                     for cand in candidates.clone().iter().cloned() {
                         if {
                             let mut __all = true;
-                            for fname in Rc::new(v1_rt::map_keys(&field_type_hints)).iter().cloned()
+                            for fname in Rc::new(v1_rt::sorted_map_keys(&field_type_hints))
+                                .iter()
+                                .cloned()
                             {
                                 if !(match v1_rt::map_get(&field_type_hints, fname.clone()) {
                                     Some(hint_type) => match v1_rt::map_get(
@@ -19144,8 +19114,9 @@ pub fn emit_typed_record_lit(
                                             let ftm = s.field_type_map.clone();
                                             let missing = Rc::new({
                                                 let mut __result = Vec::new();
-                                                for k in
-                                                    Rc::new(v1_rt::map_keys(&fs)).iter().cloned()
+                                                for k in Rc::new(v1_rt::sorted_map_keys(&fs))
+                                                    .iter()
+                                                    .cloned()
                                                 {
                                                     if !emit_map_has(
                                                         provided_set.clone(),

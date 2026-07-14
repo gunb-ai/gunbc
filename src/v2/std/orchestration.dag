@@ -53,12 +53,9 @@ type EscalationLevel {
 
 type FailurePolicy = FailFast | Continue
 
-type ArithOp = ArithAdd | ArithSub
-
 type Expr
   = ExprLit { spelling: String }
   | ExprVarRef { name: String }
-  | ExprArith { op: ArithOp, lhs: Expr, rhs: Expr }
   | ExprCmdSubst { callee: String, args: List<String> }
 
 type Procedure {
