@@ -14,8 +14,8 @@ use std::rc::Rc;
 use crate::helpers::{compile_multi, diagnostic_messages};
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
 use v1_compiler::v1_compiler_infer::{
-    build_variant_export_surface, is_error_diagnostic, typecheck_module, TypecheckModuleResult,
-    VariantExportSurface,
+    build_variant_export_surface, empty_pool_service_components, is_error_diagnostic,
+    typecheck_module, TypecheckModuleResult, VariantExportSurface,
 };
 use v1_compiler::v1_compiler_infer_items::TypedModule;
 use v1_compiler::v1_rt;
@@ -165,6 +165,7 @@ fn typecheck_fixture_incremental(files: &[(&str, &str)]) -> Vec<Rc<TypecheckModu
             source_indices.clone(),
             intern_table.clone(),
             v1_rt::rc_empty_map(),
+            empty_pool_service_components(),
         );
         let typed = tc.typed.clone();
         let path = authored_name_at(source_indices.clone(), typed.module.clone());

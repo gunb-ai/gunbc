@@ -1775,6 +1775,7 @@ mod compiler_tests {
                         source_indices.clone(),
                         intern_table.clone(),
                         std::rc::Rc::new(HashMap::new()),
+                        crate::v1_compiler_infer::empty_pool_service_components(),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();

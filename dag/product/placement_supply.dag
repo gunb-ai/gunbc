@@ -1,15 +1,5 @@
 module product.placement_supply
 
-import std.measure {
-  ByteSize,
-  Hertz,
-  HardwareThreadCount,
-  byte_size_count,
-  hardware_thread_count_value,
-  hertz,
-  hertz_count,
-}
-import std.types { NonEmptyStr }
 
 type HostIdentity = NonEmptyStr where brand("HostIdentity")
 

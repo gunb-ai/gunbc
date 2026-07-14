@@ -9,8 +9,8 @@ use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
 use v1_compiler::v1_compiler_infer::{
-    build_variant_export_surface, typecheck_module, typecheck_module_isolated,
-    TypecheckModuleResult, VariantExportSurface,
+    build_variant_export_surface, empty_pool_service_components, typecheck_module,
+    typecheck_module_isolated, TypecheckModuleResult, VariantExportSurface,
 };
 use v1_compiler::v1_compiler_infer_items::TypedModule;
 use v1_compiler::v1_compiler_resolve::ResolvedModule;
@@ -87,6 +87,7 @@ fn typecheck_resolved_incremental(
             source_indices.clone(),
             intern_table.clone(),
             v1_rt::rc_empty_map(),
+            empty_pool_service_components(),
         );
         let typed = tc.typed.clone();
         let path = authored_name_at(source_indices.clone(), typed.module.clone());

@@ -1,8 +1,5 @@
 module ctrl.pr_digests
 
-import extdeps.github.pulls { PullRequest, PullReview, ReviewComment }
-import extdeps.github.errors { GitHubErrorShape }
-import std.types { NonEmptyStr }
 
 type MergeReadinessVerdict
   = Ready
