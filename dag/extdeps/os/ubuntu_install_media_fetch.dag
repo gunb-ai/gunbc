@@ -75,11 +75,11 @@ fn install_media_fetch_try_mirror(
     if moved.success {
       Present { value: InstallMediaFetchFetched { path: final_path, mirror_url: url } }
     } else {
-      Absent
+      none
     }
   } else {
     let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
-    Absent
+    none
   }
 }
 
@@ -91,7 +91,7 @@ fn install_media_fetch_try_mirrors(
 ) -> InstallMediaFetchReconcileOutcome {
   let attempted = fold(
     urls,
-    init: Absent,
+    init: none,
     f: (acc, url) => match acc {
       Present { value: v } => Present { value: v }
       Absent => install_media_fetch_try_mirror(

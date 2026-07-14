@@ -39,10 +39,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data install_media_fetch_fixture_content: String = "gunbc-fetch-fixture\n"
-data install_media_fetch_fixture_sha256: NonEmptyStr =
-  "eaa07ba0ed4429e01ecb4a645b81efd5cc718c1b5a4d3e021a63bdecc89290ba" as NonEmptyStr
-data install_media_fetch_fixture_wrong_sha256: NonEmptyStr =
-  "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr
+data install_media_fetch_fixture_sha256: NonEmptyStr = "eaa07ba0ed4429e01ecb4a645b81efd5cc718c1b5a4d3e021a63bdecc89290ba" as NonEmptyStr
+data install_media_fetch_fixture_wrong_sha256: NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr
 
 test fn install_media_fetch_effect_is_create_if_absent_on_content_sha256() -> Bool {
   match install_media_fetch_effect_shape {
