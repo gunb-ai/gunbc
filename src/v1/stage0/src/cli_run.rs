@@ -4545,6 +4545,65 @@ pub fn handle_ci() {
     );
 }
 
+pub fn handle_converge(host: String) {
+    let roots = witness_layer_roots();
+    let (graph, indices) =
+        match resolve_entry_graph_shared(&roots, "dag/gunbc/fleet_converge_cli.dag") {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        };
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let args = [(
+        Some("host".to_string()),
+        v1_interpreter::Value::Str(host.clone()),
+    )];
+    let result =
+        match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("runtime error: {e}");
+                std::process::exit(1);
+            }
+        };
+    let v1_interpreter::Value::Variant { fields, .. } = &result else {
+        eprintln!(
+            "error: converge_cli_output returned an unexpected shape: {:?}",
+            result
+        );
+        std::process::exit(1);
+    };
+    let line = match ctx.field(fields, "line") {
+        Some(v1_interpreter::Value::Str(s)) => s.clone(),
+        _ => {
+            eprintln!("error: converge_cli_output.line was not a String");
+            std::process::exit(1);
+        }
+    };
+    let converged = matches!(ctx.field(fields, "converged"), Some(v1_interpreter::Value::Bool(true)));
+    let reason = match ctx.field(fields, "reason") {
+        Some(v1_interpreter::Value::Variant { variant_name, fields: vf, .. })
+            if ctx.sym_eq(*variant_name, "Present") =>
+        {
+            match ctx.field(vf, "value") {
+                Some(v1_interpreter::Value::Str(s)) => Some(s.clone()),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    println!("{line}");
+    if let Some(reason) = &reason {
+        eprintln!("{reason}");
+    }
+    if !converged {
+        std::process::exit(1);
+    }
+}
+
 pub fn handle_run(
     source_roots: Vec<String>,
     function: String,

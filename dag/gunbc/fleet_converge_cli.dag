@@ -93,6 +93,24 @@ fn converge_cli_receipt_for_host(host_converge: HostConverge) -> ConvergeCliRece
   }
 }
 
+// CLI-boundary projection: the exact printable receipt line plus enough to
+// decide the process exit code and stderr, so the Rust receiver never
+// re-derives the byte-locked grammar or the verdict label mapping itself.
+type ConvergeCliOutput {
+  line: String
+  converged: Bool
+  reason: String?
+}
+
+fn converge_cli_output(host: String) -> ConvergeCliOutput {
+  let r = converge_cli_run(host: host)
+  ConvergeCliOutput {
+    line: converge_cli_receipt_line(r: r),
+    converged: converge_cli_receipt_converged(r: r),
+    reason: r.reason,
+  }
+}
+
 fn converge_cli_run(host: String) -> ConvergeCliReceipt {
   match fleet_converge_policy() {
     ConvergePolicyUnsound { reason: why } =>
