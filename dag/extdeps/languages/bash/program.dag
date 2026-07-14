@@ -46,6 +46,11 @@ type ShellStmt
 
   | Negation { stmt: ShellStmt }
 
+  | SetShellOptions { errexit: Bool, nounset: Bool, pipefail: Bool }
+  | Background { stmt: ShellStmt }
+  | CaptureLastBackgroundPid { var_name: String }
+  | TrapOnSignals { handler: ShellStmt, signals: List<String> }
+
   | RawLine { text: String }
 
 type ShellProgram {
@@ -67,6 +72,22 @@ fn command(words: List<ShellWord>) -> ShellStmt {
 
 fn assign(name: String, value: ShellWord) -> ShellStmt {
   Assign { name: name, value: value }
+}
+
+fn set_shell_options(errexit: Bool, nounset: Bool, pipefail: Bool) -> ShellStmt {
+  SetShellOptions { errexit: errexit, nounset: nounset, pipefail: pipefail }
+}
+
+fn background(stmt: ShellStmt) -> ShellStmt {
+  Background { stmt: stmt }
+}
+
+fn capture_last_background_pid(var_name: String) -> ShellStmt {
+  CaptureLastBackgroundPid { var_name: var_name }
+}
+
+fn trap_on_signals(handler: ShellStmt, signals: List<String>) -> ShellStmt {
+  TrapOnSignals { handler: handler, signals: signals }
 }
 
 fn test_not_executable(path: ShellWord) -> ShellStmt {
@@ -117,6 +138,29 @@ fn join_stmts_semi(stmts: List<ShellStmt>) -> String {
   })
 }
 
+fn join_set_option_flags(flags: List<String>) -> String {
+  fold(flags, init: "set", f: (acc, flag) => concat(acc, concat(" ", flag)))
+}
+
+fn serialize_set_shell_options(errexit: Bool, nounset: Bool, pipefail: Bool) -> String {
+  let with_e = fold(
+    if errexit { ["-e"] } else { [] },
+    init: [] as List<String>,
+    f: (acc, flag) => list_push(acc, flag),
+  )
+  let with_u = fold(
+    if nounset { ["-u"] } else { [] },
+    init: with_e,
+    f: (acc, flag) => list_push(acc, flag),
+  )
+  let with_o = fold(
+    if pipefail { ["-o", "pipefail"] } else { [] },
+    init: with_u,
+    f: (acc, flag) => list_push(acc, flag),
+  )
+  join_set_option_flags(flags: with_o)
+}
+
 fn serialize_stmt(s: ShellStmt) -> String {
   match s {
     Command { words: ws } => join_words(words: ws)
@@ -140,6 +184,25 @@ fn serialize_stmt(s: ShellStmt) -> String {
       concat(serialize_stmt(s: st), concat(" ", serialize_redir(r: rd)))
     Exit { code: c } => concat("exit ", to_string(c))
     Negation { stmt: st } => concat("! ", serialize_stmt(s: st))
+    SetShellOptions { errexit: e, nounset: n, pipefail: p } =>
+      serialize_set_shell_options(errexit: e, nounset: n, pipefail: p)
+    Background { stmt: st } => concat(serialize_stmt(s: st), " &")
+    CaptureLastBackgroundPid { var_name: v } => concat(v, "=$!")
+    TrapOnSignals { handler: h, signals: sigs } =>
+      concat(
+        concat("trap ", single_quote(s: serialize_stmt(s: h))),
+        fold(
+          sigs,
+          init: "",
+          f: (acc, sig) => {
+            if acc == "" {
+              concat(" ", sig)
+            } else {
+              concat(acc, concat(" ", sig))
+            }
+          },
+        ),
+      )
     RawLine { text: t } => t
   }
 }
