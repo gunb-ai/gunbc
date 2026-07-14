@@ -240,19 +240,48 @@ fn witness_steady_state_doc_projection_dissolved() -> Bool {
   }
 }
 
-test fn fleet_converge_emit_holds() -> Bool {
+fn witness_bootstrap_script_not_poison() -> Bool {
+  !has(s: fresh_standup_bootstrap_script(), p: fresh_standup_bootstrap_emit_refused_poison)
+}
+
+test fn fleet_converge_emit_bootstrap_holds() -> Bool {
+  witness_bootstrap_script_not_poison()
+    && witness_fresh_standup_bootstrap_emit_bytes_hold()
+    && witness_fresh_standup_bootstrap_arm_perturb_red()
+    && witness_fresh_standup_bootstrap_emit_dissolution_scaffold()
+}
+
+test fn fleet_converge_emit_thin_run_holds() -> Bool {
   witness_live_converge_thin_run_emitted()
-    && witness_drift_red_receipt()
     && witness_thin_header()
     && witness_no_steady_state_shell()
     && witness_fixture_sound_thin_only()
+}
+
+test fn fleet_converge_emit_policy_holds() -> Bool {
+  witness_drift_red_receipt()
     && witness_caps_before_widen_order()
     && witness_verdict_discriminating()
     && witness_gunbc_noop_predicate_process_and_green_place()
     && witness_gunbc_apply_mode_srv3_fresh_standup()
     && witness_gunbc_pinned_tree_runs_first()
+    && witness_steady_state_doc_projection_dissolved()
+}
+
+test fn fleet_converge_emit_holds() -> Bool {
+  witness_bootstrap_script_not_poison()
     && witness_fresh_standup_bootstrap_emit_bytes_hold()
     && witness_fresh_standup_bootstrap_arm_perturb_red()
     && witness_fresh_standup_bootstrap_emit_dissolution_scaffold()
+    && witness_live_converge_thin_run_emitted()
+    && witness_thin_header()
+    && witness_no_steady_state_shell()
+    && witness_fixture_sound_thin_only()
+    && witness_drift_red_receipt()
+    && witness_caps_before_widen_order()
+    && witness_verdict_discriminating()
+    && witness_gunbc_noop_predicate_process_and_green_place()
+    && witness_gunbc_apply_mode_srv3_fresh_standup()
+    && witness_gunbc_pinned_tree_runs_first()
     && witness_steady_state_doc_projection_dissolved()
 }
