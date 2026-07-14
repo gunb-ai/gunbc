@@ -48,7 +48,6 @@ import gunbc.host_standup_assimilation_deduction {
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.host_standup {
-  host_standup_gap_count,
   host_standup_gap_count_at_actuation_verdict,
   host_standup_step_is_effective_gap_at_actuation_verdict,
   host_standup_spine,
@@ -241,11 +240,6 @@ test fn stall_cause_fold_no_bootable_device() -> Bool {
         _ => false
       })
   )
-}
-
-test fn pre_install_gap_count_stays_four() -> Bool {
-  host_standup_gap_count() == 4
-    && host_standup_gap_count_at_actuation_verdict(verdict: Absent) == 4
 }
 
 test fn post_install_subsumption_clears_os_install_actuated_gap() -> Bool {

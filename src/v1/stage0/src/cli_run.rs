@@ -7634,6 +7634,26 @@ fn floor_diff_edits_from_line_ranges(
     })
 }
 
+/// True when `name` is declared as a `data` item at `file_norm`, verified against the entry's
+/// own resolved import closure (`ctx.modules`) rather than by bare name — `item_registry` is
+/// flat-namespace-keyed (name only, no origin file), so a homonym declared in some unrelated
+/// file must not be mistaken for the diff-changed declaration. Because `ctx.modules` already
+/// contains only this entry's resolved import closure, a `file_norm` the entry does not import
+/// yields no match here regardless of name collisions elsewhere in the corpus.
+fn data_item_declared_in_file(
+    ctx: &v1_interpreter::InterpContext,
+    name: &str,
+    file_norm: &str,
+) -> bool {
+    ctx.modules.iter().any(|module| {
+        module.items.iter().any(|item| {
+            item_kind(item.clone()) == ItemKind::DataItem
+                && span_file_matches(&item.span.file, file_norm)
+                && authored_name_at(ctx.source_indices.clone(), item.clone()) == name
+        })
+    })
+}
+
 fn rerun_frontier_nodes_for_entry(
     ctx: &v1_interpreter::InterpContext,
     entry_path: &str,
@@ -7643,11 +7663,16 @@ fn rerun_frontier_nodes_for_entry(
     let mut seen = HashSet::new();
     let entry_norm = repo_relative_dag_path(entry_path);
     for (file, name) in &edits.overlapping_data_items {
-        // Only same-entry-file overlapping data seeds this entry's rerun frontier.
-        // Cross-file `(file, name)` pairs must not re-eval homonymous data items in foreign
-        // entry contexts (e.g. `construction_justification` on every top-level lens) — that
-        // silently widens SelectionApplied to the whole corpus when a new lens lands.
-        if repo_relative_dag_path(file) != entry_norm {
+        let file_norm = repo_relative_dag_path(file);
+        // Same-entry-file overlapping data always seeds the frontier. A cross-file data item
+        // seeds it too, once verified against the entry's own resolved import closure
+        // (`data_item_declared_in_file`) — matching on bare name alone would silently widen
+        // SelectionApplied to any entry that happens to import a same-named data item declared
+        // elsewhere (e.g. `construction_justification` on every top-level lens). Before this
+        // check existed, an entry that genuinely imports the changed data decl (e.g. a witness
+        // importing `generated_stage0_files` from a different file) fell through the `continue`
+        // below and predict-skipped (#6543 falsifier divergence, run 29293446579).
+        if file_norm != entry_norm && !data_item_declared_in_file(ctx, name, &file_norm) {
             continue;
         }
         if !ctx.item_registry.contains_key(name) {
@@ -9028,6 +9053,59 @@ new file mode 100644
                 || !entry_touches_rerun_frontier(&ctx, &list_value_from_vec(orphan_nodes))
                     .expect("touch check (orphan)"),
             "a diff on an orphan node (no claim references it) must NOT touch the entry (skips)"
+        );
+    }
+
+    // #6543 regression: an importing witness in a DIFFERENT file than the changed `data`
+    // declaration was predict-skipped (falsifier divergence, run 29293446579) because
+    // `rerun_frontier_nodes_for_entry` only seeded the frontier from same-entry-file data
+    // items. `data_item_declared_in_file` verifies the (file, name) pair against the
+    // witness's own resolved import closure, so a genuine cross-file import is included
+    // while an unrelated same-named data item elsewhere stays excluded.
+    #[test]
+    fn node_precise_cross_file_data_item_referenced_by_importer() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let source_file = "src/v2/test/fixture/floor_skip/floor_disc_data_source.dag";
+        let witness_file = "src/v2/test/fixture/floor_skip/floor_disc_data_witness_test.dag";
+
+        let (source_graph, source_indices) = super::resolve_entry_with_index(&index, source_file)
+            .expect("data-source fixture resolves");
+        let data_line = data_item_line(
+            source_file,
+            &source_indices,
+            &source_graph,
+            "floor_disc_cross_file_data",
+        );
+
+        let (witness_graph, witness_indices) =
+            super::resolve_entry_with_index(&index, witness_file)
+                .expect("data-witness fixture resolves");
+        let witness_ctx =
+            super::make_eval_context(&witness_graph, witness_indices, ExecutionMode::Wet);
+
+        let diff = unified_diff_for_line(source_file, data_line);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("frontier for cross-file data-source diff");
+        assert!(
+            edits.overlapping_data_items.contains(&(
+                source_file.to_string(),
+                "floor_disc_cross_file_data".to_string()
+            )),
+            "diff on the data decl must populate overlapping_data_items, got {edits:?}"
+        );
+
+        let nodes = rerun_frontier_nodes_for_entry(&witness_ctx, witness_file, &edits)
+            .expect("cross-file rerun frontier");
+        assert!(
+            entry_touches_rerun_frontier(&witness_ctx, &list_value_from_vec(nodes))
+                .expect("touch check (cross-file importer)"),
+            "a witness importing a changed cross-file data decl must be in-frontier (#6543)"
         );
     }
 }
@@ -12047,14 +12125,20 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
     "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
+    "src/v2/compiler/emit_host.dag::runtime_value_signed_i32_le_as_int",
+    "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
     "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
+    "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_bool_is_false",
+    "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_bool_is_true",
+    "src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_runtime_value_as_int",
     "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
     "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
     "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
     "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
     "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    "src/v2/std/node.dag::connective_edge_discipline_for_children",
     "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
     "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
     "src/v2/lens/complexity.dag::complexity_bound_dominates",
@@ -12081,8 +12165,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
     "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
     "src/v2/std/effects.dag::key_source_eq",
-    "src/v2/std/determinism.dag::determinism_class_eq",
-    "src/v2/std/determinism.dag::non_det_source_eq",
     "src/v2/std/decl_index.dag::decl_facts_is_fn_like",
     "src/v2/std/float.dag::float_body_is_nan",
     "src/v2/std/node_minimal.dag::node_superset_field_eq",
