@@ -44,7 +44,6 @@ import v2.std.orchestration {
   ExprLit,
   ExprCmdSubst
 }
-import v2.std.collection { Optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.emit_orchestration { orch_emit_step }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
