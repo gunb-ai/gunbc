@@ -150,16 +150,17 @@ test fn g1_local_read_not_touched() -> Bool {
   )
 }
 
+data fixture_v0_two_hop_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.entry", imports: ["fix.mid"] },
+  ModuleImportFact { module: "fix.mid", imports: ["v2.std.decl_index"] },
+  ModuleImportFact { module: "v2.std.decl_index", imports: [] }
+]
+
 test fn v0_registry_two_hop_decl_index_runtime_read() -> Bool {
-  let facts: List<ModuleImportFact> = [
-    ModuleImportFact { module: "fix.entry", imports: ["fix.mid"] },
-    ModuleImportFact { module: "fix.mid", imports: ["v2.std.decl_index"] },
-    ModuleImportFact { module: "v2.std.decl_index", imports: [] }
-  ]
   classification_has_runtime_read(
     classification: live_read_classification_from_facts_v0(
       entry_module: "fix.entry",
-      facts: facts
+      facts: fixture_v0_two_hop_facts
     )
   )
 }
