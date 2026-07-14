@@ -265,7 +265,19 @@ Phases are ordered; each closes at a named consumer tier.
 
 ---
 
-## 13. Open sub-threads
+## 14. Hand-Rust scaffold receipt (P1 G2 marshal)
+
+**Authority:** `v2.std.fn_index::fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger`
+
+**Seed-retained site:** `src/v1/stage0/src/coproduct_reflection.rs` — `marshal_string_literal_atom`, `hoist_call_arg_string_literal_edges`, and callee/literal atoms on `marshal_generic` for `ExprCall` nodes. These expand the fn-arrow skeleton corpus-wide so G2 can stat string-literal path arguments and callee chains from `fn_arrow_decl_facts_live()`.
+
+**Dissolution trigger:** fn-arrow body projection becomes a modeled substrate fold (the #5364 self-host corridor for `eval_fn_arrow_decl_facts_live`) emitting equivalent skeleton `Node` facts without hand-Rust marshal expansion in `coproduct_reflection.rs`.
+
+**Witness:** `v2.test.claim.live_read_classification_test::g2_fn_arrow_marshal_host_scaffold_receipt_is_checkable` (Scaffold disposition row is checkable by execution).
+
+---
+
+## 15. Open sub-threads
 
 - **Path pattern static analysis depth** — how many `filesystem_read` path arguments are literal at G2 vs require `Unknown` never-skip.
 - **Namespace-only resolution terminal step** — import edges become `container.member` references; carrier registry and G2 must be edge-source-agnostic (same constraint as `dependency_edge_source_migration_note` in `module_graph.dag`).
