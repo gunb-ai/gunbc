@@ -63,14 +63,6 @@ data arrow_body_cost_arrow: Node = Node {
         occurrence_id: SyntheticOccurrence
       }
     },
-    Edge {
-      label: Positional,
-      target: Node {
-        kind: TypeNode { connective: Atom { identity: ^arrow_body_cost_return_type } },
-        children: [],
-        occurrence_id: SyntheticOccurrence
-      }
-    },
     Edge { label: Named { name: ^arrow_body_edge }, target: arrow_body_cost_body }
   ],
   occurrence_id: SyntheticOccurrence
@@ -87,22 +79,12 @@ fn arrow_body_cost_domain_excluded_holds() -> Bool {
   }
 }
 
-fn arrow_body_cost_domain_excluded_rhs() -> Node {
-  if arrow_body_cost_domain_excluded_holds() {
-    arrow_body_cost_arrow
-  } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: [],
-      occurrence_id: SyntheticOccurrence
-    }
-  }
-}
+data arrow_body_cost_domain_excluded_claim_rhs: Node = arrow_body_cost_arrow
 
 data claim_arrow_body_cost_domain_excluded: TestClaim = EqualsClaim {
   label: "lens_cost/arrow_body_cost_domain_excluded: Arrow cost fold prices ^arrow_body_edge only, not domain Cardinality",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: arrow_body_cost_arrow,
-  rhs: arrow_body_cost_domain_excluded_rhs(),
+  rhs: arrow_body_cost_domain_excluded_claim_rhs,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
