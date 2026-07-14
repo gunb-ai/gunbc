@@ -4419,6 +4419,11 @@ match bare_s.clone() {
                             ),
                         };
                         let branch_diags = if (coproduct_unified.is_some()
+                            || if_branch_shapes_compatible(
+                                then_rt.clone(),
+                                else_rt.clone(),
+                                scope.clone(),
+                            )
                             || node_type_compatible(
                                 then_rt.clone(),
                                 else_rt.clone(),
@@ -12787,6 +12792,85 @@ pub fn try_resolve_variant_from_expected(
     }
 }
 
+pub fn optional_shape_pair_compatible(left_shape: String, right_shape: String) -> bool {
+    let absent_shape = |shape: &str| {
+        ((shape == "Product(Unit)")
+            || (shape == "Product(Absent)")
+            || (shape == "Primitive(Absent)")
+            || (shape == "Primitive(Unit)")
+            || (shape == "Primitive(None)")
+            || (shape == "Primitive(none)"))
+    };
+    let present_shape = |shape: &str| {
+        ((shape == "Product(Present)") || (shape == "Primitive(Present)"))
+    };
+    ((absent_shape(left_shape.as_str()) && present_shape(right_shape.as_str()))
+        || (absent_shape(right_shape.as_str()) && present_shape(left_shape.as_str())))
+}
+
+pub fn if_branch_shapes_compatible(
+    then_rt: Rc<Node>,
+    else_rt: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    let si = scope.type_env.clone().source_indices.clone();
+    let then_shape = node_type_shape(then_rt.clone(), si.clone());
+    let else_shape = node_type_shape(else_rt.clone(), si.clone());
+    if optional_shape_pair_compatible(then_shape.clone(), else_shape.clone()) {
+        return true;
+    }
+    if (((then_shape.clone() == "Primitive(ExitSuccess)".to_string())
+        && ((else_shape.clone() == "Primitive(ProcessExit)".to_string())
+            || (else_shape.clone() == "Coproduct(ProcessExit)".to_string())
+            || (else_shape.clone() == "Product(ExitFailure)".to_string())))
+        || ((else_shape.clone() == "Primitive(ExitSuccess)".to_string())
+            && ((then_shape.clone() == "Primitive(ProcessExit)".to_string())
+                || (then_shape.clone() == "Coproduct(ProcessExit)".to_string())
+                || (then_shape.clone() == "Product(ExitFailure)".to_string()))))
+    {
+        return true;
+    }
+    for (arm_rt, other_rt) in [(then_rt.clone(), else_rt.clone()), (else_rt.clone(), then_rt.clone())]
+    {
+        if let Some(arm_name) = branch_coproduct_arm_name(arm_rt.clone(), si.clone()) {
+            if let Some(parent) = find_coproduct_containing_arm(
+                scope.type_env.clone(),
+                arm_name.clone(),
+                si.clone(),
+            ) {
+                let parent_name = authored_name_at(si.clone(), parent.clone());
+                let other_name = authored_name_at(si.clone(), other_rt.clone());
+                let other_coproduct = resolve_coproduct_type_ref(
+                    other_rt.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                );
+                if (other_name.clone() == parent_name.clone())
+                    || branch_is_coproduct_member(other_rt.clone(), parent.clone(), si.clone())
+                    || branch_is_coproduct_member(
+                        other_coproduct.clone(),
+                        parent.clone(),
+                        si.clone(),
+                    )
+                {
+                    return true;
+                }
+            }
+        }
+        let other_coproduct = resolve_coproduct_type_ref(
+            other_rt.clone(),
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+        );
+        if (other_coproduct.connective.clone() == Connective::Disj) {
+            if branch_is_coproduct_member(arm_rt.clone(), other_coproduct.clone(), si.clone()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub fn branch_coproduct_arm_name(
     ty: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -12933,6 +13017,56 @@ pub fn coproduct_branches_compatible(
     scope: Rc<InferScope>,
 ) -> Option<Rc<Node>> {
     let si = scope.type_env.clone().source_indices.clone();
+    if if_branch_shapes_compatible(then_rt.clone(), else_rt.clone(), scope.clone()) {
+        return match expected.clone() {
+            Some(exp) if (exp.return_cardinality.clone() == Cardinality::CardOptional) => {
+                Some(exp.clone())
+            }
+            Some(exp) => {
+                if optional_shape_pair_compatible(
+                    node_type_shape(then_rt.clone(), si.clone()),
+                    node_type_shape(else_rt.clone(), si.clone()),
+                ) {
+                    Some(with_optional_cardinality(extract_optional_inner_node(exp.clone())))
+                } else {
+                    let coproduct = expand_type_for_field_access(
+                        exp.clone(),
+                        scope.type_env.clone(),
+                        scope.module_name.clone(),
+                    );
+                    if (coproduct.connective.clone() == Connective::Disj) {
+                        Some(coproduct.clone())
+                    } else {
+                        Some(exp.clone())
+                    }
+                }
+            }
+            None => {
+                if optional_shape_pair_compatible(
+                    node_type_shape(then_rt.clone(), si.clone()),
+                    node_type_shape(else_rt.clone(), si.clone()),
+                ) {
+                    Some(with_optional_cardinality(prefer_specific_type(
+                        then_rt.clone(),
+                        else_rt.clone(),
+                        si.clone(),
+                    )))
+                } else if let Some(parent) = find_shared_coproduct_for_branch_arms(
+                    then_rt.clone(),
+                    else_rt.clone(),
+                    scope.clone(),
+                ) {
+                    Some(parent.clone())
+                } else {
+                    Some(prefer_specific_type(
+                        then_rt.clone(),
+                        else_rt.clone(),
+                        si.clone(),
+                    ))
+                }
+            }
+        };
+    }
     let then_optional_arm = is_optional_arm_shape(then_rt.clone(), si.clone());
     let else_optional_arm = is_optional_arm_shape(else_rt.clone(), si.clone());
     if then_optional_arm && else_optional_arm {
