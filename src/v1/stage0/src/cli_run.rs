@@ -9055,6 +9055,59 @@ new file mode 100644
             "a diff on an orphan node (no claim references it) must NOT touch the entry (skips)"
         );
     }
+
+    // #6543 regression: an importing witness in a DIFFERENT file than the changed `data`
+    // declaration was predict-skipped (falsifier divergence, run 29293446579) because
+    // `rerun_frontier_nodes_for_entry` only seeded the frontier from same-entry-file data
+    // items. `data_item_declared_in_file` verifies the (file, name) pair against the
+    // witness's own resolved import closure, so a genuine cross-file import is included
+    // while an unrelated same-named data item elsewhere stays excluded.
+    #[test]
+    fn node_precise_cross_file_data_item_referenced_by_importer() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let source_file = "src/v2/test/fixture/floor_skip/floor_disc_data_source.dag";
+        let witness_file = "src/v2/test/fixture/floor_skip/floor_disc_data_witness_test.dag";
+
+        let (source_graph, source_indices) = super::resolve_entry_with_index(&index, source_file)
+            .expect("data-source fixture resolves");
+        let data_line = data_item_line(
+            source_file,
+            &source_indices,
+            &source_graph,
+            "floor_disc_cross_file_data",
+        );
+
+        let (witness_graph, witness_indices) =
+            super::resolve_entry_with_index(&index, witness_file)
+                .expect("data-witness fixture resolves");
+        let witness_ctx =
+            super::make_eval_context(&witness_graph, witness_indices, ExecutionMode::Wet);
+
+        let diff = unified_diff_for_line(source_file, data_line);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("frontier for cross-file data-source diff");
+        assert!(
+            edits.overlapping_data_items.contains(&(
+                source_file.to_string(),
+                "floor_disc_cross_file_data".to_string()
+            )),
+            "diff on the data decl must populate overlapping_data_items, got {edits:?}"
+        );
+
+        let nodes = rerun_frontier_nodes_for_entry(&witness_ctx, witness_file, &edits)
+            .expect("cross-file rerun frontier");
+        assert!(
+            entry_touches_rerun_frontier(&witness_ctx, &list_value_from_vec(nodes))
+                .expect("touch check (cross-file importer)"),
+            "a witness importing a changed cross-file data decl must be in-frontier (#6543)"
+        );
+    }
 }
 
 // Step 3 witness (a) PARTIAL — impl-vs-impl PROVE gate (#5994).
