@@ -2195,8 +2195,11 @@ fn entry_file_touched_via_import_closure(
 /// Receipted Rust mirror of the single authority `v2.std.live_read.live_read_carrier_homes_v0`
 /// (`src/v2/std/live_read.dag`) — the module names of the 8 declared live-read carrier homes.
 /// Kept in lockstep with that `.dag` roster by hand (no generator yet); a drift here
-/// under-approximates axis (iv) fail-closed-safe direction only if this list is a SUBSET of
-/// the `.dag` roster, so any addition to the `.dag` roster must be mirrored here.
+/// under-approximates axis (iv) fail-closed-safe direction only if this list is a SUPERSET of
+/// the `.dag` roster, so any addition to the `.dag` roster must be mirrored here — the drift
+/// gate below (`live_read_carrier_home_modules_v0_is_superset_of_dag_authority`) evaluates the
+/// `.dag` authority through a real interpreter context and fails the build the moment this
+/// const falls behind, so the mismatch cannot silently pass.
 const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
     "v2.lens.enforcement.cost_coverage",
     "v2.lens.enforcement.grammar_coverage",
@@ -2230,6 +2233,83 @@ fn runtime_data_dependency_touched_via_carrier_closure(
     LIVE_READ_CARRIER_HOME_MODULES_V0
         .iter()
         .any(|carrier_module| closure_modules.contains(*carrier_module))
+}
+
+#[cfg(test)]
+mod live_read_carrier_home_roster_drift_gate_tests {
+    use super::{
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
+        workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::collections::HashSet;
+
+    const LIVE_READ_ENTRY: &str = "src/v2/std/live_read.dag";
+
+    fn record_field<'a>(
+        ctx: &v1_interpreter::InterpContext,
+        fields: &'a [(v1_interpreter::Symbol, Value)],
+        field_name: &str,
+    ) -> Option<&'a Value> {
+        fields
+            .iter()
+            .find(|(sym, _)| ctx.sym_eq(*sym, field_name))
+            .map(|(_, v)| v)
+    }
+
+    // Reads the `.dag`-side single authority directly by evaluating
+    // `live_read_carrier_homes_v0` in a real interpreter context — not a re-hand-authored Rust
+    // copy of the roster — so this test's own expectation cannot drift the same way the
+    // production const can.
+    fn dag_carrier_home_modules() -> HashSet<String> {
+        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
+        let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
+        let (graph, indices) = resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+        let val = v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::eval_data_item_value(&ctx, "live_read_carrier_homes_v0")
+        })
+        .unwrap_or_else(|e| panic!("eval live_read_carrier_homes_v0: {e}"))
+        .unwrap_or_else(|| panic!("live_read_carrier_homes_v0 not found as a data item"));
+        let Value::List(items) = val else {
+            panic!("live_read_carrier_homes_v0 is not a List: {val:?}");
+        };
+        items
+            .iter()
+            .map(|item| {
+                let Value::Record { fields, .. } = item else {
+                    panic!("live_read_carrier_homes_v0 entry is not a Record: {item:?}");
+                };
+                match record_field(&ctx, fields, "module") {
+                    Some(Value::Str(s)) => s.clone(),
+                    other => panic!("LiveReadCarrierHome.module is not a String: {other:?}"),
+                }
+            })
+            .collect()
+    }
+
+    // The safety-critical drift direction (axis (iv)'s fail-closed-safe requirement, see the
+    // doc-comment on `LIVE_READ_CARRIER_HOME_MODULES_V0`): the Rust const must be a SUPERSET of
+    // the `.dag` roster. A `.dag`-only addition this const misses makes
+    // `runtime_data_dependency_touched_via_carrier_closure` return `false` for that carrier —
+    // silently fail-open on the exact axis this const backs.
+    #[test]
+    fn live_read_carrier_home_modules_v0_is_superset_of_dag_authority() {
+        let dag_modules = dag_carrier_home_modules();
+        let rust_modules: HashSet<String> = LIVE_READ_CARRIER_HOME_MODULES_V0
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let missing: Vec<&String> = dag_modules.difference(&rust_modules).collect();
+        assert!(
+            missing.is_empty(),
+            "`.dag` authority `live_read_carrier_homes_v0` declares carrier home module(s) \
+             {missing:?} not mirrored in Rust `LIVE_READ_CARRIER_HOME_MODULES_V0` \
+             (src/v1/stage0/src/cli_run.rs) — add them there or axis (iv) silently fails open \
+             for that carrier"
+        );
+    }
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
