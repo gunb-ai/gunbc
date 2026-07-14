@@ -65,26 +65,32 @@ type ConvergeHostInterpretResult =
     ConvergeHostRefused { reason: String }
   | ConvergeHostInterpreted { knob_count: Int, stdout: String }
 
+data converge_host_no_knobs_reason: String = "host_converge_realize: HostConverge has zero knobs; fail-closed — refusing fabricated ConvergePlanApplied without knob work"
+
 fn interpret_host_converge(host_converge: HostConverge) -> ConvergeHostInterpretResult {
-  fold(
-    host_converge.knobs,
-    init: ConvergeHostInterpreted { knob_count: 0, stdout: "" },
-    f: fn(acc, knob) {
-      match acc {
-        ConvergeHostRefused { reason: _ } => acc
-        ConvergeHostInterpreted { knob_count: n, stdout: out } =>
-          match interpret_converge_knob(knob: knob) {
-            KnobUnimplemented { knob_name: name, target_kind: _, reason: why } =>
-              ConvergeHostRefused {
-                reason: concat(
-                  concat(concat(why, " (host="), host_converge.identity as String),
-                  concat(concat(", slice=", converge_slice_label(s: knob.slice)), concat(", knob=", name))
-                ),
-              }
-          }
+  if host_converge.knobs.length() == 0 {
+    ConvergeHostRefused { reason: converge_host_no_knobs_reason }
+  } else {
+    fold(
+      host_converge.knobs,
+      init: ConvergeHostInterpreted { knob_count: 0, stdout: "" },
+      f: fn(acc, knob) {
+        match acc {
+          ConvergeHostRefused { reason: _ } => acc
+          ConvergeHostInterpreted { knob_count: n, stdout: out } =>
+            match interpret_converge_knob(knob: knob) {
+              KnobUnimplemented { knob_name: name, target_kind: _, reason: why } =>
+                ConvergeHostRefused {
+                  reason: concat(
+                    concat(concat(why, " (host="), host_converge.identity as String),
+                    concat(concat(", slice=", converge_slice_label(s: knob.slice)), concat(", knob=", name))
+                  ),
+                }
+            }
+        }
       }
-    }
-  )
+    )
+  }
 }
 
 fn converge_host_interpret_refused(r: ConvergeHostInterpretResult) -> Bool {

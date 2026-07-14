@@ -6,7 +6,7 @@ import gunbc.host_effect {
   Drive, OneShot, ConvergeLoop,
   HostEffectIntent, HostEffectEvidence, ShellEffectApplied, ConvergePlanApplied,
   HostEffectTransport, LocalShell, SshShell,
-  EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation,
+  EmitArtifactThenThinRun, BootstrapFragment,
   host_effect_drive,
 }
 import std.effects { IdempotencyEvidence }
@@ -24,6 +24,7 @@ import gunbc.host_converge_realize {
   interpret_host_converge,
   ConvergeHostRefused,
   ConvergeHostInterpreted,
+  converge_host_no_knobs_reason,
 }
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.ci_deploy_access {
@@ -132,65 +133,32 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
   }
 }
 
-fn thin_invocation_script(invocation: ThinInvocation) -> String {
-  fold(
-    invocation.argv,
-    init: "",
-    f: fn(acc, arg) {
-      if acc == "" { arg } else { concat(concat(acc, " "), arg) }
-    }
-  )
-}
-
-fn converge_bootstrap_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
-  match transport {
-    LocalShell => run_shell_transport(script: script, transport: LocalShell)
-    SshShell { ssh_host: h } => run_shell_transport(script: script, transport: SshShell { ssh_host: h })
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      run_shell_transport(script: script, transport: LocalShell)
-  }
-}
-
 fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match interpret_host_converge(host_converge: host_converge) {
     ConvergeHostRefused { reason: why } =>
       NotConverged { reason: why, applied: intent }
-    ConvergeHostInterpreted { knob_count: _, stdout: out } => {
-      let observed = ShellExecObserved {
-        exit_code: 0,
-        success: true,
-        stdout: out,
-        stderr: "",
+    ConvergeHostInterpreted { knob_count: n, stdout: out } =>
+      if n == 0 {
+        NotConverged { reason: converge_host_no_knobs_reason, applied: intent }
+      } else {
+        reconcile_grounded(
+          apply_effect: intent,
+          show_read: ReadObserved { value: out },
+          grounding: Grounds { evidence: ConvergePlanApplied { exit_code: 0, stdout: out } }
+        )
       }
-      reconcile_grounded(
-        apply_effect: intent,
-        show_read: ReadObserved { value: observed },
-        grounding: Grounds { evidence: ConvergePlanApplied { exit_code: 0, stdout: out } }
-      )
-    }
   }
 }
 
 fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
-    EmitArtifactThenThinRun { bootstrap: boot, invocation: inv } =>
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       match gunbc_apply_mode_for_host(host: host_converge.identity) {
-        FreshStandup => {
-          let boot_result = converge_bootstrap_transport(script: boot.script, transport: transport)
-          if boot_result.success {
-            let inv_result = converge_bootstrap_transport(
-              script: thin_invocation_script(invocation: inv),
-              transport: transport
-            )
-            if inv_result.success {
-              realize_converge_in_process(host_converge: host_converge, intent: intent)
-            } else {
-              NotConverged { reason: shell_exec_failure_reason(observed: inv_result), applied: intent }
-            }
-          } else {
-            NotConverged { reason: shell_exec_failure_reason(observed: boot_result), applied: intent }
+        FreshStandup =>
+          NotConverged {
+            reason: "host_effect_apply: EmitArtifactThenThinRun fresh-standup bootstrap+thin-run is fail-closed Unimplemented; bootstrap emit routes through shell-emission slice 1, typed argv thin-run dispatch pending slice 2.",
+            applied: intent,
           }
-        }
         ExistingHostQuiescentReload =>
           realize_converge_in_process(host_converge: host_converge, intent: intent)
       }

@@ -79,14 +79,15 @@ fn witness_host_converge_refuses_on_first_knob() -> Bool {
   }
 }
 
-fn witness_empty_host_converge_interprets() -> Bool {
+fn witness_empty_host_converge_refuses() -> Bool {
   match interpret_host_converge(host_converge: HostConverge {
     identity: operator_host_srv3,
     knobs: [],
     membership: NoMembershipProbe,
   }) {
-    ConvergeHostInterpreted { knob_count: n, stdout: out } => n == 0 && out == ""
-    ConvergeHostRefused { reason: _ } => false
+    ConvergeHostRefused { reason: why } =>
+      string_contains(s: why, pattern: "zero knobs")
+    ConvergeHostInterpreted { knob_count: _, stdout: _ } => false
   }
 }
 
@@ -94,5 +95,5 @@ test fn host_converge_realize_holds() -> Bool {
   witness_every_knob_target_has_kind_label()
     && witness_knob_interpreter_fail_closed_unimplemented()
     && witness_host_converge_refuses_on_first_knob()
-    && witness_empty_host_converge_interprets()
+    && witness_empty_host_converge_refuses()
 }
