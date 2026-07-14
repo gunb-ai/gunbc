@@ -2,6 +2,8 @@ module v2.test.claim.identity_captured_navigation.roster_gate
 
 import v2.lens.identity_captured_navigation { Finding }
 import v2.lens.identity_captured_navigation.roster_gate {
+  debug_fn_decl_count,
+  debug_fn_decl_count_file,
   debug_match_expr_count,
   debug_scrutinee_hit_count,
   file_gate,
@@ -50,6 +52,10 @@ test fn debug_planted_snippet_parses() -> Bool {
   }
 }
 
+test fn debug_planted_snippet_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count(source_text: planted_identity_escape_snippet) == 1
+}
+
 test fn debug_planted_snippet_match_expr_count() -> Bool {
   debug_match_expr_count(source_text: planted_identity_escape_snippet) == 1
 }
@@ -94,4 +100,70 @@ test fn green_control_sanctioned_reader_body_has_no_findings_at_all() -> Bool {
     Absent => false
     Present { value: fs } => finding_list_length(fs: fs) == 0
   }
+}
+
+test fn debug_planted_snippet_fn_decl_count_is_zero() -> Bool {
+  debug_fn_decl_count(source_text: planted_identity_escape_snippet) == 0
+}
+
+test fn debug_planted_snippet_fn_decl_count_is_two() -> Bool {
+  debug_fn_decl_count(source_text: planted_identity_escape_snippet) == 2
+}
+
+data debug_simple_snippet: String = "module planted\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+test fn debug_simple_snippet_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count(source_text: debug_simple_snippet) == 1
+}
+
+test fn debug_probe_fixture_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
+}
+
+test fn debug_probe_a_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
+}
+
+test fn debug_probe_b_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
+}
+
+test fn debug_probe_b_fn_decl_count_is_negative() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == -1
+}
+
+test fn debug_probe_b_fn_decl_count_is_zero() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 0
+}
+
+test fn debug_probe_c_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
+}
+
+test fn debug_probe_d_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
+}
+
+test fn debug_probe_e_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
+}
+
+test fn debug_probe_f_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
+}
+
+test fn debug_probe_g_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
+}
+
+test fn debug_probe_h_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
+}
+
+test fn debug_probe_i_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
+}
+
+test fn debug_probe_j_fn_decl_count_is_one() -> Bool {
+  debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 1
 }

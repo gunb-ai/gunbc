@@ -10,6 +10,7 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
   dag_lex_token_symbol,
+  dag_node_is_fn_decl,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
   parse_subtree_find_production_captured
@@ -269,6 +270,21 @@ fn classify_identity_match(match_node: Node, mentions: List<Symbol>) -> Optional
       cause: ^identity_navigation_multiple_reductions
     )
   }
+}
+
+fn identity_navigation_debug_fn_decl_count_at(node: Node) -> Int {
+  if dag_node_is_fn_decl(node: node) { 1 } else { 0 }
+}
+
+fn identity_navigation_debug_fn_decl_scan(node: Node, acc: Int) -> Int {
+  let here = acc + identity_navigation_debug_fn_decl_count_at(node: node)
+  fold(node.children, init: here, f: fn(a, e) {
+    identity_navigation_debug_fn_decl_scan(node: e.target, acc: a)
+  })
+}
+
+fn identity_navigation_debug_fn_decl_count(root: Node) -> Int {
+  identity_navigation_debug_fn_decl_scan(node: root, acc: 0)
 }
 
 fn identity_navigation_debug_match_expr_count_at(node: Node) -> Int {
