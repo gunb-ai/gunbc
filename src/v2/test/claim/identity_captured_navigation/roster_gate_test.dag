@@ -8,6 +8,7 @@ import v2.lens.identity_captured_navigation.roster_gate {
   debug_match_expr_count_file,
   debug_scrutinee_hit_count,
   file_gate,
+  file_refusal_count,
   file_suspect_count,
   source_findings,
   source_has_suspect
@@ -213,4 +214,22 @@ test fn debug_probe_fixture_match_expr_count_ge_one() -> Bool {
 }
 test fn debug_probe_fixture_fn_decl_count_is_27() -> Bool {
   debug_fn_decl_count_file(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 27
+}
+
+test fn debug_sanctioned_snippet_match_expr_count_is_one() -> Bool {
+  debug_match_expr_count(source_text: sanctioned_reader_probe_snippet) == 1
+}
+test fn debug_sanctioned_snippet_match_expr_count_is_zero() -> Bool {
+  debug_match_expr_count(source_text: sanctioned_reader_probe_snippet) == 0
+}
+
+test fn debug_analyze_dag_match_expr_count_ge_one() -> Bool {
+  debug_match_expr_count_file(path: "src/v2/lens/identity_captured_navigation/analyze.dag") >= 1
+}
+
+test fn debug_probe_fixture_suspect_count_is_zero() -> Bool {
+  file_suspect_count(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") == 0
+}
+test fn debug_probe_fixture_refusal_count_ge_zero() -> Bool {
+  file_refusal_count(path: "src/v2/test/claim/identity_captured_navigation/probe_fixture.dag") >= 0
 }
