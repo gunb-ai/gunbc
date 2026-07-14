@@ -3237,7 +3237,6 @@ fn resolve_entry_with_parse_cache(
         graph.clone(),
         source_indices.clone(),
         global_table,
-        &index.shared_caches,
     )?;
     // Assembly residue = reconcile wall minus the per-module rows its internals
     // accumulated into the slot during this call (typecheck computes + parent envs).
@@ -3578,7 +3577,6 @@ fn reconcile_all_cache_hits(
 /// still see every declared name in the pool (namespace-resolution-design.md §8).
 fn build_pool_global_bare_census(
     index: &MultiEntryIndex,
-    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
 ) -> Result<
     (
         Rc<HashMap<String, Rc<v1_compiler_infer::GlobalBareLookupState>>>,
@@ -3597,32 +3595,25 @@ fn build_pool_global_bare_census(
         (a_v2, &a.path).cmp(&(b_v2, &b.path))
     });
     for source in sources {
-        let cached = {
-            let caches = shared_caches
-                .lock()
-                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-            caches.parse_cache.get(&source.path).cloned()
-        };
+        let cached = index.parse_cache.borrow().get(&source.path).cloned();
         let (parse_result, nl_index) = match cached {
             Some(entry) => entry,
             None => {
                 let tokens =
                     v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                 let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-                let mut caches = shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-                let current_table = caches.intern_table.clone();
+                let current_table = index.intern_table.borrow().clone();
                 let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
                     let mut m = HashMap::new();
                     m.insert(source.path.clone(), nl_index.clone());
                     m
                 });
                 let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-                caches.intern_table = parsed.intern_table.clone();
+                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
                 let entry = (parsed.result.clone(), nl_index);
-                caches
+                index
                     .parse_cache
+                    .borrow_mut()
                     .insert(source.path.clone(), entry.clone());
                 entry
             }
@@ -3662,7 +3653,6 @@ fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
-    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
@@ -3671,8 +3661,7 @@ fn reconcile_with_typed_cache(
     // Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): built once,
     // order-independent, over the indexed witness pool (not the entry import closure) — see
     // global_bare_fallback_invariant in v1_compiler_infer_env.
-    let (global_bare, _pool_source_indices, pool_services) =
-        build_pool_global_bare_census(index, shared_caches)?;
+    let (global_bare, _pool_source_indices, pool_services) = build_pool_global_bare_census(index)?;
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
