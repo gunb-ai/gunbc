@@ -177,55 +177,144 @@ fn realize_srv3_install_diagnostic_observe(
   srv3_shell_reconcile(observed: observed, intent: effect_intent)
 }
 
-fn srv3_apt_tool_present(tool_name: NonEmptyStr) -> Bool {
-  shell.Which.Check(command: tool_name).exists
+fn srv3_join_shell_words(words: List<String>) -> String {
+  fold(
+    words,
+    init: "",
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
 }
 
-fn srv3_tool_bin_path(tool_name: NonEmptyStr) -> String? {
-  let found = shell.Which.Check(command: tool_name)
-  if found.exists {
-    match found.path {
-      Present { value: tool_path } => Present { value: tool_path as String }
-      Absent => none
+fn srv3_transport_witness_bin_success(
+  transport: HostEffectTransport,
+  workdir: String,
+  bin_path: String,
+  args: List<String>,
+) -> Bool {
+  match transport {
+    LocalShell =>
+      gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args).success
+    SshShell { ssh_host: h } => {
+      let argv = srv3_join_shell_words(words: args)
+      let cmd = if workdir == "/" {
+        if argv == "" { bin_path } else { concat(bin_path, concat(" ", argv)) }
+      } else {
+        concat(
+          concat("cd ", concat(workdir, " && ")),
+          if argv == "" { bin_path } else { concat(bin_path, concat(" ", argv)) },
+        )
+      }
+      ssh_session_exec(host: h, command: cmd as NonEmptyStr).success
     }
-  } else {
-    none
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
 }
 
-fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr) -> Bool {
-  match srv3_tool_bin_path(tool_name: tool_name) {
+fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) -> Bool {
+  match transport {
+    LocalShell => shell.Test.IsExecutable(path: path).executable
+    SshShell { ssh_host: h } =>
+      ssh_session_exec(host: h, command: concat("test -x ", path) as NonEmptyStr).success
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
+  }
+}
+
+fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+  match transport {
+    LocalShell => shell.Which.Check(command: tool_name).exists
+    SshShell { ssh_host: h } =>
+      ssh_session_exec(
+        host: h,
+        command: concat("command -v ", tool_name as String) as NonEmptyStr,
+      ).success
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
+  }
+}
+
+fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> String? {
+  match transport {
+    LocalShell => {
+      let found = shell.Which.Check(command: tool_name)
+      if found.exists {
+        match found.path {
+          Present { value: tool_path } => Present { value: tool_path as String }
+          Absent => none
+        }
+      } else {
+        none
+      }
+    }
+    SshShell { ssh_host: h } => {
+      let result = ssh_session_exec(
+        host: h,
+        command: concat("command -v ", tool_name as String) as NonEmptyStr,
+      )
+      if result.success {
+        let tool_path = trim(result.stdout)
+        if tool_path == "" { none } else { Present { value: tool_path } }
+      } else {
+        none
+      }
+    }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
+  }
+}
+
+fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+  match srv3_tool_bin_path(tool_name: tool_name, transport: transport) {
     Present { value: tool_path } =>
-      gunbc.WitnessBin.Run(
+      srv3_transport_witness_bin_success(
+        transport: transport,
         workdir: "/",
         bin_path: tool_path,
         args: ["--version"],
-      ).success
+      )
     Absent => false
   }
 }
 
-fn srv3_chown_directory_to_current_user(path: String) -> Bool {
-  let uid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-u"])
-  let gid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-g"])
-  if uid.success && gid.success {
-    let owner = concat(uid.stdout, concat(":", gid.stdout))
-    gunbc.WitnessBin.Run(
-      workdir: "/",
-      bin_path: "/usr/bin/sudo",
-      args: ["-n", "/usr/bin/chown", owner, path],
-    ).success
-  } else {
-    false
+fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTransport) -> Bool {
+  match transport {
+    LocalShell => {
+      let uid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-u"])
+      let gid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-g"])
+      if uid.success && gid.success {
+        let owner = concat(uid.stdout, concat(":", gid.stdout))
+        gunbc.WitnessBin.Run(
+          workdir: "/",
+          bin_path: "/usr/bin/sudo",
+          args: ["-n", "/usr/bin/chown", owner, path],
+        ).success
+      } else {
+        false
+      }
+    }
+    SshShell { ssh_host: h } => {
+      let uid = ssh_session_exec(host: h, command: "id -u" as NonEmptyStr)
+      let gid = ssh_session_exec(host: h, command: "id -g" as NonEmptyStr)
+      if uid.success && gid.success {
+        let owner = concat(trim(uid.stdout), concat(":", trim(gid.stdout)))
+        srv3_transport_witness_bin_success(
+          transport: transport,
+          workdir: "/",
+          bin_path: "/usr/bin/sudo",
+          args: ["-n", "/usr/bin/chown", owner, path],
+        )
+      } else {
+        false
+      }
+    }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
 }
 
-fn srv3_privileged_apt_install(package: NonEmptyStr) -> Bool {
-  gunbc.WitnessBin.Run(
+fn srv3_privileged_apt_install(package: NonEmptyStr, transport: HostEffectTransport) -> Bool {
+  srv3_transport_witness_bin_success(
+    transport: transport,
     workdir: "/",
     bin_path: "/usr/bin/sudo",
     args: srv3_actuator_toolchain_privileged_apt_install_args(package: package),
-  ).success
+  )
 }
 
 fn srv3_actuator_toolchain_privileged_apt_install_args(package: NonEmptyStr) -> List<String> {
@@ -266,73 +355,81 @@ fn srv3_ensure_apt_tool(
   tool_name: NonEmptyStr,
   package: NonEmptyStr,
   require_version_probe: Bool,
+  transport: HostEffectTransport,
 ) -> Bool {
-  if srv3_apt_tool_present(tool_name: tool_name)
-    && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name))
+  if srv3_apt_tool_present(tool_name: tool_name, transport: transport)
+    && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport))
   {
     true
   } else {
-    srv3_privileged_apt_install(package: package)
-      && srv3_apt_tool_present(tool_name: tool_name)
-      && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name))
+    srv3_privileged_apt_install(package: package, transport: transport)
+      && srv3_apt_tool_present(tool_name: tool_name, transport: transport)
+      && (require_version_probe == false || srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport))
   }
 }
 
-fn srv3_ensure_websocat() -> Bool {
+fn srv3_ensure_websocat(transport: HostEffectTransport) -> Bool {
   let install_path = websocat_install_path as String
-  if shell.Test.IsExecutable(path: install_path).executable {
+  if srv3_transport_test_executable(path: install_path, transport: transport) {
     true
   } else {
-    match srv3_tool_bin_path(tool_name: curl_cli_tool.name) {
+    match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
       Present { value: curl_path } => {
         let bin_dir = gunbc_bin_dir as String
         let url = srv3_actuator_toolchain_websocat_release_download_url()
-        let mkdir = gunbc.WitnessBin.Run(
+        let mkdir = srv3_transport_witness_bin_success(
+          transport: transport,
           workdir: "/",
           bin_path: "/usr/bin/sudo",
           args: ["mkdir", "-p", bin_dir],
         )
-        let chown = srv3_chown_directory_to_current_user(path: bin_dir)
-        let curl = gunbc.WitnessBin.Run(
+        let chown = srv3_chown_directory_to_current_user(path: bin_dir, transport: transport)
+        let curl = srv3_transport_witness_bin_success(
+          transport: transport,
           workdir: "/",
           bin_path: curl_path,
           args: ["-fsSL", url, "-o", install_path],
         )
-        let chmod = gunbc.WitnessBin.Run(
+        let chmod = srv3_transport_witness_bin_success(
+          transport: transport,
           workdir: "/",
           bin_path: "/bin/chmod",
           args: ["+x", install_path],
         )
-        mkdir.success
+        mkdir
           && chown
-          && curl.success
-          && chmod.success
-          && shell.Test.IsExecutable(path: install_path).executable
+          && curl
+          && chmod
+          && srv3_transport_test_executable(path: install_path, transport: transport)
       }
       Absent => false
     }
   }
 }
 
-fn realize_os_install_actuator_toolchain_ensure(
+fn srv3_realize_os_install_actuator_toolchain_ensure_body(
+  transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let curl_ok = srv3_ensure_apt_tool(
     tool_name: curl_cli_tool.name,
     package: package_curl,
     require_version_probe: true,
+    transport: transport,
   )
   let nbdkit_ok = srv3_ensure_apt_tool(
     tool_name: nbdkit_cli_tool.name,
     package: package_nbdkit,
     require_version_probe: true,
+    transport: transport,
   )
   let socat_ok = srv3_ensure_apt_tool(
     tool_name: socat_cli_tool.name,
     package: package_socat,
     require_version_probe: false,
+    transport: transport,
   )
-  let websocat_ok = srv3_ensure_websocat()
+  let websocat_ok = srv3_ensure_websocat(transport: transport)
   let success = curl_ok && nbdkit_ok && socat_ok && websocat_ok
   let stdout = concat(
     concat(
@@ -351,6 +448,28 @@ fn realize_os_install_actuator_toolchain_ensure(
     stderr: if success { "" } else { "actuator-toolchain-ensure: one or more tools failed ensure" },
   }
   srv3_shell_reconcile(observed: observed, intent: effect_intent)
+}
+
+fn realize_os_install_actuator_toolchain_ensure(
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match effect_intent.transport {
+    LocalShell =>
+      srv3_realize_os_install_actuator_toolchain_ensure_body(
+        transport: effect_intent.transport,
+        effect_intent: effect_intent,
+      )
+    SshShell { ssh_host: _ } =>
+      srv3_realize_os_install_actuator_toolchain_ensure_body(
+        transport: effect_intent.transport,
+        effect_intent: effect_intent,
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: OsInstallActuatorToolchainEnsure cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        applied: effect_intent,
+      }
+  }
 }
 
 fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
