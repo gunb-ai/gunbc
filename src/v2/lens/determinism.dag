@@ -5,7 +5,7 @@ import std.disposition { SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.determinism { DeterminismAxis, Deterministic, NonDeterministic, determinism_compose }
 import v2.std.determinism { DeterminismFact }
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, node_locus }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
@@ -37,10 +37,10 @@ data determinism_root_registry: List<DeterminismRoot> = [
 ]
 
 fn determinism_root_for_symbol(registry: List<DeterminismRoot>, s: Symbol) -> Optional<DeterminismRoot> {
-  fold(registry, init: Absent, f: fn(acc, row) {
+  fold(registry, init: optional_absent(), f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
-      Absent => if row.signature == s { Present { value: row } } else { Absent }
+      Absent => if row.signature == s { optional_present(value: row) } else { optional_absent() }
     }
   })
 }
@@ -49,13 +49,13 @@ fn node_callee_symbol(n: Node) -> Optional<Symbol> {
   if node_is_call(node: n) {
     match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
       Present { value: callee } => match callee.kind {
-        TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
-        _ => Absent
+        TypeNode { connective: Atom { identity: sym } } => optional_present(value: sym)
+        _ => optional_absent()
       }
-      Absent => Absent
+      Absent => optional_absent()
     }
   } else {
-    Absent
+    optional_absent()
   }
 }
 
