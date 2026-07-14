@@ -17,7 +17,7 @@ import gunbc.fleet_converge_apply {
   fleet_converge_apply_result_converged,
   fleet_converge_thin_invocation,
 }
-import gunbc.host_effect { LocalShell, HostEffectTransport, ThinInvocation }
+import gunbc.host_effect { LocalShell, HostEffectTransport }
 import gunbc.host_converge {
   ConvergePolicy,
   ConvergePolicyDerived,
