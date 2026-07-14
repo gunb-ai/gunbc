@@ -216,26 +216,29 @@ fn run_required_lens_gates_on_subtree(
   inferred: InferredTree,
   lenses: List<CompileLens>
 ) -> Outcome<List<LensGateWitness>> {
-  fold_node(
-    n: inferred.root,
-    algebra: NodeFold {
-      init: fn(n0) {
-        run_required_lens_gates(
-          inferred: InferredTree { root: n0, facts: inferred.facts },
-          lenses: lenses
-        )
-      },
-      step: fn(acc, _, child) {
-        bind_outcome(o: acc, f: fn(ws) {
-          bind_outcome(
-            o: child,
-            f: fn(child_ws) {
-              outcome_accepted(value: list_append(left: ws, right: child_ws))
-            }
+  bind_outcome(
+    o: fold_node(
+      n: inferred.root,
+      algebra: NodeFold {
+        init: fn(n0) {
+          run_required_lens_gates(
+            inferred: InferredTree { root: n0, facts: inferred.facts },
+            lenses: lenses
           )
-        })
+        },
+        step: fn(acc, _, child) {
+          bind_outcome(o: acc, f: fn(ws) {
+            bind_outcome(
+              o: child,
+              f: fn(child_ws) {
+                outcome_accepted(value: list_append(left: child_ws, right: ws))
+              }
+            )
+          })
+        }
       }
-    }
+    ),
+    f: fn(collected) { outcome_accepted(value: list_reverse(xs: collected)) }
   )
 }
 
