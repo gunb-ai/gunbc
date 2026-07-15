@@ -13,7 +13,7 @@ use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
-use crate::v1_compiler_infer_env::{lookup_type_by_name, symbol_index_insert, SymbolIndex};
+use crate::v1_compiler_infer_env::{lookup_type_by_name, GlobalBareLookupState};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -25,14 +25,137 @@ use crate::v1_std_core::{
     arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
     expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
-    field_init_node_name_at, field_init_node_value, has_child_named, inferred_to_node, intern,
+    field_init_node_name_at, field_init_node_value, has_child_named, intern,
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items,
-    param_node_name_at, param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData,
-    InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
+    param_node_name_at,
+    param_node_type_expr, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, InternTable,
+    MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
+
+/// Parsed top-level items from the corpus-wide bare census — eval overlay for import-stripped
+/// bare refs whose declaring modules sit outside the entry import closure (dissolves with
+/// `CLI_RUN_CORPUS_GLOBAL_BARE_CENSUS_SCAFFOLD_MARKER`).
+#[derive(Clone)]
+struct CensusEvalOverlay {
+    fn_nodes: Rc<HashMap<String, Rc<Node>>>,
+    item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    variant_parents: Rc<HashMap<String, String>>,
+}
+
+thread_local! {
+    static CENSUS_EVAL_OVERLAY: RefCell<Option<CensusEvalOverlay>> = const { RefCell::new(None) };
+}
+
+fn set_census_eval_overlay(overlay: CensusEvalOverlay) {
+    CENSUS_EVAL_OVERLAY.with(|slot| *slot.borrow_mut() = Some(overlay));
+}
+
+fn census_eval_overlay_for_interp() -> Option<CensusEvalOverlay> {
+    CENSUS_EVAL_OVERLAY.with(|slot| slot.borrow().clone())
+}
+
+fn census_overlay_insert_item(
+    fn_nodes: &mut HashMap<String, Rc<Node>>,
+    item_registry: &mut HashMap<String, Rc<ItemInfo>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    name: String,
+    item: Rc<Node>,
+    module_name: String,
+) {
+    if name.is_empty() || fn_nodes.contains_key(&name) {
+        return;
+    }
+    fn_nodes.insert(name.clone(), item.clone());
+    item_registry.insert(
+        name,
+        v1_compiler_infer::build_item_info(item, source_indices.clone(), module_name),
+    );
+}
+
+fn census_overlay_index_disj_arms(
+    fn_nodes: &mut HashMap<String, Rc<Node>>,
+    item_registry: &mut HashMap<String, Rc<ItemInfo>>,
+    variant_parents: &mut HashMap<String, String>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    parent_name: String,
+    disj: &Rc<Node>,
+    module_name: String,
+) {
+    for arm in disj.children.iter() {
+        let arm_name = authored_name_at(source_indices.clone(), arm.clone());
+        if !arm_name.is_empty() {
+            variant_parents
+                .entry(arm_name.clone())
+                .or_insert_with(|| parent_name.clone());
+            census_overlay_insert_item(
+                fn_nodes,
+                item_registry,
+                source_indices,
+                arm_name,
+                arm.clone(),
+                module_name.clone(),
+            );
+        }
+    }
+}
+
+fn build_census_eval_overlay(
+    modules: &[Rc<Node>],
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> CensusEvalOverlay {
+    let mut fn_nodes = HashMap::new();
+    let mut item_registry = HashMap::new();
+    let mut variant_parents = HashMap::new();
+    for module in modules {
+        let module_name = authored_name_at(source_indices.clone(), module.clone());
+        for item in module_items(module.clone()).iter() {
+            let name = authored_name_at(source_indices.clone(), item.clone());
+            census_overlay_insert_item(
+                &mut fn_nodes,
+                &mut item_registry,
+                &source_indices,
+                name.clone(),
+                item.clone(),
+                module_name.clone(),
+            );
+            if item.connective == Connective::Disj {
+                census_overlay_index_disj_arms(
+                    &mut fn_nodes,
+                    &mut item_registry,
+                    &mut variant_parents,
+                    &source_indices,
+                    name,
+                    item,
+                    module_name.clone(),
+                );
+            } else if let Some(InferredNode::Resolved { node: n }) = item.inferred.as_deref() {
+                if n.connective == Connective::Disj {
+                    census_overlay_index_disj_arms(
+                        &mut fn_nodes,
+                        &mut item_registry,
+                        &mut variant_parents,
+                        &source_indices,
+                        if name.is_empty() {
+                            authored_name_at(source_indices.clone(), n.clone())
+                        } else {
+                            name
+                        },
+                        n,
+                        module_name.clone(),
+                    );
+                }
+            }
+        }
+    }
+    CensusEvalOverlay {
+        fn_nodes: Rc::new(fn_nodes),
+        item_registry: Rc::new(item_registry),
+        variant_parents: Rc::new(variant_parents),
+    }
+}
 
 #[path = "phase_profile.rs"]
 mod phase_profile;
@@ -595,6 +718,7 @@ mod process_workspace_root_tests {
         repo_relative_path_normalized, try_anchor_source_root, workspace_relative_repo_path,
         workspace_root,
     };
+    use crate::v1_std_core::Connective;
     use std::path::Path;
 
     #[test]
@@ -654,6 +778,84 @@ mod process_workspace_root_tests {
             super::CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER,
             "cli_run_discovery_skip_before_resolve"
         );
+    }
+
+    #[test]
+    fn corpus_global_bare_census_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_CORPUS_GLOBAL_BARE_CENSUS_SCAFFOLD_MARKER,
+            "cli_run_corpus_global_bare_census"
+        );
+    }
+
+    #[test]
+    fn corpus_global_bare_census_includes_std_bare_refs() {
+        let roots = super::witness_layer_roots();
+        let index = super::build_multi_entry_index(&roots);
+        let (census, _, _) =
+            super::build_corpus_global_bare_census_from_index(&index).expect("census build");
+        use crate::v1_compiler_infer_env::GlobalBareLookupState::{
+            GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
+        };
+        for name in [
+            "Nat",
+            "EffectShape",
+            "Disposition",
+            "money_amount_micro_count",
+            "Run",
+            "Pipeline",
+            "orch_emit_step",
+            "NetworkInterface",
+            "PersistenceKind",
+        ] {
+            let entry = census.get(name).unwrap_or_else(|| panic!("{name}: missing"));
+            match entry.as_ref() {
+                GlobalBareUniqueBinding { .. } => {}
+                GlobalBareAmbiguousBinding => panic!("{name}: ambiguous in census"),
+            }
+        }
+        // Optional/Present/Absent must stay kernel-ambient — census arm collisions poison them.
+        for poison in ["Present", "Absent"] {
+            assert!(
+                !census.contains_key(poison),
+                "{poison}: must not appear in global_bare census (shadows kernel Optional arms)"
+            );
+        }
+    }
+
+    #[test]
+    fn corpus_global_bare_census_indexes_gunbc_data_decls() {
+        let roots = super::witness_layer_roots();
+        let index = super::build_multi_entry_index(&roots);
+        let (census, _, _) =
+            super::build_corpus_global_bare_census_from_index(&index).expect("census build");
+        use crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareUniqueBinding;
+        for name in [
+            "fleet_autoinstall_specs",
+            "fleet_install_server_specs",
+            "all_plans",
+            "GeneratedArtifact",
+            "HttpMethod",
+        ] {
+            let entry = census.get(name).expect("missing census key");
+            match entry.as_ref() {
+                GlobalBareUniqueBinding { binding, .. } => {
+                    if matches!(
+                        name,
+                        "fleet_autoinstall_specs" | "fleet_install_server_specs" | "all_plans"
+                    ) {
+                        let has_type = binding.resolved.inferred.is_some()
+                            || binding.resolved.connective != Connective::NoConnective
+                            || !binding.resolved.children.is_empty();
+                        assert!(
+                            has_type,
+                            "{name}: data census binding must carry declared type"
+                        );
+                    }
+                }
+                _ => panic!("{name}: expected unique global_bare binding"),
+            }
+        }
     }
 
     #[test]
@@ -1722,16 +1924,108 @@ fn disable_floor_compile_clean_lazy_install_for_test() {
     FLOOR_COMPILE_CLEAN_CI_SCOPING.store(false, Ordering::SeqCst);
 }
 
+/// Resolve/typecheck with corpus-wide `global_bare` (PR-5c gunbc import strip).
+/// `compile_to_resolved` indexes bare names only from modules in the source closure;
+/// stripped gunbc bare refs need the witness-layer census from the full module index.
+fn compile_to_resolved_with_corpus_global_bare(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    let roots = witness_layer_roots();
+    let index = Rc::new(build_multi_entry_index(&roots));
+    let (global_bare, census_source_indices, census_eval_overlay) =
+        build_corpus_global_bare_census_from_index(index.as_ref())?;
+    set_census_eval_overlay(census_eval_overlay);
+
+    let sources_rc: Rc<im_rc::Vector<Rc<v1_compiler_compile::SourceFile>>> =
+        Rc::new(sources.into());
+    let frontend = v1_compiler_compile::front_end_sources(sources_rc.clone());
+    let newline_indices = frontend.newline_indices.clone();
+
+    let graph = match frontend.graph.clone() {
+        Some(g) => g,
+        None => {
+            return Ok(Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+                graph: None,
+                diagnostics: frontend.diagnostics.clone(),
+                source_indices: v1_rt::rc_empty_map(),
+                complexity: v1_compiler_compile::empty_complexity_report(),
+                ownership: Rc::new(im_rc::Vector::new()),
+                newline_indices: newline_indices.clone(),
+            }));
+        }
+    };
+
+    let source_indices = newline_indices.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        |acc, idx| v1_rt::rc_map_insert(acc, idx.file.clone(), idx.clone()),
+    );
+    let source_indices = merge_source_indices(source_indices, census_source_indices);
+
+    let norm = v1_compiler_normalize::normalize_graph(graph.clone(), source_indices.clone());
+    let norm_diags = norm.diagnostics.clone();
+
+    let typed = reconcile_with_typed_cache(
+        norm.graph.clone(),
+        source_indices.clone(),
+        frontend.intern_table.clone(),
+        index.as_ref(),
+        global_bare,
+    )?;
+
+    let options = v1_compiler_compile::default_compile_pipeline_options();
+    let complexity = if options.analyze_complexity {
+        v1_compiler_compile::run_complexity_analysis(typed.clone(), source_indices.clone())
+    } else {
+        v1_compiler_compile::empty_complexity_report()
+    };
+    let complexity_diags = if options.analyze_complexity {
+        v1_compiler_compile::complexity_diagnostics(complexity.clone())
+    } else {
+        Rc::new(im_rc::Vector::new())
+    };
+    let typed_diags = typed.diagnostics.clone();
+    let all_diags = v1_rt::concat(typed_diags.clone(), complexity_diags.clone());
+    let ownership = v1_compiler_compile::extract_ownership_proofs(typed.clone());
+    let ownership_diags = v1_compiler_compile::ownership_diagnostics(ownership.clone());
+
+    Ok(Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+        graph: Some(typed.clone()),
+        diagnostics: v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
+                all_diags.clone(),
+            ),
+            ownership_diags.clone(),
+        ),
+        source_indices: source_indices.clone(),
+        complexity: complexity.clone(),
+        ownership: ownership.clone(),
+        newline_indices: newline_indices.clone(),
+    }))
+}
+
 fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
-    let has_hard_errors = compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
-    if has_hard_errors {
-        eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
-    } else if result.files.is_empty() {
-        eprintln!("floor compile-clean: refused — compile produced zero files (empty emit set)");
+    match compile_to_resolved_with_corpus_global_bare(sources) {
+        Ok(resolved) => {
+            let result =
+                v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
+            let has_hard_errors =
+                compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
+            if has_hard_errors {
+                eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
+            } else if result.files.is_empty() {
+                eprintln!(
+                    "floor compile-clean: refused — compile produced zero files (empty emit set)"
+                );
+            }
+            !has_hard_errors && !result.files.is_empty()
+        }
+        Err(msg) => {
+            eprintln!("compile-clean emit: resolve failed ({msg})");
+            false
+        }
     }
-    !has_hard_errors && !result.files.is_empty()
 }
 
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
@@ -1841,15 +2135,20 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
 pub fn witness_layer_roots_compile_clean_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
-        Ok(Some(sources)) => {
-            let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-            if compile_clean_resolve_has_hard_errors(&result) {
-                eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
-                false
-            } else {
-                true
+        Ok(Some(sources)) => match compile_to_resolved_with_corpus_global_bare(sources) {
+            Ok(result) => {
+                if compile_clean_resolve_has_hard_errors(&result) {
+                    eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
+                    false
+                } else {
+                    true
+                }
             }
-        }
+            Err(msg) => {
+                eprintln!("compile-clean: resolve failed ({msg})");
+                false
+            }
+        },
         Err(msg) => {
             eprintln!("compile-clean: source load failed ({msg})");
             false
@@ -2207,134 +2506,6 @@ fn entry_file_touched_via_import_closure(
     }))
 }
 
-/// Receipted Rust mirror of the single authority `v2.std.live_read.live_read_carrier_homes_v0`
-/// (`src/v2/std/live_read.dag`) — the module names of the 8 declared live-read carrier homes.
-/// Kept in lockstep with that `.dag` roster by hand; a drift here under-approximates axis (iv)
-/// fail-closed-safe direction only if this list is a SUPERSET of the `.dag` roster, so any
-/// addition to the `.dag` roster must be mirrored here — the drift gate below
-/// (`live_read_carrier_home_modules_v0_is_superset_of_dag_authority`) evaluates the `.dag`
-/// authority through a real interpreter context and fails the build the moment this const falls
-/// behind, so the mismatch cannot silently pass.
-/// Dissolution trigger: every caller of `runtime_data_dependency_touched_via_carrier_closure`
-/// (the skip-before-resolve fast path and the precompute-count helpers below) is itself a named
-/// `SCAFFOLD (§7 hand-Rust shrink-to-zero)` whose own DELETE WHEN note ties dissolution to
-/// `v2.workflow.affected_set_floor_runner`'s `.dag` disposition owning the same predicate
-/// end-to-end. This const has no independent dissolution path or generator lane because it has
-/// no independent caller: when those scaffolds delete, this const and its drift gate delete with
-/// them, not before.
-const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
-    "v2.lens.enforcement.cost_coverage",
-    "v2.lens.enforcement.grammar_coverage",
-    "v2.lens.complexity_accumulator_copy.roster_gate",
-    "v2.compiler.self_host",
-    "v2.std.decl_index",
-    "v2.lens.module_graph",
-    "tools.dag_compile_clean_shard_roster",
-    "tools.dag_compile_clean_scope",
-];
-
-/// Axis (iv) of the fourth-axis law (`docs/plans/live-read-witness-classification-design.md`
-/// §7): does `entry_path`'s import closure reach a declared live-read carrier home, and is
-/// any path touched at all? This is a G1-only (module-closure) mirror of the landed G2
-/// call-reachability lens (`v2.lens.live_read_classification`) — G2's carrier set is always
-/// a superset of G1's under the same closure (`merge_g1_and_g2_carriers`), so this coarser
-/// Rust check is fail-closed-safe relative to the full `.dag` authority: it may over-report
-/// (an extra witness run) but never under-report (a missed run). It does not attempt to
-/// prove which touched path a reached carrier actually reads at runtime (that precision is
-/// G2/G3's job) — reachability plus any touch is treated as a hit.
-fn runtime_data_dependency_touched_via_carrier_closure(
-    entry_path: &str,
-    facts: &ModuleGraphFactsLive,
-    touched_paths: &[String],
-) -> bool {
-    if touched_paths.is_empty() {
-        return false;
-    }
-    let mut closure_modules: HashSet<String> = HashSet::new();
-    collect_import_closure_module_names_from_facts(entry_path, facts, &mut closure_modules);
-    LIVE_READ_CARRIER_HOME_MODULES_V0
-        .iter()
-        .any(|carrier_module| closure_modules.contains(*carrier_module))
-}
-
-#[cfg(test)]
-mod live_read_carrier_home_roster_drift_gate_tests {
-    use super::{
-        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
-        workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
-    };
-    use crate::v1_interpreter::{self, ExecutionMode, Value};
-    use std::collections::HashSet;
-
-    const LIVE_READ_ENTRY: &str = "src/v2/std/live_read.dag";
-
-    fn record_field<'a>(
-        ctx: &v1_interpreter::InterpContext,
-        fields: &'a [(v1_interpreter::Symbol, Value)],
-        field_name: &str,
-    ) -> Option<&'a Value> {
-        fields
-            .iter()
-            .find(|(sym, _)| ctx.sym_eq(*sym, field_name))
-            .map(|(_, v)| v)
-    }
-
-    // Reads the `.dag`-side single authority directly by evaluating
-    // `live_read_carrier_homes_v0` in a real interpreter context — not a re-hand-authored Rust
-    // copy of the roster — so this test's own expectation cannot drift the same way the
-    // production const can.
-    fn dag_carrier_home_modules() -> HashSet<String> {
-        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
-        let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
-        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
-        let val = v1_interpreter::with_active_context(&ctx, || {
-            v1_interpreter::eval_data_item_value(&ctx, "live_read_carrier_homes_v0")
-        })
-        .unwrap_or_else(|e| panic!("eval live_read_carrier_homes_v0: {e}"))
-        .unwrap_or_else(|| panic!("live_read_carrier_homes_v0 not found as a data item"));
-        let Value::List(items) = val else {
-            panic!("live_read_carrier_homes_v0 is not a List: {val:?}");
-        };
-        items
-            .iter()
-            .map(|item| {
-                let Value::Record { fields, .. } = item else {
-                    panic!("live_read_carrier_homes_v0 entry is not a Record: {item:?}");
-                };
-                match record_field(&ctx, fields, "module") {
-                    Some(Value::Str(s)) => s.clone(),
-                    other => panic!("LiveReadCarrierHome.module is not a String: {other:?}"),
-                }
-            })
-            .collect()
-    }
-
-    // The safety-critical drift direction (axis (iv)'s fail-closed-safe requirement, see the
-    // doc-comment on `LIVE_READ_CARRIER_HOME_MODULES_V0`): the Rust const must be a SUPERSET of
-    // the `.dag` roster. A `.dag`-only addition this const misses makes
-    // `runtime_data_dependency_touched_via_carrier_closure` return `false` for that carrier —
-    // silently fail-open on the exact axis this const backs.
-    #[test]
-    fn live_read_carrier_home_modules_v0_is_superset_of_dag_authority() {
-        let dag_modules = dag_carrier_home_modules();
-        let rust_modules: HashSet<String> = LIVE_READ_CARRIER_HOME_MODULES_V0
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let missing: Vec<&String> = dag_modules.difference(&rust_modules).collect();
-        assert!(
-            missing.is_empty(),
-            "`.dag` authority `live_read_carrier_homes_v0` declares carrier home module(s) \
-             {missing:?} not mirrored in Rust `LIVE_READ_CARRIER_HOME_MODULES_V0` \
-             (src/v1/stage0/src/cli_run.rs) — add them there or axis (iv) silently fails open \
-             for that carrier"
-        );
-    }
-}
-
 // SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
 // ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
 // docs/plans/affected-set-precompute-pruning.md Step 4 migrate floor) — host-side
@@ -2416,13 +2587,12 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
         return Ok(false);
     }
-    if entry_file_touched_via_import_closure(entry_path, facts, declared_paths, touched_paths)? {
-        return Ok(false);
-    }
-    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_paths) {
-        return Ok(false);
-    }
-    Ok(true)
+    Ok(!entry_file_touched_via_import_closure(
+        entry_path,
+        facts,
+        declared_paths,
+        touched_paths,
+    )?)
 }
 
 struct DiscoveryEntryResolve {
@@ -2431,7 +2601,6 @@ struct DiscoveryEntryResolve {
     frontier_nodes: Vec<v1_interpreter::Value>,
     touches_frontier: bool,
     entry_file_touched: bool,
-    entry_runtime_dependency_touched: bool,
     resolve_nanos: u128,
     stage_nanos: ResolveStageNanos,
 }
@@ -2473,50 +2642,33 @@ fn resolve_discovery_entry_for_corpus_row(
         None,
         whole_tree_published_keys,
     );
-    let (frontier_nodes, touches_frontier, entry_file_touched, entry_runtime_dependency_touched) =
-        if skip_enabled {
-            let frontier_nodes =
-                rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
-            let touches_frontier = if frontier_nodes.is_empty() {
-                false
-            } else {
-                entry_touches_rerun_frontier(
-                    &entry_ctx,
-                    &list_value_from_vec(frontier_nodes.clone()),
-                )?
-            };
-            let entry_file_touched = if touched_entry_paths.is_empty() {
-                false
-            } else {
-                entry_file_touched_via_import_closure(
-                    entry_path,
-                    &index.module_graph_facts,
-                    module_graph_declared_paths,
-                    touched_entry_paths,
-                )?
-            };
-            let entry_runtime_dependency_touched =
-                runtime_data_dependency_touched_via_carrier_closure(
-                    entry_path,
-                    &index.module_graph_facts,
-                    touched_entry_paths,
-                );
-            (
-                frontier_nodes,
-                touches_frontier,
-                entry_file_touched,
-                entry_runtime_dependency_touched,
-            )
+    let (frontier_nodes, touches_frontier, entry_file_touched) = if skip_enabled {
+        let frontier_nodes = rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
+        let touches_frontier = if frontier_nodes.is_empty() {
+            false
         } else {
-            (Vec::new(), true, true, true)
+            entry_touches_rerun_frontier(&entry_ctx, &list_value_from_vec(frontier_nodes.clone()))?
         };
+        let entry_file_touched = if touched_entry_paths.is_empty() {
+            false
+        } else {
+            entry_file_touched_via_import_closure(
+                entry_path,
+                &index.module_graph_facts,
+                module_graph_declared_paths,
+                touched_entry_paths,
+            )?
+        };
+        (frontier_nodes, touches_frontier, entry_file_touched)
+    } else {
+        (Vec::new(), true, true)
+    };
     Ok(DiscoveryEntryResolve {
         ctx: entry_ctx,
         closure_subject,
         frontier_nodes,
         touches_frontier,
         entry_file_touched,
-        entry_runtime_dependency_touched,
         resolve_nanos,
         stage_nanos,
     })
@@ -2651,6 +2803,198 @@ fn load_sources_for_entry_with_index(
         sources.push(entry_source);
     }
     Ok(sources)
+}
+
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: v1.compiler.infer_env.global_bare_fallback_invariant;
+// receipt: docs/plans/namespace-resolution-design.md §8 PR-4 / PR-5c import-strip;
+// witness: src/v1/04_env.dag global_bare_fallback_invariant data row).
+// 🟡 dissolve-on: v1 resolve builds `global_bare` from the module graph before typecheck
+// (same kernel as `build_global_bare_census` in v1.compiler.infer — today only on the
+// whole-graph reconcile path) so cli_run entry-resolve stops host-orchestrating a second
+// parse-only census pass over the index.
+// DELETE WHEN dissolved: `build_corpus_global_bare_census_from_index`, `merge_source_indices`
+// census overlay arm, `global_bare_for_decl_file`, and the census call in
+// `resolve_entry_with_parse_cache` (~150 LOC).
+// Receipt: `rg CLI_RUN_CORPUS_GLOBAL_BARE_CENSUS_SCAFFOLD_MARKER src/v1/stage0/src/cli_run.rs` == 1
+// until deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
+pub(crate) const CLI_RUN_CORPUS_GLOBAL_BARE_CENSUS_SCAFFOLD_MARKER: &str =
+    "cli_run_corpus_global_bare_census";
+
+/// INTERIM hand-Rust scaffold (`CLI_RUN_CORPUS_GLOBAL_BARE_CENSUS_SCAFFOLD_MARKER` / §7):
+/// corpus-wide bare-name census for namespace PR-4/5 import strips — parse every module in
+/// the index under the compile-clean exclusion policy and build `global_bare` from their
+/// top-level declarations only. Entry resolve keeps its transitive import closure; this
+/// is a separate read-only census pass so stripped bare refs resolve without widening the
+/// typechecked module set to the whole tree. Dissolves when v1 resolve owns census build.
+fn build_corpus_global_bare_census_from_index(
+    index: &MultiEntryIndex,
+) -> Result<
+    (
+        Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        CensusEvalOverlay,
+    ),
+    String,
+> {
+    use crate::v1_compiler_resolve::ResolvedModule;
+
+    let excludes = whole_tree_resolve_exclusion_substrings();
+    let corpus_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .source_files
+        .iter()
+        .filter(|(module_path, sf)| {
+            let p = sf.path.replace('\\', "/");
+            if excludes
+                .iter()
+                .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+            {
+                return false;
+            }
+            // PR-5c import strip: see `census_module_path_included`.
+            census_module_path_included(&p)
+        })
+        .map(|(_, sf)| sf.clone())
+        .collect();
+    if corpus_sources.is_empty() {
+        return Err(
+            "global_bare census: no eligible modules in index after exclusion policy"
+                .to_string(),
+        );
+    }
+
+    let mut modules: Vec<Rc<Node>> = Vec::new();
+    let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    for source in &corpus_sources {
+        let cached = index.parse_cache.borrow().get(&source.path).cloned();
+        let (parse_result, nl_index) = match cached {
+            Some(entry) => entry,
+            None => {
+                let tokens =
+                    v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+                let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+                let current_table = index.intern_table.borrow().clone();
+                let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+                    let mut m = HashMap::new();
+                    m.insert(source.path.clone(), nl_index.clone());
+                    m
+                });
+                let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+                let entry = (parsed.result.clone(), nl_index.clone());
+                index
+                    .parse_cache
+                    .borrow_mut()
+                    .insert(source.path.clone(), entry.clone());
+                entry
+            }
+        };
+        si_map.insert(nl_index.file.clone(), nl_index.clone());
+        if let Some(err) = &parse_result.error {
+            let span = diagnostic_to_span(err.diagnostic.clone());
+            let loc = format_error_loc(&span.file, span.start, &si_map);
+            return Err(format!(
+                "global_bare census parse failed for {}: {}: error: {}",
+                source.path,
+                loc,
+                diagnostic_to_message(err.diagnostic.clone())
+            ));
+        }
+        if let Some(module) = &parse_result.module {
+            modules.push(module.clone());
+        }
+    }
+
+    let census_source_indices = Rc::new(si_map);
+    let census_eval_overlay = build_census_eval_overlay(&modules, census_source_indices.clone());
+    let resolved_modules: im_rc::Vector<Rc<ResolvedModule>> = modules
+        .into_iter()
+        .map(|module| {
+            Rc::new(ResolvedModule {
+                module,
+                resolved_imports: Rc::new(im_rc::Vector::new()),
+                dep_order: 0,
+            })
+        })
+        .collect();
+    Ok((
+        v1_compiler_infer::build_global_bare_census(
+            Rc::new(resolved_modules),
+            census_source_indices.clone(),
+        ),
+        census_source_indices,
+        census_eval_overlay,
+    ))
+}
+
+/// PR-5c gunbc import strip: census-backed bare lookup applies only to stripped
+/// gunbc modules. Feeding the full corpus census into `src/v2/` or `dag/std/`
+/// typecheck perturbs coproduct inference (main stays green with empty global_bare).
+fn global_bare_for_decl_file(
+    decl_file: &str,
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    let p = decl_file.replace('\\', "/");
+    if p.contains("dag/gunbc/") {
+        census.clone()
+    } else {
+        v1_rt::rc_empty_map()
+    }
+}
+
+/// Paths whose top-level declarations feed the interim PR-5c `global_bare` census.
+/// Non-test `dag/**` is the stripped namespace authority surface; `src/v2/std/**`
+/// contributes only non-homonym modules (dag/std and v2/std share 11 basenames that
+/// would mark census keys ambiguous); other `src/v2/**` is included.
+fn census_module_path_included(path: &str) -> bool {
+    let p = path.replace('\\', "/");
+    // PR-5c bare census: all non-test dag modules that gunbc may reference after
+    // import strip (std, extdeps, product, ctrl, tools, …).
+    if p.contains("dag/") && !p.contains("dag/test/") {
+        // product.NetworkInterface is the gunbc authority; docker's homonym is excluded.
+        if p.contains("dag/extdeps/docker/container_stats.dag") {
+            return false;
+        }
+        return true;
+    }
+    if p.contains("src/v2/std/") {
+        return census_v2_std_module_included(&p);
+    }
+    p.contains("src/v2/")
+}
+
+/// `dag/std/*` and `src/v2/std/*` share these basenames; census must use dag/std only.
+fn census_v2_std_module_included(path: &str) -> bool {
+    let base = path.rsplit('/').next().unwrap_or(path);
+    !matches!(
+        base,
+        "algebra.dag"
+            | "artifact.dag"
+            | "change.dag"
+            | "coercion.dag"
+            | "determinism.dag"
+            | "effects.dag"
+            | "float.dag"
+            | "grammar.dag"
+            | "integer.dag"
+            | "logic.dag"
+            | "nat.dag"
+            | "network.dag"
+            | "node.dag"
+            | "verification.dag"
+    )
+}
+
+fn merge_source_indices(
+    base: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    overlay: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+    overlay.iter().fold(base, |acc, (file, idx)| {
+        if acc.contains_key(file) {
+            acc
+        } else {
+            v1_rt::rc_map_insert(acc, file.clone(), idx.clone())
+        }
+    })
 }
 
 fn same_canonical_file(a: &str, b: &str) -> bool {
@@ -2874,13 +3218,19 @@ pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
 }
 
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
-    new_multi_entry_index_shell(build_module_index(source_roots), source_roots, None)
+    new_multi_entry_index_shell(
+        build_module_index(source_roots),
+        source_roots,
+        None,
+    )
 }
 
 pub fn build_multi_entry_index_with_shared_caches(
     source_roots: &[String],
     cross_worker_store: Arc<RwLock<SharedTypecheckCaches>>,
 ) -> MultiEntryIndex {
+    // 🟡 dissolve-on: adaptive floor wiring must pair this with a live governor
+    // byte-codec width cap when serde transport is armed (re-land together post-Arc).
     new_multi_entry_index_shell(
         build_module_index(source_roots),
         source_roots,
@@ -2951,21 +3301,33 @@ fn shared_caches_write<'a>(
         .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))
 }
 
-/// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
-/// cross-worker store is armed (no local duplicate — serde transport is one authority).
+/// Read the typed cache: per-index `Rc` first, then cross-worker byte snapshots.
 fn index_get_typed(
     index: &MultiEntryIndex,
     mod_name: &str,
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+    if let Some(hit) = index.typed_module_cache.borrow().get(mod_name).cloned() {
+        return Ok(Some(hit));
+    }
     let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(index.typed_module_cache.borrow().get(mod_name).cloned());
+        return Ok(None);
     };
-    shared_get_typed(store, mod_name)
+    let decoded = shared_get_typed(store, mod_name)?;
+    if let Some(rc) = decoded.as_ref() {
+        index
+            .typed_module_cache
+            .borrow_mut()
+            .insert(mod_name.to_string(), rc.clone());
+    }
+    Ok(decoded)
 }
 
 fn index_contains_typed(index: &MultiEntryIndex, mod_name: &str) -> Result<bool, String> {
+    if index.typed_module_cache.borrow().contains_key(mod_name) {
+        return Ok(true);
+    }
     let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(index.typed_module_cache.borrow().contains_key(mod_name));
+        return Ok(false);
     };
     let caches = shared_caches_read(store)?;
     Ok(caches.contains_typed(mod_name))
@@ -2993,18 +3355,23 @@ fn index_insert_typed(
     mod_name: String,
     result: Rc<v1_compiler_infer::TypecheckModuleResult>,
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
+    index
+        .typed_module_cache
+        .borrow_mut()
+        .insert(mod_name.clone(), result.clone());
     let Some(store) = index.cross_worker_store.as_ref() else {
-        index
-            .typed_module_cache
-            .borrow_mut()
-            .insert(mod_name, result.clone());
         return Ok(result);
     };
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
         caches.clone_typed_bytes(&mod_name)
     } {
-        return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
+        let winner = SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice())?;
+        index
+            .typed_module_cache
+            .borrow_mut()
+            .insert(mod_name, winner.clone());
+        return Ok(winner);
     }
     let encoded = SharedTypecheckCaches::encode_typed_snapshot(&result)?;
     let raced_bytes = {
@@ -3017,9 +3384,13 @@ fn index_insert_typed(
         }
     };
     if let Some(bytes) = raced_bytes {
-        return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
+        let winner = SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice())?;
+        index
+            .typed_module_cache
+            .borrow_mut()
+            .insert(mod_name, winner.clone());
+        return Ok(winner);
     }
-    // Insert won the race: bytes live in the shared store only (no per-index Rc copy).
     Ok(result)
 }
 
@@ -3033,9 +3404,8 @@ fn shared_get_typed(
         caches.clone_typed_bytes(mod_name)
     };
     match bytes {
-        Some(snapshot) => {
-            SharedTypecheckCaches::decode_typed_snapshot(snapshot.as_slice()).map(Some)
-        }
+        Some(snapshot) => SharedTypecheckCaches::decode_typed_snapshot(snapshot.as_slice())
+            .map(Some),
         None => Ok(None),
     }
 }
@@ -3078,7 +3448,11 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v2".to_string(),
         "src/v1".to_string(),
     ];
-    new_multi_entry_index_shell(build_module_index_primary_precedence(&roots), &roots, None)
+    new_multi_entry_index_shell(
+        build_module_index_primary_precedence(&roots),
+        &roots,
+        None,
+    )
 }
 
 pub fn resolve_entry_with_index(
@@ -3363,8 +3737,20 @@ fn resolve_entry_with_parse_cache(
 
     set_phase(FloorPhase::Typecheck, entry_file);
     let reconcile_started = std::time::Instant::now();
-    let typed =
-        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
+    let (global_bare, census_source_indices, census_eval_overlay) =
+        build_corpus_global_bare_census_from_index(index)?;
+    set_census_eval_overlay(census_eval_overlay);
+    // Census modules sit outside the entry import closure; merge their newline indices
+    // so global_bare coproduct-arm walks (find_global_variant_parent_enum /
+    // has_child_named) can read authored names from declaring files not in the closure.
+    let source_indices = merge_source_indices(source_indices, census_source_indices);
+    let typed = reconcile_with_typed_cache(
+        graph.clone(),
+        source_indices.clone(),
+        global_table,
+        index,
+        global_bare,
+    )?;
     // Assembly residue = reconcile wall minus the per-module rows its internals
     // accumulated into the slot during this call (typecheck computes + parent envs).
     let reconcile_total = reconcile_started.elapsed().as_nanos();
@@ -3675,7 +4061,9 @@ fn reconcile_all_cache_hits(
             check_index_module_source_identity(index, mod_name, &decl_file)?;
         }
         let tc_result = index_get_typed(index, mod_name)?.ok_or_else(|| {
-            format!("reconcile all-cache-hit path: module '{mod_name}' missing from typed store")
+            format!(
+                "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
+            )
         })?;
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
@@ -3697,189 +4085,17 @@ fn reconcile_all_cache_hits(
     )
 }
 
-fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
-    if !name.contains('.') {
-        return None;
-    }
-    name.rfind('.').and_then(|pos| {
-        if pos > 0 {
-            Some(name[..pos].to_string())
-        } else {
-            None
-        }
-    })
-}
-
-fn collect_qualified_projection_module_paths_from_node(
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    out: &mut HashSet<String>,
-) {
-    let name = authored_name_at(source_indices.clone(), node.clone());
-    if let Some(prefix) = qualified_name_module_path_prefix(&name) {
-        out.insert(prefix);
-    }
-    for child in node.children.iter() {
-        collect_qualified_projection_module_paths_from_node(
-            child.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-    for param in node.params.iter() {
-        collect_qualified_projection_module_paths_from_node(
-            param.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-    if let Some(inferred) = &node.inferred {
-        if let Some(inner) = inferred_to_node(inferred.clone()) {
-            collect_qualified_projection_module_paths_from_node(inner, source_indices.clone(), out);
-        }
-    }
-    if let Some(type_annotation) = &node.type_annotation {
-        collect_qualified_projection_module_paths_from_node(
-            type_annotation.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-    if let Some(body) = &node.body {
-        collect_qualified_projection_module_paths_from_node(
-            body.clone(),
-            source_indices.clone(),
-            out,
-        );
-    }
-}
-
-fn qualified_projection_module_paths_in_graph(
-    graph: &v1_compiler_resolve::ModuleGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> HashSet<String> {
-    let mut paths = HashSet::new();
-    for resolved in graph.modules.iter() {
-        for item in module_items(resolved.module.clone()).iter() {
-            collect_qualified_projection_module_paths_from_node(
-                item.clone(),
-                source_indices.clone(),
-                &mut paths,
-            );
-        }
-    }
-    paths
-}
-
-fn merge_symbol_indices(left: Rc<SymbolIndex>, right: Rc<SymbolIndex>) -> Rc<SymbolIndex> {
-    right.entries.iter().fold(left, |acc, (key, value)| {
-        symbol_index_insert(acc, key.clone(), value.clone())
-    })
-}
-
-fn parse_module_node_from_index_source(
-    index: &MultiEntryIndex,
-    source: Rc<v1_compiler_compile::SourceFile>,
-) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
-    let cached = index.parse_cache.borrow().get(&source.path).cloned();
-    let (parse_result, nl_index) = match cached {
-        Some(entry) => entry,
-        None => {
-            let tokens =
-                v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
-            let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-            let current_table = index.intern_table.borrow().clone();
-            let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
-                let mut m = HashMap::new();
-                m.insert(source.path.clone(), nl_index.clone());
-                m
-            });
-            let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-            *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-            let entry = (parsed.result.clone(), nl_index.clone());
-            index
-                .parse_cache
-                .borrow_mut()
-                .insert(source.path.clone(), entry.clone());
-            entry
-        }
-    };
-    if let Some(err) = &parse_result.error {
-        let span = diagnostic_to_span(err.diagnostic.clone());
-        let loc = format_error_loc(&span.file, span.start, &Rc::new(HashMap::new()));
-        return Err(format!(
-            "symbol_index qualified-projection census refused: parse failed for {}: {}",
-            loc,
-            diagnostic_to_message(err.diagnostic.clone())
-        ));
-    }
-    match &parse_result.module {
-        Some(module) => Ok((module.clone(), nl_index)),
-        None => Err(format!(
-            "symbol_index qualified-projection census refused: no module in {}",
-            source.path
-        )),
-    }
-}
-
-// SCAFFOLD (§7 seed-retained HAND-RUST — Grammar lane G1 entry-scoped reconcile)
-// 🟡 dissolve-on: build_symbol_index_for_reconcile — parse/resolve provider modules
-// referenced by dotted qualified names in the entry import closure when absent from that
-// closure; dissolve when multi-entry SymbolIndex authority is modeled (.dag census over
-// the indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
-fn build_symbol_index_for_reconcile(
-    index: &MultiEntryIndex,
-    graph: Rc<v1_compiler_resolve::ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Result<Rc<SymbolIndex>, String> {
-    let mut symbol_index =
-        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices.clone());
-    let closure_module_names: HashSet<String> = graph
-        .modules
-        .iter()
-        .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
-        .collect();
-    for module_path in qualified_projection_module_paths_in_graph(&graph, source_indices.clone()) {
-        if closure_module_names.contains(&module_path) {
-            continue;
-        }
-        let Some(source) = index.source_files.get(&module_path).cloned() else {
-            // Unindexed prefix — likely a non-module dotted token (e.g. method/field
-            // spelling), not a qualified module projection target; skip without widening.
-            continue;
-        };
-        let (module, provider_nl_index) = parse_module_node_from_index_source(index, source)?;
-        let mut provider_si = (*source_indices).clone();
-        provider_si.insert(provider_nl_index.file.clone(), provider_nl_index);
-        let provider_si = Rc::new(provider_si);
-        let provider_graph =
-            v1_compiler_resolve::resolve_modules(Rc::new(vec![module].into()), provider_si.clone());
-        let provider_index = v1_compiler_infer::build_symbol_index_census(
-            provider_graph.modules.clone(),
-            provider_si,
-        );
-        symbol_index = merge_symbol_indices(symbol_index, provider_index);
-    }
-    Ok(symbol_index)
-}
-
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     index: &MultiEntryIndex,
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
-    // Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): built once,
-    // order-independent, over the whole graph before any module typechecks — see
-    // global_bare_fallback_invariant in v1_compiler_infer_env.
-    let global_bare =
-        v1_compiler_infer::build_global_bare_census(graph.modules.clone(), source_indices.clone());
-    let symbol_index =
-        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
@@ -3907,7 +4123,12 @@ fn reconcile_with_typed_cache(
         cached
     };
     if all_cached {
-        return reconcile_all_cache_hits(&closure_modules, &closure_names, source_indices, index);
+        return reconcile_all_cache_hits(
+            &closure_modules,
+            &closure_names,
+            source_indices,
+            index,
+        );
     }
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
     let mut dispatched: Vec<
@@ -3967,8 +4188,7 @@ fn reconcile_with_typed_cache(
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
-                        global_bare.clone(),
-                        symbol_index.clone(),
+                        global_bare_for_decl_file(&decl_file, global_bare.clone()),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
                     // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
@@ -4082,6 +4302,14 @@ fn format_error_nodes(
         .join("\n")
 }
 
+fn source_declares_published_mock_case(content: &str) -> bool {
+    // Structural prefilter only — must match a declaration site, not prose mentions
+    // (e.g. dag/gunbc/plans/*.dag cite PublishedMockCase in markdown strings).
+    content.contains("PublishedMockCase =")
+        || content.contains(": PublishedMockCase")
+        || content.contains(": List<PublishedMockCase>")
+}
+
 fn resolved_graph_from_sources(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     typecheck_gate: ResolveTypecheckGate,
@@ -4094,7 +4322,7 @@ fn resolved_graph_from_sources(
 > {
     let result = match typecheck_gate {
         ResolveTypecheckGate::Strict => {
-            v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
+            compile_to_resolved_with_corpus_global_bare(sources)?
         }
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
             v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(
@@ -4293,12 +4521,16 @@ pub fn make_eval_context_with_runtime_options(
     fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
 ) -> v1_interpreter::InterpContext {
+    let census_overlay = census_eval_overlay_for_interp();
     v1_interpreter::InterpContext::with_runtime_options(
         graph,
         source_indices,
         execution_mode,
         fixture_store,
         whole_tree_published_keys,
+        census_overlay.as_ref().map(|o| o.fn_nodes.clone()),
+        census_overlay.as_ref().map(|o| o.item_registry.clone()),
+        census_overlay.as_ref().map(|o| o.variant_parents.clone()),
     )
 }
 
@@ -4342,7 +4574,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     // false-positive file only widens the closure slightly — it cannot fabricate a key.
     let declarers: Vec<Rc<v1_compiler_compile::SourceFile>> = index
         .values()
-        .filter(|sf| sf.content.contains("PublishedMockCase"))
+        .filter(|sf| source_declares_published_mock_case(&sf.content))
         .cloned()
         .collect();
     if declarers.is_empty() {
@@ -4355,8 +4587,8 @@ pub fn precompute_whole_tree_published_mock_keys(
     }
     let (graph, source_indices) =
         resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
-    let ctx = v1_interpreter::InterpContext::with_runtime_options(
-        &graph,
+    let ctx = make_eval_context_with_runtime_options(
+        graph.as_ref(),
         source_indices,
         v1_interpreter::ExecutionMode::Wet,
         None,
@@ -4591,7 +4823,7 @@ pub fn whole_tree_resolved_ctx(
     let (graph, source_indices) =
         resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
     Ok(WholeTreeCtx {
-        ctx: v1_interpreter::InterpContext::with_runtime_options(
+        ctx: make_eval_context_with_runtime_options(
             graph.as_ref(),
             source_indices,
             execution_mode,
@@ -7424,55 +7656,8 @@ fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::Interp
                 | "DiagnosticClaim"
                 | "StructuralEqualsClaim"
                 | "RoundTripClaim"
+                | "BoolWitnessClaim"
         ),
-        _ => false,
-    }
-}
-
-fn variant_field<'a>(
-    ctx: &v1_interpreter::InterpContext,
-    fields: &'a [(v1_interpreter::Symbol, v1_interpreter::Value)],
-    name: &str,
-) -> Option<&'a v1_interpreter::Value> {
-    fields
-        .iter()
-        .find(|(sym, _)| ctx.sym_eq(*sym, name))
-        .map(|(_, v)| v)
-}
-
-/// Node-frontier selection applies only to node-corpus TestClaim rows whose
-/// evaluation footprint is structurally Node-valued at runtime. UnifiedTestClaim
-/// BoolWitnessClaim rows and CompilesClaim rows whose input/expected_value are
-/// Symbol atoms (parse-bridge harness claims) are out of scope for
-/// `test_claim_evaluation_touches_rerun_frontier` — skipping them is
-/// fail-closed-safe (cannot under-approximate touch → may rerun, never skip).
-fn test_claim_selection_has_node_corpus(
-    val: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> bool {
-    let v1_interpreter::Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = val
-    else {
-        return false;
-    };
-    let all_nodes = |vals: &[&v1_interpreter::Value]| vals.iter().all(|v| value_is_node(v, ctx));
-    match ctx.resolve(*variant_name).as_str() {
-        "EqualsClaim" | "StructuralEqualsClaim" => all_nodes(&[
-            variant_field(ctx, fields, "lhs").expect("lhs"),
-            variant_field(ctx, fields, "rhs").expect("rhs"),
-        ]),
-        "CompilesClaim" => all_nodes(&[
-            variant_field(ctx, fields, "input").expect("input"),
-            variant_field(ctx, fields, "expected_value").expect("expected_value"),
-        ]),
-        "RoundTripClaim" => all_nodes(&[variant_field(ctx, fields, "input").expect("input")]),
-        "DiagnosticClaim" => {
-            variant_field(ctx, fields, "input")
-                .is_some_and(|v| value_is_node(v, ctx))
-        }
         _ => false,
     }
 }
@@ -7724,7 +7909,6 @@ fn call_floor_kernel_would_skip(
     touches_frontier: bool,
     function_edited: bool,
     entry_file_touched: bool,
-    runtime_data_dependency_touched: bool,
 ) -> Result<bool, String> {
     if !ctx.item_registry.contains_key("floor_kernel_would_skip") {
         return Err("floor_kernel_would_skip missing from floor runner context".to_string());
@@ -7753,10 +7937,6 @@ fn call_floor_kernel_would_skip(
         (
             Some("entry_file_touched".to_string()),
             v1_interpreter::Value::Bool(entry_file_touched),
-        ),
-        (
-            Some("runtime_data_dependency_touched".to_string()),
-            v1_interpreter::Value::Bool(runtime_data_dependency_touched),
         ),
     ];
     match v1_interpreter::run_in_context_with_args(ctx, "floor_kernel_would_skip", &args, false) {
@@ -7792,7 +7972,6 @@ fn call_floor_row_would_skip(
     touches_frontier: bool,
     function_edited: bool,
     entry_file_touched: bool,
-    runtime_data_dependency_touched: bool,
 ) -> Result<bool, String> {
     if !ctx.item_registry.contains_key("floor_row_would_skip") {
         return Err("floor_row_would_skip missing from floor runner context".to_string());
@@ -7826,10 +8005,6 @@ fn call_floor_row_would_skip(
             Some("entry_file_touched".to_string()),
             v1_interpreter::Value::Bool(entry_file_touched),
         ),
-        (
-            Some("runtime_data_dependency_touched".to_string()),
-            v1_interpreter::Value::Bool(runtime_data_dependency_touched),
-        ),
     ];
     match v1_interpreter::run_in_context_with_args(ctx, "floor_row_would_skip", &args, false) {
         Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
@@ -7848,7 +8023,6 @@ fn call_floor_row_precompute_would_skip(
     frontier_node_count: usize,
     edited_test_fn_count: usize,
     touched_entry_file_count: usize,
-    touched_runtime_dependency_entry_count: usize,
 ) -> Result<bool, String> {
     if !ctx
         .item_registry
@@ -7882,10 +8056,6 @@ fn call_floor_row_precompute_would_skip(
         (
             Some("touched_entry_file_count".to_string()),
             v1_interpreter::Value::Int(touched_entry_file_count as i64),
-        ),
-        (
-            Some("touched_runtime_dependency_entry_count".to_string()),
-            v1_interpreter::Value::Int(touched_runtime_dependency_entry_count as i64),
         ),
     ];
     match v1_interpreter::run_in_context_with_args(
@@ -7983,28 +8153,6 @@ fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
     rows.iter().filter(|r| r.reads_live_tree).count()
 }
 
-/// Precompute-grain count for axis (iv): the number of distinct entries among `rows` whose
-/// import closure reaches a declared live-read carrier home
-/// (`runtime_data_dependency_touched_via_carrier_closure`), given the full raw touched-path
-/// set. Feeds `floor_row_precompute_would_skip`'s `touched_runtime_dependency_entry_count` —
-/// nonzero pins the whole-tree precompute exactly as the other three axes do.
-fn discovery_rows_runtime_dependency_touched_count(
-    rows: &[DiscoveryRow],
-    facts: &ModuleGraphFactsLive,
-    touched_paths: &[String],
-) -> usize {
-    if touched_paths.is_empty() {
-        return 0;
-    }
-    let mut seen: HashSet<&str> = HashSet::new();
-    rows.iter()
-        .filter(|row| seen.insert(row.entry.as_str()))
-        .filter(|row| {
-            runtime_data_dependency_touched_via_carrier_closure(&row.entry, facts, touched_paths)
-        })
-        .count()
-}
-
 /// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
 /// when import-closure `entry_file_touched` is false and no declaration-level edit
 /// targets this entry, every kernel witness in the entry would skip — receipt:
@@ -8054,9 +8202,6 @@ fn entry_qualifies_for_skip_without_resolve(
         declared_paths,
         touched_entry_paths,
     )? {
-        return Ok(false);
-    }
-    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
@@ -8414,9 +8559,6 @@ fn entry_touches_rerun_frontier(
         if !value_is_test_claim(&val, ctx) {
             continue;
         }
-        if !test_claim_selection_has_node_corpus(&val, ctx) {
-            continue;
-        }
         saw_claim = true;
         match call_test_claim_fn_bool(
             ctx,
@@ -8551,13 +8693,11 @@ pub fn run_discovery_corpus_with_options(
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let changed_paths: Vec<String> = name_status_changed_paths;
     // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
-    // process step on the pump thread — prelude-warmed parse/typed caches instead of a
-    // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
-    // design.md §4): adaptive worker shards arm ONE process-scoped typed_module_cache
-    // (serde byte transport). The pump thread keeps `process_shared_index` (private per-
-    // index `Rc`) so prelude work does not duplicate into the shared store; workers alone
-    // read/write the shared store as the typed-cache authority (no local Rc duplicate).
-    // Store creation lives in the Adaptive match arm below — unrepresentable on Serial.
+    // process step on the pump thread — `process_shared_index` reuses prelude-warmed
+    // parse/typed caches instead of a private cold build. Increment C serde
+    // `cross_worker_store` is deferred on the floor until store-path `Rc`→`Arc` retires
+    // the byte codec (CI 29349125185 OOM); explicit oracles arm it via
+    // `build_multi_entry_index_with_shared_caches` (🟡 dissolve-on).
     let index = process_shared_index(source_roots);
     // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
     // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
@@ -8632,12 +8772,6 @@ pub fn run_discovery_corpus_with_options(
         let live_row_count = discovery_rows_live_tree_count(&rows);
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
-                let touched_runtime_dependency_entry_count =
-                    discovery_rows_runtime_dependency_touched_count(
-                        &rows,
-                        &index.module_graph_facts,
-                        &changed_paths,
-                    );
                 let precompute = call_floor_row_precompute_would_skip(
                     ctx,
                     live_row_count,
@@ -8645,7 +8779,6 @@ pub fn run_discovery_corpus_with_options(
                     diff_edits.overlapping_data_items.len(),
                     diff_edits.edited_test_fns.len(),
                     diff_edits.touched_entry_files.len(),
-                    touched_runtime_dependency_entry_count,
                 );
                 match precompute {
                     Ok(skip) => skip,
@@ -8686,7 +8819,7 @@ pub fn run_discovery_corpus_with_options(
     );
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
-    return match width_policy {
+    let governor = match width_policy {
         DiscoveryWidthPolicy::Serial => {
             let summary = run_discovery_rows(
                 &rows,
@@ -8727,73 +8860,28 @@ pub fn run_discovery_corpus_with_options(
                 "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
-            Ok(attach_deferred_discovery_rows(summary, deferred_rows))
+            return Ok(attach_deferred_discovery_rows(summary, deferred_rows));
         }
-        DiscoveryWidthPolicy::Adaptive(governor) => {
-            // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
-            // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
-            // resident structure across every group it pulls — admission of a worker (not of a
-            // group) is therefore the memory-relevant act the governor decides.
-            let groups = entry_row_groups(&rows);
-            let spawn_target_width = governor.current_target_width();
-            eprintln!(
-                "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
-                groups.len(),
-                rows.len(),
-                spawn_target_width,
-            );
-            // Width=1: drain inline on the pump thread reusing `process_shared_index` (already
-            // warmed for calibration + floor runner). Spawning a worker thread duplicates the
-            // whole-tree index on a second thread-local cache — ~2× retention that OOM'd CI
-            // batch-2 discovery (runs 29372308568 / 29373433928). Cross-worker store arms only
-            // when plural workers run (below). 🟡 dissolve-on: Rc→Arc retires the width gate.
-            if spawn_target_width <= 1 {
-                eprintln!(
-                    "run_discovery_corpus: width=1 inline drain — reusing process_shared_index (no worker duplicate index)"
-                );
-                eprintln!(
-                    "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
-                );
-                let style = ShardStyle {
-                    shard_id: 0,
-                    shard_count: 1,
-                    color: floor_color,
-                    stream: floor_stream,
-                };
-                let mut summaries = Vec::new();
-                for group_indices in groups {
-                    let group_rows: Vec<DiscoveryRow> =
-                        group_indices.iter().map(|&i| rows[i].clone()).collect();
-                    summaries.push(run_discovery_rows(
-                        &group_rows,
-                        &index,
-                        execution_mode,
-                        options.node_frontier_selection,
-                        &changed_paths,
-                        &diff_edits,
-                        floor_runner_ctx.as_ref(),
-                        whole_tree_published_keys.clone(),
-                        options.fast_lane_eval_budget_ms,
-                        style,
-                    )?);
-                }
-                return Ok(attach_deferred_discovery_rows(
-                    merge_discovery_summaries(summaries),
-                    deferred_rows,
-                ));
-            }
-            // Process-scoped typed store shell — populated only when plural workers run
-            // (target_width > 1). At width=1 the serde byte store adds retention without
-            // cross-worker benefit and breaks the CI memory budget (design §7; OOM
-            // 29349125185 / 29371206526). 🟡 dissolve-on: Rc→Arc retires the gate.
-            let cross_worker_store = new_shared_typecheck_caches();
-            if floor_stream && spawn_target_width > 1 {
-                eprintln!(
-                    "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
-                    floor_ts(),
-                    spawn_target_width,
-                );
-            }
+        DiscoveryWidthPolicy::Adaptive(governor) => governor,
+    };
+    // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
+    // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
+    // resident structure across every group it pulls — admission of a worker (not of a
+    // group) is therefore the memory-relevant act the governor decides.
+    let groups = entry_row_groups(&rows);
+    eprintln!(
+        "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
+        groups.len(),
+        rows.len(),
+        governor.current_target_width(),
+    );
+    if floor_stream && governor.current_target_width() > 1 {
+        eprintln!(
+            "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
+            floor_ts(),
+            governor.current_target_width(),
+        );
+    }
     let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
         std::sync::Arc::new(Mutex::new(
             groups
@@ -8825,17 +8913,6 @@ pub fn run_discovery_corpus_with_options(
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
-        let spawn_target_width = governor.current_target_width();
-        let cross_worker_store_for_worker = if spawn_target_width > 1 {
-            Some(cross_worker_store.clone())
-        } else {
-            None
-        };
-        if worker_ordinal == 0 && spawn_target_width <= 1 {
-            eprintln!(
-                "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
-            );
-        }
         // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
         // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
         // admission window has no interleaving to disambiguate.
@@ -8853,12 +8930,9 @@ pub fn run_discovery_corpus_with_options(
                 let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
                     governor_for_worker.clone(),
                 );
-                // Process-scoped typed_module_cache when governor width > 1; private cold
-                // index at width=1 (CI budget — cross-worker-typecheck-share-design §7).
-                let index = match cross_worker_store_for_worker {
-                    Some(store) => build_multi_entry_index_with_shared_caches(&roots, store),
-                    None => build_multi_entry_index(&roots),
-                };
+                // Per-index `Rc` typed cache (serde cross_worker_store deferred — see pump
+                // index arm above; oracles arm shared store explicitly).
+                let index = build_multi_entry_index(&roots);
                 let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                     match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
                         Ok((graph, source_indices)) => {
@@ -8945,8 +9019,6 @@ pub fn run_discovery_corpus_with_options(
         merge_discovery_summaries(summaries),
         deferred_rows,
     ))
-        }
-    };
 }
 
 fn attach_deferred_discovery_rows(
@@ -9272,7 +9344,6 @@ fn run_discovery_rows(
     let mut current_entry_touches = true;
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_file_touched = true;
-    let mut current_entry_runtime_dependency_touched = true;
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
@@ -9307,7 +9378,6 @@ fn run_discovery_rows(
                 current_entry = Some(row.entry.clone());
                 current_entry_touches = false;
                 current_entry_file_touched = false;
-                current_entry_runtime_dependency_touched = false;
                 current_entry_frontier_nodes.clear();
                 current_closure_subject = None;
                 ctx = None;
@@ -9347,7 +9417,6 @@ fn run_discovery_rows(
                 current_entry_frontier_nodes.clear();
                 current_entry_touches = false;
                 current_entry_file_touched = false;
-                current_entry_runtime_dependency_touched = false;
                 current_entry = Some(row.entry.clone());
             } else {
                 let resolved = resolve_discovery_entry_for_corpus_row(
@@ -9373,8 +9442,6 @@ fn run_discovery_rows(
                 current_entry_frontier_nodes = resolved.frontier_nodes;
                 current_entry_touches = resolved.touches_frontier;
                 current_entry_file_touched = resolved.entry_file_touched;
-                current_entry_runtime_dependency_touched =
-                    resolved.entry_runtime_dependency_touched;
                 ctx = Some(resolved.ctx);
                 if let Some(c) = ctx.as_ref() {
                     c.set_witness_eval_budget(fast_lane_eval_budget_ms);
@@ -9387,8 +9454,6 @@ fn run_discovery_rows(
                 diff_file_matches_entry(file, &row.entry) && func == &row.function
             });
         let entry_file_touched = skip_enabled && current_entry_file_touched;
-        let runtime_data_dependency_touched =
-            skip_enabled && current_entry_runtime_dependency_touched;
         let would_skip = if skip_enabled {
             match floor_runner_ctx {
                 Some(runner_ctx) => {
@@ -9400,7 +9465,6 @@ fn run_discovery_rows(
                         current_entry_touches,
                         function_edited,
                         entry_file_touched,
-                        runtime_data_dependency_touched,
                     );
                     match skip {
                         Ok(skip) => skip,
@@ -9472,7 +9536,6 @@ fn run_discovery_rows(
             current_entry_frontier_nodes = resolved.frontier_nodes;
             current_entry_touches = resolved.touches_frontier;
             current_entry_file_touched = resolved.entry_file_touched;
-            current_entry_runtime_dependency_touched = resolved.entry_runtime_dependency_touched;
             ctx = Some(resolved.ctx);
             if let Some(c) = ctx.as_ref() {
                 c.set_witness_eval_budget(fast_lane_eval_budget_ms);
@@ -9763,7 +9826,6 @@ new file mode 100644
             false,
             false,
             false,
-            false,
         )
         .expect("live-tree row skip");
         assert!(
@@ -9775,7 +9837,6 @@ new file mode 100644
             false,
             &changed_paths,
             &[],
-            false,
             false,
             false,
             false,
@@ -10456,8 +10517,8 @@ mod floor_witness_a_prove {
 // (→ `edited_test_fns`); only non-data, non-test-fn declaration edits land in
 // `touched_entry_files`. A raw touched-path superset can diverge from this filtered set, so
 // proving equivalence against raw paths only proves a stronger/looser predicate, not the live
-// decision. This receipt runs `floor_diff_edits_from_diff_text(&index, &pinned_diff_text)`
-// on each commit's full unified diff (pinned in `testdata/`, not `--name-only`) and feeds
+// decision. This receipt runs `floor_diff_edits_from_diff_text(&index, &git_show_diff_text)`
+// on each commit's full unified diff (`git show <sha>`, not `--name-only`) and feeds
 // `.touched_entry_files` to both `dag_entry_affected` and `rust_entry_affected`.
 //
 // `floor_diff_edits_from_line_ranges` fail-closes (`Err`) when a touched `.dag` file's diff
@@ -10507,30 +10568,25 @@ mod module_grain_affected_equivalence_tests {
         ws.join(rel).to_string_lossy().into_owned()
     }
 
-    // Pinned unified diff fixtures for the two all-`M` commits below (NOT `--name-only`) — the
-    // same shape the live floor parses via `parse_unified_diff_line_ranges`/
-    // `parse_unified_diff_changed_new_lines`. Checked into `testdata/` so shallow clones and
-    // remote test runners (BuildBuddy depth-1 fetch) do not need the historical git objects —
-    // `git show <sha>` was the latent red on origin/main outside full-history worktrees.
+    // Full unified diff for `sha` (NOT `--name-only`) — the same shape the live floor parses via
+    // `parse_unified_diff_line_ranges`/`parse_unified_diff_changed_new_lines`.
     fn diff_text_for_commit(sha: &str) -> String {
-        let text = match sha {
-            "6edafbb5e29370c0ac791038a1c64e1a4ddbd40d" => {
-                include_str!("../testdata/module_grain_affected_dag_only_6edafbb.diff")
-            }
-            "bb6e65649c9625d021467b0d7fe33ca7dd086e4f" => {
-                include_str!("../testdata/module_grain_affected_v2_only_bb6e656.diff")
-            }
-            other => panic!(
-                "module_grain_affected_equivalence: no pinned diff fixture for commit {other} — \
-                 add testdata/module_grain_affected_<label>_<shortsha>.diff and extend \
-                 diff_text_for_commit"
-            ),
-        };
+        let output = std::process::Command::new("git")
+            .args(["show", sha])
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|e| panic!("git show {sha}: {e}"));
+        assert!(
+            output.status.success(),
+            "git show {sha} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8_lossy(&output.stdout).into_owned();
         assert!(
             !text.trim().is_empty(),
-            "pinned diff fixture for commit {sha} is empty"
+            "commit {sha} produced empty diff text"
         );
-        text.to_string()
+        text
     }
 
     fn str_list_value(items: &[String]) -> Value {
@@ -11238,29 +11294,13 @@ mod node_frontier_plumbing_controls {
             super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
         let changed_paths = vec![fixture_abs.clone()];
         assert!(
-            !call_floor_kernel_would_skip(
-                &runner_ctx,
-                &changed_paths,
-                &nodes,
-                false,
-                false,
-                true,
-                false
-            )
-            .expect("skip verdict for touched entry"),
+            !call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, true)
+                .expect("skip verdict for touched entry"),
             "helper-fn edit must RUN witnesses in the touched entry (entry_file_touched)"
         );
         assert!(
-            call_floor_kernel_would_skip(
-                &runner_ctx,
-                &changed_paths,
-                &nodes,
-                false,
-                false,
-                false,
-                false
-            )
-            .expect("skip verdict for unrelated entry"),
+            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false)
+                .expect("skip verdict for unrelated entry"),
             "helper-fn edit must SKIP witnesses in an unrelated entry when frontier is empty"
         );
     }
@@ -11323,14 +11363,13 @@ mod node_frontier_plumbing_controls {
                 &nodes,
                 false,
                 false,
-                true,
-                false
+                true
             )
             .expect("skip verdict for importing entry"),
             "cross-file helper-fn edit must RUN witnesses in importing entry (import-closure entry_file_touched)"
         );
         assert!(
-            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false, false)
+            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false)
                 .expect("skip verdict for unrelated entry"),
             "cross-file helper-fn edit must SKIP witnesses in an unrelated entry when frontier is empty"
         );
@@ -12737,121 +12776,6 @@ pub fn fact_cardinality_decl_facts() -> Vec<FactCardinalityDeclFactRaw> {
     records
 }
 
-#[derive(Clone)]
-pub struct ImportResolutionFactRaw {
-    pub path: String,
-    pub import_module: String,
-    pub target_declared: bool,
-}
-
-#[derive(Clone)]
-pub struct ModuleDeclarationFactRaw {
-    pub module: String,
-    pub path: String,
-}
-
-fn is_excluded_import_path(rel: &str, exclude_substrings: &[String]) -> bool {
-    exclude_substrings.iter().any(|s| rel.contains(s.as_str()))
-}
-
-// Per-call counters for the two host builtins the `.dag` interpreter actually invokes when a
-// `.dag` fold reads `import_resolution_facts_live`/`module_declaration_facts_live` (e.g.
-// `v2.lens.module_graph.import_closure_live`). Distinct from `MODULE_GRAPH_FACTS_BUILD_COUNT`
-// above, which counts the separate Rust-side `build_module_graph_facts_live` batching path used
-// by `current_entry_closure_files` — the two paths are not the same call site, so a cost receipt
-// comparing them needs its own counter (module-grain affected-set equivalence receipt).
-#[cfg(test)]
-static IMPORT_RESOLUTION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-#[cfg(test)]
-static MODULE_DECLARATION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-
-#[cfg(test)]
-pub(crate) fn reset_import_resolution_facts_call_counts_for_test() {
-    IMPORT_RESOLUTION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
-    MODULE_DECLARATION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
-}
-
-#[cfg(test)]
-pub(crate) fn import_resolution_facts_call_count_for_test() -> usize {
-    IMPORT_RESOLUTION_FACTS_CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst)
-}
-
-#[cfg(test)]
-pub(crate) fn module_declaration_facts_call_count_for_test() -> usize {
-    MODULE_DECLARATION_FACTS_CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst)
-}
-
-pub fn import_resolution_facts(
-    pool_roots: &[String],
-    importer_roots: &[String],
-    exclude_substrings: &[String],
-) -> Vec<ImportResolutionFactRaw> {
-    #[cfg(test)]
-    IMPORT_RESOLUTION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let abs_pool_roots = pool_roots_abs(pool_roots);
-    let abs_importer_roots = pool_roots_abs(importer_roots);
-    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
-        .into_iter()
-        .map(|(k, _)| k)
-        .collect();
-    let mut out = Vec::new();
-    for root in &abs_importer_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
-        dag_files.sort();
-        for file in dag_files {
-            let rel = rel_path_for_layer_import(&file);
-            if is_excluded_import_path(&rel, exclude_substrings) {
-                continue;
-            }
-            let content = match std::fs::read_to_string(&file) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            for import_module in extract_import_paths(&content) {
-                let target_declared = declared.contains(&import_module);
-                out.push(ImportResolutionFactRaw {
-                    path: rel.clone(),
-                    import_module,
-                    target_declared,
-                });
-            }
-        }
-    }
-    out
-}
-
-pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
-    #[cfg(test)]
-    MODULE_DECLARATION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let abs_pool_roots = pool_roots_abs(pool_roots);
-    let mut out: Vec<ModuleDeclarationFactRaw> = build_module_path_index(&abs_pool_roots)
-        .into_iter()
-        .map(|(module, path)| ModuleDeclarationFactRaw { module, path })
-        .collect();
-    out.sort_by(|a, b| a.module.cmp(&b.module));
-    out
-}
-
-// ── Reference-derived module edges (namespace terminal step, DESIGN "deps via container.member") ──
-//
-// SCAFFOLD (DESIGN §7). Replaces the import-parse module graph (`extract_import_paths` /
-// `import_resolution_facts`) with edges derived from where a module's body/type REFERENCES resolve,
-// so the module graph survives corpus-wide `import` deletion (namespace-only resolution, operator-
-// signed 2026-07-06; the reference is the sole representation of usage, Rule 1). One O(corpus) parse
-// pass over the pool (reusing the real front-end `tokenize` + `parse` — no substring scan), cached.
-// Consumers (`build_module_graph_facts_live`, the inert-lens reach) union these edges onto the import
-// edges during the transition; when the import grammar is deleted (parent's terminal step) the import
-// term is empty and the module graph is reference-only, the `src/v2/lens/module_graph.dag`
-// single-swap-point end state. Every closure/loader/lens consumer is edge-source-agnostic (reads edge
-// rows as data, never import syntax).
-//
 // Confidence tag (parent ruling, 2026-07-14; DESIGN §5): the LOADER closure and affected-set read
 // ALL edges (over-load is safe — a superset only compiles extra modules). The inert-lens reach reads
 // Qualified + UniqueBare only (dropping AmbiguousBare), so an over-connected graph can never silently
@@ -13071,7 +12995,9 @@ pub fn reference_resolution_facts(
         abs_importer_roots.join("\u{1e}"),
         exclude_substrings.join("\u{1e}")
     );
-    if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
+    if let Some(cached) =
+        REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned())
+    {
         return cached;
     }
 
@@ -13115,10 +13041,7 @@ pub fn reference_resolution_facts(
             if seen_modules.insert(module_name.clone()) {
                 module_names.insert(module_name.clone());
                 for name in collect_module_decl_names(&tree) {
-                    decl_index
-                        .entry(name)
-                        .or_default()
-                        .insert(module_name.clone());
+                    decl_index.entry(name).or_default().insert(module_name.clone());
                 }
             }
             pool_trees
@@ -13221,10 +13144,8 @@ pub fn reference_resolution_facts(
                             // AmbiguousBare is a bare ref, in a file that does not declare it, whose
                             // nearest declarers tie — the definitive "needs qualification" site.
                             if std::env::var("REFAMBIG_DUMP").is_ok() {
-                                let is_witness =
-                                    rel.contains("/test/") || rel.ends_with("_test.dag");
-                                let cands: Vec<String> =
-                                    winners.iter().map(|s| (*s).clone()).collect();
+                                let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
+                                let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
                                 eprintln!(
                                     "REFAMBIG\t{}\t{}\t{}\t{}",
                                     if is_witness { "witness" } else { "compile" },
@@ -13254,80 +13175,106 @@ pub fn reference_resolution_facts(
     edges
 }
 
+#[derive(Clone)]
+pub struct ImportResolutionFactRaw {
+    pub path: String,
+    pub import_module: String,
+    pub target_declared: bool,
+}
+
+#[derive(Clone)]
+pub struct ModuleDeclarationFactRaw {
+    pub module: String,
+    pub path: String,
+}
+
+fn is_excluded_import_path(rel: &str, exclude_substrings: &[String]) -> bool {
+    exclude_substrings.iter().any(|s| rel.contains(s.as_str()))
+}
+
+// Per-call counters for the two host builtins the `.dag` interpreter actually invokes when a
+// `.dag` fold reads `import_resolution_facts_live`/`module_declaration_facts_live` (e.g.
+// `v2.lens.module_graph.import_closure_live`). Distinct from `MODULE_GRAPH_FACTS_BUILD_COUNT`
+// above, which counts the separate Rust-side `build_module_graph_facts_live` batching path used
+// by `current_entry_closure_files` — the two paths are not the same call site, so a cost receipt
+// comparing them needs its own counter (module-grain affected-set equivalence receipt).
 #[cfg(test)]
-mod reference_edge_producer_tests {
-    use super::reference_resolution_facts;
+static IMPORT_RESOLUTION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+#[cfg(test)]
+static MODULE_DECLARATION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
-    fn fixture_root(tag: &str) -> std::path::PathBuf {
-        // Under the workspace `target/` (gitignored): `rel_path_for_layer_import` fail-closes on
-        // paths outside the workspace root, and `target/` keeps the fixture out of version control.
-        super::process_workspace_root()
-            .join("target")
-            .join(format!("gunbc-refedge-{tag}-{}", std::process::id()))
+#[cfg(test)]
+pub(crate) fn reset_import_resolution_facts_call_counts_for_test() {
+    IMPORT_RESOLUTION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+    MODULE_DECLARATION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(test)]
+pub(crate) fn import_resolution_facts_call_count_for_test() -> usize {
+    IMPORT_RESOLUTION_FACTS_CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[cfg(test)]
+pub(crate) fn module_declaration_facts_call_count_for_test() -> usize {
+    MODULE_DECLARATION_FACTS_CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+pub fn import_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    #[cfg(test)]
+    IMPORT_RESOLUTION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let abs_importer_roots = pool_roots_abs(importer_roots);
+    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    let mut out = Vec::new();
+    for root in &abs_importer_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files);
+        dag_files.sort();
+        for file in dag_files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            for import_module in extract_import_paths(&content) {
+                let target_declared = declared.contains(&import_module);
+                out.push(ImportResolutionFactRaw {
+                    path: rel.clone(),
+                    import_module,
+                    target_declared,
+                });
+            }
+        }
     }
+    out
+}
 
-    fn write(root: &std::path::Path, rel: &str, content: &str) {
-        let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
-        std::fs::write(&p, content).expect("write dag");
-    }
-
-    // Green-by-execution + discriminating RED: the producer must derive a cross-module edge from a
-    // bare reference in an import-LESS file (the stripped case), resolve a same-module name LOCALLY
-    // (no edge — the live_tree_disposition fan-out guard), and emit NOTHING for an import-bearing
-    // file (import-covered). A reader that ignored the parsed references would fail the first assert.
-    #[test]
-    fn reference_edges_derived_from_bare_refs_local_and_import_aware() {
-        let root = fixture_root("core");
-        let _ = std::fs::remove_dir_all(&root);
-        // Declares the shared name.
-        write(
-            &root,
-            "decl.dag",
-            "module test.decl\n\nfn shared_fn() -> Bool {\n  true\n}\n",
-        );
-        // Import-LESS file that references it → edge to test.decl.
-        write(
-            &root,
-            "refless.dag",
-            "module test.refless\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
-        );
-        // Declares its OWN shared_fn and references it → resolves locally, NO edge.
-        write(
-            &root,
-            "reflocal.dag",
-            "module test.reflocal\n\nfn shared_fn() -> Bool {\n  true\n}\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
-        );
-        // Import-bearing file → covered by import facts, producer emits nothing for it.
-        write(
-            &root,
-            "imported.dag",
-            "module test.imported\n\nimport test.decl { shared_fn }\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
-        );
-
-        let roots = vec![root.to_string_lossy().into_owned()];
-        let edges = reference_resolution_facts(&roots, &roots, &[]);
-        let has_edge = |from_sub: &str, to_mod: &str| {
-            edges
-                .iter()
-                .any(|e| e.path.contains(from_sub) && e.target_module == to_mod)
-        };
-        let emits_any = |from_sub: &str| edges.iter().any(|e| e.path.contains(from_sub));
-
-        assert!(
-            has_edge("refless.dag", "test.decl"),
-            "import-less file referencing shared_fn must yield an edge to its declaring module"
-        );
-        assert!(
-            !emits_any("reflocal.dag"),
-            "a same-module declaration resolves locally — no cross-module edge"
-        );
-        assert!(
-            !emits_any("imported.dag"),
-            "an import-bearing file is import-covered — the reference producer skips it"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
+pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
+    #[cfg(test)]
+    MODULE_DECLARATION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let mut out: Vec<ModuleDeclarationFactRaw> = build_module_path_index(&abs_pool_roots)
+        .into_iter()
+        .map(|(module, path)| ModuleDeclarationFactRaw { module, path })
+        .collect();
+    out.sort_by(|a, b| a.module.cmp(&b.module));
+    out
 }
 
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
@@ -13487,21 +13434,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/node_minimal.dag::node_superset_field_eq",
     "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
     "src/v2/std/qualified_name.dag::qn_fold_step",
-    // 2026-07-14 backfill (fourth instance of the masking class, siblings to the #6533/#6530
-    // receipts above): the nightly affected-set falsifier's whole-corpus cold sweep surfaced 3
-    // unrostered sites the per-PR affected-set selection did not run the nfr witness for at
-    // landing time. `orch_emit_let_step` landed with #6573 (Shell→dag P2b), the two live-read
-    // eq fns with #6582 (live-read classification P1) — the same PR that landed the orphan doc
-    // this sweep also caught. Declared here so the ratchet re-arms; each burns down with its
-    // owning file's fold migration.
-    //   - orch_emit_let_step: special-case `ExprCmdSubst` + general `Expr` dispatch via
-    //     orch_emit_expr_spelling; dissolves when emit is the backward grammar-row fold (§4).
-    //   - live_read_carrier_eq / path_pattern_eq: nested structural `==` (`_ => false` on the
-    //     off-variant arm), the same shape as the std `*_eq` rows above; dissolves with derived
-    //     equality from inhabitance (the cross-representation `==` grounding, DESIGN §3/§4).
-    "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
-    "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
-    "src/v2/lens/live_read_classification.dag::path_pattern_eq",
 ];
 
 fn nfr_strip_comments(content: &str) -> String {
