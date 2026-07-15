@@ -16,7 +16,16 @@ The v1 resolve superlinearity is closed as three terms (memory note `v1-resolve-
 2. Mild inherent lookup growth → namespace/SymbolIndex lane, not A.
 3. **Retention aging** (lively-heron, from the Pi log) — same-size entries run **~2.9× slower in the last third** of the corpus run than the first; memory pressure on the ~6.25 GB retained store, not structural growth (corroborated: 130min wall vs 56min CPU ≈ swap stall).
 
-Increment C already collapses term-1 redundancy *within a process across workers* — but it is **name-keyed** and it left eviction as an "honest trade" (increment C §7, open-decision-3), explicitly *increasing* co-resident retention. **Term-3 upgrades that open decision to a hard constraint:** a naive cross-entry/cross-worker memo *deepens* retention (term-3's failure axis) and is **net-negative on a constrained host**. So A wins only as the materialization-ladder instance — content-keyed with declared eviction — never a hand-rolled `HashMap` that cannot evict (ROADMAP ④'s "N hand-rolled caches" disease; a memo that can't evict is a term-3 regression wearing a term-1 win's clothes).
+**Denomination correction (2026-07-15, after reading the live store path).** Term-1's *cross-entry* redundancy is **already collapsed within a process**: `run_discovery_corpus` builds **one `process_shared_index`** whose `typed_module_cache` persists across every entry-group — at width=1 the inline drain reuses it (`cli_run.rs` ~8863), at width>1 the `cross_worker_store` shares it across workers. So `host_effect_realize` is already typechecked **once per process**, not once per entry. **A's remaining displaced cost is therefore term-3 (retention aging), not a term-1 wall win** (that is banked). The store is **name-keyed and unevictable — it grows to the whole union**, which *is* term-3; and that unbounded growth is precisely why the cross-worker store is **withheld at width=1** ("serde retention without cross-worker benefit breaks the CI budget", `cli_run.rs` ~8895). **Eviction is the deliverable, and it is what lets the store be armed at any width on a constrained host.** Content-keying is the *soundness license* for eviction (drop a pure fact, recompute by content key on re-demand, purity-oracle-proven no stale serve) and the S2b-ready backend — not itself a wall win.
+
+So A wins only as the materialization-ladder instance — content-keyed with declared eviction — never a hand-rolled `HashMap` that cannot evict (ROADMAP ④'s "N hand-rolled caches" disease; a memo that can't evict is a term-3 regression).
+
+**§3 reconciliation with M2 (throughline) — A coordinates, does not fork.** [v1-run-stability-throughline](v1-run-stability-throughline.md) **M2** ("retention strip at the cache grain") is *also* a term-3 mechanism, and it deliberately rejects LRU: "recompute reds the once-per-node contract." The two are **complementary, one law two grains** — and A must build them as such, not as a second eviction:
+
+- **M2 env-strip = primary, zero recompute.** Once every importer of a module in the roster's remaining demand is typechecked, strip its `type_env`/`func_env` to shared empty singletons (keep `module`/`items`/`item_registry`). The stripped fields are provably no longer demanded, so this frees bytes **without recompute** — it respects once-per-node. This is the first line of defense and shrinks *per-entry* footprint.
+- **A `SpacePacked` whole-entry eviction = backstop, counted recompute.** When strip is insufficient to hold the store inside the host budget, drop least-recently-demanded whole `ComputationIdentity` entries; a re-demand recomputes by content key. This *does* incur recompute (a counted, located deviation from once-per-node — **priced in §4**, not silent), and it is the *hard* memory bound strip cannot guarantee.
+
+Together: `store bytes ≤ min(host-budget, N × stripped-entry)`. Eviction count is a §5-counted diagnostic, so the once-per-node deviation is observable and prioritizable — never absorbed. **A subsumes M2's strip as its no-recompute inner ring; A owns only the budget-enforcing outer ring.** (Coordination: M2 is a throughline milestone; whether A absorbs M2's strip or consumes it is an operator lane call — flagged, §6.)
 
 The four sections below are the four decisions that make A retention-safe. They are not free choices.
 
@@ -52,7 +61,12 @@ The structural tell that this is mandatory, not optional: the typed-module store
 - **Interim (this lane): declared budget derived from the host budget read.** The governor already reads the host memory envelope (`memory.max` / container cap — the same source that packs floor worker width). The eviction budget is a *fraction of that read*, so it scales with the host: a 31 GB container and a 6 GB Pi get different budgets from the same expression, without a per-site constant. Evictions are **counted** (a typed, located, per-eviction diagnostic — never a silent shrink; the absorbing-fallback wall, §5). `SpacePacked{budget}` carries the derivation string, not a literal.
 - **Terminal: measured space.** When the realization-measurement lane lands (witness-plan P1, [realization-measurement-loop](realization-measurement-loop.md)), the budget is derived from *measured* per-entry store bytes rather than a declared fraction. Same `SpacePacked` cell; the `budget` derivation swaps declared→measured. Declared-first is the honest interim (loud, bounded, with its dissolution trigger = P1), not an authored pin.
 
-**Eviction grain = the `ComputationIdentity` entry.** When the store exceeds budget, evict least-recently-demanded identities. Dropping a pure typed-module fact is *always sound* — it only ever costs a recompute (ladder rule-3: "dropping pure facts is always sound"). That soundness is *why* `SpacePacked` is admissible here and why eviction can never produce a wrong answer, only a slower one — which the §4 aging metric then prices.
+**Eviction is two rings (the M2 reconciliation, §0):**
+
+1. **Inner ring — env-strip (M2), zero recompute.** Strip `type_env`/`func_env` from an entry once its importers in the roster's remaining demand are all typechecked. Frees bytes without recompute → respects once-per-node → *not* counted against the once-per-node contract. This is the primary bytes-freeing mechanism.
+2. **Outer ring — `SpacePacked` whole-entry eviction, counted recompute.** Only when the stripped store still exceeds the host budget: evict least-recently-demanded whole `ComputationIdentity` entries; re-demand recomputes by content key. Dropping a pure typed-module fact is *always sound* (ladder rule-3: "dropping pure facts is always sound") — eviction can never produce a wrong answer, only a slower one. Each eviction is a **counted, located diagnostic** so the once-per-node deviation is observable and priced (§4), never absorbed.
+
+`SpacePacked{budget}` is the outer ring's declared bound; the inner ring is `ScopeExit`-shaped (strip = the demand-span exit for those fields). Both are the ladder's own vocabulary.
 
 Refusal, never widen: if the budget read fails (host envelope unavailable), the provider **refuses** (typed, located) — it does not fall back to an unbounded store. An unevictable store is the term-3 regression; refusing to build one is the fail-closed floor.
 
@@ -80,12 +94,12 @@ This is the same warm==cold purity oracle the catalog already witnesses (`extdep
 
 **Decision: A is accepted only when, on the Pi (the host where term-3 lives), both hold — alongside the §3 fingerprint receipts:**
 
-- **(a) Total resolve wall drops materially.** Term-1 redundant typecheck is discharged — the shared std/spec prefix + big coproduct modules are typechecked once per *process*, not once per entry/worker. Measured by resolve-split `typecheck_compute` nanos down (the #6535 instrument), fingerprints unchanged.
-- **(b) The late/early aging ratio falls from ~2.9× toward ~1×.** The memo displaced recompute **without deepening retention** — proof that eviction (§2) held the store inside the host budget. Measured by the same per-third timing lively-heron used on the Pi log.
+- **(b) The late/early aging ratio falls from ~2.9× toward ~1× — the primary prize.** Bounding the store (§2) removes the memory pressure that ages the run. Measured by the same per-third timing lively-heron used on the Pi log.
+- **(a) Total resolve wall drops materially — as a *consequence* of (b), not of term-1.** Term-1's cross-entry redundancy is already banked within-process (§0); (a)'s wall drop is the **swap-stall relief** the bounded store buys (the 130min-wall vs 56min-CPU gap closes). Measured by total resolve wall + resolve-split `typecheck_compute`; fingerprints unchanged.
 
-**The failure signature that makes (b) non-negotiable:** if (a) improves but (b) *worsens*, eviction is mis-tuned — A bought term-1 by paying term-3, exactly the net-negative outcome the constraint exists to prevent. (a)-alone is not acceptance; it is the trap. Both, or the budget (§2) is re-derived.
+**The failure signature that makes both non-negotiable:** eviction (§2 outer ring) incurs recompute, so an over-tight budget *raises* wall (recompute cost) even as it lowers peak bytes — the counted eviction diagnostic is the tell. If (b) improves but (a) *worsens*, the budget is too tight (over-evicting → recompute dominates); if (a) improves but (b) is flat, the budget is too loose (no real bound). Both move together only when the budget is tuned to the host — that is the acceptance. Neither alone; the budget (§2) is re-derived until both hold.
 
-The Pi is the RED control for the whole lane: a name-keyed unevictable store (increment C as-is) would show (a) improve and (b) worsen on the Pi — which is *why* the plain increment C is not landed on constrained hosts, and why this refinement exists.
+The Pi is the RED control for the whole lane: a name-keyed unevictable store (increment C as-is, withheld at width=1 today) grows to the union and ages 2.9× on the Pi — which is *why* the plain increment C is not armed on constrained hosts, and why this refinement exists.
 
 ---
 
@@ -103,8 +117,19 @@ Nothing here touches 04_infer/04_env until sign-off. Then, staged smallest-first
 
 ---
 
-## 6. The three questions this sketch asks the operator
+## 6. What the store-path read changed — the one decision that now gates code
 
-1. **Key set (§1):** minimal (source ⊕ direct-import interfaces ⊕ compiler-id) — confirmed complete by the byte-identical oracle, not the conservative transitive-env fingerprint? *(recommend minimal.)*
-2. **Budget denomination (§2):** interim = declared fraction of the host memory-envelope read (governor's own source), terminal = measured (P1)? Evictions counted, refuse-on-unavailable? *(recommend yes.)*
-3. **Acceptance (§4):** both (a) wall-down and (b) aging-ratio-toward-1× required on the Pi; (a)-alone is the mis-tuned-eviction trap, not acceptance? *(recommend yes.)*
+Reading the live store path (`cli_run.rs` `run_discovery_corpus`) surfaced a load-bearing fact the sketch sign-off predates, and it re-denominates A. **This is the model-before-implement payoff: surfaced before any store code.**
+
+**Finding 1 — term-1 wall is already banked** (§0): one `process_shared_index` per process shares the typed cache across all entries; `host_effect_realize` is typechecked once per process, not per entry. A's win is term-3 (retention), not term-1 wall.
+
+**Finding 2 — naive whole-row eviction may free almost nothing on the target host.** Throughline M2 already found: "**not** whole-row eviction (Rc-pinned payloads make that free almost nothing)" and "**not** an LRU (recompute reds the once-per-node contract)." At width=1 (the constrained Pi) the store is `HashMap<name, Rc<TypecheckModuleResult>>` — the payload Rc may be pinned by the live resolved graph, so dropping the map slot frees little. And retention is **Node-dominated** (memory note `v1-resolve-retention-is-node-dominated`): the mass is the typed *body*'s Nodes (`module`/`items`), which **both** M2 env-strip **and** whole-row LRU leave pinned. The mechanism that provably frees Node mass is **M3 / Inc-B interface-summary retention** — store only `ModuleInterface`, drop the typed body.
+
+**The re-denominated A (recommendation):** A's content-keyed host-budget-bounded store is right, **but the payload it retains must be the interface summary (M3/Inc-B shape), not the full `TypecheckModuleResult`.** Content-keying makes recompute-on-miss sound; the host budget bounds it; **retaining interface-summaries (not Node-heavy bodies) is what makes eviction actually free the dominant mass.** So A = increment-C store ⊕ M3 interface retention ⊕ host-budget `SpacePacked` ⊕ content key. The `SpacePacked` outer ring then bites on a store whose entries are *small* (interfaces), where dropping them frees real bytes; the width>1 serde store (`Arc<Vec<u8>>` snapshots) frees bytes on eviction regardless.
+
+### The decisions this now asks the operator (code is gated on 4)
+
+1. **Key set (§1):** minimal (source ⊕ direct-import interfaces ⊕ compiler-id), completeness witnessed by the byte-identical oracle? *(recommend minimal.)*
+2. **Budget denomination (§2):** interim = declared fraction of the host memory-envelope read, terminal = measured (P1); evictions counted; refuse-on-unavailable? *(recommend yes.)*
+3. **Acceptance (§4):** both (a) wall-down (swap-stall relief) and (b) aging-ratio-toward-1× on the Pi; over-tight budget shows as wall-up from counted recompute? *(recommend yes.)*
+4. **The re-denomination (this section) — the gating call:** A retains **interface summaries** (M3/Inc-B shape) under the host budget, *not* full typed bodies — because naive whole-row eviction of Rc-pinned Node-heavy bodies frees ~nothing at width=1 (M2's documented finding). This **couples A to M3/Inc-B (resolver-graph-major lane)**. Does A absorb the M3 interface-retention shape into its store, or consume M3 as a prerequisite from that lane? *(recommend: A absorbs the interface-retention shape into the store payload — it is the same `ModuleInterface` authority Inc B already projects; coordinate landing with the Inc-B owner.)*
