@@ -94,6 +94,10 @@ data provenance_producer_unknown_git_diff: GitDiffNameOnly = GitDiffNameOnly {
   changed_paths: [provenance_producer_path_unknown]
 }
 
+data provenance_producer_known_uncovered_git_diff: GitDiffNameOnly = GitDiffNameOnly {
+  changed_paths: [provenance_producer_path_mid]
+}
+
 data provenance_producer_mid_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^provenance_producer_mid_artifact,
@@ -168,13 +172,13 @@ fn provenance_producer_parse_coverage_known_diff_fail_closed_holds() -> Bool {
     Accepted { value: provenance, diagnostics: _ } =>
       match affected_set_reading_from_git_diff_provenance(
         graph: affected_set_claim_tree(),
-        git_diff: provenance_producer_fixture_git_diff,
+        git_diff: provenance_producer_known_uncovered_git_diff,
         provenance: provenance
       ) {
         Holds { value: _ } => false
         Violates { diagnostic: _ } => true
       }
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
