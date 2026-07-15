@@ -206,7 +206,10 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       check_fns: [
         "floor_index_build_share_is_shared_by_reference",
         "floor_index_build_has_plural_readers",
-        "floor_index_build_reds_without_reference_provider"
+        "floor_index_build_reds_without_reference_provider",
+        "floor_typecheck_store_share_is_shared_by_reference",
+        "floor_typecheck_store_has_plural_readers",
+        "floor_typecheck_store_reds_without_reference_provider"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -364,6 +367,47 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "dag/test/claim/fleet_converge_emit_test.dag",
       check_fns: ["fleet_converge_emit_holds"],
       kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/wave1_gate1_b1_bare_call_body_producer_witness_test.dag",
+      check_fns: [
+        "wave1_gate1_b1_bare_call_lowers_to_transform_witness_holds",
+        "wave1_gate1_b1_bare_call_resolves_end_to_end_witness_holds",
+        "wave1_gate1_b1_symbol_index_frontend_parity_no_regression_witness_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/wave1_gate1_a1_symbol_index_body_producer_witness_test.dag",
+      check_fns: [
+        "wave1_gate1_a1_symbol_index_frontend_parity_witness_holds",
+        "wave1_gate1_a1_real_ingest_lowers_witness_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/wave1_gate1_c1_copied_port_derivation_witness_test.dag",
+      check_fns: [
+        "wave1_gate1_c1_derived_list_append_index_witness_holds",
+        "wave1_gate1_c1_derived_list_snoc_index_witness_holds",
+        "wave1_gate1_c1_derived_map_merge_index_witness_holds",
+        "wave1_gate1_c1_arrow_body_cost_domain_excluded_witness_holds",
+        "wave1_gate1_c1_unpriceable_combiner_refusal_witness_holds",
+        "wave1_gate1_c1_multi_linear_ambiguous_refusal_witness_holds"
+      ],
+      kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
     surfaces: [GithubActionsCiJob]
@@ -619,4 +663,4 @@ fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> Generated
   }
 }
 
-data commit_workflow_long_lane_note: String = "Two complexity-lens enrollments (fold_lowering_test, accumulator_copy_fold_analysis_test) DELETED from the GithubActionsCiJob surface 2026-07-12: their check_fns measured over the fast-lane 5-second witness eval budget (operator rule; authority gunbc_ci_fast_lane_rule_note in v2.workflow.ci_floor_plan), and an explicit enrollment row bypasses discovery exclusion, so re-pathing the row to test/claim/long/ would keep the over-budget rows on every PR. Offlining an explicit row means deleting its declaration, never teaching exclusions to veto the roster (the enforcement-coverage precedent in gunbc.ci_layer_roots). The files live under src/v2/test/claim/long/ with the local recipe; dissolve-on: the long-lane scheduled trigger (falsifier follow-on) enrolls them and this note retires. Contrast: the parse_table_memo_governed enrollment above was REPOINTED to its long/ home, not deleted — its four enrolled check_fns each measured 0ms (audit 2026-07-12); only unenrolled siblings in that file (warm_equals_cold) are over budget, and an explicit row runs exactly its named check_fns. Delete when the enrolled fns themselves are slow; repoint when only the file moved. Separately, two rows (parse_test floor/perf, dag_compile_clean_perturb_receipts) were DELETED 2026-07-12 as §3 de-duplication, not offlining: the same check_fns are declared in gunbc.ci_layer_roots bin_witness_wet_entries (the Wet bin-execution lane), and the double enrollment ran them a second time inside the HERMETIC corpus batch, where their run_witness_bin host effects refuse (CI receipt: run 29208529942, IsExecutable refusals). One fact, one roster: the bin lane keeps the per-PR coverage. Two more wave1_gate1 body-producer enrollments (wave1_gate1_a1_symbol_index_body_producer_witness_test 2 fns, wave1_gate1_b1_bare_call_body_producer_witness_test 3 fns) DELETED 2026-07-15 under the same rule: their check_fns each measured ~9.4s (real_ingest_lowers, local), over the 5s budget, and only ever ran when a diff touched their closure (they reach v2.std.host_transport via extdeps.languages.dag, so #6650's ProcessProgram change made them affected and the latent over-budget landmine surfaced). Delete-when-slow, not repoint; the files stay under src/v2/test/claim/long/ with the local recipe."
+data commit_workflow_long_lane_note: String = "Two complexity-lens enrollments (fold_lowering_test, accumulator_copy_fold_analysis_test) DELETED from the GithubActionsCiJob surface 2026-07-12: their check_fns measured over the fast-lane 5-second witness eval budget (operator rule; authority gunbc_ci_fast_lane_rule_note in v2.workflow.ci_floor_plan), and an explicit enrollment row bypasses discovery exclusion, so re-pathing the row to test/claim/long/ would keep the over-budget rows on every PR. Offlining an explicit row means deleting its declaration, never teaching exclusions to veto the roster (the enforcement-coverage precedent in gunbc.ci_layer_roots). The files live under src/v2/test/claim/long/ with the local recipe; dissolve-on: the long-lane scheduled trigger (falsifier follow-on) enrolls them and this note retires. Contrast: the parse_table_memo_governed enrollment above was REPOINTED to its long/ home, not deleted — its four enrolled check_fns each measured 0ms (audit 2026-07-12); only unenrolled siblings in that file (warm_equals_cold) are over budget, and an explicit row runs exactly its named check_fns. Delete when the enrolled fns themselves are slow; repoint when only the file moved. Separately, two rows (parse_test floor/perf, dag_compile_clean_perturb_receipts) were DELETED 2026-07-12 as §3 de-duplication, not offlining: the same check_fns are declared in gunbc.ci_layer_roots bin_witness_wet_entries (the Wet bin-execution lane), and the double enrollment ran them a second time inside the HERMETIC corpus batch, where their run_witness_bin host effects refuse (CI receipt: run 29208529942, IsExecutable refusals). One fact, one roster: the bin lane keeps the per-PR coverage."

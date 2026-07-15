@@ -162,6 +162,7 @@ data medium_structure_exception_roster: List<String> = [
   "dag/gunbc/host_identity_observation.dag",
   "dag/gunbc/fleet_show_effective_read.dag",
   "dag/gunbc/host_effect_hostname_script.dag",
+  "dag/gunbc/host_effect_nbd_proxy_serve.dag",
   "dag/gunbc/host_identity_adopt.dag",
   "dag/gunbc/host_identity_assimilation.dag",
   "dag/gunbc/githooks_pre_push_emit.dag",
@@ -212,7 +213,7 @@ data medium_structure_exception_roster: List<String> = [
 
 data medium_structure_clean_tree_unquarantine_note: String = "Pre-existing rot surfaced by live host census at discovery-flip unquarantine (2026-07-09; not debt introduced by this PR): dag_compile_clean_shard_transport is shell-transport sibling to already-rostered seam/shard_totality transports; os_install_deduction + v1_dag_parse witness tests pair string_contains with emit-fn output (same pattern as ci_yaml_serializer_witness_test.dag). P5b (2026-07-14): srv3_install_diagnostic_observe_script carved from checklist — roster +1 with bash-emit Scaffold; checklist roster entry restored; toolchain_ensure dropped from roster after typed entrypoint shed script-oracle builders."
 
-data medium_structure_exception_roster_size_baseline: Int = 59
+data medium_structure_exception_roster_size_baseline: Int = 60
 
 fn roster_growth_ratchet_holds(live_size: Int, baseline: Int) -> Bool {
   live_size <= baseline

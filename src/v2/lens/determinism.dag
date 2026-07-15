@@ -3,7 +3,7 @@ module v2.lens.determinism
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.determinism { DeterminismAxis, Deterministic, NonDeterministic, determinism_compose }
+import std.determinism { Determinism, Deterministic, NonDeterministic, determinism_compose }
 import std.algebra { Cons, Empty }
 import v2.std.determinism { DeterminismFact }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
@@ -60,7 +60,7 @@ fn node_callee_symbol(n: Node) -> Optional<Symbol> {
   }
 }
 
-fn local_determinism_axis(n: Node) -> DeterminismAxis {
+fn local_determinism_axis(n: Node) -> Determinism {
   match node_callee_symbol(n: n) {
     Present { value: sym } => match determinism_root_for_symbol(registry: determinism_root_registry, s: sym) {
       Present { value: root } => NonDeterministic { source: root.source }
@@ -70,11 +70,11 @@ fn local_determinism_axis(n: Node) -> DeterminismAxis {
   }
 }
 
-fn determinism_axis_fold_step(acc: DeterminismAxis, _: Edge, child: DeterminismAxis) -> DeterminismAxis {
+fn determinism_axis_fold_step(acc: Determinism, _: Edge, child: Determinism) -> Determinism {
   determinism_compose(outer: acc, inner: child)
 }
 
-fn determinism_axis_for_node(n: Node) -> DeterminismAxis {
+fn determinism_axis_for_node(n: Node) -> Determinism {
   fold_node(
     n: n,
     algebra: NodeFold {
