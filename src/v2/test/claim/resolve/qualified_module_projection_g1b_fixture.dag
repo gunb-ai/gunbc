@@ -1,7 +1,5 @@
 module v2.test.resolve.qualified_module_projection_g1b_fixture
 
-data g1b_fixture_note: String = "Grammar lane G1b corpus fixture: qualified module projection in fn return type, data type annotation, let type annotation, and match constructor pattern — no import lines; SymbolIndex must resolve container.member in each position."
-
 data item: v2.test.resolve.qualified_module_projection_provider.ProviderType = "g1b"
 
 fn consumer() -> v2.test.resolve.qualified_module_projection_provider.ProviderType {

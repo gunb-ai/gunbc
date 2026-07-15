@@ -287,7 +287,8 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
 }
 
 fn variant_pattern_coverage_key(name: String) -> String {
-  fold(split(name, separator: "."), init: name, f: (_, seg) => seg)
+  let segs = split(name, separator: ".")
+  if segs |> count == 0 { name } else { fold(segs, init: "", f: (_, seg) => seg) }
 }
 
 fn check_match_exhaustiveness(

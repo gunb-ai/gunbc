@@ -14,8 +14,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data g1b_stripped_witness_note: String = "Enrollment witness for qualified_module_projection_g1b_fixture.dag — batch-1 compile-clean is the v1 integration receipt for fn/data/let qualified annotations and qualified match constructor patterns (pattern arm resolves via build_symbol_index_census unique Disj variant aliases + lookup_variant_in_type symbol_index_lookup). No import closure."
-
 data qmp_g1b_fixture_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^qmp_g1b_fixture_subject } },
   children: [],
