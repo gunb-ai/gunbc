@@ -18,7 +18,7 @@ Three consequences fix the shape:
 
 ---
 
-## 2. The axes — the whole family reduces to four invariants + one meta-layer
+## 2. The invariants — a small closed set (consolidate mechanisms, not meanings)
 
 The survey collapsed ~40 lenses onto a small closed set of *invariants*. Each is a DESIGN axiom mechanized; "are we missing a lens" is largely "is every axiom covered by an invariant."
 
