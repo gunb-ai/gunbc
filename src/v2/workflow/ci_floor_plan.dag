@@ -16,7 +16,7 @@ import gunbc.ci_gate {
 import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
-import v2.std.node { Atom, Node, TypeNode }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
 import std.nat { Nat }
@@ -70,7 +70,8 @@ data floor_self_host_realized_comparison_claims_entry: String = "src/v2/workflow
 
 data floor_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_corpus } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn entry_kind_is_execution(w: ScheduleWitnessEntry) -> Bool {
@@ -108,15 +109,15 @@ fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
 
 fn gate_node(g: Gate) -> Node {
   match g {
-    EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [] }
-    LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
-    ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [] }
-    DagCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
-    GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
-    SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
-    RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
-    SelfHostReadsRealBytesGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_reads_real_bytes } }, children: [] }
-    SelfHostStalenessGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_staleness } }, children: [] }
+    EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [], occurrence_id: SyntheticOccurrence }
+    LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [], occurrence_id: SyntheticOccurrence }
+    ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [], occurrence_id: SyntheticOccurrence }
+    DagCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [], occurrence_id: SyntheticOccurrence }
+    GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [], occurrence_id: SyntheticOccurrence }
+    SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [], occurrence_id: SyntheticOccurrence }
+    RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [], occurrence_id: SyntheticOccurrence }
+    SelfHostReadsRealBytesGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_reads_real_bytes } }, children: [], occurrence_id: SyntheticOccurrence }
+    SelfHostStalenessGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_staleness } }, children: [], occurrence_id: SyntheticOccurrence }
   }
 }
 
@@ -268,7 +269,8 @@ fn corpus_runnable_for(spec: CiSpec) -> Runnable {
 
 data execution_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_execution_corpus } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn execution_corpus_runnable_for(spec: CiSpec) -> Runnable {
@@ -290,7 +292,8 @@ fn execution_corpus_runnable_for(spec: CiSpec) -> Runnable {
 
 data bin_witness_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_bin_witness_corpus } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data bin_witness_corpus_note: String = "The bin-execution witness batch: the declared Wet lane for witnesses whose fns execute compiled seed witness binaries (gunbc.ci_layer_roots bin_witness_wet_entries — see bin_witness_wet_note there). They ran silently wet inside the discovery corpus until the hermetic flip; now the discovery batch is Hermetic and these rows keep their per-PR coverage under an explicit Wet profile (spawns_host_compiler: the runner may cargo-build a missing witness bin locally; in CI the build job prebuilds them). Enrolled only when the spec runs live discovery (bin_witness_corpus_enrolled), so regen/emit-determinism/synthetic specs carry no bin batch."
