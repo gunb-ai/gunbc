@@ -12,7 +12,11 @@ fn chain_collapses(steps: FreeMonoid<Node>, min_len: Int, require_hole: Bool) ->
     false
   } else {
     let g = anti_unify_chain(steps: steps)
-    (if require_hole then template_has_hole(template: g.template) else true)
-      && fillings_all_leaves(per_element: g.per_element)
+    let hole_ok = if require_hole {
+      template_has_hole(template: g.template)
+    } else {
+      true
+    }
+    hole_ok && fillings_all_leaves(per_element: g.per_element)
   }
 }
