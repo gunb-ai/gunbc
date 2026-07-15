@@ -55,6 +55,13 @@ fn child_type_node(ch: Node) -> Node {
   if ch.inferred != none { resolved_type(n: ch) } else { ch }
 }
 
+fn is_type_expr_annotation(n: Node) -> Bool {
+  match n.expr_data {
+    NoExprData => true
+    _ => false
+  }
+}
+
 fn child_type_at(n: Node, index: Int) -> Node? {
   match n.children |> skip(index) |> first {
     Present { value: ch } => Present { value: child_type_node(ch: ch) }
