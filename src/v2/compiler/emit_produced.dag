@@ -7,7 +7,7 @@ import v2.extdeps.languages.rust {
   rust_produced_decl_target,
   rust_signature_with_open_from_decl
 }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.target_model { TargetModel, render_target_text }
 import extdeps.communication.medium { Medium }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.algebra { fold_list, list_append }
@@ -75,7 +75,7 @@ fn emit_produced_decl_rust_with_target(
       bind_outcome(
         o: target_serialize_bodied_arrow_from_model(target: target, emitted: arrow),
         f: fn(text) {
-          target_source_medium(text: text, target: target)
+          target_source_medium(text: render_target_text(t: text), target: target)
         }
       )
     }
