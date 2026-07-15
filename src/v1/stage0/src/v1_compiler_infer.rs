@@ -12803,10 +12803,10 @@ pub fn local_binding_for_census_item(
                     resolved: item.type_annotation.clone().unwrap(),
                     provenance: Rc::new(SubValueRelation::SubValueUnknown),
                 }))
-            } else if (((item.params.clone().len() as i64) > 0)
-                && (item.connective.clone() == Connective::NoConnective))
+            } else if (item.connective.clone() == Connective::NoConnective)
                 && (item.body.clone() != None)
                 && (item.transport.clone() == None)
+                && (item.type_annotation.clone() == None)
             {
                 let bare_node = Rc::new(Node {
                     name: item.name.clone(),
