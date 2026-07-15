@@ -5,7 +5,7 @@ import std.markdown_markup { markdown_inlines_to_markup_nodes }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
 import gunbc.roadmap_style { roadmap_css }
 import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, Pointer,
+  RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
   SectionElement, Prose, Group, SectionGroup,
   NodeSizing, Unsized, Sized,
@@ -16,7 +16,10 @@ import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLin
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
+<<<<<<< HEAD
 import gunbc.process_algebra { ProcessNodeId }
+=======
+>>>>>>> origin/main
 
 fn roadmap_page_max_depth() -> Int { 8 }
 
@@ -90,7 +93,7 @@ fn carrier_links(carriers: List<Pointer>) -> List<MarkupNode> {
   map(carriers, p => pointer_link(p: p))
 }
 
-fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: ProcessNodeId) -> List<RoadmapNode> {
+fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
   nodes |> filter(n => match roadmap_parent(edges: edges, node: n.node) {
     UnderParent { parent: p } => p == parent
     TopLevel => false
