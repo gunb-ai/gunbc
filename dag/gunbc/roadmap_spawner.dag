@@ -1,8 +1,7 @@
 module gunbc.roadmap_spawner
 
-import ctrl.process_algebra { ProcessNodeId }
 import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, Pointer,
+  RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
   Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
   Volume, VolumeSmall, VolumeMedium, VolumeLarge,
   Acceptance, PrsMerged, ManualAcceptance,
@@ -58,11 +57,11 @@ fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
   fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
 }
 
-fn node_parent_ids(edges: List<RoadmapEdge>, id: ProcessNodeId) -> List<ProcessNodeId> {
+fn node_parent_ids(edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapNodeId> {
   edges |> filter(e => e.child == id) |> map(e => e.parent)
 }
 
-fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: ProcessNodeId, merged: List<Int>) -> Bool {
+fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId, merged: List<Int>) -> Bool {
   all(node_parent_ids(edges: edges, id: id), pid =>
     any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged)))
 }
@@ -206,7 +205,7 @@ fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String,
   serialize_json(v: node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges))
 }
 
-fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: ProcessNodeId, merged: List<Int>) -> List<ProcessNodeId> {
+fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId, merged: List<Int>) -> List<RoadmapNodeId> {
   node_parent_ids(edges: edges, id: id)
     |> filter(pid => !any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged)))
 }

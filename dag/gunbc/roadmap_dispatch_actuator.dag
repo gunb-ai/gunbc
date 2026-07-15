@@ -1,6 +1,5 @@
 module gunbc.roadmap_dispatch_actuator
 
-import ctrl.process_algebra { ProcessNodeId }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
 import std.upsert_decision {
   ObservationVerdict,
@@ -17,7 +16,7 @@ import std.upsert_decision {
   Refuse,
 }
 import gunbc.roadmap_model {
-  RoadmapNode,
+  RoadmapNode, RoadmapNodeId,
   Intricacy,
   IntricacyLow,
   IntricacyMedium,
@@ -154,19 +153,19 @@ fn claude_effort_for_intricacy(i: Intricacy) -> String {
   }
 }
 
-fn dispatch_tmux_session_name(node_id: ProcessNodeId) -> String {
+fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
   concat(dispatch_tmux_session_prefix, node_id)
 }
 
-fn dispatch_worktree_path(node_id: ProcessNodeId) -> String {
+fn dispatch_worktree_path(node_id: RoadmapNodeId) -> String {
   concat(concat(dispatch_worktree_root, "/"), node_id)
 }
 
-fn dispatch_branch_name(node_id: ProcessNodeId) -> String {
+fn dispatch_branch_name(node_id: RoadmapNodeId) -> String {
   concat("dispatch/", node_id)
 }
 
-fn dispatch_tmux_session_scope(node_id: ProcessNodeId) -> TmuxSessionScope {
+fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope {
   TmuxSessionScope {
     session_name: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
     expected_owner_label: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
@@ -235,7 +234,7 @@ fn git_worktree_add_argv(worktree_path: String, branch_name: String, remote_ref:
 fn claude_spawn_argv(
   effort: String,
   session_uuid: String,
-  node_id: ProcessNodeId,
+  node_id: RoadmapNodeId,
   brief: String,
 ) -> List<String> {
   shape_claude_invoke_argv(
@@ -441,7 +440,7 @@ fn classify_dispatch_lease_upsert(
   }
 }
 
-fn node_in_ready(node_id: ProcessNodeId, ready: List<RoadmapNode>) -> Bool {
+fn node_in_ready(node_id: RoadmapNodeId, ready: List<RoadmapNode>) -> Bool {
   any(ready, n => n.node == node_id)
 }
 
