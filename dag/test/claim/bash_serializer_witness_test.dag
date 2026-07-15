@@ -1,5 +1,12 @@
 module test.claim.bash_serializer_witness
 
+import extdeps.languages.bash.program {
+  ShellWord, Lit, VarRef, CmdSubst, Raw,
+  ShellStmt, Command, Assign, RawLine,
+  ShellProgram,
+  lit, var_ref, command, assign, single_quote, serialize_bash
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
