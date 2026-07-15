@@ -102,19 +102,15 @@ fn bmcweb_session_login_argv(
   request_body_file: NonEmptyStr,
   response_path: NonEmptyStr,
 ) -> List<String> {
-  [
-    curl_cli_tool.name as String,
-    "-sk",
-    "-X",
-    "POST",
-    concat("https://", concat(bmc_host as String, "/login")),
-    "-H",
-    "Content-Type: application/json",
-    "--data",
-    concat("@", request_body_file as String),
-    "-o",
-    response_path as String,
-  ]
+  fold(
+    bmcweb_session_login_curl_args(
+      bmc_host: bmc_host,
+      request_body_file: request_body_file,
+      response_path: response_path,
+    ),
+    init: [curl_cli_tool.name as String],
+    f: (acc, word) => list_push(acc, word),
+  )
 }
 
 fn bmcweb_session_login_program(

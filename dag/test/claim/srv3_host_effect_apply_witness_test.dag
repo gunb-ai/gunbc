@@ -59,7 +59,10 @@ import gunbc.shell_bash_runner { shell_bash_runner_dissolution_trigger }
 import gunbc.srv3_os_install_reconcile_types { srv3_nbd_proxy_lease_key }
 import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.bmc.webui.nbd_proxy_serve { bmcweb_session_login_argv }
+import extdeps.bmc.webui.nbd_proxy_serve {
+  bmcweb_session_login_argv,
+  bmcweb_session_login_curl_args,
+}
 import extdeps.tools.curl { curl_cli_tool }
 import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
 import gunbc.srv3_actuate_shell_paths {
@@ -179,21 +182,31 @@ fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
 }
 
 fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash() -> Bool {
+  let curl_args = bmcweb_session_login_curl_args(
+    bmc_host: asrock_srv3_live_bmc_host,
+    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
+    response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
+  )
   let argv = bmcweb_session_login_argv(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
-  let surface = fold(
+  let curl_args_surface = fold(
+    curl_args,
+    init: "" as String,
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
+  let argv_surface = fold(
     argv,
     init: "" as String,
     f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
   )
-  string_contains(s: surface, pattern: curl_cli_tool.name as String)
-    && string_contains(s: surface, pattern: "/login")
-    && string_contains(s: surface, pattern: srv3_bmcweb_login_body_path)
-    && string_contains(s: surface, pattern: srv3_bmcweb_login_response_path)
-    && !string_contains(s: surface, pattern: "serialize_bash")
+  string_contains(s: argv_surface, pattern: curl_cli_tool.name as String)
+    && string_contains(s: argv_surface, pattern: curl_args_surface)
+    && string_contains(s: argv_surface, pattern: srv3_bmcweb_login_body_path)
+    && string_contains(s: argv_surface, pattern: srv3_bmcweb_login_response_path)
+    && !string_contains(s: argv_surface, pattern: "serialize_bash")
 }
 
 fn witness_srv3_apply_shell_failure_refuses_typed() -> Bool {

@@ -17,6 +17,7 @@ import gunbc.srv3_host_effect_apply {
   srv3_seeded_install_media_toolchain_ensure_apply,
   srv3_seeded_install_media_remaster_apply,
   srv3_reconciliation_to_process_exit,
+  srv3_seeded_install_media_toolchain_unprivileged_fixture_denied,
 }
 import gunbc.host_effect_realize {
   srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated,
@@ -38,7 +39,7 @@ data srv3_seeded_install_media_remaster_scaffold: Disposition = Terminal {
 }
 
 data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = Terminal {
-  reason: "srv3_seeded_install_media_toolchain_ensure routes through host_effect_apply realize_seeded_install_media_toolchain_ensure_on_host (SeededInstallMediaToolchainOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
+  reason: "srv3_seeded_install_media_toolchain_ensure routes through host_effect_apply_gated(ci_deploy_srv1_access) to realize_seeded_install_media_toolchain_ensure_on_host (SeededInstallMediaToolchainOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
 data install_media_remaster_toolchain_ensure_dissolution_trigger: Disposition = Terminal {
@@ -121,4 +122,5 @@ fn srv3_seeded_install_media_remaster_toolchain_is_modeled() -> Bool {
 
 fn srv3_seeded_install_media_toolchain_ensure_is_privileged_gated() -> Bool {
   srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated()
+    && srv3_seeded_install_media_toolchain_unprivileged_fixture_denied()
 }

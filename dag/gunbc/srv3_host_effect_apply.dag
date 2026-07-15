@@ -24,7 +24,14 @@ import gunbc.host_effect {
   host_effect_identity_evidence,
   LocalShell,
 }
-import gunbc.host_effect_realize { host_effect_apply }
+import gunbc.host_effect_realize { host_effect_apply, host_effect_apply_gated }
+import gunbc.ci_deploy_access {
+  ci_deploy_srv1_access,
+  DeployAccess,
+  deploy_access_check,
+  deploy_access_unprivileged_fixture_actor,
+  Deny,
+}
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
 import gunbc.srv3_nbd_proxy_serve_intent { srv3_nbd_proxy_serve_host_effect }
 import std.realization_reconcile {
@@ -42,6 +49,18 @@ type Srv3TypedReceipt {
 
 fn srv3_actuator_target() -> NodeControlPlane {
   HostOs { node: srv3_os_install_actuator_host }
+}
+
+data srv3_seeded_install_media_toolchain_ensure_deploy_access: DeployAccess = ci_deploy_srv1_access
+
+fn srv3_seeded_install_media_toolchain_unprivileged_fixture_denied() -> Bool {
+  match deploy_access_check(
+    access: srv3_seeded_install_media_toolchain_ensure_deploy_access,
+    actor: deploy_access_unprivileged_fixture_actor(),
+  ) {
+    Deny { reason: _ } => true
+    Permit => false
+  }
 }
 
 fn srv3_host_effect_apply(
@@ -90,7 +109,14 @@ fn srv3_install_media_fetch_apply() -> Reconciliation<HostEffectIntent, HostEffe
 }
 
 fn srv3_seeded_install_media_toolchain_ensure_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  srv3_host_effect_apply(effect: Srv3SeededInstallMediaToolchainEnsure)
+  host_effect_apply_gated(
+    access: srv3_seeded_install_media_toolchain_ensure_deploy_access,
+    target: srv3_actuator_target(),
+    effect: Srv3SeededInstallMediaToolchainEnsure,
+    evidence: host_effect_identity_evidence,
+    transport: srv3_seeded_install_media_toolchain_ensure_deploy_access.transport,
+    fixture_actor: none,
+  )
 }
 
 fn srv3_seeded_install_media_remaster_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {

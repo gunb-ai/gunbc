@@ -100,7 +100,6 @@ import gunbc.host_effect_nbd_proxy_serve {
 import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
 import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
-  bmcweb_session_login_argv,
   bmcweb_session_login_curl_args,
 }
 import std.types { String, NonEmptyStr, List, Bool }
