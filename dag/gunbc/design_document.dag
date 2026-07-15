@@ -1,4 +1,13 @@
 
+
+
+import std.markdown {
+  MarkdownDocument, MarkdownBlock, MarkdownListItem,
+  HeadingBlock, ParagraphBlock, UnorderedListBlock, ThematicBreak,
+  TextInline, H1, H2,
+}
+import extdeps.languages.markdown { serialize_markdown_source }
+
 module gunbc.design_document
 
 
