@@ -5827,12 +5827,12 @@ fn disj_variant_name_count_inc(counts: Map<String, Int>, name: String) -> Map<St
 
 fn disj_variant_name_counts(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
   fold(items, init: empty_map(), f: (counts, item) =>
-    if item.connective != Disj {
-      counts
-    } else {
-      fold(item.children, init: counts, f: (c, child) =>
-        disj_variant_name_count_inc(counts: c, name: authored_name_at(source_indices: source_indices, node: child))
-      )
+    match item.connective {
+      Disj =>
+        fold(item.children, init: counts, f: (c, child) =>
+          disj_variant_name_count_inc(counts: c, name: authored_name_at(source_indices: source_indices, node: child))
+        )
+      _ => counts
     }
   )
 }
@@ -5845,21 +5845,21 @@ fn symbol_index_insert_unique_disj_variant_aliases(
 ) -> SymbolIndex {
   let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
   fold(items, init: index, f: (acc, item) =>
-    if item.connective != Disj {
-      acc
-    } else {
-      fold(item.children, init: acc, f: (a2, child) =>
-        let vname = authored_name_at(source_indices: source_indices, node: child)
-        match map_get(counts, vname) {
-          Present { value: 1 } =>
-            symbol_index_insert(
-              index: a2,
-              qualified_name: concat(module_path, ".", vname),
-              resolved: child
-            )
-          _ => a2
-        }
-      )
+    match item.connective {
+      Disj =>
+        fold(item.children, init: acc, f: (a2, child) =>
+          let vname = authored_name_at(source_indices: source_indices, node: child)
+          match map_get(counts, vname) {
+            Present { value: 1 } =>
+              symbol_index_insert(
+                index: a2,
+                qualified_name: concat(module_path, ".", vname),
+                resolved: child
+              )
+            _ => a2
+          }
+        )
+      _ => acc
     }
   )
 }
