@@ -88,18 +88,20 @@ pub fn named_edge_target_lookup(
     children: Rc<Vec<Rc<Edge>>>,
     name: Symbol,
 ) -> Rc<NamedEdgeTargetLookup> {
-    children.iter().cloned().fold(
-        Rc::new(NamedEdgeTargetLookup::Absent),
-        |acc, e| match (&*e.label, &*acc) {
-            (EdgeLabel::Named { name: sym }, NamedEdgeTargetLookup::Absent) if sym == &name => {
-                Rc::new(NamedEdgeTargetLookup::Found {
-                    target: e.target.clone(),
-                })
+    children
+        .iter()
+        .cloned()
+        .fold(Rc::new(NamedEdgeTargetLookup::Absent), |acc, e| {
+            match (&*e.label, &*acc) {
+                (EdgeLabel::Named { name: sym }, NamedEdgeTargetLookup::Absent) if sym == &name => {
+                    Rc::new(NamedEdgeTargetLookup::Found {
+                        target: e.target.clone(),
+                    })
+                }
+                (EdgeLabel::Named { name: sym }, _) if sym == &name => {
+                    Rc::new(NamedEdgeTargetLookup::Ambiguous)
+                }
+                _ => acc,
             }
-            (EdgeLabel::Named { name: sym }, _) if sym == &name => {
-                Rc::new(NamedEdgeTargetLookup::Ambiguous)
-            }
-            _ => acc,
-        },
-    )
+        })
 }

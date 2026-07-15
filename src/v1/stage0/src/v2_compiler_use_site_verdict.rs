@@ -92,9 +92,9 @@ pub fn use_site_verdict_move_field_of(children: Rc<Vec<Rc<Edge>>>) -> Rc<UseSite
     match &*named_edge_target_lookup(children, use_site_verdict_field_edge()) {
         NamedEdgeTargetLookup::Found { target: field_node } => match &*field_node.kind {
             NodeKind::TypeNode { connective } => match &**connective {
-                Connective::Atom { identity: f } => Rc::new(UseSiteVerdict::MoveField {
-                    field: f.clone(),
-                }),
+                Connective::Atom { identity: f } => {
+                    Rc::new(UseSiteVerdict::MoveField { field: f.clone() })
+                }
                 _ => Rc::new(UseSiteVerdict::Unclassified),
             },
             _ => Rc::new(UseSiteVerdict::Unclassified),
