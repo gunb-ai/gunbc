@@ -59,7 +59,7 @@ import extdeps.languages.rust.emit {
   HigherOrderMethodSpec, rust_higher_order_methods
 }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
-import gunbc.stage0_crate_layout { emit_hand_maintained_pub_mod_block }
+import v2.compiler.self_host.frontier { emit_hand_maintained_pub_mod_block }
 import v1.compiler.languages {
   scaffold_for_target, serialization_for_target,
   TestConventions, ItemKeywords,

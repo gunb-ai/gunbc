@@ -19,10 +19,9 @@ const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
     "target/bootstrap_timing/v1_regen_stage0_receipt.json";
 
 // Registry authority: gunbc.stage0_emit_model.generated_stage0_files.
-// Hand-maintained registry authority: gunbc.stage0_crate_layout (self-emitted
-// basenames derived on v2.compiler.self_host.frontier; composed filenames via
-// stage0_hand_maintained_stage0_filenames_v1). Witness:
-// stage0_crate_layout_witness_test.dag + self_host/crate_layout_witness_test.dag.
+// Hand-maintained registry authority: v2.compiler.self_host.frontier
+// (hand_maintained_stage0_filenames derives self-emitted rows from the frontier roster).
+// Witness: stage0_crate_layout_witness_test.dag + self_host/crate_layout_witness_test.dag.
 // Dissolve-on: regen_stage0 reads emitted gunbc_stage0_emit_model.rs roster.
 const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
@@ -123,8 +122,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 ];
 
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
-    // Authority: gunbc.stage0_crate_layout::stage0_hand_maintained_stage0_filenames_v1
-    // (self-emitted segment derived from frontier.dag SelfEmitted roster).
+    // Authority: v2.compiler.self_host.frontier::hand_maintained_stage0_filenames
+    // (self-emitted segment derived from frontier SelfEmitted roster).
     "cli_run.rs",
     "coproduct_reflection.rs",
     "recorded_fixture.rs",
@@ -635,7 +634,11 @@ fn assert_registry_is_partitioned() -> Result<(), String> {
 }
 
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
-    let roots = vec![workspace.join("src/v1"), workspace.join("dag")];
+    let roots = vec![
+        workspace.join("src/v1"),
+        workspace.join("dag"),
+        workspace.join("src/v2"),
+    ];
     let sources = source_files_for_roots(&roots, workspace)?;
     let result = compile_sources(Rc::new(sources.into()), RenderTarget::Rust);
     if let Some(message) = stage0_self_compile_refusal_message(result.clone()) {
