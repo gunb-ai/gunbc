@@ -6253,30 +6253,6 @@ fn budget_completion_outcome(
     }
 }
 
-/// Whole-receipt wall budget for Wet self-host receipts: emit+cargo subprocess I/O
-/// counts against wall time, not CPU. A Pass over the wall budget converts to the same
-/// typed refusal — silent green would fail open on the nightly falsifier lane budget.
-fn wall_budget_completion_outcome(
-    budget: Option<u64>,
-    outcome: ClaimOutcome,
-    wall_nanos: u128,
-) -> ClaimOutcome {
-    match (budget, outcome) {
-        (Some(budget_ms), ClaimOutcome::Pass) if wall_nanos > u128::from(budget_ms) * 1_000_000 => {
-            ClaimOutcome::RuntimeError {
-                message: format!(
-                    "{}",
-                    v1_interpreter::InterpError::WitnessWallBudgetExceeded {
-                        elapsed_ms: (wall_nanos / 1_000_000) as u64,
-                        budget_ms,
-                    }
-                ),
-            }
-        }
-        (_, o) => o,
-    }
-}
-
 #[cfg(test)]
 mod budget_completion_tests {
     use super::*;
@@ -10106,7 +10082,7 @@ pub fn run_discovery_corpus_with_options(
                         &diff_edits,
                         floor_runner_ctx.as_ref(),
                         whole_tree_published_keys.clone(),
-                        options.witness_budget_policy(),
+                        options.fast_lane_eval_budget_ms,
                         style,
                     )?);
                 }
@@ -10137,7 +10113,7 @@ pub fn run_discovery_corpus_with_options(
             let abort = std::sync::Arc::new(AtomicBool::new(false));
             let source_roots_owned = source_roots.to_vec();
             let selection_for_workers = options.node_frontier_selection;
-            let budget_policy_for_workers = options.witness_budget_policy();
+            let budget_policy_for_workers = options.fast_lane_eval_budget_ms;
             let mut handles = Vec::new();
             let mut worker_ordinal: usize = 0;
             loop {
