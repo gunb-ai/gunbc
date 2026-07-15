@@ -98,7 +98,10 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
-    matches!((*n.expr_data.clone()).clone(), ExprData::NoExprData)
+    match (*n.expr_data.clone()).clone() {
+        ExprData::NoExprData => true,
+        _ => false,
+    }
 }
 
 pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {

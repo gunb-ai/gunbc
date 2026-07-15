@@ -2586,24 +2586,28 @@ pub fn resolve_expr_types(
                         resolved: unit_type(),
                         diagnostics: Rc::new(vec![]),
                     })
-                } else if is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()) {
-                    resolve_node(
-                        texpr.type_annotation.clone().clone().unwrap(),
-                        env.clone(),
-                        module_name.clone(),
-                    )
                 } else {
-                    Rc::new(NodeResolveResult {
-                        resolved: texpr.type_annotation.clone().clone().unwrap(),
-                        diagnostics: Rc::new(vec![]),
-                    })
+                    if is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()) {
+                        resolve_node(
+                            texpr.type_annotation.clone().clone().unwrap(),
+                            env.clone(),
+                            module_name.clone(),
+                        )
+                    } else {
+                        Rc::new(NodeResolveResult {
+                            resolved: texpr.type_annotation.clone().clone().unwrap(),
+                            diagnostics: Rc::new(vec![]),
+                        })
+                    }
                 };
                 let resolved_anno = if (texpr.type_annotation.clone() == None) {
                     None
-                } else if is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()) {
-                    Some(anno_resolved.resolved.clone())
                 } else {
-                    texpr.type_annotation.clone()
+                    if is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()) {
+                        Some(anno_resolved.resolved.clone())
+                    } else {
+                        texpr.type_annotation.clone()
+                    }
                 };
                 let let_node = Rc::new(Node {
                     name: let_binding_name_at(texpr.clone(), env.source_indices.clone()),

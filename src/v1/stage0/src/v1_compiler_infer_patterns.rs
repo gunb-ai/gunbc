@@ -665,10 +665,22 @@ pub fn lookup_field_in_variant(
     }
 }
 
-fn variant_pattern_coverage_key(name: String) -> String {
-    match name.rsplit_once('.') {
-        Some((_, last)) => last.to_string(),
-        None => name,
+pub fn variant_pattern_coverage_key(name: String) -> String {
+    {
+        let segs = Rc::new(
+            name.clone()
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        if ((segs.clone().len() as i64) == 0) {
+            name.clone()
+        } else {
+            segs.clone()
+                .iter()
+                .cloned()
+                .fold("".to_string(), |_: String, seg: String| seg.clone())
+        }
     }
 }
 
