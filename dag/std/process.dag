@@ -1,6 +1,5 @@
 module std.process
 
-import std.types { NonEmptyStr }
 
 type ProcessExit
   = ExitSuccess

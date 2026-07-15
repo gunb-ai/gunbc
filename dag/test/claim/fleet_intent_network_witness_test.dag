@@ -1,19 +1,5 @@
 module test.claim.fleet_intent_network
 
-import std.logic { Bool }
-import std.types { list_length }
-import product.network_topology {
-  ContainerRunner,
-  HostLan,
-  BmcManagement,
-  network_reachability,
-}
-import gunbc.fleet_intent_network {
-  fleet_intent_network,
-  srv1_bmc_endpoint,
-  srv1_host_lan_endpoint,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,16 +1,6 @@
 module v2.test.lens_idempotency.sg_claims
 
-import v2.std.logic { Bool }
-import v2.test.lens_idempotency.write_effect {
-  idempotency_write_effect_claim_holds
-}
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn lens_idempotency_write_effect_holds() -> Bool {

@@ -1,53 +1,5 @@
 module v2.extdeps.languages.bash
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_right, list_flat_map, list_map }
-import v2.std.grammar {
-  FormalGrammarSymbol,
-  FormalProduction,
-  derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact,
-  grammar_formal_production,
-  grammar_formal_terminal,
-  grammar_formal_terminal_bound,
-  grammar_relation_tokens_node
-}
-import v2.std.compilers.lexing {
-  LexRules,
-  LexicalPhrase,
-  phrase,
-  phrase_to_lex_rules,
-  phrase_to_source_text,
-  span
-}
-import v2.std.compilers.target_model {
-  BoundToken,
-  ConcreteSyntaxToken,
-  FixedToken,
-  TargetModel,
-  bound_tokens_source_text,
-  phrase_to_fixed_concrete_tokens,
-  render_target_text,
-  target_model_emit_transforms_empty,
-  target_model_make_with_emit_transforms,
-  concrete_syntax_token_to_node
-}
-import v2.std.collection { List, Map, empty_map, map_insert }
-import v2.std.diagnostic { EmitDirective, Outcome, bind_outcome, outcome_accepted }
-import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset, Run }
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.witness { Holds, Violates, Witness }
 
 fn bash_word_atom(id: Symbol) -> Node {
   Node {

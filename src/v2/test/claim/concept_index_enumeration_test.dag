@@ -1,10 +1,5 @@
 module v2.test.claim.concept_index_enumeration
 
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.collection { List }
-import v2.std.concept_index { FieldRef, QualifiedConcept, enumerate_concepts, enumerate_concepts_in }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

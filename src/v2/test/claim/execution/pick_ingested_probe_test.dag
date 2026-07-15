@@ -1,50 +1,5 @@
 module v2.test.execution.pick_ingested_probe
 
-import v2.compiler.body_lowering_fold {
-  body_lower_if_then_arm_optional,
-  body_lower_unwrap_captured
-}
-import v2.extdeps.languages.dag {
-  dag_int_literal_magnitude_node_optional,
-  dag_language_model,
-  dag_node_is_int_literal_atom,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional
-}
-import v2.test.execution.pick_ingested_structural_lowering {
-  pick_ingested_find_arrow_in_module,
-  pick_ingested_normalized_arrow_has_branch_body,
-  pick_ingested_normalized_module_from_source,
-  pick_ingested_normalized_swapped_arms_structural_red_holds,
-  pick_ingested_parsed_module_from_source,
-  pick_ingested_pick_false_executes_holds,
-  pick_ingested_pick_true_executes_holds,
-  pick_ingested_pipeline_resolves_holds,
-  pick_ingested_resolved_module_from_source,
-  pick_ingested_source
-}
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.std.collection {
-  Absent,
-  Optional,
-  Present,
-  list_at_optional,
-  optional_present
-}
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Arrow,
-  Branch,
-  ComputationNode,
-  Edge,
-  Node,
-  TypeNode
-}
-import v2.std.node_query { find_arrow_body_child, find_named_child }
 
 fn pick_probe_find_arrow(root: Node) -> Node {
   match root.kind {

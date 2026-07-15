@@ -1,5 +1,6 @@
 module v1.compiler.infer_patterns
 
+<<<<<<< HEAD
 import std.types { SourceSpan }
 import v1.std.core {
   Node,
@@ -29,6 +30,8 @@ import v1.compiler.infer_env {
 import v1.compiler.infer_resolve {
   is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots
 }
+=======
+>>>>>>> 62111b1273 (Wave-1 namespace integration: restore collapsed import-strip on current main.)
 
 fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node> {
   let decl = resolve_generic_use_decl(env: env, n: scrut_node)

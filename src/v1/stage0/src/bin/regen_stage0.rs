@@ -647,51 +647,46 @@ fn source_files_for_roots(
     roots: &[PathBuf],
     workspace: &Path,
 ) -> Result<Vec<Rc<SourceFile>>, String> {
-    let index = build_module_index(roots)?;
+    let _index = build_module_index(roots)?;
     let entry_root = roots
         .first()
         .ok_or_else(|| "source root list must not be empty".to_string())?;
-    let mut entry_files = Vec::new();
-    let mut dag_paths = Vec::new();
-    collect_dag_files(entry_root, &mut dag_paths)?;
-    for path in dag_paths {
-        let content =
-            fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        entry_files.push((display_source_path(&path, workspace), content));
-    }
-
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue = Vec::new();
-    for (path, content) in &entry_files {
-        if let Some(module_path) = extract_module_path(content) {
+
+    let mut insert_dag_file = |path: &Path| -> Result<(), String> {
+        let content =
+            fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        if let Some(module_path) = extract_module_path(&content) {
+            if seen.contains_key(&module_path) {
+                return Ok(());
+            }
             seen.insert(
                 module_path,
                 Rc::new(SourceFile {
-                    path: path.clone(),
-                    content: content.clone(),
+                    path: display_source_path(path, workspace),
+                    content,
                 }),
             );
         }
-        queue.push((path.clone(), content.clone()));
+        Ok(())
+    };
+
+    let mut entry_paths = Vec::new();
+    collect_dag_files(entry_root, &mut entry_paths)?;
+    for path in &entry_paths {
+        insert_dag_file(path)?;
     }
 
-    while let Some((_path, content)) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
+    for root in roots.iter().skip(1) {
+        for sub in ["std", "extdeps"] {
+            let pool_root = root.join(sub);
+            if !pool_root.is_dir() {
                 continue;
             }
-            if let Some(file_path) = index.get(&module_path) {
-                let file_content = fs::read_to_string(file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                let rel_path = display_source_path(file_path, workspace);
-                seen.insert(
-                    module_path,
-                    Rc::new(SourceFile {
-                        path: rel_path.clone(),
-                        content: file_content.clone(),
-                    }),
-                );
-                queue.push((rel_path, file_content));
+            let mut pool_paths = Vec::new();
+            collect_dag_files(&pool_root, &mut pool_paths)?;
+            for path in &pool_paths {
+                insert_dag_file(path)?;
             }
         }
     }
@@ -757,7 +752,7 @@ fn extract_module_path(content: &str) -> Option<String> {
     None
 }
 
-fn extract_import_paths(content: &str) -> Vec<String> {
+fn _extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim();

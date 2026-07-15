@@ -1,15 +1,5 @@
 module test.claim.lens_verdict_witness
 
-import std.lens_verdict {
-  Holds,
-  LensVerdict,
-  LensVerdictDiagnostic,
-  NotApplicable,
-  Unrealized,
-  Violation,
-  ModuleWholeFile,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

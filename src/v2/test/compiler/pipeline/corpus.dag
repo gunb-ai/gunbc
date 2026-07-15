@@ -1,6 +1,5 @@
 module v2.test.compiler.pipeline.corpus
 
-import v2.std.text { String }
 
 data pipeline_corpus_note: String = "Fn-body corpus for per-stage relationship witnesses (CI-visible under src/v2/test/compiler/pipeline/). Fast-lane: tokenize add+pick, infer/lower add fixtures. Full-pipeline parse/normalize (add + pick magnitude RED) live in src/v2/test/claim/long/pipeline_stage_add_pick_relationship_witness_test.dag. Match corpus in src/v2/test/claim/long/pipeline_stage_match_corpus_witness_test.dag."
 

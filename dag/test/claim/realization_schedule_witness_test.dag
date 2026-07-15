@@ -1,18 +1,5 @@
 module test.claim.realization_schedule_witness
 
-import std.realization_schedule {
-  SelectionOff,
-  RealizationPlan,
-  RealizationObjective,
-  Runnable,
-  RunnableSingleClaim,
-  RunnableDiscoveryBatch,
-  runnable_resource_profile_negligible,
-  schedule_lens_verdict_for_ci_floor,
-  cost_account_predicted_zero,
-}
-import std.types { ContentHash }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

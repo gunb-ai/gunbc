@@ -1,8 +1,5 @@
 module gunbc.plans.ci_selection_vs_scheduling
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell }
 
 fn ci_selection_vs_scheduling_body() -> List<MarkdownBlock> {
   [
