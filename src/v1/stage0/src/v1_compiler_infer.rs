@@ -1287,7 +1287,9 @@ pub fn kernel_value_declared_type_mismatch(
                 formal.clone()
             };
             let actual_name = authored_name_at(source_indices.clone(), actual.clone());
-            if (is_kernel_type(actual_name.clone()) == false) {
+            if ((is_kernel_type(actual_name.clone()) == false)
+                || (actual_name.clone() == "Unit".to_string()))
+            {
                 false
             } else {
                 {
@@ -1312,9 +1314,24 @@ pub fn kernel_value_declared_type_mismatch(
                             } else {
                                 match lookup_type_by_name(type_env.clone(), formal_name.clone()) {
                                     Some(decl) => {
-                                        (((decl.connective.clone() == Connective::Conj)
+                                        let decl_is_refinement_over_actual =
+                                            (((decl.connective.clone() == Connective::Conj)
+                                                && ((decl.children.clone().len() as i64) == 1))
+                                                && ((decl.type_annotation.clone() != None)
+                                                    || match decl.children.clone().first().cloned()
+                                                    {
+                                                        Some(refinement_child) => {
+                                                            (authored_name_at(
+                                                                source_indices.clone(),
+                                                                refinement_child.clone(),
+                                                            ) == actual_name.clone())
+                                                        }
+                                                        None => false,
+                                                    }));
+                                        ((((decl.connective.clone() == Connective::Conj)
                                             || (decl.connective.clone() == Connective::Disj))
                                             && ((decl.children.clone().len() as i64) > 0))
+                                            && (decl_is_refinement_over_actual.clone() == false))
                                     }
                                     None => false,
                                 }
@@ -5945,21 +5962,41 @@ pub fn infer_record_lit(
         let presence_fields = if (tn_str.clone() == "".to_string()) {
             Rc::new(vec![])
         } else {
-            match record_lit_instantiated_fields(type_name.clone(), expected.clone(), scope.clone())
-            {
-                Some(inst_fields) => inst_fields.clone(),
-                None => match lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) {
-                    Some(decl) => {
-                        if (((decl.connective.clone() == Connective::Conj)
-                            && ((decl.params.clone().len() as i64) == 0))
-                            && ((decl.children.clone().len() as i64) > 0))
-                        {
-                            decl.children.clone()
-                        } else {
-                            Rc::new(vec![])
+            match variant_owner_node(scope.clone(), tn_str.clone()) {
+                Some(variant_owner) => match Rc::new({
+                    let mut __result = Vec::new();
+                    for v in variant_owner.children.clone().iter().cloned() {
+                        if (authored_name_at(si_presence.clone(), v.clone()) == tn_str.clone()) {
+                            __result.push(v);
                         }
                     }
-                    None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(variant_node) => variant_node.children.clone(),
+                    None => Rc::new(vec![]),
+                },
+                None => match record_lit_instantiated_fields(
+                    type_name.clone(),
+                    expected.clone(),
+                    scope.clone(),
+                ) {
+                    Some(inst_fields) => inst_fields.clone(),
+                    None => match lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) {
+                        Some(decl) => {
+                            if (((decl.connective.clone() == Connective::Conj)
+                                && ((decl.params.clone().len() as i64) == 0))
+                                && ((decl.children.clone().len() as i64) > 0))
+                            {
+                                decl.children.clone()
+                            } else {
+                                Rc::new(vec![])
+                            }
+                        }
+                        None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                    },
                 },
             }
         };

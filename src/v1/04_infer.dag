@@ -750,7 +750,7 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
       }
     } else { formal }
     let actual_name = authored_name_at(source_indices: source_indices, node: actual)
-    if is_kernel_type(name: actual_name) == false {
+    if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
       false
     } else {
       let formal_name = authored_name_at(source_indices: source_indices, node: formal_base)
@@ -763,7 +763,14 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
           true
         } else {
           match lookup_type_by_name(env: type_env, name: formal_name) {
-            Present { value: decl } => (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0
+            Present { value: decl } =>
+              let decl_is_refinement_over_actual = decl.connective == Conj && (decl.children |> count) == 1
+                && (decl.type_annotation != none
+                  || (match decl.children |> first {
+                    Present { value: refinement_child } => authored_name_at(source_indices: source_indices, node: refinement_child) == actual_name
+                    Absent => false
+                  }))
+              (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0 && decl_is_refinement_over_actual == false
             Absent => false
           }
         }
@@ -2951,17 +2958,25 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   let presence_fields = if tn_str == "" {
     []
   } else {
-    match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
-      Present { value: inst_fields } => inst_fields
+    match variant_owner_node(scope: scope, name: tn_str) {
+      Present { value: variant_owner } =>
+        match variant_owner.children |> filter(v => authored_name_at(source_indices: si_presence, node: v) == tn_str) |> first {
+          Present { value: variant_node } => variant_node.children
+          Absent => []
+        }
       Absent =>
-        match lookup_type_by_name(env: scope.type_env, name: tn_str) {
-          Present { value: decl } =>
-            if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
-              decl.children
-            } else {
-              []
+        match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+          Present { value: inst_fields } => inst_fields
+          Absent =>
+            match lookup_type_by_name(env: scope.type_env, name: tn_str) {
+              Present { value: decl } =>
+                if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
+                  decl.children
+                } else {
+                  []
+                }
+              Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
             }
-          Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
         }
     }
   }
