@@ -3112,9 +3112,52 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
                             )
                           )
                         )
+                      Absent =>
+                        match body_lower_arm_operand_resolved_optional(arm: body_capture) {
+                          Present { value: body_ref } =>
+                            outcome_accepted(
+                              value: optional_present(
+                                value: lower_bind(
+                                  key_binding: body_lower_type_atom_node(sym: key_binding),
+                                  value: value,
+                                  body_binding: body_ref
+                                )
+                              )
+                            )
+                          Absent => body_lower_let_navigation_reject(captured: captured)
+                        }
+                    }
+                  Absent =>
+                    match body_lower_arm_operand_resolved_optional(arm: value_capture) {
+                      Present { value: value } =>
+                        match body_lower_operand_ref_optional(node: body_capture) {
+                          Present { value: body_ref } =>
+                            outcome_accepted(
+                              value: optional_present(
+                                value: lower_bind(
+                                  key_binding: body_lower_type_atom_node(sym: key_binding),
+                                  value: value,
+                                  body_binding: body_ref
+                                )
+                              )
+                            )
+                          Absent =>
+                            match body_lower_arm_operand_resolved_optional(arm: body_capture) {
+                              Present { value: body_ref } =>
+                                outcome_accepted(
+                                  value: optional_present(
+                                    value: lower_bind(
+                                      key_binding: body_lower_type_atom_node(sym: key_binding),
+                                      value: value,
+                                      body_binding: body_ref
+                                    )
+                                  )
+                                )
+                              Absent => body_lower_let_navigation_reject(captured: captured)
+                            }
+                        }
                       Absent => body_lower_let_navigation_reject(captured: captured)
                     }
-                  Absent => body_lower_let_navigation_reject(captured: captured)
                 }
               Absent => body_lower_let_navigation_reject(captured: captured)
             }
@@ -3162,7 +3205,16 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
                         value: lower_loop(value: lit, bound: dag_loop_measure_node())
                       )
                     )
-                  Absent => body_lower_loop_navigation_reject(captured: captured)
+                  Absent =>
+                    match body_lower_arm_operand_resolved_optional(arm: right) {
+                      Present { value: lit } =>
+                        outcome_accepted(
+                          value: optional_present(
+                            value: lower_loop(value: lit, bound: dag_loop_measure_node())
+                          )
+                        )
+                      Absent => body_lower_loop_navigation_reject(captured: captured)
+                    }
                 }
               } else {
                 match body_lower_try_loop_keyword_from_captured(captured: left) {
