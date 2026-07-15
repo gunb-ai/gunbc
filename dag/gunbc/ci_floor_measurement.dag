@@ -18,12 +18,12 @@ data gunbc_ci_cap_split_disposition: Disposition = Terminal {
   reason: "DESIGN §3 de-conflation (PR-A): gunbc_ci_runner_cgroup_memory_cap (declared per-slot MemoryMax from gunbc.runner_slot_allocation) vs gunbc_ci_dashboard_session_container_cap (31.27GiB, dashboard session pool, inter-run). Retired gunbc_ci_host_container_memory_cap nickname that fused both."
 }
 
-data gunbc_ci_runner_slot_memory_max_live: ByteSize = byte_size(17179869184)
+data gunbc_ci_runner_slot_memory_max_live: ByteSize = gunbc_runner_slot_desired().memory_max
 
-data gunbc_ci_runner_slot_memory_high_live: ByteSize = byte_size(16106127360)
+data gunbc_ci_runner_slot_memory_high_live: ByteSize = gunbc_runner_slot_desired().memory_high
 
 data gunbc_ci_runner_slot_memory_high_live_source: Disposition = Terminal {
-  reason: "Live readback 2026-07-11, four independent floor cgroup post-reads across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043 and the 29112-series wedge, srv1-01/srv1-03/srv2-01/srv2-02): floor_peak_post pinned within 0.65MiB ABOVE exactly 16106127360 with zero oom_kill events - the memory.high reclaim clamp's overshoot signature (allocations cross the line by one burst, forced direct reclaim drags usage back, memory.peak records the overshoot; sub-MiB overshoot = reclaim keeping up = the floor tail running at swap speed). This is the throttle line the 2026-07-11 MemoryHigh-emit ruling declared APPLIED (gunbc.runner_slot_allocation, max-1GiB relation). memory.max is the kill line (loud, attributable); memory.high is the speed line - between them the slot does not fail, it degrades into swap. The run-time memory governor packs to this line by construction: it reads the tightest memory.high as its budget and backs off on the creep signals (PSI, swap growth) that crossing it produces."
+  reason: "Live readback 2026-07-11, four independent floor cgroup post-reads across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043 and the 29112-series wedge, srv1-01/srv1-03/srv2-01/srv2-02): floor_peak_post pinned within 0.65MiB ABOVE exactly 16106127360 with zero oom_kill events - the memory.high reclaim clamp's overshoot signature (allocations cross the line by one burst, forced direct reclaim drags usage back, memory.peak records the overshoot; sub-MiB overshoot = reclaim keeping up = the floor tail running at swap speed). This is the throttle line the 2026-07-11 MemoryHigh-emit ruling declared APPLIED (gunbc.runner_slot_allocation, max-1GiB relation). memory.max is the kill line (loud, attributable); memory.high is the speed line - between them the slot does not fail, it degrades into swap. The run-time memory governor packs to this line by construction: it reads the tightest memory.high as its budget and backs off on the creep signals (PSI, swap growth) that crossing it produces. Values derive from gunbc.runner_slot_allocation single authority (operator ruling 2026-07-14); the four floor_peak_post receipts in gunbc_ci_floor_run_peak_receipts are the measured corroboration, not a second numeric source."
 }
 
 fn gunbc_ci_runner_slot_ram_speed_ceiling() -> ByteSize {
@@ -35,7 +35,75 @@ fn gunbc_ci_runner_slot_ram_speed_ceiling() -> ByteSize {
 }
 
 data gunbc_ci_runner_slot_memory_max_live_source: Disposition = Terminal {
-  reason: "Refreshed 2026-07-11: the 2026-07-10/11 allocation ruling (gunbc.runner_slot_allocation: 16GiB MemoryMax, 15GiB MemoryHigh, 32GiB MemorySwapMax, all marked APPLIED) superseded the 2026-07-05 hand-set 24GiB regime (receipt run 28731491727; last 24GiB readbacks runs 29086228839/29112500694, 2026-07-10 - pre-apply). Post-apply direct evidence is the memory_high clamp (see gunbc_ci_runner_slot_memory_high_live_source: four floor_peak_post pins at 16106127360+overshoot); high is emitted as max-1GiB by the SAME converge unit that sets max, so live max == declared 16GiB. Residual: a direct post-apply memory.max readback is still owed - the executor prints it in its [measurement] cgroup line on any COMPLETED fleet floor (the wedged runs died before printing), so the next green fleet floor self-verifies this row. Dissolve-on unchanged: direct readback proves live == declared, then collapse to gunbc.runner_slot_allocation single authority."
+  reason: "Operator ruling 2026-07-14: gunbc_ci_runner_slot_memory_max_live derives from gunbc.runner_slot_allocation (no duplicate literal). The 2026-07-10/11 allocation ruling (16GiB MemoryMax, 15GiB MemoryHigh, 32GiB MemorySwapMax, APPLIED) superseded the 2026-07-05 hand-set 24GiB regime (receipt run 28731491727; last 24GiB readbacks runs 29086228839/29112500694, 2026-07-10 - pre-apply). Post-apply throttle-line evidence is the four floor_peak_post receipts (gunbc_ci_floor_run_peak_receipts); high is emitted as max-1GiB by the SAME converge unit that sets max. Residual: a direct post-apply memory.max readback on a COMPLETED fleet floor — the executor [measurement] cgroup line — self-verifies live max == declared; wedged runs censored that read. Dissolve-on: direct memory.max readback on a completed floor lands as a FloorRunCgroupPeakReceipt with memory_max_observed, then the live row can retire in favor of the receipt-fed authority."
+}
+
+type FloorRunCgroupPeakReceipt
+  = FloorRunCgroupPeakMeasured {
+      run_id: String,
+      runner_unit: String,
+      cgroup_peak: ByteSize,
+      floor_outcome: String,
+    }
+  | FloorRunCgroupPeakUnmeasured
+
+data gunbc_ci_floor_run_peak_receipt_overshoot_ceiling: ByteSize = byte_size(681574)
+
+data gunbc_ci_floor_run_peak_receipts: List<FloorRunCgroupPeakReceipt> = [
+  FloorRunCgroupPeakMeasured {
+    run_id: "29137081535",
+    runner_unit: "actions-runner@srv1-01.service",
+    cgroup_peak: byte_size(16106127360),
+    floor_outcome: "timeout",
+  },
+  FloorRunCgroupPeakMeasured {
+    run_id: "29142398465",
+    runner_unit: "actions-runner@srv1-03.service",
+    cgroup_peak: byte_size(16106127360),
+    floor_outcome: "timeout",
+  },
+  FloorRunCgroupPeakMeasured {
+    run_id: "29159082043",
+    runner_unit: "actions-runner@srv2-01.service",
+    cgroup_peak: byte_size(16106127360),
+    floor_outcome: "timeout",
+  },
+  FloorRunCgroupPeakMeasured {
+    run_id: "29112500694",
+    runner_unit: "actions-runner@srv2-02.service",
+    cgroup_peak: byte_size(16106127360),
+    floor_outcome: "timeout",
+  },
+]
+
+data gunbc_ci_floor_run_peak_receipt_disposition: Disposition = Terminal {
+  reason: "Per-run floor cgroup peak receipts (operator ruling 2026-07-14): typed carrier for floor_peak_post observations from completed fleet floors — the INTER-run whole-run peak at the slot's memory.high throttle line. Four independent readbacks across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043, 29112500694 on srv1-01/srv1-03/srv2-01/srv2-02) pinned within gunbc_ci_floor_run_peak_receipt_overshoot_ceiling (0.65MiB) above gunbc_ci_runner_slot_memory_high_live with zero oom_kill events. floor_outcome != success means the peak is a CENSORED lower bound (DESIGN §5); these wedged runs still prove the throttle-line signature. The executor [measurement] line on a COMPLETED floor is the memory.max readback path that closes the residual in gunbc_ci_runner_slot_memory_max_live_source."
+}
+
+fn floor_run_peak_receipt_at_throttle_line(receipt: FloorRunCgroupPeakReceipt) -> Bool {
+  match receipt {
+    FloorRunCgroupPeakMeasured { run_id: _, runner_unit: _, cgroup_peak: peak, floor_outcome: _ } =>
+      floor_run_peak_within_throttle_overshoot(peak: peak)
+    FloorRunCgroupPeakUnmeasured => false
+  }
+}
+
+fn floor_run_peak_within_throttle_overshoot(peak: ByteSize) -> Bool {
+  let high = gunbc_ci_runner_slot_memory_high_live
+  let overshoot_ceiling = gunbc_ci_floor_run_peak_receipt_overshoot_ceiling
+  byte_size_count(b: peak) >= byte_size_count(b: high)
+    && byte_size_count(b: peak) <= (byte_size_count(b: high) + byte_size_count(b: overshoot_ceiling))
+}
+
+fn witness_live_caps_derive_from_allocation_authority() -> Bool {
+  byte_size_count(b: gunbc_ci_runner_slot_memory_max_live) == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+    && byte_size_count(b: gunbc_ci_runner_slot_memory_high_live) == byte_size_count(b: gunbc_runner_slot_desired().memory_high)
+    && byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap) == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+}
+
+fn witness_floor_run_peak_receipts_at_throttle_line() -> Bool {
+  gunbc_ci_floor_run_peak_receipts.length() == 4
+    && all(gunbc_ci_floor_run_peak_receipts, r => floor_run_peak_receipt_at_throttle_line(receipt: r))
 }
 
 fn witness_runner_cgroup_cap_lt_dashboard_session_cap() -> Bool {

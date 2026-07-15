@@ -19,6 +19,7 @@ import v2.std.host_transport {
   EmitHostRuntimeRow,
   FixedText,
   FixedWidthBytes,
+  HostToolProgram,
   HostTransportDescriptor,
   LiteralArg,
   ProcessInvocation,
@@ -63,7 +64,7 @@ fn wire_fixed_main_row(main_text: String) -> EmitHostRuntimeRow {
       ],
       build: [],
       run: ProcessInvocation {
-        tool: ^host_tool_cargo,
+        program: HostToolProgram { tool: ^host_tool_cargo },
         args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
       },
       runtime_value_codec: FixedWidthBytes { width: 5 }

@@ -202,9 +202,14 @@ fn orch_emit_run_spelling(r: Run, medium: OrchestrationEmitMedium) -> Outcome<St
           match r.capture {
             Absent => outcome_accepted(core)
             Present { value: IgnoreFail } =>
-              orch_emit_node_spelling(
-                emitted_root: bash_stmt_or_ignore_fail_emitted,
-                target: bash_stmt_or_ignore_fail_target_model(stmt: core)
+              bind_outcome(
+                o: bash_stmt_or_ignore_fail_target_model(stmt: core),
+                f: fn(target) {
+                  orch_emit_node_spelling(
+                    emitted_root: bash_stmt_or_ignore_fail_emitted,
+                    target: target
+                  )
+                }
               )
             Present { value: _ } =>
               outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
@@ -216,9 +221,14 @@ fn orch_emit_run_spelling(r: Run, medium: OrchestrationEmitMedium) -> Outcome<St
               match r.capture {
                 Absent => outcome_accepted(with_redir)
                 Present { value: IgnoreFail } =>
-                  orch_emit_node_spelling(
-                    emitted_root: bash_stmt_or_ignore_fail_emitted,
-                    target: bash_stmt_or_ignore_fail_target_model(stmt: with_redir)
+                  bind_outcome(
+                    o: bash_stmt_or_ignore_fail_target_model(stmt: with_redir),
+                    f: fn(target) {
+                      orch_emit_node_spelling(
+                        emitted_root: bash_stmt_or_ignore_fail_emitted,
+                        target: target
+                      )
+                    }
                   )
                 Present { value: _ } =>
                   outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
@@ -265,27 +275,47 @@ fn orch_emit_predicate(p: Predicate, medium: OrchestrationEmitMedium) -> Outcome
     ExitZero { run: r } =>
       orch_emit_run_spelling(r: r, medium: medium)
     StrEq { lhs: lhs, rhs: rhs } =>
-      orch_emit_node_spelling(
-        emitted_root: bash_test_str_eq_emitted,
-        target: bash_test_str_eq_target_model(lhs: lhs, rhs: rhs)
+      bind_outcome(
+        o: bash_test_str_eq_target_model(lhs: lhs, rhs: rhs),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_test_str_eq_emitted,
+            target: target
+          )
+        }
       )
     StrEmpty { operand: operand } =>
-      orch_emit_node_spelling(
-        emitted_root: bash_test_str_empty_emitted,
-        target: bash_test_str_empty_target_model(operand: operand)
+      bind_outcome(
+        o: bash_test_str_empty_target_model(operand: operand),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_test_str_empty_emitted,
+            target: target
+          )
+        }
       )
     StrNonempty { operand: operand } =>
-      orch_emit_node_spelling(
-        emitted_root: bash_test_str_nonempty_emitted,
-        target: bash_test_str_nonempty_target_model(operand: operand)
+      bind_outcome(
+        o: bash_test_str_nonempty_target_model(operand: operand),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_test_str_nonempty_emitted,
+            target: target
+          )
+        }
       )
     LogMatches { source: source, pattern: pattern } =>
-      orch_emit_node_spelling(
-        emitted_root: bash_log_matches_grep_emitted,
-        target: bash_log_matches_grep_target_model(
+      bind_outcome(
+        o: bash_log_matches_grep_target_model(
           pattern: concat("'", concat(pattern, "'")),
           source: source
-        )
+        ),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_log_matches_grep_emitted,
+            target: target
+          )
+        }
       )
     Not { inner: inner } =>
       bind_outcome(
@@ -424,23 +454,33 @@ fn orch_emit_if_step(
         f: fn(then_medium) {
           match else_ {
             Absent =>
-              orch_emit_from_registry(
-                medium: medium,
-                construct_tag: orch_construct_if,
-                target: medium.realize_if(cond_spelling, then_medium.carried)
+              bind_outcome(
+                o: medium.realize_if(cond_spelling, then_medium.carried),
+                f: fn(target) {
+                  orch_emit_from_registry(
+                    medium: medium,
+                    construct_tag: orch_construct_if,
+                    target: target
+                  )
+                }
               )
             Present { value: else_pipeline } =>
               bind_outcome(
                 o: orch_emit_pipeline(p: else_pipeline, medium: medium),
                 f: fn(else_medium) {
-                  orch_emit_from_registry(
-                    medium: medium,
-                    construct_tag: orch_construct_if_else,
-                    target: medium.realize_if_else(
+                  bind_outcome(
+                    o: medium.realize_if_else(
                       cond_spelling,
                       then_medium.carried,
                       else_medium.carried
-                    )
+                    ),
+                    f: fn(target) {
+                      orch_emit_from_registry(
+                        medium: medium,
+                        construct_tag: orch_construct_if_else,
+                        target: target
+                      )
+                    }
                   )
                 }
               )
