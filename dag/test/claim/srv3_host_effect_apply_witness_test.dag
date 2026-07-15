@@ -11,6 +11,9 @@ import gunbc.host_effect {
   host_effect_identity_evidence,
   LocalShell,
   SshShell,
+  HostEffectEvidence,
+  ShellEffectApplied,
+  ConvergePlanApplied,
   Srv3InstallReconcileObserve,
   DurableApprovalGrantRecord,
   DurableApprovalGrantRead,
@@ -45,7 +48,6 @@ import gunbc.session_lease {
 }
 import gunbc.srv3_host_effect_script {
   srv3_host_effect_script_for,
-  srv3_receipt_emit_script,
   srv3_host_effect_script_dissolution_trigger,
 }
 import gunbc.srv3_host_effect_apply {
@@ -79,6 +81,43 @@ fn witness_non_srv3_effect_script_for_absent() -> Bool {
   match srv3_host_effect_script_for(effect: ShellCommand { script: "true" }) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+fn witness_srv3_typed_realize_effects_script_for_absent() -> Bool {
+  match srv3_host_effect_script_for(effect: DurableApprovalGrantRead) {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match srv3_host_effect_script_for(effect: Srv3BootOnceReadBackSleep) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match srv3_host_effect_script_for(
+      effect: Srv3ReceiptEmit { lines: ["Srv3InstallReconcileReceipt: attempt_id=test"] },
+    ) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
+  match host_effect_apply(
+    target: srv3_actuator_target(),
+    effect: Srv3ReceiptEmit { lines: ["line-one", "line-two"] },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+  ) {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: out, exit_code: code } =>
+          code == 0
+            && string_contains(s: out, pattern: "line-one")
+            && string_contains(s: out, pattern: "line-two")
+            && !string_contains(s: out, pattern: "printf")
+        ConvergePlanApplied { stdout: _, exit_code: _ } => false
+      }
+    NotConverged { reason: _, applied: _ } => false
   }
 }
 
@@ -280,24 +319,18 @@ test fn srv3_host_effect_observe_script_resolves_via_script_for() -> Bool {
 
 test fn srv3_host_effect_mechanical_variants_resolve_via_script_for() -> Bool {
   srv3_host_effect_script_resolves(effect: DurableApprovalGrantRecord)
-    && srv3_host_effect_script_resolves(effect: DurableApprovalGrantRead)
+    && witness_srv3_typed_realize_effects_script_for_absent()
     && witness_typed_reconcile_effects_script_for_absent()
     && srv3_host_effect_script_resolves(effect: Srv3SeededInstallMediaToolchainEnsure)
     && srv3_host_effect_script_resolves(effect: Srv3SolConsoleCapture)
     && srv3_host_effect_script_resolves(effect: Srv3BmcwebSessionLogin)
     && srv3_host_effect_script_resolves(effect: Srv3BmcwebTokenExtract)
     && witness_srv3_nbd_proxy_serve_script_for_absent()
-    && srv3_host_effect_script_resolves(effect: Srv3BootOnceReadBackSleep)
-    && srv3_host_effect_script_resolves(
-      effect: Srv3ReceiptEmit { lines: ["Srv3InstallReconcileReceipt: attempt_id=test"] },
-    )
     && witness_non_srv3_effect_script_for_absent()
 }
 
-test fn srv3_typed_receipt_emit_uses_printf_not_naive_echo() -> Bool {
-  let script = srv3_receipt_emit_script(lines: ["line-one", "line-two"])
-  string_contains(s: script, pattern: "printf '%s\\n'")
-    && !string_contains(s: script, pattern: "echo 'line-one'")
+test fn srv3_typed_receipt_emit_realizes_in_process_not_shell() -> Bool {
+  witness_srv3_receipt_emit_apply_converges_in_process()
 }
 
 test fn srv3_typed_receipt_carrier_holds_lines() -> Bool {
@@ -325,7 +358,8 @@ test fn srv3_host_effect_script_dissolves_via_bash_emit_not_p5b_executor() -> Bo
 test fn srv3_host_effect_apply_holds() -> Bool {
   srv3_host_effect_observe_script_resolves_via_script_for()
     && srv3_host_effect_mechanical_variants_resolve_via_script_for()
-    && srv3_typed_receipt_emit_uses_printf_not_naive_echo()
+    && witness_srv3_typed_realize_effects_script_for_absent()
+    && witness_srv3_receipt_emit_apply_converges_in_process()
     && srv3_typed_receipt_carrier_holds_lines()
     && shell_bash_runner_still_present_for_p5b()
     && srv3_host_effect_script_dissolves_via_bash_emit_not_p5b_executor()

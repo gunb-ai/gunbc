@@ -26,10 +26,6 @@ import gunbc.srv3_os_install_diagnostic {
   srv3_install_diagnostic_observe_script_for_intent,
 }
 import gunbc.srv3_os_install_reconcile_receipt { srv3_install_record_boot_once_approval_script }
-import gunbc.srv3_os_install_reconcile_types {
-  srv3_boot_once_approval_grant_path,
-  srv3_boot_once_apply_read_back_sleep,
-}
 import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_login_body_path,
   srv3_bmcweb_login_response_path,
@@ -56,7 +52,6 @@ import gunbc.ci_deploy_access {
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.apt { package_xorriso }
 import std.types { String, NonEmptyStr, List, Bool }
-import std.measure { second_count }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -195,12 +190,7 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
       Present {
         value: shell_exec_via_bash(body: srv3_install_record_boot_once_approval_script()),
       }
-    DurableApprovalGrantRead =>
-      Present {
-        value: shell_exec_via_bash(
-          body: concat("cat ", concat(srv3_boot_once_approval_grant_path, " 2>/dev/null || true")),
-        ),
-      }
+    DurableApprovalGrantRead => Absent
     Srv3InstallMediaFetch => Absent
     Srv3SeededInstallMediaRemaster => Absent
     Srv3SeededInstallMediaToolchainEnsure =>
@@ -218,14 +208,8 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
     Srv3BmcwebTokenExtract =>
       Present { value: shell_exec_via_bash(body: srv3_bmcweb_token_extract_script()) }
     Srv3NbdProxyServe { intent: _, lease_key: _ } => Absent
-    Srv3BootOnceReadBackSleep =>
-      Present {
-        value: shell_exec_via_bash(
-          body: concat("sleep ", to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))),
-        ),
-      }
-    Srv3ReceiptEmit { lines: lines } =>
-      Present { value: shell_exec_via_bash(body: srv3_receipt_emit_script(lines: lines)) }
+    Srv3BootOnceReadBackSleep => Absent
+    Srv3ReceiptEmit { lines: _ } => Absent
     Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => Absent
     OsInstallActuatorToolchainEnsure {} => Absent
     ShellCommand { script: _ } => Absent
