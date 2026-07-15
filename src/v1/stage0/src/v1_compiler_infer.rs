@@ -52,14 +52,15 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
-    is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
-    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
+    empty_symbol_index, empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map,
+    is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name,
+    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
     put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
+    symbol_index_insert,
 };
 pub use crate::v1_compiler_infer_env::{
-    GlobalBareLookupState, GuardedTypeEnvCacheMerge, TypeBinding, TypeEnv, TypeEnvCache,
-    TypeEnvCacheMergeConflict,
+    GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
+    TypeEnvCache, TypeEnvCacheMergeConflict,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
@@ -12105,6 +12106,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 intern_table: parent_env.intern_table.clone(),
                 source_visible_names: parent_env.source_visible_names.clone(),
                 global_bare: parent_env.global_bare.clone(),
+                symbol_index: parent_env.symbol_index.clone(),
             })
         }
     } else {
@@ -12136,6 +12138,7 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             intern_table: filtered.intern_table.clone(),
             source_visible_names: filtered.source_visible_names.clone(),
             global_bare: filtered.global_bare.clone(),
+            symbol_index: filtered.symbol_index.clone(),
         })
     }
 }
@@ -12171,6 +12174,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
         intern_table: env.intern_table.clone(),
         source_visible_names: env.source_visible_names.clone(),
         global_bare: env.global_bare.clone(),
+        symbol_index: env.symbol_index.clone(),
     })
 }
 
@@ -12461,12 +12465,55 @@ pub fn build_global_bare_census(
     )
 }
 
+pub fn symbol_index_insert_item(
+    index: Rc<SymbolIndex>,
+    module_path: String,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SymbolIndex> {
+    match local_binding_for_item(item.clone(), source_indices.clone()) {
+        None => index,
+        Some(binding) => symbol_index_insert(
+            index,
+            v1_rt::concat(
+                v1_rt::concat(module_path.clone(), ".".to_string()),
+                binding.name.clone(),
+            ),
+            binding.resolved.clone(),
+        ),
+    }
+}
+
+pub fn build_symbol_index_census(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SymbolIndex> {
+    modules.clone().iter().cloned().fold(
+        empty_symbol_index(),
+        |index: Rc<SymbolIndex>, mod_: Rc<ResolvedModule>| {
+            let module_path = authored_name_at(source_indices.clone(), mod_.module.clone());
+            module_items(mod_.module.clone()).iter().cloned().fold(
+                index,
+                |acc: Rc<SymbolIndex>, item: Rc<Node>| {
+                    symbol_index_insert_item(
+                        acc,
+                        module_path.clone(),
+                        item.clone(),
+                        source_indices.clone(),
+                    )
+                },
+            )
+        },
+    )
+}
+
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    symbol_index: Rc<SymbolIndex>,
 ) -> Rc<BuildTypeEnvResult> {
     {
         let source_indices = Rc::new(v1_rt::map_keys(&kernel_type_set()))
@@ -12714,6 +12761,7 @@ pub fn build_type_env(
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+            symbol_index: empty_symbol_index(),
         });
         let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
         let import_parents = Rc::new({
@@ -13055,6 +13103,7 @@ pub fn build_type_env(
             intern_table: intern_table.clone(),
             source_visible_names: source_visible_names.clone(),
             global_bare: global_bare.clone(),
+            symbol_index: symbol_index.clone(),
         });
         let resolved = resolve_env_bindings(
             unresolved_env.clone(),
@@ -13076,6 +13125,7 @@ pub fn build_type_env(
             intern_table: intern_table.clone(),
             source_visible_names: source_visible_names.clone(),
             global_bare: resolved_env_out.global_bare.clone(),
+            symbol_index: resolved_env_out.symbol_index.clone(),
         });
         let cache_str_bindings = v1_rt::rc_map_merge(
             final_env.ancestry_str_bindings.clone(),
@@ -13257,6 +13307,7 @@ pub fn build_type_env_unresolved(
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+            symbol_index: empty_symbol_index(),
         });
         let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
         let import_parents = Rc::new({
@@ -13551,6 +13602,7 @@ pub fn build_type_env_unresolved(
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+            symbol_index: empty_symbol_index(),
         });
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
@@ -14270,6 +14322,7 @@ pub fn typecheck_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    symbol_index: Rc<SymbolIndex>,
 ) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
@@ -14278,6 +14331,7 @@ pub fn typecheck_module(
             source_indices.clone(),
             intern_table.clone(),
             global_bare.clone(),
+            symbol_index.clone(),
         );
         let env = env_result.env.clone();
         let env_cache = env_result.cache.clone();
@@ -14489,6 +14543,7 @@ pub fn typecheck_module_isolated(
         source_indices.clone(),
         intern_table.clone(),
         v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+        empty_symbol_index(),
     )
 }
 
@@ -14663,6 +14718,7 @@ pub fn topo_resolve_types(
                         intern_table: env.intern_table.clone(),
                         source_visible_names: env.source_visible_names.clone(),
                         global_bare: env.global_bare.clone(),
+                        symbol_index: env.symbol_index.clone(),
                     }),
                     diagnostics: v1_rt::concat(
                         diagnostics.clone(),
@@ -14744,6 +14800,7 @@ pub fn topo_resolve_types(
                 intern_table: env.intern_table.clone(),
                 source_visible_names: env.source_visible_names.clone(),
                 global_bare: env.global_bare.clone(),
+                symbol_index: env.symbol_index.clone(),
             });
             let __tco_2 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
             let __tco_3 = (fuel - 1);
@@ -15102,6 +15159,7 @@ pub fn typecheck(
             },
         );
         let global_bare = build_global_bare_census(graph.modules.clone(), source_indices.clone());
+        let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -15117,6 +15175,7 @@ pub fn typecheck(
                     source_indices.clone(),
                     intern_table.clone(),
                     global_bare.clone(),
+                    symbol_index.clone(),
                 )
             },
         );
@@ -15175,6 +15234,7 @@ pub fn realize_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    symbol_index: Rc<SymbolIndex>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
@@ -15192,6 +15252,7 @@ pub fn realize_module(
                                 source_indices.clone(),
                                 intern_table.clone(),
                                 global_bare.clone(),
+                                symbol_index.clone(),
                             )
                         },
                     );
@@ -15207,6 +15268,7 @@ pub fn realize_module(
                         source_indices.clone(),
                         intern_table.clone(),
                         global_bare.clone(),
+                        symbol_index.clone(),
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
@@ -15514,6 +15576,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                             intern_table: m.type_env.clone().intern_table.clone(),
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
                             global_bare: m.type_env.clone().global_bare.clone(),
+                            symbol_index: m.type_env.clone().symbol_index.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
@@ -15726,6 +15789,7 @@ pub fn compiler_kernel_type_env(
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+            symbol_index: empty_symbol_index(),
         })
     }
 }
@@ -15820,6 +15884,7 @@ pub fn rewire_type_env_parent_links(
                             intern_table: m.type_env.clone().intern_table.clone(),
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
                             global_bare: m.type_env.clone().global_bare.clone(),
+                            symbol_index: m.type_env.clone().symbol_index.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),

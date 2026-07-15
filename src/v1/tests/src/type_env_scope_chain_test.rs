@@ -300,6 +300,7 @@ fn type_env_import_resolves_via_str_bindings_index() {
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
         global_bare: Rc::new(im_rc::HashMap::new()),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
     assert!(
         lookup_type_by_name(stripped, "Shared".to_string()).is_none(),
@@ -333,6 +334,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
         global_bare: Rc::new(im_rc::HashMap::new()),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
     assert!(
         lookup_type_by_name(stripped.clone(), "Shared".to_string()).is_some(),
@@ -350,6 +352,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
         global_bare: Rc::new(im_rc::HashMap::new()),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
     assert!(
         lookup_type_by_name(stripped_index, "Shared".to_string()).is_none(),
@@ -512,6 +515,7 @@ fn type_env_std_types_type_variable_filtered_from_import() {
         intern_table: intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
         global_bare: Rc::new(im_rc::HashMap::new()),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
     let filtered = type_env_for_import("std.types".to_string(), parent);
     for tv in ["T", "K", "V", "MappedElement", "FoldAccumulator"] {
@@ -630,6 +634,7 @@ fn global_bare_fallback_resolves_when_corpus_wide_unique() {
                 binding: binding.clone(),
             }),
         )])),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
 
     let resolved = lookup_binding_by_name(env, "Widget".to_string())
@@ -662,6 +667,7 @@ fn global_bare_fallback_stays_absent_when_corpus_wide_ambiguous() {
             "Widget".to_string(),
             Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
         )])),
+        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
 
     assert!(

@@ -1362,6 +1362,36 @@ fn bash_fold_lex() -> LexRules {
   ModeledLexRules { root: bash_fold_lex_rules() }
 }
 
+data bash_ingest_only_lex_rules_note: String = "no-smuggled-programs HALF B: INGEST-direction lex view. §4 asymmetry — ingest RECOGNIZES a superset of what emit PRODUCES. Recognized-but-UNMODELED control keywords (no production); presence marks an incompletely-modeled control form => AmbiguousParse, never Violation. Emit set (bash_fold_lex_rules) UNCHANGED so emit stays byte-identical. Word boundaries ride the spelling (trailing/leading space; done/esac terminal; do is spelled with a REQUIRED leading space so at the d of done its spelling can never be a prefix candidate — do and done do not collide at the same start position, so no maximal-munch arbitration between them is needed). newline reuses existing separator class bash_token_orch_seq_newline (bash.dag:1184)."
+
+fn bash_ingest_only_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_for, text: "for "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_do, text: " do"),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_done, text: "done"),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_while, text: "while "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_until, text: "until "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_select, text: "select "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_case, text: "case "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_esac, text: "esac"),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_case_clause_sep, text: ";;"),
+      bash_fold_lex_rule(token_class: ^bash_ingest_brace_open, text: "{ "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_brace_close, text: "; }"),
+      bash_fold_lex_rule(token_class: ^bash_token_orch_seq_newline, text: "\n")
+    ]
+  }
+}
+
+fn bash_ingest_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: bash_fold_lex_rules().rules,
+      right: bash_ingest_only_lex_rules().rules
+    )
+  }
+}
+
 fn bash_fold_kind_emit_transform(_spelling: String) -> String {
   ""
 }
