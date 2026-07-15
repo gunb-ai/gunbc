@@ -2,9 +2,9 @@ module v2.test.resolve.qualified_module_projection_g1b_fixture
 
 data g1b_fixture_note: String = "Grammar lane G1b corpus fixture: qualified module projection in fn return type, data type annotation, and let type annotation — no import lines; SymbolIndex must resolve container.member in each position."
 
-data item: v2.test.resolve.qualified_module_projection_provider.ProviderType = Unit
+data item: v2.test.resolve.qualified_module_projection_provider.ProviderType = 0
 
 fn consumer() -> v2.test.resolve.qualified_module_projection_provider.ProviderType {
-  let x: v2.test.resolve.qualified_module_projection_provider.ProviderType = Unit
+  let x: v2.test.resolve.qualified_module_projection_provider.ProviderType = 0
   x
 }
