@@ -9789,6 +9789,54 @@ new file mode 100644
     }
 
     #[test]
+    #[ignore = "manual census: G1 carrier-closure sweep for lying SubstrateInputsOnly stamps"]
+    fn lying_substrate_inputs_only_stamp_census() {
+        use std::collections::HashSet;
+
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let facts = super::build_module_graph_facts_live(&roots);
+        let mut lying: Vec<(String, String)> = Vec::new();
+        for (rel, content) in super::corpus_dag_files() {
+            if !super::is_test_dag(&rel) {
+                continue;
+            }
+            let Ok(reads_live_tree) = super::parse_entry_live_tree_disposition(&rel, &content)
+            else {
+                continue;
+            };
+            if reads_live_tree {
+                continue;
+            }
+            let mut closure_modules = HashSet::new();
+            super::collect_import_closure_module_names_from_facts(
+                &rel,
+                &facts,
+                &mut closure_modules,
+            );
+            for carrier in super::LIVE_READ_CARRIER_HOME_MODULES_V0 {
+                if closure_modules.contains(*carrier) {
+                    lying.push((rel.clone(), (*carrier).to_string()));
+                    break;
+                }
+            }
+        }
+        lying.sort();
+        eprintln!("lying SubstrateInputsOnly stamps (G1 carrier closure): {}", lying.len());
+        for (entry, carrier) in &lying {
+            eprintln!("  {entry}  ->  {carrier}");
+        }
+        assert!(
+            lying.is_empty(),
+            "lying SubstrateInputsOnly stamps must be re-stamped ReadsLiveTree before merge"
+        );
+    }
+
+    #[test]
     fn node_precise_same_file_referenced_vs_orphan_discriminates() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
