@@ -2181,7 +2181,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
         Absent => false
       }
-      let val_expected = if is_tail_return { expected } else { none }
+      let val_expected = if texpr.type_annotation != none {
+        Present { value: texpr.type_annotation.value }
+      } else if is_tail_return {
+        expected
+      } else {
+        none
+      }
       let val_result = infer_expr(texpr: val_expr, scope: scope, expected: val_expected)
       let val_typed = val_result.typed
       let val_diags = val_result.diagnostics

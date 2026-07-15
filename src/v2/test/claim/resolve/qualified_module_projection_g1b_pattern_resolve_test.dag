@@ -1,0 +1,118 @@
+module v2.test.resolve.qualified_module_projection_g1b_pattern_resolve
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_named_edge
+}
+import v2.std.algebra { fold_list_node }
+import v2.std.collection { Absent, List, Present }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Disj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup, SymbolIndex }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn qmpg1b_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  )
+}
+
+fn qmpg1b_type_with_variants(type_sym: Symbol, variants: List<Symbol>) -> Edge {
+  Edge {
+    label: Named { name: type_sym },
+    target: Node {
+      kind: TypeNode {
+        connective: Disj
+      },
+      children: fold(variants, init: [], f: fn(acc, variant_sym) {
+        concat(acc, [
+          Edge {
+            label: Named { name: variant_sym },
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: variant_sym } },
+              children: [],
+              occurrence_id: SyntheticOccurrence
+            }
+          }
+        ])
+      }),
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+data qmpg1b_provider_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.resolve.qualified_module_projection_provider"
+)
+
+data qmpg1b_provider_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    dag_named_edge(
+      name: ^dag_surface_module_header,
+      target: dag_grammar_atom(id: ^dag_surface_module_header)
+    ),
+    dag_named_edge(
+      name: ^dag_surface_module_header_qualified_name,
+      target: qmpg1b_qn_spine(segments: qmpg1b_provider_qn)
+    ),
+    qmpg1b_type_with_variants(type_sym: ^ProviderEnum, variants: [^TagA, ^TagB])
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data qmpg1b_provider_index: SymbolIndex = symbol_index_fill_module_root(
+  index: empty_symbol_index(),
+  root: qmpg1b_provider_root
+)
+
+data qmpg1b_qualified_variant_ref: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.resolve.qualified_module_projection_provider.TagA"
+)
+
+fn witness_qualified_constructor_pattern_resolves_holds() -> Bool {
+  match symbol_index_lookup(
+    index: qmpg1b_provider_index,
+    qualified_path: qmpg1b_qualified_variant_ref
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn witness_qualified_constructor_pattern_miss_red_holds() -> Bool {
+  match symbol_index_lookup(
+    index: empty_symbol_index(),
+    qualified_path: qmpg1b_qualified_variant_ref
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn qualified_module_projection_g1b_pattern_resolve_witnesses() -> Bool {
+  witness_qualified_constructor_pattern_resolves_holds()
+    && witness_qualified_constructor_pattern_miss_red_holds()
+}
