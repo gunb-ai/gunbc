@@ -19,9 +19,9 @@ import v2.test.workflow.host_source_root_ingest_manifest {
   host_source_root_ingest
 }
 import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn frontier_probe_entry_receipt() -> FrontierProbeReceipt {
   frontier_probe_emit_from_ingest(

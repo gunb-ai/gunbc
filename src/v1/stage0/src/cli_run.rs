@@ -2242,6 +2242,18 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
 /// (an extra witness run) but never under-report (a missed run). It does not attempt to
 /// prove which touched path a reached carrier actually reads at runtime (that precision is
 /// G2/G3's job) — reachability plus any touch is treated as a hit.
+fn import_closure_module_reaches_carrier_home(
+    closure_modules: &HashSet<String>,
+    carrier_home: &str,
+) -> bool {
+    closure_modules.iter().any(|module| {
+        module == carrier_home
+            || module
+                .strip_prefix(carrier_home)
+                .is_some_and(|suffix| suffix.starts_with('.'))
+    })
+}
+
 fn runtime_data_dependency_touched_via_carrier_closure(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -2254,7 +2266,9 @@ fn runtime_data_dependency_touched_via_carrier_closure(
     collect_import_closure_module_names_from_facts(entry_path, facts, &mut closure_modules);
     LIVE_READ_CARRIER_HOME_MODULES_V0
         .iter()
-        .any(|carrier_module| closure_modules.contains(*carrier_module))
+        .any(|carrier_home| {
+            import_closure_module_reaches_carrier_home(&closure_modules, carrier_home)
+        })
 }
 
 #[cfg(test)]
@@ -9850,6 +9864,72 @@ new file mode 100644
             kernel_skip,
             "the same unrelated diff must skip a declared SubstrateInputsOnly row \
              (discriminating control: the disposition is what flips the decision)"
+        );
+    }
+
+    #[test]
+    fn import_closure_carrier_home_matches_submodules() {
+        use std::collections::HashSet;
+
+        let carrier = "v2.compiler.self_host";
+        let mut exact = HashSet::from([carrier.to_string()]);
+        assert!(super::import_closure_module_reaches_carrier_home(
+            &exact, carrier
+        ));
+        let mut submodule = HashSet::from(["v2.compiler.self_host.frontier".to_string()]);
+        assert!(super::import_closure_module_reaches_carrier_home(
+            &submodule, carrier
+        ));
+        let mut homonym = HashSet::from(["v2.compiler.self_hostile".to_string()]);
+        assert!(!super::import_closure_module_reaches_carrier_home(
+            &homonym, carrier
+        ));
+    }
+
+    #[test]
+    fn lying_substrate_inputs_only_stamp_census() {
+        use std::collections::HashSet;
+
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let facts = super::build_module_graph_facts_live(&roots);
+        let mut lying: Vec<(String, String)> = Vec::new();
+        for (rel, content) in super::corpus_dag_files() {
+            if !super::is_test_dag(&rel) {
+                continue;
+            }
+            let Ok(reads_live_tree) = super::parse_entry_live_tree_disposition(&rel, &content)
+            else {
+                continue;
+            };
+            if reads_live_tree {
+                continue;
+            }
+            let mut closure_modules = HashSet::new();
+            super::collect_import_closure_module_names_from_facts(
+                &rel,
+                &facts,
+                &mut closure_modules,
+            );
+            for carrier in super::LIVE_READ_CARRIER_HOME_MODULES_V0 {
+                if super::import_closure_module_reaches_carrier_home(&closure_modules, carrier) {
+                    lying.push((rel.clone(), (*carrier).to_string()));
+                    break;
+                }
+            }
+        }
+        lying.sort();
+        eprintln!("lying SubstrateInputsOnly stamps (G1 carrier closure): {}", lying.len());
+        for (entry, carrier) in &lying {
+            eprintln!("  {entry}  ->  {carrier}");
+        }
+        assert!(
+            lying.is_empty(),
+            "lying SubstrateInputsOnly stamps must be re-stamped ReadsLiveTree before merge"
         );
     }
 
