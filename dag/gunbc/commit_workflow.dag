@@ -390,7 +390,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
-      check_fns: ["wave1_gate1_d_all_fixture_families_witness_holds"],
+      check_fns: ["wave1_gate1_d_census_fixture_variants_well_formed_witness_holds"],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },

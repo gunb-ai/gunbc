@@ -1,8 +1,8 @@
 module v2.test.emit.rust_loop_emit
 
-import v2.test.complexity_gate.source_bridged_loop_subject_producer {
-  source_bridged_loop_arrow_with_body,
-  source_bridged_loop_wrong_value_arrow_with_body
+import v2.test.complexity_gate.table_fixture_loop_subject_producer {
+  table_fixture_loop_arrow_with_body,
+  table_fixture_loop_wrong_value_arrow_with_body
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -50,7 +50,7 @@ fn rust_loop_emit_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn rust_loop_emit_producer_inferred_tree() -> Outcome<InferredTree> {
-  match source_bridged_loop_arrow_with_body() {
+  match table_fixture_loop_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_loop_emit_inferred_tree_for(root: root),
@@ -61,7 +61,7 @@ fn rust_loop_emit_producer_inferred_tree() -> Outcome<InferredTree> {
 }
 
 fn rust_loop_emit_wrong_value_producer_inferred_tree() -> Outcome<InferredTree> {
-  match source_bridged_loop_wrong_value_arrow_with_body() {
+  match table_fixture_loop_wrong_value_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_loop_emit_inferred_tree_for(root: root),

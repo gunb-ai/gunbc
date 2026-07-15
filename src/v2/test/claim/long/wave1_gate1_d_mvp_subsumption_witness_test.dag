@@ -3,13 +3,13 @@ module v2.test.long.wave1_gate1_d_mvp_subsumption_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.test.claim.body_lowering.wave1_gate1_d_ingested_fixture_helpers {
-  wave1_gate1_d_all_fixture_families_holds
+  wave1_gate1_d_census_fixture_variants_well_formed_holds
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data wave1_gate1_d_long_witness_note: String = "Wave 1 Gate 1 Stage D execution witnesses (long lane): all fixture families (add/pick/loop/bind/match + swapped-operand/wrong-value RED controls) lower through census ingest via ingested_fixture_arrows. Fast compile-gate receipts live in self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag."
+data wave1_gate1_d_long_witness_note: String = "Wave 1 Gate 1 Stage D long lane: census ingest produces well-formed Arrows for canonical + variant fixture sources (swapped-operand/wrong-value). Behavioral RED controls remain in execution/*_eval_by_execution_test.dag."
 
-test fn wave1_gate1_d_all_fixture_families_witness_holds() -> Bool {
-  wave1_gate1_d_all_fixture_families_holds()
+test fn wave1_gate1_d_census_fixture_variants_well_formed_witness_holds() -> Bool {
+  wave1_gate1_d_census_fixture_variants_well_formed_holds()
 }

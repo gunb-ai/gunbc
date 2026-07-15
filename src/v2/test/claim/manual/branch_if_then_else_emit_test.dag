@@ -1,8 +1,8 @@
 module v2.test.manual.branch_if_then_else_emit
 
-import v2.test.complexity_gate.source_bridged_branch_subject_producer {
-  source_bridged_pick_if_arrow_with_body,
-  source_bridged_pick_if_arrow_with_body_swapped_arms
+import v2.test.complexity_gate.table_fixture_branch_subject_producer {
+  table_fixture_pick_if_arrow_with_body,
+  table_fixture_pick_if_arrow_with_body_swapped_arms
 }
 import v2.test.execution.branch_if_then_else_round_trip {
   branch_if_then_else_inferred_facts_for,
@@ -62,7 +62,7 @@ fn branch_if_then_else_emit_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn branch_if_then_else_emit_producer_tree() -> Outcome<InferredTree> {
-  match source_bridged_pick_if_arrow_with_body() {
+  match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: branch_if_then_else_emit_inferred_tree_for(root: root),
@@ -73,7 +73,7 @@ fn branch_if_then_else_emit_producer_tree() -> Outcome<InferredTree> {
 }
 
 fn branch_if_then_else_emit_swapped_producer_tree() -> Outcome<InferredTree> {
-  match source_bridged_pick_if_arrow_with_body_swapped_arms() {
+  match table_fixture_pick_if_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: branch_if_then_else_emit_inferred_tree_for(root: root),

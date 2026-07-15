@@ -1,8 +1,8 @@
 module v2.test.emit.rust_literal_bind_emit
 
-import v2.test.complexity_gate.source_bridged_bind_subject_producer {
-  source_bridged_bind_arrow_with_body,
-  source_bridged_bind_wrong_value_arrow_with_body
+import v2.test.complexity_gate.table_fixture_bind_subject_producer {
+  table_fixture_bind_arrow_with_body,
+  table_fixture_bind_wrong_value_arrow_with_body
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -71,7 +71,7 @@ fn rust_literal_bind_emit_from_root(root: Node, target: TargetModel) -> Outcome<
 
 fn rust_literal_bind_int_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
-    o: source_bridged_bind_arrow_with_body(),
+    o: table_fixture_bind_arrow_with_body(),
     f: fn(root) {
       rust_literal_bind_emit_from_root(root: root, target: target)
     }
@@ -80,7 +80,7 @@ fn rust_literal_bind_int_emit_from_producer(target: TargetModel) -> Outcome<Medi
 
 fn rust_literal_bind_int_wrong_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
-    o: source_bridged_bind_wrong_value_arrow_with_body(),
+    o: table_fixture_bind_wrong_value_arrow_with_body(),
     f: fn(root) {
       rust_literal_bind_emit_from_root(root: root, target: target)
     }

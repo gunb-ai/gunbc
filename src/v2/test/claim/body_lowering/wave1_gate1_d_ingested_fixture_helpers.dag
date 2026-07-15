@@ -12,41 +12,32 @@ import v2.compiler.ingested_fixture_arrows {
   ingested_pick_if_arrow_with_body,
   ingested_pick_if_arrow_with_body_swapped_arms
 }
-import v2.extdeps.languages.dag {
-  dag_match_arrow_with_body_fixture,
-  dag_match_arrow_with_body_swapped_arms_fixture
+import v2.test.complexity_gate.table_fixture_match_subject_producer {
+  table_fixture_match_arrow_with_body,
+  table_fixture_match_arrow_with_body_swapped_arms
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.node_query { find_arrow_body_child }
-import v2.test.complexity_gate.source_bridged_add_subject_producer {
-  source_bridged_add_arrow_with_body,
-  source_bridged_add_arrow_with_body_swapped_operands
+import v2.test.complexity_gate.table_fixture_add_subject_producer {
+  table_fixture_add_arrow_with_body,
+  table_fixture_add_arrow_with_body_swapped_operands
 }
-import v2.test.complexity_gate.source_bridged_bind_subject_producer {
-  source_bridged_bind_arrow_with_body,
-  source_bridged_bind_wrong_value_arrow_with_body
+import v2.test.complexity_gate.table_fixture_bind_subject_producer {
+  table_fixture_bind_arrow_with_body,
+  table_fixture_bind_wrong_value_arrow_with_body
 }
-import v2.test.complexity_gate.source_bridged_branch_subject_producer {
-  source_bridged_pick_if_arrow_with_body,
-  source_bridged_pick_if_arrow_with_body_swapped_arms
+import v2.test.complexity_gate.table_fixture_branch_subject_producer {
+  table_fixture_pick_if_arrow_with_body,
+  table_fixture_pick_if_arrow_with_body_swapped_arms
 }
-import v2.test.complexity_gate.source_bridged_loop_subject_producer {
-  source_bridged_loop_arrow_with_body,
-  source_bridged_loop_wrong_value_arrow_with_body
-}
-
-data wave1_gate1_d_note: String = "Wave 1 Gate 1 Stage D helpers: fast lane uses table-fixture source_bridged producers; long lane uses census ingest via ingested_fixture_arrows."
-
-fn source_bridged_match_arrow_with_body() -> Outcome<Node> {
-  outcome_accepted(value: dag_match_arrow_with_body_fixture)
+import v2.test.complexity_gate.table_fixture_loop_subject_producer {
+  table_fixture_loop_arrow_with_body,
+  table_fixture_loop_wrong_value_arrow_with_body
 }
 
-fn source_bridged_match_arrow_with_body_swapped_arms() -> Outcome<Node> {
-  outcome_accepted(value: dag_match_arrow_with_body_swapped_arms_fixture)
-}
-
+data wave1_gate1_d_note: String = "Wave 1 Gate 1 Stage D helpers: fast lane uses table_fixture producers; long lane uses census ingest via ingested_fixture_arrows. Behavioral RED controls live in execution/*_eval_by_execution_test.dag."
 fn wave1_gate1_d_arrow_accepts(o: Outcome<Node>) -> Bool {
   match o {
     Accepted { value: arrow, diagnostics: _ } =>
@@ -59,46 +50,46 @@ fn wave1_gate1_d_arrow_accepts(o: Outcome<Node>) -> Bool {
 }
 
 fn wave1_gate1_d_add_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: source_bridged_add_arrow_with_body())
+  wave1_gate1_d_arrow_accepts(o: table_fixture_add_arrow_with_body())
 }
 
-fn wave1_gate1_d_add_swapped_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: source_bridged_add_arrow_with_body_swapped_operands())
+fn wave1_gate1_d_add_swapped_well_formed_holds() -> Bool {
+  wave1_gate1_d_arrow_accepts(o: table_fixture_add_arrow_with_body_swapped_operands())
 }
 
 fn wave1_gate1_d_pick_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: source_bridged_pick_if_arrow_with_body())
+  wave1_gate1_d_arrow_accepts(o: table_fixture_pick_if_arrow_with_body())
 }
 
-fn wave1_gate1_d_pick_swapped_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: source_bridged_pick_if_arrow_with_body_swapped_arms())
+fn wave1_gate1_d_pick_swapped_well_formed_holds() -> Bool {
+  wave1_gate1_d_arrow_accepts(o: table_fixture_pick_if_arrow_with_body_swapped_arms())
 }
 
 fn wave1_gate1_d_loop_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: source_bridged_loop_arrow_with_body())
+  wave1_gate1_d_arrow_accepts(o: table_fixture_loop_arrow_with_body())
 }
 
-fn wave1_gate1_d_loop_wrong_value_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: source_bridged_loop_wrong_value_arrow_with_body())
+fn wave1_gate1_d_loop_wrong_value_well_formed_holds() -> Bool {
+  wave1_gate1_d_arrow_accepts(o: table_fixture_loop_wrong_value_arrow_with_body())
 }
 
 fn wave1_gate1_d_bind_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: source_bridged_bind_arrow_with_body())
+  wave1_gate1_d_arrow_accepts(o: table_fixture_bind_arrow_with_body())
 }
 
-fn wave1_gate1_d_bind_wrong_value_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: source_bridged_bind_wrong_value_arrow_with_body())
+fn wave1_gate1_d_bind_wrong_value_well_formed_holds() -> Bool {
+  wave1_gate1_d_arrow_accepts(o: table_fixture_bind_wrong_value_arrow_with_body())
 }
 
 fn wave1_gate1_d_match_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: source_bridged_match_arrow_with_body())
+  wave1_gate1_d_arrow_accepts(o: table_fixture_match_arrow_with_body())
 }
 
-fn wave1_gate1_d_match_swapped_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: source_bridged_match_arrow_with_body_swapped_arms())
+fn wave1_gate1_d_match_swapped_well_formed_holds() -> Bool {
+  wave1_gate1_d_arrow_accepts(o: table_fixture_match_arrow_with_body_swapped_arms())
 }
 
-fn wave1_gate1_d_all_fixture_families_holds() -> Bool {
+fn wave1_gate1_d_census_fixture_variants_well_formed_holds() -> Bool {
   wave1_gate1_d_arrow_accepts(o: ingested_add_arrow_with_body())
     && wave1_gate1_d_arrow_accepts(o: ingested_add_arrow_with_body_swapped_operands())
     && wave1_gate1_d_arrow_accepts(o: ingested_pick_if_arrow_with_body())
