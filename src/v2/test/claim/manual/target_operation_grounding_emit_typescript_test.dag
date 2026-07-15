@@ -46,7 +46,7 @@ import v2.extdeps.languages.typescript {
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.collection { List }
 import v2.std.algebra { Equal, Greater, Less, Ordering, zip_eq }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
