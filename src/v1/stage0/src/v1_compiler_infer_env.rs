@@ -57,7 +57,7 @@ pub fn global_bare_fallback_invariant() -> String {
 pub fn qualified_module_projection_invariant() -> String {
     thread_local! {
         static CACHED: String = {
-            "Grammar lane G1: container.member in value/type/pattern positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access. build_symbol_index_census materializes declared-module paths once; lookup_binding_by_name consults it only after global_bare misses and only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics).".to_string()
+            "Grammar lane G1: container.member module projection in type positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare. build_symbol_index_census materializes declared-module paths once; lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

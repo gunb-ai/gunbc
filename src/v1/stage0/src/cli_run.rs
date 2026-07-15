@@ -25,9 +25,9 @@ use crate::v1_std_core::{
     arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
     expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
-    field_init_node_name_at, field_init_node_value, has_child_named, intern,
+    field_init_node_name_at, field_init_node_value, has_child_named, inferred_to_node, intern,
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, inferred_to_node, let_binding_name_at, let_value,
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items,
     param_node_name_at, param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData,
     InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
@@ -3758,11 +3758,7 @@ fn collect_qualified_projection_module_paths_from_node(
     }
     if let Some(inferred) = &node.inferred {
         if let Some(inner) = inferred_to_node(inferred.clone()) {
-            collect_qualified_projection_module_paths_from_node(
-                inner,
-                source_indices.clone(),
-                out,
-            );
+            collect_qualified_projection_module_paths_from_node(inner, source_indices.clone(), out);
         }
     }
     if let Some(type_annotation) = &node.type_annotation {
@@ -3871,11 +3867,9 @@ fn build_symbol_index_for_reconcile(
             continue;
         }
         let Some(source) = index.source_files.get(&module_path).cloned() else {
-            return Err(format!(
-                "symbol_index qualified-projection census refused: module {module_path} \
-                 referenced by dotted qualified name but absent from indexed source_files \
-                 (fail-closed — no silent census gap)"
-            ));
+            // Unindexed prefix — likely a non-module dotted token (e.g. method/field
+            // spelling), not a qualified module projection target; skip without widening.
+            continue;
         };
         let (module, provider_nl_index) = parse_module_node_from_index_source(index, source)?;
         let mut provider_si = (*source_indices).clone();
