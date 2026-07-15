@@ -1,6 +1,15 @@
 module tools.build_step
 
 
+import extdeps.languages.bash.program {
+  ShellStmt, ShellWord, ShellProgram,
+  Command, If, Exit, WithRedir,
+  Lit, Concat, StdoutToStderr,
+  lit, command, serialize_bash
+}
+
+
+
 type BuildArtifact {
   path: ShellWord
 

@@ -1,6 +1,23 @@
 module gunbc.host_converge_realize
 
 
+import std.types { String, List, Bool }
+import gunbc.host_converge {
+  ConvergeKnob,
+  ConvergeTarget,
+  HostConverge,
+  ConvergeSlice,
+  converge_slice_label,
+  SliceProperty,
+  PerSlotMemoryCap,
+  RunnerWidth,
+  JobserverTokens,
+  VerifyOnlyCap,
+  GunbcPinnedTree,
+}
+
+
+
 type ConvergeKnobInterpretVerdict =
     KnobUnimplemented { knob_name: String, target_kind: String, reason: String }
 
