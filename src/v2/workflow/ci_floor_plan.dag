@@ -681,12 +681,6 @@ fn gunbc_ci_plan_artifact_batches() -> List<List<Runnable>> {
   })
 }
 
-data gunbc_ci_witness_corpus_only_batches_note: String = "The affected-set witness corpus as a standalone single-batch plan for the pre-push gate: the SAME SelectionApplied corpus runnable CI's floor runs (corpus_runnable_for over gunbc_ci_spec), minus batch 1's whole-tree --target dag compile-clean anchor and the effectful gates. Selection is realized inside run_discovery_corpus_with_options (does not consume batch 1's compile receipt), so this batch shrinks the tree-wide witness corpus to the merge-base diff's affected set and runs it green-by-execution — the local pre-push guarantee that affected witnesses pass before the push reaches CI. Fail-closed inherits from the corpus runnable: a diff-observation gap widens to the full corpus (refuses to narrow), never predict-skips a host-scaffold/live-tree row. NOT the full CI floor (no compile anchor); it answers 'do the diff's affected tests pass', not 'does the whole tree compile clean'."
-
-fn gunbc_ci_witness_corpus_only_batches() -> List<List<Runnable>> {
-  [[corpus_runnable_for(spec: gunbc_ci_spec)]]
-}
-
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
   match schedule_lens_verdict_for_ci_floor(
     plan: gunbc_ci_floor_realization_plan(),
