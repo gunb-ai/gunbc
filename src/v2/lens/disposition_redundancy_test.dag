@@ -299,7 +299,7 @@ data redundancy_region_fleet_converge_marks: List<Disposition> = [
 
 data redundancy_region_fleet_converge_successors_present: List<DeclarationRef> = [
   DeclarationRef {
-    module_path: "extdeps.ctrl.jobserver",
+    module_path: "extdeps.jobserver",
     decl_name: "jobserver_build_pool_bytes",
     field: WholeDeclaration
   },

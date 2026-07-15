@@ -3,7 +3,7 @@ module test.claim.fleet_host_budget
 import std.types { Int, List, String, Bool }
 import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import product.budget_tree { BudgetNode, node_conserves }
-import extdeps.ctrl.jobserver {
+import extdeps.jobserver {
   CtrlJobserverConfig,
   CtrlJobserverCitation,
   CtrlJobserverCited,

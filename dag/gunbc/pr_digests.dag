@@ -1,4 +1,4 @@
-module ctrl.pr_digests
+module gunbc.pr_digests
 
 import extdeps.github.pulls { PullRequest, PullReview, ReviewComment }
 import extdeps.github.errors { GitHubErrorShape }

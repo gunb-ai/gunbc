@@ -1,4 +1,4 @@
-module ctrl.review_verdict
+module gunbc.review_verdict
 
 import std.types { ArtifactId, CommitSha, ContentHash, NonEmptyStr, Timestamp }
 import extdeps.github.pulls { ReviewState }

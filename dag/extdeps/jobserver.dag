@@ -1,4 +1,4 @@
-module extdeps.ctrl.jobserver
+module extdeps.jobserver
 
 import std.types { Int, String }
 import std.nat { Nat, nat_min }

@@ -16,7 +16,7 @@ import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLin
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
-import ctrl.process_algebra { ProcessNodeId }
+import gunbc.process_algebra { ProcessNodeId }
 
 fn roadmap_page_max_depth() -> Int { 8 }
 

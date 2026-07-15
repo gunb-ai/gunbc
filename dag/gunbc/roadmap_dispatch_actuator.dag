@@ -1,6 +1,6 @@
 module gunbc.roadmap_dispatch_actuator
 
-import ctrl.process_algebra { ProcessNodeId }
+import gunbc.process_algebra { ProcessNodeId }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
 import std.upsert_decision {
   ObservationVerdict,

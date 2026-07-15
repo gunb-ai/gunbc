@@ -14,7 +14,7 @@ import gunbc.idea_pr_spine {
   StageStep, IdeaInput, DagModel, Review, review_step,
   settle, demo_spine_green, demo_spine_unknown,
 }
-import ctrl.review_verdict { Llm, Claude, RequestChanges }
+import gunbc.review_verdict { Llm, Claude, RequestChanges }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
