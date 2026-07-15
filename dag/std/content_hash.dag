@@ -3,11 +3,11 @@ module std.content_hash
 import std.types { ContentHash, NonEmptyStr }
 
 fn content_hash_atom(value: NonEmptyStr) -> ContentHash {
-  atom_identity_hash(value) as ContentHash
+  atom_identity_hash(value)
 }
 
 fn content_hash_combine(left: ContentHash, right: ContentHash) -> ContentHash {
-  hash_combine(left, right) as ContentHash
+  hash_combine(left, right)
 }
 
 fn content_hash_tagged(tag: NonEmptyStr, payload: ContentHash) -> ContentHash {
