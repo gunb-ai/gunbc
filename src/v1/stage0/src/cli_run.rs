@@ -2242,6 +2242,18 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
 /// (an extra witness run) but never under-report (a missed run). It does not attempt to
 /// prove which touched path a reached carrier actually reads at runtime (that precision is
 /// G2/G3's job) — reachability plus any touch is treated as a hit.
+fn import_closure_module_reaches_carrier_home(
+    closure_modules: &HashSet<String>,
+    carrier_home: &str,
+) -> bool {
+    closure_modules.iter().any(|module| {
+        module == carrier_home
+            || module
+                .strip_prefix(carrier_home)
+                .is_some_and(|suffix| suffix.starts_with('.'))
+    })
+}
+
 fn runtime_data_dependency_touched_via_carrier_closure(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -2254,7 +2266,9 @@ fn runtime_data_dependency_touched_via_carrier_closure(
     collect_import_closure_module_names_from_facts(entry_path, facts, &mut closure_modules);
     LIVE_READ_CARRIER_HOME_MODULES_V0
         .iter()
-        .any(|carrier_module| closure_modules.contains(*carrier_module))
+        .any(|carrier_home| {
+            import_closure_module_reaches_carrier_home(&closure_modules, carrier_home)
+        })
 }
 
 #[cfg(test)]
@@ -9789,6 +9803,25 @@ new file mode 100644
     }
 
     #[test]
+    fn import_closure_carrier_home_matches_submodules() {
+        use std::collections::HashSet;
+
+        let carrier = "v2.compiler.self_host";
+        let mut exact = HashSet::from([carrier.to_string()]);
+        assert!(super::import_closure_module_reaches_carrier_home(
+            &exact, carrier
+        ));
+        let mut submodule = HashSet::from(["v2.compiler.self_host.frontier".to_string()]);
+        assert!(super::import_closure_module_reaches_carrier_home(
+            &submodule, carrier
+        ));
+        let mut homonym = HashSet::from(["v2.compiler.self_hostile".to_string()]);
+        assert!(!super::import_closure_module_reaches_carrier_home(
+            &homonym, carrier
+        ));
+    }
+
+    #[test]
     fn lying_substrate_inputs_only_stamp_census() {
         use std::collections::HashSet;
 
@@ -9818,7 +9851,7 @@ new file mode 100644
                 &mut closure_modules,
             );
             for carrier in super::LIVE_READ_CARRIER_HOME_MODULES_V0 {
-                if closure_modules.contains(*carrier) {
+                if super::import_closure_module_reaches_carrier_home(&closure_modules, carrier) {
                     lying.push((rel.clone(), (*carrier).to_string()));
                     break;
                 }
