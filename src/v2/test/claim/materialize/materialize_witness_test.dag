@@ -4,10 +4,19 @@ import v2.std.materialize {
   materialize_redundant_computation_count,
   materialize_has_duplicate_computation,
   materialize_distinct_computation_count,
-  materialize_node_count
+  materialize_node_count,
+  distinct_hashes,
+  hashes_contain
 }
 import v2.std.node { Node, Edge, Named, TypeNode, Atom, Conj, Symbol, node_synthetic, content_hash }
-import std.types { ContentHash }
+import std.realization_schedule {
+  RealizationPlan,
+  RealizationObjective,
+  Runnable,
+  RunnableSingleClaim,
+  cost_account_predicted_zero,
+  runnable_resource_profile_negligible
+}
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -57,8 +66,25 @@ test fn distinct_fixture_all_distinct() -> Bool {
   materialize_distinct_computation_count(root: distinct_fixture()) == 3
 }
 
+fn witness_plan_schedule() -> List<List<Runnable>> {
+  [
+    [RunnableSingleClaim {
+      entry: "src/v2/test/claim/materialize/materialize_witness_test.dag"
+      function: "duplicate_subtree_flagged"
+      profile: runnable_resource_profile_negligible()
+    }]
+  ]
+}
+
 test fn node_content_hash_is_realization_plan_target() -> Bool {
   let root = dup_fixture()
-  let target: ContentHash = content_hash(n: root)
-  target == content_hash(n: root)
+  let other = distinct_fixture()
+  let plan = RealizationPlan {
+    target: content_hash(n: root)
+    objective: RealizationObjective { goals: [] }
+    schedule: witness_plan_schedule()
+    total: cost_account_predicted_zero()
+  }
+  hashes_contain(hs: distinct_hashes(root: root), h: plan.target)
+    && !hashes_contain(hs: distinct_hashes(root: other), h: plan.target)
 }
