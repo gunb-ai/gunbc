@@ -135,7 +135,7 @@ Once these three are green-by-execution, the count *cannot* grow into 200 by con
 
 **One-line test of doneness:** *can someone add a redundant or unenrolled lens and have CI stay green?* When the answer is a fail-closed "no," the project is structurally done, whatever the migration frontier still holds.
 
-## 7bis. How to use this doc (the operator's stated intent)
+## 9. How to use this doc (the operator's stated intent)
 
 Run §3 (per-lens) and §4 (per-set) against a proposed or existing lens as a **stress test**: a "no" that is *named* (a dissolve-on, a `RatchetForever`, an exemption) is acceptable; a "no" that is *silent* is the debt. The value of the doc is not the taxonomy — it is the ten questions in §3 and the five set-properties in §4, which any *future* lens must answer before it joins the set, so the family stays minimal instead of accreting the forks §5 catalogues.
 
