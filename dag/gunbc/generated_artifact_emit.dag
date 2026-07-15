@@ -1,5 +1,5 @@
 
-
+module gunbc.generated_artifact_emit
 
 import gunbc.generated_artifact {
   GeneratedArtifact,
@@ -21,9 +21,6 @@ import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.install_server_emit { install_server_dnsmasq_conf }
 import gunbc.plan { expected_plan_md }
-
-module gunbc.generated_artifact_emit
-
 
 fn artifact_generate(a: GeneratedArtifact) -> String {
   match a {
