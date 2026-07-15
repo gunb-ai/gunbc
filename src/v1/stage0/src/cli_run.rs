@@ -13,7 +13,7 @@ use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
-use crate::v1_compiler_infer_env::{lookup_type_by_name, GlobalBareLookupState};
+use crate::v1_compiler_infer_env::{lookup_type_by_name, GlobalBareLookupState, symbol_index_insert, SymbolIndex};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -25,7 +25,7 @@ use crate::v1_std_core::{
     arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
     expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
-    field_init_node_name_at, field_init_node_value, has_child_named, intern,
+    field_init_node_name_at, field_init_node_value, has_child_named, inferred_to_node, intern,
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items,
@@ -4085,6 +4085,170 @@ fn reconcile_all_cache_hits(
     )
 }
 
+fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
+    if !name.contains('.') {
+        return None;
+    }
+    name.rfind('.').and_then(|pos| {
+        if pos > 0 {
+            Some(name[..pos].to_string())
+        } else {
+            None
+        }
+    })
+}
+
+fn collect_qualified_projection_module_paths_from_node(
+    node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    out: &mut HashSet<String>,
+) {
+    let name = authored_name_at(source_indices.clone(), node.clone());
+    if let Some(prefix) = qualified_name_module_path_prefix(&name) {
+        out.insert(prefix);
+    }
+    for child in node.children.iter() {
+        collect_qualified_projection_module_paths_from_node(
+            child.clone(),
+            source_indices.clone(),
+            out,
+        );
+    }
+    for param in node.params.iter() {
+        collect_qualified_projection_module_paths_from_node(
+            param.clone(),
+            source_indices.clone(),
+            out,
+        );
+    }
+    if let Some(inferred) = &node.inferred {
+        if let Some(inner) = inferred_to_node(inferred.clone()) {
+            collect_qualified_projection_module_paths_from_node(inner, source_indices.clone(), out);
+        }
+    }
+    if let Some(type_annotation) = &node.type_annotation {
+        collect_qualified_projection_module_paths_from_node(
+            type_annotation.clone(),
+            source_indices.clone(),
+            out,
+        );
+    }
+    if let Some(body) = &node.body {
+        collect_qualified_projection_module_paths_from_node(
+            body.clone(),
+            source_indices.clone(),
+            out,
+        );
+    }
+}
+
+fn qualified_projection_module_paths_in_graph(
+    graph: &v1_compiler_resolve::ModuleGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> HashSet<String> {
+    let mut paths = HashSet::new();
+    for resolved in graph.modules.iter() {
+        for item in module_items(resolved.module.clone()).iter() {
+            collect_qualified_projection_module_paths_from_node(
+                item.clone(),
+                source_indices.clone(),
+                &mut paths,
+            );
+        }
+    }
+    paths
+}
+
+fn merge_symbol_indices(left: Rc<SymbolIndex>, right: Rc<SymbolIndex>) -> Rc<SymbolIndex> {
+    right.entries.iter().fold(left, |acc, (key, value)| {
+        symbol_index_insert(acc, key.clone(), value.clone())
+    })
+}
+
+fn parse_module_node_from_index_source(
+    index: &MultiEntryIndex,
+    source: Rc<v1_compiler_compile::SourceFile>,
+) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
+    let cached = index.parse_cache.borrow().get(&source.path).cloned();
+    let (parse_result, nl_index) = match cached {
+        Some(entry) => entry,
+        None => {
+            let tokens =
+                v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+            let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+            let current_table = index.intern_table.borrow().clone();
+            let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+                let mut m = HashMap::new();
+                m.insert(source.path.clone(), nl_index.clone());
+                m
+            });
+            let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+            *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+            let entry = (parsed.result.clone(), nl_index.clone());
+            index
+                .parse_cache
+                .borrow_mut()
+                .insert(source.path.clone(), entry.clone());
+            entry
+        }
+    };
+    if let Some(err) = &parse_result.error {
+        let span = diagnostic_to_span(err.diagnostic.clone());
+        let loc = format_error_loc(&span.file, span.start, &Rc::new(HashMap::new()));
+        return Err(format!(
+            "symbol_index qualified-projection census refused: parse failed for {}: {}",
+            loc,
+            diagnostic_to_message(err.diagnostic.clone())
+        ));
+    }
+    match &parse_result.module {
+        Some(module) => Ok((module.clone(), nl_index)),
+        None => Err(format!(
+            "symbol_index qualified-projection census refused: no module in {}",
+            source.path
+        )),
+    }
+}
+
+// SCAFFOLD (§7 seed-retained HAND-RUST — Grammar lane G1 entry-scoped reconcile)
+// 🟡 dissolve-on: build_symbol_index_for_reconcile — parse/resolve provider modules
+// referenced by dotted qualified names in the entry import closure when absent from that
+// closure; dissolve when multi-entry SymbolIndex authority is modeled (.dag census over
+// the indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
+fn build_symbol_index_for_reconcile(
+    index: &MultiEntryIndex,
+    graph: Rc<v1_compiler_resolve::ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Result<Rc<SymbolIndex>, String> {
+    let mut symbol_index =
+        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices.clone());
+    let closure_module_names: HashSet<String> = graph
+        .modules
+        .iter()
+        .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
+        .collect();
+    for module_path in qualified_projection_module_paths_in_graph(&graph, source_indices.clone()) {
+        if closure_module_names.contains(&module_path) {
+            continue;
+        }
+        let Some(source) = index.source_files.get(&module_path).cloned() else {
+            continue;
+        };
+        let (module, provider_nl_index) = parse_module_node_from_index_source(index, source)?;
+        let mut provider_si = (*source_indices).clone();
+        provider_si.insert(provider_nl_index.file.clone(), provider_nl_index);
+        let provider_si = Rc::new(provider_si);
+        let provider_graph =
+            v1_compiler_resolve::resolve_modules(Rc::new(vec![module].into()), provider_si.clone());
+        let provider_index = v1_compiler_infer::build_symbol_index_census(
+            provider_graph.modules.clone(),
+            provider_si,
+        );
+        symbol_index = merge_symbol_indices(symbol_index, provider_index);
+    }
+    Ok(symbol_index)
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4096,6 +4260,8 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
+    let symbol_index =
+        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
@@ -4189,6 +4355,7 @@ fn reconcile_with_typed_cache(
                         source_indices.clone(),
                         intern_table.clone(),
                         global_bare_for_decl_file(&decl_file, global_bare.clone()),
+                        symbol_index.clone(),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
                     // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
