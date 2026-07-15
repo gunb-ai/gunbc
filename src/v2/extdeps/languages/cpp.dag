@@ -1236,7 +1236,7 @@ fn cpp_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cc },
+        program: HostToolProgram { executable: "cc" },
         args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
       }
     ],
