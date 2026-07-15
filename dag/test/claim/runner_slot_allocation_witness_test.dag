@@ -7,6 +7,7 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slots_per_host,
   gunbc_runner_slice_cap_declared,
   gunbc_committed_runner_slot_allocations,
+  gunbc_runner_slot_enforcement_expected_cap,
 }
 import std.measure { byte_size, byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -37,4 +38,8 @@ test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
     per_slot: per_slot.memory_max,
     slice_cap: gunbc_runner_slice_cap_declared()
   )
+}
+
+test fn runner_slot_allocation_enforcement_expected_cap_is_desired_memory_max() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_enforcement_expected_cap()) == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
 }
