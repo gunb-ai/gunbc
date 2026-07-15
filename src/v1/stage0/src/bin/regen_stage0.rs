@@ -14,7 +14,9 @@ use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
 
 #[path = "../bootstrap_stage0_crate_layout_generated.rs"]
 mod bootstrap_stage0_crate_layout_generated;
-use bootstrap_stage0_crate_layout_generated::{HAND_MAINTAINED_STAGE0_DIRS, HAND_MAINTAINED_STAGE0_FILES};
+use bootstrap_stage0_crate_layout_generated::{
+    HAND_MAINTAINED_STAGE0_DIRS, HAND_MAINTAINED_STAGE0_FILES,
+};
 
 const BOOTSTRAP_TIMING_RECEIPT_VERSION: u32 = 2;
 const BOOTSTRAP_TIMING_RECEIPT_SCHEMA: &str = "gunbc.bootstrap_timing_receipt.v2";

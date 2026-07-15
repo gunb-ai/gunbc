@@ -36,3 +36,7 @@ data generated_stage0_filenames: List<String> = [
   "usv_pilot_v2_std_node.rs",
   "v2_compiler_use_site_verdict.rs"
 ]
+
+data generated_stage0_dirs: List<String> = [
+  "module_path_index"
+]
