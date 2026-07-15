@@ -1,0 +1,101 @@
+module v2.lens.common.algebraic_composition
+
+import v2.compiler.infer { InferredFacts }
+import v2.std.dependency { DependencyKindClassifier }
+import v2.std.diagnostic { Diagnostic }
+import v2.std.witness { Witness }
+
+type EffectClassification {}
+
+type IdempotencyVerdict
+  = AlgebraicIdempotenceProven { law: Witness<InferredFacts> }
+  | RequiresAlgebraWitness
+
+type OwnershipMode
+  = OwnedContainment
+  | SharedRead
+  | RequiresAccessWitness
+  | BorrowedDependency
+  | UnknownOwnership
+
+type ParallelismRelation
+  = DataDependent
+  | EffectCoupled
+  | BarrierCoupled
+  | UnresolvedCoupling { diagnostic: Diagnostic }
+
+type ParallelismKindPolicy
+  = KnownParallelismRelation { relation: ParallelismRelation }
+  | ReadsParallelismFacts
+
+data effect_classifier: DependencyKindClassifier<EffectClassification> = DependencyKindClassifier {
+  contains: EffectClassification {},
+  binds_to: EffectClassification {},
+  type_depends_on: EffectClassification {},
+  data_depends_on: EffectClassification {},
+  effect_depends_on: EffectClassification {},
+  resource_depends_on: EffectClassification {},
+  module_depends_on: EffectClassification {},
+  barrier_before: EffectClassification {},
+  placement_depends_on: EffectClassification {},
+  model_depends_on: EffectClassification {},
+  projection_depends_on: EffectClassification {},
+  generated_from: EffectClassification {},
+  verified_by: EffectClassification {},
+  promoted_by: EffectClassification {},
+  bootstrap_depends_on: EffectClassification {}
+}
+
+data idempotency_classifier: DependencyKindClassifier<IdempotencyVerdict> = DependencyKindClassifier {
+  contains: RequiresAlgebraWitness,
+  binds_to: RequiresAlgebraWitness,
+  type_depends_on: RequiresAlgebraWitness,
+  data_depends_on: RequiresAlgebraWitness,
+  effect_depends_on: RequiresAlgebraWitness,
+  resource_depends_on: RequiresAlgebraWitness,
+  module_depends_on: RequiresAlgebraWitness,
+  barrier_before: RequiresAlgebraWitness,
+  placement_depends_on: RequiresAlgebraWitness,
+  model_depends_on: RequiresAlgebraWitness,
+  projection_depends_on: RequiresAlgebraWitness,
+  generated_from: RequiresAlgebraWitness,
+  verified_by: RequiresAlgebraWitness,
+  promoted_by: RequiresAlgebraWitness,
+  bootstrap_depends_on: RequiresAlgebraWitness
+}
+
+data ownership_classifier: DependencyKindClassifier<OwnershipMode> = DependencyKindClassifier {
+  contains: OwnedContainment,
+  binds_to: BorrowedDependency,
+  type_depends_on: UnknownOwnership,
+  data_depends_on: SharedRead,
+  effect_depends_on: RequiresAccessWitness,
+  resource_depends_on: RequiresAccessWitness,
+  module_depends_on: UnknownOwnership,
+  barrier_before: UnknownOwnership,
+  placement_depends_on: UnknownOwnership,
+  model_depends_on: UnknownOwnership,
+  projection_depends_on: UnknownOwnership,
+  generated_from: UnknownOwnership,
+  verified_by: UnknownOwnership,
+  promoted_by: UnknownOwnership,
+  bootstrap_depends_on: UnknownOwnership
+}
+
+data parallelism_classifier: DependencyKindClassifier<ParallelismKindPolicy> = DependencyKindClassifier {
+  contains: KnownParallelismRelation { relation: DataDependent },
+  binds_to: KnownParallelismRelation { relation: DataDependent },
+  type_depends_on: ReadsParallelismFacts,
+  data_depends_on: KnownParallelismRelation { relation: DataDependent },
+  effect_depends_on: KnownParallelismRelation { relation: EffectCoupled },
+  resource_depends_on: KnownParallelismRelation { relation: EffectCoupled },
+  module_depends_on: ReadsParallelismFacts,
+  barrier_before: KnownParallelismRelation { relation: BarrierCoupled },
+  placement_depends_on: ReadsParallelismFacts,
+  model_depends_on: ReadsParallelismFacts,
+  projection_depends_on: ReadsParallelismFacts,
+  generated_from: ReadsParallelismFacts,
+  verified_by: ReadsParallelismFacts,
+  promoted_by: ReadsParallelismFacts,
+  bootstrap_depends_on: ReadsParallelismFacts
+}
