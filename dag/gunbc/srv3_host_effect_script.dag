@@ -34,13 +34,8 @@ import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_login_body_path,
   srv3_bmcweb_login_response_path,
   srv3_bmcweb_token_path,
-  srv3_nbd_proxy_serve_script_path,
   srv3_sol_console_log_path,
 }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
-import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
-import extdeps.os.ubuntu_install_media_fetch { install_media_fetch_script }
-import extdeps.os.ubuntu_seeded_install_media_remaster { install_media_remaster_script }
 import extdeps.languages.bash.program { serialize_bash }
 import extdeps.bmc.serial_console {
   sol_console_capture_script,
@@ -151,16 +146,6 @@ fn srv3_bmcweb_token_extract_script() -> String {
   )
 }
 
-fn srv3_nbd_proxy_serve_wrapper_script() -> String {
-  concat(
-    concat(
-      concat("export BMCWEB_SESSION_TOKEN=$(cat ", srv3_bmcweb_token_path),
-      "); bash ",
-    ),
-    srv3_nbd_proxy_serve_script_path,
-  )
-}
-
 fn srv3_join_adjacent_pairs(parts: List<String>) -> List<String> {
   let paired = fold(
     parts,
@@ -216,18 +201,8 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
           body: concat("cat ", concat(srv3_boot_once_approval_grant_path, " 2>/dev/null || true")),
         ),
       }
-    Srv3InstallMediaFetch =>
-      Present {
-        value: shell_exec_via_bash(
-          body: install_media_fetch_script(artifact: srv3_ubuntu_install_media_artifact),
-        ),
-      }
-    Srv3SeededInstallMediaRemaster =>
-      Present {
-        value: shell_exec_via_bash(
-          body: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
-        ),
-      }
+    Srv3InstallMediaFetch => Absent
+    Srv3SeededInstallMediaRemaster => Absent
     Srv3SeededInstallMediaToolchainEnsure =>
       Present {
         value: shell_exec_via_bash(body: install_media_remaster_toolchain_ensure_script()),
@@ -242,8 +217,7 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
       Present { value: shell_exec_via_bash(body: srv3_bmcweb_session_login_script()) }
     Srv3BmcwebTokenExtract =>
       Present { value: shell_exec_via_bash(body: srv3_bmcweb_token_extract_script()) }
-    Srv3NbdProxyServe =>
-      Present { value: shell_exec_via_bash(body: srv3_nbd_proxy_serve_wrapper_script()) }
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => Absent
     Srv3BootOnceReadBackSleep =>
       Present {
         value: shell_exec_via_bash(

@@ -420,6 +420,28 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
       }
   }
 }
+
+data edge_contributes_to_cost_fold_note: String = "Wave 1 Gate 1 C1: the symbolic cost fold prices only runtime work. Arrow signature/type positional children and domain Named edges are NOT runtime cost — only ^arrow_body_edge carries the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to use that function directly."
+
+fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Loop } =>
+      match e.label {
+        Positional => true
+        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
+      }
+    TypeNode { connective: Arrow } =>
+      match e.label {
+        Positional => false
+        Named { name: sym } => sym == ^arrow_body_edge
+      }
+    _ =>
+      match e.label {
+        Positional => true
+        Named { name: _ } => true
+      }
+  }
+}
 fn all_names_distinct(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {

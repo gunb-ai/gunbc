@@ -6,6 +6,7 @@ import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.types { RedfishSystemAction }
 import extdeps.dns.domain_name { DnsLabel }
+import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import std.effects {
@@ -39,7 +40,10 @@ type HostEffect =
   | Srv3SolConsoleCapture
   | Srv3BmcwebSessionLogin
   | Srv3BmcwebTokenExtract
-  | Srv3NbdProxyServe
+  | Srv3NbdProxyServe {
+      intent: NbdProxyServeTransportIntent,
+      lease_key: NonEmptyStr,
+    }
   | Srv3BootOnceReadBackSleep
   | Srv3ReceiptEmit { lines: List<String> }
 
