@@ -1,0 +1,37 @@
+module v2.test.complexity_gate.table_fixture_add_subject_producer
+
+import v2.extdeps.languages.dag {
+  dag_add_arrow_with_body_fixture,
+  dag_add_arrow_with_body_swapped_operands_fixture
+}
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
+import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, node_synthetic }
+
+data table_fixture_add_subject_producer_note: String = "Fast-lane subject producer: table fixture Arrow (dag_add_arrow_with_body_fixture). Census ingest proofs live in ingested_fixture_arrows + long/wave1_gate1_d_mvp_subsumption_witness_test.dag."
+
+fn table_fixture_add_arrow_with_body() -> Outcome<Node> {
+  outcome_accepted(value: dag_add_arrow_with_body_fixture)
+}
+
+fn table_fixture_add_arrow_with_body_swapped_operands() -> Outcome<Node> {
+  outcome_accepted(value: dag_add_arrow_with_body_swapped_operands_fixture)
+}
+
+fn table_fixture_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: table_fixture_add_arrow_with_body(),
+    f: fn(arrow_with_body) {
+      outcome_accepted(
+        value: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Named { name: fn_name },
+              target: arrow_with_body
+            }
+          ]
+        )
+      )
+    }
+  )
+}
