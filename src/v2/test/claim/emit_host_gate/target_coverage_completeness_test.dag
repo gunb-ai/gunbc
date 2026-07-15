@@ -30,7 +30,7 @@ data emit_host_coverage_row_typescript: EmitHostTargetCoverageRow = EmitHostTarg
 
 data emit_host_coverage_row_cpp: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
   target: cpp_target_model(),
-  host_smoked: false
+  host_smoked: true
 }
 
 data emit_host_coverage_row_java: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
@@ -64,7 +64,7 @@ fn emit_host_all_targets_consistent() -> Bool {
   )
 }
 
-data emit_host_gate_declared_smoke_count: Int = 4
+data emit_host_gate_declared_smoke_count: Int = 5
 
 fn emit_host_row_is_present(row: EmitHostTargetCoverageRow) -> Bool {
   match runtime_row_from_target(target: row.target) {
