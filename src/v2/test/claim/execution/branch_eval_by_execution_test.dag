@@ -1,10 +1,5 @@
 module v2.test.execution.branch_eval_by_execution
 
-import v2.compiler.ingested_fixture_arrows {
-  ingested_pick_if_arrow_with_body,
-  ingested_pick_if_arrow_with_body_false_condition,
-  ingested_pick_if_arrow_with_body_swapped_arms
-}
 import v2.test.complexity_gate.table_fixture_branch_subject_producer {
   table_fixture_pick_if_arrow_with_body,
   table_fixture_pick_if_arrow_with_body_swapped_arms,
@@ -523,45 +518,6 @@ fn branch_fixture_producer_holds() -> Bool {
           expected: branch_literal_one_node()
         )
       )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn branch_ingested_pick_true_executes_holds() -> Bool {
-  match ingested_pick_if_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
-      branch_run_passes(
-        run: branch_run(
-          callee: arrow,
-          expected: branch_literal_one_node()
-        )
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn branch_ingested_pick_false_executes_holds() -> Bool {
-  match ingested_pick_if_arrow_with_body_false_condition() {
-    Accepted { value: arrow, diagnostics: _ } =>
-      branch_run_passes(
-        run: branch_run(
-          callee: arrow,
-          expected: branch_literal_two_node()
-        )
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn branch_ingested_swapped_arms_red_holds() -> Bool {
-  match ingested_pick_if_arrow_with_body_swapped_arms() {
-    Accepted { value: arrow, diagnostics: _ } =>
-      branch_run_passes(
-        run: branch_run(
-          callee: arrow,
-          expected: branch_literal_one_node()
-        )
-      ) == false
     Rejected { diagnostics: _ } => false
   }
 }

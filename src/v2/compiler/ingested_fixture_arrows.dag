@@ -33,7 +33,7 @@ import v2.std.node {
 }
 import v2.std.node_query { find_arrow_body_child }
 
-data ingested_fixture_arrows_note: String = "Wave 1 Gate 1 Stage D: census-ingest Arrow fixtures replacing produce_* flat-token MVP producers. Every arrow is tokenize→parse_module→normalize→resolve→extract; behavioral equivalence witnesses live in wave1_gate1_d_* tests."
+data ingested_fixture_arrows_note: String = "Wave 1 Gate 1 Stage D: census-ingest Arrow fixtures replacing produce_* flat-token MVP producers. Every arrow is tokenize→parse_module→normalize→resolve→extract; well-formedness witnesses live in long/wave1_gate1_d_mvp_subsumption_witness_test.dag; behavioral proofs in long/wave1_gate1_general_body_producer_witness_test.dag and execution/pick_ingested_*."
 
 data ingested_add_module_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 data ingested_add_swapped_operands_module_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { y + x }\n"
@@ -214,15 +214,4 @@ fn ingested_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
       )
     }
   )
-}
-
-fn arrow_has_body_edge(arrow: Node) -> Bool {
-  match find_arrow_body_child(root: arrow) {
-    Accepted { value: body, diagnostics: _ } =>
-      match body.kind {
-        ComputationNode { behavior: _ } => true
-        _ => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
 }

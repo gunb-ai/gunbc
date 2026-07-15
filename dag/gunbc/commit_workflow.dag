@@ -398,21 +398,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/wave1_gate1_d_behavioral_subsumption_witness_test.dag",
-      check_fns: [
-        "wave1_gate1_d_ingested_add_behavioral_subsumption_holds",
-        "wave1_gate1_d_ingested_pick_behavioral_subsumption_holds",
-        "wave1_gate1_d_ingested_loop_behavioral_subsumption_holds",
-        "wave1_gate1_d_ingested_bind_behavioral_subsumption_holds",
-        "wave1_gate1_d_ingested_match_behavioral_subsumption_holds"
-      ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
       check_fns: [
         "witness_parse_binding_fidelity_distinct_identifiers_holds",

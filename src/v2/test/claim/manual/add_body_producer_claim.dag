@@ -1,6 +1,6 @@
 module v2.test.manual.add_body_producer_claim
 
-import v2.compiler.ingested_fixture_arrows { arrow_has_body_edge }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.test.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body
 }
@@ -48,7 +48,15 @@ fn add_body_bool_node(pass: Bool) -> Node {
 fn add_body_table_fixture_arrow_accepts() -> Bool {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      well_formed(n: arrow) && arrow_has_body_edge(arrow: arrow)
+      well_formed(n: arrow)
+        && match find_arrow_body_child(root: arrow) {
+          Accepted { value: body, diagnostics: _ } =>
+            match body.kind {
+              ComputationNode { behavior: _ } => true
+              _ => false
+            }
+          Rejected { diagnostics: _ } => false
+        }
     Rejected { diagnostics: _ } => false
   }
 }
