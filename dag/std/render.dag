@@ -1,6 +1,11 @@
 module std.render
 
 
+import std.symbols { SemanticColor, SymbolId, Tier }
+import std.languages { CommentSyntax, ConfigFormat, Language }
+
+
+
 type SpanStyle {
   color: SemanticColor?
   bold: Bool

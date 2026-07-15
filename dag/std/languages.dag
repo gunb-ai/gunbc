@@ -1,6 +1,10 @@
 module std.languages
 
 
+import std.types { LanguageId }
+
+
+
 type NamingCase
   = SnakeCase
   | ScreamingSnakeCase
