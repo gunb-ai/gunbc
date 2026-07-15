@@ -1,6 +1,11 @@
 module tools.extdeps_external_authority_transport
 
 
+import std.logic { Bool }
+import tools.host_prelude { ClaimRun, run_gunbc_claims }
+
+
+
 data uri_witness_entry: String = "dag/test/claim/uri_witness_test.dag"
 data uri_witness_fn: String = "uri_witnesses"
 
