@@ -71,7 +71,7 @@ type CompilerModuleFrontierRow {
 
 data compiler_frontier_module_count_expected: Int = 27
 
-data compiler_frontier_self_emitted_baseline: Int = 0
+data compiler_frontier_self_emitted_baseline: Int = 1
 
 fn measured_stage_for_blocker(blocker: FrontierBlockerClass) -> FrontierProbeStage {
   match blocker {
@@ -126,6 +126,22 @@ fn execution_measured_seed_retained_row_from_probe_receipt(
     located_reason: receipt.located_reason,
     migration_trigger: migration_trigger
   )
+}
+
+fn execution_measured_self_emitted_row(
+  module_path: String,
+  closure_reads: Int,
+  measured_probe: FrontierProbeReceipt
+) -> CompilerModuleFrontierRow {
+  CompilerModuleFrontierRow {
+    module_path: module_path,
+    disposition: SelfEmitted,
+    measured_probe: measured_probe,
+    tractability_rank: tractability_rank_for(
+      closure_reads: closure_reads,
+      blocker: measured_probe.blocker_class
+    )
+  }
 }
 
 fn knowledge_attributed_blocker_class_seed_retained_row(
@@ -326,11 +342,15 @@ data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = knowled
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
   module_path: "src/v2/compiler/use_site_verdict.dag",
   closure_reads: 9,
-  measured_blocker: EmitSurfaceGap,
-  migration_trigger: ^migrate_when_ownership_defork_lands
+  measured_probe: FrontierProbeReceipt {
+    module_path: "src/v2/compiler/use_site_verdict.dag",
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  }
 )
 
 data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [

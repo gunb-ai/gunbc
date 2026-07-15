@@ -1,0 +1,121 @@
+module tools.self_host_use_site_verdict_behavioral_transport
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.cargo_build
+import extdeps.git
+import extdeps.gunbc
+import std.logic { Bool }
+import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
+
+data ssuv_doc: String = "Wave 2 Band A pilot (use_site_verdict self-emit): seed-linked behavioral receipt mirroring tools.self_host_logic_behavioral_transport. Emit ONLY the entry module (v2.compiler.use_site_verdict) via gunbc compile --entry; compile it in a v1_compiled driver crate linked against the v1-compiler seed path dependency. Seed-retained import deps (v2.std.node / v2.std.algebra surfaces) are NOT re-emitted into the cargo graph — a minimal typed shim supplies the ABI until those std modules self-emit on their own lane (DESIGN section 7 typed frontier). Behavioral bar: cargo-green seed-linked witness + equals-eval on use_site_verdict_test claims + --inject-fault RED. Module bytes read via Filesystem.Read at run time (provenance)."
+
+data ssuv_source_rel: String = "src/v2/compiler/use_site_verdict.dag"
+
+data ssuv_test_entry_rel: String = "src/v2/test/claim/use_site_verdict_test.dag"
+
+data ssuv_lib_rs: String = "// seed-linked pilot lib — entry module self-emitted, seed-retained dep shim\n#![allow(clippy::all, dead_code, unused_imports)]\n#![recursion_limit = \"256\"]\npub mod v1_rt;\npub mod v2_std_node;\npub mod v2_std_algebra;\npub mod v2_std_collection;\npub mod v2_compiler_use_site_verdict;\npub use v1_compiler::{NonEmptyVec, NonEmptyBTreeSet};\n"
+
+data ssuv_v2_std_node_shim: String = "// seed-linked dep shim — minimal v2.std.node surface for use_site_verdict pilot\nuse im_rc::{vector as vec, Vector as Vec};\nuse std::rc::Rc;\n\npub type Symbol = String;\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum NodeOccurrenceId { SyntheticOccurrence }\n\n#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum Connective {\n    Atom { identity: String },\n    Conj, Disj, Arrow, Cardinality, Instantiation,\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum Behavior { Value, Transform, Branch, Loop, Bind, Match }\n\n#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum NodeKind {\n    TypeNode { connective: Rc<Connective> },\n    ComputationNode { behavior: Behavior },\n}\n\n#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum EdgeLabel {\n    Named { name: String },\n    Positional,\n}\n\n#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct Edge {\n    pub label: Rc<EdgeLabel>,\n    pub target: Rc<Node>,\n}\n\n#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct Node {\n    pub kind: Rc<NodeKind>,\n    pub children: Rc<Vec<Rc<Edge>>>,\n    pub occurrence_id: Rc<NodeOccurrenceId>,\n}\n\n#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum NamedEdgeTargetLookup {\n    Found { target: Rc<Node> },\n    Ambiguous,\n    Absent,\n}\n\npub fn node_synthetic(kind: Rc<NodeKind>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Node> {\n    Rc::new(Node {\n        kind,\n        children,\n        occurrence_id: Rc::new(NodeOccurrenceId::SyntheticOccurrence),\n    })\n}\n\npub fn node_rebuild(n: Rc<Node>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Node> {\n    Rc::new(Node { kind: n.kind.clone(), children, occurrence_id: n.occurrence_id.clone() })\n}\n\npub fn named_edge_target_lookup(children: Rc<Vec<Rc<Edge>>>, name: Symbol) -> Rc<NamedEdgeTargetLookup> {\n    children.iter().cloned().fold(Rc::new(NamedEdgeTargetLookup::Absent), |acc, e| {\n        match (&*e.label, &*acc) {\n            (EdgeLabel::Named { name: sym }, NamedEdgeTargetLookup::Absent) if sym == &name => {\n                Rc::new(NamedEdgeTargetLookup::Found { target: e.target.clone() })\n            }\n            (EdgeLabel::Named { name: sym }, _) if sym == &name => {\n                Rc::new(NamedEdgeTargetLookup::Ambiguous)\n            }\n            _ => acc,\n        }\n    })\n}\n"
+
+data ssuv_v2_std_algebra_shim: String = "use im_rc::Vector as Vec;\nuse std::rc::Rc;\n\npub fn list_snoc_item<T: Clone>(xs: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {\n    let mut out = xs.as_ref().clone();\n    out.push_back(item);\n    Rc::new(out)\n}\n"
+
+data ssuv_v2_std_collection_shim: String = "pub type List<T> = im_rc::Vector<T>;\n"
+
+data ssuv_driver_main_source: String = "use im_rc::vector as vec;\nuse std::rc::Rc;\nuse v1_compiled::v2_compiler_use_site_verdict::*;\nuse v1_compiled::v2_std_node::*;\n\nfn verdict_eq(a: &UseSiteVerdict, b: &UseSiteVerdict) -> bool {\n    use UseSiteVerdict::*;\n    match (a, b) {\n        (MoveWhole, MoveWhole) | (Borrow, Borrow) | (CloneShared, CloneShared) | (Unclassified, Unclassified) => true,\n        (MoveField { field: fa, .. }, MoveField { field: fb, .. }) => fa == fb,\n        _ => false,\n    }\n}\n\nfn main() {\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let mut all_pass = true;\n    let cases = vec![\n        Rc::new(UseSiteVerdict::MoveWhole),\n        Rc::new(UseSiteVerdict::Borrow),\n        Rc::new(UseSiteVerdict::CloneShared),\n        Rc::new(UseSiteVerdict::Unclassified),\n        Rc::new(UseSiteVerdict::MoveField { field: \"seen\".to_string() }),\n    ];\n    for verdict in cases {\n        let bare = node_synthetic(\n            Rc::new(NodeKind::ComputationNode { behavior: Behavior::Value }),\n            Rc::new(vec![]),\n        );\n        let decorated = attach_use_site_verdict(bare, verdict.clone());\n        let ok = match &*use_site_verdict_lookup(decorated) {\n            UseSiteVerdictLookup::VerdictFound { verdict: got, .. } => verdict_eq(got, &verdict),\n            _ => false,\n        };\n        all_pass &= ok;\n    }\n    let absent_ok = matches!(&*use_site_verdict_lookup(node_synthetic(\n        Rc::new(NodeKind::ComputationNode { behavior: Behavior::Value }), Rc::new(vec![]),\n    )), UseSiteVerdictLookup::VerdictAbsent);\n    all_pass &= absent_ok;\n    if inject_fault { all_pass = false; }\n    if all_pass {\n        println!(\"SELF_HOST_USE_SITE_VERDICT_BEHAVIORAL_RECEIPT: PASS\");\n        std::process::exit(0);\n    }\n    println!(\"SELF_HOST_USE_SITE_VERDICT_BEHAVIORAL_RECEIPT: FAIL\");\n    std::process::exit(1);\n}\n"
+
+data ssuv_ownership_rc_default_fail_open_finding: String = "section 5 construct finding (Wave 2 use_site_verdict pilot): the Rust emitter silently applies default Rc<> wrapping on Node / UseSiteVerdict / fn params and returns with NO typed ownership refusal (target_use_site_ownership_lookup_miss unwired). Benign for this immutable-value module (emit-attempt 0 diagnostics) but a latent fail-open for mutation/aliasing-bearing modules in the wide fan-out — needs a principled wrap-decision predicate or typed refusal, never a silent default. Recorded here; not a blocker for this pilot."
+
+data ssuv_scaffold_dissolution_trigger: String = "dissolve-on: ssuv_lib_rs + ssuv_v2_std_node_shim + ssuv_v2_std_algebra_shim + ssuv_v2_std_collection_shim + ssuv_driver_main_source + ssuv_cargo_toml — seed-linked dep shim + equivalence driver scaffold (parallel to slb_driver_main_source). DISSOLVES WHEN v2.std.node self-emits and gunbc emits seed-linked extern imports against v1-compiler for seed-retained modules without a hand shim, and a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest."
+
+data ssuv_receipt_pass_marker: String = "SELF_HOST_USE_SITE_VERDICT_BEHAVIORAL_RECEIPT: PASS"
+
+data ssuv_cargo_features_note: String = "Mirrors slb_cargo_features_note: text_lookup_work_counter feature declared for -D warnings consumers."
+
+fn ssuv_repo_path(root: String, rel: String) -> String {
+  concat(root, concat("/", rel))
+}
+
+fn ssuv_cargo_toml(root: String) -> String {
+  concat(
+    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim-rc = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
+    concat(root, "/src/v1/stage0\" }\n")
+  )
+}
+
+fn ssuv_behavioral_receipt_holds() -> Bool {
+  let root = git.Core.Toplevel()
+  let module_read = Filesystem.Read(path: ssuv_repo_path(root: root.path, rel: ssuv_source_rel))
+
+  let out_dir = shell.Mktemp.Dir()
+  let gunbc_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+  let emit = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: gunbc_bin,
+    args: [
+      "compile",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", ssuv_source_rel,
+      "--output-dir", out_dir.path,
+      "--target", "rust",
+      "--dependency-pool-index", "primary-precedence"
+    ]
+  )
+
+  let src_dir = shell.Mkdir.Parents(path: concat(out_dir.path, "/src"))
+  let lib_written = Filesystem.Write(path: concat(out_dir.path, "/src/lib.rs"), content: ssuv_lib_rs)
+  let node_shim_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_std_node.rs"), content: ssuv_v2_std_node_shim)
+  let alg_shim_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_std_algebra.rs"), content: ssuv_v2_std_algebra_shim)
+  let coll_shim_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_std_collection.rs"), content: ssuv_v2_std_collection_shim)
+  let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: ssuv_cargo_toml(root: root.path))
+  let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: ssuv_driver_main_source)
+
+  let build = cargo.Build.BuildManifest(
+    workdir: out_dir.path,
+    manifest_path: concat(out_dir.path, "/Cargo.toml"),
+    target_dir: concat(out_dir.path, "/target"),
+    extra_args: ["--release"]
+  )
+
+  let witness_bin_path = concat(out_dir.path, "/target/release/witness")
+  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
+  let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
+
+  let eval_round_trips = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: gunbc_bin,
+    args: [
+      "run", "--claim-run",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", ssuv_test_entry_rel,
+      "--function", "use_site_verdict_round_trips_every_variant"
+    ]
+  )
+  let eval_absent = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: gunbc_bin,
+    args: [
+      "run", "--claim-run",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", ssuv_test_entry_rel,
+      "--function", "use_site_verdict_absent_edge_is_distinguishable_from_unclassified"
+    ]
+  )
+
+  let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
+
+  module_read.success
+    && out_dir.success && gunbc_built && emit.success
+    && src_dir.success
+    && lib_written.success && node_shim_written.success && alg_shim_written.success && coll_shim_written.success
+    && manifest.success && main_rs.success
+    && build.success
+    && pass_run.success && string_contains(s: pass_run.stdout, pattern: ssuv_receipt_pass_marker)
+    && (fault_run.success == false)
+    && eval_round_trips.success && eval_absent.success
+    && cleanup_out.success
+}
