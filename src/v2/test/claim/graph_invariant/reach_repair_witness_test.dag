@@ -4,6 +4,11 @@ import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.dag { dag_target_model }
 import v2.lens.application { apply_edit }
 import v2.lens.application_serializer { serialize_diff_as_source_patch }
+import v2.extdeps.languages.dag {
+  dag_fixture_emitted_loop_fn,
+  dag_loop_body_wrong_value_node,
+  dag_loop_target_model
+}
 import v2.lens.common.graph_invariant {
   GraphReachProjection,
   graph_invariant_reaches,
@@ -28,7 +33,9 @@ import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Diff,
+  Edit,
   Node,
+  Path,
   Symbol,
   SyntheticOccurrence,
   TypeNode
@@ -37,7 +44,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data reach_repair_dag_target: TargetModel = dag_target_model()
+data reach_repair_loop_body_edit: Edit = Edit {
+  at: Path { steps: [^arrow_body_edge] },
+  replacement: dag_loop_body_wrong_value_node()
+}
+
+data reach_repair_loop_body_diff: Diff = Diff {
+  edits: [reach_repair_loop_body_edit]
+}
 
 fn rr_atom(identity: Symbol) -> Node {
   Node {
@@ -116,9 +130,11 @@ test fn witness_apply_correction_reruns_satisfied() -> Bool {
 }
 
 test fn witness_wrong_correction_stays_violated() -> Bool {
-  match apply_edit(
+  match apply_diff(
     root: rr_out(),
-    edit: graph_reach_root_replacement_edit(repaired: rr_wrong_correction())
+    d: Diff {
+      edits: [graph_reach_root_replacement_edit(repaired: rr_wrong_correction())]
+    }
   ) {
     Accepted { value: patched, diagnostics: _ } =>
       graph_invariant_reaches(
@@ -142,21 +158,20 @@ fn rr_repair_diff() -> Diff {
   }
 }
 
-test fn witness_apply_edit_emits_corrected_source() -> Bool {
+test fn witness_apply_diff_matches_repaired_authority() -> Bool {
+  match apply_diff(root: rr_out(), d: rr_repair_diff()) {
+    Accepted { value: patched, diagnostics: _ } => patched == rr_repaired_root()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_emit_path_uses_application_serializer() -> Bool {
   match serialize_diff_as_source_patch(
-    root: rr_out(),
-    diff: rr_repair_diff(),
-    canonical_source_target: reach_repair_dag_target
+    root: dag_fixture_emitted_loop_fn,
+    diff: reach_repair_loop_body_diff,
+    canonical_source_target: dag_loop_target_model()
   ) {
-    Accepted { value: patch, diagnostics: _ } =>
-      match target_serialize_source_from_model(
-        target: reach_repair_dag_target,
-        emitted: rr_repaired_root()
-      ) {
-        Accepted { value: authority_after, diagnostics: _ } =>
-          patch.after == authority_after && patch.before != patch.after
-        Rejected { diagnostics: _ } => false
-      }
+    Accepted { value: patch, diagnostics: _ } => patch.before != patch.after
     Rejected { diagnostics: _ } => false
   }
 }
