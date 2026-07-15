@@ -1,7 +1,9 @@
 module gunbc.roadmap_model
 
-import ctrl.process_algebra { ProcessNodeId }
+import std.types { NonEmptyStr }
 import gunbc.roadmap_status { RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift }
+
+type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
 
 type Pointer { label: String, path: String }
 
@@ -24,7 +26,7 @@ type NodeSizing
   | Sized { intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance }
 
 type RoadmapNode {
-  node: ProcessNodeId
+  node: RoadmapNodeId
   line: RoadmapItem
   carriers: List<Pointer>
   sizing: NodeSizing
@@ -33,8 +35,8 @@ type RoadmapNode {
 }
 
 type RoadmapEdge {
-  child: ProcessNodeId
-  parent: ProcessNodeId
+  child: RoadmapNodeId
+  parent: RoadmapNodeId
 }
 
 type SectionProse { content: String }
@@ -51,23 +53,23 @@ fn section_group(label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdg
 
 type RoadmapParent
   = TopLevel
-  | UnderParent { parent: ProcessNodeId }
+  | UnderParent { parent: RoadmapNodeId }
 
-fn under_parent(p: ProcessNodeId) -> RoadmapParent { UnderParent { parent: p } }
+fn under_parent(p: RoadmapNodeId) -> RoadmapParent { UnderParent { parent: p } }
 fn top_level() -> RoadmapParent { TopLevel }
 
-fn edge_parent_for(e: RoadmapEdge, node: ProcessNodeId) -> RoadmapParent {
+fn edge_parent_for(e: RoadmapEdge, node: RoadmapNodeId) -> RoadmapParent {
   if e.child == node { under_parent(p: e.parent) } else { top_level() }
 }
 
-fn roadmap_parent(edges: List<RoadmapEdge>, node: ProcessNodeId) -> RoadmapParent {
+fn roadmap_parent(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> RoadmapParent {
   fold(edges, init: TopLevel, f: (acc, e) => match acc {
     UnderParent { parent: p } => UnderParent { parent: p }
     TopLevel => edge_parent_for(e: e, node: node)
   })
 }
 
-fn is_top_level(edges: List<RoadmapEdge>, node: ProcessNodeId) -> Bool {
+fn is_top_level(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> Bool {
   match roadmap_parent(edges: edges, node: node) {
     TopLevel => true
     UnderParent { parent: _ } => false

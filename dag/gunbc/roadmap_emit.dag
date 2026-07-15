@@ -6,13 +6,12 @@ import std.markdown {
   MarkdownTaskItem, StrongInline, TextInline, LinkInline, H2, Checked, Unchecked,
 }
 import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, Pointer,
+  RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
 
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done, signoff_accepts, signoff_by }
-import ctrl.process_algebra { ProcessNodeId }
 
 fn roadmap_max_depth() -> Int { 8 }
 
@@ -86,7 +85,7 @@ fn node_inlines(rn: RoadmapNode) -> List<MarkdownInline> {
   )
 }
 
-fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: ProcessNodeId) -> List<RoadmapNode> {
+fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
   nodes |> filter(n => match roadmap_parent(edges: edges, node: n.node) {
     UnderParent { parent: p } => p == parent
     TopLevel => false

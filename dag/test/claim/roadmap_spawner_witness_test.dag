@@ -1,7 +1,7 @@
 module test.claim.roadmap_spawner
 
-import ctrl.process_algebra { ProcessNodeId }
 import gunbc.roadmap_model {
+  RoadmapNodeId,
   RoadmapNode, RoadmapEdge, Pointer,
   IntricacyHigh, VolumeMedium,
   PrsMerged, ManualAcceptance,
@@ -15,7 +15,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn nid(s: String) -> ProcessNodeId { s }
+fn nid(s: String) -> RoadmapNodeId { s }
 
 fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
