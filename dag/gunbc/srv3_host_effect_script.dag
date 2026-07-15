@@ -21,11 +21,19 @@ import gunbc.host_effect {
   ConvergePlan,
   SetHostnameCas,
 }
-import std.types { String, Bool }
+import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
+import gunbc.srv3_os_install_diagnostic {
+  srv3_os_install_attempt_intent,
+  srv3_install_diagnostic_observe_script_for_intent,
+}
+import gunbc.srv3_os_install_reconcile_receipt { srv3_install_record_boot_once_approval_script }
+import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data srv3_host_effect_script_dissolution_trigger: String = "🟡 dissolve-on: srv3_host_effect_script — concat-built bash bodies for srv3 observe/effect intents (centralized handler staging post-P5a call-site migration); DISSOLVES WHEN bash-emit (#5828 / shell-emission slice0) realizes srv3 observe/effect intents as typed argv invocations / grammar-emitted nodes and srv3_host_effect_script_for retires without concat-built transport strings; retire medium_structure_exception_roster entry for dag/gunbc/srv3_host_effect_script.dag. Wave 4 residue (shell→dag census §1C category C). NOT gated on shell_exec_via_bash executor deletion (P5b)."
+
+data srv3_durable_approval_grant_record_observed_timestamp_dissolution_trigger: String = "🟡 dissolve-on: DurableApprovalGrantRecord shell path (date subs in srv3_install_record_boot_once_approval_script) — dissolution requires a modeled carrier for realization-observed timestamps; ShellExecObserved carries exit_code/success/stdout/stderr only (no observed_at); DESIGN determinism thread dropped Clock/Entropy as dead — this grant record is a consumer with real displaced cost (Wave 4 PR3 escalation to operator). DISSOLVES WHEN apply/realize can bind grant/expiry times without shell date or Clock."
 
 data srv3_host_effect_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -36,10 +44,65 @@ data srv3_host_effect_script_scaffold: Disposition = Scaffold {
   }
 }
 
+fn srv3_install_reconcile_observe_meta_script() -> String {
+  concat(
+    "printf '%s\\n' \"Srv3InstallObserveReceipt: surface=observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\nprintf '%s\\n' \"Srv3InstallObserveReceipt: surface=git branch=$(git branch --show-current 2>/dev/null || echo unknown) commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)\"\n",
+  )
+}
+
+fn srv3_install_reconcile_observe_script(include_git_meta: Bool) -> String {
+  let diagnostic = srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent)
+  if include_git_meta {
+    concat(diagnostic, srv3_install_reconcile_observe_meta_script())
+  } else {
+    diagnostic
+  }
+}
+
+fn srv3_join_adjacent_pairs(parts: List<String>) -> List<String> {
+  let paired = fold(
+    parts,
+    init: JoinPairAcc { pending: Absent, joined: [] },
+    f: (acc, part) => match acc.pending {
+      Absent => JoinPairAcc { pending: Present { value: part }, joined: acc.joined },
+      Present { value: left } =>
+        JoinPairAcc { pending: Absent, joined: list_push(acc.joined, concat(left, part)) },
+    },
+  )
+  match paired.pending {
+    Absent => paired.joined
+    Present { value: last } => list_push(paired.joined, last)
+  }
+}
+
+type JoinPairAcc {
+  pending: String?
+  joined: List<String>
+}
+
+fn srv3_concat_balanced(parts: List<String>) -> String {
+  if list_length(items: parts) == 0 {
+    ""
+  } else if list_length(items: parts) == 1 {
+    fold(parts, init: "" as String, f: (acc, part) => concat(acc, part))
+  } else {
+    srv3_concat_balanced(parts: srv3_join_adjacent_pairs(parts: parts))
+  }
+}
+
+fn srv3_receipt_emit_script(lines: List<String>) -> String {
+  srv3_concat_balanced(
+    parts: map(lines, line => shell_printf_line(line: line)),
+  )
+}
+
 fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
   match effect {
     Srv3InstallReconcileObserve { include_git_meta: _ } => Absent
-    DurableApprovalGrantRecord { granted_at: _, expires_at: _ } => Absent
+    DurableApprovalGrantRecord =>
+      Present {
+        value: shell_exec_via_bash(body: srv3_install_record_boot_once_approval_script()),
+      }
     DurableApprovalGrantRead => Absent
     Srv3InstallMediaFetch => Absent
     Srv3SeededInstallMediaRemaster => Absent

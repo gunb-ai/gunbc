@@ -32,10 +32,7 @@ type HostEffect =
   | OsInstallActuatorToolchainEnsure {}
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | Srv3InstallReconcileObserve { include_git_meta: Bool }
-  | DurableApprovalGrantRecord {
-      granted_at: Timestamp,
-      expires_at: Timestamp,
-    }
+  | DurableApprovalGrantRecord
   | DurableApprovalGrantRead
   | Srv3InstallMediaFetch
   | Srv3SeededInstallMediaRemaster
