@@ -56,7 +56,11 @@ import gunbc.srv3_host_effect_apply {
   srv3_shell_stdout_from_apply,
 }
 import gunbc.shell_bash_runner { shell_bash_runner_dissolution_trigger }
-import gunbc.srv3_os_install_reconcile_types { srv3_nbd_proxy_lease_key }
+import gunbc.srv3_os_install_reconcile_types {
+  srv3_nbd_proxy_lease_key,
+  srv3_install_reconcile_dry_run_observed_at,
+  srv3_boot_once_grant_expires_at,
+}
 import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.webui.nbd_proxy_serve {
@@ -125,7 +129,12 @@ fn witness_srv3_typed_realize_effects_script_for_absent() -> Bool {
       Absent => true
       Present { value: _ } => false
     }
-    && match srv3_host_effect_script_for(effect: DurableApprovalGrantRecord) {
+    && match srv3_host_effect_script_for(
+      effect: DurableApprovalGrantRecord {
+        granted_at: srv3_install_reconcile_dry_run_observed_at,
+        expires_at: srv3_boot_once_grant_expires_at,
+      },
+    ) {
       Absent => true
       Present { value: _ } => false
     }
@@ -167,7 +176,10 @@ fn witness_srv3_install_reconcile_observe_apply_converges_typed() -> Bool {
 fn witness_srv3_durable_approval_grant_record_apply_surfaces_path_receipt() -> Bool {
   match host_effect_apply(
     target: srv3_actuator_target(),
-    effect: DurableApprovalGrantRecord,
+    effect: DurableApprovalGrantRecord {
+      granted_at: srv3_install_reconcile_dry_run_observed_at,
+      expires_at: srv3_boot_once_grant_expires_at,
+    },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
   ) {
@@ -453,7 +465,12 @@ fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
 fn witness_srv3_sibling_variants_still_typed_after_apply_failure() -> Bool {
   witness_srv3_apply_shell_failure_refuses_typed()
     && witness_srv3_typed_realize_effects_script_for_absent()
-    && match srv3_host_effect_script_for(effect: DurableApprovalGrantRecord) {
+    && match srv3_host_effect_script_for(
+      effect: DurableApprovalGrantRecord {
+        granted_at: srv3_install_reconcile_dry_run_observed_at,
+        expires_at: srv3_boot_once_grant_expires_at,
+      },
+    ) {
       Absent => true
       Present { value: _ } => false
     }

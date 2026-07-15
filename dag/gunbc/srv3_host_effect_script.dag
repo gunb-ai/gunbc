@@ -39,7 +39,7 @@ data srv3_host_effect_script_scaffold: Disposition = Scaffold {
 fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
   match effect {
     Srv3InstallReconcileObserve { include_git_meta: _ } => Absent
-    DurableApprovalGrantRecord => Absent
+    DurableApprovalGrantRecord { granted_at: _, expires_at: _ } => Absent
     DurableApprovalGrantRead => Absent
     Srv3InstallMediaFetch => Absent
     Srv3SeededInstallMediaRemaster => Absent

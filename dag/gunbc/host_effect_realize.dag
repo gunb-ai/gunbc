@@ -840,9 +840,15 @@ fn realize_install_reconcile_observe_on_host(
         exit_code: observed.exit_code,
         success: observed.success,
         stdout: if observed.stdout == "" {
-          srv3_install_reconcile_observe_meta_stdout()
+          srv3_install_reconcile_observe_meta_stdout(observed_at: srv3_install_reconcile_dry_run_observed_at)
         } else {
-          concat(observed.stdout, concat("\n", srv3_install_reconcile_observe_meta_stdout()))
+          concat(
+            observed.stdout,
+            concat(
+              "\n",
+              srv3_install_reconcile_observe_meta_stdout(observed_at: srv3_install_reconcile_dry_run_observed_at),
+            ),
+          )
         },
         stderr: observed.stderr,
       },
@@ -1445,8 +1451,13 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
         transport: transport,
         intent: intent,
       )
-    DurableApprovalGrantRecordOnHost { node: _ } =>
-      realize_durable_approval_grant_record_on_host(transport: transport, intent: intent)
+    DurableApprovalGrantRecordOnHost { node: _, granted_at: ga, expires_at: exp } =>
+      realize_durable_approval_grant_record_on_host(
+        granted_at: ga,
+        expires_at: exp,
+        transport: transport,
+        intent: intent,
+      )
     SolConsoleCaptureOnHost { node: _ } =>
       realize_sol_console_capture_on_host(transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
@@ -1521,8 +1532,13 @@ fn host_effect_apply_gated(
             transport: transport,
             intent: intent,
           )
-        DurableApprovalGrantRecordOnHost { node: _ } =>
-          realize_durable_approval_grant_record_on_host(transport: transport, intent: intent)
+        DurableApprovalGrantRecordOnHost { node: _, granted_at: ga, expires_at: exp } =>
+          realize_durable_approval_grant_record_on_host(
+            granted_at: ga,
+            expires_at: exp,
+            transport: transport,
+            intent: intent,
+          )
         SolConsoleCaptureOnHost { node: _ } =>
           realize_sol_console_capture_on_host(transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
