@@ -902,7 +902,9 @@ data seed_retained_scaffold_stage0_files: List<String> = [
   "usv_pilot_v2_std_node.rs"
 ]
 
-data hand_maintained_stage0_dirs: List<String> = ["module_path_index"]
+fn hand_maintained_stage0_dirs() -> List<String> {
+  ["module_path_index"]
+}
 
 fn basename_to_pub_mod_decl(basename: String) -> String {
   concat("pub mod ", basename, ";")

@@ -3,6 +3,7 @@ module v2.test.claim.self_host.crate_layout_witness
 import gunbc.stage0_crate_layout_generated {
   generated_pub_mod_basenames,
   generated_pub_mod_block,
+  generated_stage0_dirs,
   generated_stage0_filenames
 }
 import v2.compiler.self_host.frontier {
@@ -16,6 +17,7 @@ import v2.compiler.self_host.frontier {
   emit_hand_maintained_pub_mod_block,
   frontier_row_stage0_mod_basename,
   hand_maintained_pub_mod_basenames,
+  hand_maintained_stage0_dirs,
   hand_maintained_stage0_filenames
 }
 import v2.std.algebra { any, fold_list, length }
@@ -56,6 +58,10 @@ fn witness_generated_basenames_match_frontier_holds() -> Bool {
 
 fn witness_generated_filenames_match_frontier_holds() -> Bool {
   lists_have_same_members(a: generated_stage0_filenames, b: hand_maintained_stage0_filenames())
+}
+
+fn witness_generated_dirs_match_frontier_holds() -> Bool {
+  lists_have_same_members(a: generated_stage0_dirs, b: hand_maintained_stage0_dirs())
 }
 
 fn witness_generated_includes_every_self_emitted_basename_holds() -> Bool {
@@ -105,6 +111,7 @@ test fn crate_layout_witnesses() -> Bool {
     && witness_generated_pub_mod_block_matches_frontier_holds()
     && witness_generated_basenames_match_frontier_holds()
     && witness_generated_filenames_match_frontier_holds()
+    && witness_generated_dirs_match_frontier_holds()
     && witness_generated_includes_every_self_emitted_basename_holds()
     && witness_generated_has_no_phantom_registration_holds()
     && witness_hand_maintained_filenames_include_self_emitted_holds()
