@@ -72,7 +72,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { Deferred, Fail, Pass, Verdict }
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict, verdict_is_semantic_mismatch }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -299,17 +299,15 @@ fn meet_join_eval_run(
 fn meet_join_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
-    Fail { actual: _, falsification: _ } => false
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn meet_join_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    Fail { actual: _, falsification: _ } => true
-    Pass => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+fn meet_join_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  verdict_is_semantic_mismatch(v: run.verdict)
 }
 
 test fn emit_host_meet_equals_eval_holds() -> Bool {
@@ -323,7 +321,7 @@ test fn emit_host_meet_equals_eval_holds() -> Bool {
 }
 
 test fn emit_host_meet_wrong_fixture_refuses_holds() -> Bool {
-  meet_join_eval_verdict_is_fail(
+  meet_join_eval_verdict_is_semantic_mismatch(
     run: meet_join_eval_run(
       root: dag_meet_arrow_with_body_swapped_arms_fixture,
       target: rust_logic_meet_target_model_staging(),
@@ -343,7 +341,7 @@ test fn emit_host_join_equals_eval_holds() -> Bool {
 }
 
 test fn emit_host_join_wrong_fixture_refuses_holds() -> Bool {
-  meet_join_eval_verdict_is_fail(
+  meet_join_eval_verdict_is_semantic_mismatch(
     run: meet_join_eval_run(
       root: dag_join_arrow_with_body_swapped_arms_fixture,
       target: rust_logic_join_target_model_staging(),

@@ -54,7 +54,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { Deferred, Fail, Pass, Verdict }
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict, verdict_is_semantic_mismatch }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -236,17 +236,15 @@ fn emit_call_eval_run(
 fn emit_call_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
-    Fail { actual: _, falsification: _ } => false
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn emit_call_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    Fail { actual: _, falsification: _ } => true
-    Pass => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+fn emit_call_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  verdict_is_semantic_mismatch(v: run.verdict)
 }
 
 test fn rust_emit_host_call_eval_subgraph_holds() -> Bool {
@@ -270,7 +268,7 @@ test fn rust_emit_host_call_equals_eval_holds() -> Bool {
 }
 
 test fn rust_emit_host_call_wrong_oracle_refuses_holds() -> Bool {
-  emit_call_eval_verdict_is_fail(
+  emit_call_eval_verdict_is_semantic_mismatch(
     run: emit_call_eval_run(call_primitive: emit_call_eval_call_primitive_eight)
   )
 }

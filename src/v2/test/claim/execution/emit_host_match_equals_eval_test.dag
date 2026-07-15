@@ -67,7 +67,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { Deferred, Fail, Pass, Verdict }
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict, verdict_is_semantic_mismatch }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -317,17 +317,15 @@ fn emit_match_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
 fn emit_match_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
-    Fail { actual: _, falsification: _ } => false
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn emit_match_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    Fail { actual: _, falsification: _ } => true
-    Pass => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+fn emit_match_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  verdict_is_semantic_mismatch(v: run.verdict)
 }
 
 test fn emit_host_match_equals_eval_holds() -> Bool {
@@ -341,7 +339,7 @@ test fn emit_host_match_equals_eval_holds() -> Bool {
 test fn emit_host_match_wrong_fixture_refuses_holds() -> Bool {
   match emit_match_eval_swapped_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
-      emit_match_eval_verdict_is_fail(run: emit_match_eval_run(tree: tree))
+      emit_match_eval_verdict_is_semantic_mismatch(run: emit_match_eval_run(tree: tree))
     Rejected { diagnostics: _ } => false
   }
 }
