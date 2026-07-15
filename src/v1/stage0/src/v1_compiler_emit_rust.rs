@@ -3862,7 +3862,11 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
+<<<<<<< HEAD
             generated_pub_mod_block()
+=======
+            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod shared_typecheck_store;\npub mod recorded_fixture;\npub mod module_path_index;\npub mod memory_governor;\npub mod usv_pilot_v2_std_algebra;\npub mod usv_pilot_v2_std_collection;\npub mod usv_pilot_v2_std_node;\npub mod v2_compiler_use_site_verdict;".to_string()
+>>>>>>> 26e8c855d8 (WIP: W1.2 reground LensVerdict diagnostic onto std Diagnostic; reach lens yie)
         } else {
             "".to_string()
         };
