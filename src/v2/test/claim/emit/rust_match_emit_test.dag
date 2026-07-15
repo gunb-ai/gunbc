@@ -1,8 +1,8 @@
 module v2.test.emit.rust_match_emit
 
-import v2.compiler.ingested_fixture_arrows {
-  ingested_match_arrow_with_body,
-  ingested_match_arrow_with_body_swapped_arms
+import v2.test.claim.body_lowering.wave1_gate1_d_ingested_fixture_helpers {
+  source_bridged_match_arrow_with_body,
+  source_bridged_match_arrow_with_body_swapped_arms
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -51,7 +51,7 @@ fn rust_match_emit_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn rust_match_emit_producer_inferred_tree() -> Outcome<InferredTree> {
-  match ingested_match_arrow_with_body() {
+  match source_bridged_match_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_match_emit_inferred_tree_for(root: root),
@@ -62,7 +62,7 @@ fn rust_match_emit_producer_inferred_tree() -> Outcome<InferredTree> {
 }
 
 fn rust_match_emit_swapped_producer_inferred_tree() -> Outcome<InferredTree> {
-  match ingested_match_arrow_with_body_swapped_arms() {
+  match source_bridged_match_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_match_emit_inferred_tree_for(root: root),

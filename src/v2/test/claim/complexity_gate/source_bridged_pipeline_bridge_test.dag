@@ -1,6 +1,6 @@
 module v2.test.complexity_gate.source_bridged_pipeline_bridge_test
 
-import v2.compiler.ingested_fixture_arrows { ingested_loop_module_source }
+import v2.compiler.ingested_fixture_arrows { ingested_add_module_source }
 import v2.test.complexity_gate.source_bridged_pipeline_bridge { source_bridged_resolved_root }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -8,9 +8,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn source_bridged_pipeline_bridge_resolves_loop_source() -> Bool {
+test fn source_bridged_pipeline_bridge_resolves_add_source() -> Bool {
   match source_bridged_resolved_root(
-    source_text: ingested_loop_module_source,
+    source_text: ingested_add_module_source,
     file: ^source_bridged_pipeline_bridge_test_file
   ) {
     Accepted { value: _, diagnostics: _ } => true

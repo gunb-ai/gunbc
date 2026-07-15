@@ -4243,7 +4243,22 @@ fn dag_pick_if_body_swapped_arms_node() -> Node {
   )
 }
 
-fn dag_pick_arrow_with_body_node() -> Node {
+fn dag_pick_if_body_false_condition_node() -> Node {
+  dag_pick_if_body_from_arms(
+    condition: dag_type_atom_node(identity: ^dag_token_kw_false),
+    then_arm: dag_int_literal_fixture_one(),
+    else_arm: dag_int_literal_fixture_two()
+  )
+}
+
+fn dag_pick_arrow_with_body_false_condition_node() -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_pick_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_pick_if_body_false_condition_node()
+  )
+}
+
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -4262,6 +4277,7 @@ fn dag_pick_arrow_with_body_swapped_arms_node() -> Node {
 data dag_pick_if_body_fixture: Node = dag_pick_if_body_node()
 data dag_pick_if_body_swapped_arms_fixture: Node = dag_pick_if_body_swapped_arms_node()
 data dag_pick_arrow_with_body_fixture: Node = dag_pick_arrow_with_body_node()
+data dag_pick_arrow_with_body_false_condition_fixture: Node = dag_pick_arrow_with_body_false_condition_node()
 data dag_pick_arrow_with_body_swapped_arms_fixture: Node = dag_pick_arrow_with_body_swapped_arms_node()
 
 data dag_fixture_emitted_pick_fn: Node = dag_pick_arrow_with_body_fixture

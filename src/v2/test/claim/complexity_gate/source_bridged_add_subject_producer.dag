@@ -1,9 +1,18 @@
 module v2.test.complexity_gate.source_bridged_add_subject_producer
 
-import v2.compiler.ingested_fixture_arrows { ingested_add_arrow_with_body }
-import v2.std.diagnostic { Outcome }
+import v2.extdeps.languages.dag {
+  dag_add_arrow_with_body_fixture,
+  dag_add_arrow_with_body_swapped_operands_fixture
+}
+import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.node { Node }
 
+data source_bridged_add_subject_producer_note: String = "Fast-lane subject producer: table fixture Arrow (dag_add_arrow_with_body_fixture). Census ingest proofs live in ingested_fixture_arrows + long/wave1_gate1_d_mvp_subsumption_witness_test.dag."
+
 fn source_bridged_add_arrow_with_body() -> Outcome<Node> {
-  ingested_add_arrow_with_body()
+  outcome_accepted(value: dag_add_arrow_with_body_fixture)
+}
+
+fn source_bridged_add_arrow_with_body_swapped_operands() -> Outcome<Node> {
+  outcome_accepted(value: dag_add_arrow_with_body_swapped_operands_fixture)
 }

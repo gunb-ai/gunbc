@@ -1,8 +1,8 @@
 module v2.test.manual.add_body_producer_claim
 
-import v2.compiler.ingested_fixture_arrows {
-  arrow_has_body_edge,
-  ingested_add_arrow_with_body
+import v2.compiler.ingested_fixture_arrows { arrow_has_body_edge }
+import v2.test.complexity_gate.source_bridged_add_subject_producer {
+  source_bridged_add_arrow_with_body
 }
 import v2.extdeps.languages.dag { dag_add_binary_body_fixture }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -46,7 +46,7 @@ fn add_body_bool_node(pass: Bool) -> Node {
 }
 
 fn add_body_produce_add_arrow_accepts() -> Bool {
-  match ingested_add_arrow_with_body() {
+  match source_bridged_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       well_formed(n: arrow) && arrow_has_body_edge(arrow: arrow)
     Rejected { diagnostics: _ } => false
@@ -130,7 +130,7 @@ fn add_body_resolved_bridge_produces_well_formed_arrow() -> Bool {
 }
 
 fn add_body_edge_targets_binary_transform() -> Bool {
-  match ingested_add_arrow_with_body() {
+  match source_bridged_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
