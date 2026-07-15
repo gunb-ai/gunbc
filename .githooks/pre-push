@@ -69,6 +69,8 @@ fresh_artifact_path() {
     docs/plans/expressibility-frontier.md*) return 0 ;;
     docs/plans/p1-where-clause-lowering.md*) return 0 ;;
     docs/plans/intent-linearity-design-draft.md*) return 0 ;;
+    docs/plans/solve-higher-order-design.md*) return 0 ;;
+    docs/plans/language-target-self-host-frontier.md*) return 0 ;;
     docs/plans/self-applying-lenses.md*) return 0 ;;
     docs/plans/budget-tree.md*) return 0 ;;
     docs/plans/cardinality-refinement.md*) return 0 ;;

@@ -9,15 +9,18 @@
 ## Why — forced by the axioms, not chosen
 
 ### A closed system ⇒ a heuristic is never necessary (§4) ⇒ a black-box `solve` is forbidden
+
 DESIGN §4: "in a closed system a heuristic is never necessary — the richer source always exists or can be written," and §2: "nothing is opaque that isn't *genuinely* atomic." A `solve` primitive is an opaque box that hides an iterative method behind a name. That is precisely the anemic-leaf pattern (`decompress → map → reduce` un-run) at the substrate level. The richer source *does* exist — the iteration, the residual, the convergence test are each nameable and grounded — so the box is never necessary.
 
 ### Bounded-forward execution ⇒ `solve` is the inverse/fixpoint *reading*, encoded acyclically (§4)
+
 On its face `solve` fights "bounded and forward … never cyclic values." It doesn't, because the substrate already resolves that tension two ways, and `solve` reuses both:
 
 - **"cyclic relations via acyclic encodings."** A constraint (a circuit's KCL node-equation `Σi = 0`, a sequential-logic fixed point) is *mutual/cyclic*. It is never represented as a cyclic value — it is encoded as an **acyclic residual function** (given a candidate assignment, forward-evaluate "how far off am I") plus a **`Loop`** that iterates the residual toward zero. Recursion is already sugar over `Loop`; a Newton / time-stepping / relaxation solver *is* that `Loop`.
 - **"emission, ingestion, and coercion are one decision procedure run in different directions."** `solve` is one more direction of that same procedure — the *fixed-point reading*. The "find the thing that satisfies" machinery already exists and is load-bearing: **`find_witness`** (coercion's homomorphism search). `solve` points `find_witness` at equalities instead of type-inhabitance.
 
 ### Single authority ⇒ a `solve` primitive nicknames what already exists (§3)
+
 `Loop` + `find_witness` + `DescentEvidence` already compose to "iterate a residual to a fixed point under a bound." A `solve` primitive is a **second name** for that composition — the §3 nicknaming violation, at the most expensive layer to fork (the substrate). We generate from concepts; a substrate nickname duplicates into every derived thing (emit, testgen, lenses).
 
 ---
@@ -33,7 +36,7 @@ solve  ≜  Loop(
 ```
 
 | piece | what it is | already in tree as |
-|---|---|---|
+| --- | --- | --- |
 | **residual** | a *forward fold over an existing model*, read as "these must be consistent" rather than "evaluate forward" | `find_witness` / `coercion_fold` (§4), pointed at equality targets |
 | **iteration** | the fixed-point loop | `Loop` behavior (recursion desugars to it) |
 | **convergence bound** | `Converged` \| `Strict`-descent \| refuse-on-exhaust | `DescentEvidence` on `BoundedLattice`, reused verbatim (`dag/std/termination.dag`) |
@@ -79,8 +82,6 @@ Important for the dependency map: the exotic analog/HDL targets that motivated t
 
 `solve`-as-first-class-substrate only bites if the *compiler itself* must solve internally. And there it is already done, higher-order (unification / resolve / affected-set). So `solve` is a foundation item **F6** that the language targets can proceed without; it is authored when a first-class in-substrate solver earns its keep (e.g. a pure-dag SPICE realization that does not shell out to ngspice), priced by that displaced cost — not before.
 
----
-
-## Dissolution trigger
+## Dissolution trigger (DESIGN §6)
 
 This doc dissolves when the lane un-shelves and the `Residual`/`Constraint` std carrier is authored: the ruling above migrates onto that carrier's typed doc-rows (`.dag` has no comment trivia — encode as `data … : String`) and a DESIGN §4 anchor, and this file is deleted. Until then, this is the single authority for the ruling.

@@ -22,7 +22,7 @@ The whole point of exotic-first is that the curly-brace family *confirms* the de
 ## Shared foundation (mostly built by Rust — the front-loaded cost, already paid)
 
 | id | foundation | state |
-|---|---|---|
+| --- | --- | --- |
 | **F0** | `emit` / `emit_module` pipeline (walks TargetModel edges backward; new target = rows, no pipeline edit) | ✓ done |
 | **F1** | `TargetModel` 4-edge + grammar-inverse translation rows | ✓ done |
 | **F2** | VEP (`TargetValueExpressionProjection`) — the general body producer | full (rust) · partial (TS: match/loop/bind-in unwired) · **absent** (python, ecmascript) |
@@ -33,15 +33,15 @@ The whole point of exotic-first is that the curly-brace family *confirms* the de
 
 ### The two highest-leverage shared dependencies (do these once, everyone inherits)
 
-1. **F4 `host_tool_program_name` registry extension** — this ~8-line function gates **bar-c for every language**. Registering `node`, `python3`, `go`, and the simulator tools (`ngspice`, `verilator`/`iverilog`, `llc`/`clang`, `wasmtime`) makes each target's *already-declared* runtime row runnable through the typed self-host path in one edit each. Highest-leverage de-fork on the board.
-2. **F2 VEP completion** — wire the unwired forms (match / loop / bind-in) **once** in the `StatementSequenced` arm; the entire interpreted family inherits body breadth. Python additionally needs its *first* VEP edge.
+- **F4 `host_tool_program_name` registry extension** — this ~8-line function gates **bar-c for every language**. Registering `node`, `python3`, `go`, and the simulator tools (`ngspice`, `verilator`/`iverilog`, `llc`/`clang`, `wasmtime`) makes each target's *already-declared* runtime row runnable through the typed self-host path in one edit each. Highest-leverage de-fork on the board.
+- **F2 VEP completion** — wire the unwired forms (match / loop / bind-in) **once** in the `StatementSequenced` arm; the entire interpreted family inherits body breadth. Python additionally needs its *first* VEP edge.
 
 ---
 
 ## Per-target frontier table (grounded from the 2026-07-15 survey)
 
 | target | family | current bar | honest end-state | key deps | stress axis |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | **rust** | compiled | self-host ✓ | reference model | — | (confirms) |
 | **cpp (C)** | compiled | bar-c ✓ (Phase 0) | self-host | F4(`cc`)✓, F5-generalize | (confirms) |
 | **go** | compiled | bar-a | **self-host** (first non-rust self-host — the F5 generalization proof) | F4(`go`), surface spellings, F5 | **self-host axis** |
@@ -74,5 +74,7 @@ Each language is **priced by the design risk it displaces**, not by completeness
 ## Staffing note (for continuous dispatch)
 
 Off this map, the natural fan-out is **one child session per language axis**, gated on Phase B. The dependency structure that makes this safe: **B is the only hard barrier**; after it, the self-host axis (C, then the compiled fan-out) and the emit-generality axis (D) have no cross-dependency, so they staff independently. Lean (F) and the interpreted family (E) each ride one Phase-B deliverable (F3-expression-mode and F2-completion respectively). ecmascript's adopt-or-delete decision is a prerequisite gate on the interpreted family, not parallel work.
+
+## Dissolution trigger (DESIGN §6)
 
 **Un-shelve is an operator decision (ROADMAP §4 → §1/§3 by PR, priced in displaced cost).** When it fires, this doc + the solve doc are the lane's charter; the frontier table rows migrate onto per-target carrier rows, and this file dissolves.

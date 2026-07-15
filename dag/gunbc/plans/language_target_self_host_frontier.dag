@@ -1,0 +1,85 @@
+module gunbc.plans.language_target_self_host_frontier
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
+
+fn language_target_self_host_frontier_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** staging map, captured pre-un-shelve. The multi-language self-host lane is §4-shelved (ROADMAP: \"TypeScript first-class emit + TS self-host … resumes after the Rust fixed point\"). This map exists so the lane can be **staffed continuously** the moment it un-shelves: every dependency is understood from beginning to end, Rust is the model, and the exotic languages are placed as deliberate stresses on it. `solve` is resolved as **not a substrate change** — see [solve-higher-order-design.md](solve-higher-order-design.md)."),
+    p(text: "**Governing invariant (the anti-hack guarantee):** every target ends in exactly one of two *declared* states — **green-by-execution at a named bar**, or a **typed frontier row** (`bar reached · reason · dissolution trigger`). No silent `body_lexeme: String` anemic leaves, no orphan un-enrolled smokes, no anchor-stub masquerading as a finished target. \"Done\" and \"refused-with-reason\" are the only terminal states. This is the §7 typed self-host frontier applied to every target at once."),
+    p(text: "Bars: **(a)** grammar-inverse translation rows on the committed TargetModel · **(b)** emit witness produces the expected source · **(c)** a real toolchain runs the output green-by-execution through the *typed* `run_emit_host` transport · **self-host** the target emits the compiler's own sources, behaviorally equivalent (§7)."),
+    hr(),
+    h2(text: "Two orthogonal stress axes"),
+    p(text: "The whole point of exotic-first is that the curly-brace family *confirms* the design while the exotics *falsify* it. There are two independent things to falsify:"),
+    ul(items: [
+      li(text: "**Emit-generality axis** — does \"one grammar read backwards\" reach targets whose computational model is *not* imperative-forward? Stressed hardest by: **Verilog** (concurrent / clock-stepped), **SPICE** (continuous-time / ODE), **LLVM-IR** (SSA / no runtime). If emit generalizes here, the \"medium-agnostic, one grammar N directions\" claim (§4) is real."),
+      li(text: "**Self-host axis** — does the seed-shrink story (§7) hold in a *second* language, or is it secretly Rust-shaped? Stressed by generalizing the self-host frontier runner past Rust to a second runnable language."),
+    ]),
+    p(text: "**The emit-only family can only stress the first axis** (you cannot run a compiler as a circuit or as bare SSA). The runnable family stresses both. Keeping these axes separate is what keeps the lane honest about what each language *proves*."),
+    hr(),
+    h2(text: "Shared foundation (mostly built by Rust — the front-loaded cost, already paid)"),
+    TableBlock {
+      header: row(cells: [cell(text: "id"), cell(text: "foundation"), cell(text: "state")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "**F0**"), cell(text: "`emit` / `emit_module` pipeline (walks TargetModel edges backward; new target = rows, no pipeline edit)"), cell(text: "✓ done")]),
+        row(cells: [cell(text: "**F1**"), cell(text: "`TargetModel` 4-edge + grammar-inverse translation rows"), cell(text: "✓ done")]),
+        row(cells: [cell(text: "**F2**"), cell(text: "VEP (`TargetValueExpressionProjection`) — the general body producer"), cell(text: "full (rust) · partial (TS: match/loop/bind-in unwired) · **absent** (python, ecmascript)")]),
+        row(cells: [cell(text: "**F3**"), cell(text: "`BlockEvaluationMode` statement spine (`ValueProducing` vs `StatementSequenced`)"), cell(text: "✓ type exists; TS's `StatementSequenced` arm produces the correct fail-closed refusals")]),
+        row(cells: [cell(text: "**F4**"), cell(text: "`ProcessProgram` transport + `run_emit_host` + `host_tool_program_name` registry"), cell(text: "✓ machinery; **registry knows only `cargo`, `cc`** (C Phase 0 added `cc`)")]),
+        row(cells: [cell(text: "**F5**"), cell(text: "self-host frontier runner (`run_test_claim_module_emit_vs_eval`: emit → build → run → compare-to-eval)"), cell(text: "✓ wired end-to-end **for Rust only**")]),
+        row(cells: [cell(text: "**F6**"), cell(text: "`solve` (`Residual`/`Constraint` std type + `solve` fold + host-solver handler)"), cell(text: "**off critical path** — not needed for emit-to-simulator; see solve doc")]),
+      ],
+    },
+    h3(text: "The two highest-leverage shared dependencies (do these once, everyone inherits)"),
+    ul(items: [
+      li(text: "**F4 `host_tool_program_name` registry extension** — this ~8-line function gates **bar-c for every language**. Registering `node`, `python3`, `go`, and the simulator tools (`ngspice`, `verilator`/`iverilog`, `llc`/`clang`, `wasmtime`) makes each target's *already-declared* runtime row runnable through the typed self-host path in one edit each. Highest-leverage de-fork on the board."),
+      li(text: "**F2 VEP completion** — wire the unwired forms (match / loop / bind-in) **once** in the `StatementSequenced` arm; the entire interpreted family inherits body breadth. Python additionally needs its *first* VEP edge."),
+    ]),
+    hr(),
+    h2(text: "Per-target frontier table (grounded from the 2026-07-15 survey)"),
+    TableBlock {
+      header: row(cells: [cell(text: "target"), cell(text: "family"), cell(text: "current bar"), cell(text: "honest end-state"), cell(text: "key deps"), cell(text: "stress axis")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "**rust**"), cell(text: "compiled"), cell(text: "self-host ✓"), cell(text: "reference model"), cell(text: "—"), cell(text: "(confirms)")]),
+        row(cells: [cell(text: "**cpp (C)**"), cell(text: "compiled"), cell(text: "bar-c ✓ (Phase 0)"), cell(text: "self-host"), cell(text: "F4(`cc`)✓, F5-generalize"), cell(text: "(confirms)")]),
+        row(cells: [cell(text: "**go**"), cell(text: "compiled"), cell(text: "bar-a"), cell(text: "**self-host** (first non-rust self-host — the F5 generalization proof)"), cell(text: "F4(`go`), surface spellings, F5"), cell(text: "**self-host axis**")]),
+        row(cells: [cell(text: "**java / kotlin / swift**"), cell(text: "compiled"), cell(text: "skeleton"), cell(text: "bar-c → self-host"), cell(text: "F4(tool), spellings, inherit F2/F3/F5"), cell(text: "(confirms — parallel)")]),
+        row(cells: [cell(text: "**typescript**"), cell(text: "interpreted"), cell(text: "bar-b (9 VEP families); bar-c RED"), cell(text: "self-host"), cell(text: "F4(`node`/`npx`), F2 completion (match/loop/bind-in), operator catalog"), cell(text: "self-host axis")]),
+        row(cells: [cell(text: "**python**"), cell(text: "interpreted"), cell(text: "add-only, no VEP"), cell(text: "bar-c → self-host"), cell(text: "F2 *first* edge, operator catalog, F4(`python3`)"), cell(text: "self-host axis")]),
+        row(cells: [cell(text: "**ecmascript**"), cell(text: "interpreted"), cell(text: "orphan (0 consumers)"), cell(text: "**decide first**: adopt as TS's JS base, or delete"), cell(text: "(adoption decision)"), cell(text: "—")]),
+        row(cells: [cell(text: "**lean**"), cell(text: "expression/ML"), cell(text: "bar-a"), cell(text: "self-host on an *expression* spine (not statement)"), cell(text: "F3 generalization (expression-mode), F2, F5"), cell(text: "self-host axis (spine falsifier)")]),
+        row(cells: [cell(text: "**verilog**"), cell(text: "HDL"), cell(text: "bar-a anchor; 34 `body_lexeme:String` scars"), cell(text: "**bar-c green + frontier row `self-host: N/A (hardware)`**"), cell(text: "decompose `body_lexeme` → structured; F4(`verilator`/`iverilog`)"), cell(text: "**emit-generality (concurrent)**")]),
+        row(cells: [cell(text: "**spice (+modelica)**"), cell(text: "analog format"), cell(text: "bar-b live; ngspice oracle in history"), cell(text: "**bar-c green + frontier row `self-host: N/A (analog)`**; dual-emit ngspice+Modelica"), cell(text: "F4(`ngspice`); already the §2 \"one model → N backends\" proof"), cell(text: "**emit-generality (continuous)**")]),
+        row(cells: [cell(text: "**llvm_ir**"), cell(text: "IR/backend"), cell(text: "bar-a core anchor"), cell(text: "**bar-c green + frontier row `self-host: N/A (no runtime)`** — the Rust/cargo-free lowering path"), cell(text: "F4(`llc`/`clang`)"), cell(text: "**emit-generality (SSA)**")]),
+        row(cells: [cell(text: "**wasm**"), cell(text: "IR/backend"), cell(text: "most-developed exotic; has transport descriptor"), cell(text: "bar-c green + frontier row `self-host: N/A`"), cell(text: "F4(`wasmtime`)"), cell(text: "emit-generality (stack machine)")]),
+        row(cells: [cell(text: "**machine_code / ptx**"), cell(text: "ISA/GPU"), cell(text: "bar-a anchor"), cell(text: "bar-c green + frontier row `self-host: N/A`"), cell(text: "F4(assembler/`ptxas`)"), cell(text: "emit-generality (ISA)")]),
+      ],
+    },
+    hr(),
+    h2(text: "Sequencing — Rust-as-model, then stress (dependency-ordered)"),
+    ul(items: [
+      li(text: "**Phase A — now-ish (pre-un-shelve):** this map + the `solve` rationale. No emit code. ← *we are here*"),
+      li(text: "**Phase B — foundation de-fork (the barrier; everything downstream inherits):** F4 registry extension + F2 VEP completion. Once B lands, C/D/E run largely in parallel."),
+      li(text: "**Phase C — self-host axis proof:** generalize F5 past Rust to **Go** (first non-Rust self-host). This is the real \"does the seed-shrink story generalize\" milestone. If it holds, java/kotlin/swift are near-mechanical parallel fan-out."),
+      li(text: "**Phase D — emit-generality axis (parallel):** Verilog · SPICE · LLVM-IR to bar-c + frontier rows. Each decomposes its `body_lexeme:String` scars and registers its simulator/toolchain transport. This is where the design gets *stressed*; a construct that won't lower produces a typed, located refusal that *names the design gap* — the refusal is the product."),
+      li(text: "**Phase E — interpreted self-host:** TS → Python (Python inherits TS's VEP completion)."),
+      li(text: "**Phase F — expression spine:** Lean (falsifies \"is F3 secretly imperative-shaped?\")."),
+    ]),
+    p(text: "Each language is **priced by the design risk it displaces**, not by completeness (§6): Verilog=concurrent, SPICE=continuous, LLVM=SSA/self-host-boundary, Lean=expression-spine. A confirm-only language (java/kotlin/swift) earns its slot only as cheap parallel fan-out after its family's proof lands."),
+    hr(),
+    h2(text: "Staffing note (for continuous dispatch)"),
+    p(text: "Off this map, the natural fan-out is **one child session per language axis**, gated on Phase B. The dependency structure that makes this safe: **B is the only hard barrier**; after it, the self-host axis (C, then the compiled fan-out) and the emit-generality axis (D) have no cross-dependency, so they staff independently. Lean (F) and the interpreted family (E) each ride one Phase-B deliverable (F3-expression-mode and F2-completion respectively). ecmascript's adopt-or-delete decision is a prerequisite gate on the interpreted family, not parallel work."),
+  ]
+}
+
+data language_target_self_host_frontier_plan: Plan = Plan {
+  slug: "language-target-self-host-frontier",
+  title: "Language-target self-host frontier — beginning-to-end dependency map",
+  body: language_target_self_host_frontier_body(),
+  dissolution: HasTrigger {
+    text: "**Un-shelve is an operator decision (ROADMAP §4 → §1/§3 by PR, priced in displaced cost).** When it fires, this doc + the solve doc are the lane's charter; the frontier table rows migrate onto per-target carrier rows, and this file dissolves."
+  }
+}
