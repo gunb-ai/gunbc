@@ -80,49 +80,53 @@ test fn orch_run_env_unset_emits_env_u_holds() -> Bool {
 }
 
 test fn orch_bash_test_str_empty_row_holds() -> Bool {
-  match orch_emit_bash(
-    root: bash_test_str_empty_emitted,
-    target: bash_test_str_empty_target_model(operand: "\"$1\"")
-  ) {
-    Accepted { value: source, diagnostics: dg } =>
-      (source.carried == "[ -z \"$1\" ]") && (dg == None)
+  match bash_test_str_empty_target_model(operand: "\"$1\"") {
+    Accepted { value: target, diagnostics: _ } =>
+      match orch_emit_bash(root: bash_test_str_empty_emitted, target: target) {
+        Accepted { value: source, diagnostics: dg } =>
+          (source.carried == "[ -z \"$1\" ]") && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn orch_bash_test_str_nonempty_row_holds() -> Bool {
-  match orch_emit_bash(
-    root: bash_test_str_nonempty_emitted,
-    target: bash_test_str_nonempty_target_model(operand: "\"$ctrl_pin\"")
-  ) {
-    Accepted { value: source, diagnostics: dg } =>
-      (source.carried == "[ -n \"$ctrl_pin\" ]") && (dg == None)
+  match bash_test_str_nonempty_target_model(operand: "\"$ctrl_pin\"") {
+    Accepted { value: target, diagnostics: _ } =>
+      match orch_emit_bash(root: bash_test_str_nonempty_emitted, target: target) {
+        Accepted { value: source, diagnostics: dg } =>
+          (source.carried == "[ -n \"$ctrl_pin\" ]") && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn orch_bash_log_matches_grep_row_holds() -> Bool {
-  match orch_emit_bash(
-    root: bash_log_matches_grep_emitted,
-    target: bash_log_matches_grep_target_model(
-      pattern: "'EAGAIN|Resource temporarily unavailable'",
-      source: "\"$BUILD_LOG\""
-    )
+  match bash_log_matches_grep_target_model(
+    pattern: "'EAGAIN|Resource temporarily unavailable'",
+    source: "\"$BUILD_LOG\""
   ) {
-    Accepted { value: source, diagnostics: dg } =>
-      (source.carried == "grep -qiE 'EAGAIN|Resource temporarily unavailable' \"$BUILD_LOG\"")
-        && (dg == None)
+    Accepted { value: target, diagnostics: _ } =>
+      match orch_emit_bash(root: bash_log_matches_grep_emitted, target: target) {
+        Accepted { value: source, diagnostics: dg } =>
+          (source.carried == "grep -qiE 'EAGAIN|Resource temporarily unavailable' \"$BUILD_LOG\"")
+            && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn orch_bash_stmt_if_row_holds() -> Bool {
-  match orch_emit_bash(
-    root: bash_stmt_if_emitted,
-    target: bash_stmt_if_target_model(cond: "[ -z \"$1\" ]", body: "verdict=absent")
-  ) {
-    Accepted { value: source, diagnostics: dg } =>
-      (source.carried == "if [ -z \"$1\" ]; then verdict=absent; fi") && (dg == None)
+  match bash_stmt_if_target_model(cond: "[ -z \"$1\" ]", body: "verdict=absent") {
+    Accepted { value: target, diagnostics: _ } =>
+      match orch_emit_bash(root: bash_stmt_if_emitted, target: target) {
+        Accepted { value: source, diagnostics: dg } =>
+          (source.carried == "if [ -z \"$1\" ]; then verdict=absent; fi") && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
