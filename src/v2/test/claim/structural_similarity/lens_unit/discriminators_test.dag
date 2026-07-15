@@ -1,6 +1,6 @@
 module v2.test.structural_similarity.lens_unit.discriminators
 
-import v2.lens.anti_unify_redundancy { type_decls_anti_unify }
+import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.std.node {
   Node, Edge, Positional,
   TypeNode, Atom, Conj, Disj,

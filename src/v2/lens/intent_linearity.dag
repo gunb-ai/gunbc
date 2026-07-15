@@ -1,7 +1,8 @@
 module v2.lens.intent_linearity
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import v2.lens.anti_unify_redundancy { chain_is_simulated, type_decls_anti_unify }
+import v2.lens.simulated_relationship { chain_is_simulated }
+import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.lens.complexity_lowering { cost_is_lowerable }
 import v2.lens.fn_family { sigma_families_of_defs }
 import v2.lens.cost { symbolic_cost_of_node }
