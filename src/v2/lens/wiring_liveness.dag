@@ -86,22 +86,29 @@ fn wiring_param_is_dead_wire(reachable: List<Node>, declared_input: Node) -> Boo
   )
 }
 
-fn wiring_param_violation_verdict(output: Node, declared_input: Node) -> LensVerdict {
+fn wiring_param_violation_verdict(relation: WiringRelation, reachable: List<Node>) -> LensVerdict {
   if wiring_param_is_dead_wire(
-    reachable: wiring_output_reachable_nodes(output: output),
-    declared_input: declared_input
+    reachable: reachable,
+    declared_input: relation.declared_input
   ) {
-    wiring_relation_verdict(
-      relation: wiring_relation_from_tree(output: output, declared_input: declared_input)
-    )
+    wiring_relation_verdict(relation: relation)
   } else {
     Holds
   }
 }
 
 fn wiring_fn_dead_wires(decl: FnArrowDecl) -> List<WiringDeadWire> {
+  let reachable = wiring_output_reachable_nodes(output: decl.output)
+  let dependence = dependency_lens(root: decl.output)
   fold(decl.params, init: [], f: fn(acc, p) {
-    match wiring_param_violation_verdict(output: decl.output, declared_input: p.node) {
+    match wiring_param_violation_verdict(
+      relation: WiringRelation {
+        output: decl.output,
+        declared_input: p.node,
+        dependence: dependence
+      },
+      reachable: reachable
+    ) {
       Violation { diagnostic: _ } =>
         list_snoc_item(
           xs: acc,
@@ -119,10 +126,20 @@ fn wiring_dead_wires_over(decls: List<FnArrowDecl>) -> List<WiringDeadWire> {
 }
 
 fn wiring_decl_verdict(decl: FnArrowDecl) -> LensVerdict {
+  let reachable = wiring_output_reachable_nodes(output: decl.output)
+  let dependence = dependency_lens(root: decl.output)
   fold(decl.params, init: Holds, f: fn(acc, p) {
     match acc {
       Violation { diagnostic: _ } => acc
-      _ => wiring_param_violation_verdict(output: decl.output, declared_input: p.node)
+      _ =>
+        wiring_param_violation_verdict(
+          relation: WiringRelation {
+            output: decl.output,
+            declared_input: p.node,
+            dependence: dependence
+          },
+          reachable: reachable
+        )
     }
   })
 }

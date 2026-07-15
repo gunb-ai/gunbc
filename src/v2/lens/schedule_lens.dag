@@ -7,7 +7,12 @@ import std.realization_schedule {
   schedule_batch_contains_label,
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
-import v2.std.diagnostic { Diagnostic, module_unavailable_diagnostic }
+import v2.std.diagnostic {
+  CorrectionNotModeled,
+  Diagnostic,
+  Unavailable,
+  textual_whole_file_diagnostic,
+}
 import v2.std.lens_verdict {
   Holds,
   LensVerdict,
@@ -36,24 +41,28 @@ fn schedule_lens_violation_diagnostic(
   let module_file = lens_verdict_module_file(module_name: schedule_lens_module)
   match kind {
     EmptySchedule =>
-      module_unavailable_diagnostic(
+      textual_whole_file_diagnostic(
         reason: ^schedule_lens_empty_schedule,
-        module_file: module_file
+        module_file: module_file,
+        correction: Unavailable { reason: CorrectionNotModeled }
       )
     CompileGateNotFirst { expected: expected } =>
-      module_unavailable_diagnostic(
+      textual_whole_file_diagnostic(
         reason: schedule_lens_compile_gate_not_first_reason(expected: expected),
-        module_file: module_file
+        module_file: module_file,
+        correction: Unavailable { reason: CorrectionNotModeled }
       )
     CorpusBeforeCompile =>
-      module_unavailable_diagnostic(
+      textual_whole_file_diagnostic(
         reason: ^schedule_lens_corpus_before_compile,
-        module_file: module_file
+        module_file: module_file,
+        correction: Unavailable { reason: CorrectionNotModeled }
       )
     SingleBatchOnly =>
-      module_unavailable_diagnostic(
+      textual_whole_file_diagnostic(
         reason: ^schedule_lens_single_batch_only,
-        module_file: module_file
+        module_file: module_file,
+        correction: Unavailable { reason: CorrectionNotModeled }
       )
   }
 }
