@@ -47,6 +47,8 @@ import extdeps.tools.curl { curl_cli_tool }
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
+import extdeps.tools.jq { jq_cli_tool }
+import extdeps.tools.sleep { sleep_cli_tool }
 import extdeps.tools.websocat {
   websocat_cli_tool,
   websocat_github_tag,
@@ -334,12 +336,16 @@ fn realize_boot_once_read_back_sleep_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
-  let success = srv3_transport_witness_bin_success(
-    transport: transport,
-    workdir: "/",
-    bin_path: "/bin/sleep",
-    args: [seconds],
-  )
+  let success = match srv3_tool_bin_path(tool_name: sleep_cli_tool.name, transport: transport) {
+    Present { value: sleep_path } =>
+      srv3_transport_witness_bin_success(
+        transport: transport,
+        workdir: "/",
+        bin_path: sleep_path,
+        args: [seconds],
+      )
+    Absent => false
+  }
   srv3_shell_reconcile(
     observed: ShellExecObserved {
       exit_code: if success { 0 } else { 1 },
@@ -531,9 +537,11 @@ fn realize_bmcweb_session_login_on_host(
 fn realize_bmcweb_token_extract_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match srv3_tool_bin_path(tool_name: jq_cli_tool.name, transport: LocalShell) {
+    Present { value: jq_path } => {
   let jq_run = gunbc.WitnessBin.Run(
     workdir: "/",
-    bin_path: "/usr/bin/jq",
+    bin_path: jq_path,
     args: ["-r", ".token // empty", srv3_bmcweb_login_response_path],
   )
   if jq_run.success {
@@ -561,6 +569,18 @@ fn realize_bmcweb_token_extract_body(
       },
       intent: intent,
     )
+  }
+    }
+    Absent =>
+      srv3_shell_reconcile(
+        observed: ShellExecObserved {
+          exit_code: 1,
+          success: false,
+          stdout: "",
+          stderr: "host_effect_apply: Srv3BmcwebTokenExtract jq not found; fail-closed",
+        },
+        intent: intent,
+      )
   }
 }
 
