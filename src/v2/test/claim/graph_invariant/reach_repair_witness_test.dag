@@ -1,14 +1,12 @@
 module v2.test.graph_invariant.reach_repair_witness_test
 
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.dag { dag_target_model }
-import v2.lens.application { apply_edit }
-import v2.lens.application_serializer { serialize_diff_as_source_patch }
 import v2.extdeps.languages.dag {
   dag_fixture_emitted_loop_fn,
   dag_loop_body_wrong_value_node,
   dag_loop_target_model
 }
+import v2.lens.application { apply_diff }
+import v2.lens.application_serializer { serialize_diff_as_source_patch }
 import v2.lens.common.graph_invariant {
   GraphReachProjection,
   graph_invariant_reaches,
@@ -18,7 +16,6 @@ import v2.lens.common.graph_invariant {
   graph_reach_unreachable_diagnostic
 }
 import v2.std.collection { List }
-import v2.std.compilers.target_model { TargetModel }
 import v2.std.dependency { Contains, DependencyView, dependency_lens }
 import v2.std.diagnostic {
   Accepted,
