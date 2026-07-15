@@ -2926,15 +2926,15 @@ fn build_corpus_global_bare_census_from_index(
     ))
 }
 
-/// PR-5c gunbc import strip: census-backed bare lookup applies only to stripped
-/// gunbc modules. Feeding the full corpus census into `src/v2/` or `dag/std/`
-/// typecheck perturbs coproduct inference (main stays green with empty global_bare).
+/// PR-5c import strip: census-backed bare lookup for any module whose path is
+/// included in the corpus census (`census_module_path_included`). On the integration
+/// branch this covers stripped `dag/**`, `src/v2/**`, and `dag/gunbc/**`; modules
+/// outside the census policy keep empty global_bare (main's import-closure behavior).
 fn global_bare_for_decl_file(
     decl_file: &str,
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    let p = decl_file.replace('\\', "/");
-    if p.contains("dag/gunbc/") {
+    if census_module_path_included(decl_file) {
         census.clone()
     } else {
         v1_rt::rc_empty_map()
