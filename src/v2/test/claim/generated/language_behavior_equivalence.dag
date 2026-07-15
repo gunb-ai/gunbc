@@ -45,7 +45,9 @@ import v2.std.runtime {
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 
 import v2.std.witness { Holds, Violates }
@@ -182,7 +184,10 @@ fn lbe_eval_context() -> EvalContext {
       },
       bind: BindInterpreter {
         bind_value: lbe_bind_value
-      }
+      },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
+    }
     },
     structure_witness: lbe_interpretation_structure_witness()
   )
