@@ -1,8 +1,10 @@
 module v2.test.graph_invariant.reach_repair_witness_test
 
+import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.dag {
   dag_fixture_emitted_loop_fn,
-  dag_loop_body_wrong_value_node,
+  dag_loop_arrow_with_body_wrong_value_fixture,
+  dag_loop_body_node,
   dag_loop_target_model
 }
 import v2.lens.application { apply_diff }
@@ -41,13 +43,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data reach_repair_loop_body_edit: Edit = Edit {
+data reach_repair_surgical_body_edit: Edit = Edit {
   at: Path { steps: [^arrow_body_edge] },
-  replacement: dag_loop_body_wrong_value_node()
+  replacement: dag_loop_body_node()
 }
 
-data reach_repair_loop_body_diff: Diff = Diff {
-  edits: [reach_repair_loop_body_edit]
+data reach_repair_surgical_body_diff: Diff = Diff {
+  edits: [reach_repair_surgical_body_edit]
 }
 
 fn rr_atom(identity: Symbol) -> Node {
@@ -149,26 +151,21 @@ fn rr_repaired_root() -> Node {
   graph_reach_add_edge_repair(root: rr_out(), edge_target: rr_dangling())
 }
 
-fn rr_repair_diff() -> Diff {
-  Diff {
-    edits: [graph_reach_root_replacement_edit(repaired: rr_repaired_root())]
-  }
-}
-
-test fn witness_apply_diff_matches_repaired_authority() -> Bool {
-  match apply_diff(root: rr_out(), d: rr_repair_diff()) {
-    Accepted { value: patched, diagnostics: _ } => patched == rr_repaired_root()
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn witness_emit_path_uses_application_serializer() -> Bool {
+test fn witness_apply_edit_emits_corrected_source() -> Bool {
   match serialize_diff_as_source_patch(
-    root: dag_fixture_emitted_loop_fn,
-    diff: reach_repair_loop_body_diff,
+    root: dag_loop_arrow_with_body_wrong_value_fixture,
+    diff: reach_repair_surgical_body_diff,
     canonical_source_target: dag_loop_target_model()
   ) {
-    Accepted { value: patch, diagnostics: _ } => patch.before != patch.after
+    Accepted { value: patch, diagnostics: _ } =>
+      match target_serialize_source_from_model(
+        target: dag_loop_target_model(),
+        emitted: dag_fixture_emitted_loop_fn
+      ) {
+        Accepted { value: authority_after, diagnostics: _ } =>
+          patch.after == authority_after && patch.before != patch.after
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
