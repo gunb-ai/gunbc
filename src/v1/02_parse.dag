@@ -3551,6 +3551,14 @@ fn is_uppercase_start(name: String) -> Bool {
   ch >= "A" && ch <= "Z"
 }
 
+fn is_variant_pattern_start(name: String) -> Bool {
+  if contains(name, ".") {
+    true
+  } else {
+    is_uppercase_start(name: name)
+  }
+}
+
 fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> PostfixResult {
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
@@ -4026,15 +4034,17 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
   let span = token_span(tok: tok)
   match sh {
     Present { value: ShIdent } => {
-      let n = tok.value.text
+      let r = parse_dotted_ident(tokens: tokens)
+      if has_err(err: r.err) {
+        return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: ctx, err: r.err }
+      }
+      let n = r.name
       if n == "_" {
-        PatternResult { pattern: Wildcard, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
+        PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: ctx, err: none }
+      } else if is_variant_pattern_start(name: n) {
+        parse_variant_pattern(tokens: r.tokens, ctx: ctx, name: n)
       } else {
-        if is_uppercase_start(name: n) {
-          parse_variant_pattern(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, name: n)
-        } else {
-          PatternResult { pattern: Bind { name: n }, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
-        }
+        PatternResult { pattern: Bind { name: n }, tokens: r.tokens, ctx: ctx, err: none }
       }
     }
     Present { value: ShKeyword } => {
@@ -4157,13 +4167,29 @@ fn parse_let(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let name = r.name
   let name_span = r.span
 
-  let r = expect(tokens: r.tokens, expected: ExpectEq)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
-
-  let r = parse_expr(tokens: r.tokens, ctx: ctx)
-  if has_err(err: r.err) { return r }
-
-  ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprLet, children: [r.expr], inferred: none, span: span, name_span: name_span), tokens: r.tokens, ctx: r.ctx, err: none }
+  match eat(tokens: r.tokens, expected: ExpectColon) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let tr = parse_type_expr(tokens: __ec, ctx: ctx)
+    if has_err(err: tr.err) { return ExprResult { expr: dummy_expr, tokens: tr.tokens, ctx: tr.ctx, err: tr.err } }
+    let r2 = expect(tokens: tr.tokens, expected: ExpectEq)
+    if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: tr.ctx, err: r2.err } }
+    let r3 = parse_expr(tokens: r2.tokens, ctx: tr.ctx)
+    if has_err(err: r3.err) { return r3 }
+    let node = Node {
+      name: name, span: span, ident_span: Present { value: name_span }, children: [r3.expr],
+      connective: NoConnective, params: [], inferred: none, return_cardinality: Required,
+      uses: [], body: none, transport: none, properties: [],
+      type_annotation: Present { value: tr.type_expr },
+      is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprLet
+    }
+    ExprResult { expr: node, tokens: r3.tokens, ctx: r3.ctx, err: none }
+  EatUnchanged { tokens: __eu } =>
+    let r2 = expect(tokens: __eu, expected: ExpectEq)
+    if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+    let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+    if has_err(err: r3.err) { return r3 }
+    ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprLet, children: [r3.expr], inferred: none, span: span, name_span: name_span), tokens: r3.tokens, ctx: r3.ctx, err: none }
+  }
 }
 
 fn parse_return(tokens: TokenStream, ctx: ParseContext) -> ExprResult {

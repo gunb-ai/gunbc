@@ -14,7 +14,8 @@ pub use crate::v1_compiler_infer_env::{
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, is_declared_container_alias_spelling, node_is_keyed_collection, resolved_type,
+    child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
+    node_is_keyed_collection, resolved_type,
 };
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -2580,21 +2581,68 @@ pub fn resolve_expr_types(
                     Some(r) => Rc::new(vec![vr.expr.clone(), r.expr.clone()]),
                     None => Rc::new(vec![vr.expr.clone()]),
                 };
-                Rc::new(ExprResolveResult {
-                    expr: make_named_expr_node(
+                let anno_resolved = if (texpr.type_annotation.clone() == None) {
+                    Rc::new(NodeResolveResult {
+                        resolved: unit_type(),
+                        diagnostics: Rc::new(vec![]),
+                    })
+                } else {
+                    if is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()) {
+                        resolve_node(
+                            texpr.type_annotation.clone().clone().unwrap(),
+                            env.clone(),
+                            module_name.clone(),
+                        )
+                    } else {
+                        Rc::new(NodeResolveResult {
+                            resolved: texpr.type_annotation.clone().clone().unwrap(),
+                            diagnostics: Rc::new(vec![]),
+                        })
+                    }
+                };
+                let resolved_anno = if (texpr.type_annotation.clone() == None) {
+                    None
+                } else {
+                    if is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()) {
+                        Some(anno_resolved.resolved.clone())
+                    } else {
+                        texpr.type_annotation.clone()
+                    }
+                };
+                let let_node = Rc::new(Node {
+                    name: let_binding_name_at(texpr.clone(), env.source_indices.clone()),
+                    span: texpr.span.clone(),
+                    ident_span: default_ident_span(
                         let_binding_name_at(texpr.clone(), env.source_indices.clone()),
-                        Rc::new(ExprData::ExprLet),
-                        resolved_children.clone(),
-                        texpr.inferred.clone(),
-                        texpr.span.clone(),
                         node_name_span(texpr.clone()),
                     ),
+                    children: resolved_children.clone(),
+                    connective: Connective::NoConnective,
+                    params: Rc::new(vec![]),
+                    inferred: texpr.inferred.clone(),
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: resolved_anno.clone(),
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::ExprLet),
+                    ident: None,
+                });
+                Rc::new(ExprResolveResult {
+                    expr: let_node.clone(),
                     diagnostics: v1_rt::concat(
-                        vr.diagnostics.clone(),
-                        match br.clone() {
-                            Some(r) => r.diagnostics.clone(),
-                            None => Rc::new(vec![]),
-                        },
+                        v1_rt::concat(
+                            vr.diagnostics.clone(),
+                            match br.clone() {
+                                Some(r) => r.diagnostics.clone(),
+                                None => Rc::new(vec![]),
+                            },
+                        ),
+                        anno_resolved.diagnostics.clone(),
                     ),
                 })
             }
