@@ -13534,18 +13534,6 @@ mod reference_edge_producer_tests {
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
-<<<<<<< HEAD
-    // 2026-07-15 backfill: #6637 (no-smuggled-programs HALF B) landed apply_role with a
-    // two-special-variant dispatch (IfFraming/UnmodeledKeyword rebuild ScanState; the other
-    // three TokenRole variants — Separator, JoiningControl, OperandFraming — all reduce to the
-    // closed run, so enumerating them would clone the general arm three times). Same masking
-    // class as the rows below: the nfr witness is a corpus-read host-fed row, so the landing PR
-    // predict-skipped it and the red surfaced on the 2026-07-15 cold sweep (receipt #10;
-    // live-read classification P1/P2, in flight, is the structural fix). Declared here so the
-    // ratchet re-arms; burns down with the recognizer's fold migration.
-    "src/v2/lens/bash_composition_recognizer.dag::apply_role",
-=======
->>>>>>> origin/main
     // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
     // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
     // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
