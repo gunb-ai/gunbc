@@ -4412,10 +4412,14 @@ match bare_s.clone() {
                     },
                     None => false,
                 };
-                let val_expected = if is_tail_return.clone() {
-                    expected.clone()
+                let val_expected = if (texpr.type_annotation.clone() != None) {
+                    Some(texpr.type_annotation.clone().clone().unwrap())
                 } else {
-                    None
+                    if is_tail_return.clone() {
+                        expected.clone()
+                    } else {
+                        None
+                    }
                 };
                 let val_result = infer_expr(val_expr.clone(), scope.clone(), val_expected.clone());
                 let val_typed = val_result.typed.clone();
