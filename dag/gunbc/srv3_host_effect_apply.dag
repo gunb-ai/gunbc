@@ -42,10 +42,6 @@ import std.realization_reconcile {
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String, List, Bool }
-import gunbc.srv3_os_install_reconcile_types {
-  srv3_install_reconcile_dry_run_observed_at,
-  srv3_boot_once_grant_expires_at,
-}
 
 type Srv3TypedReceipt {
   lines: List<String>
@@ -96,12 +92,7 @@ fn srv3_host_effect_observe_read_apply() -> Reconciliation<HostEffectIntent, Hos
 }
 
 fn srv3_durable_approval_grant_record_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  srv3_host_effect_apply(
-    effect: DurableApprovalGrantRecord {
-      granted_at: srv3_install_reconcile_dry_run_observed_at,
-      expires_at: srv3_boot_once_grant_expires_at,
-    },
-  )
+  srv3_host_effect_apply(effect: DurableApprovalGrantRecord)
 }
 
 fn srv3_durable_approval_grant_read_apply() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {

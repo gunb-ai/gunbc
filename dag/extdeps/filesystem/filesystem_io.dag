@@ -21,9 +21,6 @@ service Filesystem {
       error: String from "error"
     }
     transport file { path: "{path}" }
-    mock_response {
-      0 => { success: true, bytes_written: 0, path: "", error: "" } "hermetic filesystem write"
-    }
   }
 
   operation Read {
@@ -35,8 +32,5 @@ service Filesystem {
     }
     readonly
     transport file { path: "{path}" }
-    mock_response {
-      0 => { content: "", success: false, error: "hermetic filesystem read absent" } "hermetic filesystem read fail-closed absent path"
-    }
   }
 }
