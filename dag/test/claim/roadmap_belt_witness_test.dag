@@ -1,0 +1,89 @@
+module test.claim.roadmap_belt_witness
+
+import gunbc.roadmap_model {
+  RoadmapNodeId,
+  RoadmapNode,
+  IntricacyHigh, VolumeMedium,
+  PrsMerged,
+  Sized,
+}
+import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_spawner { SpawnFrontier }
+import gunbc.roadmap_belt {
+  BeltRunState, Running, Paused,
+  BeltCapacity,
+  BeltAction, HoldPaused, AtCapacity,
+  belt_step,
+  belt_action_is_spawn,
+  belt_spawn_count,
+  belt_spawns_node,
+}
+
+fn nid(s: String) -> RoadmapNodeId { s }
+
+fn ready_node(id: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: [1], title: id, description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn frontier_ready(ids: List<String>) -> SpawnFrontier {
+  SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [], done: [] }
+}
+
+fn cap(n: Int) -> BeltCapacity { BeltCapacity { max_concurrent: n } }
+
+fn any_paused(actions: List<BeltAction>) -> Bool {
+  any(actions, a => match a { HoldPaused => true, _ => false })
+}
+
+fn at_capacity_waiting(actions: List<BeltAction>) -> Int {
+  fold(actions, init: 0, f: (acc, a) => match a { AtCapacity { ready_waiting } => ready_waiting, _ => acc })
+}
+
+fn witness_paused_spawns_nothing() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let actions = belt_step(state: Paused, frontier: f, occupied: [], cap: cap(n: 3))
+  belt_spawn_count(actions: actions) == 0 && any_paused(actions: actions)
+}
+
+fn witness_running_spawns_ready_within_capacity() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let actions = belt_step(state: Running, frontier: f, occupied: [], cap: cap(n: 3))
+  belt_spawn_count(actions: actions) == 2
+    && belt_spawns_node(actions: actions, id: nid(s: "a"))
+    && belt_spawns_node(actions: actions, id: nid(s: "b"))
+}
+
+fn witness_capacity_limits_spawns() -> Bool {
+  let f = frontier_ready(ids: ["a", "b", "c"])
+  let actions = belt_step(state: Running, frontier: f, occupied: [], cap: cap(n: 1))
+  belt_spawn_count(actions: actions) == 1
+}
+
+fn witness_occupied_node_not_respawned() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let actions = belt_step(state: Running, frontier: f, occupied: [nid(s: "a")], cap: cap(n: 3))
+  belt_spawn_count(actions: actions) == 1
+    && belt_spawns_node(actions: actions, id: nid(s: "b"))
+    && !belt_spawns_node(actions: actions, id: nid(s: "a"))
+}
+
+fn witness_at_capacity_reports_backlog() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let actions = belt_step(state: Running, frontier: f, occupied: [nid(s: "x"), nid(s: "y")], cap: cap(n: 2))
+  belt_spawn_count(actions: actions) == 0 && at_capacity_waiting(actions: actions) == 2
+}
+
+test fn roadmap_belt_witnesses() -> Bool {
+  witness_paused_spawns_nothing()
+    && witness_running_spawns_ready_within_capacity()
+    && witness_capacity_limits_spawns()
+    && witness_occupied_node_not_respawned()
+    && witness_at_capacity_reports_backlog()
+}
