@@ -1,6 +1,7 @@
 module v2.lens.idempotency
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.common.algebraic_composition {
+  AlgebraicIdempotenceProven,
   IdempotencyVerdict,
   RequiresAlgebraWitness,
   idempotency_classifier
