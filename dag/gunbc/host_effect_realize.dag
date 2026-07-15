@@ -380,16 +380,30 @@ fn realize_durable_approval_grant_read_on_host(
   match transport {
     LocalShell => {
       let read = Filesystem.Read(path: srv3_boot_once_approval_grant_path)
-      let stdout = if read.success { read.content } else { "" }
-      srv3_shell_reconcile(
-        observed: ShellExecObserved {
-          exit_code: 0,
-          success: true,
-          stdout: stdout,
-          stderr: "",
-        },
-        intent: intent,
-      )
+      if read.success {
+        srv3_shell_reconcile(
+          observed: ShellExecObserved {
+            exit_code: 0,
+            success: true,
+            stdout: read.content,
+            stderr: "",
+          },
+          intent: intent,
+        )
+      } else {
+        srv3_shell_reconcile(
+          observed: ShellExecObserved {
+            exit_code: 1,
+            success: false,
+            stdout: "",
+            stderr: concat(
+              "host_effect_apply: DurableApprovalGrantRead refused Filesystem.Read failure; fail-closed: ",
+              read.error,
+            ),
+          },
+          intent: intent,
+        )
+      }
     }
     SshShell { ssh_host: _ } =>
       NotConverged {
@@ -516,68 +530,38 @@ fn realize_bmcweb_session_login_on_host(
 }
 
 fn realize_bmcweb_token_extract_body(
-  transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match transport {
-    LocalShell => {
-      let jq_run = gunbc.WitnessBin.Run(
-        workdir: "/",
-        bin_path: "/usr/bin/jq",
-        args: ["-r", ".token // empty", srv3_bmcweb_login_response_path],
-      )
-      if jq_run.success {
-        let write = Filesystem.Write(path: srv3_bmcweb_token_path, content: jq_run.stdout)
-        srv3_shell_reconcile(
-          observed: ShellExecObserved {
-            exit_code: if write.success { 0 } else { 1 },
-            success: write.success,
-            stdout: "",
-            stderr: if write.success {
-              ""
-            } else {
-              "host_effect_apply: Srv3BmcwebTokenExtract token write failed; fail-closed"
-            },
-          },
-          intent: intent,
-        )
-      } else {
-        srv3_shell_reconcile(
-          observed: ShellExecObserved {
-            exit_code: 1,
-            success: false,
-            stdout: "",
-            stderr: "host_effect_apply: Srv3BmcwebTokenExtract jq failed; fail-closed",
-          },
-          intent: intent,
-        )
-      }
-    }
-    SshShell { ssh_host: h } => {
-      let cmd = concat(
-        concat("/usr/bin/jq -r '.token // empty' ", srv3_bmcweb_login_response_path),
-        concat(" > ", srv3_bmcweb_token_path),
-      )
-      let result = ssh_session_exec(host: h, command: cmd as NonEmptyStr)
-      srv3_shell_reconcile(
-        observed: ShellExecObserved {
-          exit_code: result.exit_code,
-          success: result.success,
-          stdout: result.stdout,
-          stderr: if result.success {
-            ""
-          } else {
-            "host_effect_apply: Srv3BmcwebTokenExtract jq write failed; fail-closed"
-          },
+  let jq_run = gunbc.WitnessBin.Run(
+    workdir: "/",
+    bin_path: "/usr/bin/jq",
+    args: ["-r", ".token // empty", srv3_bmcweb_login_response_path],
+  )
+  if jq_run.success {
+    let write = Filesystem.Write(path: srv3_bmcweb_token_path, content: jq_run.stdout)
+    srv3_shell_reconcile(
+      observed: ShellExecObserved {
+        exit_code: if write.success { 0 } else { 1 },
+        success: write.success,
+        stdout: "",
+        stderr: if write.success {
+          ""
+        } else {
+          "host_effect_apply: Srv3BmcwebTokenExtract token write failed; fail-closed"
         },
-        intent: intent,
-      )
-    }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
-        reason: "host_effect_apply: Srv3BmcwebTokenExtract cannot use EmitArtifactThenThinRun transport; typed mismatch.",
-        applied: intent,
-      }
+      },
+      intent: intent,
+    )
+  } else {
+    srv3_shell_reconcile(
+      observed: ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: "host_effect_apply: Srv3BmcwebTokenExtract jq failed; fail-closed",
+      },
+      intent: intent,
+    )
   }
 }
 
@@ -587,9 +571,12 @@ fn realize_bmcweb_token_extract_on_host(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     LocalShell =>
-      realize_bmcweb_token_extract_body(transport: transport, intent: intent)
+      realize_bmcweb_token_extract_body(intent: intent)
     SshShell { ssh_host: _ } =>
-      realize_bmcweb_token_extract_body(transport: transport, intent: intent)
+      NotConverged {
+        reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
+        applied: intent,
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract cannot use EmitArtifactThenThinRun transport; typed mismatch.",
