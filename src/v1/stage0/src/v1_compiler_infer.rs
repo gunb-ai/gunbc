@@ -12754,7 +12754,17 @@ pub fn local_binding_for_census_item(
     match local_binding_for_item(item.clone(), source_indices.clone()) {
         Some(binding) => Some(binding),
         None => {
-            if (((item.params.clone().len() as i64) > 0)
+            if (item.body.clone() != None)
+                && ((item.params.clone().len() as i64) == 0)
+                && (item.inferred.clone() == None)
+                && (item.type_annotation.clone() != None)
+            {
+                Some(Rc::new(TypeBinding {
+                    name: authored_name_at(source_indices.clone(), item.clone()),
+                    resolved: item.type_annotation.clone().unwrap(),
+                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                }))
+            } else if (((item.params.clone().len() as i64) > 0)
                 && (item.connective.clone() == Connective::NoConnective))
                 && (item.body.clone() != None)
                 && (item.transport.clone() == None)
