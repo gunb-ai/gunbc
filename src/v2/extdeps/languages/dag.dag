@@ -1963,7 +1963,6 @@ fn dag_grammar_let_expr() -> GrammarExpr {
     right: dag_grammar_sequence(
       left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_sequence(
-<<<<<<< HEAD
         left: dag_grammar_binding_name_terminal(),
         right: dag_grammar_choice(
           left: dag_grammar_sequence(
@@ -1981,10 +1980,6 @@ fn dag_grammar_let_expr() -> GrammarExpr {
             right: dag_grammar_nonterminal(production: ^dag_production_expr)
           )
         )
-=======
-        left: dag_grammar_terminal(token_class: ^dag_token_eq),
-        right: dag_grammar_nonterminal(production: ^dag_production_expr)
->>>>>>> 62111b1273 (Wave-1 namespace integration: restore collapsed import-strip on current main.)
       )
     )
   )
