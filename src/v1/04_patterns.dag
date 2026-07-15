@@ -220,8 +220,15 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
     PatternResolved { node: scrut_node } =>
       let source_indices = env.source_indices
       if contains(variant_name, ".") {
+        let bare_variant = variant_pattern_coverage_key(name: variant_name)
+        let scrut_node = expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env)
         match symbol_index_lookup(index: env.symbol_index, qualified_name: variant_name) {
-          Present { value: resolved } => node_lookup_resolved(node: resolved)
+          Present { value: _ } =>
+            match find_child_named(n: scrut_node, name: bare_variant, source_indices: source_indices) {
+              Present { value: scrut_variant } => node_lookup_resolved(node: scrut_variant)
+              Absent =>
+                variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
+            }
           Absent =>
             variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
         }

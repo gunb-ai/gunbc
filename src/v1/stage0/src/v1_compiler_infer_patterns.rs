@@ -498,8 +498,25 @@ pub fn lookup_variant_in_type(
         } => {
             let source_indices = env.source_indices.clone();
             if v1_rt::contains(variant_name.clone(), ".".to_string()) {
+                let bare_variant = variant_pattern_coverage_key(variant_name.clone());
+                let scrut_node =
+                    expand_scrut_type_for_variant_lookup(scrut_node.clone(), env.clone());
                 match symbol_index_lookup(env.symbol_index.clone(), variant_name.clone()) {
-                    Some(resolved) => node_lookup_resolved(resolved.clone()),
+                    Some(_) => {
+                        match find_child_named(
+                            scrut_node.clone(),
+                            bare_variant.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Some(scrut_variant) => node_lookup_resolved(scrut_variant.clone()),
+                            None => variant_not_found_result(
+                                scrut_node.clone(),
+                                variant_name.clone(),
+                                module_name.clone(),
+                                source_indices.clone(),
+                            ),
+                        }
+                    }
                     None => variant_not_found_result(
                         scrut_node.clone(),
                         variant_name.clone(),
