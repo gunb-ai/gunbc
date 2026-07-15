@@ -1,4 +1,4 @@
-module std.lens_verdict
+module v2.std.lens_verdict
 
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {

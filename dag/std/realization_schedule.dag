@@ -8,13 +8,6 @@ import std.measure {
   byte_size, byte_size_count, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }
-import v2.std.diagnostic { Diagnostic, module_unavailable_diagnostic }
-import std.lens_verdict {
-  LensVerdict,
-  Holds,
-  Violation,
-  lens_verdict_module_file,
-}
 
 type CostBasis
   = Predicted
