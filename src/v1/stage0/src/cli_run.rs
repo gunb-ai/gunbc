@@ -13523,8 +13523,6 @@ mod reference_edge_producer_tests {
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
-    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
-    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
     // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
     // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
     // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
@@ -13631,7 +13629,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
     "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
-    "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
     "src/v2/compiler/emit_host.dag::runtime_value_signed_i32_le_as_int",
     "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
     "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
