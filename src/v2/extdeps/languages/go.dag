@@ -1,1 +1,2061 @@
 module v2.extdeps.languages.go
+
+type SignedIntWidth
+  = SignedBits8
+  | SignedBits16
+  | SignedBits32
+  | SignedBits64
+  | SignedPlatformInt
+
+type UnsignedIntWidth
+  = UnsignedBits8
+  | UnsignedBits16
+  | UnsignedBits32
+  | UnsignedBits64
+  | UnsignedPlatformInt
+  | UnsignedPointerSized
+
+type GoFloatWidth
+  = FloatBits32
+  | FloatBits64
+
+type GoComplexWidth
+  = ComplexBits64
+  | ComplexBits128
+
+type GoScalarKind
+  = Int
+  | Float
+  | Complex
+  | ScalarBool
+  | ScalarString
+
+type GoScalar
+  = SignedIntScalar { width: SignedIntWidth }
+  | UnsignedIntScalar { width: UnsignedIntWidth }
+  | FloatScalar { width: GoFloatWidth }
+  | ComplexScalar { width: GoComplexWidth }
+  | BoolScalar
+  | StringScalar
+
+type GoChannelDirection
+  = SendRecv
+  | SendOnly
+  | RecvOnly
+
+type GoExportLocus
+  = PackageBlock
+  | StructField
+  | MethodName
+
+type GoExportStatus
+  = Exported { locus: GoExportLocus }
+  | Unexported { locus: GoExportLocus }
+
+type GoChannel {
+  direction: GoChannelDirection
+  element_type_ref: Symbol
+}
+
+type GoCost {
+  instruction_cost: Int
+  allocation_cost: Int
+}
+
+type GoGrammarRelationRow {
+  production: GrammarProduction
+  tokens: List<ConcreteSyntaxToken>
+}
+
+type GoBuiltinIntegerArithmeticOverflow
+  = SignedTypedIntegerTruncatesSilentlyOnOverflow
+  | UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+
+type GoIntegerOverflowDisposition<IRCarrier> {
+  debug_default: GoBuiltinIntegerArithmeticOverflow
+  release_default: GoBuiltinIntegerArithmeticOverflow
+}
+
+type GoIntKind
+  = Signed
+  | Unsigned
+
+type GoIntegerPrimitiveFacts
+  = GoSignedIntegerPrimitiveFacts {
+      surface_spelling: Symbol
+      width: SignedIntWidth
+      encoding: Symbol
+      std_projection: Symbol
+    }
+  | GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling: Symbol
+      width: UnsignedIntWidth
+      encoding: Symbol
+      std_projection: Symbol
+    }
+
+type GoFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  width: GoFloatWidth
+  ieee754_binary: Symbol
+  std_projection: Symbol
+}
+
+type GoComplexPrimitiveFacts {
+  surface_spelling: Symbol
+  width: GoComplexWidth
+  component_ieee754_binary: Symbol
+  std_projection: Symbol
+}
+
+type GoBoolPrimitiveFacts {
+  surface_spelling: Symbol
+  encoding: Symbol
+  std_projection: Symbol
+}
+
+type GoStringPrimitiveFacts {
+  surface_spelling: Symbol
+  encoding: Symbol
+  std_projection: Symbol
+}
+
+data go_source_text: String = "func add(x int, y int) int { return x + y }"
+
+fn go_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^go_token_kw_func },
+    BoundToken { token_class: ^go_token_ident, binding: ^go_binding_fn_add },
+    FixedToken { token_class: ^go_token_lparen },
+    BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_x },
+    FixedToken { token_class: ^go_token_ty_int },
+    FixedToken { token_class: ^go_token_comma },
+    BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_y },
+    FixedToken { token_class: ^go_token_ty_int },
+    FixedToken { token_class: ^go_token_rparen },
+    FixedToken { token_class: ^go_token_ty_int },
+    FixedToken { token_class: ^go_token_lbrace },
+    FixedToken { token_class: ^go_token_kw_return },
+    BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_x },
+    FixedToken { token_class: ^go_token_plus },
+    BoundToken { token_class: ^go_token_ident, binding: ^go_binding_param_y },
+    FixedToken { token_class: ^go_token_rbrace }
+  ]
+}
+data go_facts_int8: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_int8,
+  width: SignedBits8,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^go_std_projection_int8,
+}
+
+data go_facts_int16: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_int16,
+  width: SignedBits16,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^go_std_projection_int16,
+}
+
+data go_facts_int32: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_int32,
+  width: SignedBits32,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^go_std_projection_int32,
+}
+
+data go_facts_int64: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_int64,
+  width: SignedBits64,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^std_projection_additive_numeric,
+}
+
+data go_facts_int: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_int,
+  width: SignedPlatformInt,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^go_std_projection_int,
+}
+
+data go_facts_int_additive_numeric: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_int,
+  width: SignedPlatformInt,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^std_projection_additive_numeric,
+}
+
+data go_facts_uint8: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_uint8,
+  width: UnsignedBits8,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^go_std_projection_uint8,
+}
+
+data go_facts_uint16: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_uint16,
+  width: UnsignedBits16,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^go_std_projection_uint16,
+}
+
+data go_facts_uint32: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_uint32,
+  width: UnsignedBits32,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^go_std_projection_uint32,
+}
+
+data go_facts_uint64: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_uint64,
+  width: UnsignedBits64,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^go_std_projection_uint64,
+}
+
+data go_facts_uint: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_uint,
+  width: UnsignedPlatformInt,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^go_std_projection_uint,
+}
+
+data go_facts_uintptr: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_uintptr,
+  width: UnsignedPointerSized,
+  encoding: ^go_repr_twos_complement_integer,
+  std_projection: ^go_std_projection_uintptr,
+}
+
+data go_facts_float32: GoFloatPrimitiveFacts = GoFloatPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_float32,
+  width: FloatBits32,
+  ieee754_binary: ^go_ieee754_binary32,
+  std_projection: ^go_std_projection_float32,
+}
+
+data go_facts_float64: GoFloatPrimitiveFacts = GoFloatPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_float64,
+  width: FloatBits64,
+  ieee754_binary: ^go_ieee754_binary64,
+  std_projection: ^go_std_projection_float64,
+}
+
+data go_facts_complex64: GoComplexPrimitiveFacts = GoComplexPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_complex64,
+  width: ComplexBits64,
+  component_ieee754_binary: ^go_repr_complex_pair_binary32,
+  std_projection: ^go_std_projection_complex64,
+}
+
+data go_facts_complex128: GoComplexPrimitiveFacts = GoComplexPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_complex128,
+  width: ComplexBits128,
+  component_ieee754_binary: ^go_repr_complex_pair_binary64,
+  std_projection: ^go_std_projection_complex128,
+}
+
+data go_facts_bool: GoBoolPrimitiveFacts = GoBoolPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_bool,
+  encoding: ^go_repr_boolean,
+  std_projection: ^go_std_projection_bool,
+}
+
+data go_facts_string: GoStringPrimitiveFacts = GoStringPrimitiveFacts {
+  surface_spelling: ^go_surface_spelling_string,
+  encoding: ^go_repr_string_immutable_byte_sequence,
+  std_projection: ^go_std_projection_string,
+}
+
+data go_integer_facts_catalog: List<GoIntegerPrimitiveFacts> = [
+  go_facts_int8,
+  go_facts_int16,
+  go_facts_int32,
+  go_facts_int64,
+  go_facts_int,
+  go_facts_uint8,
+  go_facts_uint16,
+  go_facts_uint32,
+  go_facts_uint64,
+  go_facts_uint,
+  go_facts_uintptr,
+]
+
+data go_float_facts_catalog: List<GoFloatPrimitiveFacts> = [
+  go_facts_float32,
+  go_facts_float64,
+]
+
+data go_complex_facts_catalog: List<GoComplexPrimitiveFacts> = [
+  go_facts_complex64,
+  go_facts_complex128,
+]
+
+data go_bool_facts_catalog: List<GoBoolPrimitiveFacts> = [
+  go_facts_bool,
+]
+
+data go_string_facts_catalog: List<GoStringPrimitiveFacts> = [
+  go_facts_string,
+]
+
+data go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+fn go_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn go_int_kind_node(kind: GoIntKind) -> Node {
+  match kind {
+    Signed => go_inhabitant_atom(id: ^go_tag_signed)
+    Unsigned => go_inhabitant_atom(id: ^go_tag_unsigned)
+  }
+}
+
+fn go_signed_int_width_node(width: SignedIntWidth) -> Node {
+  match width {
+    SignedBits8 => go_inhabitant_atom(id: ^go_tag_signed_bits8)
+    SignedBits16 => go_inhabitant_atom(id: ^go_tag_signed_bits16)
+    SignedBits32 => go_inhabitant_atom(id: ^go_tag_signed_bits32)
+    SignedBits64 => go_inhabitant_atom(id: ^go_tag_signed_bits64)
+    SignedPlatformInt => go_inhabitant_atom(id: ^go_tag_signed_platform_int)
+  }
+}
+
+fn go_unsigned_int_width_node(width: UnsignedIntWidth) -> Node {
+  match width {
+    UnsignedBits8 => go_inhabitant_atom(id: ^go_tag_unsigned_bits8)
+    UnsignedBits16 => go_inhabitant_atom(id: ^go_tag_unsigned_bits16)
+    UnsignedBits32 => go_inhabitant_atom(id: ^go_tag_unsigned_bits32)
+    UnsignedBits64 => go_inhabitant_atom(id: ^go_tag_unsigned_bits64)
+    UnsignedPlatformInt => go_inhabitant_atom(id: ^go_tag_unsigned_platform_int)
+    UnsignedPointerSized => go_inhabitant_atom(id: ^go_tag_unsigned_pointer_sized)
+  }
+}
+
+fn go_float_width_node(width: GoFloatWidth) -> Node {
+  match width {
+    FloatBits32 => go_inhabitant_atom(id: ^go_tag_float_bits32)
+    FloatBits64 => go_inhabitant_atom(id: ^go_tag_float_bits64)
+  }
+}
+
+fn go_complex_width_node(width: GoComplexWidth) -> Node {
+  match width {
+    ComplexBits64 => go_inhabitant_atom(id: ^go_tag_complex_bits64)
+    ComplexBits128 => go_inhabitant_atom(id: ^go_tag_complex_bits128)
+  }
+}
+
+fn go_overflow_node(overflow: GoBuiltinIntegerArithmeticOverflow) -> Node {
+  match overflow {
+    SignedTypedIntegerTruncatesSilentlyOnOverflow =>
+      go_inhabitant_atom(id: ^go_tag_overflow_signed_truncates)
+    UnsignedTypedIntegerTruncatesSilentlyOnOverflow =>
+      go_inhabitant_atom(id: ^go_tag_overflow_unsigned_truncates)
+  }
+}
+
+fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection
+    } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: ^facts_field_surface_spelling,
+          target: go_inhabitant_atom(id: surface_spelling)
+        ),
+        go_named_edge(
+          name: ^facts_field_width,
+          target: go_signed_int_width_node(width: width)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_signedness,
+          target: go_int_kind_node(kind: Signed)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_overflow,
+          target: go_overflow_node(
+            overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+          )
+        ),
+        go_named_edge(
+          name: ^go_facts_field_encoding,
+          target: go_inhabitant_atom(id: encoding)
+        ),
+        go_named_edge(
+          name: ^facts_field_std_projection,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+}
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection
+    } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: ^go_facts_field_surface_spelling,
+          target: go_inhabitant_atom(id: surface_spelling)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_width,
+          target: go_unsigned_int_width_node(width: width)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_signedness,
+          target: go_int_kind_node(kind: Unsigned)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_overflow,
+          target: go_overflow_node(
+            overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+          )
+        ),
+        go_named_edge(
+          name: ^go_facts_field_encoding,
+          target: go_inhabitant_atom(id: encoding)
+        ),
+        go_named_edge(
+          name: ^facts_field_std_projection,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+fn go_float_facts_node(facts: GoFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: ^go_facts_field_surface_spelling,
+        target: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_width,
+        target: go_float_width_node(width: facts.width)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_ieee754_binary,
+        target: go_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_complex_facts_node(facts: GoComplexPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: ^go_facts_field_surface_spelling,
+        target: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_width,
+        target: go_complex_width_node(width: facts.width)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_component_ieee754_binary,
+        target: go_inhabitant_atom(id: facts.component_ieee754_binary)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_bool_facts_node(facts: GoBoolPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: ^go_facts_field_surface_spelling,
+        target: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_encoding,
+        target: go_inhabitant_atom(id: facts.encoding)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: ^go_facts_field_surface_spelling,
+        target: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_encoding,
+        target: go_inhabitant_atom(id: facts.encoding)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_empty_primitive_spec_facts() -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      Violates {
+        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+      }
+    }
+  }
+}
+
+fn go_primitive_fact_map_2(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(go_empty_primitive_spec_facts(), axis0, fact0),
+    axis1,
+    fact1
+  )
+}
+
+fn go_primitive_fact_map_3(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      map_insert(go_empty_primitive_spec_facts(), axis0, fact0),
+      axis1,
+      fact1
+    ),
+    axis2,
+    fact2
+  )
+}
+
+fn go_primitive_fact_map_5(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node,
+  axis3: Symbol,
+  fact3: Node,
+  axis4: Symbol,
+  fact4: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(go_empty_primitive_spec_facts(), axis0, fact0),
+          axis1,
+          fact1
+        ),
+        axis2,
+        fact2
+      ),
+      axis3,
+      fact3
+    ),
+    axis4,
+    fact4
+  )
+}
+
+fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> PrimitiveFactBundle {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection: _
+    } => PrimitiveFactBundle {
+      substrate_carrier: go_integer_facts_node(facts: facts),
+      spec_facts: go_primitive_fact_map_5(
+        axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        fact0: go_inhabitant_atom(id: surface_spelling),
+        axis1: discriminant(v: ModelCoreFactAxisWidth {}),
+        fact1: go_signed_int_width_node(width: width),
+        axis2: discriminant(v: ModelCoreFactAxisSignedness {}),
+        fact2: go_int_kind_node(kind: Signed),
+        axis3: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+        fact3: go_overflow_node(
+          overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+        ),
+        axis4: discriminant(v: ModelCoreFactAxisEncoding {}),
+        fact4: go_inhabitant_atom(id: encoding)
+      )
+    }
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection: _
+    } => PrimitiveFactBundle {
+      substrate_carrier: go_integer_facts_node(facts: facts),
+      spec_facts: go_primitive_fact_map_5(
+        axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        fact0: go_inhabitant_atom(id: surface_spelling),
+        axis1: discriminant(v: ModelCoreFactAxisWidth {}),
+        fact1: go_unsigned_int_width_node(width: width),
+        axis2: discriminant(v: ModelCoreFactAxisSignedness {}),
+        fact2: go_int_kind_node(kind: Unsigned),
+        axis3: discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+        fact3: go_overflow_node(
+          overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+        ),
+        axis4: discriminant(v: ModelCoreFactAxisEncoding {}),
+        fact4: go_inhabitant_atom(id: encoding)
+      )
+    }
+  }
+}
+
+fn go_primitive_bundle_from_float_facts(facts: GoFloatPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: go_float_facts_node(facts: facts),
+    spec_facts: go_primitive_fact_map_3(
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      fact0: go_inhabitant_atom(id: facts.surface_spelling),
+      axis1: discriminant(v: ModelCoreFactAxisWidth {}),
+      fact1: go_float_width_node(width: facts.width),
+      axis2: discriminant(v: ModelCoreFactAxisEncoding {}),
+      fact2: go_inhabitant_atom(id: facts.ieee754_binary)
+    )
+  }
+}
+
+fn go_primitive_bundle_from_complex_facts(facts: GoComplexPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: go_complex_facts_node(facts: facts),
+    spec_facts: go_primitive_fact_map_3(
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      fact0: go_inhabitant_atom(id: facts.surface_spelling),
+      axis1: discriminant(v: ModelCoreFactAxisWidth {}),
+      fact1: go_complex_width_node(width: facts.width),
+      axis2: discriminant(v: ModelCoreFactAxisEncoding {}),
+      fact2: go_inhabitant_atom(id: facts.component_ieee754_binary)
+    )
+  }
+}
+
+fn go_primitive_bundle_from_bool_facts(facts: GoBoolPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: go_bool_facts_node(facts: facts),
+    spec_facts: go_primitive_fact_map_2(
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      fact0: go_inhabitant_atom(id: facts.surface_spelling),
+      axis1: discriminant(v: ModelCoreFactAxisEncoding {}),
+      fact1: go_inhabitant_atom(id: facts.encoding)
+    )
+  }
+}
+
+fn go_primitive_bundle_from_string_facts(facts: GoStringPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: go_string_facts_node(facts: facts),
+    spec_facts: go_primitive_fact_map_2(
+      axis0: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      fact0: go_inhabitant_atom(id: facts.surface_spelling),
+      axis1: discriminant(v: ModelCoreFactAxisEncoding {}),
+      fact1: go_inhabitant_atom(id: facts.encoding)
+    )
+  }
+}
+
+fn go_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: go_primitive_bundle_from_integer_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: go_primitive_bundle_from_float_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_primitive_bundles_from_complex_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: go_complex_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: go_primitive_bundle_from_complex_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: go_bool_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: go_primitive_bundle_from_bool_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_primitive_bundles_from_string_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: go_string_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: go_primitive_bundle_from_string_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: go_primitive_bundles_from_integer_catalog(),
+          right: go_primitive_bundles_from_float_catalog()
+        ),
+        right: go_primitive_bundles_from_complex_catalog()
+      ),
+      right: go_primitive_bundles_from_bool_catalog()
+    ),
+    right: go_primitive_bundles_from_string_catalog()
+  )
+}
+
+fn go_per_language_fact_bundle_key(
+  subject: Node,
+  axis: ModelCorePrimitiveFactAxis
+) -> PerLanguageFactBundleKey {
+  PerLanguageFactBundleKey {
+    subject_carrier: subject,
+    target: go_target_model(),
+    fact_axis: axis
+  }
+}
+
+fn go_per_language_fact_bundle_entry(
+  subject: Node,
+  axis: ModelCorePrimitiveFactAxis,
+  fact_value: Node
+) -> PerLanguageFactBundleEntry {
+  PerLanguageFactBundleEntry {
+    key: go_per_language_fact_bundle_key(subject: subject, axis: axis),
+    fact_value: fact_value
+  }
+}
+
+fn go_integer_per_language_fact_bundle_entries(
+  facts: GoIntegerPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection: _
+    } => [
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSurfaceSpelling {},
+        fact_value: go_inhabitant_atom(id: surface_spelling)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisWidth {},
+        fact_value: go_signed_int_width_node(width: width)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSignedness {},
+        fact_value: go_int_kind_node(kind: Signed)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisOverflowDisposition {},
+        fact_value: go_overflow_node(
+          overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+        )
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisEncoding {},
+        fact_value: go_inhabitant_atom(id: encoding)
+      )
+    ]
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection: _
+    } => [
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSurfaceSpelling {},
+        fact_value: go_inhabitant_atom(id: surface_spelling)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisWidth {},
+        fact_value: go_unsigned_int_width_node(width: width)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisSignedness {},
+        fact_value: go_int_kind_node(kind: Unsigned)
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisOverflowDisposition {},
+        fact_value: go_overflow_node(
+          overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+        )
+      ),
+      go_per_language_fact_bundle_entry(
+        subject: go_integer_facts_node(facts: facts),
+        axis: ModelCoreFactAxisEncoding {},
+        fact_value: go_inhabitant_atom(id: encoding)
+      )
+    ]
+  }
+}
+
+fn go_float_per_language_fact_bundle_entries(
+  facts: GoFloatPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_float_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_float_facts_node(facts: facts),
+      axis: ModelCoreFactAxisWidth {},
+      fact_value: go_float_width_node(width: facts.width)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_float_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.ieee754_binary)
+    )
+  ]
+}
+
+fn go_complex_per_language_fact_bundle_entries(
+  facts: GoComplexPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_complex_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_complex_facts_node(facts: facts),
+      axis: ModelCoreFactAxisWidth {},
+      fact_value: go_complex_width_node(width: facts.width)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_complex_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.component_ieee754_binary)
+    )
+  ]
+}
+
+fn go_bool_per_language_fact_bundle_entries(
+  facts: GoBoolPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_bool_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_bool_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.encoding)
+    )
+  ]
+}
+
+fn go_string_per_language_fact_bundle_entries(
+  facts: GoStringPrimitiveFacts
+) -> List<PerLanguageFactBundleEntry> {
+  [
+    go_per_language_fact_bundle_entry(
+      subject: go_string_facts_node(facts: facts),
+      axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_value: go_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    go_per_language_fact_bundle_entry(
+      subject: go_string_facts_node(facts: facts),
+      axis: ModelCoreFactAxisEncoding {},
+      fact_value: go_inhabitant_atom(id: facts.encoding)
+    )
+  ]
+}
+
+fn go_per_language_fact_bundle_entries_from_integer_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_integer_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_float_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_float_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_complex_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_complex_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_complex_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_bool_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_bool_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_bool_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_per_language_fact_bundle_entries_from_string_catalog() -> List<PerLanguageFactBundleEntry> {
+  fold_list(
+    xs: go_string_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(
+        left: acc,
+        right: go_string_per_language_fact_bundle_entries(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_g1_3_per_language_fact_bundle_entry_rows() -> List<PerLanguageFactBundleEntry> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: go_per_language_fact_bundle_entries_from_integer_catalog(),
+          right: go_per_language_fact_bundle_entries_from_float_catalog()
+        ),
+        right: go_per_language_fact_bundle_entries_from_complex_catalog()
+      ),
+      right: go_per_language_fact_bundle_entries_from_bool_catalog()
+    ),
+    right: go_per_language_fact_bundle_entries_from_string_catalog()
+  )
+}
+
+fn go_g1_3_per_language_fact_bundle_registry_step(
+  acc: Outcome<PerLanguageFactBundleRegistry>,
+  entry: PerLanguageFactBundleEntry
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  bind_outcome(o: acc, f: fn(registry) {
+    insert_per_language_fact_bundle_entry(
+      registry: registry,
+      key: entry.key,
+      fact_value: entry.fact_value
+    )
+  })
+}
+
+fn go_g1_3_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
+  fold_list(
+    xs: go_g1_3_per_language_fact_bundle_entry_rows(),
+    empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
+    cons: go_g1_3_per_language_fact_bundle_registry_step
+  )
+}
+
+fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling: _,
+      width,
+      encoding,
+      std_projection
+    } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: ^go_witness_integer_commutative_ring,
+          target: go_inhabitant_atom(id: ^go_witness_integer_commutative_ring)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_width,
+          target: go_signed_int_width_node(width: width)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_signedness,
+          target: go_int_kind_node(kind: Signed)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_overflow,
+          target: go_overflow_node(
+            overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+          )
+        ),
+        go_named_edge(
+          name: ^go_facts_field_encoding,
+          target: go_inhabitant_atom(id: encoding)
+        ),
+        go_named_edge(
+          name: ^facts_field_std_projection,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+}
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling: _,
+      width,
+      encoding,
+      std_projection
+    } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: ^go_witness_integer_commutative_ring,
+          target: go_inhabitant_atom(id: ^go_witness_integer_commutative_ring)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_width,
+          target: go_unsigned_int_width_node(width: width)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_signedness,
+          target: go_int_kind_node(kind: Unsigned)
+        ),
+        go_named_edge(
+          name: ^go_facts_field_overflow,
+          target: go_overflow_node(
+            overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+          )
+        ),
+        go_named_edge(
+          name: ^go_facts_field_encoding,
+          target: go_inhabitant_atom(id: encoding)
+        ),
+        go_named_edge(
+          name: ^facts_field_std_projection,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      ],
+      occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: ^go_witness_float_approximate_field,
+        target: go_inhabitant_atom(id: ^go_witness_float_approximate_field)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_ieee754_binary,
+        target: go_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: ^go_witness_bool_boolean_algebra,
+        target: go_inhabitant_atom(id: ^go_witness_bool_boolean_algebra)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: go_facts_bool.std_projection)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: ^go_witness_string_free_monoid,
+        target: go_inhabitant_atom(id: ^go_witness_string_free_monoid)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_encoding,
+        target: go_inhabitant_atom(id: facts.encoding)
+      ),
+      go_named_edge(
+        name: ^go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_string_element_node() -> Node {
+  go_integer_facts_node(facts: go_facts_uint8)
+}
+
+fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: commutative_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+data go_atom_realization_symbol_node: Node = go_inhabitant_atom(id: ^go_atom_realization_symbol)
+data go_integer_algebra_inhabitance_go_facts_int: AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int)
+data go_integer_algebra_inhabitance_go_facts_int64: AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int64)
+
+fn go_leaf_model_fact_id_node_atom_realization_symbol() -> Node {
+  go_atom_realization_symbol_node
+}
+
+fn go_float_algebra_inhabitance(facts: GoFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_float_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: approximate_field_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_float_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = go_bool_facts_node(facts: go_facts_bool)
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_bool_algebra_witness_node()
+  }
+}
+
+fn go_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_float_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn go_string_algebra_inhabitance(facts: GoStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_string_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_node(inhabitant: go_string_element_node()),
+    inhabitant: inhabitant,
+    witness: go_string_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_string_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_string_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  []
+}
+
+fn go_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    go_bool_algebra_inhabitance()
+  ]
+}
+
+fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: go_integer_algebra_inhabitance_decls(),
+          right: go_float_algebra_inhabitance_decls()
+        ),
+        right: go_bool_algebra_inhabitance_decls()
+      ),
+      right: go_string_algebra_inhabitance_decls()
+    ),
+    right: go_complex_algebra_inhabitance_decls()
+  )
+}
+
+fn go_model_core() -> ModelCore {
+  ModelCore {
+    primitives: go_primitive_fact_bundles(),
+    inhabitance: go_model_core_inhabitance_decls(),
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+fn go_int_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(name: ^go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_int_additive_numeric_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(
+        name: ^go_inhabitant_field_facts,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            go_named_edge(
+              name: ^facts_field_surface_spelling,
+              target: go_inhabitant_atom(id: go_facts_int_additive_numeric.surface_spelling)
+            ),
+            go_named_edge(
+              name: ^facts_field_width,
+              target: go_signed_int_width_node(width: go_facts_int_additive_numeric.width)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_signedness,
+              target: go_int_kind_node(kind: Signed)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_overflow,
+              target: go_overflow_node(
+                overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+              )
+            ),
+            go_named_edge(
+              name: ^go_facts_field_encoding,
+              target: go_inhabitant_atom(id: go_facts_int_additive_numeric.encoding)
+            ),
+            go_named_edge(
+              name: ^facts_field_std_projection,
+              target: go_inhabitant_atom(id: go_facts_int_additive_numeric.std_projection)
+            )
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_int64_additive_numeric_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(
+        name: ^go_inhabitant_field_facts,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            go_named_edge(
+              name: ^facts_field_surface_spelling,
+              target: go_inhabitant_atom(id: go_facts_int64.surface_spelling)
+            ),
+            go_named_edge(
+              name: ^facts_field_width,
+              target: go_signed_int_width_node(width: go_facts_int64.width)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_signedness,
+              target: go_int_kind_node(kind: Signed)
+            ),
+            go_named_edge(
+              name: ^go_facts_field_overflow,
+              target: go_overflow_node(
+                overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+              )
+            ),
+            go_named_edge(
+              name: ^go_facts_field_encoding,
+              target: go_inhabitant_atom(id: go_facts_int64.encoding)
+            ),
+            go_named_edge(
+              name: ^facts_field_std_projection,
+              target: go_inhabitant_atom(id: go_facts_int64.std_projection)
+            )
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_int64_falsifier_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node()),
+      Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_int_zip_fold_closure_edges() -> List<Edge> {
+  [
+    go_named_edge(
+      name: ^go_inhabitant_field_add_fn,
+      target: go_emitted_add_fn_node()
+    ),
+    go_named_edge(
+      name: ^go_coercion_field_int_inhabitant_atom,
+      target: go_inhabitant_atom(id: ^go_inhabitant_int)
+    ),
+    go_named_edge(
+      name: ^go_coercion_field_int_facts,
+      target: go_integer_facts_node(facts: go_facts_int)
+    ),
+    go_named_edge(
+      name: ^go_coercion_field_int_spelling,
+      target: go_inhabitant_atom(id: ^go_surface_spelling_int)
+    ),
+    go_named_edge(
+      name: ^go_coercion_field_int_width,
+      target: go_signed_int_width_node(width: SignedPlatformInt)
+    ),
+    go_named_edge(
+      name: ^go_coercion_field_int_signed,
+      target: go_inhabitant_atom(id: ^go_tag_signed)
+    ),
+    go_named_edge(
+      name: ^go_coercion_field_int_overflow,
+      target: go_overflow_node(overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow)
+    ),
+    go_named_edge(
+      name: ^go_coercion_field_int_encoding,
+      target: go_inhabitant_atom(id: ^go_repr_twos_complement_integer)
+    ),
+    go_named_edge(
+      name: ^go_coercion_field_int_std_projection,
+      target: go_inhabitant_atom(id: ^go_std_projection_int)
+    )
+  ]
+}
+
+fn go_coercion_candidate_edges() -> List<Edge> {
+  list_append(
+    left: go_declared_inhabitants_root().children,
+    right: go_int_zip_fold_closure_edges()
+  )
+}
+
+fn go_add_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: go_coercion_candidate_edges(),
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_selection_policy_node() -> Node {
+  go_int_inhabitant_node()
+}
+
+fn go_int64_selection_policy_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
+      go_named_edge(
+        name: ^go_inhabitant_field_facts,
+        target: go_integer_facts_node(facts: go_facts_int64)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn go_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      go_named_edge(name: ^go_surface_fn_item, target: go_inhabitant_atom(id: ^go_surface_fn_item)),
+      Edge { label: Positional, target: go_int_inhabitant_node() },
+      Edge { label: Positional, target: go_int_inhabitant_node() },
+      Edge { label: Positional, target: go_int_inhabitant_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+
+  concrete_syntax_token_to_node(token: token)
+}
+
+fn go_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: [
+      go_named_edge(name: ^serialize_source_field_source_text, target: go_inhabitant_atom(id: ^go_source_literal)),
+      go_named_edge(name: ^serialize_source_field_source_grammar, target: go_inhabitant_atom(id: ^go_production_fn_add))
+    ],
+    right: [
+      go_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: go_concrete_tokens(),
+          token_to_node: go_concrete_token_node
+        )
+      )
+    ]
+  )
+}
+
+fn go_serialize_source_node() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: go_serialize_source_children(),
+ occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+fn go_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token)))
+    }
+  )
+}
+
+fn go_formal_production_fn_add() -> FormalProduction {
+  FormalProduction {
+    lhs: FormalNonterminal { identity: ^go_production_fn_add },
+    rhs: go_formal_rhs_from_tokens(tokens: go_concrete_tokens())
+  }
+}
+
+fn go_formal_productions() -> List<FormalProduction> {
+  [go_formal_production_fn_add()]
+}
+
+type GoGramBuild1State
+  = GoGramBuild1StateInit
+  | GoGramBuild1StateReady { expr: GrammarExpr }
+
+fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
+  match fold_list(
+    xs: go_concrete_tokens(),
+    empty: GoGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        GoGramBuild1StateInit =>
+          GoGramBuild1StateReady {
+            expr: go_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+          }
+        GoGramBuild1StateReady { expr: acc } =>
+          GoGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: go_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            }
+          }
+      }
+    }
+  ) {
+    GoGramBuild1StateInit =>
+      go_grammar_terminal(token_class: ^go_token_kw_func)
+    GoGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn go_grammar_atom(id: Symbol) -> Node {
+  go_inhabitant_atom(id: id)
+}
+
+fn go_grammar_production_fn_add() -> GrammarProduction {
+  GrammarProduction {
+    name: ^go_production_fn_add,
+    expression: go_grammar_sequence_from_token_classes(),
+    emitted: go_emitted_add_fn_node()
+  }
+}
+
+fn go_grammar_relation_row() -> GoGrammarRelationRow {
+  GoGrammarRelationRow {
+    production: go_grammar_production_fn_add(),
+    tokens: go_concrete_tokens()
+  }
+}
+
+fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      go_named_edge(name: ^grammar_relation_field_emitted, target: row.production.emitted),
+      go_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: go_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^go_relation_rule_fn_add, target: go_grammar_relation_row_node(row: go_grammar_relation_row()))
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(empty_map(), ^go_binding_fn_add, "add"),
+            ^go_binding_param_x,
+            "x"
+          ),
+          ^go_binding_param_y,
+          "y"
+        ),
+        ^go_surface_spelling_string,
+        "string"
+      ),
+      ^go_surface_spelling_bool,
+      "bool"
+    ),
+    ^go_surface_spelling_rune,
+    "rune"
+  )
+}
+
+fn go_emit_host_runtime_primitive_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^go_emit_host_runtime_primitive_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn go_host_transport_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^go_host_transport_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "main.go",
+        content: EmittedSource
+      }
+    ],
+    build: Empty,
+    run: ProcessInvocation {
+      program: HostToolProgram { executable: "go" },
+      args: [
+        LiteralArg { text: "run" },
+        WorkspacePath { path: "main.go" }
+      ]
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn go_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: go_host_transport_descriptor(),
+      runtime_primitive_type: go_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn go_target_model_bundle_core() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^target_model_edge_selection_policy, target: go_selection_policy_node()),
+      go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_add_declared_inhabitants_root()),
+      go_named_edge(name: ^target_model_edge_translation_rules, target: go_translation_rules_node()),
+      go_named_edge(name: ^target_model_edge_serialize_source, target: go_serialize_source_node())
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_target_model_staging() -> TargetModel {
+  TargetModel {
+    bundle: go_target_model_bundle_core(),
+    lex: go_lex(),
+    binding_spellings: go_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: go_source_text,
+    runtime_row: go_runtime_row()
+  }
+}
+
+fn go_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
+  target_atom_alias_type_expression(
+    spelling: spelling,
+    atom_form: TargetAtomTypeShape {
+      surface: ^go_surface_type_atom,
+      ident_token: ^go_token_ident
+    }
+  )
+}
+
+data go_target_atom_realization_symbol: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: go_target_model_staging(),
+  type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_string),
+  value_form: target_value_template_for_kind(kind: ValueSymbolToOwnedString),
+  constructor_form: optional_absent(),
+  display_name: ^symbol_kernel_type_atom
+}
+
+data go_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: bool_node(),
+  target_model: go_target_model_staging(),
+  type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_bool),
+  value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
+  constructor_form: optional_absent(),
+  display_name: ^bool_node_symbol
+}
+
+data go_target_atom_realization_char: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: char_kernel_type_node(),
+  target_model: go_target_model_staging(),
+  type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_rune),
+  value_form: target_value_template_for_kind(kind: ValueCharUnicodeScalar),
+  constructor_form: optional_absent(),
+  display_name: ^char_kernel_type_atom
+}
+
+data go_target_atom_realization_catalog: List<TargetAtomRealization> = [
+  go_target_atom_realization_symbol,
+  go_target_atom_realization_bool,
+  go_target_atom_realization_char
+]
+
+fn go_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^target_model_edge_selection_policy, target: go_selection_policy_node()),
+      go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_add_declared_inhabitants_root()),
+      go_named_edge(name: ^target_model_edge_translation_rules, target: go_translation_rules_node()),
+      go_named_edge(name: ^target_model_edge_serialize_source, target: go_serialize_source_node()),
+      go_named_edge(
+        name: ^target_model_edge_atom_realizations,
+        target: target_atom_realization_catalog_node(
+          rows: go_target_atom_realization_catalog,
+          host_bundle: go_target_model_bundle_core()
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn go_target_model() -> TargetModel {
+  TargetModel {
+    bundle: go_target_model_node(),
+    lex: go_lex(),
+    binding_spellings: go_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: go_source_text,
+    runtime_row: go_runtime_row()
+  }
+}
+
+fn go_target_model_node_with_selection_policy(selection: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: ^target_model_edge_selection_policy, target: selection),
+      go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_add_declared_inhabitants_root()),
+      go_named_edge(name: ^target_model_edge_translation_rules, target: go_translation_rules_node()),
+      go_named_edge(name: ^target_model_edge_serialize_source, target: go_serialize_source_node()),
+      go_named_edge(
+        name: ^target_model_edge_atom_realizations,
+        target: target_atom_realization_catalog_node(
+          rows: go_target_atom_realization_catalog,
+          host_bundle: go_target_model_bundle_core()
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn go_target_model_int64_selection_policy() -> TargetModel {
+  TargetModel {
+    bundle: go_target_model_node_with_selection_policy(
+      selection: go_int64_selection_policy_node()
+    ),
+    lex: go_lex(),
+    binding_spellings: go_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: go_source_text,
+    runtime_row: go_runtime_row()
+  }
+}
+
+fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+}
+
+fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule { token_class: token_class, pattern: KeywordPattern { text: text } }
+}
+
+fn go_whitespace_trivia_rule() -> LexRule {
+
+  TriviaRule {
+    pattern: OneOrMorePattern { element: LiteralPattern { text: " " } }
+  }
+}
+
+fn go_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+fn go_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: ^go_token_ident,
+    pattern: go_ident_lex_pattern()
+  }
+}
+
+fn go_lex_rules() -> LexRuleSet {
+
+  LexRuleSet {
+    rules: [
+      go_whitespace_trivia_rule(),
+      go_ident_lex_rule(),
+      go_keyword_lex_rule(token_class: ^go_token_kw_func, text: "func "),
+      go_lex_rule(token_class: ^go_token_lparen, text: "("),
+
+      go_lex_rule(token_class: ^go_token_ty_int, text: " int"),
+      go_lex_rule(token_class: ^go_token_comma, text: ", "),
+      go_lex_rule(token_class: ^go_token_rparen, text: ")"),
+      go_lex_rule(token_class: ^go_token_lbrace, text: " { "),
+      go_keyword_lex_rule(token_class: ^go_token_kw_return, text: "return "),
+      go_lex_rule(token_class: ^go_token_plus, text: " + "),
+      go_lex_rule(token_class: ^go_token_rbrace, text: " }")
+    ]
+  }
+}
+
+fn go_lex() -> LexRules {
+  ModeledLexRules { root: go_lex_rules() }
+}
+
+fn go_grammar_root() -> GrammarRoot {
+  let start = go_grammar_production_fn_add()
+  GrammarRoot {
+    start: ^go_production_fn_add,
+    productions: [start],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn go_grammar() -> ParseGrammar {
+  ModeledGrammar { root: go_grammar_root() }
+}
+
+fn go_lex_token_symbol(sym: Symbol) -> Bool {
+  lex_rule_set_token_class_member(
+    rules: go_lex_rules(),
+    token_class: sym
+  )
+}
+
+fn go_integer_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoIntegerPrimitiveFacts
+) -> Bool {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width: _,
+      encoding: _,
+      std_projection: _
+    } => acc || sym == surface_spelling
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width: _,
+      encoding: _,
+      std_projection: _
+    } => acc || sym == surface_spelling
+  }
+}
+
+fn go_float_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoFloatPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_complex_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoComplexPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_bool_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoBoolPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_string_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoStringPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_integer_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_float_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_complex_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_complex_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_bool_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_bool_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_string_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_string_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_string_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_catalog_surface_symbol(sym: Symbol) -> Bool {
+  go_integer_catalog_surface_symbol(sym: sym) ||
+    go_float_catalog_surface_symbol(sym: sym) ||
+    go_complex_catalog_surface_symbol(sym: sym) ||
+    go_bool_catalog_surface_symbol(sym: sym) ||
+    go_string_catalog_surface_symbol(sym: sym)
+}
+
+fn go_language_model_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      go_catalog_surface_symbol(sym: sym) ||
+        go_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: go_grammar(), sym: sym) ||
+        sym == ^go_production_fn_add ||
+        sym == ^go_source_literal
+    }
+  }
+}
+
+fn go_language_model() -> LanguageModel {
+  LanguageModel {
+    lex: go_lex(),
+    grammar: go_grammar(),
+    language_identity: ^go_language_model_surface_id,
+    canonical_symbols: go_language_model_canonical_symbols(),
+    core: go_model_core()
+  }
+}
