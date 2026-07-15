@@ -3493,7 +3493,7 @@ pub fn parse_type_body_after_eq(
             EatResult::EatUnchanged { tokens: _, .. } => {
                 if tok_is_ident(token_stream_first(tokens.clone())) {
                     {
-                        let r = expect_ident(tokens.clone());
+                        let r = parse_dotted_ident(tokens.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(ItemResult {
                                 item: dummy.clone(),
@@ -4605,12 +4605,20 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                 }
             }
             Some(TokenShape::ShIdent) => {
-                let n = tok.clone().unwrap().text.clone();
+                let r = parse_dotted_ident(tokens.clone());
+                if has_err(r.err.clone()) {
+                    return Rc::new(TypeResult {
+                        type_expr: leaf_type_node("".to_string(), span.clone()),
+                        tokens: r.tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: r.err.clone(),
+                    });
+                }
                 finish_type_expr_from_name(
-                    token_stream_advance(tokens.clone(), 1),
+                    r.tokens.clone(),
                     ctx.clone(),
-                    n.clone(),
-                    span.clone(),
+                    r.name.clone(),
+                    r.span.clone(),
                 )
             }
             _ => Rc::new(TypeResult {
