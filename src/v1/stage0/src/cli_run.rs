@@ -9677,7 +9677,7 @@ pub fn run_discovery_corpus_with_options(
     );
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
-    let governor = match width_policy {
+    return match width_policy {
         DiscoveryWidthPolicy::Serial => {
             let summary = run_discovery_rows(
                 &rows,
@@ -9940,7 +9940,7 @@ pub fn run_discovery_corpus_with_options(
                 deferred_rows,
             ))
         }
-    };
+    }
 }
 
 fn attach_deferred_discovery_rows(
