@@ -12971,16 +12971,8 @@ pub fn build_type_env(
             source_indices.clone(),
             compiler_recursive_name_set(),
         );
-        let __bte_probe = std::env::var("GUNBC_BTE_PROBE").is_ok();
-        let __t_union = std::time::Instant::now();
         let import_union =
             union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
-        if __bte_probe {
-            let __ms = __t_union.elapsed().as_millis();
-            if __ms >= 20 {
-                eprintln!("[bte] phase=union mod={} imports={} ms={}", module_name_str, module.resolved_imports.len(), __ms);
-            }
-        }
         let import_cache = import_union.cache.clone();
         let binding_forks = import_union.conflicts.clone();
         let ancestry_cache = if ((module.resolved_imports.clone().len() as i64) == 1) {
