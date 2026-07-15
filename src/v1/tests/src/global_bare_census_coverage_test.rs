@@ -118,3 +118,59 @@ fn pick() -> ProbeCurrency {
     let d = hard_diags(DEFINER, user);
     assert!(d.is_empty(), "bare VARIANT ref should resolve via global_bare: {d:?}");
 }
+
+#[test]
+fn probe_bare_data_with_value_reference_resolves() {
+    let definer = r#"module probe.def
+
+data probe_exit_code: Int = 1
+"#;
+    let user = r#"module probe.use
+
+fn code() -> Int {
+  probe_exit_code
+}
+"#;
+    let d = hard_diags(definer, user);
+    assert!(
+        d.is_empty(),
+        "bare DATA-with-value ref should resolve via global_bare: {d:?}"
+    );
+}
+
+#[test]
+fn probe_bare_data_ambiguity_stays_red() {
+    let definer_a = r#"module probe.def_a
+
+data probe_exit_code: Int = 1
+"#;
+    let definer_b = r#"module probe.def_b
+
+data probe_exit_code: Int = 2
+"#;
+    let user = r#"module probe.use
+
+fn code() -> Int {
+  probe_exit_code
+}
+"#;
+    let sources = vec![
+        src("dag/probe_def_a.dag", definer_a),
+        src("dag/probe_def_b.dag", definer_b),
+        src("dag/probe_use.dag", user),
+    ];
+    let result = compile_sources(
+        Rc::new(sources.into()),
+        v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
+    );
+    let d: Vec<String> = result
+        .diagnostics
+        .iter()
+        .filter(|diag| is_interpreter_blocking_diagnostic(diag.diagnostic.clone()))
+        .map(|diag| v1_compiler::v1_std_core::diagnostic_to_message(diag.diagnostic.clone()))
+        .collect();
+    assert!(
+        d.iter().any(|m| m.contains("undefined variable 'probe_exit_code'")),
+        "ambiguous global_bare data must stay unresolved: {d:?}"
+    );
+}
