@@ -9789,7 +9789,6 @@ new file mode 100644
     }
 
     #[test]
-    #[ignore = "manual census: G1 carrier-closure sweep for lying SubstrateInputsOnly stamps"]
     fn lying_substrate_inputs_only_stamp_census() {
         use std::collections::HashSet;
 
