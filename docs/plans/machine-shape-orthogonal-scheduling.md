@@ -103,14 +103,14 @@ A serial fold is optimal at `lane_count = 1` and leaves `lane_count − 1` lanes
 
 ## 6. The orthogonality proof (the §7 deliverable)
 
-One derivation, two shapes, by execution: run the same computation graph (the demo's fused elementwise chain + one witnessed-associative reduction) through the one scheduling kernel against (a) a CPU `MachineShape` (Ampere fill) and (b) a GPU `MachineShape` (RTX 5090 fill):
+One derivation, **three fills on one axis**, by execution: run the same computation graph (the demo's fused elementwise chain + one witnessed-associative reduction) through the one scheduling kernel against three `MachineShape` fills that differ only in facts — scalar domain (`lane_count: 1`, Ampere core), SIMD domain (`lane_count: ~8-16`, same tower), many-lane domain behind a `LinkEdge` (RTX 5090 fill, `lane_count: 21760`):
 
-- (a) yields Feinberg's schedule: independent serial folds, graph-independence parallelism, affinity-batched consumers;
-- (b) yields the tree-reduce kernel plan with priced transfer;
-- both produce differential-equivalent results under their declared contracts;
-- **discriminating REDs**: (i) strip the associativity witness → (b) refuses the reduction (serial fallback), never fabricates a parallel plan; (ii) an all-`UnknownQuantity` machine shape → both sides still produce *legal* schedules with no affinity/placement claims (the abstract shape is sufficient for correctness, insufficient for pricing — by construction, visibly).
+- the derived schedules are, respectively: serial fold / shallow tree-reduce / deep tree-reduce with priced edge-crossing — a **monotone response to `lane_count`**, with graph-independence parallelism and affinity batching identical across all three (those derive from the computation graph and memory tower, not the lanes);
+- a fourth fill — same many-lane domain joined by `SharedLevelEdge` instead (the `apple_m5` topology) — prices crossing at zero and the placement flips accordingly, *with no code path knowing it is "integrated"*;
+- all fills produce differential-equivalent results under their declared contracts;
+- **discriminating REDs**: (i) strip the associativity witness → every fill degrades to the serial fold (never fabricates a parallel plan), and the idle-lane cost term makes the loss visible at high lane counts; (ii) an all-`UnknownQuantity` shape → still a *legal* schedule, no affinity/placement claims (the abstract shape suffices for correctness, not for pricing — by construction, visibly); (iii) the kind-fork RED is discharged by construction — there is no discriminant to match on, so the forked-scheduler state is unwritable rather than tested-for.
 
-That pair of REDs *is* the orthogonality claim made executable: the axes vary independently and every cross-term is either derived or a typed refusal.
+That set of REDs *is* the orthogonality claim made executable: the schedule is a function of machine facts — monotone where the facts are ordered — and every cross-term is either derived or a typed refusal.
 
 ## 7. Non-goals and standing walls
 
@@ -127,3 +127,6 @@ That pair of REDs *is* the orthogonality claim made executable: the axes vary in
 3. `Energy` vs `Watt` (DESIGN.md §2 divergence) — add the quantity or amend the doc?
 4. Whether Phase 4's law carrier should wait for the enforcement-intent lane (`StandingIntent` ⇄ `LensContract`) since "every combine inhabits Monoid" is precisely a standing intent — or land as a local carrier first and enroll later.
 5. Sequencing vs the namespace/SymbolIndex lane: OperandFlow derivation wants the containment SymbolIndex for cheap whole-tree walks; Phase 2 may be gated the same way the general body producer is.
+6. Fate of `Placement::LocalAccelerator`: under the no-kind rule it reads as a smuggled machine kind. Options: (a) keep as a coarse *locality tier* (defensible — it names a position, in-process vs across-a-link, not a device kind) or (b) dissolve into a domain-reference once `MachineShape.domains` exists. Leaning (b) eventually with (a) as the interim reading; either way the demo's stamp is data, so migration is cheap. Operator call — it is a std type.
+7. `LaneGrouping` staging: lockstep structure (warp/SIMD masking vs independent lanes) is what makes control *divergence* a cost. Faithful modeling wants it eventually; does Phase 1 carry the grouping axis as structure-with-`UnknownQuantity` semantics, or defer the axis entirely until a divergent-control workload exists to price (§6 — no displaced cost yet, the demo class is divergence-free by construction)?
+8. Multi-domain scope in Phase 1: the domain-graph shape above is cheap to declare, but the *scheduler* consuming multiple domains is Phase-4 work. Confirm Phase 1 lands the graph type with single-domain fills only (the tower + one domain), so no phase ships machinery without a consumer.
