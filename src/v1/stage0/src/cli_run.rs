@@ -1632,7 +1632,9 @@ pub fn documentation_only_floor_skip_label_for_ci() -> String {
     }
     match floor_git_diff_name_status_range() {
         Err(msg) => {
-            eprintln!("documentation-only floor skip: diff observation failed ({msg}) — full floor");
+            eprintln!(
+                "documentation-only floor skip: diff observation failed ({msg}) — full floor"
+            );
             RUN_FULL_FLOOR_LABEL.to_string()
         }
         Ok((changed_paths, _departed)) => {
@@ -9962,7 +9964,10 @@ new file mode 100644
             }
         }
         lying.sort();
-        eprintln!("lying SubstrateInputsOnly stamps (G1 carrier closure): {}", lying.len());
+        eprintln!(
+            "lying SubstrateInputsOnly stamps (G1 carrier closure): {}",
+            lying.len()
+        );
         for (entry, carrier) in &lying {
             eprintln!("  {entry}  ->  {carrier}");
         }

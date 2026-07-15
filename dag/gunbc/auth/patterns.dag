@@ -4,6 +4,7 @@ import std.resources { Filesystem, Network, AuthContext }
 import std.types {
   AccessToken,
   AuthScheme,
+  Bearer,
   NonEmptyStr
 }
 import extdeps.cloud.gcp.gcp {
@@ -46,7 +47,7 @@ pattern credential_chain(
   service_account: ServiceAccountEmail?,
   secret_name: NonEmptyStr,
   project_id: GcpProjectId,
-  scheme: String = "Bearer",
+  scheme: AuthScheme = Bearer,
   header_name: String?,
   source_id: NonEmptyStr,
   required_scopes: List<String>,

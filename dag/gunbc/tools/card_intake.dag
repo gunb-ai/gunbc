@@ -196,12 +196,10 @@ func intake_binder(
     )
   }
 
-  flags = for r in results {
-    match r.disposition {
-      ReadyToList => false
-      NeedsReview { reasons: _ } => true
-    }
-  }
+  flags = map(results, r => match r.disposition {
+    ReadyToList => false
+    NeedsReview { reasons: _ } => true
+  })
 
   return { total: count(results), flagged: count_true(flags: flags) }
 }

@@ -49,10 +49,19 @@ pub struct CastSyntax {
     pub cast_rules: Rc<Vec<Rc<CastRule>>>,
 }
 
+pub fn grounded_primitive_coproduct_cast_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The Int->Nat and String->FreeMonoid rows are GROUNDED identities, not hollow casts (operator Ruling 3, 2026-07-15): a Nat IS an Int (numeric tower grounded construction-side #5428, Zero->Int(0)/Succ->Int(k+1), native form == modeled form) and a String IS a FreeMonoid<Char> (std.string_type: type String = FreeMonoid<Char> — strings over an alphabet are the free monoid). So an Int literal where a Nat is expected, and a String literal where a FreeMonoid is expected, are the same value at the kernel level; the wall's kernel_value_declared_type_mismatch consults dag_can_cast and correctly stops flagging them. NON-grounded primitive->coproduct straddles stay red by construction: Bool->FreeMonoid (card_intake), String->Doc (live_deploy), String->AuthScheme (auth) are genuine site bugs with no cast row.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<CastRule>>> = {
-            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Int"}, {"from_type": "Int", "to_type": "Float"}, {"from_type": "Float", "to_type": "Int"}, {"from_type": "Float", "to_type": "Float"}, {"from_type": "Bool", "to_type": "Int"}]))
+            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Int"}, {"from_type": "Int", "to_type": "Float"}, {"from_type": "Float", "to_type": "Int"}, {"from_type": "Float", "to_type": "Float"}, {"from_type": "Bool", "to_type": "Int"}, {"from_type": "Int", "to_type": "Nat"}, {"from_type": "String", "to_type": "FreeMonoid"}]))
                 .expect("valid data definition")
         };
     }

@@ -5909,6 +5909,15 @@ pub fn type_has_sole_constructor(type_name: String, scope: Rc<InferScope>) -> bo
     }
 }
 
+pub fn zero_field_variant_tag_reference_frontier_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): a ZERO-field literal of a coproduct VARIANT (field_inits empty AND variant_owner_node != none) is sanctioned as a TAG REFERENCE, not a construction — the `discriminant(v: PrefixToken {})` idiom (16+ sites in src/v2/std/compilers/target_model.dag) names a variant to obtain its stable tag identity without materializing a value. Presence checking is skipped for exactly this shape; PARTIAL literals (any field present) stay red, and zero-field literals of NON-variant records (variant_owner_node == none) stay red — so the audit F1 probes (CacheProvider/CostAccount partial literals) are unaffected. This is a decidable structural exemption (not an absorbing fallback: it refuses precisely, never widens on failure). DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the exemption is deleted and the sites migrate to the carrier.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn infer_record_lit(
     type_name: Option<String>,
     field_inits: Rc<Vec<Rc<Node>>>,
@@ -6006,8 +6015,11 @@ pub fn infer_record_lit(
                 },
             }
         };
-        let missing_field_diags = if ((tn_str.clone() == "".to_string())
+        let is_zero_field_variant_tag_reference = (((field_inits.clone().len() as i64) == 0)
+            && (variant_owner_node(scope.clone(), tn_str.clone()) != None));
+        let missing_field_diags = if (((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
+            || is_zero_field_variant_tag_reference.clone())
         {
             Rc::new(vec![])
         } else {
