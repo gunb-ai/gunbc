@@ -1,172 +1,5 @@
 module v1.compiler.infer
 
-<<<<<<< HEAD
-import std.types { SourceSpan, container_param_name }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type }
-import v1.std.core {
-  Node, InternTable,
-  intern, intern_str, empty_intern_table,
-  authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
-  module_node, module_imports, module_items, import_is_all, import_specific_names_at,
-  make_param_node, param_node_name_at, param_node_type_expr,
-  field_node_type_expr, field_node_name_at,
-  Connective, Conj, Disj, NoConnective, Arrow,
-  ExprData, NoExprData,
-  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
-  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
-  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
-  make_expr_node, make_named_expr_node, make_expr_error_node,
-  expr_var_name_at, field_access_base, field_access_field_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
-  make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node,
-  map_children, arg_value, arg_name_at,
-  has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
-  Cardinality, Required, CardOptional,
-  ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MissingField,
-  resource_use_name_at, resource_use_resource,
-  kernel_type_set, is_kernel_type,
-  is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
-  expr_has_self_call, expr_has_non_tail_self_call,
-  DeclaredFuncSig, DeclaredFuncEnv,
-  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
-  FieldAccessStyle, StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
-  FieldValueShape, PlainValue, OptionalValue, FieldSummary,
-  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
-  CallSemantics, PlainCallSemantics, LookupCallSemantics,
-  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
-  ServiceMethodSemantics,
-  ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
-  BinOp, Add, Sub, Mul, Div, Mod,
-  Eq, Ne, Lt, Gt, Le, Ge,
-  And, Or, NullCoalesce,
-  UnaryOpKind, Not, Neg, unaryop_operand,
-  MatchPattern, Bind, VariantPattern, Wildcard, StringPart,
-  make_field_binding_node, field_binding_name_at, field_binding_pattern,
-  let_value, let_body, lambda_body,
-  foreach_collection, foreach_body, method_receiver, method_arg_nodes,
-  match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
-  index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
-  binop_left, binop_right,
-  make_transport_node, local_transport_node,
-  Text, Interpolation,
-  with_optional_cardinality, with_required_cardinality,
-  no_span, make_span, NewlineIndex,
-  unit_type, bool_type, string_type, int_type, float_type, none_type,
-  error_type,
-  is_container_type, container_expected_arity,
-  default_ident_span, node_name_span
-}
-import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
-import v1.compiler.infer_types {
-  nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
-  node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, is_fully_resolved,
-  resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
-  bare_map_node, bare_set_node,
-  callable_inferred,
-  normalize_access_type_node,
-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
-  is_declared_container_alias_spelling, structural_carrier_template_name,
-  node_type_deps,
-  method_receiver_element_node,
-  infer_literal_node, infer_binop_type_node,
-  extract_optional_inner_node, for_each_element_type_node,
-  resolved_type, child_type_node, is_type_expr_annotation,
-  emit_map_has
-}
-import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
-  witness_of_element
-}
-import v1.compiler.infer_cycle { detect_type_cycles_kahn }
-import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
-  merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
-  str_bindings_from_bindings,
-  is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
-  put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
-  inductive_fields_list_to_map,
-  GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
-  SymbolIndex, empty_symbol_index, symbol_index_insert
-}
-import std.node { compiler_inductive_fields, compiler_recursive_types }
-import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
-import std.interface_summary {
-  InterfaceSummary,
-  ExportEntry,
-  ExportFn,
-  ExportType,
-  ExportData,
-  ExportService,
-  ExportKind,
-  signature_contract,
-  interface_summary_rollup
-}
-import std.induction {
-  InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
-  SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown,
-  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
-  sub_value_to_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
-}
-import std.termination {
-  positive_descent_amount_from_positive_int,
-  proportional_divisor_from_int_at_least_two,
-  OneStep
-}
-import std.algebra { CollectionSizeEffect, ShrinkEffect }
-import v1.compiler.infer_resolve {
-  resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
-  resolve_generic_use_decl,
-  is_user_generic_use_site,
-  NodeResolveResult, ItemResolveResult
-}
-import v1.compiler.infer_sigs {
-  ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
-  resolve_func_sigs
-}
-import v1.compiler.infer_emit_info {
-  TypeRepr, StructRepr, EnumRepr,
-  TypeSummary, EmitGraphInfo, EmitInfoBuildState,
-  RustCorpusRepr, HostNative, FaithfulFreeMonoid,
-  empty_emit_graph_info, lookup_emit_type_summary,
-  build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary, derive_variant_to_enum, close_fn_fields
-}
-import v1.compiler.infer_items {
-  ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
-  ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface,
-  inferred_to_outputs, item_kind
-}
-import v1.compiler.infer_service {
-  UniqueAccum, OpEntry, ServiceMethodResult,
-  is_typed_service_call_receiver, extract_typed_service_name,
-  collect_typed_service_calls, collect_called_func_names,
-  expand_transitive_services,
-  check_service_field_access_node, check_service_method_call_node,
-  service_op_entry
-}
-import v1.compiler.infer_patterns {
-  NodeLookupResult, PatternSubject,
-  lookup_variant_in_type, lookup_field_in_variant,
-  pattern_subject_from_inferred, pattern_subject_from_node,
-  lookup_result_subject, pattern_binding_type,
-  check_match_exhaustiveness
-}
-import v1.compiler.infer_lookup {
-  KnownMethodResolution,
-  resolve_known_method_node, resolve_scrutinee_type_node, resolve_method_receiver_type,
-  field_summary_for_type,
-  lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
-  map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig
-}
-import v1.compiler.infer_access {
-  AccessCheckResultNode,
-  check_index_access_node, check_slice_access_node
-}
-
-=======
->>>>>>> 62111b1273 (Wave-1 namespace integration: restore collapsed import-strip on current main.)
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
 }
@@ -742,46 +575,6 @@ fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, source_indices: M
     && !is_declared_container_alias_spelling(name: actual_name)
 }
 
-fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
-    false
-  } else {
-    let formal_base = if formal.connective == Conj && formal.type_annotation != none && (formal.children |> count) == 1 {
-      match formal.children |> first {
-        Present { value: refinement_base } => refinement_base
-        Absent => formal
-      }
-    } else { formal }
-    let actual_name = authored_name_at(source_indices: source_indices, node: actual)
-    if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
-      false
-    } else {
-      let formal_name = authored_name_at(source_indices: source_indices, node: formal_base)
-      if formal_name == "" || formal_name == actual_name || dag_can_cast(source_type: actual_name, target_type: formal_name) {
-        false
-      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
-        false
-      } else {
-        if is_kernel_type(name: formal_name) {
-          true
-        } else {
-          match lookup_type_by_name(env: type_env, name: formal_name) {
-            Present { value: decl } =>
-              let decl_is_refinement_over_actual = decl.connective == Conj && (decl.children |> count) == 1
-                && (decl.type_annotation != none
-                  || (match decl.children |> first {
-                    Present { value: refinement_child } => authored_name_at(source_indices: source_indices, node: refinement_child) == actual_name
-                    Absent => false
-                  }))
-              (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0 && decl_is_refinement_over_actual == false
-            Absent => false
-          }
-        }
-      }
-    }
-  }
-}
-
 fn container_element_nominal_brand_mismatch(
   formal: Node,
   actual: Node,
@@ -820,8 +613,6 @@ fn direct_call_arg_type_mismatch(
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
-      || kernel_value_declared_type_mismatch(
-        formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
   }
 }
 
@@ -839,12 +630,7 @@ fn direct_call_arg_mismatch_diags(
       let formal_raw = param_node_type_expr(n: pair.second)
       let formal_subst = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
       let formal = peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name)
-      let param_name = authored_name_at(source_indices: source_indices, node: pair.second)
-      let matched_arg = match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
-        Present { value: named_ta } => Present { value: named_ta }
-        Absent => typed_args |> skip(pair.first) |> first
-      }
-      match matched_arg {
+      match typed_args |> skip(pair.first) |> first {
         Present { value: ta } =>
           let actual_raw = resolved_type(n: arg_value(n: ta))
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
@@ -1465,21 +1251,47 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 ))
               }
             Absent =>
-              let err_texpr = make_named_expr_node(
-                name: name,
-                expr_data: ExprVar { binding_kind: none },
-                children: [],
-                inferred: Present { value: Resolved { node: error_type } },
-                span: span,
-                name_span: span
-              )
-              InferResult {
-                typed: err_texpr,
-                diagnostics: [inference_error(
-                  message: concat("undefined variable '", name, "'"),
-                  span: span,
-                  module_name: scope.module_name
-                )]
+              match lookup_binding_by_name(env: scope.type_env, name: name) {
+                Present { value: binding } =>
+                  let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
+                  match scope_parent {
+                    Present { value: scope_enum } =>
+                      ok_infer(texpr: make_named_expr_node(
+                        name: name,
+                        expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
+                        children: [],
+                        inferred: Present { value: Resolved { node: binding.resolved } },
+                        span: span,
+                        name_span: span
+                      ))
+                    Absent =>
+                      let binding_kind = infer_var_binding_kind(scope: scope, name: name)
+                      ok_infer(texpr: make_named_expr_node(
+                        name: name,
+                        expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
+                        children: [],
+                        inferred: Present { value: Resolved { node: binding.resolved } },
+                        span: span,
+                        name_span: span
+                      ))
+                  }
+                Absent =>
+                  let err_texpr = make_named_expr_node(
+                    name: name,
+                    expr_data: ExprVar { binding_kind: none },
+                    children: [],
+                    inferred: Present { value: Resolved { node: error_type } },
+                    span: span,
+                    name_span: span
+                  )
+                  InferResult {
+                    typed: err_texpr,
+                    diagnostics: [inference_error(
+                      message: concat("undefined variable '", name, "'"),
+                      span: span,
+                      module_name: scope.module_name
+                    )]
+                  }
               }
           }
       }
@@ -2931,8 +2743,6 @@ fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
   }
 }
 
-data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): a ZERO-field literal of a coproduct VARIANT (field_inits empty AND variant_owner_node != none) is sanctioned as a TAG REFERENCE, not a construction — the `discriminant(v: PrefixToken {})` idiom (16+ sites in src/v2/std/compilers/target_model.dag) names a variant to obtain its stable tag identity without materializing a value. Presence checking is skipped for exactly this shape; PARTIAL literals (any field present) stay red, and zero-field literals of NON-variant records (variant_owner_node == none) stay red — so the audit F1 probes (CacheProvider/CostAccount partial literals) are unaffected. This is a decidable structural exemption (not an absorbing fallback: it refuses precisely, never widens on failure). DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the exemption is deleted and the sites migrate to the carrier."
-
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let struct_fields = match type_name {
     Present { value: tn } =>
@@ -2970,55 +2780,6 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     Present { value: tn } => tn
     Absent => ""
   }
-  let si_presence = scope.type_env.source_indices
-  let presence_fields = if tn_str == "" {
-    []
-  } else {
-    match variant_owner_node(scope: scope, name: tn_str) {
-      Present { value: variant_owner } =>
-        match variant_owner.children |> filter(v => authored_name_at(source_indices: si_presence, node: v) == tn_str) |> first {
-          Present { value: variant_node } => variant_node.children
-          Absent => []
-        }
-      Absent =>
-        match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
-          Present { value: inst_fields } => inst_fields
-          Absent =>
-            match lookup_type_by_name(env: scope.type_env, name: tn_str) {
-              Present { value: decl } =>
-                if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
-                  decl.children
-                } else {
-                  []
-                }
-              Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
-            }
-        }
-    }
-  }
-  let is_zero_field_variant_tag_reference = (field_inits |> count) == 0
-    && variant_owner_node(scope: scope, name: tn_str) != none
-  let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || is_zero_field_variant_tag_reference {
-      []
-    } else {
-      presence_fields
-        |> filter(sf =>
-          let sf_type = match sf.inferred {
-            Present { value: Resolved { node: rt } } => rt
-            _ => field_node_type_expr(n: sf)
-          }
-          sf_type.return_cardinality != CardOptional
-            && sf.body == none
-            && (field_inits |> any(fi => field_init_node_name_at(n: fi, source_indices: si_presence) == authored_name_at(source_indices: si_presence, node: sf))) == false)
-        |> map(sf => make_error_node(
-          diagnostic: MissingField {
-            field: authored_name_at(source_indices: si_presence, node: sf),
-            type_name: tn_str,
-            span: name_span
-          },
-          module_name: scope.module_name
-        ))
-    }
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
 
@@ -3065,22 +2826,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
             module_name: scope.module_name
           )]
         } else {
-          let expected_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: expected_node)) {
-            Present { value: resolved } => resolved
-            Absent => with_required_cardinality(n: expected_node)
-          }
-          let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
-          let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
-          if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
-            [type_mismatch_error(
-              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
-              got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
-              span: ar_typed.span,
-              module_name: scope.module_name
-            )]
-          } else {
-            []
-          }
+          []
         }
       Absent => []
     }
@@ -3169,7 +2915,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     )
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(fi_diags, type_diags), sole_ctor_diags), missing_field_diags)
+      diagnostics: concat(concat(fi_diags, type_diags), sole_ctor_diags)
     }
   }
 }
@@ -5904,16 +5650,66 @@ fn census_insert_binding(census: Map<String, GlobalBareLookupState>, binding: Ty
   }
 }
 
-fn census_insert_item(census: Map<String, GlobalBareLookupState>, item: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
+fn local_binding_for_census_item(item: Node, source_indices: Map<String, NewlineIndex>) -> TypeBinding? {
   match local_binding_for_item(item: item, source_indices: source_indices) {
+    Present { value: binding } => Present { value: binding }
+    Absent =>
+      if item.body != none && item.params |> count == 0 && item.type_annotation != none {
+        Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: item.type_annotation.value, provenance: SubValueUnknown } }
+      } else if item.connective == NoConnective && item.body != none && item.transport == none && item.type_annotation == none {
+        let bare_node = Node {
+          name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+          connective: NoConnective, params: item.params, inferred: item.inferred,
+          return_cardinality: item.return_cardinality,
+          uses: [], body: none, transport: none, properties: [],
+          type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+        }
+        Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown } }
+      } else {
+        none
+      }
+  }
+}
+
+fn census_insert_item(census: Map<String, GlobalBareLookupState>, item: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
+  match local_binding_for_census_item(item: item, source_indices: source_indices) {
     Absent => census
     Present { value: binding } => census_insert_binding(census: census, binding: binding)
   }
 }
 
+fn census_insert_unique_disj_variant_aliases(
+  census: Map<String, GlobalBareLookupState>,
+  items: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, GlobalBareLookupState> {
+  let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
+  fold(items, init: census, f: (acc, item) =>
+    match item.connective {
+      Disj =>
+        fold(item.children, init: acc, f: (a2, child) =>
+          let vname = authored_name_at(source_indices: source_indices, node: child)
+          match map_get(counts, vname) {
+            Present { value: 1 } =>
+              census_insert_binding(
+                census: a2,
+                binding: TypeBinding { name: vname, resolved: item, provenance: SubValueUnknown }
+              )
+            _ => a2
+          }
+        )
+      _ => acc
+    }
+  )
+}
+
 fn build_global_bare_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
   fold(modules, init: empty_map(), f: (census, mod) =>
-    fold(module_items(n: mod.module), init: census, f: (acc, item) => census_insert_item(census: acc, item: item, source_indices: source_indices))
+    let items = module_items(n: mod.module)
+    let with_items = fold(items, init: census, f: (acc, item) =>
+      census_insert_item(census: acc, item: item, source_indices: source_indices)
+    )
+    census_insert_unique_disj_variant_aliases(census: with_items, items: items, source_indices: source_indices)
   )
 }
 
@@ -6497,6 +6293,23 @@ fn bind_imported_name_from_surface(state: VariantFoldState, surface: VariantExpo
   }
 }
 
+fn merge_global_bare_variant_locals(env: TypeEnv, state: VariantFoldState, source_indices: Map<String, NewlineIndex>, module_name: String) -> VariantFoldState {
+  fold(map_keys(env.global_bare), init: state, f: (acc, name) =>
+    match map_get(env.global_bare, name) {
+      Present { value: GlobalBareUniqueBinding { binding } } =>
+        let owner = binding.resolved
+        if owner.connective == Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
+          match map_get(acc.locals, name) {
+            Present { value: _ } => acc
+            Absent =>
+              insert_variant_owner_checked(state: acc, arm_name: name, owner: owner, source_indices: source_indices, module_name: module_name)
+          }
+        } else { acc }
+      _ => acc
+    }
+  )
+}
+
 fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, module_name: String, init: VariantFoldState) -> VariantFoldState {
   fold(resolved_imports, init: init, f: (acc, imp) =>
     let with_glob = if imp.is_all {
@@ -6543,13 +6356,18 @@ fn build_module_context(contributions: List<ItemContribution>,
     module_name: module_name,
     init: VariantFoldState { locals: empty_map(), collision_errors: [] }
   )
-  let variant_fold = build_imported_variants(
-    resolved_imports: resolved_imports,
-    parent_index: parent_index,
-    variant_surfaces: variant_surfaces,
+  let variant_fold = merge_global_bare_variant_locals(
+    env: env,
+    state: build_imported_variants(
+      resolved_imports: resolved_imports,
+      parent_index: parent_index,
+      variant_surfaces: variant_surfaces,
+      source_indices: env.source_indices,
+      module_name: module_name,
+      init: local_variant_fold
+    ),
     source_indices: env.source_indices,
-    module_name: module_name,
-    init: local_variant_fold
+    module_name: module_name
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
