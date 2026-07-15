@@ -26,7 +26,7 @@ and the spawn-request contract from that doc still hold (graph readiness comes f
   (`Start` / `DrainMatchingStaleThenStart` / `RefuseForeignOwner`) over `std.upsert_decision`.
   Reuse the same shape keyed on tmux session name per node_id (a session lease, not a port
   lease — same classifier discipline: observation carries facts, classifier decides).
-- **Lifecycle binding** (`dag/ctrl/code_change_workflow.dag`): phase 2, explicitly out of MVP.
+- **Lifecycle binding** (`dag/gunbc/code_change_workflow.dag`): phase 2, explicitly out of MVP.
 
 ## The crux: how `claude` is invoked (studied from ctrl `scripts/session-dashboard`)
 
