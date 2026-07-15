@@ -4412,14 +4412,10 @@ match bare_s.clone() {
                     },
                     None => false,
                 };
-                let val_expected = if (texpr.type_annotation.clone() != None) {
-                    Some(texpr.type_annotation.clone().clone().unwrap())
+                let val_expected = if is_tail_return.clone() {
+                    expected.clone()
                 } else {
-                    if is_tail_return.clone() {
-                        expected.clone()
-                    } else {
-                        None
-                    }
+                    None
                 };
                 let val_result = infer_expr(val_expr.clone(), scope.clone(), val_expected.clone());
                 let val_typed = val_result.typed.clone();
@@ -12488,76 +12484,6 @@ pub fn symbol_index_insert_item(
     }
 }
 
-fn disj_variant_name_count_inc(
-    counts: Rc<HashMap<String, i64>>,
-    name: String,
-) -> Rc<HashMap<String, i64>> {
-    match v1_rt::map_get(&counts, name.clone()) {
-        Some(n) => v1_rt::rc_map_insert(counts, name, n + 1),
-        None => v1_rt::rc_map_insert(counts, name, 1),
-    }
-}
-
-fn disj_variant_name_counts(
-    items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, i64>> {
-    items.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |counts: Rc<HashMap<String, i64>>, item: Rc<Node>| {
-            if item.connective.clone() != Connective::Disj {
-                counts
-            } else {
-                item.children.clone().iter().cloned().fold(
-                    counts,
-                    |c: Rc<HashMap<String, i64>>, child: Rc<Node>| {
-                        disj_variant_name_count_inc(
-                            c,
-                            authored_name_at(source_indices.clone(), child.clone()),
-                        )
-                    },
-                )
-            }
-        },
-    )
-}
-
-fn symbol_index_insert_unique_disj_variant_aliases(
-    index: Rc<SymbolIndex>,
-    module_path: String,
-    items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<SymbolIndex> {
-    let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
-    items.iter().cloned().fold(
-        index,
-        |acc: Rc<SymbolIndex>, item: Rc<Node>| {
-            if item.connective.clone() != Connective::Disj {
-                acc
-            } else {
-                item.children.clone().iter().cloned().fold(
-                    acc,
-                    |a2: Rc<SymbolIndex>, child: Rc<Node>| {
-                        let vname =
-                            authored_name_at(source_indices.clone(), child.clone());
-                        match v1_rt::map_get(&counts, vname.clone()) {
-                            Some(1) => symbol_index_insert(
-                                a2,
-                                v1_rt::concat(
-                                    v1_rt::concat(module_path.clone(), ".".to_string()),
-                                    vname,
-                                ),
-                                child,
-                            ),
-                            _ => a2,
-                        }
-                    },
-                )
-            }
-        },
-    )
-}
-
 pub fn build_symbol_index_census(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -12566,8 +12492,7 @@ pub fn build_symbol_index_census(
         empty_symbol_index(),
         |index: Rc<SymbolIndex>, mod_: Rc<ResolvedModule>| {
             let module_path = authored_name_at(source_indices.clone(), mod_.module.clone());
-            let items = module_items(mod_.module.clone());
-            let with_items = items.iter().cloned().fold(
+            module_items(mod_.module.clone()).iter().cloned().fold(
                 index,
                 |acc: Rc<SymbolIndex>, item: Rc<Node>| {
                     symbol_index_insert_item(
@@ -12577,12 +12502,6 @@ pub fn build_symbol_index_census(
                         source_indices.clone(),
                     )
                 },
-            );
-            symbol_index_insert_unique_disj_variant_aliases(
-                with_items,
-                module_path,
-                items,
-                source_indices.clone(),
             )
         },
     )

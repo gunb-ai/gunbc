@@ -2181,13 +2181,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
         Absent => false
       }
-      let val_expected = if texpr.type_annotation != none {
-        Present { value: texpr.type_annotation.value }
-      } else if is_tail_return {
-        expected
-      } else {
-        none
-      }
+      let val_expected = if is_tail_return { expected } else { none }
       let val_result = infer_expr(texpr: val_expr, scope: scope, expected: val_expected)
       let val_typed = val_result.typed
       let val_diags = val_result.diagnostics
@@ -5818,69 +5812,16 @@ fn symbol_index_insert_item(
   }
 }
 
-fn disj_variant_name_count_inc(counts: Map<String, Int>, name: String) -> Map<String, Int> {
-  match map_get(counts, name) {
-    Present { value: n } => map_insert(counts, name, n + 1)
-    Absent => map_insert(counts, name, 1)
-  }
-}
-
-fn disj_variant_name_counts(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
-  fold(items, init: empty_map(), f: (counts, item) =>
-    if item.connective != Disj {
-      counts
-    } else {
-      fold(item.children, init: counts, f: (c, child) =>
-        disj_variant_name_count_inc(counts: c, name: authored_name_at(source_indices: source_indices, node: child))
-      )
-    }
-  )
-}
-
-fn symbol_index_insert_unique_disj_variant_aliases(
-  index: SymbolIndex,
-  module_path: String,
-  items: List<Node>,
-  source_indices: Map<String, NewlineIndex>
-) -> SymbolIndex {
-  let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
-  fold(items, init: index, f: (acc, item) =>
-    if item.connective != Disj {
-      acc
-    } else {
-      fold(item.children, init: acc, f: (a2, child) =>
-        let vname = authored_name_at(source_indices: source_indices, node: child)
-        match map_get(counts, vname) {
-          Present { value: 1 } =>
-            symbol_index_insert(
-              index: a2,
-              qualified_name: concat(module_path, ".", vname),
-              resolved: child
-            )
-          _ => a2
-        }
-      )
-    }
-  )
-}
-
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   fold(modules, init: empty_symbol_index(), f: (index, mod) =>
     let module_path = authored_name_at(source_indices: source_indices, node: mod.module)
-    let items = module_items(n: mod.module)
-    let with_items = fold(items, init: index, f: (acc, item) =>
+    fold(module_items(n: mod.module), init: index, f: (acc, item) =>
       symbol_index_insert_item(
         index: acc,
         module_path: module_path,
         item: item,
         source_indices: source_indices
       )
-    )
-    symbol_index_insert_unique_disj_variant_aliases(
-      index: with_items,
-      module_path: module_path,
-      items: items,
-      source_indices: source_indices
     )
   )
 }
