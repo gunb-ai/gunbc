@@ -2,18 +2,14 @@ module v2.lens.inert_lens
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import v2.std.graph_invariant {
-  graph_universe_nonempty_for_count,
-  graph_unreached_clean_for_count
-}
 import v2.std.logic { Bool }
 
 fn inert_lens_unreached_clean_for_count(unreached_count: Int) -> Bool {
-  graph_unreached_clean_for_count(unreached_count: unreached_count)
+  unreached_count == 0
 }
 
 fn inert_lens_universe_nonempty_for_count(module_count: Int) -> Bool {
-  graph_universe_nonempty_for_count(count: module_count)
+  module_count > 0
 }
 
 fn inert_lens_unreached_module_count() -> Int {
