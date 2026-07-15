@@ -13,9 +13,9 @@ import tools.dag_compile_clean_shard_totality {
   witness_totality_fails_closed_on_glob_failure,
   witness_totality_green_when_glob_matches_roster
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 test fn compile_clean_shard_roster_is_well_formed() -> Bool {
   compile_clean_shard_roster_nonempty()

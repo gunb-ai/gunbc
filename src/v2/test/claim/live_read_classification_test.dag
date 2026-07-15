@@ -31,7 +31,7 @@ import v2.std.fn_index {
   fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger
 }
 import std.disposition { Scaffold, Terminal }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.test.claim.complexity.accumulator_copy_roster_gate { live_tree_disposition }
@@ -267,7 +267,7 @@ test fn g2_implies_reads_live_tree_for_roster_gate() -> Bool {
       carrier_homes: live_read_carrier_homes_v0
     )
   )
-    && live_tree_disposition == SubstrateInputsOnly
+    && live_tree_disposition == ReadsLiveTree
 }
 
 test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {

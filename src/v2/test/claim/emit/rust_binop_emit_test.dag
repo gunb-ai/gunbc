@@ -3,6 +3,7 @@ module v2.test.emit.rust_binop_emit
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
+import v2.std.compilers.target_model { render_target_text }
 import v2.extdeps.languages.dag {
   dag_arrow_domain_conj_node,
   dag_arrow_with_body_node,
@@ -149,9 +150,14 @@ fn rust_binop_vep_emit(operation: CanonicalOperation, catalog: Node) -> Outcome<
       catalog: catalog
     ),
     f: fn(tokens) {
-      serialize_concrete_syntax_tokens_to_source_string(
-        target: rust_binop_target_model(catalog: catalog),
-        tokens: tokens
+      bind_outcome(
+        o: serialize_concrete_syntax_tokens_to_source_string(
+          target: rust_binop_target_model(catalog: catalog),
+          tokens: tokens
+        ),
+        f: fn(carrier) {
+          Accepted { value: render_target_text(t: carrier), diagnostics: None }
+        }
       )
     }
   )
