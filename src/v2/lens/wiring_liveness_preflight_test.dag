@@ -10,13 +10,17 @@ import v2.lens.affected_set {
   FailClosed,
   FrontierDependency,
   ReExecFrontier,
+  ReasonDiagnostics,
   ReasonSymbol,
   empty_frontier
 }
 import v2.lens.wiring_liveness_preflight {
   FrontierWiringObligation,
+  dead_wire_reason,
   preflight_reexec_frontier
 }
+import v2.std.diagnostic { Suggested, correction_eq }
+import v2.std.graph_invariant { graph_reach_wiring_correction }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -103,4 +107,21 @@ test fn preflight_preserves_prior_failclosed() -> Bool {
     obligations: [wlp_live_obligation()]
   )
   return wlp_is_failclosed(frontier: result)
+}
+
+test fn preflight_dead_wire_suggests_wiring_correction() -> Bool {
+  let obligation = wlp_dead_obligation()
+  match dead_wire_reason(obligation: obligation) {
+    ReasonDiagnostics { diagnostics: d } =>
+      correction_eq(
+        a: d.head.correction,
+        b: Suggested {
+          node: graph_reach_wiring_correction(
+            output: obligation.output,
+            declared_input: obligation.declared_input
+          )
+        }
+      )
+    ReasonSymbol { reason: _ } => false
+  }
 }

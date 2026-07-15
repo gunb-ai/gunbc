@@ -3,10 +3,11 @@ module v2.lens.wiring_liveness
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
 import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent, perturbation_is_violation }
-import v2.std.algebra { contains, length, list_append, list_snoc_item }
+import v2.std.algebra { length, list_append, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView, dependency_lens, ready_set }
 import v2.std.fn_index { FnArrowDecl, FnArrowParam, fn_arrow_decl_facts_live }
+import v2.std.graph_invariant { graph_reach_contains, graph_reaches }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
@@ -17,60 +18,8 @@ type WiringRelation {
   dependence: List<DependencyView>
 }
 
-type WiringReachState {
-  reached: List<Node>
-  stable: Bool
-}
-
-fn wiring_node_eq(a: Node, b: Node) -> Bool {
-  a == b
-}
-
-fn wiring_reach_contains(reached: List<Node>, n: Node) -> Bool {
-  contains(xs: reached, item: n, eq: fn(a, b) { wiring_node_eq(a: a, b: b) })
-}
-
-fn wiring_reach_step(reached: List<Node>, dep: DependencyView) -> List<Node> {
-  if wiring_reach_contains(reached: reached, n: dep.source) && (wiring_reach_contains(reached: reached, n: dep.dependent) == false) {
-    list_snoc_item(xs: reached, item: dep.dependent)
-  } else {
-    reached
-  }
-}
-
-fn wiring_reach_pass(dependence: List<DependencyView>, reached: List<Node>) -> List<Node> {
-  fold(dependence, init: reached, f: fn(acc, dep) {
-    wiring_reach_step(reached: acc, dep: dep)
-  })
-}
-
-fn wiring_reach_fixpoint_step(dependence: List<DependencyView>, state: WiringReachState) -> WiringReachState {
-  if state.stable {
-    state
-  } else {
-    let next = wiring_reach_pass(dependence: dependence, reached: state.reached)
-    WiringReachState {
-      reached: next,
-      stable: length(xs: next) == length(xs: state.reached)
-    }
-  }
-}
-
-fn wiring_reach_saturate(dependence: List<DependencyView>, reached: List<Node>) -> List<Node> {
-  fold(
-    dependence,
-    init: WiringReachState { reached: reached, stable: false },
-    f: fn(acc, ignored) {
-      wiring_reach_fixpoint_step(dependence: dependence, state: acc)
-    }
-  ).reached
-}
-
 fn wiring_reaches(dependence: List<DependencyView>, from: Node, to: Node) -> Bool {
-  wiring_reach_contains(
-    reached: wiring_reach_saturate(dependence: dependence, reached: [from]),
-    n: to
-  )
+  graph_reaches(dependence: dependence, from: from, to: to)
 }
 
 fn wiring_relation_is_wired(relation: WiringRelation) -> Bool {
@@ -109,7 +58,7 @@ fn wiring_output_reachable_nodes(output: Node) -> List<Node> {
 }
 
 fn wiring_param_reaches_output(reachable: List<Node>, declared_input: Node) -> Bool {
-  wiring_reach_contains(reached: reachable, n: declared_input)
+  graph_reach_contains(reached: reachable, n: declared_input)
 }
 
 fn wiring_param_is_dead_wire(reachable: List<Node>, declared_input: Node) -> Bool {

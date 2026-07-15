@@ -16,14 +16,12 @@ import v2.std.collection { Absent, List, Optional, Present, optional_absent, opt
 import v2.std.algebra { list_snoc_item }
 import v2.std.dependency { DependencyView }
 import v2.std.diagnostic {
-  Correction,
   Diagnostic,
-  ExternalContractUnknown,
-  NonEmptyDiagnostics,
-  Unavailable,
+  Suggested,
   diagnostics_singleton,
   node_locus
 }
+import v2.std.graph_invariant { graph_reach_wiring_correction }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 
@@ -71,7 +69,12 @@ fn dead_wire_reason(obligation: FrontierWiringObligation) -> FailClosedReason {
     diagnostics: diagnostics_singleton(d: Diagnostic {
       reason: ^wiring_liveness_dead_wire,
       at: node_locus(node: obligation.declared_input),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      correction: Suggested {
+        node: graph_reach_wiring_correction(
+          output: obligation.output,
+          declared_input: obligation.declared_input
+        )
+      }
     })
   }
 }
