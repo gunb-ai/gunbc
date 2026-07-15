@@ -86,8 +86,7 @@ fn witness_hand_maintained_filenames_include_self_emitted_holds() -> Bool {
 }
 
 fn witness_self_emitted_count_matches_derived_basenames_holds() -> Bool {
-  length(xs: compiler_frontier_self_emitted_stage0_mod_basenames())
-    == compiler_frontier_self_emitted_count()
+  length(xs: compiler_frontier_self_emitted_stage0_mod_basenames()) == compiler_frontier_self_emitted_count()
 }
 
 fn witness_no_orphan_self_emitted_basename_holds() -> Bool {
