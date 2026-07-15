@@ -14,5 +14,5 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "usv_pilot_v2_std_algebra.rs",
     "usv_pilot_v2_std_collection.rs",
     "usv_pilot_v2_std_node.rs",
-    "v2_compiler_use_site_verdict.rs",
+    "v2_compiler_use_site_verdict.rs"
 ];
