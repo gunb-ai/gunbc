@@ -7,8 +7,11 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
   resolve_with_admission_policy
 }
+import v2.compiler.ingested_fixture_arrows {
+  ingested_add_module_source,
+  ingested_find_arrow_in_module
+}
 import v2.compiler.normalize { normalize }
-import v2.compiler.ingested_fixture_arrows { ingested_add_module_source }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
@@ -20,7 +23,8 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
-import v2.std.collection { List }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
+import v2.std.qualified_name { QualifiedName }
 import v2.std.diagnostic {
   Accepted,
   Outcome,
@@ -28,8 +32,8 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted
 }
-import v2.std.grammar { ParseTree }
-import v2.std.compilers.lexing { TokenStream }
+import v2.std.grammar { ParseTree, node_atom_identity_optional }
+import v2.std.compilers.lexing { TokenStream, symbol_lexeme }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -42,7 +46,7 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.qualified_name { QualifiedName }
+import v2.std.node_query { find_arrow_body_child }
 import v2.std.resolution_policy { ImportScoped }
 import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -62,6 +66,69 @@ fn pbf_parse_tokens(tokens: TokenStream) -> Outcome<ParseTree> {
       outcome_accepted(value: artifact.tree)
     }
   )
+}
+
+fn pbf_normalized_add_module() -> Outcome<Node> {
+  match pbf_tokenize() {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match pbf_parse_tokens(tokens: tokens) {
+        Accepted { value: parsed, diagnostics: _ } =>
+          normalize(parse_tree: parsed)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn pbf_normalized_add_arrow() -> Optional<Node> {
+  match pbf_normalized_add_module() {
+    Accepted { value: tree, diagnostics: _ } =>
+      ingested_find_arrow_in_module(root: tree)
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn pbf_resolved_add_module() -> Outcome<Node> {
+  let lm = dag_language_model()
+  match pbf_normalized_add_module() {
+    Accepted { value: normalized, diagnostics: _ } =>
+      resolve(tree: normalized, lm: lm)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn pbf_resolved_add_arrow() -> Optional<Node> {
+  match pbf_resolved_add_module() {
+    Accepted { value: tree, diagnostics: _ } =>
+      ingested_find_arrow_in_module(root: tree)
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn pbf_arrow_body_operand_lexeme(arrow: Node, index: Int) -> Optional<String> {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match list_at_optional(xs: body.children, index: index) {
+        Present { value: e } =>
+          match node_atom_identity_optional(node: e.target) {
+            Present { value: id } => Present { value: symbol_lexeme(sym: id) }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn pbf_arrow_body_operand_id(arrow: Node, index: Int) -> Optional<Symbol> {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match list_at_optional(xs: body.children, index: index) {
+        Present { value: e } => node_atom_identity_optional(node: e.target)
+        Absent => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
 }
 
 fn pbf_tree_contains_atom_identity(root: Node, wanted: Symbol) -> Bool {
@@ -88,82 +155,61 @@ fn pbf_tree_contains_atom_identity(root: Node, wanted: Symbol) -> Bool {
 }
 
 fn pbf_parse_preserves_param_x_binding() -> Bool {
-  match pbf_tokenize() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match pbf_parse_tokens(tokens: tokens) {
-        Accepted { value: tree, diagnostics: _ } =>
-          pbf_tree_contains_atom_identity(root: tree, wanted: ^dag_binding_param_x)
-        Rejected { diagnostics: _ } => false
+  match pbf_normalized_add_arrow() {
+    Present { value: arrow } =>
+      match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 1) {
+        Present { value: lex } => lex == "x"
+        Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    Absent => false
   }
 }
 
 fn pbf_parse_preserves_param_y_binding() -> Bool {
-  match pbf_tokenize() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match pbf_parse_tokens(tokens: tokens) {
-        Accepted { value: tree, diagnostics: _ } =>
-          pbf_tree_contains_atom_identity(root: tree, wanted: ^dag_binding_param_y)
-        Rejected { diagnostics: _ } => false
+  match pbf_normalized_add_arrow() {
+    Present { value: arrow } =>
+      match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 2) {
+        Present { value: lex } => lex == "y"
+        Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    Absent => false
   }
 }
 
 fn pbf_parse_does_not_collapse_to_token_ident() -> Bool {
-  match pbf_tokenize() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match pbf_parse_tokens(tokens: tokens) {
-        Accepted { value: tree, diagnostics: _ } =>
-          (pbf_tree_contains_atom_identity(root: tree, wanted: ^dag_binding_param_x) == true)
-            && (pbf_tree_contains_atom_identity(root: tree, wanted: ^dag_binding_param_y) == true)
-            && ((pbf_tree_contains_atom_identity(root: tree, wanted: ^dag_token_ident) == true) == false)
-        Rejected { diagnostics: _ } => false
+  match pbf_normalized_add_arrow() {
+    Present { value: arrow } =>
+      match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 1) {
+        Present { value: left } =>
+          match pbf_arrow_body_operand_lexeme(arrow: arrow, index: 2) {
+            Present { value: right } => (left == "x") && (right == "y") && (left != right)
+            Absent => false
+          }
+        Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    Absent => false
   }
 }
 
 fn pbf_resolved_add_accepts() -> Bool {
-  let lm = dag_language_model()
-  match pbf_tokenize() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match pbf_parse_tokens(tokens: tokens) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
-                Accepted { value: _, diagnostics: _ } => true
-                Rejected { diagnostics: _ } => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
+  match pbf_resolved_add_module() {
+    Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn pbf_resolved_tree_has_distinct_param_bindings() -> Bool {
-  let lm = dag_language_model()
-  match pbf_tokenize() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match pbf_parse_tokens(tokens: tokens) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
-                Accepted { value: resolved, diagnostics: _ } =>
-                  pbf_tree_contains_atom_identity(root: resolved, wanted: ^dag_binding_param_x)
-                    && pbf_tree_contains_atom_identity(root: resolved, wanted: ^dag_binding_param_y)
-                Rejected { diagnostics: _ } => false
-              }
-            Rejected { diagnostics: _ } => false
+  match pbf_resolved_add_arrow() {
+    Present { value: arrow } =>
+      match pbf_arrow_body_operand_id(arrow: arrow, index: 1) {
+        Present { value: left } =>
+          match pbf_arrow_body_operand_id(arrow: arrow, index: 2) {
+            Present { value: right } => (left != right) && (symbol_lexeme(sym: left) == "x") && (symbol_lexeme(sym: right) == "y")
+            Absent => false
           }
-        Rejected { diagnostics: _ } => false
+        Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    Absent => false
   }
 }
 
