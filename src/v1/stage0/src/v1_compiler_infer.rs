@@ -59,8 +59,8 @@ pub use crate::v1_compiler_infer_env::{
     symbol_index_insert,
 };
 pub use crate::v1_compiler_infer_env::{
-    GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
-    TypeEnvCache, TypeEnvCacheMergeConflict,
+    lookup_binding_by_name, GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex,
+    TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
@@ -2779,7 +2779,46 @@ pub fn infer_expr(
                                 ))
                             }
                         }
-                        None => {
+                        None => match lookup_binding_by_name(scope.type_env.clone(), name.clone()) {
+                            Some(binding) => {
+                                let scope_parent =
+                                    lookup_variant_parent_enum(scope.clone(), name.clone());
+                                match scope_parent.clone() {
+                                    Some(scope_enum) => ok_infer(make_named_expr_node(
+                                        name.clone(),
+                                        Rc::new(ExprData::ExprVar {
+                                            binding_kind: Some(Rc::new(
+                                                VarBindingKind::VariantValueBinding {
+                                                    parent_enum: scope_enum.clone(),
+                                                },
+                                            )),
+                                        }),
+                                        Rc::new(vec![]),
+                                        Some(Rc::new(InferredNode::Resolved {
+                                            node: binding.resolved.clone(),
+                                        })),
+                                        span.clone(),
+                                        span.clone(),
+                                    )),
+                                    None => {
+                                        let binding_kind =
+                                            infer_var_binding_kind(scope.clone(), name.clone());
+                                        ok_infer(make_named_expr_node(
+                                            name.clone(),
+                                            Rc::new(ExprData::ExprVar {
+                                                binding_kind: Some(binding_kind.clone()),
+                                            }),
+                                            Rc::new(vec![]),
+                                            Some(Rc::new(InferredNode::Resolved {
+                                                node: binding.resolved.clone(),
+                                            })),
+                                            span.clone(),
+                                            span.clone(),
+                                        ))
+                                    }
+                                }
+                            }
+                            None => {
                             let err_texpr = make_named_expr_node(
                                 name.clone(),
                                 Rc::new(ExprData::ExprVar { binding_kind: None }),
