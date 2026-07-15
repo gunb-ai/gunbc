@@ -1,0 +1,71 @@
+module gunbc.roadmap_belt
+
+import std.types { String, Int, List, Bool }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
+import gunbc.roadmap_spawner { SpawnFrontier }
+
+type BeltRunState
+  = Running
+  | Paused
+
+type BeltCapacity {
+  max_concurrent: Int
+}
+
+type BeltAction
+  = SpawnWorker { node: RoadmapNode }
+  | HoldPaused
+  | AtCapacity { ready_waiting: Int }
+
+fn node_occupied(occupied: List<RoadmapNodeId>, node: RoadmapNode) -> Bool {
+  any(occupied, id => id == node.node)
+}
+
+fn belt_free_slots(cap: BeltCapacity, occupied: List<RoadmapNodeId>) -> Int {
+  let free = cap.max_concurrent - count(occupied)
+  if free < 0 { 0 } else { free }
+}
+
+fn belt_dispatchable(frontier: SpawnFrontier, occupied: List<RoadmapNodeId>) -> List<RoadmapNode> {
+  frontier.ready |> filter(n => !node_occupied(occupied: occupied, node: n))
+}
+
+fn belt_step(
+  state: BeltRunState,
+  frontier: SpawnFrontier,
+  occupied: List<RoadmapNodeId>,
+  cap: BeltCapacity,
+) -> List<BeltAction> {
+  match state {
+    Paused => [ HoldPaused ]
+    Running => {
+      let free = belt_free_slots(cap: cap, occupied: occupied)
+      let candidates = belt_dispatchable(frontier: frontier, occupied: occupied)
+      if free == 0 {
+        if count(candidates) == 0 { [] } else { [ AtCapacity { ready_waiting: count(candidates) } ] }
+      } else {
+        candidates.take(n: free) |> map(n => SpawnWorker { node: n })
+      }
+    }
+  }
+}
+
+fn belt_action_is_spawn(a: BeltAction) -> Bool {
+  match a {
+    SpawnWorker { node: _ } => true
+    HoldPaused => false
+    AtCapacity { ready_waiting: _ } => false
+  }
+}
+
+fn belt_spawn_count(actions: List<BeltAction>) -> Int {
+  count(actions |> filter(a => belt_action_is_spawn(a: a)))
+}
+
+fn belt_spawns_node(actions: List<BeltAction>, id: RoadmapNodeId) -> Bool {
+  any(actions, a => match a {
+    SpawnWorker { node } => node.node == id
+    HoldPaused => false
+    AtCapacity { ready_waiting: _ } => false
+  })
+}
