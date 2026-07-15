@@ -4,7 +4,6 @@
 // is emitted-only and the behavioral harness is modeled (ssuv_scaffold_dissolution_trigger).
 
 use crate::usv_pilot_v2_std_algebra::list_snoc_item;
-use crate::usv_pilot_v2_std_collection::List;
 use crate::usv_pilot_v2_std_node::{
     named_edge_target_lookup, node_rebuild, node_synthetic, Connective, Edge, EdgeLabel,
     NamedEdgeTargetLookup, Node, NodeKind, Symbol,
@@ -92,11 +91,12 @@ pub fn use_site_verdict_to_node(verdict: Rc<UseSiteVerdict>) -> Rc<Node> {
 pub fn use_site_verdict_move_field_of(children: Rc<Vec<Rc<Edge>>>) -> Rc<UseSiteVerdict> {
     match &*named_edge_target_lookup(children, use_site_verdict_field_edge()) {
         NamedEdgeTargetLookup::Found { target: field_node } => match &*field_node.kind {
-            NodeKind::TypeNode {
-                connective: Connective::Atom { identity: f },
-            } => Rc::new(UseSiteVerdict::MoveField {
-                field: f.clone(),
-            }),
+            NodeKind::TypeNode { connective } => match &**connective {
+                Connective::Atom { identity: f } => Rc::new(UseSiteVerdict::MoveField {
+                    field: f.clone(),
+                }),
+                _ => Rc::new(UseSiteVerdict::Unclassified),
+            },
             _ => Rc::new(UseSiteVerdict::Unclassified),
         },
         NamedEdgeTargetLookup::Absent | NamedEdgeTargetLookup::Ambiguous => {
@@ -107,21 +107,22 @@ pub fn use_site_verdict_move_field_of(children: Rc<Vec<Rc<Edge>>>) -> Rc<UseSite
 
 pub fn use_site_verdict_of_node(target: Rc<Node>) -> Rc<UseSiteVerdict> {
     match &*target.kind {
-        NodeKind::TypeNode {
-            connective: Connective::Atom { identity: sym },
-        } => {
-            if sym == &use_site_verdict_move_whole_tag() {
-                Rc::new(UseSiteVerdict::MoveWhole)
-            } else if sym == &use_site_verdict_borrow_tag() {
-                Rc::new(UseSiteVerdict::Borrow)
-            } else if sym == &use_site_verdict_clone_shared_tag() {
-                Rc::new(UseSiteVerdict::CloneShared)
-            } else if sym == &use_site_verdict_move_field_tag() {
-                use_site_verdict_move_field_of(target.children.clone())
-            } else {
-                Rc::new(UseSiteVerdict::Unclassified)
+        NodeKind::TypeNode { connective } => match &**connective {
+            Connective::Atom { identity: sym } => {
+                if sym == &use_site_verdict_move_whole_tag() {
+                    Rc::new(UseSiteVerdict::MoveWhole)
+                } else if sym == &use_site_verdict_borrow_tag() {
+                    Rc::new(UseSiteVerdict::Borrow)
+                } else if sym == &use_site_verdict_clone_shared_tag() {
+                    Rc::new(UseSiteVerdict::CloneShared)
+                } else if sym == &use_site_verdict_move_field_tag() {
+                    use_site_verdict_move_field_of(target.children.clone())
+                } else {
+                    Rc::new(UseSiteVerdict::Unclassified)
+                }
             }
-        }
+            _ => Rc::new(UseSiteVerdict::Unclassified),
+        },
         _ => Rc::new(UseSiteVerdict::Unclassified),
     }
 }

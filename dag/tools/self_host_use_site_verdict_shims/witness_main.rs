@@ -4,8 +4,8 @@ use v1_compiled::v2_compiler_use_site_verdict as emitted;
 use v1_compiled::v2_std_node::{node_synthetic, Behavior, NodeKind};
 use v1_compiler::v2_compiler_use_site_verdict as seed;
 use v1_compiler::usv_pilot_v2_std_node::{
-    node_synthetic as seed_node_synthetic, Behavior as SeedBehavior, Connective as SeedConnective,
-    EdgeLabel as SeedEdgeLabel, NodeKind as SeedNodeKind,
+    node_synthetic as seed_node_synthetic, Behavior as SeedBehavior, Node as SeedNode,
+    NodeKind as SeedNodeKind,
 };
 
 fn verdict_eq(e: &emitted::UseSiteVerdict, s: &seed::UseSiteVerdict) -> bool {
@@ -42,7 +42,7 @@ fn bare_emitted_node() -> Rc<emitted::Node> {
     )
 }
 
-fn bare_seed_node() -> Rc<seed::Node> {
+fn bare_seed_node() -> Rc<SeedNode> {
     seed_node_synthetic(
         Rc::new(SeedNodeKind::ComputationNode {
             behavior: SeedBehavior::Value,
