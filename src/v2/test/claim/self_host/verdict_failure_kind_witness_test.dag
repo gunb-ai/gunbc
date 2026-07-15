@@ -2,8 +2,10 @@ module v2.test.claim.self_host.verdict_failure_kind_witness_test
 
 import v2.std.diagnostic {
   Diagnostic,
+  ExternalContractUnknown,
   Outcome,
   Rejected,
+  Unavailable,
   diagnostics_singleton,
   port_locus
 }
@@ -23,7 +25,7 @@ fn sample_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
     at: port_locus(port: ^verdict_surface),
-    correction: None
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
