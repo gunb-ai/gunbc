@@ -818,6 +818,8 @@ fn rust_loop_signature_with_open() -> List<ConcreteSyntaxToken> {
 
 fn rust_loop_block_close() -> List<ConcreteSyntaxToken> {
   [
+    FixedToken { token_class: ^rust_token_semicolon },
+    FixedToken { token_class: ^rust_token_rbrace },
     FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
