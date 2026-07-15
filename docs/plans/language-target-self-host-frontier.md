@@ -33,8 +33,8 @@ The whole point of exotic-first is that the curly-brace family *confirms* the de
 
 ### The two highest-leverage shared dependencies (do these once, everyone inherits)
 
-- **F4 `host_tool_program_name` registry extension** — this ~8-line function gates **bar-c for every language**. Registering `node`, `python3`, `go`, and the simulator tools (`ngspice`, `verilator`/`iverilog`, `llc`/`clang`, `wasmtime`) makes each target's *already-declared* runtime row runnable through the typed self-host path in one edit each. Highest-leverage de-fork on the board.
-- **F2 VEP completion** — wire the unwired forms (match / loop / bind-in) **once** in the `StatementSequenced` arm; the entire interpreted family inherits body breadth. Python additionally needs its *first* VEP edge.
+1. **F4 `host_tool_program_name` registry extension** — this ~8-line function gates **bar-c for every language**. Registering `node`, `python3`, `go`, and the simulator tools (`ngspice`, `verilator`/`iverilog`, `llc`/`clang`, `wasmtime`) makes each target's *already-declared* runtime row runnable through the typed self-host path in one edit each. Highest-leverage de-fork on the board.
+2. **F2 VEP completion** — wire the unwired forms (match / loop / bind-in) **once** in the `StatementSequenced` arm; the entire interpreted family inherits body breadth. Python additionally needs its *first* VEP edge.
 
 ---
 

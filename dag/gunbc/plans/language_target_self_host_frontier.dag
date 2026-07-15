@@ -2,7 +2,7 @@ module gunbc.plans.language_target_self_host_frontier
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, hr }
 
 fn language_target_self_host_frontier_body() -> List<MarkdownBlock> {
   [
@@ -33,7 +33,7 @@ fn language_target_self_host_frontier_body() -> List<MarkdownBlock> {
       ],
     },
     h3(text: "The two highest-leverage shared dependencies (do these once, everyone inherits)"),
-    ul(items: [
+    ol(items: [
       li(text: "**F4 `host_tool_program_name` registry extension** — this ~8-line function gates **bar-c for every language**. Registering `node`, `python3`, `go`, and the simulator tools (`ngspice`, `verilator`/`iverilog`, `llc`/`clang`, `wasmtime`) makes each target's *already-declared* runtime row runnable through the typed self-host path in one edit each. Highest-leverage de-fork on the board."),
       li(text: "**F2 VEP completion** — wire the unwired forms (match / loop / bind-in) **once** in the `StatementSequenced` arm; the entire interpreted family inherits body breadth. Python additionally needs its *first* VEP edge."),
     ]),
