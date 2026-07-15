@@ -3,13 +3,9 @@ module v2.test.medium_structure_containment.clean_tree
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
+data clean_tree_green_on_5_3_note: String = "This whole-substrate scan includes src/v2/extdeps/languages/bash.dag, where the retry_eagain_seg_* grammar-row lex spellings live. violation_count == 0 over that scope IS the GREEN-on-5.3 proof by execution: the type-structural gate never classifies those span-text spellings (they are not RawLine.text/Heredoc.body sites), so they produce zero violations. Discriminating: if the gate wrongly classified span text, this would RED (the segs are compositions). The only live violations in the substrate are the 3 rostered os/bmc RawLine files, so clean == true holds."
+
 test fn medium_structure_clean_tree_holds() -> Bool {
-  medium_structure_containment_clean_live(
-    emit_roots: medium_emit_side_scan_roots,
-    check_roots: medium_check_side_scan_roots
-  )
-    && (medium_structure_leak_count_live(
-      emit_roots: medium_emit_side_scan_roots,
-      check_roots: medium_check_side_scan_roots
-    ) == 0)
+  medium_structure_containment_clean_live(roots: medium_bash_scan_roots)
+    && (medium_structure_violation_count_live(roots: medium_bash_scan_roots) == 0)
 }

@@ -1,0 +1,19 @@
+module v2.test.medium_structure_containment.scanner.decode_fidelity_residue
+
+import v2.lens.medium_structure_containment {
+  medium_bash_scan_roots,
+  medium_structure_ambiguous_count_live,
+  medium_structure_violation_count_live
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data decode_fidelity_residue_note: String = "DecodeFidelity residue LEDGER (parent requirement 2026-07-14: the AmbiguousParse residue is COUNTED and REPORTED, never a silent gap — DESIGN.md §5 no absorbing fallback). AT AUTHORING there were EXACTLY 2 AmbiguousParse cause HoleStraddlesToken rows, both unquoted-Hole RawLines in dag/extdeps/bmc/webui/nbd_proxy_serve.dag (the nbdkit background line and the websocat line). The DISSOLUTION TRIGGER named in that ledger — give the sink a typed model so the Hole becomes a typed operand rather than raw text spliced pre-parse — FIRED on the 2026-07-14 main merge: nbd_proxy_serve was migrated from RawLine.text to modeled Command / ShellWord / Lit structure, so its 2 holes reclassified to typed operands and the residue dropped to 0. The live substrate now constructs NO RawLine.text / Heredoc.body literal at all (the only RawLine references in scope are the program.dag type declaration and a match pattern). This witness stays a LIVE ledger asserting ZERO un-dissolved residue: a future unquoted-Hole RawLine.text drives ambiguous_count_live positive and reds this on execution, surfacing the added residue within one run rather than absorbing it. The classifier's ambiguous-COUNTING capability itself is proven non-vacuously by the lens_unit heredoc control (a synthetic Heredoc.body counts Ambiguous == 1)."
+
+test fn medium_structure_decode_fidelity_residue_dissolved_to_zero_holds() -> Bool {
+  (medium_structure_ambiguous_count_live(roots: medium_bash_scan_roots) == 0)
+    && (medium_structure_violation_count_live(roots: medium_bash_scan_roots) == 0)
+}
