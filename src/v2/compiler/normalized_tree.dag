@@ -1,2 +1,6 @@
 module v2.compiler.normalized_tree
+
+
+import v2.std.node { Node }
+
 type NormalizedTree = Node
