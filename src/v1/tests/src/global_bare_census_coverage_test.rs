@@ -174,3 +174,50 @@ fn code() -> Int {
         "ambiguous global_bare data must stay unresolved: {d:?}"
     );
 }
+
+/// GAP 4 — a ZERO-PARAMETER fn with a body. Every census branch admitting a
+/// params-bearing item requires `params |> count > 0`, so a nullary fn matches none
+/// of them. The earlier fn probe took a parameter, which is why it went green while
+/// the corpus kept reding — the probe and the corpus disagreed on shape, not scale.
+///
+/// Live instances (both declared exactly once, both ABSENT from the corpus census):
+///   dag/std/numerical_contract.dag:15  fn integer_exact_contract() -> NumericalContract
+///   dag/gunbc/gunbhub_serve.dag:139    fn gunbhub_hostile_page()   -> MarkupNode
+#[test]
+fn probe_bare_nullary_function_reference_resolves() {
+    let sources = vec![
+        src(
+            "dag/probe_nullary_def.dag",
+            r#"module probe.nullarydef
+
+fn probe_nullary_thing() -> Int {
+  7
+}
+"#,
+        ),
+        src(
+            "dag/probe_nullary_use.dag",
+            r#"module probe.nullaryuse
+
+fn call_nullary() -> Int {
+  probe_nullary_thing()
+}
+"#,
+        ),
+    ];
+    let result = compile_sources(
+        Rc::new(sources.into()),
+        v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
+    );
+    let d: Vec<String> = result
+        .diagnostics
+        .iter()
+        .filter(|x| is_interpreter_blocking_diagnostic(x.diagnostic.clone()))
+        .map(|x| v1_compiler::v1_std_core::diagnostic_to_message(x.diagnostic.clone()))
+        .collect();
+    assert!(
+        d.is_empty(),
+        "bare ref to globally-unique NULLARY fn must resolve via global_bare \
+         (census branches admitting fn-with-body all require params > 0); got {d:?}"
+    );
+}
