@@ -23,7 +23,7 @@ fn solve_higher_order_design_body() -> List<MarkdownBlock> {
     hr(),
     h2(text: "The decomposition — every ingredient already exists"),
     CodeBlock {
-      code: "solve  ≜  Loop(\n            body:        step( residual(model, candidate) ),   // forward fold — HAVE\n            bound:       DescentEvidence,                       // Converged | Refuse — HAVE\n            on_exhaust:  Refuse{ iters, residual }              // §5 fail-closed — HAVE\n          )"
+      code: "solve  ≜  Loop(\n            body:           step( residual(model, candidate) ),  // forward fold — HAVE\n            step_evidence:  DescentEvidence,                     // Strict | NonIncreasing | DescentUnknown — HAVE\n            terminate_when: residual_within_bound,               // success = the residual bound is met (loop-termination)\n            on_exhaust:     Refuse{ iters, residual }            // §5 fail-closed (DescentUnknown / max iters) — HAVE\n          )"
     },
     TableBlock {
       header: row(cells: [cell(text: "piece"), cell(text: "what it is"), cell(text: "already in tree as")]),
@@ -31,7 +31,7 @@ fn solve_higher_order_design_body() -> List<MarkdownBlock> {
       rows: [
         row(cells: [cell(text: "**residual**"), cell(text: "a *forward fold over an existing model*, read as \"these must be consistent\" rather than \"evaluate forward\""), cell(text: "`find_witness` / `coercion_fold` (§4), pointed at equality targets")]),
         row(cells: [cell(text: "**iteration**"), cell(text: "the fixed-point loop"), cell(text: "`Loop` behavior (recursion desugars to it)")]),
-        row(cells: [cell(text: "**convergence bound**"), cell(text: "`Converged` \\| `Strict`-descent \\| refuse-on-exhaust"), cell(text: "`DescentEvidence` on `BoundedLattice`, reused verbatim (`dag/std/termination.dag`)")]),
+        row(cells: [cell(text: "**convergence bound**"), cell(text: "per-step **descent evidence** (`Strict` \\| `NonIncreasing` \\| `DescentUnknown`); loop-**termination** is a separate success predicate (residual within bound), and exhaustion → refuse"), cell(text: "`DescentEvidence` on a `BoundedLattice` whose bottom `DescentUnknown` is fail-closed, reused verbatim (`dag/std/termination.dag`)")]),
         row(cells: [cell(text: "**numerical inner-step**"), cell(text: "LU-solve, ODE integrator, relaxation kernel"), cell(text: "a **realization handler** in `extdeps/` — the §2/§3 transport pattern (one agnostic shape, N handlers: LAPACK / ngspice / pure-dag Newton)")]),
       ],
     },
