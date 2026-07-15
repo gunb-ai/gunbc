@@ -1,6 +1,6 @@
 module v1.compiler.infer
 
-import std.types { SourceSpan, container_param_name }
+import std.types { SourceSpan, container_param_name, is_kernel_type }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
@@ -22,7 +22,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MissingField,
   resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -738,6 +738,31 @@ fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, source_indices: M
     && !is_declared_container_alias_spelling(name: actual_name)
 }
 
+fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
+    false
+  } else {
+    let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+    if is_kernel_type(name: actual_name) == false {
+      false
+    } else {
+      let formal_name = authored_name_at(source_indices: source_indices, node: formal)
+      if formal_name == "" || formal_name == actual_name || dag_can_cast(source_type: actual_name, target_type: formal_name) {
+        false
+      } else {
+        if is_kernel_type(name: formal_name) {
+          true
+        } else {
+          match lookup_type_by_name(env: type_env, name: formal_name) {
+            Present { value: decl } => (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0
+            Absent => false
+          }
+        }
+      }
+    }
+  }
+}
+
 fn container_element_nominal_brand_mismatch(
   formal: Node,
   actual: Node,
@@ -776,6 +801,8 @@ fn direct_call_arg_type_mismatch(
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
+      || kernel_value_declared_type_mismatch(
+        formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
   }
 }
 
@@ -2911,6 +2938,28 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     Present { value: tn } => tn
     Absent => ""
   }
+  let si_presence = scope.type_env.source_indices
+  let missing_field_diags = if tn_str == "" || (struct_fields |> count) == 0 {
+      []
+    } else {
+      struct_fields
+        |> filter(sf =>
+          let sf_type = match sf.inferred {
+            Present { value: Resolved { node: rt } } => rt
+            _ => field_node_type_expr(n: sf)
+          }
+          sf_type.return_cardinality != CardOptional
+            && sf.body == none
+            && (field_inits |> any(fi => field_init_node_name_at(n: fi, source_indices: si_presence) == authored_name_at(source_indices: si_presence, node: sf))) == false)
+        |> map(sf => make_error_node(
+          diagnostic: MissingField {
+            field: authored_name_at(source_indices: si_presence, node: sf),
+            type_name: tn_str,
+            span: name_span
+          },
+          module_name: scope.module_name
+        ))
+    }
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
 
@@ -2957,7 +3006,22 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
             module_name: scope.module_name
           )]
         } else {
-          []
+          let expected_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: expected_node)) {
+            Present { value: resolved } => resolved
+            Absent => with_required_cardinality(n: expected_node)
+          }
+          let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
+          let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
+          if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
+            [type_mismatch_error(
+              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
+              got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
+              span: ar_typed.span,
+              module_name: scope.module_name
+            )]
+          } else {
+            []
+          }
         }
       Absent => []
     }
@@ -3046,7 +3110,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     )
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(fi_diags, type_diags), sole_ctor_diags)
+      diagnostics: concat(concat(concat(fi_diags, type_diags), sole_ctor_diags), missing_field_diags)
     }
   }
 }
