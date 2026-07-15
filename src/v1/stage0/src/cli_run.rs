@@ -14759,7 +14759,6 @@ fn cla_triage_complexity(site: &str) -> &'static str {
         return "kernel-permanent";
     }
     if site.starts_with("dag/extdeps/")
-        || site.starts_with("dag/ctrl/")
         || site.starts_with("dag/gunbc/plans/")
         || site.starts_with("dag/test/")
     {

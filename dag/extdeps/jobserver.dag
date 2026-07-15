@@ -10,7 +10,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "github.com/gunb-ai/ctrl/blob/main/host/install-ctrl-jobserver.sh"
+    locator: "www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html"
   }
 }
 
