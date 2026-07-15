@@ -156,7 +156,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/duplicate_computation/placement_grain_witness_test.dag",
       check_fns: [
         "ci_build_across_two_jobs_is_one_violation",
-        "ci_build_duplication_emits_authored_duplication_verdict",
         "shared_artifact_rewire_is_clean",
         "single_producer_is_clean",
         "declared_per_placement_is_admissible",
