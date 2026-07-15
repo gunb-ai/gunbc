@@ -1,0 +1,60 @@
+module v2.lens.anti_unify_redundancy
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+
+import v2.std.node { Node }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { length }
+import v2.std.anti_unification {
+  ChainGeneralization, anti_unify_chain, template_has_hole, fillings_all_leaves
+}
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+
+type AntiUnifyThreshold {
+  min_steps: Int
+  require_hole: Bool
+}
+
+fn chain_generalization_matches_threshold(
+  g: ChainGeneralization,
+  threshold: AntiUnifyThreshold
+) -> Bool {
+  let leaves_ok = fillings_all_leaves(per_element: g.per_element)
+  if threshold.require_hole {
+    template_has_hole(template: g.template) && leaves_ok
+  } else {
+    leaves_ok
+  }
+}
+
+fn steps_anti_unify_redundant(steps: FreeMonoid<Node>, threshold: AntiUnifyThreshold) -> Bool {
+  if length(xs: steps) < threshold.min_steps {
+    false
+  } else {
+    chain_generalization_matches_threshold(
+      g: anti_unify_chain(steps: steps),
+      threshold: threshold
+    )
+  }
+}
+
+fn term_chain_simulated_threshold() -> AntiUnifyThreshold {
+  AntiUnifyThreshold { min_steps: 3, require_hole: true }
+}
+
+fn type_forest_redundant_threshold() -> AntiUnifyThreshold {
+  AntiUnifyThreshold { min_steps: 2, require_hole: false }
+}
+
+fn chain_is_simulated(steps: FreeMonoid<Node>) -> Bool {
+  steps_anti_unify_redundant(steps: steps, threshold: term_chain_simulated_threshold())
+}
+
+fn type_decls_anti_unify(decls: FreeMonoid<Node>) -> Bool {
+  steps_anti_unify_redundant(steps: decls, threshold: type_forest_redundant_threshold())
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

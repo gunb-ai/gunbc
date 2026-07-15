@@ -1,6 +1,6 @@
 module v2.test.simulated_relationship.lens_unit.discriminators
 
-import v2.lens.simulated_relationship { chain_is_simulated }
+import v2.lens.anti_unify_redundancy { chain_is_simulated }
 import v2.std.node {
   Node, Edge, EdgeLabel, Positional,
   NodeKind, TypeNode, Connective, Atom, Conj,
