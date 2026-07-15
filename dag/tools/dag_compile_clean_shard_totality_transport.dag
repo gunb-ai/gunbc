@@ -1,6 +1,12 @@
 module tools.dag_compile_clean_shard_totality_transport
 
 
+import extdeps.shell
+import extdeps.git
+import std.types { String, Bool, List }
+
+
+
 type LiveDagEntryGlobResult {
   success: Bool
   stdout: String
