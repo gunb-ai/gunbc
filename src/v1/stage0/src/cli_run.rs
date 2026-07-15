@@ -8667,7 +8667,7 @@ pub fn run_discovery_corpus_with_options(
                         &diff_edits,
                         floor_runner_ctx.as_ref(),
                         whole_tree_published_keys.clone(),
-                        options.fast_lane_eval_budget_ms,
+                        options.witness_budget_policy(),
                         style,
                     )?);
                 }
@@ -8698,7 +8698,7 @@ pub fn run_discovery_corpus_with_options(
     let abort = std::sync::Arc::new(AtomicBool::new(false));
     let source_roots_owned = source_roots.to_vec();
     let selection_for_workers = options.node_frontier_selection;
-    let fast_lane_budget_for_workers = options.fast_lane_eval_budget_ms;
+    let budget_policy_for_workers = options.witness_budget_policy();
     let mut handles = Vec::new();
     let mut worker_ordinal: usize = 0;
     loop {
@@ -8794,7 +8794,7 @@ pub fn run_discovery_corpus_with_options(
                         &seeds,
                         runner.as_ref(),
                         keys.clone(),
-                        fast_lane_budget_for_workers,
+                        budget_policy_for_workers,
                         style,
                     ) {
                         Ok(summary) => {
@@ -9124,7 +9124,7 @@ fn run_discovery_rows(
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
-    fast_lane_eval_budget_ms: Option<u64>,
+    budgets: WitnessBudgetPolicy,
     style: ShardStyle,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
@@ -9271,7 +9271,8 @@ fn run_discovery_rows(
                     resolved.entry_runtime_dependency_touched;
                 ctx = Some(resolved.ctx);
                 if let Some(c) = ctx.as_ref() {
-                    c.set_witness_eval_budget(fast_lane_eval_budget_ms);
+                    c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
+                    c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
                 }
                 current_entry = Some(row.entry.clone());
             }
@@ -9369,7 +9370,8 @@ fn run_discovery_rows(
             current_entry_runtime_dependency_touched = resolved.entry_runtime_dependency_touched;
             ctx = Some(resolved.ctx);
             if let Some(c) = ctx.as_ref() {
-                c.set_witness_eval_budget(fast_lane_eval_budget_ms);
+                c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
+                c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
             }
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");

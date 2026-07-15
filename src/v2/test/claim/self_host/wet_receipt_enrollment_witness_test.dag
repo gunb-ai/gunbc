@@ -9,7 +9,6 @@ import v2.compiler.self_host.frontier {
   CompilerModuleFrontierRow
 }
 import v2.compiler.self_host.wet_receipt_enrollment {
-  SelfHostWetReceiptBinding,
   falsifier_self_host_wet_entries,
   falsifier_self_host_wet_template_entries,
   falsifier_self_host_wet_frontier_enrolled_entries,

@@ -349,7 +349,7 @@ fn falsifier_self_host_wet_batch_holds(r: Runnable) -> Bool {
         SelectionOff => false
       }
         && (length(xs: dirs) == 0)
-        && (length(xs: entries) == length(xs: falsifier_self_host_wet_entries))
+        && (length(xs: entries) == length(xs: falsifier_self_host_wet_entries()))
         && discovery_batch_declares_wet(r: r)
         && p.spawns_host_compiler
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
@@ -365,7 +365,7 @@ fn falsifier_self_host_wet_budget_declared_holds() -> Bool {
 
 fn falsifier_plan_structure_holds() -> Bool {
   let batches = gunbc_falsifier_batches()
-  if length(xs: falsifier_self_host_wet_entries) > 0 {
+  if length(xs: falsifier_self_host_wet_entries()) > 0 {
     let wet_batch = skip(xs: batches, n: 1).first()
     (length(xs: batches) == 2)
       && (batches.first().length() == 1)
