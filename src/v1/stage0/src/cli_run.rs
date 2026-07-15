@@ -1506,9 +1506,9 @@ fn compile_clean_touched_path_norm(path: &str) -> &str {
     path.strip_prefix("./").unwrap_or(path)
 }
 
-fn compile_clean_touches_allow_skip(touched_paths: &[String]) -> bool {
-    touched_paths.is_empty()
-        || touched_paths
+fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bool {
+    !touched_paths.is_empty()
+        && touched_paths
             .iter()
             .all(|p| compile_clean_touched_path_norm(p).starts_with("docs/"))
 }
@@ -1535,17 +1535,21 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
 fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     touched_paths: &[String],
 ) -> CompileCleanScopePlan {
-    if compile_clean_touches_allow_skip(touched_paths) {
-        let reason = if touched_paths.is_empty() {
-            "no compile-clean entry DependencyView frontier intersects touched paths".to_string()
-        } else {
-            "docs-only diff — no compile-clean entry selection required".to_string()
+    if touched_paths.is_empty() {
+        return CompileCleanScopePlan::SkipNoAffected {
+            reason: "no touched paths in diff observation".to_string(),
         };
+    }
+
+    if compile_clean_all_touched_paths_docs_universe(touched_paths) {
+        let reason =
+            "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                .to_string();
         eprintln!("compile-clean scope: skipped ({reason})");
         return CompileCleanScopePlan::SkipNoAffected { reason };
     }
 
-    // `dag_compile_clean_scope.dag:85-88` — RequireWholeTree when substrate not ready.
+    // `dag_compile_clean_scope.dag` — RequireWholeTree when substrate not ready.
     // floor_fast has no whole-tree resolve context (loaded=0) until #6239; live substrate is false.
     if !fn_arrow_decl_substrate_is_whole_tree_for_census(0) {
         eprintln!(
@@ -1600,7 +1604,7 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
         };
     }
     eprintln!(
-        "compile-clean scope: non-empty non-docs diff with no shard intersection — whole-tree baseline"
+        "compile-clean scope: non-empty diff with no shard intersection — whole-tree baseline"
     );
     CompileCleanScopePlan::WholeTree
 }
@@ -1612,6 +1616,41 @@ fn compile_clean_scoping_active() -> bool {
             .map(|v| v == "true")
             .unwrap_or(false)
         || std::env::var("CI").map(|v| v == "true").unwrap_or(false)
+}
+
+pub const DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL: &str = "documentation_only_skip";
+pub const RUN_FULL_FLOOR_LABEL: &str = "run_full_floor";
+
+/// CI floor admission label for the docs-only witness-corpus skip arm.
+/// Uses `tools.dag_compile_clean_scope` at Ruling 1 path grain (host fast path).
+/// Empty diff or diff-observation failure returns `run_full_floor` (fail-closed).
+/// Docs-only (`docs/**` universe, aligned with doc_reachability) skips without
+/// waiting on #6239 substrate — the witness runs before claim_executor warms facts.
+pub fn documentation_only_floor_skip_label_for_ci() -> String {
+    if !compile_clean_scoping_active() {
+        return RUN_FULL_FLOOR_LABEL.to_string();
+    }
+    match floor_git_diff_name_status_range() {
+        Err(msg) => {
+            eprintln!("documentation-only floor skip: diff observation failed ({msg}) — full floor");
+            RUN_FULL_FLOOR_LABEL.to_string()
+        }
+        Ok((changed_paths, _departed)) => {
+            if changed_paths.is_empty() {
+                eprintln!("documentation-only floor skip: empty diff — full floor");
+                return RUN_FULL_FLOOR_LABEL.to_string();
+            }
+            if compile_clean_all_touched_paths_docs_universe(&changed_paths) {
+                eprintln!(
+                    "documentation-only floor skip: docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                );
+                DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string()
+            } else {
+                eprintln!("documentation-only floor skip: full floor (non-docs-only diff)");
+                RUN_FULL_FLOOR_LABEL.to_string()
+            }
+        }
+    }
 }
 
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
@@ -15717,7 +15756,7 @@ mod witness_layer_roots_compile_clean_tests {
         );
     }
 
-    /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
+    /// Lever-a receipt: docs-only compile-clean scope skips at path grain (pre-#6239).
     #[test]
     fn floor_fast_scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
@@ -15727,10 +15766,23 @@ mod witness_layer_roots_compile_clean_tests {
             assert_eq!(
                 plan,
                 CompileCleanScopePlan::SkipNoAffected {
-                    reason: "docs-only diff — no compile-clean entry selection required"
-                        .to_string()
+                    reason: "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)".to_string(),
                 }
             );
+        });
+    }
+
+    /// Floor admission: docs-only skips before substrate warm (witness runs pre-executor).
+    #[test]
+    fn documentation_only_floor_skip_label_skips_docs_only_touch() {
+        with_workspace_cwd(|| {
+            let _gh = EnvGuard::set("GITHUB_ACTIONS", "true");
+            let _ns = EnvGuard::set(
+                "GUNBC_CI_DIFF_NAME_STATUS",
+                "M\\000docs/plans/example.md\\000",
+            );
+            let label = documentation_only_floor_skip_label_for_ci();
+            assert_eq!(label, DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL);
         });
     }
 
