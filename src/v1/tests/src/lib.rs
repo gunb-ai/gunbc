@@ -7,6 +7,9 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod global_bare_cascade_test;
+
+#[cfg(test)]
 mod a4_opacity;
 #[cfg(test)]
 mod b1_hash_primitive_test;
