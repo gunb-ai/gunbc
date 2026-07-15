@@ -14071,6 +14071,24 @@ mod nfr_tests {
     }
 
     #[test]
+    fn nfr_roster_receipt() {
+        let live: std::collections::BTreeSet<&str> = nfr_build_report()
+            .sites
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        for site in nfr_build_report().sites.iter() {
+            assert!(
+                non_fold_residue_site_is_rostered(site),
+                "unrostered: {site}"
+            );
+        }
+        for entry in NON_FOLD_RESIDUE_ROSTER {
+            assert!(live.contains(entry), "stale roster: {entry}");
+        }
+    }
+
+    #[test]
     fn green_control_wildcard_over_open_domain_is_not_residue() {
         let f = files(&[(
             "m.dag",
