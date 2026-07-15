@@ -91,6 +91,8 @@ fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: GithooksPreCommitArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
     && artifact_is_committed(a: FleetConvergeArtifact)
+    && artifact_is_committed(a: Stage0CrateLayoutGeneratedDagArtifact)
+    && artifact_is_committed(a: Stage0CrateLayoutGeneratedRsArtifact)
     && !artifact_is_committed(a: RunnerDeployArtifact)
     && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })

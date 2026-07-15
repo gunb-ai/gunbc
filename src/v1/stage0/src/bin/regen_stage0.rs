@@ -12,6 +12,7 @@ use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::stage0_self_compile_refusal_message;
 use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
 
+#[path = "../bootstrap_stage0_crate_layout_generated.rs"]
 mod bootstrap_stage0_crate_layout_generated;
 use bootstrap_stage0_crate_layout_generated::HAND_MAINTAINED_STAGE0_FILES;
 
