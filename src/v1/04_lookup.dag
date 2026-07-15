@@ -1,5 +1,6 @@
 module v1.compiler.infer_lookup
 
+import v1.compiler.infer_method { infer_builtin_call_type }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -33,6 +34,9 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
 }
 
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
+  match infer_builtin_call_type(name: name) {
+    Present { value: _ } => none
+    Absent =>
   match lookup_binding_by_name(env: type_env, name: name) {
     Present { value: binding } =>
       let node = binding.resolved
@@ -52,6 +56,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
         Absent
       }
     Absent => Absent
+  }
   }
 }
 
