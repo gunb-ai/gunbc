@@ -27,6 +27,12 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
+import gunbc.stage0_emit_model { stage0_module_emit_basename }
+
+type FrontierQualifiedModuleBinding {
+  module_path: String
+  qualified_module: String
+}
 
 type CompilerFrontierAttributedDebt {
   dissolution_trigger: Symbol
@@ -72,6 +78,38 @@ type CompilerModuleFrontierRow {
 data compiler_frontier_module_count_expected: Int = 27
 
 data compiler_frontier_self_emitted_baseline: Int = 1
+
+data compiler_frontier_qualified_module_bindings: List<FrontierQualifiedModuleBinding> = [
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/00_compile.dag", qualified_module: "v2.compiler.compile" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/01_tokenize.dag", qualified_module: "v2.compiler.tokenize" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/02_parse.dag", qualified_module: "v2.compiler.parse" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_body_producer.dag", qualified_module: "v2.compiler.body_producer" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_ingest.dag", qualified_module: "v2.compiler.ingest" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_name_resolve.dag", qualified_module: "v2.compiler.name_resolve" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_normalize.dag", qualified_module: "v2.compiler.normalize" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_resolve.dag", qualified_module: "v2.compiler.resolve" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/04_infer.dag", qualified_module: "v2.compiler.infer" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/05_emit.dag", qualified_module: "v2.compiler.emit" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/05_emit_orchestration.dag", qualified_module: "v2.compiler.emit_orchestration" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/05_eval.dag", qualified_module: "v2.compiler.eval" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/06_translate.dag", qualified_module: "v2.compiler.translate" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/07_target_carriers.dag", qualified_module: "v2.compiler.target_carriers" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/discovery_enumeration.dag", qualified_module: "v2.compiler.discovery_enumeration" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_host.dag", qualified_module: "v2.compiler.emit_host" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_module.dag", qualified_module: "v2.compiler.emit_module" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_produced.dag", qualified_module: "v2.compiler.emit_produced" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_semantic_decl.dag", qualified_module: "v2.compiler.emit_semantic_decl" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/fold_lowering.dag", qualified_module: "v2.compiler.fold_lowering" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/materialization_carriers.dag", qualified_module: "v2.compiler.materialization_carriers" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/parse_engine_hooks.dag", qualified_module: "v2.compiler.parse_engine_hooks" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/program_assembly.dag", qualified_module: "v2.compiler.program_assembly" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/program_partition.dag", qualified_module: "v2.compiler.program_partition" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/self_host.dag", qualified_module: "v2.compiler.self_host" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/source_authority.dag", qualified_module: "v2.compiler.source_authority" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/use_site_verdict.dag", qualified_module: "v2.compiler.use_site_verdict" }
+]
+
+data compiler_frontier_crate_layout_note: String = "Single crate-organization authority (Wave 2 derived layout): self-emitted stage0 mod basenames derive from compiler_frontier_roster SelfEmitted rows via qualified_module bindings + stage0_module_emit_basename. Seed-retained intrinsic kernel + pilot scaffolds compose in gunbc.stage0_crate_layout for the v1 regen closure; witness stage0_crate_layout_witness_test pins the projection. Dissolve-on: regen compile roots include src/v2 and v1.compiler.emit_rust imports frontier directly."
 
 fn measured_stage_for_blocker(blocker: FrontierBlockerClass) -> FrontierProbeStage {
   match blocker {
@@ -768,6 +806,68 @@ fn compiler_frontier_roster_matches_survey_holds(survey: List<FrontierProbeRecei
   )
 }
 
+fn compiler_frontier_qualified_module_for_path(target: String) -> String {
+  fold_list(
+    xs: compiler_frontier_qualified_module_bindings,
+    empty: "",
+    cons: fn(found, binding) {
+      if found != "" {
+        found
+      } else if binding.module_path == target {
+        binding.qualified_module
+      } else {
+        ""
+      }
+    }
+  )
+}
+
+fn compiler_frontier_qualified_module_bindings_complete_holds() -> Bool {
+  length(xs: compiler_frontier_qualified_module_bindings) == compiler_frontier_module_count_expected
+}
+
+fn compiler_frontier_qualified_module_bindings_unique_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok
+        && (compiler_frontier_qualified_module_for_path(target: row.module_path) != "")
+        && (count_rows_with_module_path(xs: compiler_frontier_roster, target: row.module_path) == 1)
+    }
+  )
+}
+
+fn frontier_row_stage0_mod_basename(row: CompilerModuleFrontierRow) -> String {
+  stage0_module_emit_basename(
+    module_path: compiler_frontier_qualified_module_for_path(target: row.module_path)
+  )
+}
+
+fn self_emitted_frontier_row_stage0_mod_basename(row: CompilerModuleFrontierRow) -> List<String> {
+  match row.disposition {
+    SelfEmitted => [frontier_row_stage0_mod_basename(row: row)]
+    SeedRetained { reason: _, migration_trigger: _ } => []
+  }
+}
+
+fn compiler_frontier_self_emitted_stage0_mod_basenames() -> List<String> {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: [],
+    cons: fn(acc, row) {
+      concat(acc, self_emitted_frontier_row_stage0_mod_basename(row: row))
+    }
+  )
+}
+
+fn compiler_frontier_crate_layout_holds() -> Bool {
+  compiler_frontier_qualified_module_bindings_complete_holds()
+    && compiler_frontier_qualified_module_bindings_unique_holds()
+    && (length(xs: compiler_frontier_self_emitted_stage0_mod_basenames())
+      == compiler_frontier_self_emitted_count())
+}
+
 fn compiler_frontier_census_holds() -> Bool {
   compiler_frontier_roster_complete_holds()
     && compiler_frontier_roster_paths_unique_holds()
@@ -782,6 +882,7 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_self_emitted_located_reason_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
     && compiler_frontier_band_a_emit_readiness_holds()
+    && compiler_frontier_crate_layout_holds()
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
