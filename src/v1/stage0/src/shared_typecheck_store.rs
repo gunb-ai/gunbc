@@ -6,8 +6,10 @@
 //!
 //! Normal indexes keep typed results as per-index `Rc` maps (main memory path). This
 //! module holds the interim **serde byte transport** for cross-worker share only.
-//! Encode/decode run **outside** the `RwLock`. 🟡 dissolve-on: store-path `Rc`→`Arc`
-//! on `TypecheckModuleResult` / nested infer carriers (design §4.2).
+//! When armed, the shared store is the sole typed-cache authority — `index_insert_typed`
+//! never writes per-index `typed_module_cache` (reads decode shared bytes only; avoids
+//! Rc+JSON double retention). 🟡 dissolve-on:
+//! store-path `Rc`→`Arc` on `TypecheckModuleResult` / nested infer carriers (design §4.2).
 //!
 //! **Cross-worker serde contract:** `TypecheckModuleResult` serializes authored module/type
 //! *names* and diagnostic trees — not per-worker `InternTable` indices — so worker B can decode
@@ -45,18 +47,14 @@ impl SharedTypecheckCaches {
 
     /// Decode a typed snapshot **without** holding the store lock.
     /// Payload is name-keyed (no intern-table indices) — safe to materialize on any worker index.
-    pub fn decode_typed_snapshot(
-        bytes: &[u8],
-    ) -> Result<Rc<TypecheckModuleResult>, String> {
+    pub fn decode_typed_snapshot(bytes: &[u8]) -> Result<Rc<TypecheckModuleResult>, String> {
         let value: TypecheckModuleResult = serde_json::from_slice(bytes)
             .map_err(|e| format!("shared typecheck store decode: {e}"))?;
         Ok(Rc::new(value))
     }
 
     /// Encode a typed result **without** holding the store lock.
-    pub fn encode_typed_snapshot(
-        result: &TypecheckModuleResult,
-    ) -> Result<Arc<Vec<u8>>, String> {
+    pub fn encode_typed_snapshot(result: &TypecheckModuleResult) -> Result<Arc<Vec<u8>>, String> {
         let bytes = serde_json::to_vec(result)
             .map_err(|e| format!("shared typecheck store encode: {e}"))?;
         Ok(Arc::new(bytes))

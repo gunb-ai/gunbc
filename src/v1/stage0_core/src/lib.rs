@@ -54,8 +54,12 @@ pub mod std_algebra;
 pub mod std_coercion;
 #[path = "../../stage0/src/std_computation.rs"]
 pub mod std_computation;
+#[path = "../../stage0/src/std_content_hash.rs"]
+pub mod std_content_hash;
 #[path = "../../stage0/src/std_decl_ref.rs"]
 pub mod std_decl_ref;
+#[path = "../../stage0/src/std_disposition.rs"]
+pub mod std_disposition;
 #[path = "../../stage0/src/std_effects.rs"]
 pub mod std_effects;
 #[path = "../../stage0/src/std_emit_model.rs"]
@@ -70,6 +74,8 @@ pub mod std_graph;
 pub mod std_http_path;
 #[path = "../../stage0/src/std_induction.rs"]
 pub mod std_induction;
+#[path = "../../stage0/src/std_interface_summary.rs"]
+pub mod std_interface_summary;
 #[path = "../../stage0/src/std_iteration.rs"]
 pub mod std_iteration;
 #[path = "../../stage0/src/std_lens_verdict.rs"]

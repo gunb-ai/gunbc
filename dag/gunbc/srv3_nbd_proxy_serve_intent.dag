@@ -1,0 +1,43 @@
+module gunbc.srv3_nbd_proxy_serve_intent
+
+import extdeps.bmc.webui.nbd_proxy {
+  bmcweb_nbd_proxy_ws_path,
+}
+import extdeps.bmc.webui.nbd_proxy_serve {
+  NbdProxyServeTransportIntent,
+  nbd_proxy_serve_transport_intent,
+  srv3_nbd_proxy_local_port,
+}
+import extdeps.boards.asrock_rack {
+  asrock_srv3_live_bmc_host,
+  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
+}
+import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
+import gunbc.host_effect { HostEffect, Srv3NbdProxyServe }
+import gunbc.srv3_os_install_reconcile_types { srv3_nbd_proxy_lease_key }
+import std.types { NonEmptyStr }
+
+fn srv3_nbd_proxy_serve_transport_intent() -> NbdProxyServeTransportIntent {
+  nbd_proxy_serve_transport_intent(
+    bmc_host: asrock_srv3_live_bmc_host,
+    session_token: concat("$", "BMCWEB_SESSION_TOKEN") as NonEmptyStr,
+    ws_path: bmcweb_nbd_proxy_ws_path(
+      variant: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
+      slot: 0,
+      index: 0,
+    ),
+    iso_path: srv3_actuator_virtual_media_iso_install_path,
+    local_nbd_port: srv3_nbd_proxy_local_port,
+  )
+}
+
+fn srv3_nbd_proxy_serve_intent() -> NbdProxyServeTransportIntent {
+  srv3_nbd_proxy_serve_transport_intent()
+}
+
+fn srv3_nbd_proxy_serve_host_effect() -> HostEffect {
+  Srv3NbdProxyServe {
+    intent: srv3_nbd_proxy_serve_transport_intent(),
+    lease_key: srv3_nbd_proxy_lease_key,
+  }
+}

@@ -1,7 +1,7 @@
 module v2.test.lens_determinism.reach_witness
 
 import v2.lens.determinism { determinism_axis_for_node, determinism_contract_witness, determinism_compile_gate }
-import std.determinism { DeterminismAxis, Deterministic, NonDeterministic }
+import std.determinism { Determinism, Deterministic, NonDeterministic }
 import v2.std.determinism { DeterminismFact }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node {
@@ -71,7 +71,7 @@ fn witness_holds(w: Witness<DeterminismFact>) -> Bool {
   }
 }
 
-fn axis_is_nondeterministic(a: DeterminismAxis) -> Bool {
+fn axis_is_nondeterministic(a: Determinism) -> Bool {
   match a {
     NonDeterministic { source: _ } => true
     Deterministic => false

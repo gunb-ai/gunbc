@@ -34,6 +34,7 @@ import gunbc.host_effect {
   Srv3NbdProxyServe,
   Srv3BootOnceReadBackSleep,
   Srv3ReceiptEmit,
+  SetHostnameCas,
 }
 import gunbc.fleet_converge_apply { converge_apply_for_host }
 import std.realization_reconcile { Converged, NotConverged }
@@ -105,7 +106,7 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     Srv3SolConsoleCapture => fallback
     Srv3BmcwebSessionLogin => fallback
     Srv3BmcwebTokenExtract => fallback
-    Srv3NbdProxyServe => fallback
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => fallback
     Srv3BootOnceReadBackSleep => fallback
     Srv3ReceiptEmit { lines: _ } => fallback
   }
