@@ -14662,13 +14662,17 @@ pub fn merge_global_bare_variant_locals(
                     if owner.connective == Connective::Disj
                         && has_child_named(owner.clone(), name.clone(), source_indices.clone())
                     {
-                        insert_variant_owner_checked(
-                            acc.clone(),
-                            name.clone(),
-                            owner.clone(),
-                            source_indices.clone(),
-                            module_name.clone(),
-                        )
+                        if v1_rt::map_get(&acc.locals, name.clone()).is_some() {
+                            acc.clone()
+                        } else {
+                            insert_variant_owner_checked(
+                                acc.clone(),
+                                name.clone(),
+                                owner.clone(),
+                                source_indices.clone(),
+                                module_name.clone(),
+                            )
+                        }
                     } else {
                         acc.clone()
                     }
