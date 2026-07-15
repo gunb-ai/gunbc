@@ -81,3 +81,47 @@ fn corpus_census_state_of_failing_names() {
     }
     eprintln!("[census] UNIQUE={unique} AMBIGUOUS={ambiguous} total={}", unique + ambiguous);
 }
+
+/// Emit the AMBIGUOUS roster — the forced-qualification worklist (§8 residue).
+/// These are names the census REFUSES because they are declared more than once;
+/// no census widening can fix them (widening would make them guess, violating §5).
+/// The only remedy is qualifying the reference. This is Wave-0 (c), sized.
+#[test]
+fn corpus_ambiguous_roster() {
+    let ws = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .canonicalize()
+        .expect("workspace root");
+    let mut sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect(&ws, &ws.join("dag"), &mut sources);
+    collect(&ws, &ws.join("src/v2"), &mut sources);
+    eprintln!("[roster] {} sources (dag/ + src/v2 — CI floor source-roots)", sources.len());
+
+    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im_rc::Vector<_>>()));
+    let graph = frontend.graph.as_ref().expect("graph");
+    let source_indices = frontend
+        .newline_indices
+        .iter()
+        .cloned()
+        .fold(im_rc::HashMap::new(), |acc, si| acc.update(si.file.clone(), si));
+    let census = build_global_bare_census(graph.modules.clone(), Rc::new(source_indices));
+
+    let mut ambiguous: Vec<String> = census
+        .iter()
+        .filter(|(_k, v)| matches!(&***v, GlobalBareLookupState::GlobalBareAmbiguousBinding))
+        .map(|(k, _v)| k.to_string())
+        .collect();
+    ambiguous.sort();
+    eprintln!("[roster] AMBIGUOUS count = {}", ambiguous.len());
+    for n in &ambiguous {
+        println!("AMBIGUOUS\t{n}");
+    }
+    let unique = census.len() - ambiguous.len();
+    eprintln!(
+        "[roster] UNIQUE={} AMBIGUOUS={} total={} ({:.2}% unique)",
+        unique,
+        ambiguous.len(),
+        census.len(),
+        (unique as f64 / census.len() as f64) * 100.0
+    );
+}
