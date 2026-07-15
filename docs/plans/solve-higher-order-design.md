@@ -29,9 +29,10 @@ On its face `solve` fights "bounded and forward … never cyclic values." It doe
 
 ```
 solve  ≜  Loop(
-            body:        step( residual(model, candidate) ),   // forward fold — HAVE
-            bound:       DescentEvidence,                       // Converged | Refuse — HAVE
-            on_exhaust:  Refuse{ iters, residual }              // §5 fail-closed — HAVE
+            body:           step( residual(model, candidate) ),  // forward fold — HAVE
+            step_evidence:  DescentEvidence,                     // Strict | NonIncreasing | DescentUnknown — HAVE
+            terminate_when: residual_within_bound,               // success = the residual bound is met (loop-termination)
+            on_exhaust:     Refuse{ iters, residual }            // §5 fail-closed (DescentUnknown / max iters) — HAVE
           )
 ```
 
@@ -39,7 +40,7 @@ solve  ≜  Loop(
 | --- | --- | --- |
 | **residual** | a *forward fold over an existing model*, read as "these must be consistent" rather than "evaluate forward" | `find_witness` / `coercion_fold` (§4), pointed at equality targets |
 | **iteration** | the fixed-point loop | `Loop` behavior (recursion desugars to it) |
-| **convergence bound** | `Converged` \| `Strict`-descent \| refuse-on-exhaust | `DescentEvidence` on `BoundedLattice`, reused verbatim (`dag/std/termination.dag`) |
+| **convergence bound** | per-step **descent evidence** (`Strict` \| `NonIncreasing` \| `DescentUnknown`); loop-**termination** is a separate success predicate (residual within bound), and exhaustion → refuse | `DescentEvidence` on a `BoundedLattice` whose bottom `DescentUnknown` is fail-closed, reused verbatim (`dag/std/termination.dag`) |
 | **numerical inner-step** | LU-solve, ODE integrator, relaxation kernel | a **realization handler** in `extdeps/` — the §2/§3 transport pattern (one agnostic shape, N handlers: LAPACK / ngspice / pure-dag Newton) |
 
 The only part that is *not* pure substrate is the numerical kernel — and that is not a substrate concern at all. It is a transport handler bound to an agnostic shape, exactly like `cc` compiling or `ngspice` simulating. Dispatch over handlers lives in `extdeps/`, never in the interface (§3).
