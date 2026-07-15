@@ -293,8 +293,12 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
   }
 }
 
-fn variant_pattern_coverage_key(name: String) -> String {
+fn qualified_name_last_segment(name: String) -> String {
   fold(split(name, separator: "."), init: name, f: (_, seg) => seg)
+}
+
+fn variant_pattern_coverage_key(name: String) -> String {
+  qualified_name_last_segment(name: name)
 }
 
 fn check_match_exhaustiveness(
