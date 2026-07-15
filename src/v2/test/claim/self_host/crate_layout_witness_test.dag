@@ -21,7 +21,7 @@ import v2.compiler.self_host.frontier {
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.text { String, string_contains }
+import v2.std.text { String }
 
 data witness_red_control_note: String = "Discriminating RED (both directions): (1) OMIT — drop v2_compiler_use_site_verdict from generated_pub_mod_basenames while frontier row stays SelfEmitted → witness_generated_includes_every_self_emitted_basename_holds false; (2) INCLUDE — append phantom_module to generated_pub_mod_basenames absent from frontier hand_maintained_pub_mod_basenames → witness_generated_has_no_phantom_registration_holds false. Byte drift RED: generated_artifact_drift_gate perturb suffix on dag/gunbc/stage0_crate_layout_generated.dag."
 
