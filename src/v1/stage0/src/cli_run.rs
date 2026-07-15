@@ -4649,6 +4649,7 @@ pub fn run_claim_measured(
     ctx.clear_eval_deadline();
     v1_interpreter::eval_subject_clear();
     let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, cpu_nanos);
+    let outcome = wall_budget_completion_outcome(ctx.witness_wall_budget(), outcome, wall_nanos);
     let receipt =
         v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
     (outcome, receipt)
@@ -4675,6 +4676,32 @@ fn budget_completion_outcome(
                     "{}",
                     v1_interpreter::InterpError::EvalBudgetExceeded {
                         elapsed_ms: (cpu_nanos / 1_000_000) as u64,
+                        budget_ms,
+                    }
+                ),
+            }
+        }
+        (_, o) => o,
+    }
+}
+
+/// Whole-receipt wall budget for Wet self-host receipts: emit+cargo subprocess I/O
+/// counts against wall time, not CPU. A Pass over the wall budget converts to the same
+/// typed refusal — silent green would fail open on the nightly falsifier lane budget.
+fn wall_budget_completion_outcome(
+    budget: Option<u64>,
+    outcome: ClaimOutcome,
+    wall_nanos: u128,
+) -> ClaimOutcome {
+    match (budget, outcome) {
+        (Some(budget_ms), ClaimOutcome::Pass)
+            if wall_nanos > u128::from(budget_ms) * 1_000_000 =>
+        {
+            ClaimOutcome::RuntimeError {
+                message: format!(
+                    "{}",
+                    v1_interpreter::InterpError::WitnessWallBudgetExceeded {
+                        elapsed_ms: (wall_nanos / 1_000_000) as u64,
                         budget_ms,
                     }
                 ),
@@ -4726,6 +4753,19 @@ mod budget_completion_tests {
             budget_completion_outcome(Some(5), ClaimOutcome::Fail, 6_000_000),
             ClaimOutcome::Fail
         ));
+    }
+
+    #[test]
+    fn pass_over_wall_budget_converts_to_typed_refusal() {
+        match wall_budget_completion_outcome(Some(600), ClaimOutcome::Pass, 601_000_000_000) {
+            ClaimOutcome::RuntimeError { message } => {
+                assert!(
+                    message.contains("wet self-host receipt wall budget exceeded"),
+                    "typed refusal expected; got {message}"
+                );
+            }
+            other => panic!("expected RuntimeError, got {other:?}"),
+        }
     }
 }
 
@@ -6995,6 +7035,27 @@ pub struct DiscoveryCorpusOptions {
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
     /// bound (the long-lane / local recipe posture).
     pub fast_lane_eval_budget_ms: Option<u64>,
+    /// Whole-receipt wall budget for the nightly falsifier Wet self-host lane (emit+cargo).
+    pub wet_receipt_wall_budget_ms: Option<u64>,
+    /// Secondary interpreter CPU budget for the falsifier Wet self-host lane.
+    pub wet_receipt_interp_eval_budget_ms: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WitnessBudgetPolicy {
+    pub cpu_eval_budget_ms: Option<u64>,
+    pub wet_receipt_wall_budget_ms: Option<u64>,
+}
+
+impl DiscoveryCorpusOptions {
+    pub fn witness_budget_policy(&self) -> WitnessBudgetPolicy {
+        WitnessBudgetPolicy {
+            cpu_eval_budget_ms: self
+                .fast_lane_eval_budget_ms
+                .or(self.wet_receipt_interp_eval_budget_ms),
+            wet_receipt_wall_budget_ms: self.wet_receipt_wall_budget_ms,
+        }
+    }
 }
 
 impl Default for DiscoveryCorpusOptions {
@@ -7005,6 +7066,8 @@ impl Default for DiscoveryCorpusOptions {
             exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
             fast_lane_eval_budget_ms: None,
+            wet_receipt_wall_budget_ms: None,
+            wet_receipt_interp_eval_budget_ms: None,
         }
     }
 }
@@ -8528,7 +8591,7 @@ pub fn run_discovery_corpus_with_options(
                 &diff_edits,
                 floor_runner_ctx.as_ref(),
                 whole_tree_published_keys.clone(),
-                options.fast_lane_eval_budget_ms,
+                options.witness_budget_policy(),
                 ShardStyle {
                     shard_id: 0,
                     shard_count: 1,

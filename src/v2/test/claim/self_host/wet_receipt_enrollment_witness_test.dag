@@ -1,0 +1,70 @@
+module v2.test.claim.self_host.wet_receipt_enrollment_witness_test
+
+import v2.compiler.self_host.frontier {
+  compiler_frontier_row_06_translate,
+  SelfEmitted,
+  FrontierProbeReceipt,
+  SelfEmitReady,
+  ProbeStageEmit,
+  CompilerModuleFrontierRow
+}
+import v2.compiler.self_host.wet_receipt_enrollment {
+  SelfHostWetReceiptBinding,
+  falsifier_self_host_wet_entries,
+  falsifier_self_host_wet_template_entries,
+  falsifier_self_host_wet_frontier_enrolled_entries,
+  falsifier_self_host_wet_template_only_holds,
+  frontier_row_wet_entries_if_enrolled,
+  find_wet_receipt_binding
+}
+import v2.std.algebra { length }
+import v2.std.collection { Absent, Present }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+fn sample_seed_retained_row() -> CompilerModuleFrontierRow {
+  compiler_frontier_row_06_translate
+}
+
+fn sample_self_emitted_row() -> CompilerModuleFrontierRow {
+  CompilerModuleFrontierRow {
+    module_path: "src/v2/compiler/06_translate.dag",
+    disposition: SelfEmitted,
+    measured_probe: FrontierProbeReceipt {
+      module_path: "src/v2/compiler/06_translate.dag",
+      blocker_class: SelfEmitReady,
+      located_stage: ProbeStageEmit,
+      located_reason: ^measured_probe_self_emit_ready
+    },
+    tractability_rank: 0
+  }
+}
+
+fn witness_seed_retained_row_enrolls_no_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: sample_seed_retained_row())) == 0
+}
+
+fn witness_self_emitted_without_binding_enrolls_no_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: sample_self_emitted_row())) == 0
+}
+
+fn witness_template_only_nightly_enrollment_holds() -> Bool {
+  falsifier_self_host_wet_template_only_holds()
+    && (length(xs: falsifier_self_host_wet_entries()) == 1)
+    && (length(xs: falsifier_self_host_wet_template_entries) == 1)
+    && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 0)
+}
+
+fn witness_unbound_module_path_has_no_binding() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/06_translate.dag") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn wet_receipt_enrollment_witnesses() -> Bool {
+  witness_seed_retained_row_enrolls_no_wet_entry()
+    && witness_self_emitted_without_binding_enrolls_no_wet_entry()
+    && witness_template_only_nightly_enrollment_holds()
+    && witness_unbound_module_path_has_no_binding()
+}
