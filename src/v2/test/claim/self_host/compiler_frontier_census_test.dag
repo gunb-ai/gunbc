@@ -22,7 +22,9 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_roster_paths_unique_holds,
   compiler_frontier_roster_probe_paths_match_holds,
   compiler_frontier_seed_retained_count,
+  compiler_frontier_self_emitted_baseline,
   compiler_frontier_self_emitted_count,
+  compiler_frontier_self_emitted_located_reason_holds,
   compiler_frontier_sweep_order_complete_holds
 }
 import v2.std.logic { Bool }
@@ -47,9 +49,9 @@ test fn compiler_frontier_duplicate_path_red_refuses() -> Bool {
     && compiler_frontier_phantom_module_path_absent_holds()
 }
 
-test fn compiler_frontier_initial_census_all_seed_retained() -> Bool {
-  compiler_frontier_self_emitted_count() == 0
-    && compiler_frontier_seed_retained_count() == compiler_frontier_module_count_expected
+test fn compiler_frontier_initial_census_matches_self_emitted_baseline() -> Bool {
+  compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
+    && compiler_frontier_roster_count() == compiler_frontier_module_count_expected
 }
 
 test fn compiler_frontier_execution_measured_attribution_test() -> Bool {
@@ -59,11 +61,12 @@ test fn compiler_frontier_execution_measured_attribution_test() -> Bool {
     && compiler_frontier_sweep_order_complete_holds()
     && compiler_frontier_roster_all_classified_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
+    && compiler_frontier_self_emitted_located_reason_holds()
 }
 
 test fn compiler_frontier_census_composite_test() -> Bool {
   compiler_frontier_census_holds()
-    && compiler_frontier_initial_census_all_seed_retained()
+    && compiler_frontier_initial_census_matches_self_emitted_baseline()
     && compiler_frontier_execution_measured_attribution_holds()
 }
 
@@ -82,10 +85,9 @@ test fn compiler_frontier_band_a_flippable_now_discriminator_holds() -> Bool {
     }
 }
 
-test fn compiler_frontier_band_a_other_gate_trigger_discriminator_holds() -> Bool {
+test fn compiler_frontier_band_a_use_site_verdict_flipped_discriminator_holds() -> Bool {
   match compiler_frontier_band_a_row_use_site_verdict.gate {
-    OtherGate { migration_trigger: t } =>
-      t == ^migrate_when_ownership_defork_lands
+    FlippableNow => true
     _ => false
   }
 }
