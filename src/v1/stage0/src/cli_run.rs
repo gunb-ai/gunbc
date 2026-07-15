@@ -13,7 +13,7 @@ use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
-use crate::v1_compiler_infer_env::{lookup_type_by_name, SymbolIndex};
+use crate::v1_compiler_infer_env::{lookup_type_by_name, symbol_index_insert, SymbolIndex};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -28,7 +28,8 @@ use crate::v1_std_core::{
     field_init_node_name_at, field_init_node_value, has_child_named, intern,
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, param_node_name_at,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items,
+    param_node_name_at,
     param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData, InferredNode, InternTable,
     MatchPattern, NewlineIndex, Node,
 };
@@ -2867,10 +2868,6 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
-    /// Corpus-wide SymbolIndex census (Grammar lane G1): entry-scoped import closures
-    /// omit provider modules for import-less qualified projections; the census authority
-    /// is the whole indexed pool, not the entry closure alone.
-    corpus_symbol_index: RefCell<Option<Rc<SymbolIndex>>>,
 }
 
 pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
@@ -2910,7 +2907,6 @@ fn new_multi_entry_index_shell(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
-        corpus_symbol_index: RefCell::new(None),
     }
 }
 
@@ -3725,61 +3721,136 @@ fn reconcile_all_cache_hits(
     )
 }
 
-fn get_or_build_corpus_symbol_index(
+fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
+    if !name.contains('.') {
+        return None;
+    }
+    name.rfind('.')
+        .and_then(|pos| if pos > 0 { Some(name[..pos].to_string()) } else { None })
+}
+
+fn collect_qualified_projection_module_paths_from_node(
+    node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    out: &mut HashSet<String>,
+) {
+    let name = authored_name_at(source_indices.clone(), node.clone());
+    if let Some(prefix) = qualified_name_module_path_prefix(&name) {
+        out.insert(prefix);
+    }
+    for child in node.children.iter() {
+        collect_qualified_projection_module_paths_from_node(
+            child.clone(),
+            source_indices.clone(),
+            out,
+        );
+    }
+}
+
+fn qualified_projection_module_paths_in_graph(
+    graph: &v1_compiler_resolve::ModuleGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> HashSet<String> {
+    let mut paths = HashSet::new();
+    for resolved in graph.modules.iter() {
+        for item in module_items(resolved.module.clone()).iter() {
+            collect_qualified_projection_module_paths_from_node(
+                item.clone(),
+                source_indices.clone(),
+                &mut paths,
+            );
+        }
+    }
+    paths
+}
+
+fn merge_symbol_indices(left: Rc<SymbolIndex>, right: Rc<SymbolIndex>) -> Rc<SymbolIndex> {
+    right.entries.iter().fold(left, |acc, (key, value)| {
+        symbol_index_insert(acc, key.clone(), value.clone())
+    })
+}
+
+fn parse_module_node_from_index_source(
     index: &MultiEntryIndex,
+    source: Rc<v1_compiler_compile::SourceFile>,
+) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
+    let cached = index.parse_cache.borrow().get(&source.path).cloned();
+    let (parse_result, nl_index) = match cached {
+        Some(entry) => entry,
+        None => {
+            let tokens =
+                v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+            let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+            let current_table = index.intern_table.borrow().clone();
+            let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+                let mut m = HashMap::new();
+                m.insert(source.path.clone(), nl_index.clone());
+                m
+            });
+            let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+            *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+            let entry = (parsed.result.clone(), nl_index.clone());
+            index
+                .parse_cache
+                .borrow_mut()
+                .insert(source.path.clone(), entry.clone());
+            entry
+        }
+    };
+    if let Some(err) = &parse_result.error {
+        let span = diagnostic_to_span(err.diagnostic.clone());
+        let loc = format_error_loc(&span.file, span.start, &Rc::new(HashMap::new()));
+        return Err(format!(
+            "symbol_index qualified-projection census refused: parse failed for {}: {}",
+            loc,
+            diagnostic_to_message(err.diagnostic.clone())
+        ));
+    }
+    match &parse_result.module {
+        Some(module) => Ok((module.clone(), nl_index)),
+        None => Err(format!(
+            "symbol_index qualified-projection census refused: no module in {}",
+            source.path
+        )),
+    }
+}
+
+fn build_symbol_index_for_reconcile(
+    index: &MultiEntryIndex,
+    graph: Rc<v1_compiler_resolve::ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<SymbolIndex>, String> {
-    if let Some(cached) = index.corpus_symbol_index.borrow().clone() {
-        return Ok(cached);
-    }
-    let mut modules: Vec<Rc<Node>> = Vec::new();
-    let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-        index.source_files.values().cloned().collect();
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
-    for source in sources {
-        let cached = index.parse_cache.borrow().get(&source.path).cloned();
-        let (parse_result, nl_index) = match cached {
-            Some(entry) => entry,
-            None => {
-                let tokens =
-                    v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
-                let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-                let current_table = index.intern_table.borrow().clone();
-                let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
-                    let mut m = HashMap::new();
-                    m.insert(source.path.clone(), nl_index.clone());
-                    m
-                });
-                let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-                let entry = (parsed.result.clone(), nl_index.clone());
-                index
-                    .parse_cache
-                    .borrow_mut()
-                    .insert(source.path.clone(), entry.clone());
-                entry
-            }
+    let mut symbol_index = v1_compiler_infer::build_symbol_index_census(
+        graph.modules.clone(),
+        source_indices.clone(),
+    );
+    let closure_module_names: HashSet<String> = graph
+        .modules
+        .iter()
+        .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
+        .collect();
+    for module_path in qualified_projection_module_paths_in_graph(&graph, source_indices.clone())
+    {
+        if closure_module_names.contains(&module_path) {
+            continue;
+        }
+        let Some(source) = index.source_files.get(&module_path).cloned() else {
+            continue;
         };
-        si_map.insert(nl_index.file.clone(), nl_index.clone());
-        if let Some(err) = &parse_result.error {
-            let span = diagnostic_to_span(err.diagnostic.clone());
-            let loc = format_error_loc(&span.file, span.start, &Rc::new(si_map.clone()));
-            return Err(format!(
-                "corpus symbol_index census refused: parse failed for {}: {}",
-                loc,
-                diagnostic_to_message(err.diagnostic.clone())
-            ));
-        }
-        if let Some(module) = &parse_result.module {
-            modules.push(module.clone());
-        }
+        let (module, provider_nl_index) = parse_module_node_from_index_source(index, source)?;
+        let mut provider_si = (*source_indices).clone();
+        provider_si.insert(provider_nl_index.file.clone(), provider_nl_index);
+        let provider_si = Rc::new(provider_si);
+        let provider_graph = v1_compiler_resolve::resolve_modules(
+            Rc::new(vec![module].into()),
+            provider_si.clone(),
+        );
+        let provider_index = v1_compiler_infer::build_symbol_index_census(
+            provider_graph.modules.clone(),
+            provider_si,
+        );
+        symbol_index = merge_symbol_indices(symbol_index, provider_index);
     }
-    let source_indices = Rc::new(si_map);
-    let graph =
-        v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
-    let symbol_index =
-        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices);
-    *index.corpus_symbol_index.borrow_mut() = Some(symbol_index.clone());
     Ok(symbol_index)
 }
 

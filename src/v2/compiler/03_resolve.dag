@@ -614,8 +614,6 @@ fn resolve_node(
         Present { value: outcome } => outcome
         Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
       }
-    TypeNode { connective: Disj } =>
-      resolve_children_homogeneous_scope(ctx: ctx, n: n)
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
     ComputationNode { behavior: _ } =>
