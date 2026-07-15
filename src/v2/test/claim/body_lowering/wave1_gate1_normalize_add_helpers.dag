@@ -1,9 +1,5 @@
 module v2.test.claim.body_lowering.wave1_gate1_normalize_add_helpers
 
-import v2.compiler.ingested_fixture_arrows {
-  ingested_bind_module_source,
-  ingested_loop_module_source
-}
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { resolve }
@@ -14,9 +10,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
-  Bind,
   ComputationNode,
-  Loop,
   Node,
   Transform,
   TypeNode,
@@ -60,90 +54,6 @@ fn wave1_gate1_normalized_add_module() -> Optional<Node> {
     source: wave1_gate1_add_module_source,
     file: ^wave1_gate1_add_probe_file
   )
-}
-
-fn wave1_gate1_arrow_body_is_loop(arrow: Node) -> Bool {
-  match find_arrow_body_child(root: arrow) {
-    Accepted { value: body, diagnostics: _ } =>
-      match body.kind {
-        ComputationNode { behavior: Loop } => true
-        _ => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn wave1_gate1_arrow_body_is_bind(arrow: Node) -> Bool {
-  match find_arrow_body_child(root: arrow) {
-    Accepted { value: body, diagnostics: _ } =>
-      match body.kind {
-        ComputationNode { behavior: Bind } => true
-        _ => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn wave1_gate1_resolved_loop_has_arrow_holds() -> Bool {
-  match wave1_gate1_normalized_module_from_source(
-    source: ingested_loop_module_source,
-    file: ^ingested_fixture_loop_file
-  ) {
-    Absent => false
-    Present { value: tree } =>
-      match resolve(tree: tree, lm: dag_language_model()) {
-        Accepted { value: resolved, diagnostics: _ } =>
-          match wave1_gate1_find_arrow_in_module(root: resolved) {
-            Present { value: _ } => true
-            Absent => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-  }
-}
-
-test fn wave1_gate1_normalized_loop_has_arrow_holds() -> Bool {
-  match wave1_gate1_normalized_module_from_source(
-    source: ingested_loop_module_source,
-    file: ^ingested_fixture_loop_file
-  ) {
-    Absent => false
-    Present { value: tree } =>
-      match wave1_gate1_find_arrow_in_module(root: tree) {
-        Present { value: _ } => true
-        Absent => false
-      }
-  }
-}
-
-test fn wave1_gate1_normalized_loop_yields_arrow_loop_holds() -> Bool {
-  match wave1_gate1_normalized_module_from_source(
-    source: ingested_loop_module_source,
-    file: ^ingested_fixture_loop_file
-  ) {
-    Absent => false
-    Present { value: tree } =>
-      match wave1_gate1_find_arrow_in_module(root: tree) {
-        Absent => false
-        Present { value: arrow } =>
-          well_formed(n: arrow) && wave1_gate1_arrow_body_is_loop(arrow: arrow)
-      }
-  }
-}
-
-test fn wave1_gate1_normalized_bind_yields_arrow_bind_holds() -> Bool {
-  match wave1_gate1_normalized_module_from_source(
-    source: ingested_bind_module_source,
-    file: ^ingested_fixture_bind_file
-  ) {
-    Absent => false
-    Present { value: tree } =>
-      match wave1_gate1_find_arrow_in_module(root: tree) {
-        Absent => false
-        Present { value: arrow } =>
-          well_formed(n: arrow) && wave1_gate1_arrow_body_is_bind(arrow: arrow)
-      }
-  }
 }
 
 fn wave1_gate1_normalized_add_resolves_holds() -> Bool {

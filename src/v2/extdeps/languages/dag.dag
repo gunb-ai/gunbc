@@ -995,6 +995,12 @@ fn dag_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_expr,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_loop_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_expr,
+      rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_fn_literal)
       ]
     ),
@@ -1109,14 +1115,14 @@ fn dag_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_primary_expr,
       rhs: [
-        grammar_formal_terminal(identity: ^dag_token_kw_loop),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
       ]
     ),
     grammar_formal_production(
-      lhs: ^dag_production_primary_expr,
+      lhs: ^dag_production_loop_expr,
       rhs: [
-        grammar_formal_terminal_free(identity: ^dag_token_ident)
+        grammar_formal_terminal(identity: ^dag_token_kw_loop),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
       ]
     ),
     grammar_formal_production(
@@ -2171,10 +2177,13 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
     right: dag_grammar_choice(
       left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
       right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
+        left: dag_grammar_nonterminal(production: ^dag_production_loop_expr),
         right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
-          right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+          left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
+          right: dag_grammar_choice(
+            left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
+            right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+          )
         )
       )
     )
@@ -2415,17 +2424,12 @@ data dag_grammar_int_literal_stamp_lexeme_scaffold_note: String = "Interim: prim
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_kw_loop),
-      right: dag_grammar_nonterminal(production: ^dag_production_expr)
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      right: dag_grammar_primary_ident_suffix_expr()
     ),
     right: dag_grammar_choice(
-      left: dag_grammar_sequence(
-        left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
-        right: dag_grammar_primary_ident_suffix_expr()
-      ),
+      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
       right: dag_grammar_choice(
-        left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
-        right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
           right: dag_grammar_choice(
             left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
@@ -2459,7 +2463,6 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
             )
           )
         )
-      )
     )
   )
 }
@@ -2621,6 +2624,13 @@ fn dag_grammar_if_then_expr() -> GrammarExpr {
         )
       )
     )
+  )
+}
+
+fn dag_grammar_loop_expr_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_loop),
+    right: dag_grammar_nonterminal(production: ^dag_production_expr)
   )
 }
 
@@ -3094,6 +3104,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_if_expr_expr(),
     emitted: ^dag_surface_if_expr
   )
+  let loop_expr = dag_grammar_production(
+    name: ^dag_production_loop_expr,
+    expression: dag_grammar_loop_expr_expr(),
+    emitted: ^dag_surface_loop_expr
+  )
   let fn_literal = dag_grammar_production(
     name: ^dag_production_fn_literal,
     expression: dag_grammar_fn_literal_expr(),
@@ -3123,6 +3138,7 @@ fn dag_grammar_root() -> GrammarRoot {
       stmt,
       let_expr,
       expr,
+      loop_expr,
       binary_expr,
       unary_expr,
       postfix_expr,
