@@ -970,6 +970,17 @@ fn dag_formal_productions() -> List<FormalProduction> {
       ]
     ),
     grammar_formal_production(
+      lhs: ^dag_production_let_expr,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_kw_let),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
+        grammar_formal_terminal(identity: ^dag_token_eq),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
+      ]
+    ),
+    grammar_formal_production(
       lhs: ^dag_production_expr,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_match_expr)
@@ -1356,13 +1367,13 @@ fn dag_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^dag_production_constructor_pattern,
       rhs: [
-        grammar_formal_terminal_free(identity: ^dag_token_ident)
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_qualified_name)
       ]
     ),
     grammar_formal_production(
       lhs: ^dag_production_constructor_pattern,
       rhs: [
-        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_qualified_name),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_constructor_pattern_suffix)
       ]
     ),
@@ -2127,9 +2138,21 @@ fn dag_grammar_let_expr() -> GrammarExpr {
     left: dag_grammar_terminal(token_class: ^dag_token_kw_let),
     right: dag_grammar_sequence(
       left: dag_grammar_binding_name_terminal(),
-      right: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_eq),
-        right: dag_grammar_nonterminal(production: ^dag_production_expr)
+      right: dag_grammar_choice(
+        left: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_colon),
+          right: dag_grammar_sequence(
+            left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
+            right: dag_grammar_sequence(
+              left: dag_grammar_terminal(token_class: ^dag_token_eq),
+              right: dag_grammar_nonterminal(production: ^dag_production_expr)
+            )
+          )
+        ),
+        right: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_eq),
+          right: dag_grammar_nonterminal(production: ^dag_production_expr)
+        )
       )
     )
   )
@@ -2516,7 +2539,7 @@ fn dag_grammar_constructor_pattern_suffix_expr() -> GrammarExpr {
 
 fn dag_grammar_constructor_pattern_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_ident),
+    left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
     right: dag_grammar_constructor_pattern_suffix_expr()
   )
 }

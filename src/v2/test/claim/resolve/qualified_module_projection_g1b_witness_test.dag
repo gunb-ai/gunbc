@@ -1,0 +1,31 @@
+module v2.test.resolve.qualified_module_projection_g1b_witness
+
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data g1b_stripped_witness_note: String = "Enrollment witness for qualified_module_projection_g1b_fixture.dag — batch-1 compile-clean covers fn/data/let qualified type-annotation positions without import closure."
+
+data qmp_g1b_fixture_subject: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^qmp_g1b_fixture_subject } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data claim_qualified_module_projection_g1b_compiles: TestClaim = CompilesClaim {
+  label: "resolve/qualified_module_projection_g1b: import-less module compiles with qualified type projection in fn/data/let annotations",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: qmp_g1b_fixture_subject,
+  expected_value: qmp_g1b_fixture_subject,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
