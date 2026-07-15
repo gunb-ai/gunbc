@@ -19,6 +19,10 @@ const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
     "target/bootstrap_timing/v1_regen_stage0_receipt.json";
 
 // Registry authority: gunbc.stage0_emit_model.generated_stage0_files.
+// Hand-maintained registry authority: gunbc.stage0_crate_layout (self-emitted
+// basenames derived on v2.compiler.self_host.frontier; composed filenames via
+// stage0_hand_maintained_stage0_filenames_v1). Witness:
+// stage0_crate_layout_witness_test.dag + self_host/crate_layout_witness_test.dag.
 // Dissolve-on: regen_stage0 reads emitted gunbc_stage0_emit_model.rs roster.
 const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
@@ -119,6 +123,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 ];
 
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
+    // Authority: gunbc.stage0_crate_layout::stage0_hand_maintained_stage0_filenames_v1
+    // (self-emitted segment derived from frontier.dag SelfEmitted roster).
     "cli_run.rs",
     "coproduct_reflection.rs",
     "recorded_fixture.rs",

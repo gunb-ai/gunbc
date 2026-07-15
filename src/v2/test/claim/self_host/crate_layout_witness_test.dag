@@ -1,0 +1,64 @@
+module v2.test.claim.self_host.crate_layout_witness
+
+import gunbc.stage0_crate_layout {
+  emit_hand_maintained_pub_mod_block,
+  hand_maintained_pub_mod_basenames,
+  seed_retained_intrinsic_pub_mod_basenames,
+  stage0_hand_maintained_stage0_filenames_v1,
+  stage0_self_emitted_mod_basenames_v1,
+  stage0_self_emitted_mod_basenames_v1_projection
+}
+import v2.compiler.self_host.frontier {
+  compiler_frontier_crate_layout_holds,
+  compiler_frontier_self_emitted_baseline,
+  compiler_frontier_self_emitted_count,
+  compiler_frontier_self_emitted_stage0_mod_basenames
+}
+import v2.std.algebra { any, fold_list, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String, string_contains }
+
+fn string_list_contains(xs: List<String>, needle: String) -> Bool {
+  any(xs, x => x == needle)
+}
+
+fn string_lists_same_membership(xs: List<String>, ys: List<String>) -> Bool {
+  (length(xs: xs) == length(xs: ys))
+    && fold_list(
+      xs: xs,
+      empty: true,
+      cons: fn(ok, item) { ok && string_list_contains(xs: ys, needle: item) }
+    )
+}
+
+fn witness_frontier_self_emitted_projection_matches_holds() -> Bool {
+  string_lists_same_membership(
+    xs: compiler_frontier_self_emitted_stage0_mod_basenames(),
+    ys: stage0_self_emitted_mod_basenames_v1_projection
+  )
+}
+
+fn witness_stage0_hand_maintained_filenames_include_self_emitted_holds() -> Bool {
+  string_list_contains(
+    xs: stage0_hand_maintained_stage0_filenames_v1(),
+    needle: "v2_compiler_use_site_verdict.rs"
+  )
+}
+
+fn witness_emit_hand_maintained_block_includes_kernel_and_self_emitted_holds() -> Bool {
+  let block = emit_hand_maintained_pub_mod_block()
+  string_contains(block, "pub mod v1_interpreter;")
+    && string_contains(block, "pub mod v2_compiler_use_site_verdict;")
+    && (length(xs: hand_maintained_pub_mod_basenames(
+      self_emitted_basenames: stage0_self_emitted_mod_basenames_v1()
+    )) == length(xs: seed_retained_intrinsic_pub_mod_basenames) + 3 + compiler_frontier_self_emitted_baseline)
+}
+
+test fn crate_layout_witnesses() -> Bool {
+  compiler_frontier_crate_layout_holds()
+    && witness_frontier_self_emitted_projection_matches_holds()
+    && witness_stage0_hand_maintained_filenames_include_self_emitted_holds()
+    && witness_emit_hand_maintained_block_includes_kernel_and_self_emitted_holds()
+    && (compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline)
+}

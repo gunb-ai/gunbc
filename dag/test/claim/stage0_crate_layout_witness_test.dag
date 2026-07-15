@@ -1,0 +1,21 @@
+module test.claim.stage0_crate_layout_witness
+
+import gunbc.stage0_crate_layout {
+  stage0_hand_maintained_stage0_filenames_v1,
+  stage0_self_emitted_mod_basenames_v1_projection
+}
+import std.types { Bool, Int }
+
+fn w_hand_maintained_stage0_filenames_include_use_site_verdict() -> Bool {
+  stage0_hand_maintained_stage0_filenames_v1()
+    |> any(f => f == "v2_compiler_use_site_verdict.rs")
+}
+
+fn w_self_emitted_projection_count() -> Bool {
+  stage0_self_emitted_mod_basenames_v1_projection.length() == 1
+}
+
+test fn stage0_crate_layout_witnesses() -> Bool {
+  w_hand_maintained_stage0_filenames_include_use_site_verdict()
+    && w_self_emitted_projection_count()
+}
