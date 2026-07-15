@@ -29,7 +29,9 @@ import v2.std.node {
   TypeNode
 }
 
-data graph_invariant_repair_contract: String = "Reachability handler repair contract (mark-on-carrier, §3): an unreachable node is fixed by exactly one of — (1) AddReachEdge: add a structural Positional dependency so the target enters the reach fixpoint; (2) EnrollInExceptionRoster: declare deliberately unwired staged-ahead modeling; (3) Delete: remove the unreachable subject. Handlers emit the chosen arm ONLY via Correction.Suggested { node: Node } on v2.std.diagnostic — no separate Repair type, no code-string generator (§3 dual representation). Apply at the diagnostic locus with v2.lens.application apply_edit / substitute_at; re-run graph_invariant_reaches to verify Satisfied."
+data graph_invariant_repair_contract: String = "Reachability handler repair contract (mark-on-carrier, §3): an unreachable node is fixed by exactly one of — (1) AddReachEdge: add a structural Positional dependency so the target enters the reach fixpoint; (2) EnrollInExceptionRoster: declare deliberately unwired staged-ahead modeling; (3) Delete: remove the unreachable subject. Handlers emit the chosen arm ONLY via Correction.Suggested { node: Node } on v2.std.diagnostic — no separate Repair type, no code-string generator (§3 dual representation). Apply at the diagnostic locus with v2.lens.application apply_edit / substitute_at; re-run graph_invariant_reaches to verify Satisfied. Repair grain today: root-replacement first-inhabitant via graph_reach_root_replacement_edit (see graph_reach_root_replacement_repair_frontier)."
+
+data graph_reach_root_replacement_repair_frontier: String = "repair grain = root-replacement first-inhabitant: graph_reach_root_replacement_edit uses Path { steps: [] } and swaps the whole subject root for a synthetic Conj stapling old-root + unreachable target — valid proof that Correction.Suggested + apply_edit closes the law, NOT the final repair shape. DISSOLVES-ON surgical edit-at-locus repair: Edit.at must target the unreachable node's path within the subject tree (param binding / usage site), not a root swap."
 
 type GraphReachState {
   reached: List<Node>
