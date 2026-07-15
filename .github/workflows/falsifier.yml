@@ -2,9 +2,12 @@ name: affected-set-falsifier
 on:
   workflow_dispatch:
   schedule:
-    - cron: 0 7 * * *
+    - cron: 0 0,4,8,12,16,20 * * *
 permissions:
   contents: read
+concurrency:
+  group: affected-set-falsifier
+  cancel-in-progress: false
 env:
   CARGO_TERM_COLOR: always
 jobs:
