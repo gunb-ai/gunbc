@@ -12701,15 +12701,92 @@ pub fn census_insert_binding(
     }
 }
 
+pub fn local_binding_for_census_item(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<TypeBinding>> {
+    match local_binding_for_item(item.clone(), source_indices.clone()) {
+        Some(binding) => Some(binding),
+        None => {
+            if (((item.params.clone().len() as i64) > 0)
+                && (item.connective.clone() == Connective::NoConnective))
+                && (item.body.clone() != None)
+                && (item.transport.clone() == None)
+            {
+                let bare_node = Rc::new(Node {
+                    name: item.name.clone(),
+                    span: item.span.clone(),
+                    ident_span: item.ident_span.clone(),
+                    children: Rc::new(vec![]),
+                    connective: Connective::NoConnective,
+                    params: item.params.clone(),
+                    inferred: item.inferred.clone(),
+                    return_cardinality: item.return_cardinality.clone(),
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
+                });
+                Some(Rc::new(TypeBinding {
+                    name: authored_name_at(source_indices.clone(), item.clone()),
+                    resolved: bare_node.clone(),
+                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                }))
+            } else {
+                None
+            }
+        }
+    }
+}
+
 pub fn census_insert_item(
     census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    match local_binding_for_item(item.clone(), source_indices.clone()) {
+    match local_binding_for_census_item(item.clone(), source_indices.clone()) {
         None => census,
         Some(binding) => census_insert_binding(census, binding.clone()),
     }
+}
+
+pub fn census_insert_unique_disj_variant_aliases(
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
+    items.clone().iter().cloned().fold(
+        census.clone(),
+        |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
+            match item.connective.clone() {
+                Connective::Disj => item.children.clone().iter().cloned().fold(
+                    acc.clone(),
+                    |a2: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, child: Rc<Node>| {
+                        let vname = authored_name_at(source_indices.clone(), child.clone());
+                        match v1_rt::map_get(&counts, vname.clone()) {
+                            Some(1) => census_insert_binding(
+                                a2.clone(),
+                                Rc::new(TypeBinding {
+                                    name: vname.clone(),
+                                    resolved: child.clone(),
+                                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                }),
+                            ),
+                            _ => a2.clone(),
+                        }
+                    },
+                ),
+                _ => acc.clone(),
+            }
+        },
+    )
 }
 
 pub fn build_global_bare_census(
@@ -12719,11 +12796,17 @@ pub fn build_global_bare_census(
     modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         |census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, mod_: Rc<ResolvedModule>| {
-            module_items(mod_.module.clone()).iter().cloned().fold(
+            let items = module_items(mod_.module.clone());
+            let with_items = items.iter().cloned().fold(
                 census,
                 |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, item: Rc<Node>| {
                     census_insert_item(acc, item.clone(), source_indices.clone())
                 },
+            );
+            census_insert_unique_disj_variant_aliases(
+                with_items,
+                items,
+                source_indices.clone(),
             )
         },
     )
