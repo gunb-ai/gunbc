@@ -10,7 +10,8 @@ import tools.dag_compile_clean_scope {
   ExpectScopedContaining,
   ExpectWholeTree,
   witness_entry_root_is_first_witness_layer_root,
-  witness_pool_roots_match_witness_layer_roots
+  witness_pool_roots_match_witness_layer_roots,
+  compile_clean_docs_universe_path_grain_dissolve_trigger
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -39,4 +40,11 @@ test fn dag_compile_clean_scope_disposition_core_discriminates() -> Bool {
 test fn dag_compile_clean_scope_partition_authority_holds() -> Bool {
   witness_entry_root_is_first_witness_layer_root()
     && witness_pool_roots_match_witness_layer_roots()
+}
+
+test fn dag_compile_clean_scope_docs_universe_path_grain_dissolve_on_named() -> Bool {
+  string_contains(
+    s: compile_clean_docs_universe_path_grain_dissolve_trigger,
+    pattern: "dissolve-on: compile_clean_docs_universe_path_grain"
+  )
 }

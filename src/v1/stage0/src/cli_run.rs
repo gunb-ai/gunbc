@@ -1541,6 +1541,14 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
         };
     }
 
+    if compile_clean_all_touched_paths_docs_universe(touched_paths) {
+        let reason =
+            "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                .to_string();
+        eprintln!("compile-clean scope: skipped ({reason})");
+        return CompileCleanScopePlan::SkipNoAffected { reason };
+    }
+
     // `dag_compile_clean_scope.dag` — RequireWholeTree when substrate not ready.
     // floor_fast has no whole-tree resolve context (loaded=0) until #6239; live substrate is false.
     if !fn_arrow_decl_substrate_is_whole_tree_for_census(0) {
@@ -1595,13 +1603,6 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
             entry_paths: affected,
         };
     }
-    if compile_clean_all_touched_paths_docs_universe(touched_paths) {
-        let reason =
-            "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
-                .to_string();
-        eprintln!("compile-clean scope: skipped ({reason})");
-        return CompileCleanScopePlan::SkipNoAffected { reason };
-    }
     eprintln!(
         "compile-clean scope: non-empty diff with no shard intersection — whole-tree baseline"
     );
@@ -1643,19 +1644,10 @@ pub fn documentation_only_floor_skip_label_for_ci() -> String {
                 eprintln!(
                     "documentation-only floor skip: docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
                 );
-                return DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string();
-            }
-            match compile_clean_scope_plan_from_touched_paths_floor_fast(&changed_paths) {
-                CompileCleanScopePlan::SkipNoAffected { reason }
-                    if reason.contains("docs-only") =>
-                {
-                    eprintln!("documentation-only floor skip: {reason}");
-                    DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string()
-                }
-                other => {
-                    eprintln!("documentation-only floor skip: full floor ({other:?})");
-                    RUN_FULL_FLOOR_LABEL.to_string()
-                }
+                DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string()
+            } else {
+                eprintln!("documentation-only floor skip: full floor (non-docs-only diff)");
+                RUN_FULL_FLOOR_LABEL.to_string()
             }
         }
     }
@@ -15619,15 +15611,19 @@ mod witness_layer_roots_compile_clean_tests {
         );
     }
 
-    /// Lever-a receipt: docs-only compile-clean scope skips when substrate ready.
+    /// Lever-a receipt: docs-only compile-clean scope skips at path grain (pre-#6239).
     #[test]
     fn floor_fast_scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
             let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
                 "docs/plans/example.md".to_string(),
             ]);
-            // #6239: substrate not ready at census(0) → whole-tree for compile-clean scope.
-            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+            assert_eq!(
+                plan,
+                CompileCleanScopePlan::SkipNoAffected {
+                    reason: "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)".to_string(),
+                }
+            );
         });
     }
 
