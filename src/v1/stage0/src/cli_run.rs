@@ -14077,13 +14077,25 @@ mod nfr_tests {
             .iter()
             .map(|s| s.as_str())
             .collect();
+        eprintln!(
+            "nfr_roster_receipt: unrostered={} stale={} live={}",
+            non_fold_residue_unrostered_count(),
+            non_fold_residue_stale_roster_count(),
+            live.len()
+        );
         for site in nfr_build_report().sites.iter() {
+            if !non_fold_residue_site_is_rostered(site) {
+                eprintln!("unrostered live site: {site}");
+            }
             assert!(
                 non_fold_residue_site_is_rostered(site),
                 "unrostered: {site}"
             );
         }
         for entry in NON_FOLD_RESIDUE_ROSTER {
+            if !live.contains(entry) {
+                eprintln!("stale roster entry: {entry}");
+            }
             assert!(live.contains(entry), "stale roster: {entry}");
         }
     }
