@@ -11,7 +11,6 @@ import gunbc.host_effect {
   host_effect_identity_evidence,
   LocalShell,
   SshShell,
-  HostEffectEvidence,
   ShellEffectApplied,
   ConvergePlanApplied,
   Srv3InstallReconcileObserve,

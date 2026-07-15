@@ -307,33 +307,41 @@ fn realize_receipt_emit_on_host(
   )
 }
 
+fn realize_boot_once_read_back_sleep_body(
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
+  let success = srv3_transport_witness_bin_success(
+    transport: transport,
+    workdir: "/",
+    bin_path: "/bin/sleep",
+    args: [seconds],
+  )
+  srv3_shell_reconcile(
+    observed: ShellExecObserved {
+      exit_code: if success { 0 } else { 1 },
+      success: success,
+      stdout: "",
+      stderr: if success {
+        ""
+      } else {
+        "host_effect_apply: Srv3BootOnceReadBackSleep sleep failed; fail-closed"
+      },
+    },
+    intent: intent,
+  )
+}
+
 fn realize_boot_once_read_back_sleep_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
-    LocalShell | SshShell { ssh_host: _ } => {
-      let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
-      let success = srv3_transport_witness_bin_success(
-        transport: transport,
-        workdir: "/",
-        bin_path: "/bin/sleep",
-        args: [seconds],
-      )
-      srv3_shell_reconcile(
-        observed: ShellExecObserved {
-          exit_code: if success { 0 } else { 1 },
-          success: success,
-          stdout: "",
-          stderr: if success {
-            ""
-          } else {
-            "host_effect_apply: Srv3BootOnceReadBackSleep sleep failed; fail-closed"
-          },
-        },
-        intent: intent,
-      )
-    }
+    LocalShell =>
+      realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
+    SshShell { ssh_host: _ } =>
+      realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3BootOnceReadBackSleep cannot use EmitArtifactThenThinRun transport; typed mismatch.",
