@@ -1,12 +1,11 @@
 module v2.test.fixture.medium_structure_scan.perturb_red_plant
-import v2.std.logic { Bool }
-import v2.std.text { String }
+import extdeps.languages.bash.program { ShellProgram, RawLine }
 
-fn expected_ci_yml() -> String {
-  "runs-on: linux\n"
-}
+data perturb_red_note: String = "Perturb fixture: one planted RawLine.text bash composition. When perturb_red_test appends this fixture dir to the scan roots, the canonical containment witness must FLIP from Holds to Violates and the live violation count must go positive — a green-to-red proof by execution that the wall is live, not inert."
 
-fn perturb_red_check_side_leak() -> Bool {
-  let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "runs-on")
+data perturb_red_program: ShellProgram = ShellProgram {
+  set_e: false,
+  statements: [
+    RawLine { text: "echo perturb; echo red" }
+  ]
 }
