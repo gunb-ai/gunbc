@@ -52,7 +52,7 @@ pub struct CastSyntax {
 pub fn grounded_primitive_coproduct_cast_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "The Int->Nat and String->FreeMonoid rows are GROUNDED identities, not hollow casts (operator Ruling 3, 2026-07-15): a Nat IS an Int (numeric tower grounded construction-side #5428, Zero->Int(0)/Succ->Int(k+1), native form == modeled form) and a String IS a FreeMonoid<Char> (std.string_type: type String = FreeMonoid<Char> — strings over an alphabet are the free monoid). So an Int literal where a Nat is expected, and a String literal where a FreeMonoid is expected, are the same value at the kernel level; the wall's kernel_value_declared_type_mismatch consults dag_can_cast and correctly stops flagging them. NON-grounded primitive->coproduct straddles stay red by construction: Bool->FreeMonoid (card_intake), String->Doc (live_deploy), String->AuthScheme (auth) are genuine site bugs with no cast row.".to_string()
+            "The Int->Nat and String->FreeMonoid identities are GROUNDED, not hollow casts (operator Ruling 3, 2026-07-15): a Nat IS an Int (numeric tower grounded construction-side #5428, Zero->Int(0)/Succ->Int(k+1), native form == modeled form) and a String IS a FreeMonoid<Char> (std.string_type: type String = FreeMonoid<Char> — strings over an alphabet are the free monoid). They live in their OWN list, NOT in dag_cast_rules, on purpose: dag_can_cast consults BOTH lists so the wall's kernel_value_declared_type_mismatch stops flagging an Int literal where a Nat is expected (and a String where a FreeMonoid is expected); but is_dag_cast_domain_type reads ONLY dag_cast_rules, so grounding a primitive to a coproduct does NOT drag that coproduct into the explicit-`as`-cast validation domain. Folding them into dag_cast_rules would make Nat/String cast-domain types and newly REJECT pre-existing well-typed casts whose reverse rule is absent (`Nat as Int` in bmc_onboard, `Int as String` in srv3/host_effect were skipped before because their far type was not a domain type) — a regression, not the intent. NON-grounded primitive->coproduct straddles stay red by construction: Bool->FreeMonoid (card_intake), String->Doc (live_deploy), String->AuthScheme (auth) are genuine site bugs with no identity.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -61,7 +61,17 @@ pub fn grounded_primitive_coproduct_cast_note() -> String {
 pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<CastRule>>> = {
-            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Int"}, {"from_type": "Int", "to_type": "Float"}, {"from_type": "Float", "to_type": "Int"}, {"from_type": "Float", "to_type": "Float"}, {"from_type": "Bool", "to_type": "Int"}, {"from_type": "Int", "to_type": "Nat"}, {"from_type": "String", "to_type": "FreeMonoid"}]))
+            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Int"}, {"from_type": "Int", "to_type": "Float"}, {"from_type": "Float", "to_type": "Int"}, {"from_type": "Float", "to_type": "Float"}, {"from_type": "Bool", "to_type": "Int"}]))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
+}
+
+pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<CastRule>>> = {
+            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Nat"}, {"from_type": "String", "to_type": "FreeMonoid"}]))
                 .expect("valid data definition")
         };
     }
@@ -69,7 +79,7 @@ pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
 }
 
 pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
-    {
+    ({
         let mut __found = false;
         for r in dag_cast_rules().iter().cloned() {
             if ((r.from_type.clone() == source_type.clone())
@@ -80,7 +90,18 @@ pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
             }
         }
         __found
-    }
+    } || {
+        let mut __found = false;
+        for r in grounded_primitive_coproduct_identities().iter().cloned() {
+            if ((r.from_type.clone() == source_type.clone())
+                && (r.to_type.clone() == target_type.clone()))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
 }
 
 pub fn is_dag_cast_domain_type(name: String) -> bool {
