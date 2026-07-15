@@ -71,7 +71,7 @@ type CompilerModuleFrontierRow {
 
 data compiler_frontier_module_count_expected: Int = 27
 
-data compiler_frontier_self_emitted_baseline: Int = 0
+data compiler_frontier_self_emitted_baseline: Int = 1
 
 fn measured_stage_for_blocker(blocker: FrontierBlockerClass) -> FrontierProbeStage {
   match blocker {
@@ -87,6 +87,12 @@ fn measured_stage_for_blocker(blocker: FrontierBlockerClass) -> FrontierProbeSta
 fn tractability_rank_for(closure_reads: Int, blocker: FrontierBlockerClass) -> Int {
   let base = frontier_probe_blocker_rank(blocker: blocker) * 1000
   base + closure_reads
+}
+
+data compiler_frontier_self_emitted_tractability_rank_note: String = "At SelfEmitted flip, tractability_rank retains the pre-flip blocker band (not recomputed from measured_probe.blocker_class SelfEmitReady) so compiler_frontier_sweep_order rank monotonicity is unchanged. SelfEmitReady rank would be closure_reads alone (e.g. 9), breaking sweep order vs neighboring EmitSurfaceGap rows (e.g. 1002, 1012)."
+
+fn self_emitted_tractability_rank_at_flip(closure_reads: Int, pre_flip_blocker: FrontierBlockerClass) -> Int {
+  tractability_rank_for(closure_reads: closure_reads, blocker: pre_flip_blocker)
 }
 
 fn execution_measured_seed_retained_row(
@@ -126,6 +132,20 @@ fn execution_measured_seed_retained_row_from_probe_receipt(
     located_reason: receipt.located_reason,
     migration_trigger: migration_trigger
   )
+}
+
+fn execution_measured_self_emitted_row(
+  module_path: String,
+  closure_reads: Int,
+  measured_probe: FrontierProbeReceipt,
+  tractability_rank: Int
+) -> CompilerModuleFrontierRow {
+  CompilerModuleFrontierRow {
+    module_path: module_path,
+    disposition: SelfEmitted,
+    measured_probe: measured_probe,
+    tractability_rank: tractability_rank
+  }
 }
 
 fn knowledge_attributed_blocker_class_seed_retained_row(
@@ -326,11 +346,16 @@ data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = knowled
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
   module_path: "src/v2/compiler/use_site_verdict.dag",
   closure_reads: 9,
-  measured_blocker: EmitSurfaceGap,
-  migration_trigger: ^migrate_when_ownership_defork_lands
+  measured_probe: FrontierProbeReceipt {
+    module_path: "src/v2/compiler/use_site_verdict.dag",
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  },
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 9, pre_flip_blocker: EmitSurfaceGap)
 )
 
 data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
@@ -502,7 +527,29 @@ fn compiler_frontier_roster_located_reason_not_class_projection_holds() -> Bool 
     xs: compiler_frontier_roster,
     empty: true,
     cons: fn(ok, row) {
-      ok && !frontier_located_reason_is_class_projection(reason: row.measured_probe.located_reason)
+      ok && match row.disposition {
+        SelfEmitted => true
+        SeedRetained { reason: _, migration_trigger: _ } =>
+          !frontier_located_reason_is_class_projection(reason: row.measured_probe.located_reason)
+      }
+    }
+  )
+}
+
+fn compiler_frontier_self_emitted_located_reason_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && match row.disposition {
+        SelfEmitted =>
+          frontier_blocker_class_matches(
+            blocker: row.measured_probe.blocker_class,
+            target: SelfEmitReady
+          )
+            && (row.measured_probe.located_reason == ^measured_probe_self_emit_ready)
+        SeedRetained { reason: _, migration_trigger: _ } => true
+      }
     }
   )
 }
@@ -732,6 +779,7 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_sweep_order_matches_tractability_rank_holds()
     && compiler_frontier_roster_all_classified_holds()
     && compiler_frontier_roster_located_reason_not_class_projection_holds()
+    && compiler_frontier_self_emitted_located_reason_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
     && compiler_frontier_band_a_emit_readiness_holds()
 }

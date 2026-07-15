@@ -2,6 +2,7 @@ module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries }
+import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs
@@ -232,6 +233,20 @@ data gunbc_ci_fast_lane_witness_eval_budget: Second = second(count: 5)
 
 fn gunbc_ci_fast_lane_eval_budget_ms() -> Nat {
   second_count(s: gunbc_ci_fast_lane_witness_eval_budget) * 1000
+}
+
+data gunbc_falsifier_self_host_wet_receipt_budget_note: String = "Whole-receipt wall-time budget for the nightly falsifier Wet self-host lane (operator ruling 2026-07-15, Wave 2 CI substrate STEP 3): bounds emit+cargo total wall time per witness — the wet receipt IS each module's Definition-of-Done, and cargo dominates (std/logic template ~101s wall, 06_translate ~52s measured Refinement-1). The primary refusal is WitnessWallBudgetExceeded on whole-receipt wall time; the secondary gunbc_falsifier_self_host_wet_interp_eval_budget arms the cooperative CPU eval deadline for interpreter-wedge detection only (subprocess cargo I/O is wall-counted, not CPU-counted). Receipted ceilings: logic template 101s, 06_translate 52s — 600s per receipt leaves headroom for larger modules while keeping 11-module upper bound (~9.5min measured) far under the 270m falsifier step budget."
+
+data gunbc_falsifier_self_host_wet_receipt_wall_budget: Second = second(count: 600)
+
+fn gunbc_falsifier_self_host_wet_receipt_wall_budget_ms() -> Nat {
+  second_count(s: gunbc_falsifier_self_host_wet_receipt_wall_budget) * 1000
+}
+
+data gunbc_falsifier_self_host_wet_interp_eval_budget: Second = second(count: 120)
+
+fn gunbc_falsifier_self_host_wet_interp_eval_budget_ms() -> Nat {
+  second_count(s: gunbc_falsifier_self_host_wet_interp_eval_budget) * 1000
 }
 
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
@@ -555,8 +570,8 @@ fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec)
 }
 
-fn gunbc_falsifier_batches() -> List<List<Runnable>> {
-  [[RunnableDiscoveryBatch {
+fn gunbc_falsifier_predict_only_batch() -> Runnable {
+  RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
     scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
     explicit_entries: [],
@@ -569,7 +584,41 @@ fn gunbc_falsifier_batches() -> List<List<Runnable>> {
       memory: runnable_memory_substantial(),
       execution_mode: Hermetic
     )
-  }]]
+  }
+}
+
+data falsifier_self_host_wet_batch_note: String = "Nightly falsifier batch 2 (Wave 2 CI substrate): the declared Wet lane for emit->compile->run->equals-seed self-host behavioral receipts (v2.compiler.self_host.wet_receipt_enrollment falsifier_self_host_wet_entries — template + frontier-flipped SelfEmitted bindings only; see falsifier_self_host_wet_note in gunbc.ci_layer_roots). Gate-4 std/logic is the inaugural green template; compiler modules enroll when frontier rows flip SelfEmitted with a declared binding — never known-red. Whole-receipt wall budget: gunbc_falsifier_self_host_wet_receipt_wall_budget. Runs SelectionApplied after the hermetic predict-only affected-set sweep; claim_executor halts batch 2 if batch 1 fails (fail-closed)."
+
+fn falsifier_self_host_wet_batch_enrolled() -> Bool {
+  length(xs: falsifier_self_host_wet_entries()) > 0
+}
+
+fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: falsifier_self_host_wet_entries(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: true,
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
+    )
+  }
+}
+
+fn gunbc_falsifier_batches() -> List<List<Runnable>> {
+  if falsifier_self_host_wet_batch_enrolled() {
+  [
+    [gunbc_falsifier_predict_only_batch()],
+    [gunbc_falsifier_self_host_wet_batch()]
+  ]
+  } else {
+    [[gunbc_falsifier_predict_only_batch()]]
+  }
 }
 
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
