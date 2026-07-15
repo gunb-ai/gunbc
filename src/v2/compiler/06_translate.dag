@@ -82,8 +82,6 @@ import v2.std.node {
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
-  FixedToken,
-  BoundToken,
   TargetValueExpression,
   TargetFunctionTypeShape,
   TargetGenericApply,
@@ -125,8 +123,8 @@ import v2.std.compilers.target_model {
   target_type_expr_sum_emitted,
   type_expr_projection_row_closedness_from_target,
   type_expression_projection_from_target,
-  lex_rules_literal_for_class,
   lex_rules_literal,
+  bound_tokens_source_text,
   token_spelling_from_model,
   concrete_syntax_token_from_node,
   target_binding_spelling_lookup,
@@ -795,37 +793,10 @@ fn serialize_concrete_syntax_tokens_to_source_string(
   target: TargetModel,
   tokens: List<ConcreteSyntaxToken>
 ) -> Outcome<String> {
-  fold_list(
-    xs: tokens,
-    empty: Accepted { value: "", diagnostics: None },
-    cons: fn(acc, token) {
-      match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: partial, diagnostics: ad } =>
-          match token {
-            FixedToken { token_class: token_class } =>
-              bind_outcome(
-                o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
-                f: fn(spelling) {
-                  Accepted {
-                    value: concat(partial, spelling),
-                    diagnostics: ad
-                  }
-                }
-              )
-            BoundToken { token_class: _, binding: binding } =>
-              bind_outcome(
-                o: target_binding_spelling_lookup(target: target, binding: binding),
-                f: fn(spelling) {
-                  Accepted {
-                    value: concat(partial, spelling),
-                    diagnostics: ad
-                  }
-                }
-              )
-          }
-      }
-    }
+  bound_tokens_source_text(
+    tokens: tokens,
+    lex: target.lex,
+    binding_spellings: target.binding_spellings
   )
 }
 
