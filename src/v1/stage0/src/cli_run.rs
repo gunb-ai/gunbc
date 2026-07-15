@@ -13534,6 +13534,7 @@ mod reference_edge_producer_tests {
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
+<<<<<<< HEAD
     // 2026-07-15 backfill: #6637 (no-smuggled-programs HALF B) landed apply_role with a
     // two-special-variant dispatch (IfFraming/UnmodeledKeyword rebuild ScanState; the other
     // three TokenRole variants — Separator, JoiningControl, OperandFraming — all reduce to the
@@ -13543,6 +13544,8 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // live-read classification P1/P2, in flight, is the structural fix). Declared here so the
     // ratchet re-arms; burns down with the recognizer's fold migration.
     "src/v2/lens/bash_composition_recognizer.dag::apply_role",
+=======
+>>>>>>> origin/main
     // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
     // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
     // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
@@ -13571,6 +13574,12 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // the std eq rows; dissolve with derived equality from inhabitance (dag/std/algebra).
     "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
     "src/v2/lens/live_read_classification.dag::path_pattern_eq",
+    // 2026-07-15 backfill: #6680 merge landed bash_composition_recognizer.dag::apply_role
+    // with a two-special-variant dispatch (IfFraming / UnmodeledKeyword mutate ScanState;
+    // every other TokenRole through close_run unchanged). The nfr witness is corpus-read;
+    // the landing PR predict-skipped it and the red surfaced on the next cold sweep. Burns
+    // down with the bash composition recognizer fold migration.
+    "src/v2/lens/bash_composition_recognizer.dag::apply_role",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.
@@ -14082,6 +14091,36 @@ mod nfr_tests {
             !sites.contains(&"m.dag::f".to_string()),
             "an exhaustive match (no wildcard) must NOT be flagged; got {sites:?}"
         );
+    }
+
+    #[test]
+    fn nfr_roster_receipt() {
+        let live: std::collections::BTreeSet<&str> = nfr_build_report()
+            .sites
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        eprintln!(
+            "nfr_roster_receipt: unrostered={} stale={} live={}",
+            non_fold_residue_unrostered_count(),
+            non_fold_residue_stale_roster_count(),
+            live.len()
+        );
+        for site in nfr_build_report().sites.iter() {
+            if !non_fold_residue_site_is_rostered(site) {
+                eprintln!("unrostered live site: {site}");
+            }
+            assert!(
+                non_fold_residue_site_is_rostered(site),
+                "unrostered: {site}"
+            );
+        }
+        for entry in NON_FOLD_RESIDUE_ROSTER {
+            if !live.contains(entry) {
+                eprintln!("stale roster entry: {entry}");
+            }
+            assert!(live.contains(entry), "stale roster: {entry}");
+        }
     }
 
     #[test]
@@ -14895,7 +14934,6 @@ fn cla_triage_complexity(site: &str) -> &'static str {
         return "kernel-permanent";
     }
     if site.starts_with("dag/extdeps/")
-        || site.starts_with("dag/ctrl/")
         || site.starts_with("dag/gunbc/plans/")
         || site.starts_with("dag/test/")
     {
