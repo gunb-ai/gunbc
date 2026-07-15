@@ -1,12 +1,5 @@
 module test.claim.layout_render_witness
 
-import std.layout {
-  Doc, DocEmpty, DocText, DocLine, DocConcat, DocNest,
-  LayoutProtocol,
-  doc_text, doc_concat, doc_nest, doc_line_of, doc_blank,
-  render
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,15 +1,5 @@
 module v2.test.long.syntactic_audit_witness
 
-import v2.lens.complexity_linearity_audit {
-  complexity_linearity_syntactic_finding_count_live,
-  complexity_linearity_syntactic_wildcard_finding_count_live,
-  complexity_linearity_syntactic_site_fired_live,
-  complexity_linearity_wildcard_total_live,
-  complexity_linearity_wildcard_migration_debt_live,
-  complexity_linearity_wildcard_open_domain_live,
-  complexity_linearity_wildcard_triage_for_site
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

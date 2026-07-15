@@ -1,24 +1,5 @@
 module v2.test.claim.gha_workflow_yaml_fold_serialize
 
-import extdeps.languages.yaml.emit { serialize_yaml }
-import extdeps.github.actions { Job }
-import gunbc.gha_yaml_fold_pilot { gha_fold_pilot_job }
-import extdeps.languages.yaml.gha_workflow { job_yaml }
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.gha_workflow_yaml_fold {
-  gha_fold_flat_steps_wrong_emitted,
-  gha_fold_flat_steps_wrong_target_model_witness,
-  gha_fold_job_emitted_witness,
-  gha_fold_job_wrong_production_emitted,
-  gha_fold_job_wrong_production_target_model_witness,
-  gha_fold_target_model_for_job_witness
-}
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.witness { Holds, Violates }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

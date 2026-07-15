@@ -1,7 +1,5 @@
 module std.reducible
 
-import std.algebra { Semigroup }
-import std.types { Int, Bool, List }
 
 type ReduceVerdict
   = Reduced { last_parts: Int }

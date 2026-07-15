@@ -1,20 +1,5 @@
 module v2.test.long.identity_captured_navigation_fidelity
 
-import v2.lens.identity_captured_navigation.roster_gate { source_findings }
-import v2.lens.identity_captured_navigation.fidelity {
-  identity_captured_navigation_as_fidelity_discrepancies
-}
-import v2.lens.dependency_fidelity {
-  FidelityDiscrepancy,
-  OverClaimedCoupling,
-  UnderClaimedEdge,
-  UnreachedDeclaredInput,
-  UnreachedDeclaredOutput
-}
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

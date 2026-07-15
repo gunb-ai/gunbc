@@ -1,33 +1,5 @@
 module v2.test.language_model.python_l2_cross_target_parity
 
-import v2.lens.leaf_model_verification {
-  python_l2_parity_r2a_probe,
-  python_l2_parity_r3_probe,
-  python_l2_parity_r2a_python_source,
-  python_l2_parity_r2a_rust_source,
-  python_l2_parity_r2a_go_source,
-  python_l2_parity_r3_python_source,
-  python_l2_parity_r3_rust_source,
-  python_l2_parity_r3_go_source,
-  python_l2_parity_r2a_value,
-  python_l2_parity_r3_value
-}
-import v2.std.leaf_model_verification {
-  LeafModelCrossTargetParityProbe,
-  leaf_model_claim_python_l2_cross_target_parity_r2a_add,
-  leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Boundary,
-  manual_claim_anchor
-}
 fn python_l2_parity_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^python_l2_parity_claim_bool_true } }, children: [],

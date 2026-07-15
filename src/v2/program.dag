@@ -1,6 +1,6 @@
 module v2.program
 
-import v2.compiler.ingested_fixture_arrows { ingested_pick_if_arrow_with_body }
+import v2.compiler.body_producer { produce_pick_if_arrow_with_body }
 import v2.compiler.eval {
   EvalContext,
   effect_io_roundtrip_transform,
@@ -404,7 +404,7 @@ fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {
 }
 
 fn program_pick_if_arrow_holds() -> Bool {
-  match ingested_pick_if_arrow_with_body() {
+  match produce_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let call = program_pick_if_call(callee: arrow)
       match eval_with_context(

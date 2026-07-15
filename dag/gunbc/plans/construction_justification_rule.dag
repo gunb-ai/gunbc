@@ -1,8 +1,5 @@
 module gunbc.plans.construction_justification_rule
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 
 fn construction_justification_rule_body() -> List<MarkdownBlock> {
   [

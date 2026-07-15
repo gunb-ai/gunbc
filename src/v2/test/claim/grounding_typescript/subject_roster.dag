@@ -1,14 +1,5 @@
 module v2.test.grounding_typescript.subject_roster
 
-import v2.compiler.eval { TestClaimEvalSubject }
-import v2.std.collection { List }
-import v2.std.node { Node }
-import v2.test.grounding_typescript.sg_claims {
-  subject_ts_g2_g14_fact_registry,
-  subject_ts_g2_sg1_atom_realizations,
-  subject_ts_g2_sg2_type_expression_projection,
-  subject_ts_g2_sg5_collection_absence
-}
 
 data grounding_typescript_subject_rows: List<TestClaimEvalSubject<Node>> = [
   subject_ts_g2_sg1_atom_realizations,

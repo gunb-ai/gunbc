@@ -1,8 +1,5 @@
 module gunbc.ci_compile_measurement
 
-import std.measure { ByteSize, byte_size }
-import std.types { Int }
-import std.disposition { Disposition, Terminal }
 
 type CompileJobMeasurement
   = CompileJobMeasured { per_rustc_peak: ByteSize, procs_per_job: Int, pids_budget: Int }

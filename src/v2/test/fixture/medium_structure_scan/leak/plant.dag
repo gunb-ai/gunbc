@@ -1,5 +1,4 @@
 module v2.test.fixture.medium_structure_scan.leak_plant
-import extdeps.languages.bash.program { ShellProgram, RawLine }
 
 data planted_medium_structure_leak_note: String = "Planted leak fixture for the no-smuggled-programs grammar classifier (RED-on-5.2 controls, scanned via planted_leak_test's EXPLICIT planted roots — NOT the default substrate scope). Each RawLine.text is a bash COMPOSITION the recognizer must flag Violation: statement-separator, and-then, or-else, pipe, if/then/fi. The planted count is DERIVED from this named set of 5; removing any one drops the count to 4 (a discriminating control)."
 

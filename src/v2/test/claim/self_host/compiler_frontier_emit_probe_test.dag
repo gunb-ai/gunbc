@@ -1,10 +1,5 @@
 module v2.test.self_host.compiler_frontier_emit_probe
 
-import v2.compiler.self_host.frontier_probe_types {
-  UnknownProbeCause,
-  frontier_classify_rejection_reason
-}
-import v2.std.logic { Bool }
 
 test fn frontier_classify_unlisted_reason_refuses_holds() -> Bool {
   match frontier_classify_rejection_reason(reason: ^frontier_probe_unlisted_reason_red_control) {

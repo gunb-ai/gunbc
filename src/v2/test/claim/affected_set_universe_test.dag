@@ -1,21 +1,5 @@
 module v2.test.claim.affected_set_universe
 
-import v2.std.logic { Bool }
-import v2.std.collection { List }
-import v2.std.node { Symbol }
-import v2.std.algebra { bag_eq, list_snoc_item }
-import v2.lens.affected_set {
-  RepoProcess,
-  RepoProcessUniverse,
-  UniverseComplete,
-  UniverseIncomplete,
-  ci_gate_processes,
-  meta_processes,
-  repo_process_universe,
-  repo_process_universe_from
-}
-import gunbc.ci_spec { Gate, gunbc_ci_gates, gunbc_ci_regen_floor_gates }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

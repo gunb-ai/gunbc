@@ -1,21 +1,5 @@
 module v2.test.emit.fold_call_closure_fixture
 
-import v2.std.collection { List }
-import v2.std.node {
-  Arrow,
-  Atom,
-  ComputationNode,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  SyntheticOccurrence,
-  node_synthetic
-}
 
 fn fold_fixture_atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])

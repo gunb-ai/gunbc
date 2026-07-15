@@ -1,5 +1,6 @@
 module v1.compiler.infer
 
+<<<<<<< HEAD
 import std.types { SourceSpan, container_param_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
@@ -165,6 +166,8 @@ import v1.compiler.infer_access {
   check_index_access_node, check_slice_access_node
 }
 
+=======
+>>>>>>> 62111b1273 (Wave-1 namespace integration: restore collapsed import-strip on current main.)
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
 }

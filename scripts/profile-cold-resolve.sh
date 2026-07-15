@@ -85,7 +85,7 @@ if [[ "$MODE" == "pair" ]]; then
     _profile_resolve_only_probe_ 1
   run_pair_entry twin_single_row_eval \
     src/v2/test/claim/complexity_gate/source_bridged_add_budget_test.dag \
-    table_fixture_add_budget_claim_holds 0
+    source_bridged_add_budget_claim_holds 0
   exit 0
 fi
 

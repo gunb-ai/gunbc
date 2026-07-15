@@ -1,61 +1,6 @@
 module v2.test.claim.generated_conformance_floor
 
-import v2.std.logic { Bool }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.verification { TestClaim }
 
-import v2.test.generated.algebra_law_conformance {
-  generated_algebra_law_sample_count_is_three,
-  generated_nat_add_left_identity_claim,
-  generated_nat_add_associativity_claim,
-  generated_nat_mul_annihilator_claim
-}
-import v2.test.generated.coproduct_exhaustiveness {
-  witness_coproduct_exhaustiveness_diagnostic_claim,
-  witness_coproduct_exhaustiveness_uses_generated_anchor,
-  witness_coproduct_exhaustiveness_all_variants_emit,
-  witness_coproduct_exhaustiveness_generator_count
-}
-import v2.test.generated.cross_representation_equality {
-  witness_cross_representation_equality_is_equals,
-  witness_cross_representation_equality_uses_generated_anchor,
-  witness_cross_representation_equality_covers_bool,
-  witness_cross_representation_equality_covers_optional_null
-}
-import v2.test.generated.refinement_preservation {
-  witness_refinement_preserves_nonempty_list_base,
-  witness_refinement_preservation_subject_anchor,
-  witness_refinement_preservation_scheduler_emits_one_generator,
-  claim_refinement_nonempty_list_base_preserved
-}
-import v2.test.generated.language_behavior_equivalence {
-  witness_lbe_conj_snapshot_pass,
-  witness_lbe_disj_snapshot_pass,
-  witness_lbe_transform_snapshot_pass,
-  witness_testgen_schedules_three_lbe_generators,
-  witness_dag_surface_language_identity
-}
-import v2.test.generated.witness_validity {
-  row_witness_validity_constraint_satisfaction_holds,
-  row_witness_validity_property_symbol_mismatch,
-  row_witness_validity_evidence_node_mismatch,
-  row_witness_validity_rule_not_realized
-}
-import v2.test.generated.idempotent_operation_conformance {
-  generated_label_only_skip_pins_rejection,
-  witness_read_idempotent_operation_run_non_pass,
-  witness_upsert_idempotent_operation_run_non_pass,
-  witness_delete_idempotent_operation_run_non_pass,
-  witness_create_if_absent_idempotent_operation_run_non_pass,
-  generated_idempotent_operation_sample_count_is_four,
-  generated_idempotent_operation_scheduled_subject_count_is_four,
-  generated_idempotent_operation_run_count_is_four
-}
-import v2.test.generated.testgen_category_wishlist {
-  pending_non_tautological_generator_count_is_three,
-  dispatched_non_tautological_generator_count_is_four
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
