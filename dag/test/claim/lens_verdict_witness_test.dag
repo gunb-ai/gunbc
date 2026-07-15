@@ -1,6 +1,6 @@
 module test.claim.lens_verdict_witness
 
-import std.lens_verdict {
+import v2.std.lens_verdict {
   Holds,
   LensVerdict,
   Unrealized,

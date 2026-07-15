@@ -1,6 +1,6 @@
 module v2.test.lens_identical_variant_payload.sg_claims
 
-import std.lens_verdict {
+import v2.std.lens_verdict {
   Holds,
   LensVerdict,
   Unrealized,

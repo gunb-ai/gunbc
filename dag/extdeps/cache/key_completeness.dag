@@ -13,11 +13,6 @@ import extdeps.cache.types {
   catalog_has_vendor_only_key_inputs,
   invalidation_triggers_on_toolchain_change,
 }
-import std.lens_verdict {
-  LensVerdict,
-  Holds,
-  lens_verdict_module_violation,
-}
 import std.types { Bool }
 import std.types { List }
 
@@ -38,17 +33,6 @@ fn cache_key_derivation_complete(facts: CatalogKeyDerivationFacts) -> Bool {
       } else {
         true
       }
-  }
-}
-
-fn cache_key_completeness_verdict(facts: CatalogKeyDerivationFacts, module_name: String) -> LensVerdict {
-  if cache_key_derivation_complete(facts: facts) {
-    Holds
-  } else {
-    lens_verdict_module_violation(
-      reason: ^cache_key_completeness_native_internal_toolchain_axis,
-      module_name: module_name
-    )
   }
 }
 
