@@ -1,8 +1,6 @@
 module test.claim.stage0_crate_layout_witness
 
-import gunbc.stage0_crate_layout_generated {
-  hand_maintained_stage0_filenames as generated_stage0_filenames
-}
+import gunbc.stage0_crate_layout_generated { generated_stage0_filenames }
 import v2.compiler.self_host.frontier {
   hand_maintained_stage0_filenames,
   compiler_frontier_self_emitted_stage0_mod_basenames
