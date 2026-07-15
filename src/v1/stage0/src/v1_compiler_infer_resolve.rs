@@ -14,7 +14,8 @@ pub use crate::v1_compiler_infer_env::{
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, is_declared_container_alias_spelling, node_is_keyed_collection, resolved_type,
+    child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
+    node_is_keyed_collection, resolved_type,
 };
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -145,10 +146,6 @@ pub fn collect_unit_variant_phantom_matches(
                 },
             )
     }
-}
-
-pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
-    matches!((*n.expr_data.clone()).clone(), ExprData::NoExprData)
 }
 
 pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {

@@ -105,6 +105,7 @@ pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
     extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
+    is_type_expr_annotation,
     make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
     node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
@@ -176,10 +177,6 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
-
-pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
-    matches!((*n.expr_data.clone()).clone(), ExprData::NoExprData)
-}
 
 pub fn is_witness_type_name(name: String) -> bool {
     ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))

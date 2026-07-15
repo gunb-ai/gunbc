@@ -70,7 +70,7 @@ import v1.compiler.infer_types {
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
-  resolved_type, child_type_node,
+  resolved_type, child_type_node, is_type_expr_annotation,
   emit_map_has
 }
 import v1.compiler.infer_method {
@@ -162,13 +162,6 @@ import v1.compiler.infer_lookup {
 import v1.compiler.infer_access {
   AccessCheckResultNode,
   check_index_access_node, check_slice_access_node
-}
-
-fn is_type_expr_annotation(n: Node) -> Bool {
-  match n.expr_data {
-    NoExprData => true
-    _ => false
-  }
 }
 
 fn is_witness_type_name(name: String) -> Bool {
