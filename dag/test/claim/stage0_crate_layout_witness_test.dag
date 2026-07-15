@@ -1,5 +1,8 @@
 module test.claim.stage0_crate_layout_witness
 
+import gunbc.stage0_crate_layout_generated {
+  hand_maintained_stage0_filenames as generated_stage0_filenames
+}
 import v2.compiler.self_host.frontier {
   hand_maintained_stage0_filenames,
   compiler_frontier_self_emitted_stage0_mod_basenames
@@ -7,8 +10,14 @@ import v2.compiler.self_host.frontier {
 import std.types { Bool, Int }
 
 fn w_hand_maintained_stage0_filenames_include_use_site_verdict() -> Bool {
-  hand_maintained_stage0_filenames()
+  generated_stage0_filenames
     |> any(f => f == "v2_compiler_use_site_verdict.rs")
+}
+
+fn w_generated_stage0_filenames_match_frontier() -> Bool {
+  generated_stage0_filenames.length() == hand_maintained_stage0_filenames().length()
+    && generated_stage0_filenames
+      |> all(f => hand_maintained_stage0_filenames() |> any(g => g == f))
 }
 
 fn w_self_emitted_derived_count() -> Bool {
@@ -17,5 +26,6 @@ fn w_self_emitted_derived_count() -> Bool {
 
 test fn stage0_crate_layout_witnesses() -> Bool {
   w_hand_maintained_stage0_filenames_include_use_site_verdict()
+    && w_generated_stage0_filenames_match_frontier()
     && w_self_emitted_derived_count()
 }
