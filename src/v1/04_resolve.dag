@@ -33,7 +33,7 @@ import v1.std.core {
   default_ident_span, kernel_span, node_name_span, intern
 }
 import v1.compiler.infer_types {
-  resolved_type, child_type_node, node_is_keyed_collection, is_declared_container_alias_spelling
+  resolved_type, child_type_node, is_type_expr_annotation, node_is_keyed_collection, is_declared_container_alias_spelling
 }
 import std.induction { SubValueUnknown }
 import v1.compiler.infer_env {
@@ -862,7 +862,34 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let vr = match ch |> first { Present { value: v } => resolve_expr_types(texpr: v, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let br = match ch |> skip(1) |> first { Present { value: bd } => Present { value: resolve_expr_types(texpr: bd, env: env, module_name: module_name) }  Absent => none }
       let resolved_children = match br { Present { value: r } => [vr.expr, r.expr]  Absent => [vr.expr] }
-      ExprResolveResult { expr: make_named_expr_node(name: let_binding_name_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprLet, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: concat(vr.diagnostics, match br { Present { value: r } => r.diagnostics  Absent => [] }) }
+      let anno_resolved = if texpr.type_annotation == none {
+        NodeResolveResult { resolved: unit_type, diagnostics: [] }
+      } else if is_type_expr_annotation(n: texpr.type_annotation.value) {
+        resolve_node(n: texpr.type_annotation.value, env: env, module_name: module_name)
+      } else {
+        NodeResolveResult { resolved: texpr.type_annotation.value, diagnostics: [] }
+      }
+      let resolved_anno = if texpr.type_annotation == none { none } else if is_type_expr_annotation(n: texpr.type_annotation.value) { Present { value: anno_resolved.resolved } } else { texpr.type_annotation }
+      let let_node = Node {
+        name: let_binding_name_at(texpr: texpr, source_indices: env.source_indices),
+        span: texpr.span,
+        ident_span: default_ident_span(name: let_binding_name_at(texpr: texpr, source_indices: env.source_indices), span: node_name_span(n: texpr)),
+        children: resolved_children,
+        connective: NoConnective,
+        params: [],
+        inferred: texpr.inferred,
+        return_cardinality: Required,
+        uses: [],
+        body: none,
+        transport: none,
+        properties: [],
+        type_annotation: resolved_anno,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: none,
+        expr_data: ExprLet
+      }
+      ExprResolveResult { expr: let_node, diagnostics: concat(vr.diagnostics, match br { Present { value: r } => r.diagnostics  Absent => [] }, anno_resolved.diagnostics) }
     ExprRecordLit { parent_enum: pe } =>
 
       let fi_results = texpr.children |> map(fi_node =>

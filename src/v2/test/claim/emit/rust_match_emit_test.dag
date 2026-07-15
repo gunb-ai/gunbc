@@ -1,8 +1,8 @@
 module v2.test.emit.rust_match_emit
 
-import v2.compiler.body_producer {
-  produce_match_arrow_with_body,
-  produce_match_arrow_with_body_swapped_arms
+import v2.test.complexity_gate.table_fixture_match_subject_producer {
+  table_fixture_match_arrow_with_body,
+  table_fixture_match_arrow_with_body_swapped_arms
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -51,7 +51,7 @@ fn rust_match_emit_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn rust_match_emit_producer_inferred_tree() -> Outcome<InferredTree> {
-  match produce_match_arrow_with_body() {
+  match table_fixture_match_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_match_emit_inferred_tree_for(root: root),
@@ -62,7 +62,7 @@ fn rust_match_emit_producer_inferred_tree() -> Outcome<InferredTree> {
 }
 
 fn rust_match_emit_swapped_producer_inferred_tree() -> Outcome<InferredTree> {
-  match produce_match_arrow_with_body_swapped_arms() {
+  match table_fixture_match_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
         value: rust_match_emit_inferred_tree_for(root: root),
