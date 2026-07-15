@@ -63,7 +63,9 @@ pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, RustCorpusRepr, TypeRepr, TypeSummary,
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
-pub use crate::v1_compiler_infer_env::{authored_name, lookup_type_by_name, lookup_type_for};
+pub use crate::v1_compiler_infer_env::{
+    authored_name, empty_symbol_index, lookup_type_by_name, lookup_type_for,
+};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
@@ -195,6 +197,7 @@ pub fn render_rust_type(
                                 source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
                                 global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(
                                 ),
+                                symbol_index: empty_symbol_index(),
                             }),
                         )
                     } else {
@@ -250,6 +253,7 @@ pub fn render_rust_type_without_applied_binding(
                     intern_table: empty_intern_table(),
                     source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
                     global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+                    symbol_index: empty_symbol_index(),
                 }),
             )
         } else {
@@ -8412,6 +8416,7 @@ pub fn render_rust_type_with_applied_binding(
                                                 Rc<GlobalBareLookupState>,
                                             >(
                                             ),
+                                            symbol_index: empty_symbol_index(),
                                         }),
                                     )
                                 }
@@ -8445,6 +8450,7 @@ pub fn render_rust_type_with_applied_binding(
                                         String,
                                         Rc<GlobalBareLookupState>,
                                     >(),
+                                    symbol_index: empty_symbol_index(),
                                 }),
                             )
                         }
@@ -24080,6 +24086,7 @@ pub fn rust_test_signature_comment(
             intern_table: empty_intern_table(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+            symbol_index: empty_symbol_index(),
         });
         let params_str = Rc::new({
             let mut __result = Vec::new();
