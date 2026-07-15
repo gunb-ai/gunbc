@@ -180,7 +180,7 @@ data gunbc_ci_session_reservation_mode: SessionReservationMode = Regime2Aggregat
 data gunbc_ci_regime2_aggregate_dissolution_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "extdeps.ctrl.jobserver",
+    module_path: "extdeps.jobserver",
     decl_name: "jobserver_build_pool_bytes",
     field: WholeDeclaration
   }
