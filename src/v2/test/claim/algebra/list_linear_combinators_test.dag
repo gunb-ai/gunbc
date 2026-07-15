@@ -1,15 +1,5 @@
 module v2.test.claim.algebra.list_linear_combinators
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra {
-  filter,
-  list_flat_map,
-  list_map,
-  list_reverse
-}
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

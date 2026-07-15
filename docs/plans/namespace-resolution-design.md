@@ -344,6 +344,14 @@ dependency edge (Rule-1 end-state). First concrete census rows from the PR-2 ref
 `parse_with_table`, `default_artifact_plan`, `Rust` — extend by re-running the direct-import experiment and
 collecting every unresolved-name error.
 
+**PR-5b import-line strip (interim host bridge).** Deletes `import` lines from
+`src/v2/workflow/**` and `src/v2/extdeps/**` while bare refs stay; v1 host keeps compile
+working via seed-retained hand-Rust (`CLI_RUN_NAMESPACE_IMPORT_SYNTHESIS_SCAFFOLD_MARKER` in
+`src/v1/stage0/src/cli_run.rs` — origin/main import replay at compile time **fail-closed** when
+`git show` refuses, bare-export closure for module-graph facts and inert-lens hygiene). **Dissolve-on:**
+`^migrate_when_namespace_only_resolution_lands` (terminal step 5 above — delete import
+grammar; container.member references become the sole dependency authority).
+
 ## 9. Open / to-verify
 
 - **Root-prefix map** (`src/v1/**` ↔ `v1.*`, `dag/**` ↔ `v2.*`) and whether the `module`

@@ -1,7 +1,5 @@
 module tools.regen_verify_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.regen_verify_transport { run_regen_verify }
 
 func run_regen_verify_gate_body() -> ProcessExit {
   return if run_regen_verify() {

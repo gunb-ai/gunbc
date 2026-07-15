@@ -1,8 +1,4 @@
 module gunbc.srv3_ubuntu_install_media_artifact
 
-import extdeps.os.ubuntu_install_media {
-  UbuntuInstallMediaArtifactRow,
-  noble_numbat_2404_3_live_server_arm64,
-}
 
 data srv3_ubuntu_install_media_artifact: UbuntuInstallMediaArtifactRow = noble_numbat_2404_3_live_server_arm64

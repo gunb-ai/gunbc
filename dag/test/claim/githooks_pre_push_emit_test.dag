@@ -8,7 +8,7 @@ import gunbc.local_tidy_spec {
 import extdeps.git.hooks { pre_push_zero_sha, pre_push_stdin_read_vars }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn has(s: String, p: String) -> Bool {
   string_contains(s: s, pattern: p)

@@ -1,38 +1,5 @@
 module test.claim.host_converge_realize_witness
 
-import std.logic { Bool }
-import std.types { String }
-import gunbc.host_converge_realize {
-  interpret_converge_knob,
-  interpret_host_converge,
-  KnobUnimplemented,
-  ConvergeHostRefused,
-  ConvergeHostInterpreted,
-  converge_target_kind_label,
-}
-import gunbc.host_converge {
-  ConvergeKnob,
-  HostConverge,
-  GunbcSlice,
-  FreshStandup,
-  BlindApply,
-  GunbcPinnedTree,
-  DeferToSubmodule,
-  NoMembershipProbe,
-  gunbc_pinned_tree_desired_label,
-  gunbc_root_env_key,
-  gunbc_host_gunbc_root_path,
-  gunbc_dag_root_submodule_path,
-  gunbc_host_ctrl_checkout_path,
-  gunbc_ctrl_read_pin_script,
-  gunbc_pinned_binary_provenance_policy,
-  gunbc_green_place_marker_spec,
-  gunbc_dashboard_live_apply_policy,
-  SliceProperty,
-}
-import extdeps.os.systemd { systemd_memory_max_property }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

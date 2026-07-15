@@ -1,12 +1,5 @@
 module v2.test.manual.token_stream_content_hash_witness
 
-import extdeps.filesystem.filesystem_io
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { Absent, Optional, Present }
-import v2.std.compilers.lexing { Token, TokenStream, symbol_intern_lexeme, token_stream_all }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Hash, combine_hash, symbol_identity_digest }
 
 fn token_hash_step(acc: Hash, t: Token) -> Hash {
   combine_hash(

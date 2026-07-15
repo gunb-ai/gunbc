@@ -1,12 +1,5 @@
 module v2.test.lens_affected_set.closure_deep_chain
 
-import v2.lens.affected_set { affected_set_closure }
-import v2.lens.affected_set_examples { affected_set_claim_failure_node }
-import v2.std.algebra { contains, length }
-import v2.std.dependency { Contains, DependencyView, dependency_lens }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.test.lens_common.infer_fixture { claim_atom_node }
 
 data closure_deep_chain_leaf: Node = claim_atom_node(s: ^closure_deep_chain_leaf_symbol)
 

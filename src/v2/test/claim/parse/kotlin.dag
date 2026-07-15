@@ -1,22 +1,5 @@
 module v2.test.parse.kotlin
 
-import v2.std.grammar { ParseTree }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse }
-import v2.extdeps.languages.kotlin { kotlin_lex, kotlin_grammar }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  manual_claim_anchor
-}
 data kotlin_extended_fn_source: String = "fun choose(x: Int): Int { val y: Int = x + 1; if (y > 0) { return y }; return 0 }"
 
 fn kotlin_parse_bool_atom(b: Bool) -> Node {

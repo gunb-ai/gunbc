@@ -1,37 +1,5 @@
 module v2.test.manual.typescript_eager_materialize_forward_dedup
 
-import v2.compiler.ingest { grammar_relation_row_forward_selection }
-import v2.extdeps.languages.typescript {
-  ts_named_edge,
-  ts_task_type_alias_emitted,
-  ts_task_type_alias_relation_row_witness
-}
-import std.algebra { Empty }
-import v2.std.algebra { list_append }
-import v2.std.collection { List }
-import v2.std.compilers.target_model {
-  concrete_syntax_token_class,
-  concrete_syntax_token_list_from_node
-}
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostics,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Conj,
-  Node,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.node_query { find_named_child }
-import v2.std.witness { Holds, Violates }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,11 +1,5 @@
 module test.claim.github_merge_state_witness
 
-import extdeps.github.merge_state {
-  MergeStateStatus,
-  Clean,
-  Blocked,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

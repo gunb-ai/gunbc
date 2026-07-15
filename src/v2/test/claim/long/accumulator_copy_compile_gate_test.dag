@@ -1,29 +1,5 @@
 module v2.test.long.accumulator_copy_compile_gate
 
-import std.algebra { Empty }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse }
-import v2.compiler.normalize { normalize }
-import v2.compiler.compile { TranslateTo, validate_then_compile }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
-import v2.std.collection { empty_map }
-import v2.std.compilers.lexing { VoidLexRules }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostics,
-  NonEmptyDiagnostics,
-  None,
-  Rejected,
-  Some
-}
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

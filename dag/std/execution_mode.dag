@@ -1,6 +1,5 @@
 module std.execution_mode
 
-import std.types { Bool }
 
 data execution_mode_home_note: String = "ExecutionMode is the single authority for the hermetic/wet/record execution axis (operator posture 2026-07-11: CI witnesses run hermetic/mocked by default; live host effects are dependency-injected by the runner, never reached for by the witness). Re-homed from v2.std so the dag/std schedule layer (RunnableResourceProfile.execution_mode) and the v2 effect-io host model share one authority. The Rust seed realization is v1_interpreter::ExecutionMode: Hermetic refuses unmocked effects with typed diagnostics, Wet dispatches transports, Record dispatches and captures fixtures for hermetic replay."
 

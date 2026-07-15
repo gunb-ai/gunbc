@@ -1,23 +1,5 @@
 module v2.test.parse.swift
 
-import v2.std.compilers.lexing { TokenStream }
-import v2.std.grammar { ParseTree }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse }
-import v2.extdeps.languages.swift { swift_lex, swift_grammar }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  manual_claim_anchor
-}
 data swift_extended_fn_source: String = "func choose(x: Int) -> Int { let y = x + 1\nif y > 0 { return y }\nreturn 0 }"
 
 fn swift_parse_bool_atom(b: Bool) -> Node {

@@ -1,35 +1,5 @@
 module v2.test.language_model.typescript_r2b
 
-import v2.extdeps.languages.typescript { ts_bigint_algebra_inhabitance_ts_facts_bigint }
-import v2.lens.leaf_model_verification {
-  typescript_r2b_fixture,
-  typescript_r2b_runtime_happy_fixture_source,
-  typescript_r2b_runtime_falsification_fixture_source
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile,
-  outcome_rejected
-}
-import v2.std.leaf_model_verification {
-  LeafModelVerificationRunReceipt,
-  leaf_model_claim_ts_r2b_bigint_beyond_safe_integer
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verdict { verdict_fail }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Boundary,
-  manual_claim_anchor
-}
 fn typescript_r2b_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^typescript_r2b_claim_bool_true } }, children: [],

@@ -1,8 +1,5 @@
 module gunbc.plans.p1_where_clause_lowering
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { h2, p, li, ul, todo, tasks }
 
 fn p1_where_clause_lowering_body() -> List<MarkdownBlock> {
   [
