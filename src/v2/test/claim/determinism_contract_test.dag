@@ -2,7 +2,7 @@ module v2.test.claim.determinism_contract_test
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.determinism {
-  DeterminismAxis,
+  Determinism,
   Deterministic,
   NonDeterministic,
   determinism_compose,
@@ -28,7 +28,7 @@ fn example_root() -> DeclarationRef {
   }
 }
 
-fn det_is_deterministic(c: DeterminismAxis) -> Bool {
+fn det_is_deterministic(c: Determinism) -> Bool {
   match c {
     Deterministic => true
     NonDeterministic { source: _ } => false

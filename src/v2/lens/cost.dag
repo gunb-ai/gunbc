@@ -39,7 +39,7 @@ import v2.std.node {
   Edge,
   Instantiation,
   Loop,
-  loop_edge_contributes_to_iteration_fold,
+  edge_contributes_to_cost_fold,
   Named,
   Node,
   NodeFold,
@@ -378,7 +378,7 @@ fn cost_fold_step(
   e: Edge,
   child: SymbolicCostFoldState
 ) -> SymbolicCostFoldState {
-  if loop_edge_contributes_to_iteration_fold(parent: acc.parent, e: e) {
+  if edge_contributes_to_cost_fold(parent: acc.parent, e: e) {
     SymbolicCostFoldState {
       mode: acc.mode,
       cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost),

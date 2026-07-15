@@ -1,6 +1,13 @@
 module v2.workflow.bash_program_emit
 
-import extdeps.languages.bash.program { AndOrOp, Command, ShellProgram, ShellStmt, ShellWord, Redir }
+import extdeps.languages.bash.program {
+  AndOrOp,
+  Command,
+  ShellProgram,
+  ShellStmt,
+  ShellWord,
+  Redir,
+}
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.bash {

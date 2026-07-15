@@ -104,7 +104,87 @@ data medium_structure_roster_prune_note: String = "Roster PRUNED 59->0 (EMPTY) a
 
 data medium_structure_exception_roster: List<String> = []
 
+<<<<<<< HEAD
 data medium_structure_exception_roster_size_baseline: Int = 0
+=======
+  "dag/gunbc/ci_workflow.dag",
+  "dag/gunbc/ci_materialization.dag",
+  "src/v2/workflow/ci_floor_peak_emit.dag",
+  "src/v2/workflow/ci_floor_peak_emit_test.dag",
+  "dag/extdeps/formats/yaml.dag",
+
+  "dag/test/claim/ci_yaml_serializer_witness_test.dag",
+  "dag/test/claim/ci_deploy_witness_test.dag",
+  "dag/test/claim/ci_deploy_target_host_witness_test.dag",
+  "dag/test/claim/host_identity_observation_witness_test.dag",
+  "dag/test/claim/tailscale_acl_witness_test.dag",
+  "dag/test/claim/tailscale_acl_phase2_design_witness_test.dag",
+  "dag/test/claim/ci_runner_seam_witness_test.dag",
+  "dag/test/claim/yaml_quoting_witness_test.dag",
+  "src/v2/test/claim/ci_spec_witness_test.dag",
+
+  "dag/gunbc/fleet_converge_emit.dag",
+  "dag/gunbc/live_deploy/emit.dag",
+  "dag/gunbc/live_deploy/spec.dag",
+  "dag/gunbc/roadmap_static_site.dag",
+  "dag/gunbc/ci_deploy_access.dag",
+  "dag/gunbc/ci_deploy_target_host.dag",
+  "dag/gunbc/host_identity_observation.dag",
+  "dag/gunbc/fleet_show_effective_read.dag",
+  "dag/gunbc/host_effect_hostname_script.dag",
+  "dag/gunbc/host_effect_nbd_proxy_serve.dag",
+  "dag/gunbc/host_identity_adopt.dag",
+  "dag/gunbc/host_identity_assimilation.dag",
+  "dag/gunbc/githooks_pre_push_emit.dag",
+  "dag/gunbc/githooks_pre_commit_emit.dag",
+  "dag/gunbc/ci_spec.dag",
+  "dag/gunbc/merge_admission_produce.dag",
+  "dag/tools/merge_admission_stamp.dag",
+  "dag/tools/merge_admission_gate.dag",
+  "dag/tools/emit_host_transport.dag",
+  "dag/tools/dag_compile_clean_transport.dag",
+
+  "dag/tools/dag_compile_clean_shard_transport.dag",
+  "dag/test/claim/os_install_deduction_witness_test.dag",
+  "dag/test/claim/v1_dag_parse_witness_test.dag",
+
+  "dag/gunbc/tools/review.dag",
+  "dag/test/claim/fleet_converge_emit_test.dag",
+  "dag/test/claim/live_deploy/emit_test.dag",
+  "dag/test/claim/githooks_pre_push_emit_test.dag",
+
+  "dag/test/claim/srv3_os_install_emit_test.dag",
+  "dag/test/claim/srv3_install_server_emit_test.dag",
+
+  "dag/extdeps/bmc/webui/nbd_proxy_serve.dag",
+
+  "dag/gunbc/assimilate/bmc_token_federation.dag",
+
+  "dag/gunbc/srv3_os_install_actuate.dag",
+
+  "dag/gunbc/shell_bash_runner.dag",
+
+  "dag/gunbc/srv3_install_diagnostic_checklist.dag",
+  "dag/gunbc/srv3_install_diagnostic_observe_script.dag",
+  "dag/gunbc/srv3_seeded_install_media.dag",
+  "dag/extdeps/bmc/serial_console.dag",
+  "dag/gunbc/srv3_os_install_reconcile.dag",
+  "dag/gunbc/srv3_os_install_reconcile_types.dag",
+  "dag/gunbc/srv3_os_install_reconcile_receipt.dag",
+  "dag/gunbc/srv3_os_install_reconcile_apply.dag",
+  "dag/gunbc/srv3_os_install_reconcile_dry_run.dag",
+  "dag/gunbc/srv3_os_install_reconcile_record_approval.dag",
+
+  "dag/gunbc/srv3_host_effect_script.dag",
+
+  "dag/tools/dag_compile_clean_seam_transport.dag",
+  "dag/tools/dag_compile_clean_shard_totality_transport.dag"
+]
+
+data medium_structure_clean_tree_unquarantine_note: String = "Pre-existing rot surfaced by live host census at discovery-flip unquarantine (2026-07-09; not debt introduced by this PR): dag_compile_clean_shard_transport is shell-transport sibling to already-rostered seam/shard_totality transports; os_install_deduction + v1_dag_parse witness tests pair string_contains with emit-fn output (same pattern as ci_yaml_serializer_witness_test.dag). P5b (2026-07-14): srv3_install_diagnostic_observe_script carved from checklist — roster +1 with bash-emit Scaffold; checklist roster entry restored; toolchain_ensure dropped from roster after typed entrypoint shed script-oracle builders."
+
+data medium_structure_exception_roster_size_baseline: Int = 60
+>>>>>>> origin/main
 
 fn roster_growth_ratchet_holds(live_size: Int, baseline: Int) -> Bool {
   live_size <= baseline
