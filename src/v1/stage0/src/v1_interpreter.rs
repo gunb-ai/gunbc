@@ -658,7 +658,6 @@ pub enum InterpError {
     EarlyReturn { value: Value },
     AuthDeclaredButUnwired { service: String, reason: String },
     EvalBudgetExceeded { elapsed_ms: u64, budget_ms: u64 },
-    WitnessWallBudgetExceeded { elapsed_ms: u64, budget_ms: u64 },
 }
 
 impl fmt::Display for InterpError {
@@ -678,16 +677,6 @@ impl fmt::Display for InterpError {
                 write!(
                     f,
                     "eval budget exceeded: {}ms elapsed > {}ms fast-lane budget (operator 5s rule 2026-07-12: a witness this slow lives in a long/ test dir and runs via its dedicated lane, not per-PR discovery)",
-                    elapsed_ms, budget_ms
-                )
-            }
-            InterpError::WitnessWallBudgetExceeded {
-                elapsed_ms,
-                budget_ms,
-            } => {
-                write!(
-                    f,
-                    "wet self-host receipt wall budget exceeded: {}ms elapsed > {}ms whole-receipt budget (emit+cargo wall time; nightly falsifier Wet lane 2026-07-15)",
                     elapsed_ms, budget_ms
                 )
             }
@@ -1182,6 +1171,7 @@ pub struct InterpContext {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
+    variant_parents: HashMap<String, String>,
     service_ops: HashMap<String, ServiceOp>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
@@ -1225,8 +1215,6 @@ pub struct InterpContext {
     eval_deadline_stride: std::cell::Cell<u32>,
     // Lane-level budget: when set, run_claim_measured re-arms the deadline per witness.
     witness_eval_budget_ms: std::cell::Cell<Option<u64>>,
-    // Whole-receipt wall budget for Wet self-host receipts (emit+cargo subprocess I/O included).
-    witness_wall_budget_ms: std::cell::Cell<Option<u64>>,
 }
 
 impl InterpContext {
@@ -1297,7 +1285,7 @@ impl InterpContext {
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
     ) -> Self {
-        Self::with_runtime_options(graph, source_indices, execution_mode, None, None)
+        Self::with_runtime_options(graph, source_indices, execution_mode, None, None, None, None, None)
     }
 
     pub fn with_fixture_store(
@@ -1306,7 +1294,16 @@ impl InterpContext {
         execution_mode: ExecutionMode,
         fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     ) -> Self {
-        Self::with_runtime_options(graph, source_indices, execution_mode, fixture_store, None)
+        Self::with_runtime_options(
+            graph,
+            source_indices,
+            execution_mode,
+            fixture_store,
+            None,
+            None,
+            None,
+            None,
+        )
     }
 
     pub fn with_runtime_options(
@@ -1315,6 +1312,9 @@ impl InterpContext {
         execution_mode: ExecutionMode,
         fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+        census_fn_nodes: Option<Rc<HashMap<String, Rc<Node>>>>,
+        census_item_registry: Option<Rc<HashMap<String, Rc<ItemInfo>>>>,
+        census_variant_parents: Option<Rc<HashMap<String, String>>>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
         let mut service_ops = HashMap::new();
@@ -1351,11 +1351,31 @@ impl InterpContext {
                 }
             }
         }
+        if let Some(overlay) = census_fn_nodes {
+            for (name, node) in overlay.iter() {
+                fn_nodes.entry(name.clone()).or_insert_with(|| node.clone());
+            }
+        }
+        let item_registry = if let Some(overlay) = census_item_registry {
+            overlay.iter().fold(graph.item_registry.clone(), |acc, (name, info)| {
+                if acc.contains_key(name) {
+                    acc
+                } else {
+                    v1_rt::rc_map_insert(acc, name.clone(), info.clone())
+                }
+            })
+        } else {
+            graph.item_registry.clone()
+        };
+        let variant_parents = census_variant_parents
+            .map(|overlay| overlay.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
         InterpContext {
             modules: graph.modules.clone(),
-            item_registry: graph.item_registry.clone(),
+            item_registry,
             source_indices,
             fn_nodes,
+            variant_parents,
             service_ops,
             execution_mode,
             fixture_store,
@@ -1376,7 +1396,6 @@ impl InterpContext {
             eval_deadline: std::cell::Cell::new(None),
             eval_deadline_stride: std::cell::Cell::new(0),
             witness_eval_budget_ms: std::cell::Cell::new(None),
-            witness_wall_budget_ms: std::cell::Cell::new(None),
         }
     }
 
@@ -1396,14 +1415,6 @@ impl InterpContext {
 
     pub fn witness_eval_budget(&self) -> Option<u64> {
         self.witness_eval_budget_ms.get()
-    }
-
-    pub fn set_witness_wall_budget(&self, budget_ms: Option<u64>) {
-        self.witness_wall_budget_ms.set(budget_ms);
-    }
-
-    pub fn witness_wall_budget(&self) -> Option<u64> {
-        self.witness_wall_budget_ms.get()
     }
 
     fn published_mock_keys(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {
@@ -1923,6 +1934,14 @@ fn eval_var(
                 });
             }
         }
+    }
+
+    if let Some(parent_enum) = ctx.variant_parents.get(&name) {
+        return Ok(Value::Variant {
+            type_name: ctx.sym(parent_enum),
+            variant_name: sym,
+            fields: Rc::new(vec![]),
+        });
     }
 
     Err(InterpError::NoSuchVariable { name })

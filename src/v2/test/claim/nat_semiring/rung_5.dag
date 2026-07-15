@@ -1,32 +1,5 @@
 module v2.test.nat_semiring.rung_5
 
-import v2.compiler.eval { TestClaimRun }
-import v2.std.collection { List }
-import v2.std.node { Node }
-import v2.std.runtime { RuntimeValue }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  Tier3,
-  Integration,
-  manual_claim_anchor
-}
-import v2.test.algebra_laws.nat_semiring {
-  nat_add_associativity_input,
-  nat_add_left_identity_input,
-  nat_add_right_identity_input,
-  nat_mul_annihilator_input,
-  nat_mul_associativity_input,
-  nat_mul_left_identity_input
-}
-import v2.test.rung_3_4_common { rung34_emit_host_rust_target_model }
-import v2.test.rung_5_6_common {
-  rung56_emit_host_go_target_model,
-  rung56_emit_host_python_target_model,
-  rung56_emit_vs_eval_run
-}
 
 fn rung5_emit_law_equals_claim(label: String, law_input: Node) -> TestClaim {
   EqualsClaim {

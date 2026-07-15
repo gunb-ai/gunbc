@@ -2743,7 +2743,7 @@ pub fn infer_expr(
                             }
                         }
                     }
-                    None => match lookup_func_sig(scope.func_env.clone(), name.clone()) {
+                    None => match lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), name.clone()) {
                         Some(fsig) => {
                             if ((fsig.params.clone().len() as i64) == 0) {
                                 ok_infer(make_named_expr_node(
@@ -2984,7 +2984,7 @@ pub fn infer_expr(
                     expr_call_func_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
                 let span = texpr.span.clone();
                 let call_args = texpr.children.clone();
-                let sig = lookup_func_sig(scope.func_env.clone(), func_name.clone());
+                let sig = lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), func_name.clone());
                 let sig_params = match sig.clone() {
                     Some(s) => s.params.clone(),
                     None => Rc::new(vec![]),
@@ -6664,7 +6664,7 @@ pub fn build_per_field_for_let(
         ExprData::ExprCall { .. } => {
             let callee =
                 expr_call_func_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            match lookup_func_sig(ctx.func_env.clone(), callee.clone()) {
+            match lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), callee.clone()) {
                 Some(sig) => {
                     if ((sig.output_provenance.clone().len() as i64) > 1) {
                         {
@@ -6724,7 +6724,7 @@ pub fn build_per_field_for_let(
         } => {
             let callee =
                 expr_method_name_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            match lookup_func_sig(ctx.func_env.clone(), callee.clone()) {
+            match lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), callee.clone()) {
                 Some(sig) => {
                     if ((sig.output_provenance.clone().len() as i64) > 1) {
                         {
@@ -7073,7 +7073,7 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
         ExprData::ExprCall { .. } => {
             let callee =
                 expr_call_func_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            let from_provenance = match lookup_func_sig(ctx.func_env.clone(), callee.clone()) {
+            let from_provenance = match lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), callee.clone()) {
                 Some(sig) => match sig.output_provenance.clone().first().cloned() {
                     Some(param_map) => {
                         classify_call_via_provenance(val.clone(), param_map.clone(), ctx.clone())
@@ -7678,7 +7678,7 @@ pub fn classify_argument(
                                     ctx.type_env.clone().source_indices.clone(),
                                 );
                                 let from_provenance =
-                                    match lookup_func_sig(ctx.func_env.clone(), callee.clone()) {
+                                    match lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), callee.clone()) {
                                         Some(sig) => {
                                             match sig.output_provenance.clone().first().cloned() {
                                                 Some(param_map) => classify_call_via_provenance(
@@ -8446,7 +8446,7 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                             scrut.clone(),
                             ctx.type_env.clone().source_indices.clone(),
                         );
-                        match lookup_func_sig(ctx.func_env.clone(), callee.clone()) {
+                        match lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), callee.clone()) {
                             Some(sig) => {
                                 if ((Rc::new(v1_rt::map_keys(&sig.variant_provenance.clone())).len()
                                     as i64)
@@ -9414,6 +9414,7 @@ pub fn classify_body_provenance(
                     method_call_args_by_name(
                         expr.clone(),
                         func_env.clone(),
+                        type_env.clone(),
                         type_env.source_indices.clone(),
                     ),
                     param_names.clone(),
@@ -9700,13 +9701,14 @@ pub fn call_args_by_name(
 pub fn method_call_args_by_name(
     call: Rc<Node>,
     func_env: Rc<ResolvedFuncEnv>,
+    type_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let mname = expr_method_name_at(call.clone(), source_indices.clone());
         let recv = method_receiver(call.clone());
         let mc_args = method_arg_nodes(call.clone());
-        let base = match lookup_func_sig(func_env.clone(), mname.clone()) {
+        let base = match lookup_func_sig(func_env.clone(), type_env.clone(), mname.clone()) {
             Some(sig) => match sig.params.clone().first().cloned() {
                 Some(first_p) => {
                     let first_pname = param_node_name_at(first_p.clone(), source_indices.clone());
@@ -9748,7 +9750,7 @@ pub fn compose_callee_provenance(
     func_env: Rc<ResolvedFuncEnv>,
     let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
-    match lookup_func_sig(func_env.clone(), callee.clone()) {
+    match lookup_func_sig(func_env.clone(), type_env.clone(), callee.clone()) {
         Some(sig) => match sig.output_provenance.clone().first().cloned() {
             Some(callee_prov) => Rc::new(v1_rt::map_keys(&callee_prov)).iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
@@ -10395,7 +10397,7 @@ pub fn collect_variant_constructors(
             },
             ExprData::ExprCall { .. } => {
                 let callee = expr_call_func_at(body.clone(), type_env.source_indices.clone());
-                match lookup_func_sig(func_env.clone(), callee.clone()) {
+                match lookup_func_sig(func_env.clone(), type_env.clone(), callee.clone()) {
                     Some(sig) => {
                         if ((authored_name_at(
                             type_env.source_indices.clone(),

@@ -1,14 +1,5 @@
 module v2.lens.mutation_adequacy
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
-import std.algebra { Empty }
-import v2.std.algebra { is_empty, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.verification { TestClaim }
-import v2.lens.discrimination { unit_is_discriminating }
 
 data law_note: String = "dependency-fidelity §4: coverage of a relationship R = the minimal witness set such that every single-edit mutation of R's declared structure is KILLED (some witness goes red). This is the coverage side of the §7 engine. 'Killed' is grounded on the ONE authority for it, v2.lens.discrimination: a mutation's discriminating_unit is killed iff unit_is_discriminating holds (a green plus a perturbed red separating R from that one-step mutant), so 'killed' is not re-minted here. adequacy = every enumerated one-step mutation has a discriminating witness; a SURVIVING mutation is a located coverage hole. Mutation enumeration from a declared structure (DependencyView one-step neighbors, bounded by the type geometry) is the staged producer (docs/plans/dependency-fidelity-design.md §4, §7); this module is the adequacy verdict it feeds."
 

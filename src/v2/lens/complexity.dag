@@ -1,58 +1,5 @@
 module v2.lens.complexity
-import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
-import v2.lens.cost {
-  AsymptoticClass,
-  ClassConstant,
-  ClassExponential,
-  ClassFactorial,
-  ClassLinearithmic,
-  ClassLinear,
-  ClassLog,
-  ClassPolyLog,
-  ClassPolynomial,
-  ClassUnknown,
-  ConstantCost,
-  ExponentialCost,
-  FactorialCost,
-  LinearCost,
-  LogCost,
-  PolynomialCost,
-  PolyLogCost,
-  ProductCost,
-  SumCost,
-  UnknownCost,
-  PolyLogExponent,
-  PolynomialDegree,
-  SymbolicCost,
-  SizeVariable,
-  asymptotic_class_dominates,
-  asymptotic_class_of_cost,
-  cost_lens
-}
-import std.algebra { Empty }
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Accepted,
-  AmbiguousIntent,
-  Diagnostic,
-  Locus,
-  Rejected,
-  Textual,
-  WholeFile,
-  Unavailable
-}
-import v2.std.node { Node, Symbol }
-import v2.std.refinement {
-  Refined,
-  VacuousValidation,
-  vacuous_admits_marker,
-  Validation,
-  refine,
-  refined_base,
-  refined_vacuous_stub_pack
-}
-import v2.std.witness { Holds, Violates, Witness }
 
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true

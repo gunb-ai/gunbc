@@ -1,10 +1,5 @@
 module tools.regen_verify_transport
 
-import tools.host_prelude { run_witness_bin_program }
-import tools.self_host_realized_comparison_transport {
-  realized_comparison_args,
-  realized_comparison_invoke
-}
 
 fn run_regen_verify() -> Bool {
   run_witness_bin_program(

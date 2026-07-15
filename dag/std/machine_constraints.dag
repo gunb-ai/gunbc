@@ -1,6 +1,5 @@
 module std.machine_constraints
 
-import std.constructors { Phantom }
 
 type MachineWidth<bits>
 

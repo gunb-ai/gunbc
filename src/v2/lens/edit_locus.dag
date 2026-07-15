@@ -1,25 +1,5 @@
 module v2.lens.edit_locus
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.compiler.infer { InferredTree }
-import v2.lens.affected_set { AffectedSetReading, affected_set_reading }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { count_equal, fold_list, length, list_append }
-import v2.std.artifact { NodeArtifactProvenance }
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Unavailable,
-  node_locus
-}
-import v2.std.exact_structural_equality_zip_fold_predicate {
-  exact_structural_equality_zip_fold
-}
-import v2.std.node { Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.text { String }
-import v2.std.witness { Holds, Violates, Witness }
 
 type RepoPath = String
 

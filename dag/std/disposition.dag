@@ -1,7 +1,5 @@
 module std.disposition
 
-import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef }
 
 type ConstructionMechanism
   = SingleAuthority

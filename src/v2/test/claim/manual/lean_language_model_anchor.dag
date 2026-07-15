@@ -1,11 +1,5 @@
 module v2.test.manual.lean_language_model_anchor
-import v2.std.language_model { LanguageModel }
 
-import v2.extdeps.languages.lean {
-  lean_inhabitant_int32_node,
-  lean_language_model
-}
-import v2.std.node { Node }
 
 type lean_anchor_language_model = LanguageModel
 

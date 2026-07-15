@@ -1,26 +1,5 @@
 module test.claim.js_site_emit
 
-import examples.js_site {
-  JsSitePage,
-  js_site_pages,
-  js_site_page_count,
-  Home,
-  About,
-  Browse,
-}
-import examples.js_site_emit {
-  js_site_emit_html,
-  js_site_emit_tsx,
-  js_site_page_html,
-  js_site_page_tsx,
-  js_site_html_artifact_path,
-  js_site_tsx_artifact_path,
-}
-import gunbc.gunbhub_serve { gunbhub_hostile_page }
-import extdeps.languages.html { EmitOk, EmitRejected }
-import extdeps.languages.react_jsx { JsxOk, JsxRejected }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

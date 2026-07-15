@@ -1,11 +1,5 @@
 module gunbc.hand_lens_host_bridge_scaffold_watchdog
 
-import gunbc.hand_lens_host_bridge_scaffold_index {
-  transport_script_position_host_bridge_dissolution_trigger,
-  extdeps_external_authority_host_bridge_dissolution_trigger,
-}
-import std.types { List, String, Bool }
-import std.disposition { Disposition, Scaffold, Terminal }
 
 type HostBridgeScaffoldRow {
   lens_module: String

@@ -25,8 +25,8 @@ The old 2-wave plan collapsed here: "Wave 2 = the sweep" hid the emit-surface ke
 
 1. **General body producer emits REAL ingested fn bodies** — RECEIPT LANDED (#6558 body producer + #6526/#6523 fast+long witnesses). Residual explicitly NOT proven by those witnesses: Stage D MVP subsumption, FLAG D binding-key re-grounding, frontier probe per-module receipts, FLAG E body_lowering_fold dissolution.
 2. **Namespace SymbolIndex / tree-resolution lands** — RECEIPT LANDED (#6523 gate-2 witnesses + #6538 scaling receipt). Residual: 03_name_resolve/03_resolve end-to-end ingest wire + frontier probe blocker_class rows.
-3. **FLAG D binder identity grounded** — RECEIPT LANDED (#6575). EnvironmentBindingKey re-grounding on identity; `bind_eval_occurrence_identity_defect` witnesses green; conform-now protocol closed ([general-body-producer-design.md](general-body-producer-design.md) §9).
-4. **Weak self-host behavioral receipt green** — RECEIPT LANDED (#6578). `dag/tools/self_host_logic_behavioral_transport.dag` emit→compile→run→equals-seed chain green-by-execution for `dag/std/logic.dag` (plain + `--inject-fault` RED control).
+3. **FLAG D binder identity grounded** — OPEN. Conform-now protocol live; `bind_eval_occurrence_identity_defect` witness documents occurrence-distinct binder/ref miss until EnvironmentBindingKey re-grounding lands ([general-body-producer-design.md](general-body-producer-design.md) §9).
+4. **Weak self-host behavioral receipt green** — OPEN. Partial: `std/logic` Bool enum type-decl self-emit (#6401) + fn-level emit-host equals-eval receipts; whole-module emit→compile→run→compare not green (#6429 closed without merge).
 
 **NO v1 deleted in Wave 1.**
 

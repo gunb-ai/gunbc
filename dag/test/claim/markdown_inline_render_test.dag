@@ -1,15 +1,5 @@
 module test.claim.markdown_inline_render
 
-import extdeps.languages.markdown {
-  parse_inline_markdown_minimal,
-}
-import std.markdown_markup {
-  markdown_inline_to_markup_nodes,
-  markdown_inlines_to_markup_nodes,
-}
-import std.markdown { ImageInline }
-import std.markup { ElementNode, TextNode, MarkupAttr, MarkupNode }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

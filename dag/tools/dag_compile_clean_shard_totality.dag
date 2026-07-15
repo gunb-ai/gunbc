@@ -1,14 +1,5 @@
 module tools.dag_compile_clean_shard_totality
 
-import tools.dag_compile_clean_shard_roster {
-  compile_clean_shard_entry_paths,
-  list_contains_path,
-  path_occurrence_count
-}
-import tools.dag_compile_clean_shard_totality_transport {
-  run_live_dag_entry_glob
-}
-import std.types { String, Bool, Int, List, list_length }
 
 type PartitionTotalityVerdict
   = PartitionTotal { module_count: Int }

@@ -1,19 +1,5 @@
 module v2.test.manual.posix_output_capture
 
-import v2.extdeps.posix { CapturedOutputPipes }
-import std.algebra { FreeMonoid }
-import v2.std.algebra { is_empty }
-import v2.std.node { Node }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  ManualAnchorAbsent,
-  manual_claim_anchor
-}
-import v2.test.manual.connective_anchors { stub_empty_conj, stub_empty_disj }
 
 data empty_captured_pipes: CapturedOutputPipes = CapturedOutputPipes {
   stdout: Empty,

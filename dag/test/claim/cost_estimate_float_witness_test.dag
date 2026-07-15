@@ -1,8 +1,5 @@
 module test.claim.cost_estimate_float_witness_test
 
-import examples.cost_estimate { cost_projection_float_witness }
-import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

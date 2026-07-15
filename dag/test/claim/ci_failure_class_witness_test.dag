@@ -1,20 +1,5 @@
 module test.claim.ci_failure_class_witness
 
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.ci_failure_class {
-  InfraSignature, RunnerLost,
-  FloorFailureClass, Infra, Structural,
-  FloorOutcome, NoFailure, FloorFailed,
-  classify_failure_reason, classify_floor_exit,
-  floor_failure_blocks_merge, floor_outcome_blocks_merge, floor_exit_blocks_merge,
-  infra_retry_grep_alternation, build_retry_infra_signatures,
-  verdict_infra_signatures, infra_signature_match_substring,
-  infra_signature_origin,
-  MergeGatingStatus, GatingComputedDeferred,
-  merge_freshness_gating_status, gating_is_enforced,
-  merge_freshness_verdict_is_consumed_to_block
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
