@@ -966,6 +966,8 @@ fn dag_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ^dag_token_kw_let),
         grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_eq),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr),
+        grammar_formal_terminal(identity: ^dag_token_kw_in),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
       ]
     ),
@@ -975,8 +977,6 @@ fn dag_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ^dag_token_kw_let),
         grammar_formal_terminal_free(identity: ^dag_token_ident),
         grammar_formal_terminal(identity: ^dag_token_eq),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr),
-        grammar_formal_terminal(identity: ^dag_token_kw_in),
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
       ]
     ),
@@ -2148,7 +2148,13 @@ fn dag_grammar_let_expr() -> GrammarExpr {
         left: dag_grammar_binding_name_terminal(),
         right: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_eq),
-          right: dag_grammar_nonterminal(production: ^dag_production_expr)
+          right: dag_grammar_sequence(
+            left: dag_grammar_nonterminal(production: ^dag_production_expr),
+            right: dag_grammar_sequence(
+              left: dag_grammar_terminal(token_class: ^dag_token_kw_in),
+              right: dag_grammar_nonterminal(production: ^dag_production_expr)
+            )
+          )
         )
       )
     ),
@@ -2158,13 +2164,7 @@ fn dag_grammar_let_expr() -> GrammarExpr {
         left: dag_grammar_binding_name_terminal(),
         right: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_eq),
-          right: dag_grammar_sequence(
-            left: dag_grammar_nonterminal(production: ^dag_production_expr),
-            right: dag_grammar_sequence(
-              left: dag_grammar_terminal(token_class: ^dag_token_kw_in),
-              right: dag_grammar_nonterminal(production: ^dag_production_expr)
-            )
-          )
+          right: dag_grammar_nonterminal(production: ^dag_production_expr)
         )
       )
     )
@@ -3198,6 +3198,7 @@ fn dag_language_model_binding_canonical(sym: Symbol) -> Bool {
     || sym == ^dag_binding_pick_lit_two
     || sym == ^dag_binding_type_bool
     || sym == ^bool_node_symbol
+    || sym == ^dag_loop_measure_sym
 }
 
 fn dag_canonical_symbols() -> Set<Symbol> {
