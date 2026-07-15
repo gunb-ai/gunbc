@@ -31,7 +31,13 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   )
 ]
 
-data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = []
+data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = [
+  SelfHostWetReceiptBinding {
+    module_path: "src/v2/compiler/use_site_verdict.dag",
+    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
+    function: "self_host_use_site_verdict_behavioral_receipt_holds"
+  }
+]
 
 fn wet_receipt_binding_if_path_matches(
   module_path: String,

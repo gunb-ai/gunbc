@@ -13,9 +13,9 @@ import gunbc.ci_compile_jobs {
 }
 import extdeps.cargo_build { cargo_nextest_build_jobs_flag, cargo_build_jobs_flag }
 import tools.rust_gates_ci { rust_gate_build_jobs_args }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn join_space(xs: List<String>) -> String {
   fold(xs, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, " "), p) })
