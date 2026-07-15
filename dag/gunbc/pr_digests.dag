@@ -28,7 +28,7 @@ type RestFallbackReason
   | GraphqlRateLimited
   | GraphqlSchemaUnknown
 
-service ctrl.PrDigests {
+service gunbc.PrDigests {
   operation ExtractAttachedUrls {
     input {
       pr: PullRequest

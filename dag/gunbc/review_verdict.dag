@@ -173,7 +173,7 @@ fn is_actionable_finding(finding: ReviewFinding) -> Bool {
   }
 }
 
-service ctrl.ReviewVerdicts {
+service gunbc.ReviewVerdicts {
   operation Parse {
     input {
       request: ReviewVerdictParseRequest

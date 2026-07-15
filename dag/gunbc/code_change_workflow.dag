@@ -353,7 +353,7 @@ fn decide_code_change_transition(request: CodeChangeTransitionRequest) -> CodeCh
   }
 }
 
-service ctrl.CodeChangeWorkflow {
+service gunbc.CodeChangeWorkflow {
   operation ClassifyGithubPrTerminalAnchor {
     input {
       pr: PullRequest
