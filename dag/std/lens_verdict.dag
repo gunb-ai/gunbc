@@ -4,6 +4,8 @@ import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {
   Diagnostic,
   Locus,
+  NodeLocus,
+  PortLocus,
   Textual,
   module_unavailable_diagnostic,
 }
@@ -52,5 +54,7 @@ fn lens_verdict_module_not_applicable(reason: Symbol, module_name: String) -> Le
 fn lens_verdict_diagnostic_locus_module(d: Diagnostic) -> String {
   match d.at {
     Textual { file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
+    NodeLocus { anchor: _ } => ""
+    PortLocus { anchor: _ } => ""
   }
 }
