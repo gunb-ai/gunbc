@@ -64,8 +64,12 @@ import gunbc.srv3_os_install_diagnostic {
   srv3_os_install_attempt_intent,
   srv3_install_diagnostic_observe_script_for_intent,
 }
-import extdeps.clock
-import extdeps.bmc.serial_console { sol_console_transport_wire }
+import extdeps.bmc.serial_console {
+  sol_console_capture_systemd_run_argv,
+  sol_console_capture_unit_name,
+  sol_console_capture_receipt_line,
+}
+import extdeps.os.systemctl
 import gunbc.srv3_sol_console_intent { srv3_sol_console_capture_intent }
 import gunbc.srv3_os_install_reconcile_receipt {
   srv3_durable_approval_grant_record_line,
@@ -86,6 +90,7 @@ import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
 import gunbc.srv3_os_install_reconcile_types {
   srv3_boot_once_approval_grant_path,
   srv3_boot_once_apply_read_back_sleep,
+  srv3_install_reconcile_dry_run_observed_at,
 }
 import extdeps.filesystem.filesystem_io
 import std.measure { second_count }
@@ -137,7 +142,7 @@ type ResolvedHostEffectCell =
   | BmcwebSessionLoginOnHost { node: ComputeHost }
   | BmcwebTokenExtractOnHost { node: ComputeHost }
   | InstallReconcileObserveOnHost { node: ComputeHost, include_git_meta: Bool }
-  | DurableApprovalGrantRecordOnHost { node: ComputeHost }
+  | DurableApprovalGrantRecordOnHost { node: ComputeHost, granted_at: Timestamp, expires_at: Timestamp }
   | SolConsoleCaptureOnHost { node: ComputeHost }
   | IncompatibleCell { reason: String }
 
@@ -183,8 +188,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BmcwebTokenExtractOnHost { node: n }
         Srv3InstallReconcileObserve { include_git_meta: meta } =>
           InstallReconcileObserveOnHost { node: n, include_git_meta: meta }
-        DurableApprovalGrantRecord =>
-          DurableApprovalGrantRecordOnHost { node: n }
+        DurableApprovalGrantRecord { granted_at: ga, expires_at: exp } =>
+          DurableApprovalGrantRecordOnHost { node: n, granted_at: ga, expires_at: exp }
         Srv3SolConsoleCapture =>
           SolConsoleCaptureOnHost { node: n }
         _ =>
@@ -207,8 +212,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   srv3_host_effect_script_resolution_failed_cell()
                 Srv3InstallReconcileObserve { include_git_meta: meta } =>
                   InstallReconcileObserveOnHost { node: n, include_git_meta: meta }
-                DurableApprovalGrantRecord =>
-                  DurableApprovalGrantRecordOnHost { node: n }
+                DurableApprovalGrantRecord { granted_at: ga, expires_at: exp } =>
+                  DurableApprovalGrantRecordOnHost { node: n, granted_at: ga, expires_at: exp }
                 DurableApprovalGrantRead =>
                   IncompatibleCell { reason: "host_effect: DurableApprovalGrantRead is in-band (actuator host typed read) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
@@ -257,7 +262,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   srv3_host_effect_script_resolution_failed_cell()
                 Srv3InstallReconcileObserve { include_git_meta: _ } =>
                   IncompatibleCell { reason: "host_effect: Srv3InstallReconcileObserve is in-band (actuator host typed observe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-                DurableApprovalGrantRecord =>
+                DurableApprovalGrantRecord { granted_at: _, expires_at: _ } =>
                   IncompatibleCell { reason: "host_effect: DurableApprovalGrantRecord is in-band (actuator host typed grant write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 DurableApprovalGrantRead =>
                   IncompatibleCell { reason: "host_effect: DurableApprovalGrantRead is in-band (actuator host typed read) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -651,57 +656,29 @@ fn srv3_toolchain_ensure_reconcile(
 
 data srv3_approval_grant_parent_dir: String = "/var/lib/gunbc/logs/approvals"
 
-fn host_effect_multiline_script_failure(
-  header: String,
-  detail: String,
-) -> ShellExecObserved {
-  ShellExecObserved {
-    exit_code: 1,
-    success: false,
-    stdout: "",
-    stderr: concat(concat(header, ": "), detail),
-  }
+data host_effect_multiline_bash_heredoc_delimiter: String = "GUNBC_BASH_EOF"
+
+fn host_effect_frame_multiline_bash(script: String) -> String {
+  concat(
+    concat(concat("bash <<'", host_effect_multiline_bash_heredoc_delimiter), "'\n"),
+    concat(script, concat("\n", concat(host_effect_multiline_bash_heredoc_delimiter, "\n"))),
+  )
 }
 
 fn host_effect_run_multiline_bash_script_local(
   script: String,
   failure_header: String,
 ) -> ShellExecObserved {
-  let tmp_dir = shell.Mktemp.Dir()
-  if !tmp_dir.success {
-    return host_effect_multiline_script_failure(
-      header: failure_header,
-      detail: "mktemp -d failed; fail-closed",
-    )
-  }
-  let script_path = concat(tmp_dir.path as String, "/gunbc-multiline.sh")
-  let write = Filesystem.Write(path: script_path, content: script)
-  if !write.success {
-    let _ = shell.Remove.RecursiveForce(path: tmp_dir.path)
-    return host_effect_multiline_script_failure(
-      header: failure_header,
-      detail: concat("script write failed; fail-closed: ", write.error),
-    )
-  }
-  let chmod = gunbc.WitnessBin.Run(
-    workdir: "/",
-    bin_path: "/bin/chmod",
-    args: ["+x", script_path],
-  )
-  if !chmod.success {
-    let _ = shell.Remove.RecursiveForce(path: tmp_dir.path)
-    return host_effect_multiline_script_failure(
-      header: failure_header,
-      detail: "chmod +x failed; fail-closed",
-    )
-  }
-  let run = gunbc.WitnessBin.Run(workdir: "/", bin_path: script_path)
-  let _ = shell.Remove.RecursiveForce(path: tmp_dir.path)
+  let result = shell.Exec.Run(script: host_effect_frame_multiline_bash(script: script))
   ShellExecObserved {
-    exit_code: run.exit_code,
-    success: run.success,
-    stdout: run.stdout,
-    stderr: run.stderr,
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: if result.success {
+      result.stderr
+    } else {
+      concat(concat(failure_header, ": "), result.stderr)
+    },
   }
 }
 
@@ -723,37 +700,25 @@ fn host_effect_run_multiline_bash_script(
       }
     }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      host_effect_multiline_script_failure(
-        header: failure_header,
-        detail: "EmitArtifactThenThinRun transport is a typed mismatch for multiline bash observe; fail-closed",
-      )
+      ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: concat(
+          failure_header,
+          ": EmitArtifactThenThinRun transport is a typed mismatch for multiline bash observe; fail-closed",
+        ),
+      }
   }
 }
 
-fn srv3_install_reconcile_observe_meta_stdout() -> String {
-  let now = Clock.Now().timestamp
-  let branch_run = gunbc.WitnessBin.Run(workdir: "/", bin_path: "git", args: ["branch", "--show-current"])
-  let branch = if branch_run.success && branch_run.stdout != "" {
-    branch_run.stdout
-  } else {
-    "unknown"
-  }
-  let commit_run = gunbc.WitnessBin.Run(workdir: "/", bin_path: "git", args: ["rev-parse", "--short", "HEAD"])
-  let commit = if commit_run.success && commit_run.stdout != "" {
-    commit_run.stdout
-  } else {
-    "unknown"
-  }
-  host_effect_join_lines(lines: [
-    concat("Srv3InstallObserveReceipt: surface=observed_at=", now as String),
-    concat(
-      "Srv3InstallObserveReceipt: surface=git branch=",
-      concat(branch, concat(" commit=", commit)),
-    ),
-  ])
+fn srv3_install_reconcile_observe_meta_stdout(observed_at: Timestamp) -> String {
+  concat("Srv3InstallObserveReceipt: surface=observed_at=", observed_at as String)
 }
 
 fn realize_durable_approval_grant_record_on_host(
+  granted_at: Timestamp,
+  expires_at: Timestamp,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -771,8 +736,6 @@ fn realize_durable_approval_grant_record_on_host(
           intent: intent,
         )
       }
-      let granted_at = Clock.Now().timestamp
-      let expires_at = Clock.UtcPlusHours(hours: 24).timestamp
       let line = srv3_durable_approval_grant_record_line(
         granted_at: granted_at,
         expires_at: expires_at,
@@ -801,7 +764,7 @@ fn realize_durable_approval_grant_record_on_host(
     }
     SshShell { ssh_host: _ } =>
       NotConverged {
-        reason: "host_effect_apply: DurableApprovalGrantRecord runs typed Clock + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote grant record is realized.",
+        reason: "host_effect_apply: DurableApprovalGrantRecord runs typed Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote grant record is realized.",
         applied: intent,
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -812,48 +775,44 @@ fn realize_durable_approval_grant_record_on_host(
   }
 }
 
-fn srv3_sol_console_capture_script_line() -> String {
-  let intent = srv3_sol_console_capture_intent
-  let transport_wire = sol_console_transport_wire(transport: intent.transport)
-  concat(
-    concat("obmc-console-client ", intent.bmc_host as String),
-    concat(
-      " > \"",
-      concat(
-        intent.output_path as String,
-        concat(
-          "\" 2>&1 & echo \"SolConsoleCaptureReceipt: transport=",
-          concat(
-            transport_wire as String,
-            concat(" log=", concat(intent.output_path as String, "\"")),
-          ),
-        ),
-      ),
-    ),
-  )
-}
-
 fn realize_sol_console_capture_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let capture_intent = srv3_sol_console_capture_intent
+  let receipt = sol_console_capture_receipt_line(intent: capture_intent)
   match transport {
-    LocalShell =>
+    LocalShell => {
+      let started = srv3_transport_witness_bin_success(
+        transport: transport,
+        workdir: "/",
+        bin_path: "/usr/bin/systemd-run",
+        args: sol_console_capture_systemd_run_argv(intent: capture_intent),
+      )
+      let active = if started {
+        systemd.Systemctl.IsActive(unit: sol_console_capture_unit_name).active
+      } else {
+        false
+      }
       srv3_shell_reconcile(
-        observed: run_shell_transport(
-          script: srv3_sol_console_capture_script_line(),
-          transport: transport,
-        ),
+        observed: ShellExecObserved {
+          exit_code: if active { 0 } else { 1 },
+          success: active,
+          stdout: if active { receipt } else { "" },
+          stderr: if active {
+            ""
+          } else {
+            "host_effect_apply: Srv3SolConsoleCapture systemd-run transient start or is-active check failed; fail-closed"
+          },
+        },
         intent: intent,
       )
+    }
     SshShell { ssh_host: _ } =>
-      srv3_shell_reconcile(
-        observed: run_shell_transport(
-          script: srv3_sol_console_capture_script_line(),
-          transport: transport,
-        ),
-        intent: intent,
-      )
+      NotConverged {
+        reason: "host_effect_apply: Srv3SolConsoleCapture runs typed systemd-run transient units on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote SOL capture is realized.",
+        applied: intent,
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3SolConsoleCapture cannot use EmitArtifactThenThinRun transport; typed mismatch.",

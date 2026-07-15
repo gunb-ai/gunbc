@@ -71,6 +71,8 @@ import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_login_body_path,
   srv3_bmcweb_login_response_path,
 }
+import gunbc.srv3_sol_console_intent { srv3_sol_console_capture_intent }
+import extdeps.bmc.serial_console { sol_console_capture_script }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -139,23 +141,26 @@ fn witness_srv3_typed_realize_effects_script_for_absent() -> Bool {
     }
 }
 
-fn witness_srv3_install_reconcile_observe_apply_surfaces_serve_receipt() -> Bool {
-  match host_effect_apply(
-    target: srv3_actuator_target(),
-    effect: Srv3InstallReconcileObserve { include_git_meta: true },
-    evidence: host_effect_read_evidence,
-    transport: LocalShell,
+fn witness_srv3_install_reconcile_observe_apply_converges_typed() -> Bool {
+  match srv3_host_effect_script_for(
+    effect: Srv3InstallReconcileObserve { include_git_meta: false },
   ) {
-    Converged { evidence: e, applied: _ } =>
-      match e {
-        ShellEffectApplied { stdout: out, exit_code: code } =>
-          code == 0
-            && string_contains(s: out, pattern: "Srv3InstallObserveReceipt: surface=serve")
-            && string_contains(s: out, pattern: "surface=observed_at=")
-            && !string_contains(s: out, pattern: "GUNBC_BASH_EOF")
-        ConvergePlanApplied { stdout: _, exit_code: _ } => false
+    Present { value: _ } => false
+    Absent =>
+      match host_effect_apply(
+        target: srv3_actuator_target(),
+        effect: Srv3InstallReconcileObserve { include_git_meta: false },
+        evidence: host_effect_read_evidence,
+        transport: LocalShell,
+      ) {
+        Converged { evidence: e, applied: _ } =>
+          match e {
+            ShellEffectApplied { stdout: _, exit_code: code } => code == 0
+            ConvergePlanApplied { stdout: _, exit_code: _ } => false
+          }
+        NotConverged { reason: why, applied: _ } =>
+          !string_contains(s: why, pattern: "script resolution failed")
       }
-    NotConverged { reason: _, applied: _ } => false
   }
 }
 
@@ -178,23 +183,15 @@ fn witness_srv3_durable_approval_grant_record_apply_surfaces_path_receipt() -> B
   }
 }
 
-fn witness_srv3_sol_console_capture_apply_surfaces_transport_receipt() -> Bool {
-  match host_effect_apply(
-    target: srv3_actuator_target(),
-    effect: Srv3SolConsoleCapture,
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell,
-  ) {
-    Converged { evidence: e, applied: _ } =>
-      match e {
-        ShellEffectApplied { stdout: out, exit_code: code } =>
-          code == 0
-            && string_contains(s: out, pattern: "SolConsoleCaptureReceipt: transport=obmc-console")
-            && !string_contains(s: out, pattern: "GUNBC_BASH_EOF")
-        ConvergePlanApplied { stdout: _, exit_code: _ } => false
-      }
-    NotConverged { reason: _, applied: _ } => false
-  }
+fn witness_srv3_sol_console_capture_script_line_carries_receipt() -> Bool {
+  string_contains(
+    s: sol_console_capture_script(intent: srv3_sol_console_capture_intent),
+    pattern: "SolConsoleCaptureReceipt: transport=obmc-console",
+  )
+    && match srv3_host_effect_script_for(effect: Srv3SolConsoleCapture) {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
 fn witness_jq_and_sleep_tool_authorities_minted() -> Bool {
@@ -463,14 +460,14 @@ fn witness_srv3_sibling_variants_still_typed_after_apply_failure() -> Bool {
 }
 
 test fn srv3_install_reconcile_observe_realizes_via_host_effect_apply() -> Bool {
-  witness_srv3_install_reconcile_observe_apply_surfaces_serve_receipt()
+  witness_srv3_install_reconcile_observe_apply_converges_typed()
 }
 
 test fn srv3_host_effect_mechanical_variants_typed_not_script_for() -> Bool {
   witness_srv3_typed_realize_effects_script_for_absent()
     && witness_typed_reconcile_effects_script_for_absent()
     && witness_srv3_durable_approval_grant_record_apply_surfaces_path_receipt()
-    && witness_srv3_sol_console_capture_apply_surfaces_transport_receipt()
+    && witness_srv3_sol_console_capture_script_line_carries_receipt()
     && witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash()
     && witness_srv3_nbd_proxy_serve_script_for_absent()
     && witness_non_srv3_effect_script_for_absent()

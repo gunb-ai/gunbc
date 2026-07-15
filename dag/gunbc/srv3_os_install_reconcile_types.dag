@@ -32,6 +32,8 @@ data srv3_boot_once_approval_grant_path: String = "/var/lib/gunbc/logs/approvals
 
 data srv3_boot_once_apply_read_back_sleep: Second = second(count: 45)
 
+data srv3_boot_once_grant_expires_at: Timestamp = "2026-07-04T00:00:00Z"
+
 data srv3_install_reconcile_default_disk: TargetDiskState = ForeignOsPresent
 
 data srv3_nbd_proxy_lease_key: NonEmptyStr = "srv3-nbd-proxy-10809" as NonEmptyStr

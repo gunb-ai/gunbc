@@ -1,6 +1,6 @@
 module gunbc.host_effect
 
-import std.types { String, Int, NonEmptyStr, List, ContentHash }
+import std.types { String, Int, NonEmptyStr, List, ContentHash, Timestamp }
 import std.access { AccessDecision }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -32,7 +32,10 @@ type HostEffect =
   | OsInstallActuatorToolchainEnsure {}
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | Srv3InstallReconcileObserve { include_git_meta: Bool }
-  | DurableApprovalGrantRecord
+  | DurableApprovalGrantRecord {
+      granted_at: Timestamp,
+      expires_at: Timestamp,
+    }
   | DurableApprovalGrantRead
   | Srv3InstallMediaFetch
   | Srv3SeededInstallMediaRemaster

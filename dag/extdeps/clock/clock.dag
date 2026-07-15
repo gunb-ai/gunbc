@@ -1,6 +1,6 @@
 module extdeps.clock
 
-import std.types { Timestamp, Int }
+import std.types { Timestamp }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -22,9 +22,6 @@ service Clock {
       0 => Unit
       nonzero => String "date command failed"
     }
-    mock_response {
-      0 => { timestamp: "2026-07-03T00:00:00Z" } "hermetic clock now"
-    }
   }
 
   operation UnixSecs {
@@ -35,20 +32,6 @@ service Clock {
     exit {
       0 => Unit
       nonzero => String "date command failed"
-    }
-  }
-
-  operation UtcPlusHours {
-    input { hours: Int }
-    output { timestamp: Timestamp from "stdout" }
-    readonly
-    transport shell { argv: ["date", "-u", "-d", "+{hours} hours", "+%Y-%m-%dT%H:%M:%SZ"] }
-    exit {
-      0 => Unit
-      nonzero => String "date plus-hours command failed"
-    }
-    mock_response {
-      0 => { timestamp: "2026-07-04T00:00:00Z" } "hermetic clock plus hours"
     }
   }
 }

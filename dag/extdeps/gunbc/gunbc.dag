@@ -103,14 +103,6 @@ service gunbc.WitnessBin {
       0 => Unit
       nonzero => String "Witness binary exited nonzero"
     }
-    mock_response {
-      0 => {
-        success: true,
-        exit_code: 0,
-        stdout: "Srv3InstallObserveReceipt: surface=serve nbdkit=absent websocat=absent port_owner=absent token=absent iso=missing",
-        stderr: "",
-      } "hermetic witness bin success"
-    }
   }
 }
 

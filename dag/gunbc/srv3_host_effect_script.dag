@@ -19,6 +19,7 @@ import gunbc.host_effect {
   ShellCommand,
   RedfishAction,
   ConvergePlan,
+  SetHostnameCas,
 }
 import std.types { String, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }

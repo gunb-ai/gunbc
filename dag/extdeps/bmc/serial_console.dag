@@ -85,3 +85,36 @@ fn sol_console_capture_script(intent: SolConsoleCaptureIntent) -> String {
     concat("\" 2>&1 &\necho \"SolConsoleCaptureReceipt: transport=", transport_wire as String, " log=", intent.output_path as String, "\"\n"),
   )
 }
+
+data sol_console_capture_unit_name: NonEmptyStr = "srv3-sol-console-capture" as NonEmptyStr
+
+fn sol_console_capture_standard_output_property(log_path: NonEmptyStr) -> String {
+  concat("StandardOutput=file:", log_path as String)
+}
+
+fn sol_console_capture_standard_error_property(log_path: NonEmptyStr) -> String {
+  concat("StandardError=file:", log_path as String)
+}
+
+fn sol_console_capture_systemd_run_argv(intent: SolConsoleCaptureIntent) -> List<String> {
+  [
+    "--unit",
+    sol_console_capture_unit_name as String,
+    concat("--property=", sol_console_capture_standard_output_property(log_path: intent.output_path)),
+    concat("--property=", sol_console_capture_standard_error_property(log_path: intent.output_path)),
+    "--collect",
+    "--",
+    "obmc-console-client",
+    intent.bmc_host as String,
+  ]
+}
+
+fn sol_console_capture_receipt_line(intent: SolConsoleCaptureIntent) -> String {
+  concat(
+    "SolConsoleCaptureReceipt: transport=",
+    concat(
+      sol_console_transport_wire(transport: intent.transport) as String,
+      concat(" log=", intent.output_path as String),
+    ),
+  )
+}
