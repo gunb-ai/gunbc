@@ -99,7 +99,43 @@ The end-state: a lens is authored as **(projection, roots, invariant-handler) �
 
 ---
 
-## 7. How to use this doc (the operator's stated intent)
+## 7. Wave structure (dependency-ordered)
+
+```
+W0 (de-fork, no gating) ──▶ W1 (kernel + verdict boundaries) ──▶ W2 (new invariants)
+                                     │                                    │
+                                     └──────────────┬─────────────────────┘
+                                                    ▼
+   external lanes ─(SymbolIndex/parsed-producer, v1-deletion, fn-body reflection)─▶ W3 (gated migrations)
+                                                    │
+                                                    ▼
+                                          W4 (self-enforcement + doc dissolution)
+```
+
+- **Wave 0 — de-fork (no dependencies; pure deletion; reversible).** The immediate-value burst; each collapses forks the survey proved identical. `W0.1` classifier-quartet → one `DependencyKindClassifier<T>`. `W0.2` structural_similarity ≡ simulated_relationship → one engine. `W0.3` verdict de-forks (`duplicate_computation`→`LadderVerdict`, delete `fact_cardinality` nickname, reconcile `LensVerdict`). `W0.4` rehome mislabeled (`complexity_linearity_audit`, `witness_cost_locality`). *Value: collapses ~8 lenses → ~3; proves the direction.*
+- **Wave 1 — kernel + verdict boundaries (keystone; deps: W0 for a smaller surface).** `W1.1` lift `GraphInvariant<Projection>` from `wiring_liveness`'s existing pure-`.dag` reach engine + the `universe_nonempty` seam; repoint the pure reachability lenses. `W1.2` fix the verdict-per-mechanism carriers (`ReachVerdict` / `LadderVerdict` / oracle-provenance / conformance / algebraic — distinct, per "consolidate mechanisms not meanings").
+- **Wave 2 — new invariants (deps: W1 to host handlers).** `W2.1` the acyclicity/syllogism handler (the one truly-missing invariant). `W2.2` vacuity — `TestClaimObservationRelation` + `VacuityEvidence` + classifier as an advisory census (walls deferred to W3).
+- **Wave 3 — gated migrations (deps: external lanes, not effort).** Each is a one-row migration when its lane clears. `W3.1` repoint the host-count reachability lenses (inert_lens/doc_reachability/non_fold_residue/inert_carrier) off `cli_run.rs` onto the kernel — **gated on v1-deletion / parsed-producer**. `W3.2` vacuity `ProvenDuplicate` walls — **gated on `symbol_index_fill` provenance/reference edges**. `W3.3` registry completeness (enroll ~15 lenses + contracts + receipts) — the receipt half **gated on fn-body reflection** (`decl_facts`).
+- **Wave 4 — self-enforcement closure (deps: W1–W3).** `W4.1` model the §3/§4 rubric — *especially Question 0* — as a `StandingIntent` gated fail-closed, so a new `.dag` lens *module* not justified by a genuinely-new invariant **fails CI**. This is the move that stops the count structurally, not by diligence. `W4.2` dissolve the design docs (this one, [vacuity](vacuity-lens-design.md), [inert-layer](inert-layer-lens.md)) as the carriers become self-describing (§6 mark-on-carrier).
+
+Wave 0 and the Wave 1 kernel-lift can overlap; W3's three sub-lanes are independent and each fires when its external dependency clears. Nothing in W0–W2 touches `src/v1` or waits on the gated lanes.
+
+## 8. Definition of done (a wall, not an empty roster)
+
+The project is **not** done when "every lens is migrated" — that is a moving target, and "no new lens ever" is the §5 *"never" trap* (a ratchet masquerading as a wall). It is done when **the set enforces its own well-formedness by execution — non-conformance becomes unwritable.** Two distinct done-lines:
+
+**Structural done (the real answer to "200 lenses" — achievable at W4.1, ahead of the long tail).** A conjunction of *live, fail-closed, RED-controlled* lenses over the lens corpus itself (the §7 recursion):
+1. **Question 0 is a gate** — a new lens *module* that isn't a genuinely-new invariant fails CI (the rubric as a `StandingIntent`). *RED control: a synthetic redundant lens module must be refused.*
+2. **No forked mechanism** — no two lenses share an invariant with duplicated engines. *RED control: re-introducing a deleted fork goes red.*
+3. **Registry-complete** — every lens module enrolled + contracted + live-receipted; an un-enrolled lens is refused. *(extends the #5433 inert-lens backstop from wiring to enrollment.)*
+
+Once these three are green-by-execution, the count *cannot* grow into 200 by construction — even with migrations still on the frontier. That is the deliverable.
+
+**Migration done (the long tail — a declared frontier, never a completion claim).** Each not-yet-migrated lens is a **counted, typed, dissolve-on-tracked frontier row** (the seed-retained pattern, §7), not a silent gap — so "not yet migrated" is observable and prioritizable, never confused with "done." The frontier empties as W3's external lanes clear; it may legitimately never hit zero (a genuinely new invariant can always appear), which is *exactly why* the done-line is the self-enforcing gate above, not `roster == 0`. When the frontier is empty **and** the gate is live, the design docs dissolve (W4.2) and the lenses are the only authority left.
+
+**One-line test of doneness:** *can someone add a redundant or unenrolled lens and have CI stay green?* When the answer is a fail-closed "no," the project is structurally done, whatever the migration frontier still holds.
+
+## 7bis. How to use this doc (the operator's stated intent)
 
 Run §3 (per-lens) and §4 (per-set) against a proposed or existing lens as a **stress test**: a "no" that is *named* (a dissolve-on, a `RatchetForever`, an exemption) is acceptable; a "no" that is *silent* is the debt. The value of the doc is not the taxonomy — it is the ten questions in §3 and the five set-properties in §4, which any *future* lens must answer before it joins the set, so the family stays minimal instead of accreting the forks §5 catalogues.
 
