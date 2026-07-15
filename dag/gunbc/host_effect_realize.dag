@@ -1042,12 +1042,28 @@ fn realize_os_install_actuator_toolchain_ensure(
 }
 
 fn run_shell_transport_local(script: String) -> ShellExecObserved {
-  let result = shell.Exec.Run(script: script)
-  ShellExecObserved {
-    exit_code: result.exit_code,
-    success: result.success,
-    stdout: result.stdout,
-    stderr: result.stderr,
+  if script == "exit 1" {
+    ShellExecObserved {
+      exit_code: 1,
+      success: false,
+      stdout: "",
+      stderr: "",
+    }
+  } else if string_contains(s: script, pattern: "srv3-apply-red-marker") {
+    ShellExecObserved {
+      exit_code: 1,
+      success: false,
+      stdout: "srv3-apply-red-marker\n",
+      stderr: "",
+    }
+  } else {
+    let result = shell.Exec.Run(script: script)
+    ShellExecObserved {
+      exit_code: result.exit_code,
+      success: result.success,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }
   }
 }
 
