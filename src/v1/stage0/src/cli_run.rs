@@ -1506,16 +1506,25 @@ fn compile_clean_touched_path_norm(path: &str) -> &str {
     path.strip_prefix("./").unwrap_or(path)
 }
 
-fn compile_clean_touches_allow_skip(touched_paths: &[String]) -> bool {
-    touched_paths.is_empty()
-        || touched_paths
+fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bool {
+    !touched_paths.is_empty()
+        && touched_paths
             .iter()
             .all(|p| compile_clean_touched_path_norm(p).starts_with("docs/"))
 }
 
-/// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
-/// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
-fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
+/// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_touched` (DependencyView +
+/// `#6239` substrate gate) without the Wet interpreter fold over `compile_clean_shard_entry_paths()`.
+fn compile_clean_scope_plan_from_touched_paths_floor_fast(
+    touched_paths: &[String],
+) -> CompileCleanScopePlan {
+    if touched_paths.is_empty() {
+        return CompileCleanScopePlan::SkipNoAffected {
+            reason: "no touched paths in diff observation".to_string(),
+        };
+    }
+
+    // `dag_compile_clean_scope.dag` — RequireWholeTree when substrate not ready.
     let entry_root = witness_layer_roots()
         .first()
         .cloned()

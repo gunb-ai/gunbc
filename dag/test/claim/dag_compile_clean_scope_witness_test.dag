@@ -25,7 +25,7 @@ test fn dag_compile_clean_scope_all_disposition_rows_hold() -> Bool {
 }
 
 test fn dag_compile_clean_scope_disposition_row_count_pinned() -> Bool {
-  fold(scope_disposition_rows, init: 0, f: fn(n, row) { n + 1 }) == 6
+  fold(scope_disposition_rows, init: 0, f: fn(n, row) { n + 1 }) == 7
 }
 
 test fn dag_compile_clean_scope_disposition_core_discriminates() -> Bool {
