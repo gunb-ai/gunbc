@@ -102,7 +102,7 @@ data gunbc_ci_deploy_srv1_stage: DeployStage = {
   runner: gunbc_ci_deploy_srv1_runner_spec(),
 }
 
-data gunbc_ci_deploy_stages: List<DeployStage> = []
+data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
 
 data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,
