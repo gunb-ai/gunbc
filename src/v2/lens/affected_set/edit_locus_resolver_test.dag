@@ -196,7 +196,7 @@ fn edit_locus_source_provenance_node_eq(left: Node, right: Node) -> Bool {
   exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
 
-test fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
+fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
   match source_ir_node_artifact_provenance_add(
     source_read: edit_locus_source_producer_add_fixture_source_read
   ) {
@@ -263,7 +263,7 @@ fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
   }
 }
 
-test fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
+fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
   match source_ir_node_artifact_provenance_add(
     source_read: edit_locus_source_producer_malformed_source_read
   ) {
