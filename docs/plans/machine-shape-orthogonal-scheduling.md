@@ -26,7 +26,19 @@ The orthogonality claim: computation graph × machine facts × algebraic evidenc
 
 Unknown magnitudes fail closed to "no claim" (no affinity asserted, no accelerator placement chosen), never to a fabricated default (§5). Precedent for exactly this posture: operator ruling 2026-07-12 (`dag/std/realization_schedule.dag:82`) — "Memory class is a structural marker, not a quantity... Quantified per-runnable demand returns when it is derivable from the graph, not as authored literals."
 
-## 2. Phase 1 — model the machine shape (std + extdeps; no scheduler change)
+## 2. The end shape (terminal model — operator agreement requested, then held fixed)
+
+Operator working ruling (2026-07-15): define the end shape immediately, agree on the target, then move toward it in stages — no axis deferred into vagueness. The carrier types live in §3's block (they land in Phase 1); this section fixes the *semantics* — the laws every later phase moves toward. The movement is staged; the target is not.
+
+- **One locality lattice, in std (decided 2026-07-15: lifted out of `cache_interface`, which then imports it).** `LocalityTier` is one ordered lattice spanning `Register < CacheLevel{n} < DeviceLocal < InProcess < PerRunnerFilesystem < PerHostFilesystem < CrossHostNetwork`, with `cache_interface`'s monotone-locality law (`cache_layer_ids_respect_locality`) generalizing unchanged and `ReadLatencyClass` becoming its latency projection. The lift-out must converge **both** existing latency classifications — `ReadLatencyClass = InProcessNs|LocalDiskUs|LanMs|WanTensMs` (cache_interface.dag:41) *and* `LatencyClass = UltraLow|Low|Medium|High` (product/network_topology.dag:21), a live §3 fork today — never become a third. Register file to WAN, one concept: the ns-memoization and the CAS artifact store are tiers of the same lattice (§2 horizontal).
+- **Lockstep is structure; divergence is a derived price.** `LaneGrouping = IndependentLanes | Lockstep { group_width: Quantified<Int> }`. The divergence law: within a `Lockstep` group, branch arms *serialize* (cost = sum of arms, lanes masked); across `IndependentLanes`, concurrent arms cost max. SIMD masking and SIMT warp divergence are this one law at two fills — a `gpu_divergence` special case cannot exist. The already-modeled PTX rows (`ThreadHierarchyShape`, `PtxCost` — `src/v2/extdeps/languages/ptx.dag`, today zero consumers) become concrete fills, gaining their consumer.
+- **Idle-lane law.** A loop-carried dependency occupies 1 of `lane_count` lanes; idle cost is derived and monotone in `lane_count`. "Serial folds are bad on wide machines" is this law's high-fill reading; at `lane_count = 1` the same law prices the waste at zero.
+- **Crossing law.** Transfer cost is a property of the `InterconnectEdge` crossed — `LinkEdge` prices by link bandwidth/latency; `SharedLevelEdge` crossings price as ordinary tower traffic on the shared level (zero link cost). Unified vs discrete is topology, never a mode.
+- **Placement's terminal state.** `Placement` dissolves into a *reference to an `ExecutionDomain` in the machine graph* — a position, never a kind. `LocalAccelerator` is acknowledged as a smuggled kind (operator ruling 2026-07-15: added recently, "needs to keep being scrutinized"); retained during migration under the coarse-tier reading, with this dissolution as its named trigger (§6 discipline: scaffold + trigger, never a silent survivor).
+- **Kind-erasure at the derivation boundary.** Cited catalog layers *keep* their upstream kinds — `ProcessorKind = CpuProcessor|GpuProcessor|AcceleratorProcessor` (fleet_intent.dag) and `MemoryKind = Dram|Hbm|UnifiedShared` (extdeps/memory/types.dag:18) are §3-faithful where vendors publish those families — but the `ComputeHost → MachineShape` derivation **erases** them: the scheduler's view carries facts only. One catalog row flagged for the same scrutiny as `LocalAccelerator`: `MemoryKind.UnifiedShared` fuses a *topology* fact (who can address it) into a *technology* enum (`Dram`/`Hbm` are silicon; an M5's "unified" memory is technologically LPDDR that happens to be shared) — the end shape derives unified-ness from `SharedLevelEdge` and the enum should shed that variant when the graph carrier lands.
+- **The one-derivation law.** `schedule = derive(computation_graph × machine_facts × algebraic_evidence)`. Any difference between two machines' schedules must be traceable to a fact difference. This wall is judgment-guarded for now (§9, ruling 4) — held in operator review until a mechanical guardian exists.
+
+## 3. Phase 1 — model the machine shape (std + extdeps; no scheduler change)
 
 New std authority (name open: `std.machine_shape`):
 
@@ -46,11 +58,16 @@ type MemoryLevel {
   transfer_grain: Quantified<ByteSize>      -- the ideal-cache B: cache line / page / DMA burst
   bandwidth:      Quantified<Bandwidth>
   latency:        LocalityTier               -- see unification below
-  sharing:        PerLane | PerCoreCluster | PerDevice | PerHost | Global
 }
+    -- NO sharing field (resolved 2026-07-15, §9 open-5): who shares a level is GRAPH structure —
+    -- a level referenced by a SharedLevelEdge is cross-domain by that fact alone; a stored
+    -- sharing enum would be the same fact in two places, desyncable (§3/§5)
 type MemoryShape = List<MemoryLevel>         -- ordered outward; the recursive tower
-type ExecutionShape { lane_count: Quantified<Int>, grouping: LaneGrouping }
+type ExecutionShape { lane_count: Quantified<HardwareThreadCount>, grouping: LaneGrouping }
     -- scalar core / SIMD core / GPU SM: one axis, three fills — no kind tag
+    -- HardwareThreadCount (measure.dag:207) reused, not minted: the tree already stretched this
+    -- one brand across CPU threads (placement_supply, compute_fabric) and GPU lanes
+    -- (GpuModelCatalogRow.execution_lane_count) — prior proof this is one axis
 type ExecutionDomain { execution: ExecutionShape, memory: MemoryShape }
     -- a domain owns the private prefix of its tower
 type InterconnectEdge = LinkEdge { link: PcieLink } | SharedLevelEdge { level: MemoryLevel }
@@ -70,6 +87,25 @@ A host is a *graph* of execution domains whose memory towers may share levels. "
 **Doc-divergence repair (small, honest):** `CostAccount` is `{ time, space, power: Watt }` while DESIGN.md §2 says `Cost = Time|Space|Energy`; `measure.dag` has `Power` but no `Energy` quantity. Either add `Energy` (Watt·Time, derivable) or correct the doc — flagging for operator, not deciding here.
 
 Acceptance (green-by-execution): witness that one `MachineShape` value with all-`UnknownQuantity` magnitudes is constructible and consumable (the abstract shape is a citizen); witness that the concrete RTX 5090 fill derives a roofline bound; RED: a hand-authored magnitude with no citation refuses (no authored literals — the 2026-07-12 ruling generalized).
+
+### Convergence map — every end-shape element to its existing carrier (§2/§3 discipline; DFS'd before minting)
+
+| End-shape element | Existing carrier (live tree) | Relationship |
+|---|---|---|
+| `Quantified<T>` | `CostBasis = Predicted\|Measured` (realization_schedule.dag:19); evidence family: `DescentEvidence`, `DecodeFidelity`, `Disposition` (std/disposition.dag), `Witness<V>` | new value-level member of an existing family; `CostBasis` convergence is open Q1 — if a value-evidence carrier lands first, converge, don't mint |
+| `LocalityTier` | `PersistenceLocality` + `ReadLatencyClass` (cache_interface.dag:24-28,41) **and** `LatencyClass` (network_topology.dag:21) | lift-out converges the existing two-way latency fork; monotone law (`cache_layer_ids_respect_locality`) carries |
+| `MemoryLevel` magnitudes | `ByteSize` (measure.dag:171), `Bandwidth` (measure.dag:293) | reuse |
+| `MemoryLevel` concrete fills | `MemoryFacts { capacity, memory_kind }` (extdeps/memory/types.dag:20) — coarse ancestor; RAM level: `DramModuleCatalogRow`/`HostMemoryPopulation` (extdeps/memory); device level: `GpuModelCatalogRow.memory` + `memory_bandwidth` (extdeps/gpu); on-chip levels: **new cited rows** (the one genuinely absent piece) | fills / extends |
+| `MemoryKind.UnifiedShared` | extdeps/memory/types.dag:18 | flagged (§2 kind-erasure bullet): topology fused into technology enum; sheds when `SharedLevelEdge` lands |
+| `ExecutionShape.lane_count` | `HardwareThreadCount` (measure.dag:207) — already spans CPU threads and GPU lanes | reuse the brand |
+| `LaneGrouping` fills | `ThreadHierarchyShape`, `PtxCost` (src/v2/extdeps/languages/ptx.dag — zero consumers today) | gains its first consumer |
+| `InterconnectEdge.LinkEdge` | `PcieLink` + derived per-lane bandwidth (extdeps/storage/types.dag:23-38) | de-fork onto GPU rows (which have no bus today) |
+| `InterconnectEdge` fleet-grain fill | `NetworkInterface { bandwidth, latency_class, locality }` + reachability zones (product/network_topology.dag:23-28,64-98) | same concept, host-to-host fill |
+| `MachineShape` (degenerate) | `PlacementSupplyRow { identity, hardware_threads, clock_hz, ram_bytes }` + `cpu_capacity_hz_row` (product/placement_supply.dag; ~10 fleet consumers) | **`PlacementSupplyRow` IS the single-domain, one-level-tower `MachineShape`, and `cpu_capacity_hz_row` (threads × clock) is the compute roof of the roofline** — supersession staged with a named trigger, consumers migrated, never a parallel carrier |
+| `MachineShape` derivation source | `ComputeHost { processors, memory, storage, network_interfaces }` (fleet_intent.dag) | derives-from, with kind-erasure at the boundary (§2) |
+| pricing/comparison fold | `cache_reach_comparisons` pareto fold (cache_interface.dag:289-307); `time_measure_par`/`seq` (realization_measurement.dag:74-96) | roofline is the on-chip instance of the same comparison shape |
+| demand side (unchanged) | `ResourceEnvelope`/`MemoryRequirement` (fleet_container.dag:35-45); `CostAccount.space` | `MachineShape` is supply; demand carriers stay put |
+| name collisions (explicitly NOT converged) | `std.resources` (effect capabilities), `std.width` (text truncation), `machine_constraints.MachineWidth` (word width ≠ lane count) | disjoint concepts; noted to prevent accidental unification |
 
 ## 4. Phase 2 — operand facts on edges (the crux the survey located)
 
@@ -120,13 +156,19 @@ That set of REDs *is* the orthogonality claim made executable: the schedule is a
 - `schedule_eq` invariant preserved: affinity is derived topology, never a per-host measured tweak.
 - No new size walk: all footprints derive through `node_keyed_graph_transitive_bytes`.
 
-## 8. Open questions for operator sign-off
+## 9. Operator rulings (2026-07-15) and remaining open questions
 
-1. Home + name for the machine-shape authority (`std.machine_shape`?) and whether `Quantified<T>` should subsume `CostBasis` (§3: they smell like one evidence concept — but that convergence touches every `CostAccount` consumer, so it needs its own runway).
-2. The `LocalityTier` unification direction: extend `cache_interface`'s lattice downward vs lift the lattice out to std and have `cache_interface` import it (I lean lift-out — the lattice is not cache-specific).
-3. `Energy` vs `Watt` (DESIGN.md §2 divergence) — add the quantity or amend the doc?
-4. Whether Phase 4's law carrier should wait for the enforcement-intent lane (`StandingIntent` ⇄ `LensContract`) since "every combine inhabits Monoid" is precisely a standing intent — or land as a local carrier first and enroll later.
-5. Sequencing vs the namespace/SymbolIndex lane: OperandFlow derivation wants the containment SymbolIndex for cheap whole-tree walks; Phase 2 may be gated the same way the general body producer is.
-6. Fate of `Placement::LocalAccelerator`: under the no-kind rule it reads as a smuggled machine kind. Options: (a) keep as a coarse *locality tier* (defensible — it names a position, in-process vs across-a-link, not a device kind) or (b) dissolve into a domain-reference once `MachineShape.domains` exists. Leaning (b) eventually with (a) as the interim reading; either way the demo's stamp is data, so migration is cheap. Operator call — it is a std type.
-7. `LaneGrouping` staging: lockstep structure (warp/SIMD masking vs independent lanes) is what makes control *divergence* a cost. Faithful modeling wants it eventually; does Phase 1 carry the grouping axis as structure-with-`UnknownQuantity` semantics, or defer the axis entirely until a divergent-control workload exists to price (§6 — no displaced cost yet, the demo class is divergence-free by construction)?
-8. Multi-domain scope in Phase 1: the domain-graph shape above is cheap to declare, but the *scheduler* consuming multiple domains is Phase-4 work. Confirm Phase 1 lands the graph type with single-domain fills only (the tower + one domain), so no phase ships machinery without a consumer.
+Ruled:
+
+1. **Locality lattice**: lifted out of `cache_interface` into the std authority; `cache_interface` imports it. The lift-out also converges `network_topology.LatencyClass` (the second latency enum — a pre-existing §3 fork this lane closes rather than widens).
+2. **`Placement::LocalAccelerator`**: acknowledged a probable smuggled kind (operator: added recently; "needs to keep being scrutinized/guided"); retained under active scrutiny with §2's domain-reference dissolution as its named trigger.
+3. **Faithfulness staging**: the end shape is defined immediately and agreed up front (§2), including the divergence law; *implementation* moves toward it in stages — the target is fixed, the movement is staged. Consequences: the `LaneGrouping` axis lands with the end shape (semantics priced when a divergent workload exists), and the multi-domain graph types land in Phase 1 with single-domain fills only (the multi-domain consumer is Phase 4 — no machinery without a consumer, but no type churn either).
+4. **No-kind wall guardianship**: judgment-guarded for now — no mechanical enforcement exists yet; the operator is working on that separately (the enforcement-intent lane is the natural home). Until then, §2's laws are the review checklist for every PR touching this lane; dissolution trigger for the judgment scaffold = a `StandingIntent` row once that machinery lands.
+
+Open:
+
+1. Home + name for the machine-shape authority (`std.machine_shape`?), and whether `Quantified<T>` should subsume `CostBasis` (§3: they smell like one evidence concept — but that convergence touches every `CostAccount` consumer, so it needs its own runway).
+2. `Energy` vs `Watt` (DESIGN.md §2 divergence) — add the quantity or amend the doc?
+3. Whether Phase 4's law carrier should wait for the enforcement-intent lane (`StandingIntent` ⇄ `LensContract`) since "every combine inhabits Monoid" is precisely a standing intent — or land as a local carrier first and enroll later.
+4. Sequencing vs the namespace/SymbolIndex lane: OperandFlow derivation wants the containment SymbolIndex for cheap whole-tree walks; Phase 2 may be gated the same way the general body producer is.
+5. ~~Self-caught dual representation~~ **RESOLVED (operator agreement 2026-07-15)**: `MemoryLevel.sharing` dropped; sharing derives from graph structure (`SharedLevelEdge` membership). The §3 type block reflects this.
