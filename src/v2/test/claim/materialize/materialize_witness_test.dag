@@ -6,7 +6,8 @@ import v2.std.materialize {
   materialize_distinct_computation_count,
   materialize_node_count
 }
-import v2.std.node { Node, Edge, Named, TypeNode, Atom, Conj, Symbol, node_synthetic }
+import v2.std.node { Node, Edge, Named, TypeNode, Atom, Conj, Symbol, node_synthetic, content_hash }
+import std.types { ContentHash }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -54,4 +55,10 @@ test fn dup_fixture_node_and_distinct_counts() -> Bool {
 
 test fn distinct_fixture_all_distinct() -> Bool {
   materialize_distinct_computation_count(root: distinct_fixture()) == 3
+}
+
+test fn node_content_hash_is_realization_plan_target() -> Bool {
+  let root = dup_fixture()
+  let target: ContentHash = content_hash(n: root)
+  target == content_hash(n: root)
 }
