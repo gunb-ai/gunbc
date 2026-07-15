@@ -406,7 +406,7 @@ fn qualified_name_is_module_projection(path: QualifiedName) -> Bool {
   match path {
     Empty => false
     Cons { head: _, tail: Empty } => false
-    Cons { head: _, tail: Cons { .. } } => true
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => true
   }
 }
 
