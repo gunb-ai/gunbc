@@ -5624,16 +5624,64 @@ fn census_insert_binding(census: Map<String, GlobalBareLookupState>, binding: Ty
   }
 }
 
-fn census_insert_item(census: Map<String, GlobalBareLookupState>, item: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
+fn local_binding_for_census_item(item: Node, source_indices: Map<String, NewlineIndex>) -> TypeBinding? {
   match local_binding_for_item(item: item, source_indices: source_indices) {
+    Present { value: binding } => Present { value: binding }
+    Absent =>
+      if item.params |> count > 0 && item.connective == NoConnective && item.body != none && item.transport == none {
+        let bare_node = Node {
+          name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+          connective: NoConnective, params: item.params, inferred: item.inferred,
+          return_cardinality: item.return_cardinality,
+          uses: [], body: none, transport: none, properties: [],
+          type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+        }
+        Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown } }
+      } else {
+        none
+      }
+  }
+}
+
+fn census_insert_item(census: Map<String, GlobalBareLookupState>, item: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
+  match local_binding_for_census_item(item: item, source_indices: source_indices) {
     Absent => census
     Present { value: binding } => census_insert_binding(census: census, binding: binding)
   }
 }
 
+fn census_insert_unique_disj_variant_aliases(
+  census: Map<String, GlobalBareLookupState>,
+  items: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, GlobalBareLookupState> {
+  let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
+  fold(items, init: census, f: (acc, item) =>
+    match item.connective {
+      Disj =>
+        fold(item.children, init: acc, f: (a2, child) =>
+          let vname = authored_name_at(source_indices: source_indices, node: child)
+          match map_get(counts, vname) {
+            Present { value: 1 } =>
+              census_insert_binding(
+                census: a2,
+                binding: TypeBinding { name: vname, resolved: child, provenance: SubValueUnknown }
+              )
+            _ => a2
+          }
+        )
+      _ => acc
+    }
+  )
+}
+
 fn build_global_bare_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
   fold(modules, init: empty_map(), f: (census, mod) =>
-    fold(module_items(n: mod.module), init: census, f: (acc, item) => census_insert_item(census: acc, item: item, source_indices: source_indices))
+    let items = module_items(n: mod.module)
+    let with_items = fold(items, init: census, f: (acc, item) =>
+      census_insert_item(census: acc, item: item, source_indices: source_indices)
+    )
+    census_insert_unique_disj_variant_aliases(census: with_items, items: items, source_indices: source_indices)
   )
 }
 
