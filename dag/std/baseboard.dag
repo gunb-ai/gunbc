@@ -1,7 +1,5 @@
 module std.baseboard
 
-import std.types { NonEmptyStr }
-import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 
 type BaseboardManufacturer = | AsrockRack
 

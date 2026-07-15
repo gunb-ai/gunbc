@@ -1,31 +1,5 @@
 module v2.compiler.emit_produced
 
-import v2.compiler.emit_module { emit_module_decl_separator }
-import v2.compiler.translate { target_serialize_bodied_arrow_from_model }
-import v2.compiler.target_carriers { target_source_medium }
-import v2.extdeps.languages.rust {
-  rust_produced_decl_target,
-  rust_signature_with_open_from_decl
-}
-import v2.std.compilers.target_model { TargetModel, render_target_text }
-import extdeps.communication.medium { Medium }
-import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.algebra { fold_list, list_append }
-import std.algebra { Empty }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  diagnostics_singleton,
-  node_locus
-}
-import v2.std.node { Conj, Named, Node, Positional, Symbol, TypeNode }
-import v2.std.text { String }
 
 fn emit_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {

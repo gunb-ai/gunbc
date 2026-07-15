@@ -1,18 +1,5 @@
 module v2.test.claim.qualified_name.path_algebra_test
 
-import std.algebra { Cons, Empty }
-import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.compilers.lexing { symbol_lexeme_host_disposition }
-import v2.std.logic { Bool }
-import v2.std.qualified_name {
-  qualified_name_from_dotted_string,
-  qualified_name_from_dotted_string_host_disposition,
-  qualified_name_init,
-  qualified_name_snoc,
-  qualified_name_to_dotted_string
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

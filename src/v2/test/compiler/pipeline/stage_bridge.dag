@@ -1,43 +1,5 @@
 module v2.test.compiler.pipeline.stage_bridge
 
-import v2.compiler.infer { InferredTree, infer }
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.translate { translate }
-import v2.extdeps.languages.dag {
-  dag_language_model,
-  dag_node_is_int_literal_atom,
-  parse_production_captured_child_optional
-}
-import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.collection { Absent, Optional, Present, list_at_optional, optional_present }
-import v2.std.compilers.lexing { TokenStream, token_stream_all }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Arrow,
-  Behavior,
-  Branch,
-  ComputationNode,
-  Edge,
-  Match,
-  Node,
-  Symbol,
-  Transform,
-  TypeNode,
-  well_formed
-}
-import v2.std.node_query { find_arrow_body_child, find_named_child }
-import v2.std.text { String }
-import v2.test.compiler.pipeline.corpus {
-  pipeline_corpus_add_source,
-  pipeline_corpus_match_source,
-  pipeline_corpus_pick_source
-}
-import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
-import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
 
 fn pipeline_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {

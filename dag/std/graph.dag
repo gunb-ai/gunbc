@@ -1,10 +1,5 @@
 module std.graph
 
-import std.termination {
-  ProofEdge,
-  DescentEvidence, Strict, NonIncreasing, DescentUnknown,
-  TerminationProof
-}
 
 type GraphEdge {
   caller: String

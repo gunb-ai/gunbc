@@ -1,19 +1,5 @@
 module v2.test.manual.parse_table_memo_scale_witness
 
-import extdeps.filesystem.filesystem_io
-import v2.compiler.parse {
-  ParseMemoStats,
-  grammar_validate_for_parse,
-  parse_production_memo_stats
-}
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.compilers.lexing { token_stream_remaining }
-import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.grammar { ModeledGrammar, ParseGrammar }
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 
 
 data parse_memo_scale_tokenize_path: String = "src/v1/01_tokenize.dag"

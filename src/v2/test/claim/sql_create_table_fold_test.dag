@@ -1,49 +1,5 @@
 module v2.test.claim.sql_create_table_fold
 
-import v2.extdeps.formats.sql {
-  SqlColumnConstraints,
-  SqlColumnDefaultAbsent,
-  SqlColumnDefinition,
-  SqlDropTable,
-  SqlRegularIdentifier,
-  SqlSchemaOperation,
-  SqlTypeCharacterLargeObject,
-  SqlTypeNumeric,
-  sql_serialize_data_type,
-  sql_serialize_schema_operation
-}
-import v2.std.cardinality { NonZeroNat }
-import v2.std.nat { Zero }
-import v2.extdeps.formats.sql_create_table_fold {
-  sql_fold_operation_emitted_witness,
-  sql_fold_relation_row_witness,
-  sql_fold_schema_operation_bundle_witness,
-  sql_fold_target_model_for_operation_witness,
-  sql_fold_tasks_pk_table,
-  sql_fold_tasks_single_col_table,
-  sql_fold_tasks_two_col_table,
-  sql_fold_column_list_uses_recursive_list_production_witness
-}
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.collection { Map }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  Some,
-  Unavailable,
-  node_locus
-}
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
-import v2.std.witness { Holds, Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

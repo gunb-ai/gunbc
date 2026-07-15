@@ -1,7 +1,4 @@
 module v2.std.patch
-
-import std.algebra { Monoid }
-
 type ConfigPatchRecord<Config>
 
 fn config_patch_layer<Config>(base: Config, patch: ConfigPatchRecord<Config>) -> Config {

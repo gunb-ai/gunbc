@@ -1,24 +1,5 @@
 module v2.test.claim.realization_schedule_witness
 
-import v2.std.algebra { list_snoc_item }
-import v2.std.collection { List }
-import std.realization {
-  RealizationPlan,
-  RealizationObjective,
-  Runnable,
-  schedule_generates_identical_schedule,
-  schedule_eq,
-  cost_account_predicted_zero,
-}
-import v2.lens.schedule_lens { schedule_lens_verdict_for_ci_floor }
-import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
-import v2.workflow.ci_floor_plan {
-  gunbc_ci_floor_realization_plan,
-  gunbc_ci_floor_batches,
-  gunbc_ci_floor_schedule_inner,
-  ci_floor_target_digest,
-  ci_floor_compile_gate_fn,
-}
 
 fn witness_batches_are_plan_schedule() -> Bool {
   schedule_generates_identical_schedule(

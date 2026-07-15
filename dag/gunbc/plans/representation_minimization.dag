@@ -1,8 +1,5 @@
 module gunbc.plans.representation_minimization
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol }
 
 fn representation_minimization_body() -> List<MarkdownBlock> {
   [

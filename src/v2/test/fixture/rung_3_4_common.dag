@@ -1,38 +1,5 @@
 module v2.test.rung_3_4_common
 
-import v2.compiler.emit_host {
-  run_test_claim_emit_vs_eval
-}
-import v2.extdeps.languages.rust { rust_target_model_staging }
-import v2.compiler.eval {
-  TestClaimEvalSubject,
-  TestClaimRun,
-  eval_test_claim_subject,
-  run_test_claim
-}
-import v2.std.runtime { RuntimeValue }
-import v2.compiler.infer { InferredTree }
-import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Map }
-import v2.std.witness { Holds, Witness }
-import v2.std.node {
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.verification { TestClaim }
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts_from_nodes
-}
-import v2.test.manual.eval_runtime {
-  eval_context
-}
 data rung34_emit_host_rust_target_model: TargetModel = rust_target_model_staging()
 
 fn rung34_algebra_evidence_node() -> Node {

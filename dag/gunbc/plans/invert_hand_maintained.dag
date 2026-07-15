@@ -1,8 +1,5 @@
 module gunbc.plans.invert_hand_maintained
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownDocument, MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, cell, row }
 
 fn invert_hand_maintained_body() -> List<MarkdownBlock> {
   [

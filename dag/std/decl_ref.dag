@@ -1,6 +1,5 @@
 module std.decl_ref
 
-import std.types { NonEmptyStr }
 
 type DeclField
   = WholeDeclaration

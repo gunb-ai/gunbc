@@ -1,11 +1,5 @@
 module v2.test.claim.qualified_name.from_dotted_string
-import std.algebra { Cons, Empty }
 
-import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
-import v2.std.layer { LayerPrefixStd }
-import v2.std.logic { Bool }
-import v2.std.qualified_name { qualified_name_from_dotted_string }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

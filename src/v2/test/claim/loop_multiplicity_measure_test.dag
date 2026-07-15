@@ -1,39 +1,5 @@
 module v2.test.claim.loop_multiplicity_measure
 
-import std.termination { DescentEvidence, Strict, NonIncreasing, DescentUnknown }
-import v2.std.cardinality {
-  LoopBound,
-  MeasureDescentFact,
-  Multiplicity,
-  Bounded,
-  ProvenTermination,
-  RequiresTerminationProof,
-  TerminationProof,
-  loop_bound_witness_for_node,
-  loop_multiplicity,
-  loop_multiplicity_with,
-  measure_descent_fact_registry,
-  node_multiplicity,
-  termination_proof_witness_for_node
-}
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  ComputationNode,
-  Conj,
-  Edge,
-  Loop,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.witness { Holds, Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

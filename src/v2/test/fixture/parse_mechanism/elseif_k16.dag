@@ -1,7 +1,5 @@
 module synthetic.parse_mechanism.elseif_k16
 
-import v2.std.logic { Bool }
-import v2.std.nat { Nat }
 
 fn else_if_chain(x: Nat) -> Nat {
   if x == 0 { 0 }

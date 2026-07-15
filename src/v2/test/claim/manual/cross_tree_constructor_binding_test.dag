@@ -1,11 +1,5 @@
 module v2.test.claim.manual.cross_tree_constructor_binding_test
 
-import std.algebra { Empty, Cons }
-import v2.std.algebra { fold_list, list_append }
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import std.realization_schedule { ScheduleWitnessEntry }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

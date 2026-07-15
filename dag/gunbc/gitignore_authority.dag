@@ -1,31 +1,5 @@
 module gunbc.gitignore_authority
 
-import gunbc.gitignore_model {
-  IgnoreGroup, Producer,
-  DerivableProducerKind, CitedProducerKind,
-  CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
-  GeneratorStamp, WorkflowRuntime, TestgenOutput, RegenTempDir,
-  ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
-  AuthSessionTranscript, PythonLocalDevScript, SupersededPlanningDir,
-  JetBrainsIDE, VSCodeIDE, VimEditor, EmacsEditor, GenericEditorBackup,
-  MacOSFinder, WindowsExplorer, Tmux, NodeJS, SecretsConvention, CPythonInterpreter,
-  Derivable, Cited,
-  CargoTargetDir, CargoTargetCodexDir, LocalCargoHome, CodegenBinSymlink,
-  TarpaulinHtmlReport, TarpaulinJsonReport, CoberturaReport, LcovReport, CoverageOutputDir,
-  JetBrainsProjectDir, VSCodeWorkspaceDir,
-  VimSwapFile, VimSwapFileAlt, EmacsBackupFile, GenericBackupFile,
-  MacOSFinderMetadata, WindowsThumbnailCache, TmuxLogFile,
-  DotEnvFile, DotEnvLocalFile, DotEnvLocalWildcard,
-  GeneratorStampFile, GunbcWorkflowDir, TestgenOutputDir, NodeModulesDir,
-  ClaudeSessionDir, RegenSourcesDir, RegenOutputDir, RegenGeneratedSourceRootDir,
-  FreshnessCheckDir, AuthTranscriptFile,
-  OpenClawControlDir, OpenClawAgentsFile, OpenClawHeartbeatFile, OpenClawIdentityFile,
-  OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
-  OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
-  PythonLocalDevScriptFile, PythonAuditScriptAllowlisted, PythonBytecodeCacheDir, PythonCompiledBytecode,
-  ClaimMapDir, ScratchProbeFile,
-  GunbcPlanningDir, ScriptsFixturesDir
-}
 
 data gitignore_authority: List<IgnoreGroup> = [
   IgnoreGroup {

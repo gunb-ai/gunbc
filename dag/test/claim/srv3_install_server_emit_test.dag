@@ -1,19 +1,5 @@
 module test.claim.srv3_install_server_emit
 
-import std.logic { Bool }
-import gunbc.install_server_emit { install_server_dnsmasq_conf }
-import gunbc.os_install { srv3_install_server_spec }
-import extdeps.toolchain.types { Aarch64, X86_64, Riscv64 }
-import extdeps.provisioning.network_boot { UefiHttpBoot, LegacyBiosPxe }
-import extdeps.uri { Uri, Https }
-import extdeps.provisioning.dhcp_client_arch {
-  dhcp_client_processor_architecture,
-  dhcp_processor_architecture_code,
-  HttpBootArm64,
-  HttpBootX86_64,
-  BiosX86,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

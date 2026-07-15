@@ -1,26 +1,5 @@
 module v2.workflow.orchestration_tier2_emit_test
 
-import v2.compiler.emit_orchestration {
-  orch_emit_step,
-  orch_emit_procedure
-}
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.std.orchestration {
-  PipelineStep,
-  Let,
-  Call,
-  If,
-  Pipeline,
-  FailFast,
-  Procedure,
-  ExprLit,
-  ExprCmdSubst,
-  StrEmpty
-}
-import v2.std.collection { Absent }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data orch_tier2_golden_note: String = "Goldens below are hand-authored bytes from fleet_converge_emit.dag converge_gunbc_pinned_tree fresh_standup arm ONLY (docs/plans/shell-to-dag-residual-census-and-arc-completion.md §1B frontier rows). Ubuntu-media for/heredoc sites are EXCLUDED per purity-trap fence (FLAG B1). Each test compares emit against its golden independently of the grammar rows."
