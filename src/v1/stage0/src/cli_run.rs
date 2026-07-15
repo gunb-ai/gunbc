@@ -1392,23 +1392,27 @@ pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<Err
 }
 
 fn eprint_compile_clean_hard_diagnostics(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) {
-    let hard: Vec<&Rc<ErrorNode>> = diagnostics
+    const SHOWN_LIMIT: usize = 20;
+    let mut shown = 0usize;
+    let mut total = 0usize;
+    // One pass, no accumulator: the total is counted, never collected (§6).
+    for d in diagnostics
         .iter()
         .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .collect();
-    for d in hard.iter().take(20) {
-        eprintln!(
-            "compile-clean: {}",
-            diagnostic_to_message(d.diagnostic.clone())
-        );
+    {
+        total += 1;
+        if shown < SHOWN_LIMIT {
+            eprintln!(
+                "compile-clean: {}",
+                diagnostic_to_message(d.diagnostic.clone())
+            );
+            shown += 1;
+        }
     }
-    if hard.len() > 20 {
+    if total > SHOWN_LIMIT {
         // Count the residue rather than hiding it (§5): a truncated burndown that
         // never reports its size makes the deficit unprioritizable.
-        eprintln!(
-            "compile-clean: (truncated hard diagnostics at 20; {} total)",
-            hard.len()
-        );
+        eprintln!("compile-clean: (truncated hard diagnostics at {SHOWN_LIMIT}; {total} total)");
     }
 }
 
@@ -1634,7 +1638,9 @@ pub fn documentation_only_floor_skip_label_for_ci() -> String {
     }
     match floor_git_diff_name_status_range() {
         Err(msg) => {
-            eprintln!("documentation-only floor skip: diff observation failed ({msg}) — full floor");
+            eprintln!(
+                "documentation-only floor skip: diff observation failed ({msg}) — full floor"
+            );
             RUN_FULL_FLOOR_LABEL.to_string()
         }
         Ok((changed_paths, _departed)) => {
@@ -9964,7 +9970,10 @@ new file mode 100644
             }
         }
         lying.sort();
-        eprintln!("lying SubstrateInputsOnly stamps (G1 carrier closure): {}", lying.len());
+        eprintln!(
+            "lying SubstrateInputsOnly stamps (G1 carrier closure): {}",
+            lying.len()
+        );
         for (entry, carrier) in &lying {
             eprintln!("  {entry}  ->  {carrier}");
         }
