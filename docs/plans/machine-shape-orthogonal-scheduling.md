@@ -1,4 +1,4 @@
-# Machine-shape orthogonal scheduling — realization on CPU-shaped and accelerator-shaped machines with modeled locality
+# Machine-shape orthogonal scheduling — one realization kernel over faithfully modeled machine facts, with locality
 
 Status: DRAFT for operator review (2026-07-15, session sunny-deer-248). No code lands from this doc; every phase below is model-before-implement and names its trigger. Receipts cite the live tree as of 9011600a92.
 
@@ -11,7 +11,13 @@ Status: DRAFT for operator review (2026-07-15, session sunny-deer-248). No code 
 
 ## 1. The two design axioms
 
-**A. Machine shape is data.** One scheduling kernel; machine shapes are rows. CPU-shaped and accelerator-shaped scheduling are two *fills* of one abstract shape — never two schedulers (the §4 N×M-adapter trap: a GPU scheduler forked from the CPU scheduler is `git diff` argv all over again). This is the orthogonality claim: computation graph × machine shape × algebraic evidence → schedule, each axis independently variable.
+**A. Machine shape is data — and there is no machine *kind*.** One scheduling kernel; machine shapes are rows — never two schedulers (the §4 N×M-adapter trap). Stronger (operator directive, 2026-07-15): "CPU vs GPU" is not a modeled distinction, the same way "batch vs streaming" is not — a nickname pair for points on shared axes (§3). No `MachineKind = Cpu | Gpu` discriminant may exist, and no `match` over one can, because the types carry no such field — the fork is unwritable by construction (§5), not merely discouraged. Every scheduling difference must *emerge* from faithful facts:
+
+- **"serial folds are bad on GPUs"** derives as idle-lane cost — a loop-carried dependency utilizes 1 of `lane_count` lanes; at `lane_count = 1` the *same formula* says the serial fold wastes nothing. A scalar core, a SIMD core (8–16 lanes), and a GPU SM cluster (thousands) are three fills of one axis, and the schedule's response is monotone in it — no threshold, no kind test.
+- **"transfer cost to the device"** derives as interconnect-crossing in the machine graph — and vanishes *by topology* on unified-memory shapes (the cited `apple_m5` row shares the DRAM level between execution domains), never by a special case. A discrete card and an integrated one are two topologies of one model.
+- **"batch vs streaming"** is already dissolved by the substrate's bounded-and-forward execution: everything is a fold over a bounded prefix; residency windows (`transfer_grain`) express streaming without a second mode.
+
+The orthogonality claim: computation graph × machine facts × algebraic evidence → schedule, each axis independently variable, no cross-term hand-authored.
 
 **B. Every quantity carries evidence; the abstract shape is a first-class citizen, not a degraded one.** We cannot always know the concrete hierarchy (cloud VM, unknown SKU, future device). The intersubjective grounding (§3/§4 — cite the accepted framework, don't re-coin) is the **external-memory / ideal-cache model** (Aggarwal–Vitter 1988; Frigo–Leiserson–Prokop–Ramachandran 1999): a memory level is characterized by capacity M and transfer grain B, and the cache-oblivious result proves shape-level decisions (recursive blocking, fusion, affinity) are correct for *all* (M, B) simultaneously — only *pricing* needs concrete fills. So:
 
@@ -44,9 +50,15 @@ type MemoryLevel {
 }
 type MemoryShape = List<MemoryLevel>         -- ordered outward; the recursive tower
 type ExecutionShape { lane_count: Quantified<Int>, grouping: LaneGrouping }
-type Interconnect { link: PcieLink | ...; }  -- de-forked, see below
-type MachineShape { memory: MemoryShape, execution: ExecutionShape, interconnects: List<Interconnect> }
+    -- scalar core / SIMD core / GPU SM: one axis, three fills — no kind tag
+type ExecutionDomain { execution: ExecutionShape, memory: MemoryShape }
+    -- a domain owns the private prefix of its tower
+type InterconnectEdge = LinkEdge { link: PcieLink } | SharedLevelEdge { level: MemoryLevel }
+    -- discrete device = LinkEdge; unified memory = SharedLevelEdge (apple_m5); same model, two topologies
+type MachineShape { domains: List<ExecutionDomain>, edges: List<InterconnectEdge> }
 ```
+
+A host is a *graph* of execution domains whose memory towers may share levels. "Where a computation runs" is a domain in this graph; "what a move costs" is the edge it crosses (zero edges crossed = zero transfer, emerging on unified-memory shapes with no special case). There is deliberately no field that names what a domain *is* — only what it *has*.
 
 **§3 de-forks this phase performs rather than creating:**
 
@@ -69,7 +81,7 @@ Today `DependencyView` edges carry no operand: the scheduler collapses `DataDepe
 
 Acceptance: for a fixture graph with one Substantial shared operand and two consumers, the derived `OperandFlow` rows name the same `ContentHash` with equal derived footprints; RED: a graph whose footprint is unsettled yields typed `UnknownQuantity` rows and *no* affinity claim downstream.
 
-## 4. Phase 3 — CPU-shaped locality: affinity as derived topology
+## 4. Phase 3 — locality: affinity as derived topology (every level of the tower, any machine)
 
 The repel primitive exists (`runnable_excludes_corpus_co_residence` → `ResourceDependsOn` edges, `ci_floor_plan.dag:322-352`); the attract dual does not. Constraint from the signed scheduling design (`bounded-input-cost-envelope-scheduling.md` invariant 4): "Schedule topology stays central... measured decisions must not break `schedule_eq` across hosts." Therefore affinity must be **derived centrally from graph facts** (OperandFlow rows — pure, deterministic, host-independent), exactly like the exclusion edges are today. It is topology, not a peripheral host tweak:
 
@@ -79,14 +91,14 @@ The repel primitive exists (`runnable_excludes_corpus_co_residence` → `Resourc
 
 Acceptance: a two-consumer shared-operand fixture schedules the consumers co-batch when capacity evidence admits both, with a `TrafficAccount` showing the operand loaded once; RED (discriminating): force the consumers into separate batches and the account shows the double load — the defect is *visible in the account*, which is the point.
 
-## 5. Phase 4 — accelerator-shaped scheduling: dispatch on algebraic evidence
+## 5. Phase 4 — within-fold parallelization: licensed by algebraic evidence, priced by lane facts
 
-The inversion this whole design turns on: a serial fold per shard is the *ideal* CPU shape (Feinberg) and the *worst* accelerator shape — thousands of lanes idle behind a loop-carried dependency. What licenses parallelizing *within* a fold is associativity of the combine. MapReduce demands it by assertion; this substrate can demand it **by executed witness**:
+A serial fold is optimal at `lane_count = 1` and leaves `lane_count − 1` lanes idle otherwise — one derived cost, no machine kinds. What licenses parallelizing *within* a fold (tree-reduce/scan) is associativity of the combine. MapReduce demands it by assertion; this substrate can demand it **by executed witness**. Note the first consumer is not a GPU: the demo's contiguous-loop/SIMD path is a CPU execution domain with `lane_count > 1`, and it is where the seam already lives ("Build the seam on CPU... same plan, one target row → GPU", accelerator-demo-roundtrip.md:110-111) — the GPU is the same recognition with a larger fill and an interconnect edge to price, not a second path:
 
 - **Law carrier.** The mechanism already exists in two halves: law obligations consumed by testgen (`NatAlgebraLawObligation` rows incl. `^law_nat_add_associativity`, `src/v2/std/nat.dag:83-122`) and green-by-execution monoid law witnesses (`keyed_delta_fold_witness_test.dag:116-146`). Phase 4 joins them into a carrier a scheduler reads: `AssociativityEvidence = WitnessedAssociative { law: DeclarationRef } | NotWitnessed` — fail-closed bottom, mirroring `DescentEvidence`. Commutativity is **never** required: structural order is preserved by the DependencyView/tree-reduce (the survey's sharpest finding — Feinberg's commutative-monoid demand exists only because hash-shuffle destroys order; we never destroy order).
-- **Recognition fold grows one class.** `ElementwiseFoldClass` gains `AssociativeFoldChain { combine, evidence }` beside `PureElementwiseChain`; recognized → a tree-reduce/scan kernel plan; `NotWitnessed` → typed refusal (stays serial on CPU — a correct schedule, not a failure). `DataDependentGather` stays `Refused` — the honest wall, unchanged.
+- **Recognition fold grows one class.** `ElementwiseFoldClass` gains `AssociativeFoldChain { combine, evidence }` beside `PureElementwiseChain`; recognized → a tree-reduce/scan kernel plan whose depth/width derive from the target domain's `lane_count`; `NotWitnessed` → typed refusal (the fold stays serial — a correct schedule at any lane count, merely priced with its idle-lane cost so the displaced value of *witnessing* the law becomes visible). `DataDependentGather` stays `Refused` — the honest wall, unchanged.
 - **Float reassociation is a declared contract, reusing the FMA machinery verbatim.** Tree-reducing a float fold reassociates — not bit-exact against the serial oracle. The demo already models exactly this class: FMA-permitted is declared `Lossy` and proven non-bit-exact; FMA-refused + insist → `FmaContractionViolatesContract` (`accelerator_demo_realize.dag:393-435`). Reduction-order relaxation is one more `NumericalContract` axis: permitted → `Lossy` with differential bound; refused → the fold is not accelerator-schedulable, typed refusal. Int/Nat folds tree-reduce `BitExact`.
-- **Placement is priced, not preferred.** Accelerator placement is chosen iff `transfer_cost (Interconnect) + kernel_time (roofline) < cpu_time` over evidence-carrying quantities; any `UnknownQuantity` in that comparison → CPU placement with a counted `PlacementUndecidable{missing}` diagnostic. No "prefer GPU" flag exists.
+- **Placement is priced, not preferred.** A step's domain is chosen by comparing, per candidate domain in the machine graph, `edge_crossing_cost + roofline_time(domain)` over evidence-carrying quantities — the operand's current domain is just one candidate whose crossing cost is zero. Any `UnknownQuantity` in the comparison → stay at the operand's current domain with a counted `PlacementUndecidable{missing}` diagnostic. No "prefer GPU" flag exists; no domain-kind is consulted (none exists to consult).
 - **Realization handlers are the existing seams**: simd contiguous-loop (live), WGSL kernel (dormant, `feature:dag-gpu-realization-handler` — waking it is this phase's optional closer, operator-gated). Differential witness against the scalar oracle stays the acceptance instrument.
 
 ## 6. The orthogonality proof (the §7 deliverable)
