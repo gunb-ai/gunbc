@@ -84,6 +84,11 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
   InstallMediaRemasterRefused,
 }
 import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
+import gunbc.host_effect_nbd_proxy_serve {
+  host_effect_nbd_proxy_serve_apply,
+  host_effect_nbd_proxy_serve_session_binding,
+}
+import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
 import std.types { String, NonEmptyStr, List, Bool }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
@@ -96,6 +101,11 @@ type ResolvedHostEffectCell =
   | Srv3DiagnosticObserveOnHost { node: ComputeHost, bmc: String, port: String, iso_path: String, intent_content_hash: String }
   | OsInstallActuatorToolchainOnHost { node: ComputeHost }
   | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
+  | NbdProxySessionOnHost {
+      node: ComputeHost,
+      intent: NbdProxyServeTransportIntent,
+      lease_key: NonEmptyStr,
+    }
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -153,11 +163,12 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebTokenExtract => srv3_host_effect_script_resolution_failed_cell()
-                Srv3NbdProxyServe => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BootOnceReadBackSleep => srv3_host_effect_script_resolution_failed_cell()
                 Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
                 SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
                   HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
+                Srv3NbdProxyServe { intent: i, lease_key: k } =>
+                  NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
               }
           }
       }
@@ -167,6 +178,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           IncompatibleCell { reason: "host_effect: Srv3InstallDiagnosticObserve is in-band (actuator host shell observe) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         OsInstallActuatorToolchainEnsure {} =>
           IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        Srv3NbdProxyServe { intent: _, lease_key: _ } =>
+          IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         _ =>
           match srv3_host_effect_script_for(effect: effect) {
             Present { value: _ } =>
@@ -193,7 +206,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebTokenExtract => srv3_host_effect_script_resolution_failed_cell()
-                Srv3NbdProxyServe => srv3_host_effect_script_resolution_failed_cell()
+                Srv3NbdProxyServe { intent: _, lease_key: _ } => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BootOnceReadBackSleep => srv3_host_effect_script_resolution_failed_cell()
                 Srv3ReceiptEmit { lines: _ } => srv3_host_effect_script_resolution_failed_cell()
                 SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
@@ -787,6 +800,34 @@ fn realize_set_hostname_cas_on_host(
   )
 }
 
+fn realize_nbd_proxy_session_on_host(
+  intent: NbdProxyServeTransportIntent,
+  lease_key: NonEmptyStr,
+  transport: HostEffectTransport,
+  intent_record: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let binding = host_effect_nbd_proxy_serve_session_binding(intent: intent, lease_key: lease_key)
+  match host_effect_nbd_proxy_serve_apply(binding: binding, transport: transport) {
+    NbdProxyServeApplyConverged { stdout: out } =>
+      reconcile_grounded(
+        apply_effect: intent_record,
+        show_read: ReadObserved {
+          value: ShellExecObserved {
+            exit_code: 0,
+            success: true,
+            stdout: out,
+            stderr: "",
+          },
+        },
+        grounding: Grounds {
+          evidence: ShellEffectApplied { exit_code: 0, stdout: out },
+        },
+      )
+    NbdProxyServeApplyRefused { reason: why } =>
+      NotConverged { reason: why, applied: intent_record }
+  }
+}
+
 fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: IdempotencyEvidence, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let intent = HostEffectIntent {
     target: target,
@@ -813,6 +854,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
     HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
       realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
+    NbdProxySessionOnHost { node: _, intent: i, lease_key: k } =>
+      realize_nbd_proxy_session_on_host(intent: i, lease_key: k, transport: transport, intent_record: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -865,6 +908,8 @@ fn host_effect_apply_gated(
           realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
         HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
           realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
+        NbdProxySessionOnHost { node: _, intent: i, lease_key: k } =>
+          realize_nbd_proxy_session_on_host(intent: i, lease_key: k, transport: transport, intent_record: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -908,6 +953,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             Srv3DiagnosticObserveOnHost { node: _, bmc: _, port: _, iso_path: _, intent_content_hash: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }
