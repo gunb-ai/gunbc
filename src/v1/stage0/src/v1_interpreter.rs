@@ -7349,37 +7349,37 @@ fn eval_builtin_inner(
             Ok(Some(list_value(items)))
         }
 
-        "medium_structure_leak_facts" => {
-            let emit_roots =
-                expect_str_list_flex(positional.first().copied(), "medium_structure_leak_facts")?;
-            let check_roots =
-                expect_str_list_flex(positional.get(1).copied(), "medium_structure_leak_facts")?;
-            let markers =
-                expect_str_list_flex(positional.get(2).copied(), "medium_structure_leak_facts")?;
-            let emit_fns =
-                expect_str_list_flex(positional.get(3).copied(), "medium_structure_leak_facts")?;
-            let string_ops =
-                expect_str_list_flex(positional.get(4).copied(), "medium_structure_leak_facts")?;
+        "medium_structure_literal_parts_facts" => {
+            let roots = expect_str_list_flex(
+                positional.first().copied(),
+                "medium_structure_literal_parts_facts",
+            )?;
+            let targets = expect_str_list_flex(
+                positional.get(1).copied(),
+                "medium_structure_literal_parts_facts",
+            )?;
             let facts =
-                crate::module_path_index::medium_structure_census::medium_structure_leak_facts(
-                    &emit_roots,
-                    &check_roots,
-                    &markers,
-                    &emit_fns,
-                    &string_ops,
+                crate::module_path_index::medium_structure_census::medium_structure_literal_parts_facts(
+                    &roots, &targets,
                 );
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
-                let face = Value::Variant {
-                    type_name: ctx.sym("MediumLeakFace"),
-                    variant_name: ctx.sym(f.face),
-                    fields: Rc::new(vec![]),
-                };
+                let mut part_values: Vec<Value> = Vec::new();
+                for p in f.parts {
+                    part_values.push(Value::Record {
+                        type_name: ctx.sym("RawLiteralPart"),
+                        fields: Rc::new(sorted_fields(vec![
+                            (ctx.sym("is_hole"), Value::Bool(p.is_hole)),
+                            (ctx.sym("text"), Value::Str(p.text)),
+                        ])),
+                    });
+                }
                 items.push(Value::Record {
-                    type_name: ctx.sym("MediumStructureLeakFact"),
+                    type_name: ctx.sym("RawLiteralPartsFact"),
                     fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("detail"), Value::Str(f.detail)),
-                        (ctx.sym("face"), face),
+                        (ctx.sym("constructor"), Value::Str(f.constructor)),
+                        (ctx.sym("field"), Value::Str(f.field)),
+                        (ctx.sym("parts"), list_value(part_values)),
                         (ctx.sym("path"), Value::Str(f.path)),
                     ])),
                 });
