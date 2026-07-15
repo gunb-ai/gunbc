@@ -44,6 +44,8 @@ import gunbc.host_converge_realize {
 import extdeps.gunbc
 import extdeps.apt { package_curl, package_nbdkit, package_socat, package_xorriso, apt_get_binary_path }
 import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools.jq { jq_cli_tool }
+import extdeps.tools.sleep { sleep_cli_tool }
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
@@ -55,9 +57,18 @@ import extdeps.tools.websocat {
   websocat_github_release_download_url,
 }
 import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
-import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.srv3_install_diagnostic_observe_script {
   srv3_install_diagnostic_observe_script,
+}
+import gunbc.srv3_os_install_diagnostic {
+  srv3_os_install_attempt_intent,
+  srv3_install_diagnostic_observe_script_for_intent,
+}
+import extdeps.clock
+import extdeps.bmc.serial_console { sol_console_transport_wire }
+import gunbc.srv3_sol_console_intent { srv3_sol_console_capture_intent }
+import gunbc.srv3_os_install_reconcile_receipt {
+  srv3_durable_approval_grant_record_line,
 }
 import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_login_body_path,
@@ -125,6 +136,9 @@ type ResolvedHostEffectCell =
   | SeededInstallMediaToolchainOnHost { node: ComputeHost }
   | BmcwebSessionLoginOnHost { node: ComputeHost }
   | BmcwebTokenExtractOnHost { node: ComputeHost }
+  | InstallReconcileObserveOnHost { node: ComputeHost, include_git_meta: Bool }
+  | DurableApprovalGrantRecordOnHost { node: ComputeHost }
+  | SolConsoleCaptureOnHost { node: ComputeHost }
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -167,6 +181,12 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BmcwebSessionLoginOnHost { node: n }
         Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
+        Srv3InstallReconcileObserve { include_git_meta: meta } =>
+          InstallReconcileObserveOnHost { node: n, include_git_meta: meta }
+        DurableApprovalGrantRecord =>
+          DurableApprovalGrantRecordOnHost { node: n }
+        Srv3SolConsoleCapture =>
+          SolConsoleCaptureOnHost { node: n }
         _ =>
           match srv3_host_effect_script_for(effect: effect) {
             Present { value: script } => ShellOnHost { node: n, script: script }
@@ -185,15 +205,18 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   srv3_host_effect_script_resolution_failed_cell()
                 OsInstallActuatorToolchainEnsure {} =>
                   srv3_host_effect_script_resolution_failed_cell()
-                Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
-                DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
+                Srv3InstallReconcileObserve { include_git_meta: meta } =>
+                  InstallReconcileObserveOnHost { node: n, include_git_meta: meta }
+                DurableApprovalGrantRecord =>
+                  DurableApprovalGrantRecordOnHost { node: n }
                 DurableApprovalGrantRead =>
                   IncompatibleCell { reason: "host_effect: DurableApprovalGrantRead is in-band (actuator host typed read) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
                 Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
                 Srv3SeededInstallMediaToolchainEnsure =>
                   SeededInstallMediaToolchainOnHost { node: n }
-                Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
+                Srv3SolConsoleCapture =>
+                  SolConsoleCaptureOnHost { node: n }
                 Srv3BmcwebSessionLogin =>
                   BmcwebSessionLoginOnHost { node: n }
                 Srv3BmcwebTokenExtract =>
@@ -232,8 +255,10 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   srv3_host_effect_script_resolution_failed_cell()
                 OsInstallActuatorToolchainEnsure {} =>
                   srv3_host_effect_script_resolution_failed_cell()
-                Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
-                DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
+                Srv3InstallReconcileObserve { include_git_meta: _ } =>
+                  IncompatibleCell { reason: "host_effect: Srv3InstallReconcileObserve is in-band (actuator host typed observe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                DurableApprovalGrantRecord =>
+                  IncompatibleCell { reason: "host_effect: DurableApprovalGrantRecord is in-band (actuator host typed grant write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 DurableApprovalGrantRead =>
                   IncompatibleCell { reason: "host_effect: DurableApprovalGrantRead is in-band (actuator host typed read) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3InstallMediaFetch =>
@@ -242,7 +267,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3SeededInstallMediaToolchainEnsure =>
                   IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-                Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
+                Srv3SolConsoleCapture =>
+                  IncompatibleCell { reason: "host_effect: Srv3SolConsoleCapture is in-band (actuator host typed SOL capture) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3BmcwebSessionLogin =>
                   IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3BmcwebTokenExtract =>

@@ -81,6 +81,22 @@ fn bash_var_ref(name: String) -> String {
   concat("$", concat("{", concat(name, "}")))
 }
 
+fn srv3_durable_approval_grant_record_line(
+  granted_at: Timestamp,
+  expires_at: Timestamp,
+) -> String {
+  concat(
+    concat(
+      concat(
+        concat("Srv3InstallApprovalGrant: escalation_id=", srv3_boot_once_cd_escalation.escalation_id as String),
+        concat(" intent_hash=", srv3_install_effect_attempt_intent.intent_hash as String),
+      ),
+      concat(" granted_by=operator granted_at=", granted_at as String),
+    ),
+    concat(" expires_at=", expires_at as String),
+  )
+}
+
 fn srv3_install_record_boot_once_approval_script() -> String {
   let header = concat(
     "set -euo pipefail\nmkdir -p /var/lib/gunbc/logs/approvals\nGRANTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)\nEXPIRES_AT=$(date -u -d '+24 hours' +%Y-%m-%dT%H:%M:%SZ)\nprintf '%s\\n' \"Srv3InstallApprovalGrant: escalation_id=",
