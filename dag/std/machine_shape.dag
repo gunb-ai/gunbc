@@ -1,0 +1,108 @@
+module std.machine_shape
+
+import std.decl_ref { DeclarationRef }
+import std.cache_identity { ExecutionReceiptDigest }
+import std.types { Bool }
+
+type Precision<T>
+  = Exact { value: T }
+  | Interval { lo: T, hi: T }
+
+type Evidence
+  = Cited { source: DeclarationRef }
+  | MeasuredBy { receipt: ExecutionReceiptDigest }
+  | DerivedFrom { derivation: DeclarationRef }
+
+type Quantified<T>
+  = Known { precision: Precision<T>, evidence: Evidence }
+  | UnknownQuantity
+
+data quantified_evidence_construction_note: String = "Phase-1 acceptance precondition (#6663 review amendment 1 / witness-realization P0): Known carries evidence by construction — Cited/DerivedFrom refs must resolve, MeasuredBy receipts must exist. Today's record-literal wall checks field names only (presence and types unchecked), so an authored literal can omit evidence until P0 lands. CostBasis = Predicted|Measured convergence with Quantified<T> stays open Q1 — converge, don't mint a third evidence carrier."
+
+fn quantified_unknown<T>() -> Quantified<T> {
+  UnknownQuantity
+}
+
+fn quantified_is_unknown<T>(q: Quantified<T>) -> Bool {
+  match q {
+    UnknownQuantity => true
+    Known { precision: _, evidence: _ } => false
+  }
+}
+
+fn quantified_is_known<T>(q: Quantified<T>) -> Bool {
+  !quantified_is_unknown(q: q)
+}
+
+fn quantified_known<T>(precision: Precision<T>, evidence: Evidence) -> Quantified<T> {
+  Known { precision: precision, evidence: evidence }
+}
+
+fn quantified_known_exact<T>(value: T, evidence: Evidence) -> Quantified<T> {
+  quantified_known(precision: Exact { value: value }, evidence: evidence)
+}
+
+fn quantified_known_interval<T>(lo: T, hi: T, evidence: Evidence) -> Quantified<T> {
+  quantified_known(precision: Interval { lo: lo, hi: hi }, evidence: evidence)
+}
+
+fn quantified_precision<T>(q: Quantified<T>) -> Precision<T>? {
+  match q {
+    UnknownQuantity => Absent
+    Known { precision: p, evidence: _ } => Present { value: p }
+  }
+}
+
+fn quantified_evidence<T>(q: Quantified<T>) -> Evidence? {
+  match q {
+    UnknownQuantity => Absent
+    Known { precision: _, evidence: e } => Present { value: e }
+  }
+}
+
+fn evidence_cited(source: DeclarationRef) -> Evidence {
+  Cited { source: source }
+}
+
+fn evidence_measured_by(receipt: ExecutionReceiptDigest) -> Evidence {
+  MeasuredBy { receipt: receipt }
+}
+
+fn evidence_derived_from(derivation: DeclarationRef) -> Evidence {
+  DerivedFrom { derivation: derivation }
+}
+
+fn precision_is_exact<T>(p: Precision<T>) -> Bool {
+  match p {
+    Exact { value: _ } => true
+    Interval { lo: _, hi: _ } => false
+  }
+}
+
+fn precision_is_interval<T>(p: Precision<T>) -> Bool {
+  !precision_is_exact(p: p)
+}
+
+fn evidence_is_cited(e: Evidence) -> Bool {
+  match e {
+    Cited { source: _ } => true
+    MeasuredBy { receipt: _ } => false
+    DerivedFrom { derivation: _ } => false
+  }
+}
+
+fn evidence_is_measured_by(e: Evidence) -> Bool {
+  match e {
+    MeasuredBy { receipt: _ } => true
+    Cited { source: _ } => false
+    DerivedFrom { derivation: _ } => false
+  }
+}
+
+fn evidence_is_derived_from(e: Evidence) -> Bool {
+  match e {
+    DerivedFrom { derivation: _ } => true
+    Cited { source: _ } => false
+    MeasuredBy { receipt: _ } => false
+  }
+}

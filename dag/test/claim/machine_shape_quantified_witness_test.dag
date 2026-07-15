@@ -1,0 +1,138 @@
+module test.claim.machine_shape_quantified_witness
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.cache_identity { ExecutionReceiptDigest }
+import std.measure { ByteSize, Bandwidth, byte_size, bandwidth, byte_size_count, bandwidth_count }
+import std.machine_shape {
+  Quantified,
+  Precision,
+  Evidence,
+  UnknownQuantity,
+  quantified_unknown,
+  quantified_known_exact,
+  quantified_known_interval,
+  quantified_is_unknown,
+  quantified_is_known,
+  quantified_precision,
+  quantified_evidence,
+  evidence_cited,
+  evidence_measured_by,
+  evidence_derived_from,
+  precision_is_exact,
+  precision_is_interval,
+  evidence_is_cited,
+  evidence_is_measured_by,
+  evidence_is_derived_from,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cited_ref: DeclarationRef = DeclarationRef {
+  module_path: "std.measure"
+  decl_name: "byte_size"
+  field: WholeDeclaration
+}
+
+data derived_ref: DeclarationRef = DeclarationRef {
+  module_path: "std.measure"
+  decl_name: "bandwidth"
+  field: WholeDeclaration
+}
+
+data witness_receipt: ExecutionReceiptDigest = "machine-shape-quantified-witness-receipt"
+
+data unknown_byte_capacity: Quantified<ByteSize> = UnknownQuantity
+
+data unknown_bandwidth: Quantified<Bandwidth> = UnknownQuantity
+
+data cited_exact_capacity: Quantified<ByteSize> = quantified_known_exact(
+  value: byte_size(count: 65536),
+  evidence: evidence_cited(source: cited_ref),
+)
+
+data interval_bandwidth: Quantified<Bandwidth> = quantified_known_interval(
+  lo: bandwidth(count: 1000000000),
+  hi: bandwidth(count: 2000000000),
+  evidence: evidence_derived_from(derivation: derived_ref),
+)
+
+data measured_capacity: Quantified<ByteSize> = quantified_known_exact(
+  value: byte_size(count: 32768),
+  evidence: evidence_measured_by(receipt: witness_receipt),
+)
+
+fn unknown_quantity_is_first_class() -> Bool {
+  quantified_is_unknown(q: unknown_byte_capacity)
+    && quantified_is_unknown(q: unknown_bandwidth)
+    && !quantified_is_known(q: unknown_byte_capacity)
+}
+
+fn known_exact_with_cited_evidence() -> Bool {
+  match quantified_precision(q: cited_exact_capacity) {
+    Present { value: p } =>
+      precision_is_exact(p: p)
+        && match p {
+          Exact { value: b } => byte_size_count(b: b) == 65536
+          Interval { lo: _, hi: _ } => false
+        }
+        && match quantified_evidence(q: cited_exact_capacity) {
+          Present { value: e } => evidence_is_cited(e: e)
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+fn known_interval_with_derived_evidence() -> Bool {
+  match quantified_precision(q: interval_bandwidth) {
+    Present { value: p } =>
+      precision_is_interval(p: p)
+        && match p {
+          Interval { lo: lo, hi: hi } =>
+            bandwidth_count(b: lo) == 1000000000 && bandwidth_count(b: hi) == 2000000000
+          Exact { value: _ } => false
+        }
+        && match quantified_evidence(q: interval_bandwidth) {
+          Present { value: e } => evidence_is_derived_from(e: e)
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+fn known_with_measured_by_evidence() -> Bool {
+  match quantified_evidence(q: measured_capacity) {
+    Present { value: e } =>
+      evidence_is_measured_by(e: e)
+        && match e {
+          MeasuredBy { receipt: r } => r == witness_receipt
+          Cited { source: _ } => false
+          DerivedFrom { derivation: _ } => false
+        }
+    Absent => false
+  }
+}
+
+fn red_unknown_must_not_be_known() -> Bool {
+  match quantified_unknown<ByteSize>() {
+    UnknownQuantity => true
+    Known { precision: _, evidence: _ } => false
+  }
+}
+
+fn red_known_must_carry_evidence() -> Bool {
+  match cited_exact_capacity {
+    Known { precision: _, evidence: e } => evidence_is_cited(e: e)
+    UnknownQuantity => false
+  }
+}
+
+test fn machine_shape_quantified_witnesses() -> Bool {
+  unknown_quantity_is_first_class()
+    && known_exact_with_cited_evidence()
+    && known_interval_with_derived_evidence()
+    && known_with_measured_by_evidence()
+    && red_unknown_must_not_be_known()
+    && red_known_must_carry_evidence()
+}
