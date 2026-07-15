@@ -18,6 +18,7 @@ pub use crate::v1_compiler_infer_env::{
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
+pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
@@ -83,6 +84,9 @@ pub fn func_sig_from_global_bare(
     type_env: Rc<TypeEnv>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
+    if infer_builtin_call_type(name.clone()).is_some() {
+        return None;
+    }
     match lookup_binding_by_name(type_env.clone(), name.clone()) {
         Some(binding) => {
             let node = binding.resolved.clone();
