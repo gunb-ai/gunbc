@@ -4,7 +4,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.cache_identity { ExecutionReceiptDigest }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 
-type Precision<T>
+type Estimate<T>
   = Exact { value: T }
   | Interval { lo: T, hi: T }
 
@@ -14,7 +14,7 @@ type Evidence
   | DerivedFrom { derivation: DeclarationRef }
 
 type Quantified<T>
-  = Known { precision: Precision<T>, evidence: Evidence }
+  = Known { estimate: Estimate<T>, evidence: Evidence }
   | UnknownQuantity
 
 data quantified_known_evidence_construction_wall: Disposition = Scaffold {
@@ -30,29 +30,29 @@ fn quantified_unknown<T>() -> Quantified<T> {
   UnknownQuantity
 }
 
-fn quantified_known<T>(precision: Precision<T>, evidence: Evidence) -> Quantified<T> {
-  Known { precision: precision, evidence: evidence }
+fn quantified_known<T>(estimate: Estimate<T>, evidence: Evidence) -> Quantified<T> {
+  Known { estimate: estimate, evidence: evidence }
 }
 
 fn quantified_known_exact<T>(value: T, evidence: Evidence) -> Quantified<T> {
-  quantified_known(precision: Exact { value: value }, evidence: evidence)
+  quantified_known(estimate: Exact { value: value }, evidence: evidence)
 }
 
 fn quantified_known_interval<T>(lo: T, hi: T, evidence: Evidence) -> Quantified<T> {
-  quantified_known(precision: Interval { lo: lo, hi: hi }, evidence: evidence)
+  quantified_known(estimate: Interval { lo: lo, hi: hi }, evidence: evidence)
 }
 
-fn quantified_precision<T>(q: Quantified<T>) -> Precision<T>? {
+fn quantified_estimate<T>(q: Quantified<T>) -> Estimate<T>? {
   match q {
     UnknownQuantity => Absent
-    Known { precision: p, evidence: _ } => Present { value: p }
+    Known { estimate: e, evidence: _ } => Present { value: e }
   }
 }
 
 fn quantified_evidence<T>(q: Quantified<T>) -> Evidence? {
   match q {
     UnknownQuantity => Absent
-    Known { precision: _, evidence: e } => Present { value: e }
+    Known { estimate: _, evidence: e } => Present { value: e }
   }
 }
 

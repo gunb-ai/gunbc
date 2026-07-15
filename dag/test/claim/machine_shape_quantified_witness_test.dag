@@ -8,7 +8,7 @@ import std.machine_shape {
   UnknownQuantity,
   quantified_known_exact,
   quantified_known_interval,
-  quantified_precision,
+  quantified_estimate,
   quantified_evidence,
   evidence_cited,
   evidence_measured_by,
@@ -57,14 +57,14 @@ fn unknown_quantity_is_first_class() -> Bool {
     UnknownQuantity =>
       match unknown_bandwidth {
         UnknownQuantity => true
-        Known { precision: _, evidence: _ } => false
+        Known { estimate: _, evidence: _ } => false
       }
-    Known { precision: _, evidence: _ } => false
+    Known { estimate: _, evidence: _ } => false
   }
 }
 
 fn known_exact_with_cited_evidence() -> Bool {
-  match quantified_precision(q: cited_exact_capacity) {
+  match quantified_estimate(q: cited_exact_capacity) {
     Present { value: p } =>
       match p {
         Exact { value: b } =>
@@ -82,7 +82,7 @@ fn known_exact_with_cited_evidence() -> Bool {
 }
 
 fn known_interval_with_derived_evidence() -> Bool {
-  match quantified_precision(q: interval_bandwidth) {
+  match quantified_estimate(q: interval_bandwidth) {
     Present { value: p } =>
       match p {
         Interval { lo: lo, hi: hi } =>
@@ -111,15 +111,15 @@ fn known_with_measured_by_evidence() -> Bool {
 fn red_unknown_must_not_be_known() -> Bool {
   match unknown_byte_capacity {
     UnknownQuantity => true
-    Known { precision: _, evidence: _ } => false
+    Known { estimate: _, evidence: _ } => false
   }
 }
 
 fn red_known_must_carry_evidence() -> Bool {
   match cited_exact_capacity {
-    Known { precision: _, evidence: Cited { source: _ } } => true
-    Known { precision: _, evidence: MeasuredBy { receipt: _ } } => false
-    Known { precision: _, evidence: DerivedFrom { derivation: _ } } => false
+    Known { estimate: _, evidence: Cited { source: _ } } => true
+    Known { estimate: _, evidence: MeasuredBy { receipt: _ } } => false
+    Known { estimate: _, evidence: DerivedFrom { derivation: _ } } => false
     UnknownQuantity => false
   }
 }
