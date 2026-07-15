@@ -624,10 +624,7 @@ fn marshal_skeleton(
 // Host SOURCE half for P1 G2 call-reachability (docs/plans/live-read-witness-classification-design.md §9 P1 / §14).
 // Dissolves when fn-arrow body projection is a modeled substrate fold (same #5364 corridor as
 // `eval_fn_arrow_decl_facts_live`) rather than hand-Rust marshal in this module.
-fn marshal_string_literal_atom(
-    ctx: &InterpContext,
-    node: &Rc<Node>,
-) -> Option<Value> {
+fn marshal_string_literal_atom(ctx: &InterpContext, node: &Rc<Node>) -> Option<Value> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value, .. } => match value.as_ref() {
             crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
