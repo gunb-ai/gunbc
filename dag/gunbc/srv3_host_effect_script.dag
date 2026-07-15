@@ -26,31 +26,10 @@ import gunbc.srv3_os_install_diagnostic {
   srv3_install_diagnostic_observe_script_for_intent,
 }
 import gunbc.srv3_os_install_reconcile_receipt { srv3_install_record_boot_once_approval_script }
-import gunbc.srv3_actuate_shell_paths {
-  srv3_bmcweb_login_body_path,
-  srv3_bmcweb_login_response_path,
-  srv3_bmcweb_token_path,
-  srv3_sol_console_log_path,
-}
-import extdeps.languages.bash.program { serialize_bash }
 import extdeps.bmc.serial_console {
   sol_console_capture_script,
 }
 import gunbc.srv3_sol_console_intent { srv3_sol_console_capture_intent }
-import extdeps.bmc.webui.nbd_proxy_serve {
-  bmcweb_session_login_program,
-}
-import extdeps.boards.asrock_rack {
-  asrock_srv3_live_bmc_host,
-}
-import gunbc.ci_deploy_access {
-  ci_deploy_srv1_access,
-  deploy_access_apt_get_privileged_command,
-  deploy_access_preflight_check_block,
-  deploy_access_sudo_n_apt_get_install_command,
-}
-import extdeps.tools.xorriso { xorriso_cli_tool }
-import extdeps.apt { package_xorriso }
 import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -72,47 +51,6 @@ fn srv3_install_reconcile_observe_meta_script() -> String {
   )
 }
 
-fn install_media_remaster_toolchain_ensure_script() -> String {
-  let tool_name = xorriso_cli_tool.name as String
-  let apt_package = package_xorriso as String
-  let apt_preflight = deploy_access_preflight_check_block(
-    access: ci_deploy_srv1_access,
-    cmd: deploy_access_apt_get_privileged_command(),
-  )
-  let privileged_install = deploy_access_sudo_n_apt_get_install_command(package: package_xorriso)
-  concat(
-    concat(
-      concat(
-        concat("#!/usr/bin/env bash\nset -euo pipefail\nif command -v ", tool_name),
-        " >/dev/null 2>&1 && ",
-      ),
-      concat(tool_name, " --version >/dev/null 2>&1; then\n"),
-    ),
-    concat(
-      concat(
-        concat(
-          concat("  echo \"InstallMediaRemasterToolchainReceipt: outcome=Present tool=", tool_name),
-          concat(" package=", apt_package),
-        ),
-        "\"\n  exit 0\nfi\n",
-      ),
-      concat(
-        concat(
-          concat(
-            concat(apt_preflight, privileged_install),
-            "\n",
-          ),
-          concat(tool_name, " --version >/dev/null\n"),
-        ),
-        concat(
-          concat("echo \"InstallMediaRemasterToolchainReceipt: outcome=Installed tool=", tool_name),
-          concat(" package=", apt_package, "\"\n"),
-        ),
-      ),
-    ),
-  )
-}
-
 fn srv3_install_reconcile_observe_script(include_git_meta: Bool) -> String {
   let diagnostic = srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent)
   if include_git_meta {
@@ -120,25 +58,6 @@ fn srv3_install_reconcile_observe_script(include_git_meta: Bool) -> String {
   } else {
     diagnostic
   }
-}
-
-fn srv3_bmcweb_session_login_script() -> String {
-  let login_prog = bmcweb_session_login_program(
-    bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
-    response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
-  )
-  serialize_bash(p: login_prog)
-}
-
-fn srv3_bmcweb_token_extract_script() -> String {
-  concat(
-    concat(
-      concat("jq -r '.token // empty' ", srv3_bmcweb_login_response_path),
-      " > ",
-    ),
-    srv3_bmcweb_token_path,
-  )
 }
 
 fn srv3_join_adjacent_pairs(parts: List<String>) -> List<String> {
@@ -193,20 +112,15 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
     DurableApprovalGrantRead => Absent
     Srv3InstallMediaFetch => Absent
     Srv3SeededInstallMediaRemaster => Absent
-    Srv3SeededInstallMediaToolchainEnsure =>
-      Present {
-        value: shell_exec_via_bash(body: install_media_remaster_toolchain_ensure_script()),
-      }
+    Srv3SeededInstallMediaToolchainEnsure => Absent
     Srv3SolConsoleCapture =>
       Present {
         value: shell_exec_via_bash(
           body: sol_console_capture_script(intent: srv3_sol_console_capture_intent),
         ),
       }
-    Srv3BmcwebSessionLogin =>
-      Present { value: shell_exec_via_bash(body: srv3_bmcweb_session_login_script()) }
-    Srv3BmcwebTokenExtract =>
-      Present { value: shell_exec_via_bash(body: srv3_bmcweb_token_extract_script()) }
+    Srv3BmcwebSessionLogin => Absent
+    Srv3BmcwebTokenExtract => Absent
     Srv3NbdProxyServe { intent: _, lease_key: _ } => Absent
     Srv3BootOnceReadBackSleep => Absent
     Srv3ReceiptEmit { lines: _ } => Absent

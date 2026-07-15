@@ -58,6 +58,13 @@ import gunbc.shell_bash_runner { shell_bash_runner_dissolution_trigger }
 import gunbc.srv3_os_install_reconcile_types { srv3_nbd_proxy_lease_key }
 import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.webui.nbd_proxy_serve { bmcweb_session_login_argv }
+import extdeps.tools.curl { curl_cli_tool }
+import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
+import gunbc.srv3_actuate_shell_paths {
+  srv3_bmcweb_login_body_path,
+  srv3_bmcweb_login_response_path,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -98,6 +105,18 @@ fn witness_srv3_typed_realize_effects_script_for_absent() -> Bool {
       Absent => true
       Present { value: _ } => false
     }
+    && match srv3_host_effect_script_for(effect: Srv3SeededInstallMediaToolchainEnsure) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match srv3_host_effect_script_for(effect: Srv3BmcwebSessionLogin) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match srv3_host_effect_script_for(effect: Srv3BmcwebTokenExtract) {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
 fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
@@ -129,6 +148,24 @@ fn witness_typed_reconcile_effects_script_for_absent() -> Bool {
       Absent => true
       Present { value: _ } => false
     }
+}
+
+fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash() -> Bool {
+  let argv = bmcweb_session_login_argv(
+    bmc_host: asrock_srv3_live_bmc_host,
+    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
+    response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
+  )
+  let surface = fold(
+    argv,
+    init: "" as String,
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
+  string_contains(s: surface, pattern: curl_cli_tool.name as String)
+    && string_contains(s: surface, pattern: "/login")
+    && string_contains(s: surface, pattern: srv3_bmcweb_login_body_path)
+    && string_contains(s: surface, pattern: srv3_bmcweb_login_response_path)
+    && !string_contains(s: surface, pattern: "serialize_bash")
 }
 
 fn witness_srv3_apply_shell_failure_refuses_typed() -> Bool {
@@ -300,7 +337,7 @@ fn witness_srv3_sibling_variants_still_resolve_after_apply_failure() -> Bool {
   witness_srv3_apply_shell_failure_refuses_typed()
     && srv3_host_effect_script_resolves(effect: DurableApprovalGrantRecord)
     && srv3_host_effect_script_resolves(effect: Srv3SolConsoleCapture)
-    && srv3_host_effect_script_resolves(effect: Srv3BmcwebSessionLogin)
+    && srv3_host_effect_script_resolves(effect: Srv3InstallReconcileObserve { include_git_meta: false })
 }
 
 test fn srv3_host_effect_observe_script_resolves_via_script_for() -> Bool {
@@ -320,10 +357,8 @@ test fn srv3_host_effect_mechanical_variants_resolve_via_script_for() -> Bool {
   srv3_host_effect_script_resolves(effect: DurableApprovalGrantRecord)
     && witness_srv3_typed_realize_effects_script_for_absent()
     && witness_typed_reconcile_effects_script_for_absent()
-    && srv3_host_effect_script_resolves(effect: Srv3SeededInstallMediaToolchainEnsure)
     && srv3_host_effect_script_resolves(effect: Srv3SolConsoleCapture)
-    && srv3_host_effect_script_resolves(effect: Srv3BmcwebSessionLogin)
-    && srv3_host_effect_script_resolves(effect: Srv3BmcwebTokenExtract)
+    && witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash()
     && witness_srv3_nbd_proxy_serve_script_for_absent()
     && witness_non_srv3_effect_script_for_absent()
 }

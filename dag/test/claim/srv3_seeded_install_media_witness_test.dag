@@ -12,7 +12,7 @@ import gunbc.srv3_seeded_install_media {
   srv3_seeded_install_media_toolchain_ensure_is_privileged_gated,
 }
 import gunbc.srv3_seeded_install_media_artifact { srv3_autoinstall_user_data_body }
-import gunbc.srv3_host_effect_script { install_media_remaster_toolchain_ensure_script }
+import gunbc.host_effect_realize { srv3_seeded_install_media_toolchain_receipt_line }
 import extdeps.os.ubuntu_seeded_install_media_remaster {
   install_media_remaster_bash_emit_dissolution_trigger,
   install_media_remaster_classification_scaffold,
@@ -81,9 +81,11 @@ test fn srv3_seeded_remaster_toolchain_ensure_is_privileged_gated() -> Bool {
   srv3_seeded_install_media_remaster_toolchain_is_modeled()
     && srv3_seeded_install_media_toolchain_ensure_is_privileged_gated()
     && string_contains(
-      s: install_media_remaster_toolchain_ensure_script(),
+      s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Present" as NonEmptyStr),
       pattern: "InstallMediaRemasterToolchainReceipt",
     )
-    && string_contains(s: install_media_remaster_toolchain_ensure_script(), pattern: "sudo -n /usr/bin/apt-get install -y xorriso")
-    && string_contains(s: install_media_remaster_toolchain_ensure_script(), pattern: "xorriso --version")
+    && string_contains(
+      s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Installed" as NonEmptyStr),
+      pattern: "xorriso",
+    )
 }

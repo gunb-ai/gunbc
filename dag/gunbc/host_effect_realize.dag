@@ -192,10 +192,13 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: DurableApprovalGrantRead is in-band (actuator host typed read) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
                 Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
-                Srv3SeededInstallMediaToolchainEnsure => srv3_host_effect_script_resolution_failed_cell()
+                Srv3SeededInstallMediaToolchainEnsure =>
+                  SeededInstallMediaToolchainOnHost { node: n }
                 Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
-                Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
-                Srv3BmcwebTokenExtract => srv3_host_effect_script_resolution_failed_cell()
+                Srv3BmcwebSessionLogin =>
+                  BmcwebSessionLoginOnHost { node: n }
+                Srv3BmcwebTokenExtract =>
+                  BmcwebTokenExtractOnHost { node: n }
                 Srv3BootOnceReadBackSleep =>
                   IncompatibleCell { reason: "host_effect: Srv3BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3ReceiptEmit { lines: _ } =>
@@ -238,10 +241,13 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3SeededInstallMediaRemaster =>
                   IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-                Srv3SeededInstallMediaToolchainEnsure => srv3_host_effect_script_resolution_failed_cell()
+                Srv3SeededInstallMediaToolchainEnsure =>
+                  IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
-                Srv3BmcwebSessionLogin => srv3_host_effect_script_resolution_failed_cell()
-                Srv3BmcwebTokenExtract => srv3_host_effect_script_resolution_failed_cell()
+                Srv3BmcwebSessionLogin =>
+                  IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                Srv3BmcwebTokenExtract =>
+                  IncompatibleCell { reason: "host_effect: Srv3BmcwebTokenExtract is in-band (actuator host typed jq extract + write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3NbdProxyServe { intent: _, lease_key: _ } => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BootOnceReadBackSleep =>
                   IncompatibleCell { reason: "host_effect: Srv3BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -417,9 +423,7 @@ fn realize_seeded_install_media_toolchain_ensure_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let was_present =
-    srv3_apt_tool_present(tool_name: xorriso_cli_tool.name, transport: transport)
-      && srv3_apt_tool_version_ok(tool_name: xorriso_cli_tool.name, transport: transport)
+  let was_present = srv3_apt_tool_present(tool_name: xorriso_cli_tool.name, transport: transport) && srv3_apt_tool_version_ok(tool_name: xorriso_cli_tool.name, transport: transport)
   let ensure_ok = srv3_ensure_apt_tool(
     tool_name: xorriso_cli_tool.name,
     package: package_xorriso,
@@ -1259,6 +1263,12 @@ fn host_effect_apply_gated(
           realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
         DurableApprovalGrantReadOnHost { node: _ } =>
           realize_durable_approval_grant_read_on_host(transport: transport, intent: intent)
+        SeededInstallMediaToolchainOnHost { node: _ } =>
+          realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
+        BmcwebSessionLoginOnHost { node: _ } =>
+          realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
+        BmcwebTokenExtractOnHost { node: _ } =>
+          realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
