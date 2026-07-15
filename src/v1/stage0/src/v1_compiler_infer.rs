@@ -12821,7 +12821,7 @@ pub fn census_insert_unique_disj_variant_aliases(
                                 a2.clone(),
                                 Rc::new(TypeBinding {
                                     name: vname.clone(),
-                                    resolved: child.clone(),
+                                    resolved: item.clone(),
                                     provenance: Rc::new(SubValueRelation::SubValueUnknown),
                                 }),
                             ),
@@ -14646,6 +14646,38 @@ pub fn bind_imported_name_from_surface(
     }
 }
 
+pub fn merge_global_bare_variant_locals(
+    env: Rc<TypeEnv>,
+    state: Rc<VariantFoldState>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<VariantFoldState> {
+    env.global_bare
+        .clone()
+        .iter()
+        .fold(state.clone(), |acc: Rc<VariantFoldState>, (name, lookup)| {
+            match lookup.as_ref() {
+                GlobalBareLookupState::GlobalBareUniqueBinding { binding } => {
+                    let owner = binding.resolved.clone();
+                    if owner.connective == Connective::Disj
+                        && has_child_named(owner.clone(), name.clone(), source_indices.clone())
+                    {
+                        insert_variant_owner_checked(
+                            acc.clone(),
+                            name.clone(),
+                            owner.clone(),
+                            source_indices.clone(),
+                            module_name.clone(),
+                        )
+                    } else {
+                        acc.clone()
+                    }
+                }
+                GlobalBareLookupState::GlobalBareAmbiguousBinding => acc.clone(),
+            }
+        })
+}
+
 pub fn build_imported_variants(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -14732,13 +14764,18 @@ pub fn build_module_context(
                 collision_errors: Rc::new(vec![]),
             }),
         );
-        let variant_fold = build_imported_variants(
-            resolved_imports.clone(),
-            parent_index.clone(),
-            variant_surfaces.clone(),
+        let variant_fold = merge_global_bare_variant_locals(
+            env.clone(),
+            build_imported_variants(
+                resolved_imports.clone(),
+                parent_index.clone(),
+                variant_surfaces.clone(),
+                env.source_indices.clone(),
+                module_name.clone(),
+                local_variant_fold.clone(),
+            ),
             env.source_indices.clone(),
             module_name.clone(),
-            local_variant_fold.clone(),
         );
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
