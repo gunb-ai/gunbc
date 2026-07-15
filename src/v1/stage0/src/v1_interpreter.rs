@@ -658,6 +658,7 @@ pub enum InterpError {
     EarlyReturn { value: Value },
     AuthDeclaredButUnwired { service: String, reason: String },
     EvalBudgetExceeded { elapsed_ms: u64, budget_ms: u64 },
+    WitnessWallBudgetExceeded { elapsed_ms: u64, budget_ms: u64 },
 }
 
 impl fmt::Display for InterpError {
@@ -677,6 +678,16 @@ impl fmt::Display for InterpError {
                 write!(
                     f,
                     "eval budget exceeded: {}ms elapsed > {}ms fast-lane budget (operator 5s rule 2026-07-12: a witness this slow lives in a long/ test dir and runs via its dedicated lane, not per-PR discovery)",
+                    elapsed_ms, budget_ms
+                )
+            }
+            InterpError::WitnessWallBudgetExceeded {
+                elapsed_ms,
+                budget_ms,
+            } => {
+                write!(
+                    f,
+                    "wet self-host receipt wall budget exceeded: {}ms elapsed > {}ms whole-receipt budget (emit+cargo wall time; nightly falsifier Wet lane 2026-07-15)",
                     elapsed_ms, budget_ms
                 )
             }
@@ -1214,6 +1225,8 @@ pub struct InterpContext {
     eval_deadline_stride: std::cell::Cell<u32>,
     // Lane-level budget: when set, run_claim_measured re-arms the deadline per witness.
     witness_eval_budget_ms: std::cell::Cell<Option<u64>>,
+    // Whole-receipt wall budget for Wet self-host receipts (emit+cargo subprocess I/O included).
+    witness_wall_budget_ms: std::cell::Cell<Option<u64>>,
 }
 
 impl InterpContext {
@@ -1363,6 +1376,7 @@ impl InterpContext {
             eval_deadline: std::cell::Cell::new(None),
             eval_deadline_stride: std::cell::Cell::new(0),
             witness_eval_budget_ms: std::cell::Cell::new(None),
+            witness_wall_budget_ms: std::cell::Cell::new(None),
         }
     }
 
@@ -1382,6 +1396,14 @@ impl InterpContext {
 
     pub fn witness_eval_budget(&self) -> Option<u64> {
         self.witness_eval_budget_ms.get()
+    }
+
+    pub fn set_witness_wall_budget(&self, budget_ms: Option<u64>) {
+        self.witness_wall_budget_ms.set(budget_ms);
+    }
+
+    pub fn witness_wall_budget(&self) -> Option<u64> {
+        self.witness_wall_budget_ms.get()
     }
 
     fn published_mock_keys(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {

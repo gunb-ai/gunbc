@@ -20,7 +20,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.runtime { RuntimeValue }
 import v2.std.text { String }
-import v2.std.verdict { Deferred, Fail, Pass }
+import v2.std.verdict { Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed }
 import v2.std.verification {
   RoundTripClaim,
   TestClaim,
@@ -190,7 +190,9 @@ fn affected_testgen_run_claim(claim: TestClaim) -> TestClaimRun<Node, RuntimeVal
 fn affected_testgen_selected_claim_runs_pass(claim: TestClaim) -> Bool {
   match test_claim_run_verdict(run: affected_testgen_run_claim(claim: claim)) {
     Pass => true
-    Fail { actual: _, falsification: _ } => false
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
