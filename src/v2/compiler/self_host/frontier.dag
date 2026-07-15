@@ -544,8 +544,8 @@ fn compiler_frontier_self_emitted_located_reason_holds() -> Bool {
       ok && match row.disposition {
         SelfEmitted =>
           frontier_blocker_class_matches(
-            row: row.measured_probe.blocker_class,
-            expected: SelfEmitReady
+            blocker: row.measured_probe.blocker_class,
+            target: SelfEmitReady
           )
             && (row.measured_probe.located_reason == ^measured_probe_self_emit_ready)
         SeedRetained { reason: _, migration_trigger: _ } => true
