@@ -1,5 +1,7 @@
 module v2.lens.schedule_lens
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 import std.realization_schedule {
   RealizationPlan,
   schedule_batch_contains_label,
@@ -108,4 +110,8 @@ fn schedule_lens_verdict_for_ci_floor<S>(plan: RealizationPlan<S>, compile_gate_
       }
     }
   }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
