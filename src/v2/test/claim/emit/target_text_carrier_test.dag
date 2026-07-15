@@ -22,10 +22,9 @@ test fn target_text_seq_is_ordered_concatenation_holds() -> Bool {
 }
 
 test fn target_text_seq_order_discriminates_holds() -> Bool {
-  (render_target_text(t: target_text_seq(acc: text_atom(lexeme: "A"), next: text_atom(lexeme: "B"))) == "AB")
-    && (render_target_text(t: target_text_seq(acc: text_atom(lexeme: "B"), next: text_atom(lexeme: "A"))) == "BA")
-    && (render_target_text(t: target_text_seq(acc: text_atom(lexeme: "A"), next: text_atom(lexeme: "B")))
-        != render_target_text(t: target_text_seq(acc: text_atom(lexeme: "B"), next: text_atom(lexeme: "A"))))
+  let ab = render_target_text(t: target_text_seq(acc: text_atom(lexeme: "A"), next: text_atom(lexeme: "B")))
+  let ba = render_target_text(t: target_text_seq(acc: text_atom(lexeme: "B"), next: text_atom(lexeme: "A")))
+  (ab == "AB") && (ba == "BA") && (ab != ba)
 }
 
 test fn target_text_empty_is_seq_identity_holds() -> Bool {
