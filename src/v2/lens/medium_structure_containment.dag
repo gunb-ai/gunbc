@@ -2,10 +2,20 @@ module v2.lens.medium_structure_containment
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
 
+import v2.lens.bash_composition_recognizer {
+  BashCompositionDisposition,
+  AmbiguousParse,
+  NoLanguageDecision,
+  ConstPart,
+  HolePart,
+  SkeletonPart,
+  LiteralSkeleton,
+  classify_bash_skeleton,
+  disposition_is_violation,
+  disposition_is_ambiguous
+}
 import v2.std.algebra {
   fold_list,
-  is_empty,
-  is_prefix_of,
   length,
   list_append,
   list_snoc_item
@@ -19,95 +29,64 @@ import v2.std.diagnostic {
   WholeFile
 }
 import v2.std.logic { Bool }
-import v2.std.text { Char, String }
+import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
 
-type MediumLeakFace
-  = InlineSyntaxLiteral
-  | EmittedMediumStringOp
+data medium_structure_grammar_classifier_note: String = "no-smuggled-programs wall (HALF B): this lens is a GRAMMAR CLASSIFIER over substrate string literals, REPLACING the marker heuristic (medium_syntax_markers + emit-fn/string-op walks DELETED in one motion, both the .dag markers and the Rust text.contains in medium_structure_census.rs). The seed (medium_structure_literal_parts_facts, ruling R1b grammar/language-ignorant) enumerates RawLine.text / Heredoc.body field-expression PARTS as neutral [Const|Hole]; this lens applies the TYPE-STRUCTURAL language gate and runs bash_composition_recognizer. A composition of a modeled language = typed/located/COUNTED Violation; an atom = Clean; the undecidable residue = counted AmbiguousParse (DecodeFidelity). ConstructionJustification = WallAfterGrounding (marker heuristic -> grammar classifier); the genuine-Unknown AmbiguousParse residue is RatchetForever."
 
-type MediumStructureLeakFact {
+data medium_structure_type_structural_gate_note: String = "The language-decision gate is the ShellStmt coproduct (dag/extdeps/languages/bash/program.dag): every variant is MODELED structure EXCEPT the two String-carrying smuggling vectors RawLine.text and Heredoc.body. RawLine.text is definitionally bash. Heredoc.body language depends on the target, but the emit (program.dag) hardwires cat to path (the body is WRITTEN TO A FILE as data, never piped to an interpreter), so the type cannot name a language, giving AmbiguousParse cause NoLanguageDecision interim (UNRESOLVED-language framing: a heredoc writing a bash script then exec IS smuggled but the model cannot see the deferred exec; a target-resolution follow-up can reclassify bash-target heredoc to Violation, so counted Ambiguous rows stay a LIVE ledger, not a permanent silent gap)."
+
+data medium_structure_path_a_supersession_note: String = "PATH A SUPERSEDED (decision history, parent+operator reconciled 2026-07-14): Path A (tighten the extdeps/languages path-exemption to grammar-rows-only + roster the retry_eagain EAGAIN blob + baseline 62->63) was OPERATOR-SIGNED 2026-07-14, then SUPERSEDED by the type-structural-gate finding, VERIFIED-BY both sessions independently in-tree (executor stern-eagle-53 and manager sharp-crane-105): retry_eagain_seg_a..h4 (src/v2/extdeps/languages/bash.dag) are String fns fed to span(text: ...) rows in retry_eagain_bash_lex() = grammar-row LEX SPELLINGS (the AUTHORITY the wall points AT, decomposed by emit slice-0), NEVER a RawLine.text/Heredoc.body site, so the type-structural gate NEVER classifies them. Therefore Path A rosters/baseline-bumps NOTHING real; the gate SUPERSEDES the coarse path-exemption. Consequences applied honestly (NOT a silent removal): (1) no EAGAIN roster entry, no 62->63 bump; (2) the whole coarse path-exemption is DELETED — it exempted zero classified sites under the gate (no RawLine/Heredoc CONSTRUCTION exists in any formerly-exempt dir: extdeps/github, extdeps/languages, compiler/05_emit, compiler/06_translate, self_host/candidate_generation, communication/medium), and a dead exemption is the inert-lens-is-a-lie failure; removing it also closes a would-be silent gap (a future RawLine in an exempt dir is now caught). Operator was notified of the supersession in parallel; a one-line revert restores Path A if objected."
+
+data medium_bash_sink_targets: List<String> = ["RawLine.text", "Heredoc.body"]
+
+type RawLiteralPart {
+  is_hole: Bool
+  text: String
+}
+
+type RawLiteralPartsFact {
   path: String
-  face: MediumLeakFace
-  detail: String
+  constructor: String
+  field: String
+  parts: List<RawLiteralPart>
 }
 
-type MediumStructureLeak {
-  path: String
-  face: MediumLeakFace
-  detail: String
+data empty_skeleton_parts: List<SkeletonPart> = []
+
+fn part_to_skeleton(p: RawLiteralPart) -> SkeletonPart {
+  if p.is_hole {
+    HolePart
+  } else {
+    ConstPart { text: p.text }
+  }
 }
 
-data empty_medium_structure_leaks: List<MediumStructureLeak> = []
-
-data empty_medium_marker_list: List<String> = []
-
-type MediumMarkers {
-  medium: String
-  markers: List<String>
+fn parts_to_skeleton(parts: List<RawLiteralPart>) -> LiteralSkeleton {
+  LiteralSkeleton {
+    parts: fold_list(
+      xs: parts,
+      empty: empty_skeleton_parts,
+      cons: fn(acc, p) { list_snoc_item(xs: acc, item: part_to_skeleton(p: p)) }
+    )
+  }
 }
 
-data medium_syntax_markers: List<MediumMarkers> = [
+fn constructor_field_matches(fact: RawLiteralPartsFact, ctor: String, field: String) -> Bool {
+  (fact.constructor == ctor) && (fact.field == field)
+}
 
-  MediumMarkers { medium: "GitHubActionsExpression", markers: ["${{"] },
+fn classify_raw_literal_fact(fact: RawLiteralPartsFact) -> BashCompositionDisposition {
+  if constructor_field_matches(fact: fact, ctor: "RawLine", field: "text") {
+    classify_bash_skeleton(sk: parts_to_skeleton(parts: fact.parts))
+  } else {
+    AmbiguousParse { cause: NoLanguageDecision }
+  }
+}
 
-  MediumMarkers { medium: "CiYamlStructure", markers: [] },
+data medium_scope_test_construction_exclusion_note: String = "SCOPE (explicit, documented — NOT a silent narrowing; matches the ci_layer_roots.dag documented-exclusion idiom): the live scan roots are the PRODUCTION SUBSTRATE (std/extdeps/compiler/tools/gunbc/workflow/lens). test/claim is DELIBERATELY OUT OF SCOPE because the wall's subject is substrate SMUGGLING, and a test that CONSTRUCTS a RawLine to exercise the bash fold is building the escape hatch to TEST it, not smuggling a program. COUNTED/visible (the excluded would-be-violation set): src/v2/test/claim/bash_command_fold_test.dag constructs a RawLine.text of do_verify-newline-more (a 2-line composition that WOULD classify Violation) plus several single-command RawLines (Clean) and Heredoc bodies (AmbiguousParse); flagging a TEST of the escape hatch is a category error. Fixtures (planted/perturb, src/v2/test/fixture/medium_structure_scan) are passed as EXPLICIT perturb roots, so this default scope does not affect them. Confirmed: no PRODUCTION emit path constructs RawLine from a LITERAL in an excluded dir — the machinery sites (bash program emit) construct from dynamic tokens, not literals. Dissolve-on: test-construction of escape-hatch values gets a typed marker so it is distinguishable in-scope, or the vocab.NarrowingReason enum gains a TestFixtureConstruction variant this note is promoted to."
 
-  MediumMarkers { medium: "ShellInRun", markers: ["#!/", ">/dev/null"] },
-
-  MediumMarkers { medium: "Html", markers: [] }
-]
-
-data emitted_medium_emit_fns: List<String> = [
-  "expected_ci_yml",
-  "ci_yml_drifted",
-  "serialize_yaml",
-  "serialize_bash",
-  "serialize_expression",
-  "interpolate",
-  "serialize_template",
-  "gunbc_ci_workflow_run",
-  "gunbc_ci_run_script",
-  "ci_cgroup_peak_locate_shell",
-  "ci_floor_peak_pre_script",
-  "ci_floor_peak_post_script",
-  "scheduler_invoke",
-  "git_fetch_script",
-  "ci_release_build_script",
-  "witness_layer_source_flags",
-  "fleet_converge_sh_for",
-  "expected_fleet_converge_sh",
-  "expected_githooks_pre_push_sh",
-  "expected_githooks_pre_commit_sh",
-  "toolchain_provision_shell_exec",
-  "autoinstall_user_data",
-  "install_server_dnsmasq_conf",
-  "serialize_html_source",
-  "serialize_fragment"
-]
-
-data emitted_medium_string_ops: List<String> = [
-  "string_contains",
-  "starts_with",
-  "ends_with",
-  "substring",
-  "char_at"
-]
-
-data medium_realization_edge_path_prefixes: List<String> = [
-  "dag/extdeps/github/",
-  "src/v2/extdeps/github/",
-  "dag/extdeps/communication/medium.dag",
-  "dag/extdeps/languages/",
-  "src/v2/extdeps/languages/",
-  "src/v2/compiler/05_emit",
-  "src/v2/compiler/06_translate",
-  "src/v2/compiler/self_host/candidate_generation",
-
-  "src/v2/lens/medium_structure_containment.dag"
-]
-
-data medium_emit_side_scan_roots: List<String> = [
+data medium_bash_scan_roots: List<String> = [
   "dag/std",
   "dag/extdeps",
   "dag/compiler",
@@ -120,100 +99,11 @@ data medium_emit_side_scan_roots: List<String> = [
   "src/v2/lens"
 ]
 
-data medium_check_side_scan_roots: List<String> = [
-  "dag/std",
-  "dag/extdeps",
-  "dag/compiler",
-  "dag/tools",
-  "dag/gunbc",
-  "dag/test/claim",
-  "src/v2/std",
-  "src/v2/extdeps",
-  "src/v2/compiler",
-  "src/v2/workflow",
-  "src/v2/lens",
-  "src/v2/test/claim"
-]
+data medium_structure_roster_prune_note: String = "Roster PRUNED 60->0 (EMPTY) as part of the marker-to-gate swap (parent-ruled 2026-07-14 as a prune; the honest live count fell to 0 after the 2026-07-14 main merge). Under the type-structural gate NO substrate file has a live RawLine.text/Heredoc.body VIOLATION: (a) the marker era's ~60 entries exempted files with zero classified sites (inert = the inert-lens-is-a-lie failure, §2/§5); (b) the two os RawLine files the earlier census flagged (ubuntu_install_media_fetch, ubuntu_seeded_install_media_remaster) were RawLine->modeled MIGRATED on main and no longer construct RawLine at all, so they dropped from main's roster too; (c) the previously-sole RawLine-construction file, dag/extdeps/bmc/webui/nbd_proxy_serve.dag (at this lens's authoring: 3 single-command RawLines Clean + 2 concat-with-unquoted-hole RawLines Ambiguous + 0 Violations), was ALSO RawLine->modeled MIGRATED on the 2026-07-14 main merge to Command / ShellWord / Lit, so it too now constructs no RawLine. Whole-corpus census on the merged tree: ZERO RawLine.text / Heredoc.body CONSTRUCTIONS in scope (the only RawLine references are program.dag's type declaration and a match pattern, neither a construction; bash_command_fold_test is scope-excluded above). Honest receipt: roster == exactly the violating files == EMPTY, and there are currently no smuggling-capable sinks in the substrate at all. The ratchet re-freezes at baseline=0 and stays LIVE (any entry added without a live violation reds on execution); the classifier is proven able to FIND violations by the planted_leak / perturb fixtures and the lens_unit synthetic controls, so baseline 0 is honest, not vacuous."
 
-data medium_structure_exception_roster: List<String> = [
+data medium_structure_exception_roster: List<String> = []
 
-  "dag/gunbc/ci_workflow.dag",
-  "dag/gunbc/ci_materialization.dag",
-  "src/v2/workflow/ci_floor_peak_emit.dag",
-  "src/v2/workflow/ci_floor_peak_emit_test.dag",
-  "dag/extdeps/formats/yaml.dag",
-
-  "dag/test/claim/ci_yaml_serializer_witness_test.dag",
-  "dag/test/claim/ci_deploy_witness_test.dag",
-  "dag/test/claim/ci_deploy_target_host_witness_test.dag",
-  "dag/test/claim/host_identity_observation_witness_test.dag",
-  "dag/test/claim/tailscale_acl_witness_test.dag",
-  "dag/test/claim/tailscale_acl_phase2_design_witness_test.dag",
-  "dag/test/claim/ci_runner_seam_witness_test.dag",
-  "dag/test/claim/yaml_quoting_witness_test.dag",
-  "src/v2/test/claim/ci_spec_witness_test.dag",
-
-  "dag/gunbc/fleet_converge_emit.dag",
-  "dag/gunbc/live_deploy/emit.dag",
-  "dag/gunbc/live_deploy/spec.dag",
-  "dag/gunbc/roadmap_static_site.dag",
-  "dag/gunbc/ci_deploy_access.dag",
-  "dag/gunbc/ci_deploy_target_host.dag",
-  "dag/gunbc/host_identity_observation.dag",
-  "dag/gunbc/fleet_show_effective_read.dag",
-  "dag/gunbc/host_effect_hostname_script.dag",
-  "dag/gunbc/host_effect_nbd_proxy_serve.dag",
-  "dag/gunbc/host_identity_adopt.dag",
-  "dag/gunbc/host_identity_assimilation.dag",
-  "dag/gunbc/githooks_pre_push_emit.dag",
-  "dag/gunbc/githooks_pre_commit_emit.dag",
-  "dag/gunbc/ci_spec.dag",
-  "dag/gunbc/merge_admission_produce.dag",
-  "dag/tools/merge_admission_stamp.dag",
-  "dag/tools/merge_admission_gate.dag",
-  "dag/tools/emit_host_transport.dag",
-  "dag/tools/dag_compile_clean_transport.dag",
-
-  "dag/tools/dag_compile_clean_shard_transport.dag",
-  "dag/test/claim/os_install_deduction_witness_test.dag",
-  "dag/test/claim/v1_dag_parse_witness_test.dag",
-
-  "dag/gunbc/tools/review.dag",
-  "dag/test/claim/fleet_converge_emit_test.dag",
-  "dag/test/claim/live_deploy/emit_test.dag",
-  "dag/test/claim/githooks_pre_push_emit_test.dag",
-
-  "dag/test/claim/srv3_os_install_emit_test.dag",
-  "dag/test/claim/srv3_install_server_emit_test.dag",
-
-  "dag/extdeps/bmc/webui/nbd_proxy_serve.dag",
-
-  "dag/gunbc/assimilate/bmc_token_federation.dag",
-
-  "dag/gunbc/srv3_os_install_actuate.dag",
-
-  "dag/gunbc/shell_bash_runner.dag",
-
-  "dag/gunbc/srv3_install_diagnostic_checklist.dag",
-  "dag/gunbc/srv3_install_diagnostic_observe_script.dag",
-  "dag/gunbc/srv3_seeded_install_media.dag",
-  "dag/extdeps/bmc/serial_console.dag",
-  "dag/gunbc/srv3_os_install_reconcile.dag",
-  "dag/gunbc/srv3_os_install_reconcile_types.dag",
-  "dag/gunbc/srv3_os_install_reconcile_receipt.dag",
-  "dag/gunbc/srv3_os_install_reconcile_apply.dag",
-  "dag/gunbc/srv3_os_install_reconcile_dry_run.dag",
-  "dag/gunbc/srv3_os_install_reconcile_record_approval.dag",
-
-  "dag/gunbc/srv3_host_effect_script.dag",
-
-  "dag/tools/dag_compile_clean_seam_transport.dag",
-  "dag/tools/dag_compile_clean_shard_totality_transport.dag"
-]
-
-data medium_structure_clean_tree_unquarantine_note: String = "Pre-existing rot surfaced by live host census at discovery-flip unquarantine (2026-07-09; not debt introduced by this PR): dag_compile_clean_shard_transport is shell-transport sibling to already-rostered seam/shard_totality transports; os_install_deduction + v1_dag_parse witness tests pair string_contains with emit-fn output (same pattern as ci_yaml_serializer_witness_test.dag). P5b (2026-07-14): srv3_install_diagnostic_observe_script carved from checklist — roster +1 with bash-emit Scaffold; checklist roster entry restored; toolchain_ensure dropped from roster after typed entrypoint shed script-oracle builders."
-
-data medium_structure_exception_roster_size_baseline: Int = 60
+data medium_structure_exception_roster_size_baseline: Int = 0
 
 fn roster_growth_ratchet_holds(live_size: Int, baseline: Int) -> Bool {
   live_size <= baseline
@@ -230,10 +120,6 @@ fn medium_structure_roster_growth_ratchet_holds() -> Bool {
   )
 }
 
-fn char_eq(a: Char, b: Char) -> Bool {
-  a == b
-}
-
 fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold_list(
     xs: xs,
@@ -242,112 +128,85 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
   )
 }
 
-fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
-  fold_list(
-    xs: prefixes,
-    empty: false,
-    cons: fn(acc, p) { acc || is_prefix_of(prefix: p, xs: path, eq: char_eq) }
-  )
+fn fact_in_gated_scope(fact: RawLiteralPartsFact, roster: List<String>) -> Bool {
+  list_contains_str(xs: roster, target: fact.path) == false
 }
 
-fn path_is_medium_realization_edge(path: String) -> Bool {
-  path_has_any_prefix(prefixes: medium_realization_edge_path_prefixes, path: path)
+fn raw_fact_is_violation(fact: RawLiteralPartsFact, roster: List<String>) -> Bool {
+  fact_in_gated_scope(fact: fact, roster: roster)
+    && disposition_is_violation(d: classify_raw_literal_fact(fact: fact))
 }
 
-fn marker_set(m: MediumMarkers) -> List<String> {
-  m.markers
+fn raw_fact_is_ambiguous(fact: RawLiteralPartsFact, roster: List<String>) -> Bool {
+  fact_in_gated_scope(fact: fact, roster: roster)
+    && disposition_is_ambiguous(d: classify_raw_literal_fact(fact: fact))
 }
 
-fn flatten_marker_rows(rows: List<MediumMarkers>) -> List<String> {
-  fold_list(
-    xs: rows,
-    empty: empty_medium_marker_list,
-    cons: fn(acc, m) { list_append(left: acc, right: marker_set(m: m)) }
-  )
-}
-
-fn all_medium_markers() -> List<String> {
-  flatten_marker_rows(rows: medium_syntax_markers)
-}
-
-fn is_medium_structure_leak(fact: MediumStructureLeakFact, roster: List<String>) -> Bool {
-  (path_is_medium_realization_edge(path: fact.path) == false)
-    && (list_contains_str(xs: roster, target: fact.path) == false)
-}
-
-fn scan_facts_for_medium_leaks(
-  facts: List<MediumStructureLeakFact>,
-  roster: List<String>
-) -> List<MediumStructureLeak> {
+fn count_violations(facts: List<RawLiteralPartsFact>, roster: List<String>) -> Int {
   fold_list(
     xs: facts,
-    empty: empty_medium_structure_leaks,
-    cons: fn(acc, fact) {
-      if is_medium_structure_leak(fact: fact, roster: roster) {
-        list_snoc_item(
-          xs: acc,
-          item: MediumStructureLeak {
-            path: fact.path,
-            face: fact.face,
-            detail: fact.detail
-          }
-        )
-      } else {
-        acc
-      }
-    }
+    empty: 0,
+    cons: fn(acc, fact) { if raw_fact_is_violation(fact: fact, roster: roster) { acc + 1 } else { acc } }
   )
 }
 
-fn medium_structure_leak_count(
-  facts: List<MediumStructureLeakFact>,
+fn count_ambiguous(facts: List<RawLiteralPartsFact>, roster: List<String>) -> Int {
+  fold_list(
+    xs: facts,
+    empty: 0,
+    cons: fn(acc, fact) { if raw_fact_is_ambiguous(fact: fact, roster: roster) { acc + 1 } else { acc } }
+  )
+}
+
+fn medium_structure_violation_count(
+  facts: List<RawLiteralPartsFact>,
   roster: List<String>
 ) -> Int {
-  length(xs: scan_facts_for_medium_leaks(facts: facts, roster: roster))
+  count_violations(facts: facts, roster: roster)
+}
+
+fn medium_structure_ambiguous_count(
+  facts: List<RawLiteralPartsFact>,
+  roster: List<String>
+) -> Int {
+  count_ambiguous(facts: facts, roster: roster)
 }
 
 fn medium_structure_containment_holds(
-  facts: List<MediumStructureLeakFact>,
+  facts: List<RawLiteralPartsFact>,
   roster: List<String>
 ) -> Bool {
-  is_empty(xs: scan_facts_for_medium_leaks(facts: facts, roster: roster))
+  medium_structure_violation_count(facts: facts, roster: roster) == 0
 }
 
-fn medium_structure_leak_count_canonical(facts: List<MediumStructureLeakFact>) -> Int {
-  medium_structure_leak_count(facts: facts, roster: medium_structure_exception_roster)
+fn medium_structure_violation_count_canonical(facts: List<RawLiteralPartsFact>) -> Int {
+  medium_structure_violation_count(facts: facts, roster: medium_structure_exception_roster)
 }
 
-fn medium_structure_containment_holds_canonical(facts: List<MediumStructureLeakFact>) -> Bool {
+fn medium_structure_containment_holds_canonical(facts: List<RawLiteralPartsFact>) -> Bool {
   medium_structure_containment_holds(facts: facts, roster: medium_structure_exception_roster)
 }
 
-fn medium_structure_leak_count_live(
-  emit_roots: List<String>,
-  check_roots: List<String>
-) -> Int {
-  medium_structure_leak_count_canonical(
-    facts: medium_structure_leak_facts(
-      emit_roots: emit_roots,
-      check_roots: check_roots,
-      markers: all_medium_markers(),
-      emit_fns: emitted_medium_emit_fns,
-      string_ops: emitted_medium_string_ops
-    )
+fn raw_literal_parts_facts_live(roots: List<String>) -> List<RawLiteralPartsFact> {
+  medium_structure_literal_parts_facts(roots: roots, targets: medium_bash_sink_targets)
+}
+
+fn medium_structure_violation_count_live(roots: List<String>) -> Int {
+  medium_structure_violation_count_canonical(
+    facts: raw_literal_parts_facts_live(roots: roots)
   )
 }
 
-fn medium_structure_containment_clean_live(
-  emit_roots: List<String>,
-  check_roots: List<String>
-) -> Bool {
+fn medium_structure_ambiguous_count_live(roots: List<String>) -> Int {
+  medium_structure_ambiguous_count(
+    facts: raw_literal_parts_facts_live(roots: roots),
+    roster: medium_structure_exception_roster
+  )
+}
+
+fn medium_structure_containment_clean_live(roots: List<String>) -> Bool {
   medium_structure_containment_holds_canonical(
-    facts: medium_structure_leak_facts(
-      emit_roots: emit_roots,
-      check_roots: check_roots,
-      markers: all_medium_markers(),
-      emit_fns: emitted_medium_emit_fns,
-      string_ops: emitted_medium_string_ops
-    )
+    facts: raw_literal_parts_facts_live(roots: roots)
   )
 }
 
@@ -359,14 +218,8 @@ fn medium_structure_containment_witness_diagnostic() -> Diagnostic {
   }
 }
 
-fn medium_structure_containment_witness(
-  emit_roots: List<String>,
-  check_roots: List<String>
-) -> Witness<Bool> {
-  if medium_structure_containment_clean_live(
-    emit_roots: emit_roots,
-    check_roots: check_roots
-  ) {
+fn medium_structure_containment_witness(roots: List<String>) -> Witness<Bool> {
+  if medium_structure_containment_clean_live(roots: roots) {
     Holds { value: true }
   } else {
     Violates { diagnostic: medium_structure_containment_witness_diagnostic() }
@@ -374,22 +227,18 @@ fn medium_structure_containment_witness(
 }
 
 fn medium_structure_containment_canonical_witness() -> Witness<Bool> {
-  medium_structure_containment_witness(
-    emit_roots: medium_emit_side_scan_roots,
-    check_roots: medium_check_side_scan_roots
-  )
+  medium_structure_containment_witness(roots: medium_bash_scan_roots)
 }
 
-fn medium_structure_check_roots_with_perturb(perturb_roots: List<String>) -> List<String> {
-  list_append(left: medium_check_side_scan_roots, right: perturb_roots)
+fn medium_structure_scan_roots_with_perturb(perturb_roots: List<String>) -> List<String> {
+  list_append(left: medium_bash_scan_roots, right: perturb_roots)
 }
 
-fn medium_structure_containment_canonical_with_check_perturb_witness(
+fn medium_structure_containment_canonical_with_perturb_witness(
   perturb_roots: List<String>
 ) -> Witness<Bool> {
   medium_structure_containment_witness(
-    emit_roots: medium_emit_side_scan_roots,
-    check_roots: medium_structure_check_roots_with_perturb(perturb_roots: perturb_roots)
+    roots: medium_structure_scan_roots_with_perturb(perturb_roots: perturb_roots)
   )
 }
 

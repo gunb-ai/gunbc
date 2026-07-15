@@ -3168,6 +3168,7 @@ pub fn resolve_item_types(
                         true,
                     ),
                     global_bare: e.global_bare.clone(),
+                    symbol_index: e.symbol_index.clone(),
                 })
             },
         );

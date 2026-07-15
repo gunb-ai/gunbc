@@ -1,0 +1,31 @@
+module v2.test.resolve.qualified_module_projection_stripped_witness
+
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data g1_stripped_witness_note: String = "Enrollment witness for qualified_module_projection_stripped_fixture.dag — entry-scoped discovery must not re-resolve the import-less qualified type (provider is outside import closure); batch-1 compile-clean covers the fixture module."
+
+data qmp_stripped_fixture_subject: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^qmp_stripped_fixture_subject } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data claim_qualified_module_projection_stripped_compiles: TestClaim = CompilesClaim {
+  label: "resolve/qualified_module_projection_stripped: import-less module compiles with qualified type projection",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: qmp_stripped_fixture_subject,
+  expected_value: qmp_stripped_fixture_subject,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
