@@ -13553,6 +13553,12 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // the std eq rows; dissolve with derived equality from inhabitance (dag/std/algebra).
     "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
     "src/v2/lens/live_read_classification.dag::path_pattern_eq",
+    // 2026-07-15 backfill: #6680 merge landed bash_composition_recognizer.dag::apply_role
+    // with a two-special-variant dispatch (IfFraming / UnmodeledKeyword mutate ScanState;
+    // every other TokenRole through close_run unchanged). The nfr witness is corpus-read;
+    // the landing PR predict-skipped it and the red surfaced on the next cold sweep. Burns
+    // down with the bash composition recognizer fold migration.
+    "src/v2/lens/bash_composition_recognizer.dag::apply_role",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.
