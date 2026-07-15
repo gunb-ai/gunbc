@@ -1,43 +1,15 @@
 module v2.test.fixture.medium_structure_scan.leak_plant
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import std.markup { Fragment, FragmentText }
-import extdeps.languages.html_fragment { serialize_fragment }
+import extdeps.languages.bash.program { ShellProgram, RawLine }
 
-fn planted_emit_side_leak() -> String {
-  "HOME: ${{ runner.temp }}/cargo"
-}
+data planted_medium_structure_leak_note: String = "Planted leak fixture for the no-smuggled-programs grammar classifier (RED-on-5.2 controls, scanned via planted_leak_test's EXPLICIT planted roots — NOT the default substrate scope). Each RawLine.text is a bash COMPOSITION the recognizer must flag Violation: statement-separator, and-then, or-else, pipe, if/then/fi. The planted count is DERIVED from this named set of 5; removing any one drops the count to 4 (a discriminating control)."
 
-fn expected_ci_yml() -> String {
-  "runs-on: linux\n"
-}
-
-fn planted_check_side_leak() -> Bool {
-  let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "runs-on")
-}
-
-fn clean_plain_literal() -> String {
-  "HOME: /home/runner/cargo"
-}
-
-fn clean_string_op_over_plain(s: String) -> Bool {
-  string_contains(s: s, pattern: "runs-on")
-}
-
-fn planted_shell_emit_side_leak() -> String {
-  "#!/usr/bin/env bash"
-}
-
-fn planted_html_check_side_leak() -> Bool {
-  let html = serialize_fragment(frag: FragmentText { content: "x" })
-  starts_with(s: html, prefix: "<")
-}
-
-fn ci_yml_drifted(committed: String) -> Bool {
-  committed == ""
-}
-
-fn planted_provenance_leak_markerfree() -> Bool {
-  ci_yml_drifted(committed: "git add && git commit")
+data planted_leak_program: ShellProgram = ShellProgram {
+  set_e: false,
+  statements: [
+    RawLine { text: "echo a; echo b" },
+    RawLine { text: "make build && make test" },
+    RawLine { text: "grep -q foo bar || exit 1" },
+    RawLine { text: "cat f | sort | uniq" },
+    RawLine { text: "if [ -x ./x ]; then ./x; fi" }
+  ]
 }
