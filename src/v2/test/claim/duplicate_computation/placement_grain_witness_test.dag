@@ -75,7 +75,7 @@ test fn ci_build_duplication_emits_authored_duplication_verdict() -> Bool {
   ])
   length(xs: verdicts) == 1
     && duplicate_computation_verdict_is_authored_duplication(
-      v: verdicts.first().value,
+      v: verdicts.first(),
       identity: release_build_key,
       site_count: 2
     )
