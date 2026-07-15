@@ -107,18 +107,15 @@ fn genuine_error_is_hard_even_beside_advisories() {
     );
 }
 
-/// The gate must agree with the authority on every variant, not just the ones
-/// enumerated above — pins the delegation itself rather than a sampled table.
+/// Pins the *delegation* rather than the verdicts: the gate must return whatever
+/// `00_core.dag` says, so a future change to the authority carries the gate with it
+/// instead of drifting from it again. Sampled over the three classes that matter
+/// (advisory / tolerated / genuine); it is not an exhaustive variant sweep.
 #[test]
 fn gate_agrees_with_dag_authority() {
-    for d in [
-        unlisted_import_use(),
-        complexity_unknown(),
-        genuine_error(),
-    ] {
-        let authority = v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic(
-            d.diagnostic.clone(),
-        );
+    for d in [unlisted_import_use(), complexity_unknown(), genuine_error()] {
+        let authority =
+            v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone());
         assert_eq!(
             has_hard(vec![d.clone()]),
             authority,
