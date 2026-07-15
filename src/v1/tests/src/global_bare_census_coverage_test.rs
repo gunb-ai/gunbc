@@ -44,6 +44,46 @@ fn probe_minor_unit(c: ProbeCurrency) -> Int {
 "#;
 
 #[test]
+fn probe_census_indexes_variant_and_fn() {
+    use v1_compiler::v1_compiler_compile::front_end_sources;
+    use v1_compiler::v1_compiler_infer::build_global_bare_census;
+    use v1_compiler::v1_compiler_infer_env::GlobalBareLookupState;
+
+    let sources = Rc::new(
+        vec![src("dag/probe_def.dag", DEFINER)]
+            .into_iter()
+            .collect::<im_rc::Vector<_>>(),
+    );
+    let frontend = front_end_sources(sources);
+    let graph = frontend.graph.as_ref().expect("graph");
+    let source_indices = frontend
+        .newline_indices
+        .iter()
+        .cloned()
+        .fold(
+            im_rc::HashMap::new(),
+            |acc, si| acc.update(si.file.clone(), si),
+        );
+    let source_indices_rc = Rc::new(source_indices);
+    let census = build_global_bare_census(graph.modules.clone(), source_indices_rc.clone());
+    assert!(
+        matches!(
+            census.get("ProbeEur").map(|s| &**s),
+            Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. })
+        ),
+        "census must index module-unique Disj variant ProbeEur: keys={:?}",
+        census.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        matches!(
+            census.get("probe_minor_unit").map(|s| &**s),
+            Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. })
+        ),
+        "census must index fn-with-body probe_minor_unit"
+    );
+}
+
+#[test]
 fn probe_bare_type_reference_resolves() {
     let user = r#"module probe.use
 
@@ -56,18 +96,6 @@ fn takes_currency(c: ProbeCurrency) -> Int {
 }
 
 #[test]
-fn probe_bare_variant_reference_resolves() {
-    let user = r#"module probe.use
-
-fn pick() -> ProbeCurrency {
-  ProbeEur
-}
-"#;
-    let d = hard_diags(DEFINER, user);
-    assert!(d.is_empty(), "bare VARIANT ref should resolve via global_bare: {d:?}");
-}
-
-#[test]
 fn probe_bare_function_reference_resolves() {
     let user = r#"module probe.use
 
@@ -77,4 +105,16 @@ fn call_it(c: ProbeCurrency) -> Int {
 "#;
     let d = hard_diags(DEFINER, user);
     assert!(d.is_empty(), "bare FN ref should resolve via global_bare: {d:?}");
+}
+
+#[test]
+fn probe_bare_variant_reference_resolves() {
+    let user = r#"module probe.use
+
+fn pick() -> ProbeCurrency {
+  ProbeEur
+}
+"#;
+    let d = hard_diags(DEFINER, user);
+    assert!(d.is_empty(), "bare VARIANT ref should resolve via global_bare: {d:?}");
 }
