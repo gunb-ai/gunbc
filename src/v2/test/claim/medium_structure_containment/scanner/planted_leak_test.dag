@@ -1,7 +1,7 @@
 module v2.test.medium_structure_containment.scanner.planted_leak
 
 import v2.lens.medium_structure_containment {
-  medium_structure_leak_count_live,
+  medium_structure_violation_count_live,
   medium_structure_containment_clean_live
 }
 import v2.std.collection { List }
@@ -16,12 +16,6 @@ data planted_leak_scan_roots: List<String> = [
 ]
 
 test fn medium_structure_planted_leak_detected_holds() -> Bool {
-  (medium_structure_leak_count_live(
-    emit_roots: planted_leak_scan_roots,
-    check_roots: planted_leak_scan_roots
-  ) == 5)
-    && (medium_structure_containment_clean_live(
-      emit_roots: planted_leak_scan_roots,
-      check_roots: planted_leak_scan_roots
-    ) == false)
+  (medium_structure_violation_count_live(roots: planted_leak_scan_roots) == 5)
+    && (medium_structure_containment_clean_live(roots: planted_leak_scan_roots) == false)
 }

@@ -4,15 +4,16 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
+use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
-use crate::v1_compiler_infer_env::lookup_type_by_name;
+use crate::v1_compiler_infer_env::{lookup_type_by_name, symbol_index_insert, SymbolIndex};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -24,12 +25,12 @@ use crate::v1_std_core::{
     arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
     expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
-    field_init_node_name_at, field_init_node_value, has_child_named, intern,
+    field_init_node_name_at, field_init_node_value, has_child_named, inferred_to_node, intern,
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, param_node_name_at,
-    param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items,
+    param_node_name_at, param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData,
+    InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -2079,6 +2080,13 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
     // loader repoint is staged as a separate part after those land. The REFERENCE producer below is
     // already live via the inert-lens reach (the strips' documented CI blocker), which is hygiene-
     // only and cannot regress a compile.
+    //
+    // Attempted 2026-07-14 (this node, part 2): unioning `reference_edges_as_import_facts(..., false)`
+    // onto `edges` here balloons a single small witness entry's load set from 27 to 424 resolved
+    // sources (measured on `dag_import_closure_live_witness_bundle_holds`) — ubiquitous std bare names
+    // fan every import-less referrer out to nearly the whole pool, not a bounded superset. Reverted;
+    // the naive union is unsafe at this grain and needs a narrower fan-out bound (or a same-module/
+    // homonym-aware restriction) before the loader can repoint. See escalation on this node.
     let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
     let nodes = module_declaration_facts(&roots);
     let adjacency = build_import_adjacency(&edges, &nodes);
@@ -2199,6 +2207,134 @@ fn entry_file_touched_via_import_closure(
     }))
 }
 
+/// Receipted Rust mirror of the single authority `v2.std.live_read.live_read_carrier_homes_v0`
+/// (`src/v2/std/live_read.dag`) — the module names of the 8 declared live-read carrier homes.
+/// Kept in lockstep with that `.dag` roster by hand; a drift here under-approximates axis (iv)
+/// fail-closed-safe direction only if this list is a SUPERSET of the `.dag` roster, so any
+/// addition to the `.dag` roster must be mirrored here — the drift gate below
+/// (`live_read_carrier_home_modules_v0_is_superset_of_dag_authority`) evaluates the `.dag`
+/// authority through a real interpreter context and fails the build the moment this const falls
+/// behind, so the mismatch cannot silently pass.
+/// Dissolution trigger: every caller of `runtime_data_dependency_touched_via_carrier_closure`
+/// (the skip-before-resolve fast path and the precompute-count helpers below) is itself a named
+/// `SCAFFOLD (§7 hand-Rust shrink-to-zero)` whose own DELETE WHEN note ties dissolution to
+/// `v2.workflow.affected_set_floor_runner`'s `.dag` disposition owning the same predicate
+/// end-to-end. This const has no independent dissolution path or generator lane because it has
+/// no independent caller: when those scaffolds delete, this const and its drift gate delete with
+/// them, not before.
+const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
+    "v2.lens.enforcement.cost_coverage",
+    "v2.lens.enforcement.grammar_coverage",
+    "v2.lens.complexity_accumulator_copy.roster_gate",
+    "v2.compiler.self_host",
+    "v2.std.decl_index",
+    "v2.lens.module_graph",
+    "tools.dag_compile_clean_shard_roster",
+    "tools.dag_compile_clean_scope",
+];
+
+/// Axis (iv) of the fourth-axis law (`docs/plans/live-read-witness-classification-design.md`
+/// §7): does `entry_path`'s import closure reach a declared live-read carrier home, and is
+/// any path touched at all? This is a G1-only (module-closure) mirror of the landed G2
+/// call-reachability lens (`v2.lens.live_read_classification`) — G2's carrier set is always
+/// a superset of G1's under the same closure (`merge_g1_and_g2_carriers`), so this coarser
+/// Rust check is fail-closed-safe relative to the full `.dag` authority: it may over-report
+/// (an extra witness run) but never under-report (a missed run). It does not attempt to
+/// prove which touched path a reached carrier actually reads at runtime (that precision is
+/// G2/G3's job) — reachability plus any touch is treated as a hit.
+fn runtime_data_dependency_touched_via_carrier_closure(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    touched_paths: &[String],
+) -> bool {
+    if touched_paths.is_empty() {
+        return false;
+    }
+    let mut closure_modules: HashSet<String> = HashSet::new();
+    collect_import_closure_module_names_from_facts(entry_path, facts, &mut closure_modules);
+    LIVE_READ_CARRIER_HOME_MODULES_V0
+        .iter()
+        .any(|carrier_module| closure_modules.contains(*carrier_module))
+}
+
+#[cfg(test)]
+mod live_read_carrier_home_roster_drift_gate_tests {
+    use super::{
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
+        workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::collections::HashSet;
+
+    const LIVE_READ_ENTRY: &str = "src/v2/std/live_read.dag";
+
+    fn record_field<'a>(
+        ctx: &v1_interpreter::InterpContext,
+        fields: &'a [(v1_interpreter::Symbol, Value)],
+        field_name: &str,
+    ) -> Option<&'a Value> {
+        fields
+            .iter()
+            .find(|(sym, _)| ctx.sym_eq(*sym, field_name))
+            .map(|(_, v)| v)
+    }
+
+    // Reads the `.dag`-side single authority directly by evaluating
+    // `live_read_carrier_homes_v0` in a real interpreter context — not a re-hand-authored Rust
+    // copy of the roster — so this test's own expectation cannot drift the same way the
+    // production const can.
+    fn dag_carrier_home_modules() -> HashSet<String> {
+        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
+        let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
+        let (graph, indices) =
+            resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_ENTRY)
+                .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+        let val = v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::eval_data_item_value(&ctx, "live_read_carrier_homes_v0")
+        })
+        .unwrap_or_else(|e| panic!("eval live_read_carrier_homes_v0: {e}"))
+        .unwrap_or_else(|| panic!("live_read_carrier_homes_v0 not found as a data item"));
+        let Value::List(items) = val else {
+            panic!("live_read_carrier_homes_v0 is not a List: {val:?}");
+        };
+        items
+            .iter()
+            .map(|item| {
+                let Value::Record { fields, .. } = item else {
+                    panic!("live_read_carrier_homes_v0 entry is not a Record: {item:?}");
+                };
+                match record_field(&ctx, fields, "module") {
+                    Some(Value::Str(s)) => s.clone(),
+                    other => panic!("LiveReadCarrierHome.module is not a String: {other:?}"),
+                }
+            })
+            .collect()
+    }
+
+    // The safety-critical drift direction (axis (iv)'s fail-closed-safe requirement, see the
+    // doc-comment on `LIVE_READ_CARRIER_HOME_MODULES_V0`): the Rust const must be a SUPERSET of
+    // the `.dag` roster. A `.dag`-only addition this const misses makes
+    // `runtime_data_dependency_touched_via_carrier_closure` return `false` for that carrier —
+    // silently fail-open on the exact axis this const backs.
+    #[test]
+    fn live_read_carrier_home_modules_v0_is_superset_of_dag_authority() {
+        let dag_modules = dag_carrier_home_modules();
+        let rust_modules: HashSet<String> = LIVE_READ_CARRIER_HOME_MODULES_V0
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let missing: Vec<&String> = dag_modules.difference(&rust_modules).collect();
+        assert!(
+            missing.is_empty(),
+            "`.dag` authority `live_read_carrier_homes_v0` declares carrier home module(s) \
+             {missing:?} not mirrored in Rust `LIVE_READ_CARRIER_HOME_MODULES_V0` \
+             (src/v1/stage0/src/cli_run.rs) — add them there or axis (iv) silently fails open \
+             for that carrier"
+        );
+    }
+}
+
 // SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
 // ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
 // docs/plans/affected-set-precompute-pruning.md Step 4 migrate floor) — host-side
@@ -2280,12 +2416,13 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
         return Ok(false);
     }
-    Ok(!entry_file_touched_via_import_closure(
-        entry_path,
-        facts,
-        declared_paths,
-        touched_paths,
-    )?)
+    if entry_file_touched_via_import_closure(entry_path, facts, declared_paths, touched_paths)? {
+        return Ok(false);
+    }
+    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_paths) {
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 struct DiscoveryEntryResolve {
@@ -2294,6 +2431,7 @@ struct DiscoveryEntryResolve {
     frontier_nodes: Vec<v1_interpreter::Value>,
     touches_frontier: bool,
     entry_file_touched: bool,
+    entry_runtime_dependency_touched: bool,
     resolve_nanos: u128,
     stage_nanos: ResolveStageNanos,
 }
@@ -2335,33 +2473,50 @@ fn resolve_discovery_entry_for_corpus_row(
         None,
         whole_tree_published_keys,
     );
-    let (frontier_nodes, touches_frontier, entry_file_touched) = if skip_enabled {
-        let frontier_nodes = rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
-        let touches_frontier = if frontier_nodes.is_empty() {
-            false
+    let (frontier_nodes, touches_frontier, entry_file_touched, entry_runtime_dependency_touched) =
+        if skip_enabled {
+            let frontier_nodes =
+                rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
+            let touches_frontier = if frontier_nodes.is_empty() {
+                false
+            } else {
+                entry_touches_rerun_frontier(
+                    &entry_ctx,
+                    &list_value_from_vec(frontier_nodes.clone()),
+                )?
+            };
+            let entry_file_touched = if touched_entry_paths.is_empty() {
+                false
+            } else {
+                entry_file_touched_via_import_closure(
+                    entry_path,
+                    &index.module_graph_facts,
+                    module_graph_declared_paths,
+                    touched_entry_paths,
+                )?
+            };
+            let entry_runtime_dependency_touched =
+                runtime_data_dependency_touched_via_carrier_closure(
+                    entry_path,
+                    &index.module_graph_facts,
+                    touched_entry_paths,
+                );
+            (
+                frontier_nodes,
+                touches_frontier,
+                entry_file_touched,
+                entry_runtime_dependency_touched,
+            )
         } else {
-            entry_touches_rerun_frontier(&entry_ctx, &list_value_from_vec(frontier_nodes.clone()))?
+            (Vec::new(), true, true, true)
         };
-        let entry_file_touched = if touched_entry_paths.is_empty() {
-            false
-        } else {
-            entry_file_touched_via_import_closure(
-                entry_path,
-                &index.module_graph_facts,
-                module_graph_declared_paths,
-                touched_entry_paths,
-            )?
-        };
-        (frontier_nodes, touches_frontier, entry_file_touched)
-    } else {
-        (Vec::new(), true, true)
-    };
     Ok(DiscoveryEntryResolve {
         ctx: entry_ctx,
         closure_subject,
         frontier_nodes,
         touches_frontier,
         entry_file_touched,
+        entry_runtime_dependency_touched,
         resolve_nanos,
         stage_nanos,
     })
@@ -2679,12 +2834,22 @@ pub fn resolve_entry_graph_shared(
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
-    /// Increment C cache shell (C1-prep). `std::collections::HashMap` map shells avoid
-    /// `im_rc::HashMap` (`!Sync` in statics); payloads remain `Rc` and the struct is
-    /// `!Send` — `Arc<Mutex<_>>` does not cross threads until store-path `Rc`→`Arc`
-    /// (cross-worker-typecheck-share-design.md §4.1). Today each index owns one `Arc` on
-    /// its thread; worker spawn still builds a private index per shard.
-    shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
+    /// Per-index typed results — always `Rc` (main memory path).
+    typed_module_cache:
+        RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    /// Per-index collision registry when `cross_worker_store` is absent.
+    module_source_identity: RefCell<std::collections::HashMap<String, String>>,
+    /// Cross-worker serde-byte transport when increment C is explicitly armed (tests / future Arc).
+    cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
+    /// Per-index intern table — paired with `parse_cache` on this worker (never shared).
+    intern_table: RefCell<Rc<InternTable>>,
+    parse_cache: RefCell<
+        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
+    >,
+    normalize_diag_cache:
+        RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+    ownership_diag_cache:
+        RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -2704,35 +2869,45 @@ pub struct MultiEntryIndex {
     >,
 }
 
-/// S2a increment C typed/parse cache payloads (C1-prep). Target: one instance per
-/// `(process, source_roots)` cloned across worker index shells. Blocked on `Rc`→`Arc` for
-/// store-carried infer carriers — `Rc` payloads make this `!Send` today.
-struct SharedTypecheckCaches {
-    intern_table: Rc<InternTable>,
-    parse_cache:
-        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
-    typed_module_cache:
-        std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>,
-    module_source_identity: std::collections::HashMap<String, String>,
-    normalize_diag_cache: std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
-    ownership_diag_cache: std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
+    shared_typecheck_store::new_shared_typecheck_caches()
 }
 
-impl SharedTypecheckCaches {
-    fn new() -> Self {
-        Self {
-            intern_table: seed_kernel_intern_names(empty_intern_table()),
-            parse_cache: std::collections::HashMap::new(),
-            typed_module_cache: std::collections::HashMap::new(),
-            module_source_identity: std::collections::HashMap::new(),
-            normalize_diag_cache: std::collections::HashMap::new(),
-            ownership_diag_cache: std::collections::HashMap::new(),
-        }
+pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
+    new_multi_entry_index_shell(build_module_index(source_roots), source_roots, None)
+}
+
+pub fn build_multi_entry_index_with_shared_caches(
+    source_roots: &[String],
+    cross_worker_store: Arc<RwLock<SharedTypecheckCaches>>,
+) -> MultiEntryIndex {
+    new_multi_entry_index_shell(
+        build_module_index(source_roots),
+        source_roots,
+        Some(cross_worker_store),
+    )
+}
+
+fn new_multi_entry_index_shell(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+    cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
+) -> MultiEntryIndex {
+    MultiEntryIndex {
+        source_files,
+        module_graph_facts: build_module_graph_facts_live(source_roots),
+        typed_module_cache: RefCell::new(std::collections::HashMap::new()),
+        module_source_identity: RefCell::new(std::collections::HashMap::new()),
+        cross_worker_store,
+        intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
+        parse_cache: RefCell::new(std::collections::HashMap::new()),
+        normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
+        ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
+        resolved_graph_memo: RefCell::new(HashMap::new()),
     }
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
-// docs/plans/resolver-graph-major-design.md; process-wide after increment C). Counts how
 // many module typechecks were actually COMPUTED (cache misses). When every consumer of
 // the process shares one typed_module_cache, this stays ≤ the distinct module count of
 // the process union.
@@ -2760,6 +2935,109 @@ pub fn reset_typecheck_compute_count() {
 
 fn bump_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+fn shared_caches_read<'a>(
+    lock: &'a Arc<RwLock<SharedTypecheckCaches>>,
+) -> Result<std::sync::RwLockReadGuard<'a, SharedTypecheckCaches>, String> {
+    lock.read()
+        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))
+}
+
+fn shared_caches_write<'a>(
+    lock: &'a Arc<RwLock<SharedTypecheckCaches>>,
+) -> Result<std::sync::RwLockWriteGuard<'a, SharedTypecheckCaches>, String> {
+    lock.write()
+        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))
+}
+
+/// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
+/// cross-worker store is armed (no local duplicate — serde transport is one authority).
+fn index_get_typed(
+    index: &MultiEntryIndex,
+    mod_name: &str,
+) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+    let Some(store) = index.cross_worker_store.as_ref() else {
+        return Ok(index.typed_module_cache.borrow().get(mod_name).cloned());
+    };
+    shared_get_typed(store, mod_name)
+}
+
+fn index_contains_typed(index: &MultiEntryIndex, mod_name: &str) -> Result<bool, String> {
+    let Some(store) = index.cross_worker_store.as_ref() else {
+        return Ok(index.typed_module_cache.borrow().contains_key(mod_name));
+    };
+    let caches = shared_caches_read(store)?;
+    Ok(caches.contains_typed(mod_name))
+}
+
+fn check_index_module_source_identity(
+    index: &MultiEntryIndex,
+    mod_name: &str,
+    decl_file: &str,
+) -> Result<(), String> {
+    if let Some(store) = &index.cross_worker_store {
+        let mut caches = shared_caches_write(store)?;
+        check_module_source_identity_map(&mut caches.module_source_identity, mod_name, decl_file)
+    } else {
+        check_module_source_identity_map(
+            &mut index.module_source_identity.borrow_mut(),
+            mod_name,
+            decl_file,
+        )
+    }
+}
+
+fn index_insert_typed(
+    index: &MultiEntryIndex,
+    mod_name: String,
+    result: Rc<v1_compiler_infer::TypecheckModuleResult>,
+) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
+    let Some(store) = index.cross_worker_store.as_ref() else {
+        index
+            .typed_module_cache
+            .borrow_mut()
+            .insert(mod_name, result.clone());
+        return Ok(result);
+    };
+    if let Some(bytes) = {
+        let caches = shared_caches_read(store)?;
+        caches.clone_typed_bytes(&mod_name)
+    } {
+        return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
+    }
+    let encoded = SharedTypecheckCaches::encode_typed_snapshot(&result)?;
+    let raced_bytes = {
+        let mut caches = shared_caches_write(store)?;
+        if let Some(existing) = caches.clone_typed_bytes(&mod_name) {
+            Some(existing)
+        } else {
+            caches.insert_typed_preencoded(mod_name.clone(), encoded);
+            None
+        }
+    };
+    if let Some(bytes) = raced_bytes {
+        return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
+    }
+    // Insert won the race: bytes live in the shared store only (no per-index Rc copy).
+    Ok(result)
+}
+
+/// Read the shared typed cache with a brief lock hold; decode happens after the guard drops.
+fn shared_get_typed(
+    shared_caches: &Arc<RwLock<SharedTypecheckCaches>>,
+    mod_name: &str,
+) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+    let bytes = {
+        let caches = shared_caches_read(shared_caches)?;
+        caches.clone_typed_bytes(mod_name)
+    };
+    match bytes {
+        Some(snapshot) => {
+            SharedTypecheckCaches::decode_typed_snapshot(snapshot.as_slice()).map(Some)
+        }
+        None => Ok(None),
+    }
 }
 
 /// Accumulate the authored module names of a set of typed modules into `out`.
@@ -2792,25 +3070,6 @@ fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
     t
 }
 
-pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
-    build_multi_entry_index_with_shared_caches(
-        source_roots,
-        Arc::new(Mutex::new(SharedTypecheckCaches::new())),
-    )
-}
-
-fn build_multi_entry_index_with_shared_caches(
-    source_roots: &[String],
-    shared_caches: Arc<Mutex<SharedTypecheckCaches>>,
-) -> MultiEntryIndex {
-    MultiEntryIndex {
-        source_files: build_module_index(source_roots),
-        module_graph_facts: build_module_graph_facts_live(source_roots),
-        shared_caches,
-        resolved_graph_memo: RefCell::new(HashMap::new()),
-    }
-}
-
 /// Primary-precedence pool for affected-set attribution of `src/v1/*.dag` edits:
 /// witness_layer_roots (dag + src/v2) cannot resolve v1.compiler.* modules alone.
 fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
@@ -2819,12 +3078,7 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v2".to_string(),
         "src/v1".to_string(),
     ];
-    MultiEntryIndex {
-        source_files: build_module_index_primary_precedence(&roots),
-        module_graph_facts: build_module_graph_facts_live(&roots),
-        shared_caches: Arc::new(Mutex::new(SharedTypecheckCaches::new())),
-        resolved_graph_memo: RefCell::new(HashMap::new()),
-    }
+    new_multi_entry_index_shell(build_module_index_primary_precedence(&roots), &roots, None)
 }
 
 pub fn resolve_entry_with_index(
@@ -3012,13 +3266,7 @@ fn resolve_entry_with_parse_cache(
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
-        let cached = {
-            let caches = index
-                .shared_caches
-                .lock()
-                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-            caches.parse_cache.get(&source.path).cloned()
-        };
+        let cached = index.parse_cache.borrow().get(&source.path).cloned();
 
         let (parse_result, nl_index) = match cached {
             Some(entry) => entry,
@@ -3026,21 +3274,18 @@ fn resolve_entry_with_parse_cache(
                 let tokens =
                     v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                 let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-                let mut caches = index
-                    .shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-                let current_table = caches.intern_table.clone();
+                let current_table = index.intern_table.borrow().clone();
                 let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
                     let mut m = HashMap::new();
                     m.insert(source.path.clone(), nl_index.clone());
                     m
                 });
                 let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-                caches.intern_table = parsed.intern_table.clone();
-                let entry = (parsed.result.clone(), nl_index);
-                caches
+                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+                let entry = (parsed.result.clone(), nl_index.clone());
+                index
                     .parse_cache
+                    .borrow_mut()
                     .insert(source.path.clone(), entry.clone());
                 entry
             }
@@ -3062,12 +3307,7 @@ fn resolve_entry_with_parse_cache(
     }
 
     let source_indices = Rc::new(si_map);
-    let global_table = index
-        .shared_caches
-        .lock()
-        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
-        .intern_table
-        .clone();
+    let global_table = index.intern_table.borrow().clone();
     resolve_stage_slot_add(|s| s.parse += parse_started.elapsed().as_nanos());
 
     let resolve_started = std::time::Instant::now();
@@ -3094,13 +3334,7 @@ fn resolve_entry_with_parse_cache(
     let mut norm_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
     for m in graph.modules.iter() {
         let key = m.module.span.file.clone();
-        let cached = index
-            .shared_caches
-            .lock()
-            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
-            .normalize_diag_cache
-            .get(&key)
-            .cloned();
+        let cached = index.normalize_diag_cache.borrow().get(&key).cloned();
         let module_diags = match cached {
             Some(hit) => hit,
             None => {
@@ -3109,10 +3343,8 @@ fn resolve_entry_with_parse_cache(
                     source_indices.clone(),
                 );
                 index
-                    .shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
                     .normalize_diag_cache
+                    .borrow_mut()
                     .insert(key, computed.clone());
                 computed
             }
@@ -3131,12 +3363,8 @@ fn resolve_entry_with_parse_cache(
 
     set_phase(FloorPhase::Typecheck, entry_file);
     let reconcile_started = std::time::Instant::now();
-    let typed = reconcile_with_typed_cache(
-        graph.clone(),
-        source_indices.clone(),
-        global_table,
-        &index.shared_caches,
-    )?;
+    let typed =
+        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
     // Assembly residue = reconcile wall minus the per-module rows its internals
     // accumulated into the slot during this call (typecheck computes + parent envs).
     let reconcile_total = reconcile_started.elapsed().as_nanos();
@@ -3173,23 +3401,15 @@ fn resolve_entry_with_parse_cache(
     let mut ownership_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
     for m in typed.modules.iter() {
         let key = m.module.span.file.clone();
-        let cached = index
-            .shared_caches
-            .lock()
-            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
-            .ownership_diag_cache
-            .get(&key)
-            .cloned();
+        let cached = index.ownership_diag_cache.borrow().get(&key).cloned();
         let module_diags = match cached {
             Some(hit) => hit,
             None => {
                 let proofs = v1_compiler_compile::module_ownership_proofs(m.clone());
                 let computed = v1_compiler_compile::ownership_diagnostics(proofs);
                 index
-                    .shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
                     .ownership_diag_cache
+                    .borrow_mut()
                     .insert(key, computed.clone());
                 computed
             }
@@ -3440,7 +3660,7 @@ fn reconcile_all_cache_hits(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
+    index: &MultiEntryIndex,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut modules_vec = im_rc::Vector::new();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> =
@@ -3451,25 +3671,12 @@ fn reconcile_all_cache_hits(
 
     for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
         let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        let tc_result = {
-            let mut caches = shared_caches
-                .lock()
-                .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-            check_module_source_identity_map(
-                &mut caches.module_source_identity,
-                mod_name,
-                &decl_file,
-            )?;
-            caches
-                .typed_module_cache
-                .get(mod_name)
-                .cloned()
-                .ok_or_else(|| {
-                    format!(
-                        "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
-                    )
-                })?
-        };
+        {
+            check_index_module_source_identity(index, mod_name, &decl_file)?;
+        }
+        let tc_result = index_get_typed(index, mod_name)?.ok_or_else(|| {
+            format!("reconcile all-cache-hit path: module '{mod_name}' missing from typed store")
+        })?;
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
@@ -3490,11 +3697,177 @@ fn reconcile_all_cache_hits(
     )
 }
 
+fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
+    if !name.contains('.') {
+        return None;
+    }
+    name.rfind('.').and_then(|pos| {
+        if pos > 0 {
+            Some(name[..pos].to_string())
+        } else {
+            None
+        }
+    })
+}
+
+fn collect_qualified_projection_module_paths_from_node(
+    node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    out: &mut HashSet<String>,
+) {
+    let name = authored_name_at(source_indices.clone(), node.clone());
+    if let Some(prefix) = qualified_name_module_path_prefix(&name) {
+        out.insert(prefix);
+    }
+    for child in node.children.iter() {
+        collect_qualified_projection_module_paths_from_node(
+            child.clone(),
+            source_indices.clone(),
+            out,
+        );
+    }
+    for param in node.params.iter() {
+        collect_qualified_projection_module_paths_from_node(
+            param.clone(),
+            source_indices.clone(),
+            out,
+        );
+    }
+    if let Some(inferred) = &node.inferred {
+        if let Some(inner) = inferred_to_node(inferred.clone()) {
+            collect_qualified_projection_module_paths_from_node(inner, source_indices.clone(), out);
+        }
+    }
+    if let Some(type_annotation) = &node.type_annotation {
+        collect_qualified_projection_module_paths_from_node(
+            type_annotation.clone(),
+            source_indices.clone(),
+            out,
+        );
+    }
+    if let Some(body) = &node.body {
+        collect_qualified_projection_module_paths_from_node(
+            body.clone(),
+            source_indices.clone(),
+            out,
+        );
+    }
+}
+
+fn qualified_projection_module_paths_in_graph(
+    graph: &v1_compiler_resolve::ModuleGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> HashSet<String> {
+    let mut paths = HashSet::new();
+    for resolved in graph.modules.iter() {
+        for item in module_items(resolved.module.clone()).iter() {
+            collect_qualified_projection_module_paths_from_node(
+                item.clone(),
+                source_indices.clone(),
+                &mut paths,
+            );
+        }
+    }
+    paths
+}
+
+fn merge_symbol_indices(left: Rc<SymbolIndex>, right: Rc<SymbolIndex>) -> Rc<SymbolIndex> {
+    right.entries.iter().fold(left, |acc, (key, value)| {
+        symbol_index_insert(acc, key.clone(), value.clone())
+    })
+}
+
+fn parse_module_node_from_index_source(
+    index: &MultiEntryIndex,
+    source: Rc<v1_compiler_compile::SourceFile>,
+) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
+    let cached = index.parse_cache.borrow().get(&source.path).cloned();
+    let (parse_result, nl_index) = match cached {
+        Some(entry) => entry,
+        None => {
+            let tokens =
+                v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+            let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+            let current_table = index.intern_table.borrow().clone();
+            let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+                let mut m = HashMap::new();
+                m.insert(source.path.clone(), nl_index.clone());
+                m
+            });
+            let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+            *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+            let entry = (parsed.result.clone(), nl_index.clone());
+            index
+                .parse_cache
+                .borrow_mut()
+                .insert(source.path.clone(), entry.clone());
+            entry
+        }
+    };
+    if let Some(err) = &parse_result.error {
+        let span = diagnostic_to_span(err.diagnostic.clone());
+        let loc = format_error_loc(&span.file, span.start, &Rc::new(HashMap::new()));
+        return Err(format!(
+            "symbol_index qualified-projection census refused: parse failed for {}: {}",
+            loc,
+            diagnostic_to_message(err.diagnostic.clone())
+        ));
+    }
+    match &parse_result.module {
+        Some(module) => Ok((module.clone(), nl_index)),
+        None => Err(format!(
+            "symbol_index qualified-projection census refused: no module in {}",
+            source.path
+        )),
+    }
+}
+
+// SCAFFOLD (§7 seed-retained HAND-RUST — Grammar lane G1 entry-scoped reconcile)
+// 🟡 dissolve-on: build_symbol_index_for_reconcile — parse/resolve provider modules
+// referenced by dotted qualified names in the entry import closure when absent from that
+// closure; dissolve when multi-entry SymbolIndex authority is modeled (.dag census over
+// the indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
+fn build_symbol_index_for_reconcile(
+    index: &MultiEntryIndex,
+    graph: Rc<v1_compiler_resolve::ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Result<Rc<SymbolIndex>, String> {
+    let mut symbol_index =
+        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices.clone());
+    let closure_module_names: HashSet<String> = graph
+        .modules
+        .iter()
+        .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
+        .collect();
+    for module_path in qualified_projection_module_paths_in_graph(&graph, source_indices.clone()) {
+        if closure_module_names.contains(&module_path) {
+            continue;
+        }
+        let Some(source) = index.source_files.get(&module_path).cloned() else {
+            // Unindexed prefix — likely a non-module dotted token (e.g. method/field
+            // spelling), not a qualified module projection target; skip without widening.
+            continue;
+        };
+        let (module, provider_nl_index) = parse_module_node_from_index_source(index, source)?;
+        let mut provider_si = (*source_indices).clone();
+        provider_si.insert(provider_nl_index.file.clone(), provider_nl_index);
+        let provider_si = Rc::new(provider_si);
+        let provider_graph =
+            v1_compiler_resolve::resolve_modules(Rc::new(vec![module].into()), provider_si.clone());
+        let provider_index = v1_compiler_infer::build_symbol_index_census(
+            provider_graph.modules.clone(),
+            provider_si,
+        );
+        symbol_index = merge_symbol_indices(symbol_index, provider_index);
+    }
+    Ok(symbol_index)
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
-    shared_caches: &Arc<Mutex<SharedTypecheckCaches>>,
+    index: &MultiEntryIndex,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
@@ -3505,6 +3878,8 @@ fn reconcile_with_typed_cache(
     // global_bare_fallback_invariant in v1_compiler_infer_env.
     let global_bare =
         v1_compiler_infer::build_global_bare_census(graph.modules.clone(), source_indices.clone());
+    let symbol_index =
+        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
@@ -3522,20 +3897,17 @@ fn reconcile_with_typed_cache(
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
     let all_cached = {
-        let caches = shared_caches
-            .lock()
-            .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-        closure_names
-            .iter()
-            .all(|name| caches.typed_module_cache.contains_key(name))
+        let mut cached = true;
+        for name in &closure_names {
+            if !index_contains_typed(index, name)? {
+                cached = false;
+                break;
+            }
+        }
+        cached
     };
     if all_cached {
-        return reconcile_all_cache_hits(
-            &closure_modules,
-            &closure_names,
-            source_indices,
-            shared_caches,
-        );
+        return reconcile_all_cache_hits(&closure_modules, &closure_names, source_indices, index);
     }
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
     let mut dispatched: Vec<
@@ -3562,21 +3934,9 @@ fn reconcile_with_typed_cache(
             // authority — the guard must fire on genuinely different files, not path representations.
             let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
             {
-                let mut caches = shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-                check_module_source_identity_map(
-                    &mut caches.module_source_identity,
-                    &mod_name,
-                    &decl_file,
-                )?;
+                check_index_module_source_identity(index, &mod_name, &decl_file)?;
             }
-            let cached = {
-                let caches = shared_caches
-                    .lock()
-                    .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?;
-                caches.typed_module_cache.get(&mod_name).cloned()
-            };
+            let cached = index_get_typed(index, &mod_name)?;
             let was_cache_hit = cached.is_some();
             let parent_diags = if was_cache_hit {
                 Rc::new(im_rc::Vector::new())
@@ -3608,6 +3968,7 @@ fn reconcile_with_typed_cache(
                         source_indices.clone(),
                         intern_table.clone(),
                         global_bare.clone(),
+                        symbol_index.clone(),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
                     // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
@@ -3619,11 +3980,7 @@ fn reconcile_with_typed_cache(
                     if module_tc_ms >= 2_000 {
                         eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
                     }
-                    shared_caches
-                        .lock()
-                        .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))?
-                        .typed_module_cache
-                        .insert(mod_name.clone(), computed.clone());
+                    let computed = index_insert_typed(index, mod_name.clone(), computed)?;
                     computed
                 }
             };
@@ -4579,8 +4936,7 @@ pub fn handle_converge(host: String) {
         v1_interpreter::Value::Str(host.clone()),
     )];
     let result =
-        match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false)
-        {
+        match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("runtime error: {e}");
@@ -4601,16 +4957,19 @@ pub fn handle_converge(host: String) {
             std::process::exit(1);
         }
     };
-    let converged = matches!(ctx.field(fields, "converged"), Some(v1_interpreter::Value::Bool(true)));
+    let converged = matches!(
+        ctx.field(fields, "converged"),
+        Some(v1_interpreter::Value::Bool(true))
+    );
     let reason = match ctx.field(fields, "reason") {
-        Some(v1_interpreter::Value::Variant { variant_name, fields: vf, .. })
-            if ctx.sym_eq(*variant_name, "Present") =>
-        {
-            match ctx.field(vf, "value") {
-                Some(v1_interpreter::Value::Str(s)) => Some(s.clone()),
-                _ => None,
-            }
-        }
+        Some(v1_interpreter::Value::Variant {
+            variant_name,
+            fields: vf,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
+            Some(v1_interpreter::Value::Str(s)) => Some(s.clone()),
+            _ => None,
+        },
         _ => None,
     };
     println!("{line}");
@@ -6409,9 +6768,6 @@ fn build_floor_lens_hygiene_graph(
                 }
                 module_to_path.insert(m, rel.clone());
             }
-            // Import edges (transition term of the union); reference edges are added below once the
-            // whole pool is available for the name→module index. A file with imports stripped
-            // contributes none here and is carried entirely by its reference edges.
             path_imports.insert(rel, extract_import_paths(&content));
             if excludes.iter().any(|sub| entry.contains(sub.as_str())) {
                 continue;
@@ -6478,8 +6834,11 @@ fn build_floor_lens_hygiene_graph(
     // UniqueBare, dropping AmbiguousBare) so an over-connected graph cannot silently clear a truly-
     // inert lens (DESIGN §5 — no fail-open hygiene). Parsed-tree, not a substring scan, so comments/
     // strings never fabricate a reach. Dedup keeps the BFS set honest.
+    // Long-lane discovery exclusions (`test/claim/long/`) must not suppress reference edges here:
+    // exclusion only removes a witness from per-PR enrollment; stripped long/ witnesses still wire
+    // lens reachability for this hygiene pass (the inert_lens_hygiene witness lives under long/).
     for edge in reference_edges_as_import_facts(
-        &reference_resolution_facts(source_roots, source_roots, &excludes),
+        &reference_resolution_facts(source_roots, source_roots, &[]),
         true,
     ) {
         let importer = repo_relative_dag_path(&edge.path);
@@ -7065,8 +7424,55 @@ fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::Interp
                 | "DiagnosticClaim"
                 | "StructuralEqualsClaim"
                 | "RoundTripClaim"
-                | "BoolWitnessClaim"
         ),
+        _ => false,
+    }
+}
+
+fn variant_field<'a>(
+    ctx: &v1_interpreter::InterpContext,
+    fields: &'a [(v1_interpreter::Symbol, v1_interpreter::Value)],
+    name: &str,
+) -> Option<&'a v1_interpreter::Value> {
+    fields
+        .iter()
+        .find(|(sym, _)| ctx.sym_eq(*sym, name))
+        .map(|(_, v)| v)
+}
+
+/// Node-frontier selection applies only to node-corpus TestClaim rows whose
+/// evaluation footprint is structurally Node-valued at runtime. UnifiedTestClaim
+/// BoolWitnessClaim rows and CompilesClaim rows whose input/expected_value are
+/// Symbol atoms (parse-bridge harness claims) are out of scope for
+/// `test_claim_evaluation_touches_rerun_frontier` — skipping them is
+/// fail-closed-safe (cannot under-approximate touch → may rerun, never skip).
+fn test_claim_selection_has_node_corpus(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> bool {
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = val
+    else {
+        return false;
+    };
+    let all_nodes = |vals: &[&v1_interpreter::Value]| vals.iter().all(|v| value_is_node(v, ctx));
+    match ctx.resolve(*variant_name).as_str() {
+        "EqualsClaim" | "StructuralEqualsClaim" => all_nodes(&[
+            variant_field(ctx, fields, "lhs").expect("lhs"),
+            variant_field(ctx, fields, "rhs").expect("rhs"),
+        ]),
+        "CompilesClaim" => all_nodes(&[
+            variant_field(ctx, fields, "input").expect("input"),
+            variant_field(ctx, fields, "expected_value").expect("expected_value"),
+        ]),
+        "RoundTripClaim" => all_nodes(&[variant_field(ctx, fields, "input").expect("input")]),
+        "DiagnosticClaim" => {
+            variant_field(ctx, fields, "input")
+                .is_some_and(|v| value_is_node(v, ctx))
+        }
         _ => false,
     }
 }
@@ -7318,6 +7724,7 @@ fn call_floor_kernel_would_skip(
     touches_frontier: bool,
     function_edited: bool,
     entry_file_touched: bool,
+    runtime_data_dependency_touched: bool,
 ) -> Result<bool, String> {
     if !ctx.item_registry.contains_key("floor_kernel_would_skip") {
         return Err("floor_kernel_would_skip missing from floor runner context".to_string());
@@ -7346,6 +7753,10 @@ fn call_floor_kernel_would_skip(
         (
             Some("entry_file_touched".to_string()),
             v1_interpreter::Value::Bool(entry_file_touched),
+        ),
+        (
+            Some("runtime_data_dependency_touched".to_string()),
+            v1_interpreter::Value::Bool(runtime_data_dependency_touched),
         ),
     ];
     match v1_interpreter::run_in_context_with_args(ctx, "floor_kernel_would_skip", &args, false) {
@@ -7381,6 +7792,7 @@ fn call_floor_row_would_skip(
     touches_frontier: bool,
     function_edited: bool,
     entry_file_touched: bool,
+    runtime_data_dependency_touched: bool,
 ) -> Result<bool, String> {
     if !ctx.item_registry.contains_key("floor_row_would_skip") {
         return Err("floor_row_would_skip missing from floor runner context".to_string());
@@ -7414,6 +7826,10 @@ fn call_floor_row_would_skip(
             Some("entry_file_touched".to_string()),
             v1_interpreter::Value::Bool(entry_file_touched),
         ),
+        (
+            Some("runtime_data_dependency_touched".to_string()),
+            v1_interpreter::Value::Bool(runtime_data_dependency_touched),
+        ),
     ];
     match v1_interpreter::run_in_context_with_args(ctx, "floor_row_would_skip", &args, false) {
         Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
@@ -7432,6 +7848,7 @@ fn call_floor_row_precompute_would_skip(
     frontier_node_count: usize,
     edited_test_fn_count: usize,
     touched_entry_file_count: usize,
+    touched_runtime_dependency_entry_count: usize,
 ) -> Result<bool, String> {
     if !ctx
         .item_registry
@@ -7465,6 +7882,10 @@ fn call_floor_row_precompute_would_skip(
         (
             Some("touched_entry_file_count".to_string()),
             v1_interpreter::Value::Int(touched_entry_file_count as i64),
+        ),
+        (
+            Some("touched_runtime_dependency_entry_count".to_string()),
+            v1_interpreter::Value::Int(touched_runtime_dependency_entry_count as i64),
         ),
     ];
     match v1_interpreter::run_in_context_with_args(
@@ -7562,6 +7983,28 @@ fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
     rows.iter().filter(|r| r.reads_live_tree).count()
 }
 
+/// Precompute-grain count for axis (iv): the number of distinct entries among `rows` whose
+/// import closure reaches a declared live-read carrier home
+/// (`runtime_data_dependency_touched_via_carrier_closure`), given the full raw touched-path
+/// set. Feeds `floor_row_precompute_would_skip`'s `touched_runtime_dependency_entry_count` —
+/// nonzero pins the whole-tree precompute exactly as the other three axes do.
+fn discovery_rows_runtime_dependency_touched_count(
+    rows: &[DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+    touched_paths: &[String],
+) -> usize {
+    if touched_paths.is_empty() {
+        return 0;
+    }
+    let mut seen: HashSet<&str> = HashSet::new();
+    rows.iter()
+        .filter(|row| seen.insert(row.entry.as_str()))
+        .filter(|row| {
+            runtime_data_dependency_touched_via_carrier_closure(&row.entry, facts, touched_paths)
+        })
+        .count()
+}
+
 /// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
 /// when import-closure `entry_file_touched` is false and no declaration-level edit
 /// targets this entry, every kernel witness in the entry would skip — receipt:
@@ -7611,6 +8054,9 @@ fn entry_qualifies_for_skip_without_resolve(
         declared_paths,
         touched_entry_paths,
     )? {
+        return Ok(false);
+    }
+    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
@@ -7968,6 +8414,9 @@ fn entry_touches_rerun_frontier(
         if !value_is_test_claim(&val, ctx) {
             continue;
         }
+        if !test_claim_selection_has_node_corpus(&val, ctx) {
+            continue;
+        }
         saw_claim = true;
         match call_test_claim_fn_bool(
             ctx,
@@ -8101,15 +8550,14 @@ pub fn run_discovery_corpus_with_options(
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let changed_paths: Vec<String> = name_status_changed_paths;
-    // Union-resolve S1 (docs/plans/resolver-graph-major-design.md §7): ONE index for the
-    // whole process step. Frontier attribution, the floor runner context, and every roster
-    // row resolve against this single MultiEntryIndex, so the union of their closures — the
-    // shared std/spec prefix above all — typechecks once per node instead of once per
-    // consumer. Previously the frontier build, the floor runner (via a separate thread-local
-    // store), and the rows each carried a private cold cache of that same prefix.
-    // The index is the THREAD's shared one (process_shared_index), not a private build:
-    // when the executor prelude already resolved its entries on this thread, discovery
-    // reuses that index's parse/typed caches instead of paying the union cold a second time.
+    // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
+    // process step on the pump thread — prelude-warmed parse/typed caches instead of a
+    // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
+    // design.md §4): adaptive worker shards arm ONE process-scoped typed_module_cache
+    // (serde byte transport). The pump thread keeps `process_shared_index` (private per-
+    // index `Rc`) so prelude work does not duplicate into the shared store; workers alone
+    // read/write the shared store as the typed-cache authority (no local Rc duplicate).
+    // Store creation lives in the Adaptive match arm below — unrepresentable on Serial.
     let index = process_shared_index(source_roots);
     // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
     // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
@@ -8184,6 +8632,12 @@ pub fn run_discovery_corpus_with_options(
         let live_row_count = discovery_rows_live_tree_count(&rows);
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
+                let touched_runtime_dependency_entry_count =
+                    discovery_rows_runtime_dependency_touched_count(
+                        &rows,
+                        &index.module_graph_facts,
+                        &changed_paths,
+                    );
                 let precompute = call_floor_row_precompute_would_skip(
                     ctx,
                     live_row_count,
@@ -8191,6 +8645,7 @@ pub fn run_discovery_corpus_with_options(
                     diff_edits.overlapping_data_items.len(),
                     diff_edits.edited_test_fns.len(),
                     diff_edits.touched_entry_files.len(),
+                    touched_runtime_dependency_entry_count,
                 );
                 match precompute {
                     Ok(skip) => skip,
@@ -8231,7 +8686,7 @@ pub fn run_discovery_corpus_with_options(
     );
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
-    let governor = match width_policy {
+    return match width_policy {
         DiscoveryWidthPolicy::Serial => {
             let summary = run_discovery_rows(
                 &rows,
@@ -8272,28 +8727,73 @@ pub fn run_discovery_corpus_with_options(
                 "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
-            return Ok(attach_deferred_discovery_rows(summary, deferred_rows));
+            Ok(attach_deferred_discovery_rows(summary, deferred_rows))
         }
-        DiscoveryWidthPolicy::Adaptive(governor) => governor,
-    };
-    // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
-    // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
-    // resident structure across every group it pulls — admission of a worker (not of a
-    // group) is therefore the memory-relevant act the governor decides.
-    let groups = entry_row_groups(&rows);
-    eprintln!(
-        "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
-        groups.len(),
-        rows.len(),
-        governor.current_target_width(),
-    );
-    if floor_stream && governor.current_target_width() > 1 {
-        eprintln!(
-            "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
-            floor_ts(),
-            governor.current_target_width(),
-        );
-    }
+        DiscoveryWidthPolicy::Adaptive(governor) => {
+            // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
+            // builds ONE whole-tree index and holds it for its lifetime, amortizing the expensive
+            // resident structure across every group it pulls — admission of a worker (not of a
+            // group) is therefore the memory-relevant act the governor decides.
+            let groups = entry_row_groups(&rows);
+            let spawn_target_width = governor.current_target_width();
+            eprintln!(
+                "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
+                groups.len(),
+                rows.len(),
+                spawn_target_width,
+            );
+            // Width=1: drain inline on the pump thread reusing `process_shared_index` (already
+            // warmed for calibration + floor runner). Spawning a worker thread duplicates the
+            // whole-tree index on a second thread-local cache — ~2× retention that OOM'd CI
+            // batch-2 discovery (runs 29372308568 / 29373433928). Cross-worker store arms only
+            // when plural workers run (below). 🟡 dissolve-on: Rc→Arc retires the width gate.
+            if spawn_target_width <= 1 {
+                eprintln!(
+                    "run_discovery_corpus: width=1 inline drain — reusing process_shared_index (no worker duplicate index)"
+                );
+                eprintln!(
+                    "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
+                );
+                let style = ShardStyle {
+                    shard_id: 0,
+                    shard_count: 1,
+                    color: floor_color,
+                    stream: floor_stream,
+                };
+                let mut summaries = Vec::new();
+                for group_indices in groups {
+                    let group_rows: Vec<DiscoveryRow> =
+                        group_indices.iter().map(|&i| rows[i].clone()).collect();
+                    summaries.push(run_discovery_rows(
+                        &group_rows,
+                        &index,
+                        execution_mode,
+                        options.node_frontier_selection,
+                        &changed_paths,
+                        &diff_edits,
+                        floor_runner_ctx.as_ref(),
+                        whole_tree_published_keys.clone(),
+                        options.fast_lane_eval_budget_ms,
+                        style,
+                    )?);
+                }
+                return Ok(attach_deferred_discovery_rows(
+                    merge_discovery_summaries(summaries),
+                    deferred_rows,
+                ));
+            }
+            // Process-scoped typed store shell — populated only when plural workers run
+            // (target_width > 1). At width=1 the serde byte store adds retention without
+            // cross-worker benefit and breaks the CI memory budget (design §7; OOM
+            // 29349125185 / 29371206526). 🟡 dissolve-on: Rc→Arc retires the gate.
+            let cross_worker_store = new_shared_typecheck_caches();
+            if floor_stream && spawn_target_width > 1 {
+                eprintln!(
+                    "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
+                    floor_ts(),
+                    spawn_target_width,
+                );
+            }
     let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
         std::sync::Arc::new(Mutex::new(
             groups
@@ -8325,6 +8825,17 @@ pub fn run_discovery_corpus_with_options(
         let seeds = diff_edits.clone();
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
+        let spawn_target_width = governor.current_target_width();
+        let cross_worker_store_for_worker = if spawn_target_width > 1 {
+            Some(cross_worker_store.clone())
+        } else {
+            None
+        };
+        if worker_ordinal == 0 && spawn_target_width <= 1 {
+            eprintln!(
+                "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
+            );
+        }
         // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
         // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
         // admission window has no interleaving to disambiguate.
@@ -8342,12 +8853,12 @@ pub fn run_discovery_corpus_with_options(
                 let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
                     governor_for_worker.clone(),
                 );
-                // Each worker is its own thread (`Rc` infer carriers are `!Send`, so the
-                // typed_module_cache cannot cross the worker boundary until store-path
-                // `Rc`→`Arc` migration lands — docs/plans/cross-worker-typecheck-share-design.md
-                // §4.1). Within the worker, union-resolve S1 still holds: the worker's floor
-                // runner and its rows resolve against ONE index.
-                let index = build_multi_entry_index(&roots);
+                // Process-scoped typed_module_cache when governor width > 1; private cold
+                // index at width=1 (CI budget — cross-worker-typecheck-share-design §7).
+                let index = match cross_worker_store_for_worker {
+                    Some(store) => build_multi_entry_index_with_shared_caches(&roots, store),
+                    None => build_multi_entry_index(&roots),
+                };
                 let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                     match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
                         Ok((graph, source_indices)) => {
@@ -8434,6 +8945,8 @@ pub fn run_discovery_corpus_with_options(
         merge_discovery_summaries(summaries),
         deferred_rows,
     ))
+        }
+    };
 }
 
 fn attach_deferred_discovery_rows(
@@ -8759,6 +9272,7 @@ fn run_discovery_rows(
     let mut current_entry_touches = true;
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_file_touched = true;
+    let mut current_entry_runtime_dependency_touched = true;
     let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
@@ -8793,6 +9307,7 @@ fn run_discovery_rows(
                 current_entry = Some(row.entry.clone());
                 current_entry_touches = false;
                 current_entry_file_touched = false;
+                current_entry_runtime_dependency_touched = false;
                 current_entry_frontier_nodes.clear();
                 current_closure_subject = None;
                 ctx = None;
@@ -8832,6 +9347,7 @@ fn run_discovery_rows(
                 current_entry_frontier_nodes.clear();
                 current_entry_touches = false;
                 current_entry_file_touched = false;
+                current_entry_runtime_dependency_touched = false;
                 current_entry = Some(row.entry.clone());
             } else {
                 let resolved = resolve_discovery_entry_for_corpus_row(
@@ -8857,6 +9373,8 @@ fn run_discovery_rows(
                 current_entry_frontier_nodes = resolved.frontier_nodes;
                 current_entry_touches = resolved.touches_frontier;
                 current_entry_file_touched = resolved.entry_file_touched;
+                current_entry_runtime_dependency_touched =
+                    resolved.entry_runtime_dependency_touched;
                 ctx = Some(resolved.ctx);
                 if let Some(c) = ctx.as_ref() {
                     c.set_witness_eval_budget(fast_lane_eval_budget_ms);
@@ -8869,6 +9387,8 @@ fn run_discovery_rows(
                 diff_file_matches_entry(file, &row.entry) && func == &row.function
             });
         let entry_file_touched = skip_enabled && current_entry_file_touched;
+        let runtime_data_dependency_touched =
+            skip_enabled && current_entry_runtime_dependency_touched;
         let would_skip = if skip_enabled {
             match floor_runner_ctx {
                 Some(runner_ctx) => {
@@ -8880,6 +9400,7 @@ fn run_discovery_rows(
                         current_entry_touches,
                         function_edited,
                         entry_file_touched,
+                        runtime_data_dependency_touched,
                     );
                     match skip {
                         Ok(skip) => skip,
@@ -8951,6 +9472,7 @@ fn run_discovery_rows(
             current_entry_frontier_nodes = resolved.frontier_nodes;
             current_entry_touches = resolved.touches_frontier;
             current_entry_file_touched = resolved.entry_file_touched;
+            current_entry_runtime_dependency_touched = resolved.entry_runtime_dependency_touched;
             ctx = Some(resolved.ctx);
             if let Some(c) = ctx.as_ref() {
                 c.set_witness_eval_budget(fast_lane_eval_budget_ms);
@@ -9241,6 +9763,7 @@ new file mode 100644
             false,
             false,
             false,
+            false,
         )
         .expect("live-tree row skip");
         assert!(
@@ -9252,6 +9775,7 @@ new file mode 100644
             false,
             &changed_paths,
             &[],
+            false,
             false,
             false,
             false,
@@ -9932,8 +10456,8 @@ mod floor_witness_a_prove {
 // (→ `edited_test_fns`); only non-data, non-test-fn declaration edits land in
 // `touched_entry_files`. A raw touched-path superset can diverge from this filtered set, so
 // proving equivalence against raw paths only proves a stronger/looser predicate, not the live
-// decision. This receipt runs `floor_diff_edits_from_diff_text(&index, &git_show_diff_text)`
-// on each commit's full unified diff (`git show <sha>`, not `--name-only`) and feeds
+// decision. This receipt runs `floor_diff_edits_from_diff_text(&index, &pinned_diff_text)`
+// on each commit's full unified diff (pinned in `testdata/`, not `--name-only`) and feeds
 // `.touched_entry_files` to both `dag_entry_affected` and `rust_entry_affected`.
 //
 // `floor_diff_edits_from_line_ranges` fail-closes (`Err`) when a touched `.dag` file's diff
@@ -9983,25 +10507,30 @@ mod module_grain_affected_equivalence_tests {
         ws.join(rel).to_string_lossy().into_owned()
     }
 
-    // Full unified diff for `sha` (NOT `--name-only`) — the same shape the live floor parses via
-    // `parse_unified_diff_line_ranges`/`parse_unified_diff_changed_new_lines`.
+    // Pinned unified diff fixtures for the two all-`M` commits below (NOT `--name-only`) — the
+    // same shape the live floor parses via `parse_unified_diff_line_ranges`/
+    // `parse_unified_diff_changed_new_lines`. Checked into `testdata/` so shallow clones and
+    // remote test runners (BuildBuddy depth-1 fetch) do not need the historical git objects —
+    // `git show <sha>` was the latent red on origin/main outside full-history worktrees.
     fn diff_text_for_commit(sha: &str) -> String {
-        let output = std::process::Command::new("git")
-            .args(["show", sha])
-            .current_dir(workspace_root())
-            .output()
-            .unwrap_or_else(|e| panic!("git show {sha}: {e}"));
-        assert!(
-            output.status.success(),
-            "git show {sha} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let text = String::from_utf8_lossy(&output.stdout).into_owned();
+        let text = match sha {
+            "6edafbb5e29370c0ac791038a1c64e1a4ddbd40d" => {
+                include_str!("../testdata/module_grain_affected_dag_only_6edafbb.diff")
+            }
+            "bb6e65649c9625d021467b0d7fe33ca7dd086e4f" => {
+                include_str!("../testdata/module_grain_affected_v2_only_bb6e656.diff")
+            }
+            other => panic!(
+                "module_grain_affected_equivalence: no pinned diff fixture for commit {other} — \
+                 add testdata/module_grain_affected_<label>_<shortsha>.diff and extend \
+                 diff_text_for_commit"
+            ),
+        };
         assert!(
             !text.trim().is_empty(),
-            "commit {sha} produced empty diff text"
+            "pinned diff fixture for commit {sha} is empty"
         );
-        text
+        text.to_string()
     }
 
     fn str_list_value(items: &[String]) -> Value {
@@ -10709,13 +11238,29 @@ mod node_frontier_plumbing_controls {
             super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
         let changed_paths = vec![fixture_abs.clone()];
         assert!(
-            !call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, true)
-                .expect("skip verdict for touched entry"),
+            !call_floor_kernel_would_skip(
+                &runner_ctx,
+                &changed_paths,
+                &nodes,
+                false,
+                false,
+                true,
+                false
+            )
+            .expect("skip verdict for touched entry"),
             "helper-fn edit must RUN witnesses in the touched entry (entry_file_touched)"
         );
         assert!(
-            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false)
-                .expect("skip verdict for unrelated entry"),
+            call_floor_kernel_would_skip(
+                &runner_ctx,
+                &changed_paths,
+                &nodes,
+                false,
+                false,
+                false,
+                false
+            )
+            .expect("skip verdict for unrelated entry"),
             "helper-fn edit must SKIP witnesses in an unrelated entry when frontier is empty"
         );
     }
@@ -10778,13 +11323,14 @@ mod node_frontier_plumbing_controls {
                 &nodes,
                 false,
                 false,
-                true
+                true,
+                false
             )
             .expect("skip verdict for importing entry"),
             "cross-file helper-fn edit must RUN witnesses in importing entry (import-closure entry_file_touched)"
         );
         assert!(
-            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false)
+            call_floor_kernel_would_skip(&runner_ctx, &changed_paths, &nodes, false, false, false, false)
                 .expect("skip verdict for unrelated entry"),
             "cross-file helper-fn edit must SKIP witnesses in an unrelated entry when frontier is empty"
         );
@@ -12525,9 +13071,7 @@ pub fn reference_resolution_facts(
         abs_importer_roots.join("\u{1e}"),
         exclude_substrings.join("\u{1e}")
     );
-    if let Some(cached) =
-        REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned())
-    {
+    if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
         return cached;
     }
 
@@ -12571,7 +13115,10 @@ pub fn reference_resolution_facts(
             if seen_modules.insert(module_name.clone()) {
                 module_names.insert(module_name.clone());
                 for name in collect_module_decl_names(&tree) {
-                    decl_index.entry(name).or_default().insert(module_name.clone());
+                    decl_index
+                        .entry(name)
+                        .or_default()
+                        .insert(module_name.clone());
                 }
             }
             pool_trees
@@ -12674,8 +13221,10 @@ pub fn reference_resolution_facts(
                             // AmbiguousBare is a bare ref, in a file that does not declare it, whose
                             // nearest declarers tie — the definitive "needs qualification" site.
                             if std::env::var("REFAMBIG_DUMP").is_ok() {
-                                let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
-                                let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
+                                let is_witness =
+                                    rel.contains("/test/") || rel.ends_with("_test.dag");
+                                let cands: Vec<String> =
+                                    winners.iter().map(|s| (*s).clone()).collect();
                                 eprintln!(
                                     "REFAMBIG\t{}\t{}\t{}\t{}",
                                     if is_witness { "witness" } else { "compile" },
@@ -12732,7 +13281,11 @@ mod reference_edge_producer_tests {
         let root = fixture_root("core");
         let _ = std::fs::remove_dir_all(&root);
         // Declares the shared name.
-        write(&root, "decl.dag", "module test.decl\n\nfn shared_fn() -> Bool {\n  true\n}\n");
+        write(
+            &root,
+            "decl.dag",
+            "module test.decl\n\nfn shared_fn() -> Bool {\n  true\n}\n",
+        );
         // Import-LESS file that references it → edge to test.decl.
         write(
             &root,
@@ -12934,6 +13487,21 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/node_minimal.dag::node_superset_field_eq",
     "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
     "src/v2/std/qualified_name.dag::qn_fold_step",
+    // 2026-07-14 backfill (fourth instance of the masking class, siblings to the #6533/#6530
+    // receipts above): the nightly affected-set falsifier's whole-corpus cold sweep surfaced 3
+    // unrostered sites the per-PR affected-set selection did not run the nfr witness for at
+    // landing time. `orch_emit_let_step` landed with #6573 (Shell→dag P2b), the two live-read
+    // eq fns with #6582 (live-read classification P1) — the same PR that landed the orphan doc
+    // this sweep also caught. Declared here so the ratchet re-arms; each burns down with its
+    // owning file's fold migration.
+    //   - orch_emit_let_step: special-case `ExprCmdSubst` + general `Expr` dispatch via
+    //     orch_emit_expr_spelling; dissolves when emit is the backward grammar-row fold (§4).
+    //   - live_read_carrier_eq / path_pattern_eq: nested structural `==` (`_ => false` on the
+    //     off-variant arm), the same shape as the std `*_eq` rows above; dissolves with derived
+    //     equality from inhabitance (the cross-representation `==` grounding, DESIGN §3/§4).
+    "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step",
+    "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
+    "src/v2/lens/live_read_classification.dag::path_pattern_eq",
 ];
 
 fn nfr_strip_comments(content: &str) -> String {

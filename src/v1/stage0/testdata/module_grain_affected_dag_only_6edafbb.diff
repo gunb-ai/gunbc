@@ -1,0 +1,139 @@
+commit 6edafbb5e29370c0ac791038a1c64e1a4ddbd40d
+Author: gunbai-bot[bot] <289086189+gunbai-bot[bot]@users.noreply.github.com>
+Date:   Thu Jul 2 18:49:27 2026 -0400
+
+    2-emit-partition: grammar JSON for healthz body; structured shell in v1_dag_parse transport (#6166)
+    
+    * 2-emit-partition: grammar JSON for healthz body; structured shell in v1_dag_parse transport
+    
+    Migrate roadmap_site_healthz_body() from hand-concat JSON to extdeps.languages.json.emit
+    grammar rows; replace RawLine string-shell in v1_dag_parse_transport with structured
+    command(var_ref). Witness updated for canonical serializer spacing.
+    
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+    
+    * 2-emit-partition: witness quoted var_ref in v1_dag_parse transport
+    
+    VarRef already serializes as "$NAME" via serialize_bash (same bytes as the
+    retired RawLine). Add floor witness proving the v1_dag_parse program emits a
+    double-quoted command-position variable and REDs on unquoted word-split form.
+    
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+    
+    ---------
+    
+    Co-authored-by: Brian Searls <briansrls@gunb.ai>
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+diff --git a/dag/gunbc/roadmap_static_site.dag b/dag/gunbc/roadmap_static_site.dag
+index 82a1c2ded3..cc5e6478c8 100644
+--- a/dag/gunbc/roadmap_static_site.dag
++++ b/dag/gunbc/roadmap_static_site.dag
+@@ -14,8 +14,14 @@ import extdeps.http.server {
+   ServedStaticRoute,
+ }
+ import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
+-import gunbc.roadmap_spawner { roadmap_dispatch_file_content, json_str }
++import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
+ import gunbc.fleet_intent_network { fleet_intent_network }
++import extdeps.languages.json.emit {
++  serialize_json,
++  json_object,
++  json_kv,
++  json_string,
++}
+ 
+ type SiteArtifactKind
+   = RoadmapMarkdown
+@@ -139,20 +145,14 @@ fn roadmap_site_path_template(raw: String) -> PathTemplate {
+ fn roadmap_site_healthz_body() -> String {
+   let roadmap = roadmap_site_roadmap_md_artifact()
+   let dispatch = roadmap_site_dispatch_json_artifact()
+-  let artifacts = concat(
+-    concat("{", concat(json_str(s: roadmap.url_path), concat(":", json_str(s: roadmap.digest)))),
+-    concat(
+-      concat(",", concat(json_str(s: dispatch.url_path), concat(":", json_str(s: dispatch.digest)))),
+-      "}"
+-    )
+-  )
+-  concat(
+-    concat(
+-      concat("{\"status\":", json_str(s: "ok")),
+-      concat(",\"service\":", json_str(s: roadmap_site_service_name))
+-    ),
+-    concat(",\"artifacts\":", concat(artifacts, "}"))
+-  )
++  serialize_json(v: json_object(members: [
++    json_kv(key: "status", value: json_string(s: "ok")),
++    json_kv(key: "service", value: json_string(s: roadmap_site_service_name)),
++    json_kv(key: "artifacts", value: json_object(members: [
++      json_kv(key: roadmap.url_path as String, value: json_string(s: roadmap.digest as String)),
++      json_kv(key: dispatch.url_path as String, value: json_string(s: dispatch.digest as String)),
++    ])),
++  ]))
+ }
+ 
+ fn roadmap_site_healthz_route() -> ServedStaticRoute {
+diff --git a/dag/test/claim/roadmap_static_site_witness_test.dag b/dag/test/claim/roadmap_static_site_witness_test.dag
+index c35a4d75ae..ebe5ed4192 100644
+--- a/dag/test/claim/roadmap_static_site_witness_test.dag
++++ b/dag/test/claim/roadmap_static_site_witness_test.dag
+@@ -85,7 +85,7 @@ fn witness_healthz_route_json_ok() -> Bool {
+   witness_healthz_body_json_well_formed()
+     && witness_healthz_perturbed_body_fails_well_formed()
+     && witness_healthz_body_extra_brace_perturb_red()
+-    && string_contains(s: body, pattern: "\"status\":\"ok\"")
++    && string_contains(s: body, pattern: "\"status\": \"ok\"")
+     && string_contains(s: body, pattern: roadmap_site_roadmap_url_path)
+     && string_contains(s: body, pattern: roadmap_site_dispatch_url_path)
+     && roadmap_site_healthz_route().content_type == ApplicationJsonUtf8
+diff --git a/dag/test/claim/v1_dag_parse_witness_test.dag b/dag/test/claim/v1_dag_parse_witness_test.dag
+index 82eb9af874..2cdafa5a23 100644
+--- a/dag/test/claim/v1_dag_parse_witness_test.dag
++++ b/dag/test/claim/v1_dag_parse_witness_test.dag
+@@ -1,11 +1,21 @@
+ module test.claim.v1_dag_parse_witness
+ 
+-import tools.v1_dag_parse_transport { run_v1_dag_parse }
++import extdeps.languages.bash.program { serialize_bash }
++import tools.v1_dag_parse_transport { run_v1_dag_parse, v1_dag_parse_program }
++
++data v1_dag_parse_quoted_var_command_line: String = "\"$V1_SRC_DAG_PARSE\"\n"
+ 
+ fn witness_v1_dag_parse_holds() -> Bool {
+   run_v1_dag_parse()
+ }
+ 
++fn witness_v1_dag_parse_invocation_is_quoted_var_command() -> Bool {
++  let script = serialize_bash(p: v1_dag_parse_program())
++  string_contains(s: script, pattern: v1_dag_parse_quoted_var_command_line)
++    && !string_contains(s: script, pattern: "\n$V1_SRC_DAG_PARSE\n")
++}
++
+ test fn v1_dag_parse_witnesses() -> Bool {
+   witness_v1_dag_parse_holds()
++    && witness_v1_dag_parse_invocation_is_quoted_var_command()
+ }
+diff --git a/dag/tools/v1_dag_parse_transport.dag b/dag/tools/v1_dag_parse_transport.dag
+index e63271d6d2..9703b15c33 100644
+--- a/dag/tools/v1_dag_parse_transport.dag
++++ b/dag/tools/v1_dag_parse_transport.dag
+@@ -2,8 +2,7 @@ module tools.v1_dag_parse_transport
+ 
+ import extdeps.shell
+ import extdeps.languages.bash.program {
+-  ShellProgram, ShellStmt,
+-  RawLine,
++  ShellProgram,
+   lit, var_ref, command, serialize_bash
+ }
+ import tools.host_prelude { ensure_v1_src_dag_parse_built }
+@@ -14,7 +13,7 @@ fn v1_dag_parse_program() -> ShellProgram {
+     set_e: true,
+     statements: concat(ensure_v1_src_dag_parse_built(), [
+       command(words: [lit(text: "cd"), root]),
+-      RawLine { text: "\"$V1_SRC_DAG_PARSE\"" }
++      command(words: [var_ref(name: "V1_SRC_DAG_PARSE")])
+     ])
+   }
+ }

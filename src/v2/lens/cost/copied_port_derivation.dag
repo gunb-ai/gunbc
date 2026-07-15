@@ -1,0 +1,155 @@
+module v2.lens.cost.copied_port_derivation
+
+import std.algebra { Cons, Empty }
+import v2.lens.cost {
+  LinearCost,
+  ProductCost,
+  SumCost,
+  SymbolicCost,
+  UnknownCost,
+  symbolic_cost_of_node
+}
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence,
+  arrow_body_target_lookup
+}
+import v2.std.algebra { CopiedPortFact, fold_list }
+
+data copied_port_derivation_note: String = "Wave 1 Gate 1 C1: per-op copied-port facts are DERIVED by running the cost lens over each combiner's cited Arrow body (^arrow_body_edge only — edge_contributes_to_cost_fold), never hand-stamped indices. derive_copied_port_index_from_arrow finds the unique parameter port whose size the body cost is linear in; multi-linear ambiguity (two or more linear ports) returns Absent — no tiebreak heuristic. Current stdlib citations (list_append, list_snoc_item, map_merge) are each uniquely-linear (map_merge index 1 because overlay alone is linear, not because a tiebreak fires). Unpriceable shapes return Absent — classify_call keeps ^combiner_unregistered_carrier_reaches fail-closed."
+
+type CombinerArrowCitation {
+  combiner: Symbol
+  arrow: Node
+}
+
+fn cost_linear_in_node(cost: SymbolicCost, n: Node) -> Bool {
+  match cost {
+    ConstantCost { value: _ } => false
+    LinearCost { variable: sv } => sv.source == n
+    LogCost { variable: _ } => false
+    PolynomialCost { variable: _, degree: _ } => false
+    PolyLogCost { variable: _, exponent: _ } => false
+    ExponentialCost { variable: _, base: _ } => false
+    FactorialCost { variable: _ } => false
+    SumCost { lhs: lhs, rhs: rhs } =>
+      cost_linear_in_node(cost: lhs, n: n) || cost_linear_in_node(cost: rhs, n: n)
+    ProductCost { lhs: lhs, rhs: rhs } =>
+      cost_linear_in_node(cost: lhs, n: n) || cost_linear_in_node(cost: rhs, n: n)
+    UnknownCost { diagnostic: _ } => false
+  }
+}
+
+fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      fold(arrow.children, init: Empty, f: fn(acc, e) {
+        match e.label {
+          Positional =>
+            match e.target.kind {
+              TypeNode { connective: Conj } =>
+                fold(e.target.children, init: acc, f: fn(a, de) {
+                  match de.label {
+                    Named { name: _ } => Cons { head: de.target, tail: a }
+                    Positional => a
+                  }
+                })
+              _ => acc
+            }
+          Named { name: _ } => acc
+        }
+      })
+    _ => Empty
+  }
+}
+
+fn param_list_reverse_to_forward(xs: List<Node>) -> List<Node> {
+  fold(xs, init: Empty, f: fn(acc, n) { Cons { head: n, tail: acc } })
+}
+
+fn int_list_prepend(item: Int, xs: List<Int>) -> List<Int> {
+  Cons { head: item, tail: xs }
+}
+
+fn linear_param_indices(cost: SymbolicCost, params: List<Node>, idx: Int, acc: List<Int>) -> List<Int> {
+  match params {
+    Empty => acc
+    Cons { head: param, tail: rest } =>
+      linear_param_indices(
+        cost: cost,
+        params: rest,
+        idx: idx + 1,
+        acc: if cost_linear_in_node(cost: cost, n: param) {
+          int_list_prepend(item: idx, xs: acc)
+        } else {
+          acc
+        }
+      )
+  }
+}
+
+fn derive_copied_port_index_from_arrow(arrow: Node) -> Optional<Int> {
+  match arrow_body_target_lookup(children: arrow.children) {
+    Found { target: body } =>
+      let params = param_list_reverse_to_forward(xs: arrow_domain_param_nodes(arrow: arrow))
+      let body_cost = symbolic_cost_of_node(n: body)
+      let linear_indices = linear_param_indices(cost: body_cost, params: params, idx: 0, acc: Empty)
+      match linear_indices {
+        Empty => Absent
+        Cons { head: only, tail: Empty } => Present { value: only }
+        _ => Absent
+      }
+    Ambiguous => Absent
+    Absent => Absent
+  }
+}
+
+fn derive_copied_port_fact(combiner: Symbol, arrow: Node) -> Optional<CopiedPortFact> {
+  match derive_copied_port_index_from_arrow(arrow: arrow) {
+    Absent => Absent
+    Present { value: idx } =>
+      Present {
+        value: CopiedPortFact {
+          combiner: combiner,
+          copied_port_index: idx
+        }
+      }
+  }
+}
+
+fn row_matches_combiner(row: CopiedPortFact, combiner: Symbol) -> Bool {
+  row.combiner == combiner
+}
+
+fn some_copied_port_index(idx: Int) -> Optional<Int> {
+  Present { value: idx }
+}
+
+fn copied_port_index_from_registry(rows: List<CopiedPortFact>, combiner: Symbol) -> Optional<Int> {
+  fold_list(
+    xs: rows,
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if row_matches_combiner(row: row, combiner: combiner) {
+            some_copied_port_index(idx: row.copied_port_index)
+          } else {
+            Absent
+          }
+      }
+    }
+  )
+}

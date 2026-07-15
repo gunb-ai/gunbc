@@ -16,9 +16,9 @@ import gunbc.commit_workflow {
   witness_span_wellformed
 }
 import std.realization_schedule {
-  WitnessSeam, SpanSeams, SpanUndeclared
+  WitnessSeam, SpanSeams, SpanUndeclared,
+  CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq
 }
-import v2.workflow.ci_floor_plan { witness_entries_kind_path_all_agree }
 import gunbc.ci_spec { gunbc_ci_floor_gates }
 import gunbc.local_tidy_spec { local_tidy_checks }
 import gunbc.generated_artifact {
@@ -97,9 +97,15 @@ fn witness_span_rejects_empty_seam_list() -> Bool {
   !witness_span_wellformed(span: SpanSeams { seams: [] })
 }
 
-fn witness_projected_ci_entries_kind_stamped() -> Bool {
-  witness_entries_kind_path_all_agree(
-    entries: project_ci_floor_witness_entries(roster: commit_gate_roster)
+data allowed_long_lane_explicit_entry: String = "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag"
+
+fn witness_floor_roster_has_no_slow_long_lane_entries() -> Bool {
+  !any(
+    project_ci_floor_witness_entries(roster: commit_gate_roster),
+    e =>
+      witness_kind_eq(a: e.kind, b: CorpusWitnessKind)
+        && string_contains(s: e.entry, pattern: "test/claim/long/")
+        && e.entry != allowed_long_lane_explicit_entry
   )
 }
 
@@ -111,6 +117,7 @@ test fn commit_workflow_witnesses() -> Bool {
     && witness_pre_push_handler_binding()
     && witness_realization_bindings_match_dispatch()
     && witness_realization_artifact_paths()
+    && witness_floor_roster_has_no_slow_long_lane_entries()
 }
 
 test fn commit_workflow_span_kind_witnesses() -> Bool {
@@ -120,5 +127,4 @@ test fn commit_workflow_span_kind_witnesses() -> Bool {
     && witness_span_rejects_self_seam()
     && witness_span_rejects_duplicate_seams()
     && witness_span_rejects_empty_seam_list()
-    && witness_projected_ci_entries_kind_stamped()
 }

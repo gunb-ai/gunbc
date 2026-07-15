@@ -1,0 +1,448 @@
+module v2.lens.bash_composition_recognizer
+
+import v2.std.algebra { fold_list, is_prefix_of, length, list_append, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { Char, String, string_is_empty, string_tail }
+import v2.std.compilers.lexing { LexRule, LexRuleSet, LiteralPattern, TokenRule, TriviaRule }
+import v2.extdeps.languages.bash_command_fold { bash_ingest_lex_rules }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}
+
+data bash_composition_recognizer_note: String = "no-smuggled-programs HALF B: grammar-as-classifier. A bash-classified substrate literal (RawLine.text) is a COMPOSITION iff it PARSES to >=2 statements / a control production joining content, an ATOM otherwise. Quote-aware maximal-munch lexer over bash_ingest_lex_rules (single authority). A Hole is a .dag COMPOSE-TIME value spliced INTO the source string BEFORE bash parses it (NOT a bash-runtime $var expansion, which is a literal ConstPart bash does not re-parse); an UNQUOTED Hole could itself BE or COMPLETE a separator (its value may contain '; cmd'), so it is UNDECIDABLE -> AmbiguousParse (T3), never assume-Clean. A Hole inside quotes (double/single) is bounded/separator-free (operators cannot apply inside quotes) -> safe operand. Disposition precedence P1 unmodeled-keyword -> AmbiguousParse; T2 munch-cannot-cover; P2 static-token composition -> Violation (decides before T3); T3 unquoted-hole -> AmbiguousParse; else Clean."
+
+type BashCompositionDisposition
+  = Violation
+  | Clean
+  | AmbiguousParse { cause: AmbiguityCause }
+
+type AmbiguityCause
+  = UnmodeledKeywordPresent
+  | MunchCannotCover
+  | HoleStraddlesToken
+  | NoLanguageDecision
+
+data p1_dominance_residue_note: String = "TRACKED RESIDUE (debt ledger, beside for-loop-grammar; parent-signed 2026-07-14, do NOT fix in HALF B): P1 UnmodeledKeywordPresent dominates P2 static composition, so a line that IS a decidable static composition but ALSO carries an unmodeled control keyword (e.g. echo a; for x in b; do ...) lands Ambiguous, not Violation. This is honest DecodeFidelity (counted, reported, never silently dropped) -- when a keyword is present the recognizer cannot know whether a ; is loop-internal syntax or a real separator, so Ambiguous is the honest answer and it avoids false-Violating every for-loop header (the P1-dominance property the parent validated as SOUND). It is ALSO a keyword-inclusion evasion vector: a determined smuggler could append an unmodeled keyword to demote a Violation to Ambiguous. Acceptable under the wall threat model (accidental hand-splicing, NOT adversarial). DISSOLVES-ON: the loop keywords (for/while/until/case/...) get grounded to real grammar PRODUCTIONS -- then P2 decides THROUGH them and the static composition Violates as it should. Same dissolution trigger as the for-loop grammar production work."
+
+type TokenRole
+  = Separator
+  | JoiningControl
+  | IfFraming
+  | UnmodeledKeyword
+  | OperandFraming
+
+type SkeletonPart
+  = ConstPart { text: String }
+  | HolePart
+
+type LiteralSkeleton {
+  parts: List<SkeletonPart>
+}
+
+type SignificantSpelling {
+  role: TokenRole
+  text: String
+  len: Int
+}
+
+type QuoteMode
+  = QuoteOut
+  | QuoteSingle
+  | QuoteDouble
+  | QuoteEscOut
+  | QuoteEscDouble
+
+type ScanState {
+  quote: QuoteMode
+  run_count: Int
+  in_run: Bool
+  has_if: Bool
+  saw_unmodeled_kw: Bool
+  hole_present: Bool
+  hole_straddle: Bool
+}
+
+type MatchResult
+  = NoMatch
+  | FoundMatch { role: TokenRole, len: Int }
+
+data empty_significant_spellings: List<SignificantSpelling> = []
+
+data empty_skeleton_parts: List<SkeletonPart> = []
+
+fn ingest_token_role(cls: Symbol) -> TokenRole {
+  if (cls == ^bash_token_stmt_sep) || (cls == ^bash_token_orch_seq_newline) {
+    Separator
+  } else {
+    if (cls == ^bash_token_and_then) || (cls == ^bash_token_or_else) || (cls == ^bash_token_pipe) {
+      JoiningControl
+    } else {
+      if (cls == ^bash_token_if_kw) || (cls == ^bash_token_if_then) || (cls == ^bash_token_if_fi) || (cls == ^bash_token_if_else) {
+        IfFraming
+      } else {
+        if (cls == ^bash_ingest_kw_for) || (cls == ^bash_ingest_kw_do) || (cls == ^bash_ingest_kw_done) || (cls == ^bash_ingest_kw_while) || (cls == ^bash_ingest_kw_until) || (cls == ^bash_ingest_kw_select) || (cls == ^bash_ingest_kw_case) || (cls == ^bash_ingest_kw_esac) || (cls == ^bash_ingest_kw_case_clause_sep) || (cls == ^bash_ingest_brace_open) || (cls == ^bash_ingest_brace_close) {
+          UnmodeledKeyword
+        } else {
+          OperandFraming
+        }
+      }
+    }
+  }
+}
+
+fn role_is_significant(r: TokenRole) -> Bool {
+  match r {
+    Separator => true
+    JoiningControl => true
+    IfFraming => true
+    UnmodeledKeyword => true
+    OperandFraming => false
+  }
+}
+
+fn lex_rule_spelling(rule: LexRule) -> String {
+  match rule {
+    TokenRule { token_class: _, pattern: p } =>
+      match p {
+        LiteralPattern { text: t } => t
+        _ => ""
+      }
+    TriviaRule { pattern: _ } => ""
+  }
+}
+
+fn lex_rule_significant(rule: LexRule) -> List<SignificantSpelling> {
+  match rule {
+    TokenRule { token_class: cls, pattern: p } => {
+      let role = ingest_token_role(cls: cls)
+      let spelling = lex_rule_spelling(rule: rule)
+      if role_is_significant(r: role) && (string_is_empty(s: spelling) == false) {
+        [SignificantSpelling { role: role, text: spelling, len: length(xs: spelling) }]
+      } else {
+        empty_significant_spellings
+      }
+    }
+    TriviaRule { pattern: _ } => empty_significant_spellings
+  }
+}
+
+fn derive_significant_spellings(rs: LexRuleSet) -> List<SignificantSpelling> {
+  fold_list(
+    xs: rs.rules,
+    empty: empty_significant_spellings,
+    cons: fn(acc, rule) { list_append(left: acc, right: lex_rule_significant(rule: rule)) }
+  )
+}
+
+data bash_significant_spellings: List<SignificantSpelling> = derive_significant_spellings(rs: bash_ingest_lex_rules())
+
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+
+fn str_is_prefix(prefix: String, xs: String) -> Bool {
+  is_prefix_of(prefix: prefix, xs: xs, eq: char_eq)
+}
+
+fn drop_n(s: String, n: Int) -> String {
+  if n <= 0 {
+    s
+  } else {
+    match string_tail(s: s) {
+      TailFound { tail: t } => drop_n(s: t, n: n - 1)
+      TailAbsent => s
+    }
+  }
+}
+
+fn longest_match_step(acc: MatchResult, sp: SignificantSpelling, remaining: String) -> MatchResult {
+  if str_is_prefix(prefix: sp.text, xs: remaining) {
+    match acc {
+      NoMatch => FoundMatch { role: sp.role, len: sp.len }
+      FoundMatch { role: _, len: best } =>
+        if sp.len > best {
+          FoundMatch { role: sp.role, len: sp.len }
+        } else {
+          acc
+        }
+    }
+  } else {
+    acc
+  }
+}
+
+fn longest_significant_match(remaining: String) -> MatchResult {
+  fold_list(
+    xs: bash_significant_spellings,
+    empty: NoMatch,
+    cons: fn(acc, sp) { longest_match_step(acc: acc, sp: sp, remaining: remaining) }
+  )
+}
+
+fn close_run(st: ScanState) -> ScanState {
+  if st.in_run {
+    ScanState {
+      quote: st.quote,
+      run_count: st.run_count + 1,
+      in_run: false,
+      has_if: st.has_if,
+      saw_unmodeled_kw: st.saw_unmodeled_kw,
+      hole_present: st.hole_present,
+      hole_straddle: st.hole_straddle
+    }
+  } else {
+    st
+  }
+}
+
+fn apply_role(st: ScanState, role: TokenRole) -> ScanState {
+  let closed = close_run(st: st)
+  match role {
+    IfFraming => ScanState {
+      quote: closed.quote,
+      run_count: closed.run_count,
+      in_run: false,
+      has_if: true,
+      saw_unmodeled_kw: closed.saw_unmodeled_kw,
+      hole_present: closed.hole_present,
+      hole_straddle: closed.hole_straddle
+    }
+    UnmodeledKeyword => ScanState {
+      quote: closed.quote,
+      run_count: closed.run_count,
+      in_run: false,
+      has_if: closed.has_if,
+      saw_unmodeled_kw: true,
+      hole_present: closed.hole_present,
+      hole_straddle: closed.hole_straddle
+    }
+    _ => closed
+  }
+}
+
+fn set_quote(st: ScanState, q: QuoteMode) -> ScanState {
+  ScanState {
+    quote: q,
+    run_count: st.run_count,
+    in_run: st.in_run,
+    has_if: st.has_if,
+    saw_unmodeled_kw: st.saw_unmodeled_kw,
+    hole_present: st.hole_present,
+    hole_straddle: st.hole_straddle
+  }
+}
+
+fn mark_run(st: ScanState) -> ScanState {
+  ScanState {
+    quote: st.quote,
+    run_count: st.run_count,
+    in_run: true,
+    has_if: st.has_if,
+    saw_unmodeled_kw: st.saw_unmodeled_kw,
+    hole_present: st.hole_present,
+    hole_straddle: st.hole_straddle
+  }
+}
+
+fn set_quote_mark_run(st: ScanState, q: QuoteMode) -> ScanState {
+  set_quote(st: mark_run(st: st), q: q)
+}
+
+fn scan(remaining: String, st: ScanState) -> ScanState {
+  if string_is_empty(s: remaining) {
+    st
+  } else {
+    match st.quote {
+      QuoteOut =>
+        match longest_significant_match(remaining: remaining) {
+          FoundMatch { role: role, len: len } =>
+            scan(remaining: drop_n(s: remaining, n: len), st: apply_role(st: st, role: role))
+          NoMatch =>
+            if str_is_prefix(prefix: "\"", xs: remaining) {
+              scan(remaining: drop_n(s: remaining, n: 1), st: set_quote(st: st, q: QuoteDouble))
+            } else {
+              if str_is_prefix(prefix: "'", xs: remaining) {
+                scan(remaining: drop_n(s: remaining, n: 1), st: set_quote(st: st, q: QuoteSingle))
+              } else {
+                if str_is_prefix(prefix: "\\", xs: remaining) {
+                  scan(remaining: drop_n(s: remaining, n: 1), st: set_quote(st: st, q: QuoteEscOut))
+                } else {
+                  scan(remaining: drop_n(s: remaining, n: 1), st: mark_run(st: st))
+                }
+              }
+            }
+        }
+      QuoteSingle =>
+        if str_is_prefix(prefix: "'", xs: remaining) {
+          scan(remaining: drop_n(s: remaining, n: 1), st: set_quote_mark_run(st: st, q: QuoteOut))
+        } else {
+          scan(remaining: drop_n(s: remaining, n: 1), st: mark_run(st: st))
+        }
+      QuoteDouble =>
+        if str_is_prefix(prefix: "\"", xs: remaining) {
+          scan(remaining: drop_n(s: remaining, n: 1), st: set_quote_mark_run(st: st, q: QuoteOut))
+        } else {
+          if str_is_prefix(prefix: "\\", xs: remaining) {
+            scan(remaining: drop_n(s: remaining, n: 1), st: set_quote_mark_run(st: st, q: QuoteEscDouble))
+          } else {
+            scan(remaining: drop_n(s: remaining, n: 1), st: mark_run(st: st))
+          }
+        }
+      QuoteEscOut =>
+        scan(remaining: drop_n(s: remaining, n: 1), st: set_quote_mark_run(st: st, q: QuoteOut))
+      QuoteEscDouble =>
+        scan(remaining: drop_n(s: remaining, n: 1), st: set_quote_mark_run(st: st, q: QuoteDouble))
+    }
+  }
+}
+
+data initial_scan_state: ScanState = ScanState {
+  quote: QuoteOut,
+  run_count: 0,
+  in_run: false,
+  has_if: false,
+  saw_unmodeled_kw: false,
+  hole_present: false,
+  hole_straddle: false
+}
+
+fn quote_terminated(q: QuoteMode) -> Bool {
+  match q {
+    QuoteOut => true
+    QuoteSingle => false
+    QuoteDouble => false
+    QuoteEscOut => false
+    QuoteEscDouble => false
+  }
+}
+
+fn state_is_composition(st: ScanState) -> Bool {
+  (st.run_count >= 2) || (st.has_if && (st.run_count >= 1))
+}
+
+fn classify_scan_state(st: ScanState) -> BashCompositionDisposition {
+  let closed = close_run(st: st)
+  if closed.saw_unmodeled_kw {
+    AmbiguousParse { cause: UnmodeledKeywordPresent }
+  } else {
+    if quote_terminated(q: closed.quote) == false {
+      AmbiguousParse { cause: MunchCannotCover }
+    } else {
+      if state_is_composition(st: closed) {
+        Violation
+      } else {
+        if closed.hole_straddle {
+          AmbiguousParse { cause: HoleStraddlesToken }
+        } else {
+          Clean
+        }
+      }
+    }
+  }
+}
+
+data hole_straddle_note: String = "T3 HoleStraddlesToken is ACTIVE, not deferred (correcting the assume-Clean absorbing fallback, DESIGN.md §5): a parts-projection Hole is a .dag compose-time value concatenated into the source string before bash parses it, so an UNQUOTED Hole (quote_terminated at the hole position — the same single QuoteOut predicate the munch-termination check reads) could contain a separator and is set as hole_straddle. classify_scan_state routes hole_straddle -> AmbiguousParse cause HoleStraddlesToken AFTER P2 static-token composition (a line already decided a Violation by real tokens stays Violation; a line decidable Clean by static tokens becomes AmbiguousParse when an unquoted Hole could still introduce a separator). The earnable escape to Clean: a Hole in QUOTED context (double/single) is bounded — word-splitting and control operators cannot apply inside quotes — so quote_terminated is false and hole_straddle is not set."
+
+data operand_framing_residue_note: String = "TRACKED RESIDUE (DESIGN.md §5 ledger completeness, beside p1_dominance_residue_note; parent threat model = ACCIDENTAL hand-splicing, NOT adversarial): bash command-substitution and grouping metacharacters that carry NO modeled token — backticks, dollar-paren, and brace-groups written without a separating space — fall through longest_significant_match as OperandFraming (ordinary run chars), so a hand-written literal like a backtick-substitution lands Clean rather than AmbiguousParse. Under the accidental-splicing threat model this is acceptable (a determined smuggler is already covered as out-of-scope by p1_dominance_residue_note's keyword-inclusion note). It is NAMED here so the residue is counted, not a silent gap. DISSOLVES-ON: the wall's scope is declared to widen to adversarial input, at which point these metacharacters get modeled token classes (Separator/JoiningControl-adjacent) and P2/T3 decide through them."
+
+fn scan_part(st: ScanState, part: SkeletonPart) -> ScanState {
+  match part {
+    ConstPart { text: t } => scan(remaining: t, st: st)
+    HolePart => ScanState {
+      quote: st.quote,
+      run_count: st.run_count,
+      in_run: true,
+      has_if: st.has_if,
+      saw_unmodeled_kw: st.saw_unmodeled_kw,
+      hole_present: true,
+      hole_straddle: st.hole_straddle || quote_terminated(q: st.quote)
+    }
+  }
+}
+
+type MergeAcc {
+  pending: String
+  has_pending: Bool
+  out: List<SkeletonPart>
+}
+
+fn merge_flush(acc: MergeAcc) -> MergeAcc {
+  if acc.has_pending {
+    MergeAcc {
+      pending: "",
+      has_pending: false,
+      out: list_snoc_item(xs: acc.out, item: ConstPart { text: acc.pending })
+    }
+  } else {
+    acc
+  }
+}
+
+fn merge_step(acc: MergeAcc, part: SkeletonPart) -> MergeAcc {
+  match part {
+    ConstPart { text: t } => MergeAcc {
+      pending: concat(acc.pending, t),
+      has_pending: true,
+      out: acc.out
+    }
+    HolePart => {
+      let flushed = merge_flush(acc: acc)
+      MergeAcc {
+        pending: "",
+        has_pending: false,
+        out: list_snoc_item(xs: flushed.out, item: HolePart)
+      }
+    }
+  }
+}
+
+fn merge_adjacent_consts(parts: List<SkeletonPart>) -> List<SkeletonPart> {
+  let folded = fold_list(
+    xs: parts,
+    empty: MergeAcc { pending: "", has_pending: false, out: empty_skeleton_parts },
+    cons: fn(acc, part) { merge_step(acc: acc, part: part) }
+  )
+  merge_flush(acc: folded).out
+}
+
+fn classify_bash_skeleton(sk: LiteralSkeleton) -> BashCompositionDisposition {
+  classify_scan_state(
+    st: fold_list(
+      xs: merge_adjacent_consts(parts: sk.parts),
+      empty: initial_scan_state,
+      cons: fn(acc, part) { scan_part(st: acc, part: part) }
+    )
+  )
+}
+
+fn classify_bash_text(text: String) -> BashCompositionDisposition {
+  classify_bash_skeleton(sk: LiteralSkeleton { parts: [ConstPart { text: text }] })
+}
+
+fn disposition_is_violation(d: BashCompositionDisposition) -> Bool {
+  match d {
+    Violation => true
+    Clean => false
+    AmbiguousParse { cause: _ } => false
+  }
+}
+
+fn disposition_is_ambiguous(d: BashCompositionDisposition) -> Bool {
+  match d {
+    Violation => false
+    Clean => false
+    AmbiguousParse { cause: _ } => true
+  }
+}
+
+fn disposition_is_clean(d: BashCompositionDisposition) -> Bool {
+  match d {
+    Violation => false
+    Clean => true
+    AmbiguousParse { cause: _ } => false
+  }
+}
