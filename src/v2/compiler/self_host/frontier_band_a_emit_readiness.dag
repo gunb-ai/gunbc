@@ -27,7 +27,7 @@ data compiler_frontier_band_a_row_parse_engine_hooks: BandAEmitReadinessRow = Ba
 
 data compiler_frontier_band_a_row_use_site_verdict: BandAEmitReadinessRow = BandAEmitReadinessRow {
   module_path: "src/v2/compiler/use_site_verdict.dag",
-  gate: OtherGate { migration_trigger: ^migrate_when_ownership_defork_lands }
+  gate: FlippableNow
 }
 
 data compiler_frontier_band_a_row_discovery_enumeration: BandAEmitReadinessRow = BandAEmitReadinessRow {
@@ -102,8 +102,8 @@ fn compiler_frontier_band_a_emit_readiness_core_holds() -> Bool {
   (length(xs: compiler_frontier_band_a_emit_readiness_roster) == compiler_frontier_band_a_emit_readiness_count_expected)
     && compiler_frontier_band_a_paths_unique_holds()
     && (compiler_frontier_band_a_body_producer_gated_count() == 0)
-    && (compiler_frontier_band_a_flippable_now_count() == 2)
-    && (compiler_frontier_band_a_other_gate_count() == 4)
+    && (compiler_frontier_band_a_flippable_now_count() == 3)
+    && (compiler_frontier_band_a_other_gate_count() == 3)
 }
 
 fn count_band_a_emit_readiness_rows_with_path(

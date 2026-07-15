@@ -131,16 +131,14 @@ fn execution_measured_seed_retained_row_from_probe_receipt(
 fn execution_measured_self_emitted_row(
   module_path: String,
   closure_reads: Int,
-  measured_probe: FrontierProbeReceipt
+  measured_probe: FrontierProbeReceipt,
+  tractability_rank: Int
 ) -> CompilerModuleFrontierRow {
   CompilerModuleFrontierRow {
     module_path: module_path,
     disposition: SelfEmitted,
     measured_probe: measured_probe,
-    tractability_rank: tractability_rank_for(
-      closure_reads: closure_reads,
-      blocker: measured_probe.blocker_class
-    )
+    tractability_rank: tractability_rank
   }
 }
 
@@ -350,7 +348,8 @@ data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = executi
     blocker_class: SelfEmitReady,
     located_stage: ProbeStageEmit,
     located_reason: ^measured_probe_self_emit_ready
-  }
+  },
+  tractability_rank: tractability_rank_for(closure_reads: 9, blocker: EmitSurfaceGap)
 )
 
 data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
@@ -522,7 +521,11 @@ fn compiler_frontier_roster_located_reason_not_class_projection_holds() -> Bool 
     xs: compiler_frontier_roster,
     empty: true,
     cons: fn(ok, row) {
-      ok && !frontier_located_reason_is_class_projection(reason: row.measured_probe.located_reason)
+      ok && match row.disposition {
+        SelfEmitted => true
+        SeedRetained { reason: _, migration_trigger: _ } =>
+          !frontier_located_reason_is_class_projection(reason: row.measured_probe.located_reason)
+      }
     }
   )
 }

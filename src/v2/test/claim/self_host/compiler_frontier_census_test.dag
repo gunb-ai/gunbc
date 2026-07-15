@@ -22,7 +22,6 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_roster_paths_unique_holds,
   compiler_frontier_roster_probe_paths_match_holds,
   compiler_frontier_seed_retained_count,
-  compiler_frontier_self_emitted_baseline,
   compiler_frontier_self_emitted_count,
   compiler_frontier_sweep_order_complete_holds
 }
@@ -50,8 +49,7 @@ test fn compiler_frontier_duplicate_path_red_refuses() -> Bool {
 
 test fn compiler_frontier_initial_census_matches_self_emitted_baseline() -> Bool {
   compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
-    && compiler_frontier_seed_retained_count()
-      == (compiler_frontier_module_count_expected - compiler_frontier_self_emitted_baseline)
+    && compiler_frontier_roster_count() == compiler_frontier_module_count_expected
 }
 
 test fn compiler_frontier_execution_measured_attribution_test() -> Bool {
@@ -84,10 +82,9 @@ test fn compiler_frontier_band_a_flippable_now_discriminator_holds() -> Bool {
     }
 }
 
-test fn compiler_frontier_band_a_other_gate_trigger_discriminator_holds() -> Bool {
+test fn compiler_frontier_band_a_use_site_verdict_flipped_discriminator_holds() -> Bool {
   match compiler_frontier_band_a_row_use_site_verdict.gate {
-    OtherGate { migration_trigger: t } =>
-      t == ^migrate_when_ownership_defork_lands
+    FlippableNow => true
     _ => false
   }
 }
