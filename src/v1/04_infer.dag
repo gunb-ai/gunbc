@@ -5926,18 +5926,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     Absent => empty_map()
   }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
-  let ancestry_str_bindings = if module.resolved_imports |> count == 1 {
-    match module.resolved_imports |> first {
-      Present { value: imp } =>
-        match map_get(parent_index, imp.module_path) {
-          Present { value: parent_mod } => map_merge(parent_mod.interface.env.ancestry_str_bindings, parent_mod.interface.env.str_bindings)
-          Absent => ancestry_cache.str_bindings
-        }
-      Absent => ancestry_cache.str_bindings
-    }
-  } else {
-    ancestry_cache.str_bindings
-  }
+  let ancestry_str_bindings = ancestry_cache.str_bindings
   let svn_local = fold(map_keys(local_str_bindings), init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
   let svn_kernel = fold(map_keys(kernel_type_set), init: svn_local, f: (acc, n) => map_insert(acc, n, true))
   let source_visible_names = fold(module.resolved_imports, init: svn_kernel, f: (acc, imp) =>
@@ -6062,18 +6051,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     Absent => empty_map()
   }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
-  let ancestry_str_bindings = if module.resolved_imports |> count == 1 {
-    match module.resolved_imports |> first {
-      Present { value: imp } =>
-        match map_get(parent_index, imp.module_path) {
-          Present { value: parent_mod } => map_merge(parent_mod.interface.env.ancestry_str_bindings, parent_mod.interface.env.str_bindings)
-          Absent => ancestry_cache.str_bindings
-        }
-      Absent => ancestry_cache.str_bindings
-    }
-  } else {
-    ancestry_cache.str_bindings
-  }
+  let ancestry_str_bindings = ancestry_cache.str_bindings
   let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
   let unresolved_env = TypeEnv { bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), global_bare: empty_map(), symbol_index: empty_symbol_index() }
   let type_env_cache = TypeEnvCache {
