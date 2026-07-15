@@ -836,7 +836,12 @@ fn direct_call_arg_mismatch_diags(
       let formal_raw = param_node_type_expr(n: pair.second)
       let formal_subst = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
       let formal = peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name)
-      match typed_args |> skip(pair.first) |> first {
+      let param_name = authored_name_at(source_indices: source_indices, node: pair.second)
+      let matched_arg = match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
+        Present { value: named_ta } => Present { value: named_ta }
+        Absent => typed_args |> skip(pair.first) |> first
+      }
+      match matched_arg {
         Present { value: ta } =>
           let actual_raw = resolved_type(n: arg_value(n: ta))
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)

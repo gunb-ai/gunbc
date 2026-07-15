@@ -1447,7 +1447,27 @@ pub fn direct_call_arg_mismatch_diags(
                             type_env.clone(),
                             module_name.clone(),
                         );
-                        match typed_args.clone().get(pair.0.clone() as usize).cloned() {
+                        let param_name = authored_name_at(source_indices.clone(), pair.1.clone());
+                        let matched_arg = match Rc::new({
+                            let mut __result = Vec::new();
+                            for ta in typed_args.clone().iter().cloned() {
+                                if arg_has_name(
+                                    ta.clone(),
+                                    param_name.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    __result.push(ta);
+                                }
+                            }
+                            __result
+                        })
+                        .first()
+                        .cloned()
+                        {
+                            Some(named_ta) => Some(named_ta.clone()),
+                            None => typed_args.clone().get(pair.0.clone() as usize).cloned(),
+                        };
+                        match matched_arg.clone() {
                             Some(ta) => {
                                 let actual_raw = resolved_type(arg_value(ta.clone()));
                                 let actual = peel_nominal_alias_identity(
