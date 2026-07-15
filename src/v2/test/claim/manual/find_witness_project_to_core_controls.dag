@@ -366,7 +366,8 @@ fn unbounded_value_set_with_extra_field() -> Node {
         label: Named { name: ^integer_value_set_field_extra },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_field_extra } },
-          children: []
+          children: [],
+          occurrence_id: SyntheticOccurrence
         }
       }
     ],
