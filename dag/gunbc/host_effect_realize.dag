@@ -44,8 +44,6 @@ import gunbc.host_converge_realize {
 import extdeps.gunbc
 import extdeps.apt { package_curl, package_nbdkit, package_socat, package_xorriso, apt_get_binary_path }
 import extdeps.tools.curl { curl_cli_tool }
-import extdeps.tools.jq { jq_cli_tool }
-import extdeps.tools.sleep { sleep_cli_tool }
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
@@ -57,24 +55,9 @@ import extdeps.tools.websocat {
   websocat_github_release_download_url,
 }
 import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.srv3_install_diagnostic_observe_script {
   srv3_install_diagnostic_observe_script,
-}
-import gunbc.srv3_os_install_diagnostic {
-  srv3_os_install_attempt_intent,
-  srv3_install_diagnostic_observe_script_for_intent,
-}
-import extdeps.bmc.serial_console {
-  sol_console_capture_systemd_run_argv,
-  sol_console_capture_unit_name,
-  sol_console_capture_receipt_line,
-}
-import extdeps.os.systemctl
-import gunbc.srv3_sol_console_intent { srv3_sol_console_capture_intent }
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.srv3_host_effect_script {
-  srv3_host_effect_script_for,
-  srv3_install_reconcile_observe_script,
 }
 import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_login_body_path,
@@ -88,6 +71,7 @@ import gunbc.ci_deploy_access {
   deploy_access_check, deploy_access_check_observed,
   deploy_access_decision_reason,
 }
+import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
 import gunbc.srv3_os_install_reconcile_types {
   srv3_boot_once_approval_grant_path,
   srv3_boot_once_apply_read_back_sleep,
@@ -118,7 +102,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
   bmcweb_session_login_curl_args,
 }
-import std.types { String, NonEmptyStr, List, Bool, FilePath, Timestamp }
+import std.types { String, NonEmptyStr, List, Bool }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -141,8 +125,6 @@ type ResolvedHostEffectCell =
   | SeededInstallMediaToolchainOnHost { node: ComputeHost }
   | BmcwebSessionLoginOnHost { node: ComputeHost }
   | BmcwebTokenExtractOnHost { node: ComputeHost }
-  | InstallReconcileObserveOnHost { node: ComputeHost, include_git_meta: Bool }
-  | SolConsoleCaptureOnHost { node: ComputeHost }
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -185,10 +167,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BmcwebSessionLoginOnHost { node: n }
         Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
-        Srv3InstallReconcileObserve { include_git_meta: meta } =>
-          InstallReconcileObserveOnHost { node: n, include_git_meta: meta }
-        Srv3SolConsoleCapture =>
-          SolConsoleCaptureOnHost { node: n }
         _ =>
           match srv3_host_effect_script_for(effect: effect) {
             Present { value: script } => ShellOnHost { node: n, script: script }
@@ -207,8 +185,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   srv3_host_effect_script_resolution_failed_cell()
                 OsInstallActuatorToolchainEnsure {} =>
                   srv3_host_effect_script_resolution_failed_cell()
-                Srv3InstallReconcileObserve { include_git_meta: meta } =>
-                  InstallReconcileObserveOnHost { node: n, include_git_meta: meta }
+                Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRead =>
                   IncompatibleCell { reason: "host_effect: DurableApprovalGrantRead is in-band (actuator host typed read) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -216,8 +193,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                 Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
                 Srv3SeededInstallMediaToolchainEnsure =>
                   SeededInstallMediaToolchainOnHost { node: n }
-                Srv3SolConsoleCapture =>
-                  SolConsoleCaptureOnHost { node: n }
+                Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebSessionLogin =>
                   BmcwebSessionLoginOnHost { node: n }
                 Srv3BmcwebTokenExtract =>
@@ -256,8 +232,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   srv3_host_effect_script_resolution_failed_cell()
                 OsInstallActuatorToolchainEnsure {} =>
                   srv3_host_effect_script_resolution_failed_cell()
-                Srv3InstallReconcileObserve { include_git_meta: _ } =>
-                  IncompatibleCell { reason: "host_effect: Srv3InstallReconcileObserve is in-band (actuator host typed observe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRead =>
                   IncompatibleCell { reason: "host_effect: DurableApprovalGrantRead is in-band (actuator host typed read) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -267,8 +242,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3SeededInstallMediaToolchainEnsure =>
                   IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-                Srv3SolConsoleCapture =>
-                  IncompatibleCell { reason: "host_effect: Srv3SolConsoleCapture is in-band (actuator host typed SOL capture) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                Srv3SolConsoleCapture => srv3_host_effect_script_resolution_failed_cell()
                 Srv3BmcwebSessionLogin =>
                   IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3BmcwebTokenExtract =>
@@ -360,16 +334,12 @@ fn realize_boot_once_read_back_sleep_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
-  let success = match srv3_tool_bin_path(tool_name: sleep_cli_tool.name, transport: transport) {
-    Present { value: sleep_path } =>
-      srv3_transport_witness_bin_success(
-        transport: transport,
-        workdir: "/",
-        bin_path: sleep_path,
-        args: [seconds],
-      )
-    Absent => false
-  }
+  let success = srv3_transport_witness_bin_success(
+    transport: transport,
+    workdir: "/",
+    bin_path: "/bin/sleep",
+    args: [seconds],
+  )
   srv3_shell_reconcile(
     observed: ShellExecObserved {
       exit_code: if success { 0 } else { 1 },
@@ -561,50 +531,36 @@ fn realize_bmcweb_session_login_on_host(
 fn realize_bmcweb_token_extract_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match srv3_tool_bin_path(tool_name: jq_cli_tool.name, transport: LocalShell) {
-    Present { value: jq_path } => {
-      let jq_run = gunbc.WitnessBin.Run(
-        workdir: "/",
-        bin_path: jq_path,
-        args: ["-r", ".token // empty", srv3_bmcweb_login_response_path],
-      )
-      if jq_run.success {
-        let write = Filesystem.Write(path: srv3_bmcweb_token_path, content: jq_run.stdout)
-        srv3_shell_reconcile(
-          observed: ShellExecObserved {
-            exit_code: if write.success { 0 } else { 1 },
-            success: write.success,
-            stdout: "",
-            stderr: if write.success {
-              ""
-            } else {
-              "host_effect_apply: Srv3BmcwebTokenExtract token write failed; fail-closed"
-            },
-          },
-          intent: intent,
-        )
-      } else {
-        srv3_shell_reconcile(
-          observed: ShellExecObserved {
-            exit_code: 1,
-            success: false,
-            stdout: "",
-            stderr: "host_effect_apply: Srv3BmcwebTokenExtract jq failed; fail-closed",
-          },
-          intent: intent,
-        )
-      }
-    }
-    Absent =>
-      srv3_shell_reconcile(
-        observed: ShellExecObserved {
-          exit_code: 1,
-          success: false,
-          stdout: "",
-          stderr: "host_effect_apply: Srv3BmcwebTokenExtract jq not found on executor host; fail-closed",
+  let jq_run = gunbc.WitnessBin.Run(
+    workdir: "/",
+    bin_path: "/usr/bin/jq",
+    args: ["-r", ".token // empty", srv3_bmcweb_login_response_path],
+  )
+  if jq_run.success {
+    let write = Filesystem.Write(path: srv3_bmcweb_token_path, content: jq_run.stdout)
+    srv3_shell_reconcile(
+      observed: ShellExecObserved {
+        exit_code: if write.success { 0 } else { 1 },
+        success: write.success,
+        stdout: "",
+        stderr: if write.success {
+          ""
+        } else {
+          "host_effect_apply: Srv3BmcwebTokenExtract token write failed; fail-closed"
         },
-        intent: intent,
-      )
+      },
+      intent: intent,
+    )
+  } else {
+    srv3_shell_reconcile(
+      observed: ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: "host_effect_apply: Srv3BmcwebTokenExtract jq failed; fail-closed",
+      },
+      intent: intent,
+    )
   }
 }
 
@@ -647,66 +603,6 @@ fn srv3_toolchain_ensure_reconcile(
     show_read: ReadObserved { value: observed },
     grounding: grounding
   )
-}
-
-
-fn realize_sol_console_capture_on_host(
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let capture_intent = srv3_sol_console_capture_intent
-  let receipt = sol_console_capture_receipt_line(intent: capture_intent)
-  match transport {
-    LocalShell => {
-      let started = srv3_transport_witness_bin_success(
-        transport: transport,
-        workdir: "/",
-        bin_path: "/usr/bin/systemd-run",
-        args: sol_console_capture_systemd_run_argv(intent: capture_intent),
-      )
-      let active = if started {
-        systemd.Systemctl.IsActive(unit: sol_console_capture_unit_name).active
-      } else {
-        false
-      }
-      srv3_shell_reconcile(
-        observed: ShellExecObserved {
-          exit_code: if active { 0 } else { 1 },
-          success: active,
-          stdout: if active { receipt } else { "" },
-          stderr: if active {
-            ""
-          } else {
-            "host_effect_apply: Srv3SolConsoleCapture systemd-run transient start or is-active check failed; fail-closed"
-          },
-        },
-        intent: intent,
-      )
-    }
-    SshShell { ssh_host: _ } =>
-      NotConverged {
-        reason: "host_effect_apply: Srv3SolConsoleCapture runs typed systemd-run transient units on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote SOL capture is realized.",
-        applied: intent,
-      }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      NotConverged {
-        reason: "host_effect_apply: Srv3SolConsoleCapture cannot use EmitArtifactThenThinRun transport; typed mismatch.",
-        applied: intent,
-      }
-  }
-}
-
-fn realize_install_reconcile_observe_on_host(
-  include_git_meta: Bool,
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let script = srv3_install_reconcile_observe_script(include_git_meta: include_git_meta)
-  let observed = run_shell_transport(
-    script: shell_exec_via_bash(body: script),
-    transport: transport,
-  )
-  srv3_shell_reconcile(observed: observed, intent: intent)
 }
 
 fn realize_srv3_install_diagnostic_observe(
@@ -1041,35 +937,17 @@ fn realize_os_install_actuator_toolchain_ensure(
   }
 }
 
-fn run_shell_transport_local(script: String) -> ShellExecObserved {
-  if script == "exit 1" {
-    ShellExecObserved {
-      exit_code: 1,
-      success: false,
-      stdout: "",
-      stderr: "",
-    }
-  } else if string_contains(s: script, pattern: "srv3-apply-red-marker") {
-    ShellExecObserved {
-      exit_code: 1,
-      success: false,
-      stdout: "srv3-apply-red-marker\n",
-      stderr: "",
-    }
-  } else {
-    let result = shell.Exec.Run(script: script)
-    ShellExecObserved {
-      exit_code: result.exit_code,
-      success: result.success,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    }
-  }
-}
-
 fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
   match transport {
-    LocalShell => run_shell_transport_local(script: script)
+    LocalShell => {
+      let result = shell.Exec.Run(script: script)
+      ShellExecObserved {
+        exit_code: result.exit_code,
+        success: result.success,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }
+    }
     SshShell { ssh_host: h } => {
       if script == "" {
         ShellExecObserved {
@@ -1311,14 +1189,6 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
     BmcwebTokenExtractOnHost { node: _ } =>
       realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
-    InstallReconcileObserveOnHost { node: _, include_git_meta: meta } =>
-      realize_install_reconcile_observe_on_host(
-        include_git_meta: meta,
-        transport: transport,
-        intent: intent,
-      )
-    SolConsoleCaptureOnHost { node: _ } =>
-      realize_sol_console_capture_on_host(transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1385,14 +1255,6 @@ fn host_effect_apply_gated(
           realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
         BmcwebTokenExtractOnHost { node: _ } =>
           realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
-        InstallReconcileObserveOnHost { node: _, include_git_meta: meta } =>
-          realize_install_reconcile_observe_on_host(
-            include_git_meta: meta,
-            transport: transport,
-            intent: intent,
-          )
-        SolConsoleCaptureOnHost { node: _ } =>
-          realize_sol_console_capture_on_host(transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1443,10 +1305,6 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             SeededInstallMediaToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            InstallReconcileObserveOnHost { node: _, include_git_meta: _ } =>
-              not_converged_directive(drive: host_effect_drive(intent: intent))
-            SolConsoleCaptureOnHost { node: _ } =>
-              not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }

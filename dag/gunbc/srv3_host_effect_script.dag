@@ -19,7 +19,6 @@ import gunbc.host_effect {
   ShellCommand,
   RedfishAction,
   ConvergePlan,
-  SetHostnameCas,
 }
 import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
 import gunbc.srv3_os_install_diagnostic {
@@ -27,13 +26,15 @@ import gunbc.srv3_os_install_diagnostic {
   srv3_install_diagnostic_observe_script_for_intent,
 }
 import gunbc.srv3_os_install_reconcile_receipt { srv3_install_record_boot_once_approval_script }
+import extdeps.bmc.serial_console {
+  sol_console_capture_script,
+}
+import gunbc.srv3_sol_console_intent { srv3_sol_console_capture_intent }
 import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data srv3_host_effect_script_dissolution_trigger: String = "🟡 dissolve-on: srv3_host_effect_script — concat-built bash bodies for srv3 observe/effect intents (centralized handler staging post-P5a call-site migration); DISSOLVES WHEN bash-emit (#5828 / shell-emission slice0) realizes srv3 observe/effect intents as typed argv invocations / grammar-emitted nodes and srv3_host_effect_script_for retires without concat-built transport strings; retire medium_structure_exception_roster entry for dag/gunbc/srv3_host_effect_script.dag. Wave 4 residue (shell→dag census §1C category C). NOT gated on shell_exec_via_bash executor deletion (P5b)."
-
-data srv3_durable_approval_grant_record_observed_timestamp_dissolution_trigger: String = "🟡 dissolve-on: DurableApprovalGrantRecord shell path (date subs in srv3_install_record_boot_once_approval_script) — realized via shell (date) because the model consumes timestamps but has no typed effect whose REALIZATION returns an observed time in its result. Dissolves when a typed grant-record effect carries observed time on its result — the shape std.temporal_effect.DurableApprovalGrant.GrantActive already declares, and which EffectStepReceipt.recorded_at is precedent-adjacent to. NOT gated on grounding resource Clock (correctly dropped: a pure-model clock read is a determinism leak by construction)."
 
 data srv3_host_effect_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -98,7 +99,12 @@ fn srv3_receipt_emit_script(lines: List<String>) -> String {
 
 fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
   match effect {
-    Srv3InstallReconcileObserve { include_git_meta: _ } => Absent
+    Srv3InstallReconcileObserve { include_git_meta: meta } =>
+      Present {
+        value: shell_exec_via_bash(
+          body: srv3_install_reconcile_observe_script(include_git_meta: meta),
+        ),
+      }
     DurableApprovalGrantRecord =>
       Present {
         value: shell_exec_via_bash(body: srv3_install_record_boot_once_approval_script()),
@@ -107,7 +113,12 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
     Srv3InstallMediaFetch => Absent
     Srv3SeededInstallMediaRemaster => Absent
     Srv3SeededInstallMediaToolchainEnsure => Absent
-    Srv3SolConsoleCapture => Absent
+    Srv3SolConsoleCapture =>
+      Present {
+        value: shell_exec_via_bash(
+          body: sol_console_capture_script(intent: srv3_sol_console_capture_intent),
+        ),
+      }
     Srv3BmcwebSessionLogin => Absent
     Srv3BmcwebTokenExtract => Absent
     Srv3NbdProxyServe { intent: _, lease_key: _ } => Absent

@@ -32,8 +32,5 @@ service Filesystem {
     }
     readonly
     transport file { path: "{path}" }
-    mock_response {
-      0 => { content: "", success: false, error: "hermetic filesystem read absent" } "hermetic filesystem read fail-closed absent path"
-    }
   }
 }

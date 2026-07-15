@@ -1,6 +1,6 @@
 module gunbc.host_effect
 
-import std.types { String, Int, NonEmptyStr, List, ContentHash, Timestamp }
+import std.types { String, Int, NonEmptyStr, List, ContentHash }
 import std.access { AccessDecision }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
