@@ -84,6 +84,7 @@ import v2.std.host_transport {
   HostRuntimeRowPresent,
   TargetEmitHostRuntimeRow,
   FixedWidthBytes,
+  HostToolProgram,
   HostTransportDescriptor,
   LiteralArg,
   ProcessInvocation,
@@ -1802,7 +1803,7 @@ fn go_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: Empty,
     run: ProcessInvocation {
-      tool: ^host_tool_go,
+      program: HostToolProgram { tool: ^host_tool_go },
       args: [
         LiteralArg { text: "run" },
         WorkspacePath { path: "main.go" }
