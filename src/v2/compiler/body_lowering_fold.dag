@@ -3094,17 +3094,10 @@ fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
   }
 }
 
-fn body_lower_let_in_has_in_keyword(captured: Node) -> Bool {
-  match body_lower_let_in_body_capture_optional(captured: captured) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>> {
-  if !body_lower_let_in_has_in_keyword(captured: captured) {
-    outcome_accepted(value: optional_absent())
-  } else {
+  match body_lower_let_in_body_capture_optional(captured: captured) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: _ } =>
     match body_lower_let_in_key_binding_optional(captured: captured) {
       Present { value: key_binding } =>
         match body_lower_let_in_value_capture_optional(captured: captured) {
