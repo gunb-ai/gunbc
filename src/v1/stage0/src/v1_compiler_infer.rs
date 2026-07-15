@@ -13076,32 +13076,7 @@ pub fn build_type_env(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
-        let ancestry_str_bindings = if ((module.resolved_imports.clone().len() as i64) == 1) {
-            match module.resolved_imports.clone().first().cloned() {
-                Some(imp) => match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                    Some(parent_mod) => v1_rt::rc_map_merge(
-                        parent_mod
-                            .interface
-                            .clone()
-                            .env
-                            .clone()
-                            .ancestry_str_bindings
-                            .clone(),
-                        parent_mod
-                            .interface
-                            .clone()
-                            .env
-                            .clone()
-                            .str_bindings
-                            .clone(),
-                    ),
-                    None => ancestry_cache.str_bindings.clone(),
-                },
-                None => ancestry_cache.str_bindings.clone(),
-            }
-        } else {
-            ancestry_cache.str_bindings.clone()
-        };
+        let ancestry_str_bindings = ancestry_cache.str_bindings.clone();
         let svn_local = Rc::new(v1_rt::map_keys(&local_str_bindings))
             .iter()
             .cloned()
@@ -13644,32 +13619,7 @@ pub fn build_type_env_unresolved(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
-        let ancestry_str_bindings = if ((module.resolved_imports.clone().len() as i64) == 1) {
-            match module.resolved_imports.clone().first().cloned() {
-                Some(imp) => match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                    Some(parent_mod) => v1_rt::rc_map_merge(
-                        parent_mod
-                            .interface
-                            .clone()
-                            .env
-                            .clone()
-                            .ancestry_str_bindings
-                            .clone(),
-                        parent_mod
-                            .interface
-                            .clone()
-                            .env
-                            .clone()
-                            .str_bindings
-                            .clone(),
-                    ),
-                    None => ancestry_cache.str_bindings.clone(),
-                },
-                None => ancestry_cache.str_bindings.clone(),
-            }
-        } else {
-            ancestry_cache.str_bindings.clone()
-        };
+        let ancestry_str_bindings = ancestry_cache.str_bindings.clone();
         let visible_str_bindings =
             v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
         let unresolved_env = Rc::new(TypeEnv {
