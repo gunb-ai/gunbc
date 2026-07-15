@@ -1,11 +1,12 @@
 module gunbc.falsifier_workflow
 
 import extdeps.languages.yaml.types { yaml_string, kv }
-import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact }
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Listed }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep,
   WorkflowTrigger, Schedule, WorkflowDispatch,
-  WorkflowPermissions, PermRead
+  WorkflowPermissions, PermRead,
+  ConcurrencyMappingQueueNotMax, CancelInProgressBool
 }
 import gunbc.ci_workflow {
   ci_prelude_steps, ci_release_build_step,
@@ -76,9 +77,11 @@ fn falsifier_job() -> Job {
   }
 }
 
-data falsifier_nightly_cron: CronSchedule = CronSchedule {
+data falsifier_cadence_note: String = "nightly (0 7 * * *) -> every 4h (operator ruling 2026-07-14): a once-daily divergence receipt goes unread; a 4h cadence makes the cold-run receipt a same-day dial. Overlap is handled structurally, not assumed away: the job backstop (230-min class) can tail past a 240-min period, so the workflow carries a queue-not-cancel concurrency group - a scheduled run firing while one is live QUEUES rather than killing a measuring run mid-corpus."
+
+data falsifier_cadence_cron: CronSchedule = CronSchedule {
   minute: Exact { value: 0 },
-  hour: Exact { value: 7 },
+  hour: Listed { values: [0, 4, 8, 12, 16, 20] },
   day_of_month: Wildcard,
   month: Wildcard,
   day_of_week: Wildcard
@@ -88,9 +91,15 @@ data falsifier_workflow: Workflow = {
   name: "affected-set-falsifier",
   on: [
     WorkflowDispatch { inputs: [] },
-    Schedule { cron: falsifier_nightly_cron }
+    Schedule { cron: falsifier_cadence_cron }
   ],
-  concurrency: none,
+  concurrency: Present {
+    value: ConcurrencyMappingQueueNotMax {
+      group: "affected-set-falsifier",
+      cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+      explicit_single: none
+    }
+  },
   env: Present {
     value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))]
   },

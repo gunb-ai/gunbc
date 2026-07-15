@@ -27,6 +27,22 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply }
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
 import std.realization_reconcile { reconciliation_converged, NotConverged }
+import gunbc.srv3_nbd_proxy_serve_intent { srv3_nbd_proxy_serve_host_effect }
+import gunbc.host_effect_nbd_proxy_serve {
+  host_effect_nbd_proxy_serve_dissolution_trigger,
+  host_effect_nbd_proxy_serve_session_binding,
+  host_effect_nbd_proxy_serve_session_policy_is_held_lease,
+  host_effect_nbd_proxy_serve_apply_with_observation,
+  host_effect_nbd_proxy_serve_apply_refuses_foreign_port,
+  host_effect_nbd_proxy_serve_apply_drains_stale_matching,
+  host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented,
+  host_effect_nbd_proxy_serve_websocat_argv_materialized_omits_shell_env_ref,
+  NbdProxyServeApplyRefused,
+}
+import gunbc.session_lease {
+  PortObserved,
+  PortObservedStaleExpected,
+}
 import gunbc.srv3_host_effect_script {
   srv3_host_effect_script_for,
   srv3_receipt_emit_script,
@@ -38,6 +54,8 @@ import gunbc.srv3_host_effect_apply {
   srv3_shell_stdout_from_apply,
 }
 import gunbc.shell_bash_runner { shell_bash_runner_dissolution_trigger }
+import gunbc.srv3_os_install_reconcile_types { srv3_nbd_proxy_lease_key }
+import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -134,6 +152,112 @@ fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
   }
 }
 
+fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Bool {
+  let effect = srv3_nbd_proxy_serve_host_effect()
+  match effect {
+    Srv3NbdProxyServe { intent: i, lease_key: k } =>
+      match host_effect_nbd_proxy_serve_apply_with_observation(
+        binding: host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k),
+        obs: PortObserved {
+          observed_port: i.local_nbd_port,
+          pid: 424242,
+          cmdline: "foreign-nbdkit" as NonEmptyStr,
+          process_fingerprint: "foreign-nbdkit" as NonEmptyStr,
+        },
+        transport: LocalShell,
+      ) {
+        NbdProxyServeApplyRefused { reason: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() -> Bool {
+  let effect = srv3_nbd_proxy_serve_host_effect()
+  match effect {
+    Srv3NbdProxyServe { intent: i, lease_key: k } => {
+      let binding = host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k)
+      let stale = PortObservedStaleExpected {
+        observed_port: i.local_nbd_port,
+        pid: 99999,
+        cmdline: "gunbc-nbd-proxy" as NonEmptyStr,
+        process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
+        stale_reason: "prior-generation lease holder" as NonEmptyStr,
+      }
+      let foreign = PortObserved {
+        observed_port: i.local_nbd_port,
+        pid: 424242,
+        cmdline: "foreign-nbdkit" as NonEmptyStr,
+        process_fingerprint: "foreign-nbdkit" as NonEmptyStr,
+      }
+      host_effect_nbd_proxy_serve_apply_drains_stale_matching(binding: binding, obs: stale)
+        && !host_effect_nbd_proxy_serve_apply_drains_stale_matching(binding: binding, obs: foreign)
+        && host_effect_nbd_proxy_serve_apply_refuses_foreign_port(binding: binding, obs: foreign)
+    }
+    _ => false
+  }
+}
+
+fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref() -> Bool {
+  let effect = srv3_nbd_proxy_serve_host_effect()
+  match effect {
+    Srv3NbdProxyServe { intent: i, lease_key: _ } =>
+      host_effect_nbd_proxy_serve_websocat_argv_materialized_omits_shell_env_ref(
+        intent: i,
+        token: "materialized-bmcweb-token" as NonEmptyStr,
+      )
+    _ => false
+  }
+}
+
+fn witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed() -> Bool {
+  let effect = srv3_nbd_proxy_serve_host_effect()
+  match effect {
+    Srv3NbdProxyServe { intent: i, lease_key: k } =>
+      host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented(
+        binding: host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k),
+        transport: LocalShell,
+      )
+    _ => false
+  }
+}
+
+fn witness_srv3_nbd_proxy_serve_script_for_absent() -> Bool {
+  match srv3_host_effect_script_for(effect: srv3_nbd_proxy_serve_host_effect()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
+  let effect = srv3_nbd_proxy_serve_host_effect()
+  match effect {
+    Srv3NbdProxyServe { intent: i, lease_key: k } =>
+      match host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k) {
+        binding =>
+          binding.lease_key == srv3_nbd_proxy_lease_key
+            && binding.scope.listen_port == i.local_nbd_port
+            && binding.scope.expected_owner_label == "gunbc-nbd-proxy" as NonEmptyStr
+            && host_effect_nbd_proxy_serve_session_policy_is_held_lease(lease_key: k)
+      }
+    _ => false
+  }
+}
+
+fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
+  match host_effect_apply(
+    target: srv3_bmc_target(),
+    effect: srv3_nbd_proxy_serve_host_effect(),
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell
+  ) {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "cannot target BmcController")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
 fn witness_srv3_sibling_variants_still_resolve_after_apply_failure() -> Bool {
   witness_srv3_apply_shell_failure_refuses_typed()
     && srv3_host_effect_script_resolves(effect: DurableApprovalGrantRecord)
@@ -162,7 +286,7 @@ test fn srv3_host_effect_mechanical_variants_resolve_via_script_for() -> Bool {
     && srv3_host_effect_script_resolves(effect: Srv3SolConsoleCapture)
     && srv3_host_effect_script_resolves(effect: Srv3BmcwebSessionLogin)
     && srv3_host_effect_script_resolves(effect: Srv3BmcwebTokenExtract)
-    && srv3_host_effect_script_resolves(effect: Srv3NbdProxyServe)
+    && witness_srv3_nbd_proxy_serve_script_for_absent()
     && srv3_host_effect_script_resolves(effect: Srv3BootOnceReadBackSleep)
     && srv3_host_effect_script_resolves(
       effect: Srv3ReceiptEmit { lines: ["Srv3InstallReconcileReceipt: attempt_id=test"] },
@@ -185,6 +309,12 @@ test fn shell_bash_runner_still_present_for_p5b() -> Bool {
   string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "shell_exec_via_bash")
 }
 
+test fn srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_serve() -> Bool {
+  string_contains(s: host_effect_nbd_proxy_serve_dissolution_trigger, pattern: "systemd")
+    && string_contains(s: host_effect_nbd_proxy_serve_dissolution_trigger, pattern: "srv3_bmcweb_token_path")
+    && string_contains(s: host_effect_nbd_proxy_serve_dissolution_trigger, pattern: "P6 Part 2")
+}
+
 test fn srv3_host_effect_script_dissolves_via_bash_emit_not_p5b_executor() -> Bool {
   string_contains(s: srv3_host_effect_script_dissolution_trigger, pattern: "bash-emit")
     && string_contains(s: srv3_host_effect_script_dissolution_trigger, pattern: "#5828")
@@ -199,6 +329,13 @@ test fn srv3_host_effect_apply_holds() -> Bool {
     && srv3_typed_receipt_carrier_holds_lines()
     && shell_bash_runner_still_present_for_p5b()
     && srv3_host_effect_script_dissolves_via_bash_emit_not_p5b_executor()
+    && srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_serve()
+    && witness_srv3_nbd_proxy_serve_session_binding_carries_lease()
+    && witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time()
+    && witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill()
+    && witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref()
+    && witness_srv3_nbd_proxy_apply_observe_unimplemented_refuses_fail_closed()
+    && witness_srv3_nbd_proxy_on_bmc_refuses_typed()
     && witness_srv3_apply_shell_failure_refuses_typed()
     && witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated()
     && witness_srv3_apply_failure_no_fabricated_stdout()

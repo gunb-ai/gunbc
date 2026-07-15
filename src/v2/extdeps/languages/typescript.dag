@@ -176,6 +176,7 @@ import v2.std.host_transport {
   HostRuntimeRowPresent,
   TargetEmitHostRuntimeRow,
   EmittedWithSuffix,
+  HostToolProgram,
   HostTransportDescriptor,
   LiteralArg,
   ProcessInvocation,
@@ -1545,7 +1546,7 @@ fn ts_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        tool: ^host_tool_npx,
+        program: HostToolProgram { tool: ^host_tool_npx },
         args: [
           LiteralArg { text: "-y" },
           LiteralArg { text: "typescript@5.9.2" },
@@ -1561,7 +1562,7 @@ fn ts_host_transport_descriptor() -> HostTransportDescriptor {
       }
     ],
     run: ProcessInvocation {
-      tool: ^host_tool_node,
+      program: HostToolProgram { tool: ^host_tool_node },
       args: [ProducedArtifact { path: "fixture.js" }]
     },
     runtime_value_codec: SignedI32Le
