@@ -442,6 +442,10 @@ fn render_target_text(t: TargetText) -> String {
   t.source
 }
 
+fn target_text_is_empty(t: TargetText) -> Bool {
+  is_empty(xs: t.source)
+}
+
 fn bound_tokens_source_text(
   tokens: List<ConcreteSyntaxToken>,
   lex: LexRules,
