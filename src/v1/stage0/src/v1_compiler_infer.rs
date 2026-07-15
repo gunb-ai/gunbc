@@ -11406,23 +11406,8 @@ pub fn infer_items(
 ) -> Rc<Vec<Rc<TypedItemResult>>> {
     Rc::new({
         let mut __result = Vec::new();
-        let __probe = std::env::var("GUNBC_ITEM_PROBE").is_ok();
         for item in items.clone().iter().cloned() {
-            if __probe {
-                let __t = std::time::Instant::now();
-                let __nm = authored_name_at(
-                    scope.type_env.source_indices.clone(),
-                    item.clone(),
-                );
-                let __r = infer_item(item.clone(), scope.clone());
-                let __ms = __t.elapsed().as_millis();
-                if __ms >= 200 {
-                    eprintln!("[item-probe] mod={} item={} ms={}", scope.module_name, __nm, __ms);
-                }
-                __result.push(__r);
-            } else {
-                __result.push(infer_item(item.clone(), scope.clone()));
-            }
+            __result.push(infer_item(item.clone(), scope.clone()));
         }
         __result
     })
