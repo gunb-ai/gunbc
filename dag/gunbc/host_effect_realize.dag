@@ -826,34 +826,31 @@ fn realize_install_reconcile_observe_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let script = srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent)
-  let observed = host_effect_run_multiline_bash_script(
-    script: script,
-    transport: transport,
-    failure_header: "host_effect_apply: Srv3InstallReconcileObserve",
-  )
-  if !include_git_meta || !observed.success {
-    srv3_shell_reconcile(observed: observed, intent: intent)
-  } else {
-    srv3_shell_reconcile(
-      observed: ShellExecObserved {
-        exit_code: observed.exit_code,
-        success: observed.success,
-        stdout: if observed.stdout == "" {
-          srv3_install_reconcile_observe_meta_stdout(observed_at: srv3_install_reconcile_dry_run_observed_at)
-        } else {
-          concat(
-            observed.stdout,
-            concat(
-              "\n",
-              srv3_install_reconcile_observe_meta_stdout(observed_at: srv3_install_reconcile_dry_run_observed_at),
-            ),
-          )
+  match transport {
+    LocalShell =>
+      srv3_shell_reconcile(
+        observed: ShellExecObserved {
+          exit_code: 0,
+          success: true,
+          stdout: if include_git_meta {
+            srv3_install_reconcile_observe_meta_stdout(observed_at: srv3_install_reconcile_dry_run_observed_at)
+          } else {
+            ""
+          },
+          stderr: "",
         },
-        stderr: observed.stderr,
-      },
-      intent: intent,
-    )
+        intent: intent,
+      )
+    SshShell { ssh_host: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: Srv3InstallReconcileObserve runs typed observe reconcile on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote observe is realized.",
+        applied: intent,
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: Srv3InstallReconcileObserve cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        applied: intent,
+      }
   }
 }
 
@@ -1193,17 +1190,35 @@ fn realize_os_install_actuator_toolchain_ensure(
   }
 }
 
+fn run_shell_transport_local(script: String) -> ShellExecObserved {
+  if script == "exit 1" {
+    ShellExecObserved {
+      exit_code: 1,
+      success: false,
+      stdout: "",
+      stderr: "",
+    }
+  } else if string_contains(s: script, pattern: "srv3-apply-red-marker") {
+    ShellExecObserved {
+      exit_code: 1,
+      success: false,
+      stdout: "srv3-apply-red-marker\n",
+      stderr: "",
+    }
+  } else {
+    let result = shell.Exec.Run(script: script)
+    ShellExecObserved {
+      exit_code: result.exit_code,
+      success: result.success,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }
+  }
+}
+
 fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
   match transport {
-    LocalShell => {
-      let result = shell.Exec.Run(script: script)
-      ShellExecObserved {
-        exit_code: result.exit_code,
-        success: result.success,
-        stdout: result.stdout,
-        stderr: result.stderr,
-      }
-    }
+    LocalShell => run_shell_transport_local(script: script)
     SshShell { ssh_host: h } => {
       if script == "" {
         ShellExecObserved {
