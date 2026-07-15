@@ -2,6 +2,7 @@ module v2.test.execution.add_arrow_eval_by_execution
 
 import v2.compiler.ingested_fixture_arrows {
   ingested_add_arrow_with_body,
+  ingested_add_arrow_with_body_swapped_operands,
   ingested_add_module_source
 }
 import v2.compiler.parse { parse_module }
@@ -885,6 +886,36 @@ fn add_arrow_eval_lazy_arm_loop_suppression_holds() -> Bool {
   ) {
     Accepted { value: v, diagnostics: _ } =>
       add_arrow_eval_runtime_int_equals(value: v, n: 5)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn add_arrow_ingested_canonical_executes_holds() -> Bool {
+  match ingested_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      add_arrow_eval_run_passes(
+        run: add_arrow_eval_run(
+          callee: arrow,
+          left_lex: "2",
+          right_lex: "3",
+          expected_lex: "5"
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn add_arrow_ingested_swapped_operands_red_holds() -> Bool {
+  match ingested_add_arrow_with_body_swapped_operands() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      add_arrow_eval_run_passes(
+        run: add_arrow_eval_run(
+          callee: arrow,
+          left_lex: "2",
+          right_lex: "3",
+          expected_lex: "6"
+        )
+      ) == false
     Rejected { diagnostics: _ } => false
   }
 }

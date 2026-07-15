@@ -49,7 +49,10 @@ data provenance_producer_malformed_source: Medium<String> = Medium {
   fidelity: Lossless
 }
 
-data provenance_producer_module_surface_source: Medium<String> = Medium { carried: "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
+data provenance_producer_module_surface_source: Medium<String> = Medium {
+  carried: "fn add(x:Int, y:Int) -> Int { x + y }",
+  fidelity: Lossless
+}
 data provenance_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^provenance_producer_fixture_artifact,
@@ -161,7 +164,7 @@ fn provenance_producer_rejects_beyond_surface_ingest_holds() -> Bool {
 }
 
 fn provenance_producer_parse_coverage_known_diff_fail_closed_holds() -> Bool {
-  match node_artifact_provenance_from_source_root(ingest: provenance_producer_module_surface_ingest) {
+  match node_artifact_provenance_from_source_root(ingest: provenance_producer_single_read_ingest) {
     Accepted { value: provenance, diagnostics: _ } =>
       match affected_set_reading_from_git_diff_provenance(
         graph: affected_set_claim_tree(),
