@@ -61,6 +61,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.effects { atom_node }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -279,8 +280,8 @@ fn ingest_bridge_realized_input(ok: Bool) -> Symbol {
 data claim_ingest_bridge_module_compiles: TestClaim = CompilesClaim {
   label: "manual/ingest_bridge: forward interpreter bridge claim compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: ^ingest_fixture_start,
-  expected_value: ^ingest_fixture_start,
+  input: atom_node(s: ^ingest_fixture_start),
+  expected_value: atom_node(s: ^ingest_fixture_start),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
@@ -288,6 +289,6 @@ data claim_ingest_bridge_realized: TestClaim = CompilesClaim {
   label: "manual/ingest_bridge: ParseTree frontier -> forward-selected emit-side core node -> canonical IR by execution (Option A; row-driven, fail-closed, forward-deterministic)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ingest_bridge_realized_input(ok: ingest_bridge_realized()),
-  expected_value: ^ingest_bridge_realized,
+  expected_value: atom_node(s: ^ingest_bridge_realized),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }

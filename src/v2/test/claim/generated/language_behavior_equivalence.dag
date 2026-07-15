@@ -30,8 +30,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
-  diagnostics_singleton
-}
+  diagnostics_singleton, node_locus }
 import v2.std.node { Atom, Hash, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.runtime {
   BindInterpreter,
@@ -102,7 +101,7 @@ fn lbe_runtime_value() -> RuntimeValue {
 fn lbe_runtime_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^lbe_interpretation_rejected,
-    at: NodeLocus { node: n },
+    at: node_locus(node: n),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
