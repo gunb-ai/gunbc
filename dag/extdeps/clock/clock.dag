@@ -22,6 +22,9 @@ service Clock {
       0 => Unit
       nonzero => String "date command failed"
     }
+    mock_response {
+      0 => { timestamp: "2026-07-03T00:00:00Z" } "hermetic clock now"
+    }
   }
 
   operation UnixSecs {
@@ -43,6 +46,9 @@ service Clock {
     exit {
       0 => Unit
       nonzero => String "date plus-hours command failed"
+    }
+    mock_response {
+      0 => { timestamp: "2026-07-04T00:00:00Z" } "hermetic clock plus hours"
     }
   }
 }

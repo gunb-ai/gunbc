@@ -110,6 +110,9 @@ service shell.Mktemp {
       0 => Unit
       nonzero => String "mktemp -d failed"
     }
+    mock_response {
+      0 => { path: "/tmp/gunbc-hermetic-mktemp", success: true } "hermetic mktemp -d"
+    }
   }
 
   operation DirWithTemplate {
@@ -132,6 +135,9 @@ service shell.Mkdir {
       0 => Unit
       nonzero => String "mkdir -p failed"
     }
+    mock_response {
+      0 => { success: true } "hermetic mkdir -p"
+    }
   }
 }
 
@@ -143,6 +149,9 @@ service shell.Remove {
     exit {
       0 => Unit
       nonzero => String "rm -rf failed"
+    }
+    mock_response {
+      0 => { success: true } "hermetic rm -rf"
     }
   }
 }

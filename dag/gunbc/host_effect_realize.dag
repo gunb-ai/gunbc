@@ -113,7 +113,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
   bmcweb_session_login_curl_args,
 }
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, FilePath, Timestamp }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -360,12 +360,16 @@ fn realize_boot_once_read_back_sleep_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
-  let success = srv3_transport_witness_bin_success(
-    transport: transport,
-    workdir: "/",
-    bin_path: "/bin/sleep",
-    args: [seconds],
-  )
+  let success = match srv3_tool_bin_path(tool_name: sleep_cli_tool.name, transport: transport) {
+    Present { value: sleep_path } =>
+      srv3_transport_witness_bin_success(
+        transport: transport,
+        workdir: "/",
+        bin_path: sleep_path,
+        args: [seconds],
+      )
+    Absent => false
+  }
   srv3_shell_reconcile(
     observed: ShellExecObserved {
       exit_code: if success { 0 } else { 1 },
@@ -557,36 +561,50 @@ fn realize_bmcweb_session_login_on_host(
 fn realize_bmcweb_token_extract_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let jq_run = gunbc.WitnessBin.Run(
-    workdir: "/",
-    bin_path: "/usr/bin/jq",
-    args: ["-r", ".token // empty", srv3_bmcweb_login_response_path],
-  )
-  if jq_run.success {
-    let write = Filesystem.Write(path: srv3_bmcweb_token_path, content: jq_run.stdout)
-    srv3_shell_reconcile(
-      observed: ShellExecObserved {
-        exit_code: if write.success { 0 } else { 1 },
-        success: write.success,
-        stdout: "",
-        stderr: if write.success {
-          ""
-        } else {
-          "host_effect_apply: Srv3BmcwebTokenExtract token write failed; fail-closed"
+  match srv3_tool_bin_path(tool_name: jq_cli_tool.name, transport: LocalShell) {
+    Present { value: jq_path } => {
+      let jq_run = gunbc.WitnessBin.Run(
+        workdir: "/",
+        bin_path: jq_path,
+        args: ["-r", ".token // empty", srv3_bmcweb_login_response_path],
+      )
+      if jq_run.success {
+        let write = Filesystem.Write(path: srv3_bmcweb_token_path, content: jq_run.stdout)
+        srv3_shell_reconcile(
+          observed: ShellExecObserved {
+            exit_code: if write.success { 0 } else { 1 },
+            success: write.success,
+            stdout: "",
+            stderr: if write.success {
+              ""
+            } else {
+              "host_effect_apply: Srv3BmcwebTokenExtract token write failed; fail-closed"
+            },
+          },
+          intent: intent,
+        )
+      } else {
+        srv3_shell_reconcile(
+          observed: ShellExecObserved {
+            exit_code: 1,
+            success: false,
+            stdout: "",
+            stderr: "host_effect_apply: Srv3BmcwebTokenExtract jq failed; fail-closed",
+          },
+          intent: intent,
+        )
+      }
+    }
+    Absent =>
+      srv3_shell_reconcile(
+        observed: ShellExecObserved {
+          exit_code: 1,
+          success: false,
+          stdout: "",
+          stderr: "host_effect_apply: Srv3BmcwebTokenExtract jq not found on executor host; fail-closed",
         },
-      },
-      intent: intent,
-    )
-  } else {
-    srv3_shell_reconcile(
-      observed: ShellExecObserved {
-        exit_code: 1,
-        success: false,
-        stdout: "",
-        stderr: "host_effect_apply: Srv3BmcwebTokenExtract jq failed; fail-closed",
-      },
-      intent: intent,
-    )
+        intent: intent,
+      )
   }
 }
 
@@ -631,6 +649,249 @@ fn srv3_toolchain_ensure_reconcile(
   )
 }
 
+data srv3_approval_grant_parent_dir: String = "/var/lib/gunbc/logs/approvals"
+
+fn host_effect_multiline_script_failure(
+  header: String,
+  detail: String,
+) -> ShellExecObserved {
+  ShellExecObserved {
+    exit_code: 1,
+    success: false,
+    stdout: "",
+    stderr: concat(concat(header, ": "), detail),
+  }
+}
+
+fn host_effect_run_multiline_bash_script_local(
+  script: String,
+  failure_header: String,
+) -> ShellExecObserved {
+  let tmp_dir = shell.Mktemp.Dir()
+  if !tmp_dir.success {
+    return host_effect_multiline_script_failure(
+      header: failure_header,
+      detail: "mktemp -d failed; fail-closed",
+    )
+  }
+  let script_path = concat(tmp_dir.path as String, "/gunbc-multiline.sh")
+  let write = Filesystem.Write(path: script_path, content: script)
+  if !write.success {
+    let _ = shell.Remove.RecursiveForce(path: tmp_dir.path)
+    return host_effect_multiline_script_failure(
+      header: failure_header,
+      detail: concat("script write failed; fail-closed: ", write.error),
+    )
+  }
+  let chmod = gunbc.WitnessBin.Run(
+    workdir: "/",
+    bin_path: "/bin/chmod",
+    args: ["+x", script_path],
+  )
+  if !chmod.success {
+    let _ = shell.Remove.RecursiveForce(path: tmp_dir.path)
+    return host_effect_multiline_script_failure(
+      header: failure_header,
+      detail: "chmod +x failed; fail-closed",
+    )
+  }
+  let run = gunbc.WitnessBin.Run(workdir: "/", bin_path: script_path)
+  let _ = shell.Remove.RecursiveForce(path: tmp_dir.path)
+  ShellExecObserved {
+    exit_code: run.exit_code,
+    success: run.success,
+    stdout: run.stdout,
+    stderr: run.stderr,
+  }
+}
+
+fn host_effect_run_multiline_bash_script(
+  script: String,
+  transport: HostEffectTransport,
+  failure_header: String,
+) -> ShellExecObserved {
+  match transport {
+    LocalShell =>
+      host_effect_run_multiline_bash_script_local(script: script, failure_header: failure_header)
+    SshShell { ssh_host: h } => {
+      let result = ssh_session_exec_script(host: h, script: script)
+      ShellExecObserved {
+        exit_code: result.exit_code,
+        success: result.success,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }
+    }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      host_effect_multiline_script_failure(
+        header: failure_header,
+        detail: "EmitArtifactThenThinRun transport is a typed mismatch for multiline bash observe; fail-closed",
+      )
+  }
+}
+
+fn srv3_install_reconcile_observe_meta_stdout() -> String {
+  let now = Clock.Now().timestamp
+  let branch_run = gunbc.WitnessBin.Run(workdir: "/", bin_path: "git", args: ["branch", "--show-current"])
+  let branch = if branch_run.success && branch_run.stdout != "" {
+    branch_run.stdout
+  } else {
+    "unknown"
+  }
+  let commit_run = gunbc.WitnessBin.Run(workdir: "/", bin_path: "git", args: ["rev-parse", "--short", "HEAD"])
+  let commit = if commit_run.success && commit_run.stdout != "" {
+    commit_run.stdout
+  } else {
+    "unknown"
+  }
+  host_effect_join_lines(lines: [
+    concat("Srv3InstallObserveReceipt: surface=observed_at=", now as String),
+    concat(
+      "Srv3InstallObserveReceipt: surface=git branch=",
+      concat(branch, concat(" commit=", commit)),
+    ),
+  ])
+}
+
+fn realize_durable_approval_grant_record_on_host(
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match transport {
+    LocalShell => {
+      let mkdir = shell.Mkdir.Parents(path: srv3_approval_grant_parent_dir as FilePath)
+      if !mkdir.success {
+        return srv3_shell_reconcile(
+          observed: ShellExecObserved {
+            exit_code: 1,
+            success: false,
+            stdout: "",
+            stderr: "host_effect_apply: DurableApprovalGrantRecord mkdir failed; fail-closed",
+          },
+          intent: intent,
+        )
+      }
+      let granted_at = Clock.Now().timestamp
+      let expires_at = Clock.UtcPlusHours(hours: 24).timestamp
+      let line = srv3_durable_approval_grant_record_line(
+        granted_at: granted_at,
+        expires_at: expires_at,
+      )
+      let write = Filesystem.Write(path: srv3_boot_once_approval_grant_path, content: concat(line, "\n"))
+      let stdout = concat(
+        "Srv3InstallApprovalGrantRecorded: path=",
+        srv3_boot_once_approval_grant_path,
+      )
+      srv3_shell_reconcile(
+        observed: ShellExecObserved {
+          exit_code: if write.success { 0 } else { 1 },
+          success: write.success,
+          stdout: stdout,
+          stderr: if write.success {
+            ""
+          } else {
+            concat(
+              "host_effect_apply: DurableApprovalGrantRecord write failed; fail-closed: ",
+              write.error,
+            )
+          },
+        },
+        intent: intent,
+      )
+    }
+    SshShell { ssh_host: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: DurableApprovalGrantRecord runs typed Clock + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote grant record is realized.",
+        applied: intent,
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: DurableApprovalGrantRecord cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        applied: intent,
+      }
+  }
+}
+
+fn srv3_sol_console_capture_script_line() -> String {
+  let intent = srv3_sol_console_capture_intent
+  let transport_wire = sol_console_transport_wire(transport: intent.transport)
+  concat(
+    concat("obmc-console-client ", intent.bmc_host as String),
+    concat(
+      " > \"",
+      concat(
+        intent.output_path as String,
+        concat(
+          "\" 2>&1 & echo \"SolConsoleCaptureReceipt: transport=",
+          concat(
+            transport_wire as String,
+            concat(" log=", concat(intent.output_path as String, "\"")),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn realize_sol_console_capture_on_host(
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match transport {
+    LocalShell =>
+      srv3_shell_reconcile(
+        observed: run_shell_transport(
+          script: srv3_sol_console_capture_script_line(),
+          transport: transport,
+        ),
+        intent: intent,
+      )
+    SshShell { ssh_host: _ } =>
+      srv3_shell_reconcile(
+        observed: run_shell_transport(
+          script: srv3_sol_console_capture_script_line(),
+          transport: transport,
+        ),
+        intent: intent,
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: Srv3SolConsoleCapture cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        applied: intent,
+      }
+  }
+}
+
+fn realize_install_reconcile_observe_on_host(
+  include_git_meta: Bool,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let script = srv3_install_diagnostic_observe_script_for_intent(intent: srv3_os_install_attempt_intent)
+  let observed = host_effect_run_multiline_bash_script(
+    script: script,
+    transport: transport,
+    failure_header: "host_effect_apply: Srv3InstallReconcileObserve",
+  )
+  if !include_git_meta || !observed.success {
+    srv3_shell_reconcile(observed: observed, intent: intent)
+  } else {
+    srv3_shell_reconcile(
+      observed: ShellExecObserved {
+        exit_code: observed.exit_code,
+        success: observed.success,
+        stdout: if observed.stdout == "" {
+          srv3_install_reconcile_observe_meta_stdout()
+        } else {
+          concat(observed.stdout, concat("\n", srv3_install_reconcile_observe_meta_stdout()))
+        },
+        stderr: observed.stderr,
+      },
+      intent: intent,
+    )
+  }
+}
+
 fn realize_srv3_install_diagnostic_observe(
   bmc: String,
   port: String,
@@ -647,7 +908,11 @@ fn realize_srv3_install_diagnostic_observe(
     intent_content_hash: intent_content_hash,
     sol_log: srv3_sol_console_log_path as String,
   )
-  let observed = run_shell_transport(script: shell_exec_via_bash(body: script), transport: transport)
+  let observed = host_effect_run_multiline_bash_script(
+    script: script,
+    transport: transport,
+    failure_header: "host_effect_apply: Srv3InstallDiagnosticObserve",
+  )
   srv3_shell_reconcile(observed: observed, intent: effect_intent)
 }
 
@@ -1215,6 +1480,16 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
     BmcwebTokenExtractOnHost { node: _ } =>
       realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
+    InstallReconcileObserveOnHost { node: _, include_git_meta: meta } =>
+      realize_install_reconcile_observe_on_host(
+        include_git_meta: meta,
+        transport: transport,
+        intent: intent,
+      )
+    DurableApprovalGrantRecordOnHost { node: _ } =>
+      realize_durable_approval_grant_record_on_host(transport: transport, intent: intent)
+    SolConsoleCaptureOnHost { node: _ } =>
+      realize_sol_console_capture_on_host(transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1281,6 +1556,16 @@ fn host_effect_apply_gated(
           realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
         BmcwebTokenExtractOnHost { node: _ } =>
           realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
+        InstallReconcileObserveOnHost { node: _, include_git_meta: meta } =>
+          realize_install_reconcile_observe_on_host(
+            include_git_meta: meta,
+            transport: transport,
+            intent: intent,
+          )
+        DurableApprovalGrantRecordOnHost { node: _ } =>
+          realize_durable_approval_grant_record_on_host(transport: transport, intent: intent)
+        SolConsoleCaptureOnHost { node: _ } =>
+          realize_sol_console_capture_on_host(transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1331,6 +1616,12 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             SeededInstallMediaToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            InstallReconcileObserveOnHost { node: _, include_git_meta: _ } =>
+              not_converged_directive(drive: host_effect_drive(intent: intent))
+            DurableApprovalGrantRecordOnHost { node: _ } =>
+              not_converged_directive(drive: host_effect_drive(intent: intent))
+            SolConsoleCaptureOnHost { node: _ } =>
+              not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }
