@@ -35,6 +35,7 @@ pub struct TypeEnv {
     pub intern_table: Rc<InternTable>,
     pub source_visible_names: Rc<HashMap<String, bool>>,
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    pub symbol_index: Rc<SymbolIndex>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -48,6 +49,15 @@ pub fn global_bare_fallback_invariant() -> String {
     thread_local! {
         static CACHED: String = {
             "Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): keyed on the bare declared name, one authority built once by build_global_bare_census over graph.modules before any module typechecks (order-independent — mirrors v2's symbol_index_global_bare, docs/plans/namespace-resolution-design.md §7.5). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss, and only a GlobalBareUniqueBinding resolves; GlobalBareAmbiguousBinding stays Absent (fail-closed, never guesses — §5). This is what unblocks the src/v1 import strip: a bare reference that used to resolve via a deleted import chain still resolves here iff its name is globally unique in the corpus.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn qualified_module_projection_invariant() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Grammar lane G1: container.member module projection in type positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare. build_symbol_index_census materializes declared-module paths once; lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -643,10 +653,34 @@ pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeB
             None => match intern_find(env.intern_table.clone(), name.clone()) {
                 Some(id) => match v1_rt::map_get(&env.bindings.clone(), id.clone()) {
                     Some(binding) => Some(binding.clone()),
-                    None => global_bare_lookup(env.clone(), name.clone()),
+                    None => lookup_binding_after_global_bare(env.clone(), name.clone()),
                 },
-                None => global_bare_lookup(env.clone(), name.clone()),
+                None => lookup_binding_after_global_bare(env.clone(), name.clone()),
             },
+        },
+    }
+}
+
+pub fn lookup_binding_after_global_bare(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    match global_bare_lookup(env.clone(), name.clone()) {
+        Some(binding) => Some(binding.clone()),
+        None => lookup_qualified_module_projection(env.clone(), name.clone()),
+    }
+}
+
+pub fn lookup_qualified_module_projection(
+    env: Rc<TypeEnv>,
+    name: String,
+) -> Option<Rc<TypeBinding>> {
+    match v1_rt::contains(name.clone(), ".".to_string()) {
+        false => None,
+        true => match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+            Some(resolved) => Some(Rc::new(TypeBinding {
+                name: name.clone(),
+                resolved: resolved.clone(),
+                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+            })),
+            None => None,
         },
     }
 }

@@ -1,5 +1,10 @@
 module v1.compiler.compiler_tests_rust
 
+import v1.compiler.artifact { RenderTarget, Rust, Python, Go }
+import v1.compiler.coercion {
+  extract_coercion_tests, CoercionTestEntry, CoercionAssertion,
+  CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion
+}
 
 fn ct_module_header() -> String {
   concat(
@@ -1162,6 +1167,7 @@ fn ct_profile_reconcile_test() -> String {
     "                        source_indices.clone(),\n",
     "                        intern_table.clone(),\n",
     "                        std::rc::Rc::new(HashMap::new()),\n",
+    "                        crate::v1_compiler_infer_env::empty_symbol_index(),\n",
     "                    );\n",
     "                    let env_elapsed = t_env.elapsed();\n",
     "                    let rss_after_env = get_rss_bytes();\n",
@@ -1197,7 +1203,7 @@ fn ct_profile_reconcile_test() -> String {
     "                        source_indices.clone(),\n",
     "                        intern_table.clone(),\n",
     "                        std::rc::Rc::new(HashMap::new()),\n",
-    "                        std::rc::Rc::new(HashMap::new()),\n",
+    "                        crate::v1_compiler_infer_env::empty_symbol_index(),\n",
     "                    );\n",
     "                    let full_elapsed = t_full.elapsed();\n",
     "                    let rss_after = get_rss_bytes();\n",
