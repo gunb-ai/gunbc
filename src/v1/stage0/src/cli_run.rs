@@ -1506,9 +1506,9 @@ fn compile_clean_touched_path_norm(path: &str) -> &str {
     path.strip_prefix("./").unwrap_or(path)
 }
 
-fn compile_clean_touches_allow_skip(touched_paths: &[String]) -> bool {
-    touched_paths.is_empty()
-        || touched_paths
+fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bool {
+    !touched_paths.is_empty()
+        && touched_paths
             .iter()
             .all(|p| compile_clean_touched_path_norm(p).starts_with("docs/"))
 }
@@ -1535,17 +1535,21 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
 fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     touched_paths: &[String],
 ) -> CompileCleanScopePlan {
-    if compile_clean_touches_allow_skip(touched_paths) {
-        let reason = if touched_paths.is_empty() {
-            "no compile-clean entry DependencyView frontier intersects touched paths".to_string()
-        } else {
-            "docs-only diff — no compile-clean entry selection required".to_string()
+    if touched_paths.is_empty() {
+        return CompileCleanScopePlan::SkipNoAffected {
+            reason: "no touched paths in diff observation".to_string(),
         };
+    }
+
+    if compile_clean_all_touched_paths_docs_universe(touched_paths) {
+        let reason =
+            "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                .to_string();
         eprintln!("compile-clean scope: skipped ({reason})");
         return CompileCleanScopePlan::SkipNoAffected { reason };
     }
 
-    // `dag_compile_clean_scope.dag:85-88` — RequireWholeTree when substrate not ready.
+    // `dag_compile_clean_scope.dag` — RequireWholeTree when substrate not ready.
     // floor_fast has no whole-tree resolve context (loaded=0) until #6239; live substrate is false.
     if !fn_arrow_decl_substrate_is_whole_tree_for_census(0) {
         eprintln!(
@@ -1600,7 +1604,7 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
         };
     }
     eprintln!(
-        "compile-clean scope: non-empty non-docs diff with no shard intersection — whole-tree baseline"
+        "compile-clean scope: non-empty diff with no shard intersection — whole-tree baseline"
     );
     CompileCleanScopePlan::WholeTree
 }
@@ -1612,6 +1616,41 @@ fn compile_clean_scoping_active() -> bool {
             .map(|v| v == "true")
             .unwrap_or(false)
         || std::env::var("CI").map(|v| v == "true").unwrap_or(false)
+}
+
+pub const DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL: &str = "documentation_only_skip";
+pub const RUN_FULL_FLOOR_LABEL: &str = "run_full_floor";
+
+/// CI floor admission label for the docs-only witness-corpus skip arm.
+/// Uses `tools.dag_compile_clean_scope` at Ruling 1 path grain (host fast path).
+/// Empty diff or diff-observation failure returns `run_full_floor` (fail-closed).
+/// Docs-only (`docs/**` universe, aligned with doc_reachability) skips without
+/// waiting on #6239 substrate — the witness runs before claim_executor warms facts.
+pub fn documentation_only_floor_skip_label_for_ci() -> String {
+    if !compile_clean_scoping_active() {
+        return RUN_FULL_FLOOR_LABEL.to_string();
+    }
+    match floor_git_diff_name_status_range() {
+        Err(msg) => {
+            eprintln!("documentation-only floor skip: diff observation failed ({msg}) — full floor");
+            RUN_FULL_FLOOR_LABEL.to_string()
+        }
+        Ok((changed_paths, _departed)) => {
+            if changed_paths.is_empty() {
+                eprintln!("documentation-only floor skip: empty diff — full floor");
+                return RUN_FULL_FLOOR_LABEL.to_string();
+            }
+            if compile_clean_all_touched_paths_docs_universe(&changed_paths) {
+                eprintln!(
+                    "documentation-only floor skip: docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                );
+                DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string()
+            } else {
+                eprintln!("documentation-only floor skip: full floor (non-docs-only diff)");
+                RUN_FULL_FLOOR_LABEL.to_string()
+            }
+        }
+    }
 }
 
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
@@ -2242,6 +2281,18 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
 /// (an extra witness run) but never under-report (a missed run). It does not attempt to
 /// prove which touched path a reached carrier actually reads at runtime (that precision is
 /// G2/G3's job) — reachability plus any touch is treated as a hit.
+fn import_closure_module_reaches_carrier_home(
+    closure_modules: &HashSet<String>,
+    carrier_home: &str,
+) -> bool {
+    closure_modules.iter().any(|module| {
+        module == carrier_home
+            || module
+                .strip_prefix(carrier_home)
+                .is_some_and(|suffix| suffix.starts_with('.'))
+    })
+}
+
 fn runtime_data_dependency_touched_via_carrier_closure(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -2254,7 +2305,9 @@ fn runtime_data_dependency_touched_via_carrier_closure(
     collect_import_closure_module_names_from_facts(entry_path, facts, &mut closure_modules);
     LIVE_READ_CARRIER_HOME_MODULES_V0
         .iter()
-        .any(|carrier_module| closure_modules.contains(*carrier_module))
+        .any(|carrier_home| {
+            import_closure_module_reaches_carrier_home(&closure_modules, carrier_home)
+        })
 }
 
 #[cfg(test)]
@@ -9854,6 +9907,72 @@ new file mode 100644
     }
 
     #[test]
+    fn import_closure_carrier_home_matches_submodules() {
+        use std::collections::HashSet;
+
+        let carrier = "v2.compiler.self_host";
+        let mut exact = HashSet::from([carrier.to_string()]);
+        assert!(super::import_closure_module_reaches_carrier_home(
+            &exact, carrier
+        ));
+        let mut submodule = HashSet::from(["v2.compiler.self_host.frontier".to_string()]);
+        assert!(super::import_closure_module_reaches_carrier_home(
+            &submodule, carrier
+        ));
+        let mut homonym = HashSet::from(["v2.compiler.self_hostile".to_string()]);
+        assert!(!super::import_closure_module_reaches_carrier_home(
+            &homonym, carrier
+        ));
+    }
+
+    #[test]
+    fn lying_substrate_inputs_only_stamp_census() {
+        use std::collections::HashSet;
+
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let facts = super::build_module_graph_facts_live(&roots);
+        let mut lying: Vec<(String, String)> = Vec::new();
+        for (rel, content) in super::corpus_dag_files() {
+            if !super::is_test_dag(&rel) {
+                continue;
+            }
+            let Ok(reads_live_tree) = super::parse_entry_live_tree_disposition(&rel, &content)
+            else {
+                continue;
+            };
+            if reads_live_tree {
+                continue;
+            }
+            let mut closure_modules = HashSet::new();
+            super::collect_import_closure_module_names_from_facts(
+                &rel,
+                &facts,
+                &mut closure_modules,
+            );
+            for carrier in super::LIVE_READ_CARRIER_HOME_MODULES_V0 {
+                if super::import_closure_module_reaches_carrier_home(&closure_modules, carrier) {
+                    lying.push((rel.clone(), (*carrier).to_string()));
+                    break;
+                }
+            }
+        }
+        lying.sort();
+        eprintln!("lying SubstrateInputsOnly stamps (G1 carrier closure): {}", lying.len());
+        for (entry, carrier) in &lying {
+            eprintln!("  {entry}  ->  {carrier}");
+        }
+        assert!(
+            lying.is_empty(),
+            "lying SubstrateInputsOnly stamps must be re-stamped ReadsLiveTree before merge"
+        );
+    }
+
+    #[test]
     fn node_precise_same_file_referenced_vs_orphan_discriminates() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
@@ -15637,7 +15756,7 @@ mod witness_layer_roots_compile_clean_tests {
         );
     }
 
-    /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
+    /// Lever-a receipt: docs-only compile-clean scope skips at path grain (pre-#6239).
     #[test]
     fn floor_fast_scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
@@ -15647,10 +15766,23 @@ mod witness_layer_roots_compile_clean_tests {
             assert_eq!(
                 plan,
                 CompileCleanScopePlan::SkipNoAffected {
-                    reason: "docs-only diff — no compile-clean entry selection required"
-                        .to_string()
+                    reason: "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)".to_string(),
                 }
             );
+        });
+    }
+
+    /// Floor admission: docs-only skips before substrate warm (witness runs pre-executor).
+    #[test]
+    fn documentation_only_floor_skip_label_skips_docs_only_touch() {
+        with_workspace_cwd(|| {
+            let _gh = EnvGuard::set("GITHUB_ACTIONS", "true");
+            let _ns = EnvGuard::set(
+                "GUNBC_CI_DIFF_NAME_STATUS",
+                "M\\000docs/plans/example.md\\000",
+            );
+            let label = documentation_only_floor_skip_label_for_ci();
+            assert_eq!(label, DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL);
         });
     }
 

@@ -24,9 +24,9 @@ import gunbc.local_tidy_spec { local_tidy_checks }
 import gunbc.generated_artifact {
   CiYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn witness_ci_spec_projects_from_roster() -> Bool {
   gate_lists_eq(left: gunbc_ci_floor_gates, right: commit_workflow_ci_floor_gates)

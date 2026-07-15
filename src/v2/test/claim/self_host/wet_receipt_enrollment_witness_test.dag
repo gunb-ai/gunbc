@@ -2,6 +2,7 @@ module v2.test.claim.self_host.wet_receipt_enrollment_witness_test
 
 import v2.compiler.self_host.frontier {
   compiler_frontier_row_06_translate,
+  compiler_frontier_row_use_site_verdict,
   SelfEmitted,
   FrontierProbeReceipt,
   SelfEmitReady,
@@ -12,7 +13,6 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_self_host_wet_template_entries,
   falsifier_self_host_wet_frontier_enrolled_entries,
-  falsifier_self_host_wet_template_only_holds,
   frontier_row_wet_entries_if_enrolled,
   find_wet_receipt_binding
 }
@@ -47,11 +47,23 @@ fn witness_self_emitted_without_binding_enrolls_no_wet_entry() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: sample_self_emitted_row())) == 0
 }
 
-fn witness_template_only_nightly_enrollment_holds() -> Bool {
-  falsifier_self_host_wet_template_only_holds()
-    && (length(xs: falsifier_self_host_wet_entries()) == 1)
-    && (length(xs: falsifier_self_host_wet_template_entries) == 1)
-    && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 0)
+fn witness_use_site_verdict_self_emitted_enrolls_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_use_site_verdict)) == 1
+}
+
+fn witness_nightly_enrollment_includes_template_plus_use_site_verdict() -> Bool {
+  (length(xs: falsifier_self_host_wet_template_entries) == 1)
+    && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 1)
+    && (length(xs: falsifier_self_host_wet_entries()) == 2)
+}
+
+fn witness_use_site_verdict_binding_present() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/use_site_verdict.dag") {
+    Present { value: b } =>
+      b.entry == "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag"
+        && b.function == "self_host_use_site_verdict_behavioral_receipt_holds"
+    Absent => false
+  }
 }
 
 fn witness_unbound_module_path_has_no_binding() -> Bool {
@@ -64,6 +76,8 @@ fn witness_unbound_module_path_has_no_binding() -> Bool {
 test fn wet_receipt_enrollment_witnesses() -> Bool {
   witness_seed_retained_row_enrolls_no_wet_entry()
     && witness_self_emitted_without_binding_enrolls_no_wet_entry()
-    && witness_template_only_nightly_enrollment_holds()
+    && witness_use_site_verdict_self_emitted_enrolls_wet_entry()
+    && witness_nightly_enrollment_includes_template_plus_use_site_verdict()
+    && witness_use_site_verdict_binding_present()
     && witness_unbound_module_path_has_no_binding()
 }
