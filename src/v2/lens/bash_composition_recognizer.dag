@@ -310,6 +310,9 @@ data initial_scan_state: ScanState = ScanState {
   hole_straddle: false
 }
 
+// Single QuoteOut predicate (§2 single authority): read two ways over the SAME fold — at end of
+// scan it means "the string terminated OUTSIDE any quote" (munch covered it); at a Hole position it
+// means "the Hole sits UNQUOTED" (a separator inside its value would apply). One predicate, both reads.
 fn quote_terminated(q: QuoteMode) -> Bool {
   match q {
     QuoteOut => true
