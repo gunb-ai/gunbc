@@ -5,15 +5,11 @@ use self::CostBasis::*;
 use self::NodeFrontierSelection::*;
 use self::Runnable::*;
 use self::RunnableMemoryClass::*;
-use self::ScheduleLensViolation::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
 pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::Hermetic;
-use crate::std_lens_verdict::LensVerdict::{Holds, Violation};
-use crate::std_lens_verdict::LensVerdictLocus::ModuleWholeFile;
-pub use crate::std_lens_verdict::{LensVerdict, LensVerdictDiagnostic, LensVerdictLocus};
 use crate::std_measure::Quantity::Time;
 pub use crate::std_measure::{byte_size, byte_size_count, measure_count, time_measure, watt};
 pub use crate::std_measure::{ByteSize, Measure, Quantity, Watt};
@@ -354,126 +350,6 @@ pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: Strin
         .fold(false, |acc: bool, r: Rc<Runnable>| {
             (acc || (runnable_step_label(r.clone()) == target.clone()))
         })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ScheduleLensViolation {
-    EmptySchedule,
-    CompileGateNotFirst { expected: String },
-    CorpusBeforeCompile,
-    SingleBatchOnly,
-}
-impl ScheduleLensViolation {
-    pub fn expected(&self) -> String {
-        match self {
-            ScheduleLensViolation::EmptySchedule => panic!("no expected on unit variant"),
-            ScheduleLensViolation::CompileGateNotFirst {
-                expected: __val, ..
-            } => __val.clone(),
-            ScheduleLensViolation::CorpusBeforeCompile => panic!("no expected on unit variant"),
-            ScheduleLensViolation::SingleBatchOnly => panic!("no expected on unit variant"),
-        }
-    }
-}
-
-pub fn schedule_lens_module() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "std.realization_schedule".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn schedule_lens_violation_diagnostic(
-    kind: Rc<ScheduleLensViolation>,
-    compile_gate_fn: String,
-) -> Rc<LensVerdictDiagnostic> {
-    {
-        let at = Rc::new(LensVerdictLocus::ModuleWholeFile {
-            module_name: schedule_lens_module(),
-        });
-        match (*kind.clone()).clone() {
-            ScheduleLensViolation::EmptySchedule => Rc::new(LensVerdictDiagnostic {
-                reason: "schedule_lens_empty_schedule".to_string(),
-                at: at.clone(),
-            }),
-            ScheduleLensViolation::CompileGateNotFirst {
-                expected: expected, ..
-            } => Rc::new(LensVerdictDiagnostic {
-                reason: ("schedule_lens_compile_gate_not_first:".to_string() + &expected.clone()),
-                at: at.clone(),
-            }),
-            ScheduleLensViolation::CorpusBeforeCompile => Rc::new(LensVerdictDiagnostic {
-                reason: "schedule_lens_corpus_before_compile".to_string(),
-                at: at.clone(),
-            }),
-            ScheduleLensViolation::SingleBatchOnly => Rc::new(LensVerdictDiagnostic {
-                reason: "schedule_lens_single_batch_only".to_string(),
-                at: at.clone(),
-            }),
-        }
-    }
-}
-
-pub fn schedule_lens_verdict_for_ci_floor<S>(
-    plan: Rc<RealizationPlan<S>>,
-    compile_gate_fn: String,
-) -> Rc<LensVerdict> {
-    if ((plan.schedule.clone().len() as i64) == 0) {
-        Rc::new(LensVerdict::Violation {
-            diagnostic: schedule_lens_violation_diagnostic(
-                Rc::new(ScheduleLensViolation::EmptySchedule),
-                compile_gate_fn.clone(),
-            ),
-        })
-    } else {
-        if ((plan.schedule.clone().len() as i64) < 2) {
-            Rc::new(LensVerdict::Violation {
-                diagnostic: schedule_lens_violation_diagnostic(
-                    Rc::new(ScheduleLensViolation::SingleBatchOnly),
-                    compile_gate_fn.clone(),
-                ),
-            })
-        } else {
-            {
-                let batch0 = plan.schedule.clone().first().cloned();
-                if ((batch0.clone().expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) != 1) {
-                    Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
-    expected: compile_gate_fn.clone(),
-}), compile_gate_fn.clone()),
-})
-                } else {
-                    if !schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), compile_gate_fn.clone()) {
-                        Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
-    expected: compile_gate_fn.clone(),
-}), compile_gate_fn.clone()),
-})
-                    } else {
-                        if schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), "__discovery_corpus__".to_string()) {
-                            Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CorpusBeforeCompile), compile_gate_fn.clone()),
-})
-                        } else {
-                            {
-                                let batch1 = plan.schedule.clone().get(1 as usize).cloned();
-if ((batch1.clone().expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) < 2) {
-                                    Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::SingleBatchOnly), compile_gate_fn.clone()),
-})
-                                } else {
-                                    Rc::new(LensVerdict::Holds)
-                                }
-}
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 pub fn schedule_generates_same_batch_count<S>(
