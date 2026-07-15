@@ -125,6 +125,12 @@ import v2.std.compilers.target_model {
   type_expression_projection_from_target,
   lex_rules_literal,
   bound_tokens_source_text,
+  TargetText,
+  text_atom,
+  target_text_seq,
+  target_text_empty,
+  target_text_is_empty,
+  render_target_text,
   token_spelling_from_model,
   concrete_syntax_token_from_node,
   target_binding_spelling_lookup,
@@ -784,15 +790,15 @@ fn serialize_concrete_syntax_tokens_to_source(
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens),
-    f: fn(text) {
-      target_source_medium(text: text, target: target)
+    f: fn(carrier) {
+      target_source_medium(text: render_target_text(t: carrier), target: target)
     }
   )
 }
 fn serialize_concrete_syntax_tokens_to_source_string(
   target: TargetModel,
   tokens: List<ConcreteSyntaxToken>
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bound_tokens_source_text(
     tokens: tokens,
     lex: target.lex,
@@ -834,7 +840,7 @@ fn translate_project_transform_in_arrow_scope(
 fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
@@ -883,7 +889,7 @@ fn target_serialize_relation_row_from_model_bounded(
   remaining: Int,
   target: TargetModel,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -905,7 +911,7 @@ fn target_serialize_relation_row_from_model_bounded(
                   f: fn(tokens) {
                     fold_list(
                       xs: tokens,
-                      empty: Accepted { value: "", diagnostics: None },
+                      empty: Accepted { value: target_text_empty, diagnostics: None },
                       cons: fn(acc, token_node) {
                         match acc {
                           Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -915,7 +921,7 @@ fn target_serialize_relation_row_from_model_bounded(
                                 match token_spelling_from_model(target: target, token: token_node) {
                                   Accepted { value: source, diagnostics: td } =>
                                     Accepted {
-                                      value: concat(partial, source),
+                                      value: target_text_seq(acc: partial, next: text_atom(lexeme: source)),
                                       diagnostics: diagnostics_merge(
                                         outer: diagnostics_merge(outer: ad, inner: kd),
                                         inner: td
@@ -937,7 +943,7 @@ fn target_serialize_relation_row_from_model_bounded(
                                 ) {
                                   Accepted { value: source, diagnostics: td } =>
                                     Accepted {
-                                      value: concat(partial, source),
+                                      value: target_text_seq(acc: partial, next: source),
                                       diagnostics: diagnostics_merge(
                                         outer: diagnostics_merge(outer: ad, inner: kd),
                                         inner: td
@@ -1003,20 +1009,25 @@ fn token_item_to_source_bounded(
   remaining: Int,
   item: Node,
   target: TargetModel
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: token_sequence_item_kind(item: item),
     f: fn(item_kind) {
       match item_kind {
         TokenSequenceConcreteToken =>
-          token_spelling_from_model(target: target, token: item)
+          bind_outcome(
+            o: token_spelling_from_model(target: target, token: item),
+            f: fn(spelling) {
+              outcome_accepted(text_atom(lexeme: spelling))
+            }
+          )
         TokenSequenceNonterminal =>
           target_serialize_relation_row_from_model_bounded(remaining - 1, target, item)
       }
     }
   )
 }
-fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<String> {
+fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetText> {
   bind_outcome(
     o: token_item_serialize_measure(item: item, target: target),
     f: fn(measure) {
@@ -1028,10 +1039,10 @@ fn token_sequence_to_source_bounded(
   remaining: Int,
   tokens: List<Node>,
   target: TargetModel
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   fold_list(
     xs: tokens,
-    empty: Accepted { value: "", diagnostics: None },
+    empty: Accepted { value: target_text_empty, diagnostics: None },
     cons: fn(acc, token_node) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1039,7 +1050,7 @@ fn token_sequence_to_source_bounded(
           match token_item_to_source_bounded(remaining - 1, token_node, target) {
             Accepted { value: source, diagnostics: td } =>
               Accepted {
-                value: concat(partial, source),
+                value: target_text_seq(acc: partial, next: source),
                 diagnostics: diagnostics_merge(outer: ad, inner: td)
               }
             Rejected { diagnostics: r } =>
@@ -1051,7 +1062,7 @@ fn token_sequence_to_source_bounded(
     }
   )
 }
-fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<String> {
+fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetText> {
   bind_outcome(
     o: token_sequence_serialize_measure(tokens: tokens, target: target),
     f: fn(measure) {
@@ -1064,7 +1075,7 @@ fn target_serialize_source_from_model_bounded(
   remaining: Int,
   target: TargetModel,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -1132,7 +1143,7 @@ fn target_serialize_source_from_model(
       bind_outcome(
         o: target_serialize_source_from_model_bounded(measure, target, emitted),
         f: fn(text) {
-          target_source_medium(text: text, target: target)
+          target_source_medium(text: render_target_text(t: text), target: target)
         }
       )
     }
@@ -1990,18 +2001,29 @@ fn type_expr_atom_binding(node: Node) -> Outcome<Symbol> {
   )
 }
 
-fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<String> {
+fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<TargetText> {
   bind_outcome(
     o: type_expr_atom_binding(node: node),
     f: fn(binding) {
-      target_binding_spelling_lookup(target: target, binding: binding)
+      bind_outcome(
+        o: target_binding_spelling_lookup(target: target, binding: binding),
+        f: fn(spelling) {
+          outcome_accepted(text_atom(lexeme: spelling))
+        }
+      )
     }
   )
 }
 
-fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<String> {
+fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetText> {
   match edge.label {
-    Named { name: label } => target_binding_spelling_lookup(target: target, binding: label)
+    Named { name: label } =>
+      bind_outcome(
+        o: target_binding_spelling_lookup(target: target, binding: label),
+        f: fn(spelling) {
+          outcome_accepted(text_atom(lexeme: spelling))
+        }
+      )
     Positional =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
   }
@@ -2025,7 +2047,7 @@ fn serialize_type_expr_generic_apply_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetGenericApply,
   node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: node)
@@ -2059,12 +2081,12 @@ fn serialize_type_expr_generic_apply_bounded(
                       o: lex_rules_literal(target: target, token_class: form.close),
                       f: fn(close_source) {
                         Accepted {
-                          value: list_append(
-                            left: list_append(
-                              left: list_append(left: head_source, right: open_source),
-                              right: args_source
+                          value: target_text_seq(
+                            acc: target_text_seq(
+                              acc: target_text_seq(acc: head_source, next: text_atom(lexeme: open_source)),
+                              next: args_source
                             ),
-                            right: close_source
+                            next: text_atom(lexeme: close_source)
                           ),
                           diagnostics: None
                         }
@@ -2087,7 +2109,7 @@ fn serialize_type_expr_args_bounded(
   form: TargetGenericApply,
   args: List<Node>,
   anchor: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2095,7 +2117,7 @@ fn serialize_type_expr_args_bounded(
   } else {
     fold_list(
       xs: args,
-      empty: Accepted { value: Empty, diagnostics: None },
+      empty: Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, arg) {
         bind_outcome(
           o: acc,
@@ -2108,16 +2130,16 @@ fn serialize_type_expr_args_bounded(
                 emitted: arg
               ),
               f: fn(arg_source) {
-                if is_empty(xs: source) {
+                if target_text_is_empty(t: source) {
                   outcome_accepted(arg_source)
                 } else {
                   bind_outcome(
                     o: lex_rules_literal(target: target, token_class: form.separator),
                     f: fn(sep_source) {
                       outcome_accepted(
-                        list_append(
-                          left: list_append(left: source, right: sep_source),
-                          right: arg_source
+                        target_text_seq(
+                          acc: target_text_seq(acc: source, next: text_atom(lexeme: sep_source)),
+                          next: arg_source
                         )
                       )
                     }
@@ -2138,7 +2160,7 @@ fn serialize_type_expr_separated_bounded(
   separator: Symbol,
   items: List<Node>,
   anchor: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2146,7 +2168,7 @@ fn serialize_type_expr_separated_bounded(
   } else {
     fold_list(
       xs: items,
-      empty: Accepted { value: Empty, diagnostics: None },
+      empty: Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, item) {
         bind_outcome(
           o: acc,
@@ -2159,16 +2181,16 @@ fn serialize_type_expr_separated_bounded(
                 emitted: item
               ),
               f: fn(item_source) {
-                if is_empty(xs: source) {
+                if target_text_is_empty(t: source) {
                   outcome_accepted(item_source)
                 } else {
                   bind_outcome(
                     o: lex_rules_literal(target: target, token_class: separator),
                     f: fn(sep_source) {
                       outcome_accepted(
-                        list_append(
-                          left: list_append(left: source, right: sep_source),
-                          right: item_source
+                        target_text_seq(
+                          acc: target_text_seq(acc: source, next: text_atom(lexeme: sep_source)),
+                          next: item_source
                         )
                       )
                     }
@@ -2191,7 +2213,7 @@ fn serialize_type_expr_record_fields_bounded(
   field_label_separator: Symbol,
   fields: List<Edge>,
   anchor: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2199,7 +2221,7 @@ fn serialize_type_expr_record_fields_bounded(
   } else {
     fold(
       fields,
-      init: Accepted { value: Empty, diagnostics: None },
+      init: Accepted { value: target_text_empty, diagnostics: None },
       f: fn(acc, field) {
         bind_outcome(
           o: acc,
@@ -2218,20 +2240,20 @@ fn serialize_type_expr_record_fields_bounded(
                         emitted: field.target
                       ),
                       f: fn(field_type_source) {
-                        let field_source = list_append(
-                          left: list_append(left: label_source, right: label_sep_source),
-                          right: field_type_source
+                        let field_source = target_text_seq(
+                          acc: target_text_seq(acc: label_source, next: text_atom(lexeme: label_sep_source)),
+                          next: field_type_source
                         )
-                        if is_empty(xs: source) {
+                        if target_text_is_empty(t: source) {
                           outcome_accepted(field_source)
                         } else {
                           bind_outcome(
                             o: lex_rules_literal(target: target, token_class: separator),
                             f: fn(sep_source) {
                               outcome_accepted(
-                                list_append(
-                                  left: list_append(left: source, right: sep_source),
-                                  right: field_source
+                                target_text_seq(
+                                  acc: target_text_seq(acc: source, next: text_atom(lexeme: sep_source)),
+                                  next: field_source
                                 )
                               )
                             }
@@ -2256,7 +2278,7 @@ fn serialize_type_expr_record_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetGenericApply,
   node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   match form.field_label_separator {
     Present { value: field_label_separator } =>
       bind_outcome(
@@ -2280,9 +2302,9 @@ fn serialize_type_expr_record_bounded(
                     o: lex_rules_literal(target: target, token_class: form.close),
                     f: fn(close_source) {
                       Accepted {
-                        value: list_append(
-                          left: list_append(left: open_source, right: fields_source),
-                          right: close_source
+                        value: target_text_seq(
+                          acc: target_text_seq(acc: text_atom(lexeme: open_source), next: fields_source),
+                          next: text_atom(lexeme: close_source)
                         ),
                         diagnostics: None
                       }
@@ -2303,7 +2325,7 @@ fn serialize_type_expr_sum_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetSumTypeShape,
   node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: target_type_expr_emitted_labeled_slot_nodes(node: node),
     f: fn(variants) {
@@ -2324,7 +2346,7 @@ fn serialize_type_expr_arrow_param_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   slot: TargetTypeExprArrowParamSlot
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: serialize_type_expr_arrow_param_spelling(
       target: target,
@@ -2344,9 +2366,9 @@ fn serialize_type_expr_arrow_param_bounded(
             o: lex_rules_literal(target: target, token_class: form.param_type_separator),
             f: fn(separator_source) {
               Accepted {
-                value: list_append(
-                  left: list_append(left: name_source, right: separator_source),
-                  right: type_source
+                value: target_text_seq(
+                  acc: target_text_seq(acc: text_atom(lexeme: name_source), next: text_atom(lexeme: separator_source)),
+                  next: type_source
                 ),
                 diagnostics: None
               }
@@ -2365,7 +2387,7 @@ fn serialize_type_expr_arrow_params_bounded(
   form: TargetFunctionTypeShape,
   params: List<TargetTypeExprArrowParamSlot>,
   anchor: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2373,7 +2395,7 @@ fn serialize_type_expr_arrow_params_bounded(
   } else {
     fold_list(
       xs: params,
-      empty: Accepted { value: Empty, diagnostics: None },
+      empty: Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, slot) {
         bind_outcome(
           o: acc,
@@ -2387,16 +2409,16 @@ fn serialize_type_expr_arrow_params_bounded(
                 slot: slot
               ),
               f: fn(param_source) {
-                if is_empty(xs: source) {
+                if target_text_is_empty(t: source) {
                   outcome_accepted(param_source)
                 } else {
                   bind_outcome(
                     o: lex_rules_literal(target: target, token_class: form.param_list_separator),
                     f: fn(separator_source) {
                       outcome_accepted(
-                        list_append(
-                          left: list_append(left: source, right: separator_source),
-                          right: param_source
+                        target_text_seq(
+                          acc: target_text_seq(acc: source, next: text_atom(lexeme: separator_source)),
+                          next: param_source
                         )
                       )
                     }
@@ -2417,7 +2439,7 @@ fn serialize_type_expr_arrow_named_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: target_type_expr_arrow_labeled_param_slots(node: node),
     f: fn(params) {
@@ -2453,15 +2475,15 @@ fn serialize_type_expr_arrow_named_bounded(
                             ),
                             f: fn(codomain_source) {
                               Accepted {
-                                value: list_append(
-                                  left: list_append(
-                                    left: list_append(
-                                      left: list_append(left: open_source, right: params_source),
-                                      right: close_source
+                                value: target_text_seq(
+                                  acc: target_text_seq(
+                                    acc: target_text_seq(
+                                      acc: target_text_seq(acc: text_atom(lexeme: open_source), next: params_source),
+                                      next: text_atom(lexeme: close_source)
                                     ),
-                                    right: arrow_source
+                                    next: text_atom(lexeme: arrow_source)
                                   ),
-                                  right: codomain_source
+                                  next: codomain_source
                                 ),
                                 diagnostics: None
                               }
@@ -2487,7 +2509,7 @@ fn serialize_type_expr_arrow_input_wrapped(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   input_node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   bind_outcome(
     o: lex_rules_literal(target: target, token_class: form.open),
     f: fn(open_source) {
@@ -2504,9 +2526,9 @@ fn serialize_type_expr_arrow_input_wrapped(
             o: lex_rules_literal(target: target, token_class: form.close),
             f: fn(close_source) {
               Accepted {
-                value: list_append(
-                  left: list_append(left: open_source, right: input_source),
-                  right: close_source
+                value: target_text_seq(
+                  acc: target_text_seq(acc: text_atom(lexeme: open_source), next: input_source),
+                  next: text_atom(lexeme: close_source)
                 ),
                 diagnostics: None
               }
@@ -2524,7 +2546,7 @@ fn serialize_type_expr_arrow_inputs_bounded(
   form: TargetFunctionTypeShape,
   inputs: List<Node>,
   anchor: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2532,7 +2554,7 @@ fn serialize_type_expr_arrow_inputs_bounded(
   } else {
     fold_list(
       xs: inputs,
-      empty: Accepted { value: Empty, diagnostics: None },
+      empty: Accepted { value: target_text_empty, diagnostics: None },
       cons: fn(acc, input_node) {
         bind_outcome(
           o: acc,
@@ -2546,16 +2568,16 @@ fn serialize_type_expr_arrow_inputs_bounded(
                 input_node: input_node
               ),
               f: fn(input_source) {
-                if is_empty(xs: source) {
+                if target_text_is_empty(t: source) {
                   outcome_accepted(input_source)
                 } else {
                   bind_outcome(
                     o: lex_rules_literal(target: target, token_class: form.arrow),
                     f: fn(arrow_source) {
                       outcome_accepted(
-                        list_append(
-                          left: list_append(left: source, right: arrow_source),
-                          right: input_source
+                        target_text_seq(
+                          acc: target_text_seq(acc: source, next: text_atom(lexeme: arrow_source)),
+                          next: input_source
                         )
                       )
                     }
@@ -2575,7 +2597,7 @@ fn serialize_type_expr_arrow_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   node: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   match target_type_expr_arrow_wire_shape(node: node) {
     Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
       bind_outcome_accepted(
@@ -2620,9 +2642,9 @@ fn serialize_type_expr_arrow_bounded(
                       ),
                       f: fn(output_source) {
                         Accepted {
-                          value: list_append(
-                            left: list_append(left: inputs_source, right: arrow_source),
-                            right: output_source
+                          value: target_text_seq(
+                            acc: target_text_seq(acc: inputs_source, next: text_atom(lexeme: arrow_source)),
+                            next: output_source
                           ),
                           diagnostics: None
                         }
@@ -2643,7 +2665,7 @@ fn serialize_type_expr_emitted_wire_bounded(
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
   wire: TargetTypeExpression
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   match wire.kind {
     TargetTypeExprAtom =>
       type_expr_spelling_for_atom(target: target, node: wire.node)
@@ -2694,7 +2716,7 @@ fn serialize_type_expr_emitted_bounded(
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -3053,7 +3075,7 @@ fn serialize_type_expr_boundary_atom_bounded(
   projection: TargetTypeExpressionProjection,
   boundary_site: FunctionBoundarySite,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   match translate_target_function_signature_realization_for_boundary(
     target: target,
     emitted: emitted,
@@ -3103,7 +3125,7 @@ fn serialize_type_expr_boundary_bounded(
   projection: TargetTypeExpressionProjection,
   boundary_site: FunctionBoundarySite,
   emitted: Node
-) -> Outcome<String> {
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
