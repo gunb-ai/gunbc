@@ -48,6 +48,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_uri_path.rs",
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
+    "gunbc_stage0_crate_layout_generated.rs",
     "lib.rs",
     "std_algebra.rs",
     "std_coercion.rs",
