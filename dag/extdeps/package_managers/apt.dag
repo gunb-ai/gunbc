@@ -29,6 +29,7 @@ data package_nbdkit: NonEmptyStr = "nbdkit"
 data package_socat: NonEmptyStr = "socat"
 data package_websocat: NonEmptyStr = "websocat"
 data package_xorriso: NonEmptyStr = "xorriso"
+data package_jq: NonEmptyStr = "jq"
 
 data apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 
