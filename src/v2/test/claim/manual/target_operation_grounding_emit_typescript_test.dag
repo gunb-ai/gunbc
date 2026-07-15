@@ -34,7 +34,8 @@ import v2.std.compilers.target_model {
   target_operator_realizations_catalog_node,
   target_value_expression_binding_ref,
   target_value_expression_primitive_apply,
-  target_value_expression_primitive_apply_to_concrete_tokens
+  target_value_expression_primitive_apply_to_concrete_tokens,
+  render_target_text
 }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.typescript {
@@ -136,9 +137,14 @@ fn op_grounding_emit(operation: CanonicalOperation, catalog: Node) -> Outcome<St
       catalog: catalog
     ),
     f: fn(tokens) {
-      serialize_concrete_syntax_tokens_to_source_string(
-        target: op_grounding_test_model(),
-        tokens: tokens
+      bind_outcome(
+        o: serialize_concrete_syntax_tokens_to_source_string(
+          target: op_grounding_test_model(),
+          tokens: tokens
+        ),
+        f: fn(carrier) {
+          Accepted { value: render_target_text(t: carrier), diagnostics: None }
+        }
       )
     }
   )
