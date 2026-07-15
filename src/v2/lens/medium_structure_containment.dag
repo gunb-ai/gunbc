@@ -12,8 +12,7 @@ import v2.lens.bash_composition_recognizer {
   LiteralSkeleton,
   classify_bash_skeleton,
   disposition_is_violation,
-  disposition_is_ambiguous,
-  disposition_is_clean
+  disposition_is_ambiguous
 }
 import v2.std.algebra {
   fold_list,
