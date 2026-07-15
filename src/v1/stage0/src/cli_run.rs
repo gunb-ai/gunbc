@@ -7278,8 +7278,55 @@ fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::Interp
                 | "DiagnosticClaim"
                 | "StructuralEqualsClaim"
                 | "RoundTripClaim"
-                | "BoolWitnessClaim"
         ),
+        _ => false,
+    }
+}
+
+fn variant_field<'a>(
+    ctx: &v1_interpreter::InterpContext,
+    fields: &'a [(v1_interpreter::Symbol, v1_interpreter::Value)],
+    name: &str,
+) -> Option<&'a v1_interpreter::Value> {
+    fields
+        .iter()
+        .find(|(sym, _)| ctx.sym_eq(*sym, name))
+        .map(|(_, v)| v)
+}
+
+/// Node-frontier selection applies only to node-corpus TestClaim rows whose
+/// evaluation footprint is structurally Node-valued at runtime. UnifiedTestClaim
+/// BoolWitnessClaim rows and CompilesClaim rows whose input/expected_value are
+/// Symbol atoms (parse-bridge harness claims) are out of scope for
+/// `test_claim_evaluation_touches_rerun_frontier` — skipping them is
+/// fail-closed-safe (cannot under-approximate touch → may rerun, never skip).
+fn test_claim_selection_has_node_corpus(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> bool {
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = val
+    else {
+        return false;
+    };
+    let all_nodes = |vals: &[&v1_interpreter::Value]| vals.iter().all(|v| value_is_node(v, ctx));
+    match ctx.resolve(*variant_name).as_str() {
+        "EqualsClaim" | "StructuralEqualsClaim" => all_nodes(&[
+            variant_field(ctx, fields, "lhs").expect("lhs"),
+            variant_field(ctx, fields, "rhs").expect("rhs"),
+        ]),
+        "CompilesClaim" => all_nodes(&[
+            variant_field(ctx, fields, "input").expect("input"),
+            variant_field(ctx, fields, "expected_value").expect("expected_value"),
+        ]),
+        "RoundTripClaim" => all_nodes(&[variant_field(ctx, fields, "input").expect("input")]),
+        "DiagnosticClaim" => {
+            variant_field(ctx, fields, "input")
+                .is_some_and(|v| value_is_node(v, ctx))
+        }
         _ => false,
     }
 }
@@ -8219,6 +8266,9 @@ fn entry_touches_rerun_frontier(
     .map_err(|e| format!("{e}"))?;
     for val in initializer_values {
         if !value_is_test_claim(&val, ctx) {
+            continue;
+        }
+        if !test_claim_selection_has_node_corpus(&val, ctx) {
             continue;
         }
         saw_claim = true;

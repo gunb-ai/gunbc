@@ -8,7 +8,7 @@ import v2.lens.cost {
   SymbolicCost,
   polynomial_degree_two
 }
-import v2.std.algebra { CopiedPortFact, copied_port_fact_registry, fold_list }
+import v2.lens.cost.copied_port_citations { copied_port_index_of }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -30,32 +30,6 @@ fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
   fold(xs, init: false, f: fn(acc, s) {
     if acc { true } else { s == needle }
   })
-}
-
-fn row_matches_combiner(row: CopiedPortFact, combiner: Symbol) -> Bool {
-  row.combiner == combiner
-}
-
-fn some_copied_port_index(idx: Int) -> Optional<Int> {
-  Present { value: idx }
-}
-
-fn copied_port_index_of(combiner: Symbol) -> Optional<Int> {
-  fold_list(
-    xs: copied_port_fact_registry,
-    empty: Absent,
-    cons: fn(acc, row) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if row_matches_combiner(row: row, combiner: combiner) {
-            some_copied_port_index(idx: row.copied_port_index)
-          } else {
-            Absent
-          }
-      }
-    }
-  )
 }
 
 fn poly_two_cost(n: Node) -> SymbolicCost {
