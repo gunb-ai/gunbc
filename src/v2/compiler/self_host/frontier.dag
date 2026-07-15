@@ -536,6 +536,24 @@ fn compiler_frontier_roster_located_reason_not_class_projection_holds() -> Bool 
   )
 }
 
+fn compiler_frontier_self_emitted_located_reason_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && match row.disposition {
+        SelfEmitted =>
+          frontier_blocker_class_matches(
+            row: row.measured_probe.blocker_class,
+            expected: SelfEmitReady
+          )
+            && (row.measured_probe.located_reason == ^measured_probe_self_emit_ready)
+        SeedRetained { reason: _, migration_trigger: _ } => true
+      }
+    }
+  )
+}
+
 fn compiler_frontier_roster_probe_paths_match_holds() -> Bool {
   fold_list(
     xs: compiler_frontier_roster,
@@ -761,6 +779,7 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_sweep_order_matches_tractability_rank_holds()
     && compiler_frontier_roster_all_classified_holds()
     && compiler_frontier_roster_located_reason_not_class_projection_holds()
+    && compiler_frontier_self_emitted_located_reason_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
     && compiler_frontier_band_a_emit_readiness_holds()
 }
