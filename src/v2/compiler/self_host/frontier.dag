@@ -89,6 +89,12 @@ fn tractability_rank_for(closure_reads: Int, blocker: FrontierBlockerClass) -> I
   base + closure_reads
 }
 
+data compiler_frontier_self_emitted_tractability_rank_note: String = "At SelfEmitted flip, tractability_rank retains the pre-flip blocker band (not recomputed from measured_probe.blocker_class SelfEmitReady) so compiler_frontier_sweep_order rank monotonicity is unchanged. SelfEmitReady rank would be closure_reads alone (e.g. 9), breaking sweep order vs neighboring EmitSurfaceGap rows (e.g. 1002, 1012)."
+
+fn self_emitted_tractability_rank_at_flip(closure_reads: Int, pre_flip_blocker: FrontierBlockerClass) -> Int {
+  tractability_rank_for(closure_reads: closure_reads, blocker: pre_flip_blocker)
+}
+
 fn execution_measured_seed_retained_row(
   module_path: String,
   closure_reads: Int,
@@ -349,7 +355,7 @@ data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = executi
     located_stage: ProbeStageEmit,
     located_reason: ^measured_probe_self_emit_ready
   },
-  tractability_rank: tractability_rank_for(closure_reads: 9, blocker: EmitSurfaceGap)
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 9, pre_flip_blocker: EmitSurfaceGap)
 )
 
 data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
