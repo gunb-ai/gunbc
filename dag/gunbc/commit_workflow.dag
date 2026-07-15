@@ -390,7 +390,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
-      check_fns: ["wave1_gate1_d_census_fixture_variants_well_formed_witness_holds"],
+      check_fns: ["wave1_gate1_d_census_subsumption_witness_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag",
+      check_fns: [
+        "wave1_gate1_d_ingested_bind_executes_witness_holds",
+        "wave1_gate1_d_ingested_loop_executes_witness_holds"
+      ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },

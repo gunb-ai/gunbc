@@ -12,92 +12,137 @@ import v2.compiler.ingested_fixture_arrows {
   ingested_pick_if_arrow_with_body,
   ingested_pick_if_arrow_with_body_swapped_arms
 }
-import v2.test.complexity_gate.table_fixture_match_subject_producer {
-  table_fixture_match_arrow_with_body,
-  table_fixture_match_arrow_with_body_swapped_arms
-}
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node {
+  Bind,
+  Branch,
+  ComputationNode,
+  Loop,
+  Match,
+  Node,
+  Transform,
+  TypeNode,
+  well_formed
+}
 import v2.std.node_query { find_arrow_body_child }
-import v2.test.complexity_gate.table_fixture_add_subject_producer {
-  table_fixture_add_arrow_with_body,
-  table_fixture_add_arrow_with_body_swapped_operands
-}
-import v2.test.complexity_gate.table_fixture_bind_subject_producer {
-  table_fixture_bind_arrow_with_body,
-  table_fixture_bind_wrong_value_arrow_with_body
-}
-import v2.test.complexity_gate.table_fixture_branch_subject_producer {
-  table_fixture_pick_if_arrow_with_body,
-  table_fixture_pick_if_arrow_with_body_swapped_arms
-}
-import v2.test.complexity_gate.table_fixture_loop_subject_producer {
-  table_fixture_loop_arrow_with_body,
-  table_fixture_loop_wrong_value_arrow_with_body
+
+data wave1_gate1_d_note: String = "Wave 1 Gate 1 Stage D long-lane helpers: census ingest via ingested_fixture_arrows. Well-formedness + behavior-kind checks here; ingested bind/loop execution+RED in long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match execution in general_body_producer + pick_ingested + classical_not witnesses."
+
+fn wave1_gate1_d_arrow_well_formed_with_body(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: arrow, diagnostics: _ } =>
+      well_formed(n: arrow)
+        && match find_arrow_body_child(root: arrow) {
+          Accepted { value: _, diagnostics: _ } => true
+          Rejected { diagnostics: _ } => false
+        }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
-data wave1_gate1_d_note: String = "Wave 1 Gate 1 Stage D helpers: fast lane uses table_fixture producers; long lane uses census ingest via ingested_fixture_arrows. Behavioral RED controls live in execution/*_eval_by_execution_test.dag."
-fn wave1_gate1_d_arrow_accepts(o: Outcome<Node>) -> Bool {
+fn wave1_gate1_d_arrow_body_is_transform(o: Outcome<Node>) -> Bool {
   match o {
     Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
-        Accepted { value: _, diagnostics: _ } => true
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: Transform } => true
+            _ => false
+          }
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn wave1_gate1_d_add_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: table_fixture_add_arrow_with_body())
+fn wave1_gate1_d_arrow_body_is_branch(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: Branch } => true
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
-fn wave1_gate1_d_add_swapped_well_formed_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: table_fixture_add_arrow_with_body_swapped_operands())
+fn wave1_gate1_d_arrow_body_is_bind(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: Bind } => true
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
-fn wave1_gate1_d_pick_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: table_fixture_pick_if_arrow_with_body())
+fn wave1_gate1_d_arrow_body_is_loop(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: Loop } => true
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
-fn wave1_gate1_d_pick_swapped_well_formed_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: table_fixture_pick_if_arrow_with_body_swapped_arms())
-}
-
-fn wave1_gate1_d_loop_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: table_fixture_loop_arrow_with_body())
-}
-
-fn wave1_gate1_d_loop_wrong_value_well_formed_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: table_fixture_loop_wrong_value_arrow_with_body())
-}
-
-fn wave1_gate1_d_bind_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: table_fixture_bind_arrow_with_body())
-}
-
-fn wave1_gate1_d_bind_wrong_value_well_formed_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: table_fixture_bind_wrong_value_arrow_with_body())
-}
-
-fn wave1_gate1_d_match_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: table_fixture_match_arrow_with_body())
-}
-
-fn wave1_gate1_d_match_swapped_well_formed_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: table_fixture_match_arrow_with_body_swapped_arms())
+fn wave1_gate1_d_arrow_body_is_match(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: Match } => true
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn wave1_gate1_d_census_fixture_variants_well_formed_holds() -> Bool {
-  wave1_gate1_d_arrow_accepts(o: ingested_add_arrow_with_body())
-    && wave1_gate1_d_arrow_accepts(o: ingested_add_arrow_with_body_swapped_operands())
-    && wave1_gate1_d_arrow_accepts(o: ingested_pick_if_arrow_with_body())
-    && wave1_gate1_d_arrow_accepts(o: ingested_pick_if_arrow_with_body_swapped_arms())
-    && wave1_gate1_d_arrow_accepts(o: ingested_loop_arrow_with_body())
-    && wave1_gate1_d_arrow_accepts(o: ingested_loop_arrow_with_body_wrong_value())
-    && wave1_gate1_d_arrow_accepts(o: ingested_bind_arrow_with_body())
-    && wave1_gate1_d_arrow_accepts(o: ingested_bind_arrow_with_body_wrong_value())
-    && wave1_gate1_d_arrow_accepts(o: ingested_match_arrow_with_body())
-    && wave1_gate1_d_arrow_accepts(o: ingested_match_arrow_with_body_swapped_arms())
+  wave1_gate1_d_arrow_well_formed_with_body(o: ingested_add_arrow_with_body())
+    && wave1_gate1_d_arrow_well_formed_with_body(o: ingested_add_arrow_with_body_swapped_operands())
+    && wave1_gate1_d_arrow_well_formed_with_body(o: ingested_pick_if_arrow_with_body())
+    && wave1_gate1_d_arrow_well_formed_with_body(o: ingested_pick_if_arrow_with_body_swapped_arms())
+    && wave1_gate1_d_arrow_well_formed_with_body(o: ingested_loop_arrow_with_body())
+    && wave1_gate1_d_arrow_well_formed_with_body(o: ingested_loop_arrow_with_body_wrong_value())
+    && wave1_gate1_d_arrow_well_formed_with_body(o: ingested_bind_arrow_with_body())
+    && wave1_gate1_d_arrow_well_formed_with_body(o: ingested_bind_arrow_with_body_wrong_value())
+    && wave1_gate1_d_arrow_well_formed_with_body(o: ingested_match_arrow_with_body())
+    && wave1_gate1_d_arrow_well_formed_with_body(o: ingested_match_arrow_with_body_swapped_arms())
+}
+
+fn wave1_gate1_d_census_ingested_behavior_kinds_holds() -> Bool {
+  wave1_gate1_d_arrow_body_is_transform(o: ingested_add_arrow_with_body())
+    && wave1_gate1_d_arrow_body_is_transform(o: ingested_add_arrow_with_body_swapped_operands())
+    && wave1_gate1_d_arrow_body_is_branch(o: ingested_pick_if_arrow_with_body())
+    && wave1_gate1_d_arrow_body_is_branch(o: ingested_pick_if_arrow_with_body_swapped_arms())
+    && wave1_gate1_d_arrow_body_is_loop(o: ingested_loop_arrow_with_body())
+    && wave1_gate1_d_arrow_body_is_loop(o: ingested_loop_arrow_with_body_wrong_value())
+    && wave1_gate1_d_arrow_body_is_bind(o: ingested_bind_arrow_with_body())
+    && wave1_gate1_d_arrow_body_is_bind(o: ingested_bind_arrow_with_body_wrong_value())
+    && wave1_gate1_d_arrow_body_is_match(o: ingested_match_arrow_with_body())
+    && wave1_gate1_d_arrow_body_is_match(o: ingested_match_arrow_with_body_swapped_arms())
+}
+
+fn wave1_gate1_d_census_subsumption_holds() -> Bool {
+  wave1_gate1_d_census_fixture_variants_well_formed_holds()
+    && wave1_gate1_d_census_ingested_behavior_kinds_holds()
 }
