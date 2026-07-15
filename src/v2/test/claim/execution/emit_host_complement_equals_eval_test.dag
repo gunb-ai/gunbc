@@ -65,7 +65,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { Deferred, Fail, Pass, Verdict }
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -290,15 +290,19 @@ fn emit_complement_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeVal
 fn emit_complement_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
-    Fail { actual: _, falsification: _ } => false
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn emit_complement_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+fn emit_complement_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
-    Fail { actual: _, falsification: _ } => true
+    SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
@@ -312,7 +316,7 @@ test fn emit_host_complement_equals_eval_holds() -> Bool {
 }
 
 test fn emit_host_complement_wrong_fixture_refuses_holds() -> Bool {
-  emit_complement_eval_verdict_is_fail(
+  emit_complement_eval_verdict_is_semantic_mismatch(
     run: emit_complement_eval_run(
       tree: emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)
     )

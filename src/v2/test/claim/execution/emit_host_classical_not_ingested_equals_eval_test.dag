@@ -78,7 +78,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { Deferred, Fail, Pass }
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -428,15 +428,19 @@ fn ingested_classical_not_run(tree: InferredTree, subgraph: Node) -> TestClaimRu
 fn ingested_classical_not_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
-    Fail { actual: _, falsification: _ } => false
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn ingested_classical_not_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+fn ingested_classical_not_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
-    Fail { actual: _, falsification: _ } => true
+    SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
@@ -508,7 +512,7 @@ test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
 test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
   match ingested_inferred_tree_from_source(source: ingested_classical_not_swapped_source) {
     Accepted { value: tree, diagnostics: _ } =>
-      ingested_classical_not_verdict_is_fail(
+      ingested_classical_not_verdict_is_semantic_mismatch(
         run: ingested_classical_not_run(
           tree: tree,
           subgraph: ingested_classical_not_eval_subgraph_canonical()

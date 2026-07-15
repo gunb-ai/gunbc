@@ -44,7 +44,7 @@ import v2.std.find_witness {
   TargetDeclaredPriority,
 }
 import v2.std.node { Node }
-import v2.std.verdict { Fail, Pass, Deferred }
+import v2.std.verdict { Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed }
 import v2.std.verification {
   CompilesClaim,
   DiagnosticClaim,
@@ -134,7 +134,9 @@ test data witness_cross_target_python_to_rust_i32_rejects: Bool = match run_test
   at: python_int_inhabitant_node()
 ) {
   Pass => true
-  Fail { actual: _, falsification: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -268,6 +270,8 @@ test data witness_cross_target_python_to_rust_i32_would_lose_information: Bool =
   at: python_int_inhabitant_node()
 ) {
   Pass => true
-  Fail { actual: _, falsification: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }

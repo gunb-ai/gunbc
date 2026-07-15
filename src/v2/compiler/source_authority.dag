@@ -5,19 +5,15 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse {
   ParseArtifact,
-  grammar_validate_for_parse,
   parse,
   parse_module,
-  parse_production_tree,
 }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_grammar_production_fn_add,
   dag_language_model
 }
-import v2.std.compilers.lexing { TokenStream, token_stream_remaining }
-import v2.std.grammar { GrammarRoot, grammar_empty_sync_tokens }
+import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
 import std.algebra { Empty, FreeMonoid }
 import v2.std.algebra { fold_list, length, list_snoc_item }
@@ -201,40 +197,6 @@ fn semantic_ir_from_source(source: Medium<String>) -> Outcome<DagSemanticIr> {
   )
 }
 
-fn source_authority_fn_parse_root() -> GrammarRoot {
-  GrammarRoot {
-    start: ^dag_production_fn_add,
-    productions: [dag_grammar_production_fn_add()],
-    sync_tokens: grammar_empty_sync_tokens()
-  }
-}
-
-fn source_authority_parse_source_file_tokens(
-  tokens: TokenStream
-) -> Outcome<ParseArtifact> {
-  let root = source_authority_fn_parse_root()
-  match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
-    Accepted { value: validated, diagnostics: _ } =>
-      match parse_production_tree(
-        tokens: token_stream_remaining(stream: tokens),
-        validated: validated,
-        production_name: ^dag_production_fn_add
-      ) {
-        Accepted { value: tree, diagnostics: d } =>
-          outcome_accepted(
-            value: ParseArtifact {
-              tree: tree,
-              span_index: span_index_empty()
-            }
-          )
-        Rejected { diagnostics: r } =>
-          Rejected { diagnostics: r }
-      }
-    Rejected { diagnostics: r } =>
-      Rejected { diagnostics: r }
-  }
-}
-
 fn source_ir_artifact_provenance_from_model(
   source_read: DagSourceReadWitness,
   lm: LanguageModel
@@ -305,30 +267,15 @@ fn source_ir_node_artifact_provenance_add_from_model(
   source_read: DagSourceReadWitness,
   lm: LanguageModel
 ) -> Outcome<NodeArtifactProvenance> {
-  match source_read.artifact.kind {
-    SourceFile =>
-      bind_outcome(
-        o: tokenize(
-          text: source_read.source.carried,
-          file: source_read.compilation_unit,
-          rules: lm.lex
-        ),
-        f: fn(token_stream) {
-          bind_outcome(
-            o: source_authority_parse_source_file_tokens(tokens: token_stream),
-            f: fn(artifact) {
-              outcome_accepted(
-                value: NodeArtifactProvenance {
-                  node: artifact.tree,
-                  artifact: source_read.artifact
-                }
-              )
-            }
-          )
+  match source_ir_artifact_provenance_from_model(source_read: source_read, lm: lm) {
+    Accepted { value: prov, diagnostics: _ } =>
+      outcome_accepted(
+        value: NodeArtifactProvenance {
+          node: prov.node,
+          artifact: prov.artifact
         }
       )
-    _ =>
-      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
