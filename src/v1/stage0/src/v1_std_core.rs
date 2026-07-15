@@ -384,6 +384,11 @@ pub enum CompilerDiagnostic {
         type_name: String,
         span: Rc<SourceSpan>,
     },
+    MissingField {
+        field: String,
+        type_name: String,
+        span: Rc<SourceSpan>,
+    },
     NonExhaustiveMatch {
         missing: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
@@ -445,6 +450,7 @@ impl CompilerDiagnostic {
             CompilerDiagnostic::ArityMismatch { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::VariantNotFound { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::FieldNotFound { span: __val, .. } => __val.clone(),
+            CompilerDiagnostic::MissingField { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::NonExhaustiveMatch { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::CircularDependency { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::DuplicateModule { span: __val, .. } => __val.clone(),
@@ -480,6 +486,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantNotFound { span: s, .. } => s.clone(),
         CompilerDiagnostic::FieldNotFound { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
         CompilerDiagnostic::DuplicateModule { span: s, .. } => s.clone(),
@@ -590,6 +597,20 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
                 v1_rt::concat(
                     v1_rt::concat("field '".to_string(), f.clone()),
                     "' not found in type '".to_string(),
+                ),
+                t.clone(),
+            ),
+            "'".to_string(),
+        ),
+        CompilerDiagnostic::MissingField {
+            field: f,
+            type_name: t,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("missing required field '".to_string(), f.clone()),
+                    "' in literal of type '".to_string(),
                 ),
                 t.clone(),
             ),

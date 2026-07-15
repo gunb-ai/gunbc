@@ -7470,8 +7470,7 @@ fn test_claim_selection_has_node_corpus(
         ]),
         "RoundTripClaim" => all_nodes(&[variant_field(ctx, fields, "input").expect("input")]),
         "DiagnosticClaim" => {
-            variant_field(ctx, fields, "input")
-                .is_some_and(|v| value_is_node(v, ctx))
+            variant_field(ctx, fields, "input").is_some_and(|v| value_is_node(v, ctx))
         }
         _ => false,
     }
@@ -8794,157 +8793,160 @@ pub fn run_discovery_corpus_with_options(
                     spawn_target_width,
                 );
             }
-    let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
-        std::sync::Arc::new(Mutex::new(
-            groups
-                .into_iter()
-                .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
-                .collect(),
-        ));
-    let abort = std::sync::Arc::new(AtomicBool::new(false));
-    let source_roots_owned = source_roots.to_vec();
-    let selection_for_workers = options.node_frontier_selection;
-    let fast_lane_budget_for_workers = options.fast_lane_eval_budget_ms;
-    let mut handles = Vec::new();
-    let mut worker_ordinal: usize = 0;
-    loop {
-        if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
-            break;
-        }
-        match governor.try_admit() {
-            crate::memory_governor::AdmitDecision::Admit { .. } => {}
-            crate::memory_governor::AdmitDecision::Hold(_) => {
-                std::thread::sleep(std::time::Duration::from_millis(150));
-                continue;
-            }
-        }
-        let queue_for_worker = queue.clone();
-        let abort_for_worker = abort.clone();
-        let governor_for_worker = governor.clone();
-        let roots = source_roots_owned.clone();
-        let seeds = diff_edits.clone();
-        let paths = changed_paths.clone();
-        let keys = whole_tree_published_keys.clone();
-        let spawn_target_width = governor.current_target_width();
-        let cross_worker_store_for_worker = if spawn_target_width > 1 {
-            Some(cross_worker_store.clone())
-        } else {
-            None
-        };
-        if worker_ordinal == 0 && spawn_target_width <= 1 {
-            eprintln!(
-                "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
-            );
-        }
-        // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
-        // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
-        // admission window has no interleaving to disambiguate.
-        let style = ShardStyle {
-            shard_id: worker_ordinal,
-            shard_count: governor.current_target_width(),
-            color: floor_color,
-            stream: floor_stream,
-        };
-        worker_ordinal += 1;
-        handles.push(std::thread::spawn(
-            move || -> Result<Vec<DiscoverySummary>, String> {
-                // The slot was granted by try_admit on the pump thread; the guard owns the
-                // matching release so a panicking worker cannot wedge admissions.
-                let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
-                    governor_for_worker.clone(),
-                );
-                // Process-scoped typed_module_cache when governor width > 1; private cold
-                // index at width=1 (CI budget — cross-worker-typecheck-share-design §7).
-                let index = match cross_worker_store_for_worker {
-                    Some(store) => build_multi_entry_index_with_shared_caches(&roots, store),
-                    None => build_multi_entry_index(&roots),
-                };
-                let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
-                    match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
-                        Ok((graph, source_indices)) => {
-                            Some(make_eval_context(&graph, source_indices, execution_mode))
-                        }
-                        Err(msg) => {
-                            abort_for_worker.store(true, Ordering::SeqCst);
-                            return Err(format!(
-                                "floor runner resolve failed in worker ({msg}) — declared \
-                                 affected-set machinery must resolve; no silent \
-                                 run-everything fallback"
-                            ));
-                        }
+            let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
+                std::sync::Arc::new(Mutex::new(
+                    groups
+                        .into_iter()
+                        .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
+                        .collect(),
+                ));
+            let abort = std::sync::Arc::new(AtomicBool::new(false));
+            let source_roots_owned = source_roots.to_vec();
+            let selection_for_workers = options.node_frontier_selection;
+            let fast_lane_budget_for_workers = options.fast_lane_eval_budget_ms;
+            let mut handles = Vec::new();
+            let mut worker_ordinal: usize = 0;
+            loop {
+                if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
+                    break;
+                }
+                match governor.try_admit() {
+                    crate::memory_governor::AdmitDecision::Admit { .. } => {}
+                    crate::memory_governor::AdmitDecision::Hold(_) => {
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                        continue;
                     }
+                }
+                let queue_for_worker = queue.clone();
+                let abort_for_worker = abort.clone();
+                let governor_for_worker = governor.clone();
+                let roots = source_roots_owned.clone();
+                let seeds = diff_edits.clone();
+                let paths = changed_paths.clone();
+                let keys = whole_tree_published_keys.clone();
+                let spawn_target_width = governor.current_target_width();
+                let cross_worker_store_for_worker = if spawn_target_width > 1 {
+                    Some(cross_worker_store.clone())
                 } else {
                     None
                 };
-                // The front-loaded admission cost (index build + runner resolve) has
-                // landed and is visible to the creep signals: unblock admission pacing.
-                slot.note_first_cost_paid();
-                let mut worker_summaries = Vec::new();
-                loop {
-                    // Multiplicative decrease drains here: a worker between groups retires
-                    // when concurrency sits above the (possibly just-halved) window.
-                    if governor_for_worker.should_retire()
-                        || abort_for_worker.load(Ordering::SeqCst)
-                    {
-                        break;
-                    }
-                    let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front() else {
-                        break;
-                    };
-                    match run_discovery_rows(
-                        &group_rows,
-                        &index,
-                        execution_mode,
-                        selection_for_workers,
-                        &paths,
-                        &seeds,
-                        runner.as_ref(),
-                        keys.clone(),
-                        fast_lane_budget_for_workers,
-                        style,
-                    ) {
-                        Ok(summary) => {
-                            worker_summaries.push(summary);
-                            slot.note_unit_complete();
-                        }
-                        Err(e) => {
-                            abort_for_worker.store(true, Ordering::SeqCst);
-                            return Err(e);
-                        }
-                    }
+                if worker_ordinal == 0 && spawn_target_width <= 1 {
+                    eprintln!(
+                "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
+            );
                 }
-                Ok(worker_summaries)
-            },
-        ));
-    }
-    let mut summaries = Vec::new();
-    let mut first_err: Option<String> = None;
-    for handle in handles {
-        match handle
-            .join()
-            .map_err(|_| "discovery corpus worker thread panicked".to_string())
-        {
-            Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
-            Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
-        }
-    }
-    if let Some(e) = first_err {
-        return Err(e);
-    }
-    // The pump exits when the queue is empty OR on abort; with no error the queue must be
-    // fully drained (workers only exit early on retire/abort, and the pump re-admits while
-    // items remain), so an undrained queue here is a scheduler bug — refuse, never under-run.
-    let leftover = queue.lock().unwrap().len();
-    if leftover > 0 {
-        return Err(format!(
+                // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
+                // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
+                // admission window has no interleaving to disambiguate.
+                let style = ShardStyle {
+                    shard_id: worker_ordinal,
+                    shard_count: governor.current_target_width(),
+                    color: floor_color,
+                    stream: floor_stream,
+                };
+                worker_ordinal += 1;
+                handles.push(std::thread::spawn(
+                    move || -> Result<Vec<DiscoverySummary>, String> {
+                        // The slot was granted by try_admit on the pump thread; the guard owns the
+                        // matching release so a panicking worker cannot wedge admissions.
+                        let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
+                            governor_for_worker.clone(),
+                        );
+                        // Process-scoped typed_module_cache when governor width > 1; private cold
+                        // index at width=1 (CI budget — cross-worker-typecheck-share-design §7).
+                        let index = match cross_worker_store_for_worker {
+                            Some(store) => {
+                                build_multi_entry_index_with_shared_caches(&roots, store)
+                            }
+                            None => build_multi_entry_index(&roots),
+                        };
+                        let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
+                            match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
+                                Ok((graph, source_indices)) => {
+                                    Some(make_eval_context(&graph, source_indices, execution_mode))
+                                }
+                                Err(msg) => {
+                                    abort_for_worker.store(true, Ordering::SeqCst);
+                                    return Err(format!(
+                                        "floor runner resolve failed in worker ({msg}) — declared \
+                                 affected-set machinery must resolve; no silent \
+                                 run-everything fallback"
+                                    ));
+                                }
+                            }
+                        } else {
+                            None
+                        };
+                        // The front-loaded admission cost (index build + runner resolve) has
+                        // landed and is visible to the creep signals: unblock admission pacing.
+                        slot.note_first_cost_paid();
+                        let mut worker_summaries = Vec::new();
+                        loop {
+                            // Multiplicative decrease drains here: a worker between groups retires
+                            // when concurrency sits above the (possibly just-halved) window.
+                            if governor_for_worker.should_retire()
+                                || abort_for_worker.load(Ordering::SeqCst)
+                            {
+                                break;
+                            }
+                            let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front()
+                            else {
+                                break;
+                            };
+                            match run_discovery_rows(
+                                &group_rows,
+                                &index,
+                                execution_mode,
+                                selection_for_workers,
+                                &paths,
+                                &seeds,
+                                runner.as_ref(),
+                                keys.clone(),
+                                fast_lane_budget_for_workers,
+                                style,
+                            ) {
+                                Ok(summary) => {
+                                    worker_summaries.push(summary);
+                                    slot.note_unit_complete();
+                                }
+                                Err(e) => {
+                                    abort_for_worker.store(true, Ordering::SeqCst);
+                                    return Err(e);
+                                }
+                            }
+                        }
+                        Ok(worker_summaries)
+                    },
+                ));
+            }
+            let mut summaries = Vec::new();
+            let mut first_err: Option<String> = None;
+            for handle in handles {
+                match handle
+                    .join()
+                    .map_err(|_| "discovery corpus worker thread panicked".to_string())
+                {
+                    Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
+                    Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
+                }
+            }
+            if let Some(e) = first_err {
+                return Err(e);
+            }
+            // The pump exits when the queue is empty OR on abort; with no error the queue must be
+            // fully drained (workers only exit early on retire/abort, and the pump re-admits while
+            // items remain), so an undrained queue here is a scheduler bug — refuse, never under-run.
+            let leftover = queue.lock().unwrap().len();
+            if leftover > 0 {
+                return Err(format!(
             "adaptive discovery pool exited with {leftover} undrained entry-group(s) and no \
              worker error — scheduler invariant violated; refusing a partial corpus"
         ));
-    }
-    Ok(attach_deferred_discovery_rows(
-        merge_discovery_summaries(summaries),
-        deferred_rows,
-    ))
+            }
+            Ok(attach_deferred_discovery_rows(
+                merge_discovery_summaries(summaries),
+                deferred_rows,
+            ))
         }
     };
 }

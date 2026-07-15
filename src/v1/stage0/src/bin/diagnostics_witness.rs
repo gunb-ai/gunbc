@@ -26,6 +26,7 @@ const SUITE_REEXPORT_SURFACE: &str = "reexport_surface";
 const SUITE_TYPE_AND_ARITY: &str = "type_and_arity";
 const SUITE_EMPTY_LIST_CONTEXT: &str = "empty_list_context";
 const SUITE_CONSTRUCTOR_OWNER: &str = "constructor_owner";
+const SUITE_RECORD_FIELD_WALLS: &str = "record_field_walls";
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
     eprintln!("diagnostics_witness: {msg}");
@@ -427,12 +428,148 @@ fn suite_cases(suite: &str) -> Result<Vec<WitnessCase>, String> {
             "constructor_owner_ruling_walls",
             constructor_owner_ruling_walls,
         )]),
+        SUITE_RECORD_FIELD_WALLS => Ok(vec![(
+            "record_literal_field_walls",
+            record_literal_field_walls,
+        )]),
         _ => Err(format!(
             "unknown suite '{suite}'; expected one of: {SUITE_IMPORT_RESOLUTION}, \
              {SUITE_REEXPORT_SURFACE}, {SUITE_TYPE_AND_ARITY}, {SUITE_EMPTY_LIST_CONTEXT}, \
-             {SUITE_CONSTRUCTOR_OWNER}"
+             {SUITE_CONSTRUCTOR_OWNER}, {SUITE_RECORD_FIELD_WALLS}"
         )),
     }
+}
+
+/// P0 field walls (witness-realization plan P0 / memory-control audit F1): a record
+/// literal must carry every required declared field (MissingField), and a kernel-typed
+/// value cannot fill a differently-named declared formal (TypeMismatch) — in record
+/// fields and direct call args alike. Greens pin the sanctioned skips: optional
+/// fields and dag_can_cast pairs (Int->Float).
+fn record_literal_field_walls(module_index: &ModuleIndex) {
+    // RED: omitted required field on a record literal
+    let missing = "module fieldwall_missing\n\
+        type Ev = EvA | EvB { n: Int, m: Int }\n\
+        type Prov { id: String, ev: Ev }\n\
+        data p: Prov = Prov { id: \"x\" }\n";
+    let missing_result = compile_multi(module_index, &[("fieldwall_missing.dag", missing)]);
+    let missing_diags: Vec<_> = missing_result
+        .diagnostics
+        .iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::MissingField { .. }))
+        .collect();
+    assert!(
+        !missing_diags.is_empty(),
+        "expected MissingField for omitted 'ev', got: {:?}",
+        diagnostic_messages(&missing_result)
+    );
+    let missing_msg = diagnostic_to_message(missing_diags[0].diagnostic.clone());
+    assert!(missing_msg.contains("ev"), "field name: {missing_msg}");
+    assert!(missing_msg.contains("Prov"), "type name: {missing_msg}");
+
+    // RED: omitted required field on a coproduct-variant literal
+    let variant_missing = "module fieldwall_variant\n\
+        type Ev = EvA | EvB { n: Int, m: Int }\n\
+        data v: Ev = EvB { n: 1 }\n";
+    let variant_result = compile_multi(module_index, &[("fieldwall_variant.dag", variant_missing)]);
+    let variant_diags: Vec<_> = variant_result
+        .diagnostics
+        .iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::MissingField { .. }))
+        .collect();
+    assert!(
+        !variant_diags.is_empty(),
+        "expected MissingField for omitted 'm' on variant literal, got: {:?}",
+        diagnostic_messages(&variant_result)
+    );
+
+    // RED: kernel value where a declared coproduct is expected (field)
+    let wrong_typed = "module fieldwall_wrongtype\n\
+        type Ev = EvA | EvB { n: Int, m: Int }\n\
+        type Prov { id: String, ev: Ev }\n\
+        data q: Prov = Prov { id: \"x\", ev: 42 }\n";
+    let wrong_result = compile_multi(module_index, &[("fieldwall_wrongtype.dag", wrong_typed)]);
+    let wrong_diags: Vec<_> = wrong_result
+        .diagnostics
+        .iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. }))
+        .collect();
+    assert!(
+        !wrong_diags.is_empty(),
+        "expected TypeMismatch for ev: 42, got: {:?}",
+        diagnostic_messages(&wrong_result)
+    );
+
+    // RED: kernel-vs-kernel mismatch (Int where String declared)
+    let kernel_kernel = "module fieldwall_kernel\n\
+        type Prov2 { id: String }\n\
+        data k: Prov2 = Prov2 { id: 7 }\n";
+    let kernel_result = compile_multi(module_index, &[("fieldwall_kernel.dag", kernel_kernel)]);
+    assert!(
+        kernel_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "expected TypeMismatch for id: 7 where String declared, got: {:?}",
+        diagnostic_messages(&kernel_result)
+    );
+
+    // RED: kernel value where a declared coproduct is expected (direct call arg)
+    let call_arg = "module fieldwall_callarg\n\
+        type Ev = EvA | EvB { n: Int, m: Int }\n\
+        fn wants(e: Ev) -> Int { 7 }\n\
+        fn call_bad() -> Int { wants(e: 9) }\n";
+    let call_result = compile_multi(module_index, &[("fieldwall_callarg.dag", call_arg)]);
+    assert!(
+        call_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "expected TypeMismatch for wants(e: 9), got: {:?}",
+        diagnostic_messages(&call_result)
+    );
+
+    // GREEN: complete literal compiles with neither wall firing
+    let complete = "module fieldwall_green\n\
+        type Ev = EvA | EvB { n: Int, m: Int }\n\
+        type Prov { id: String, ev: Ev }\n\
+        data g: Prov = Prov { id: \"x\", ev: EvA }\n";
+    let complete_result = compile_multi(module_index, &[("fieldwall_green.dag", complete)]);
+    assert!(
+        !complete_result.diagnostics.iter().any(|d| matches!(
+            &*d.diagnostic,
+            CompilerDiagnostic::MissingField { .. } | CompilerDiagnostic::TypeMismatch { .. }
+        )),
+        "complete literal must stay green, got: {:?}",
+        diagnostic_messages(&complete_result)
+    );
+
+    // GREEN: optional field may be omitted
+    let optional = "module fieldwall_opt\n\
+        type Opt { a: Int, b: Int? }\n\
+        data o: Opt = Opt { a: 1 }\n";
+    let optional_result = compile_multi(module_index, &[("fieldwall_opt.dag", optional)]);
+    assert!(
+        !optional_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::MissingField { .. })),
+        "optional field omission must stay green, got: {:?}",
+        diagnostic_messages(&optional_result)
+    );
+
+    // GREEN: dag_can_cast pair (Int literal for Float field) is sanctioned
+    let cast_ok = "module fieldwall_cast\n\
+        type Fl { x: Float }\n\
+        data f: Fl = Fl { x: 3 }\n";
+    let cast_result = compile_multi(module_index, &[("fieldwall_cast.dag", cast_ok)]);
+    assert!(
+        !cast_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "Int-for-Float must stay green via dag_can_cast, got: {:?}",
+        diagnostic_messages(&cast_result)
+    );
 }
 
 fn run_suite(module_index: &ModuleIndex, suite: &str) -> Result<(), String> {

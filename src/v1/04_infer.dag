@@ -1,6 +1,6 @@
 module v1.compiler.infer
 
-import std.types { SourceSpan, container_param_name, is_kernel_type }
+import std.types { SourceSpan, container_param_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
@@ -743,12 +743,20 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
   if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
     false
   } else {
+    let formal_base = if formal.connective == Conj && formal.type_annotation != none && (formal.children |> count) == 1 {
+      match formal.children |> first {
+        Present { value: refinement_base } => refinement_base
+        Absent => formal
+      }
+    } else { formal }
     let actual_name = authored_name_at(source_indices: source_indices, node: actual)
     if is_kernel_type(name: actual_name) == false {
       false
     } else {
-      let formal_name = authored_name_at(source_indices: source_indices, node: formal)
+      let formal_name = authored_name_at(source_indices: source_indices, node: formal_base)
       if formal_name == "" || formal_name == actual_name || dag_can_cast(source_type: actual_name, target_type: formal_name) {
+        false
+      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
         false
       } else {
         if is_kernel_type(name: formal_name) {
@@ -2940,10 +2948,27 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     Absent => ""
   }
   let si_presence = scope.type_env.source_indices
-  let missing_field_diags = if tn_str == "" || (struct_fields |> count) == 0 {
+  let presence_fields = if tn_str == "" {
+    []
+  } else {
+    match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+      Present { value: inst_fields } => inst_fields
+      Absent =>
+        match lookup_type_by_name(env: scope.type_env, name: tn_str) {
+          Present { value: decl } =>
+            if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
+              decl.children
+            } else {
+              []
+            }
+          Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+        }
+    }
+  }
+  let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 {
       []
     } else {
-      struct_fields
+      presence_fields
         |> filter(sf =>
           let sf_type = match sf.inferred {
             Present { value: Resolved { node: rt } } => rt
