@@ -783,9 +783,9 @@ fn rust_match_target_model_staging() -> TargetModel {
   }
 }
 
-data rust_loop_source_text: String = "fn one() -> i32 { loop 1 }"
+data rust_loop_source_text: String = "fn one() -> i32 { loop { break 1; } }"
 
-data rust_loop_wrong_value_source_text: String = "fn one() -> i32 { loop 2 }"
+data rust_loop_wrong_value_source_text: String = "fn one() -> i32 { loop { break 2; } }"
 
 fn rust_loop_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -798,6 +798,8 @@ fn rust_loop_concrete_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^rust_token_lbrace },
     FixedToken { token_class: ^rust_token_unwired_loop },
     BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_pick_lit_one },
+    FixedToken { token_class: ^rust_token_semicolon },
+    FixedToken { token_class: ^rust_token_rbrace },
     FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
@@ -942,7 +944,8 @@ fn rust_loop_binding_spellings() -> Map<Symbol, String> {
 
 fn rust_loop_additional_lex_rules() -> List<LexRule> {
   [
-    rust_lex_rule(token_class: ^rust_token_unwired_loop, text: "loop ")
+    rust_lex_rule(token_class: ^rust_token_unwired_loop, text: "loop { break "),
+    rust_lex_rule(token_class: ^rust_token_semicolon, text: "; ")
   ]
 }
 
