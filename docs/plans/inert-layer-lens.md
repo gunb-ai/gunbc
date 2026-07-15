@@ -95,8 +95,6 @@ The reading: the **schedule/width** arm of the realization layer is now wired; t
 
 ## 8. Generalization — one rule, N substrates (code · docs · lenses)
 
-> **Sibling family (§2 redundancy, the other half).** Inertness is *"nothing reaches this concept"* (0 authorities/consumers). Its dual is *"this concept is reached but duplicates an authority that already exists"* (≥2 authorities) — the **redundancy / degenerate-work** family, whose test-substrate instance is the [vacuity lens](vacuity-lens-design.md) (a test whose expected value duplicates a code authority = `AuthoredDuplication` on the authored-fact substrate of the `materialization_ladder`). Same §2/§3 root, opposite end of the plurality axis (0 vs ≥2).
-
 Reachability-completeness is **not specific to code** — it is a §2-horizontal "one concept, every breadth": *every declared node in a graph must be reachable from a root, on an exception roster, or deleted.* It already runs over the **lens** graph (#5433). It applies unchanged to the **doc** graph — and the doc instance is the **cheapest wall of all** (pure link reachability — no reflective edges *needed for the dangling half*, and far simpler than the code substrate):
 
 | substrate | nodes | edges | roots | inert = | dangling = |

@@ -1,0 +1,94 @@
+module v2.compiler.self_host.wet_receipt_enrollment
+
+import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+import v2.compiler.self_host.frontier {
+  CompilerModuleFrontierRow,
+  SelfEmitted,
+  SeedRetained,
+  compiler_frontier_roster
+}
+import v2.std.algebra { length }
+import v2.std.collection { List, Optional, Absent, Present, optional_absent, optional_present }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data falsifier_self_host_wet_enrollment_note: String = "Nightly falsifier Wet batch enrollment authority (Wave 2 CI substrate, 2026-07-15): falsifier_self_host_wet_entries = template rows (always enrolled when green) PLUS frontier-flipped module rows ONLY when compiler_frontier_roster disposition is SelfEmitted AND a declared SelfHostWetReceiptBinding exists for that module_path. SeedRetained modules stay off the nightly roster — a not-yet-migrated module is a declared frontier row, never an enrolled-but-red wet receipt (all-green nightly = healthy; any red = real regression). Each binding row is added at the moment its module self-emits and its wet receipt is green locally; the frontier flip and binding are the enrollment gate."
+
+type SelfHostWetReceiptBinding {
+  module_path: String
+  entry: String
+  function: String
+}
+
+fn self_host_wet_entry(entry: String, f: String) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
+}
+
+data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
+  self_host_wet_entry(
+    entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
+    f: "self_host_logic_behavioral_receipt_holds"
+  )
+]
+
+data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = []
+
+fn wet_receipt_binding_if_path_matches(
+  module_path: String,
+  b: SelfHostWetReceiptBinding
+) -> Optional<SelfHostWetReceiptBinding> {
+  if b.module_path == module_path {
+    optional_present(value: b)
+  } else {
+    optional_absent()
+  }
+}
+
+fn find_wet_receipt_binding(module_path: String) -> Optional<SelfHostWetReceiptBinding> {
+  fold(
+    falsifier_self_host_wet_module_bindings,
+    init: Absent,
+    f: fn(acc, b) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => wet_receipt_binding_if_path_matches(module_path: module_path, b: b)
+      }
+    }
+  )
+}
+
+fn schedule_entry_from_binding(b: SelfHostWetReceiptBinding) -> ScheduleWitnessEntry {
+  self_host_wet_entry(entry: b.entry, f: b.function)
+}
+
+fn frontier_row_wet_entries_if_enrolled(row: CompilerModuleFrontierRow) -> List<ScheduleWitnessEntry> {
+  match row.disposition {
+    SelfEmitted => match find_wet_receipt_binding(module_path: row.module_path) {
+      Present { value: b } => [schedule_entry_from_binding(b: b)]
+      Absent => []
+    }
+    SeedRetained { reason: _, migration_trigger: _ } => []
+  }
+}
+
+fn falsifier_self_host_wet_frontier_enrolled_entries() -> List<ScheduleWitnessEntry> {
+  fold(
+    compiler_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, frontier_row_wet_entries_if_enrolled(row: row))
+    }
+  )
+}
+
+fn falsifier_self_host_wet_entries() -> List<ScheduleWitnessEntry> {
+  concat(
+    falsifier_self_host_wet_template_entries,
+    falsifier_self_host_wet_frontier_enrolled_entries()
+  )
+}
+
+fn falsifier_self_host_wet_template_only_holds() -> Bool {
+  length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 0
+    && length(xs: falsifier_self_host_wet_entries()) == length(xs: falsifier_self_host_wet_template_entries)
+}

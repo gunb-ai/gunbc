@@ -11063,6 +11063,14 @@ pub fn is_uppercase_start(name: String) -> bool {
     }
 }
 
+pub fn is_variant_pattern_start(name: String) -> bool {
+    if v1_rt::contains(name.clone(), ".".to_string()) {
+        true
+    } else {
+        is_uppercase_start(name.clone())
+    }
+}
+
 pub fn try_postfix(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -12419,25 +12427,30 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
         let span = token_span(tok.clone());
         match sh.clone() {
             Some(TokenShape::ShIdent) => {
-                let n = tok.clone().unwrap().text.clone();
+                let r = parse_dotted_ident(tokens.clone());
+                if has_err(r.err.clone()) {
+                    return Rc::new(PatternResult {
+                        pattern: Rc::new(MatchPattern::Wildcard),
+                        tokens: r.tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: r.err.clone(),
+                    });
+                }
+                let n = r.name.clone();
                 if (n.clone() == "_".to_string()) {
                     Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::Wildcard),
-                        tokens: token_stream_advance(tokens.clone(), 1),
+                        tokens: r.tokens.clone(),
                         ctx: ctx.clone(),
                         err: None,
                     })
                 } else {
-                    if is_uppercase_start(n.clone()) {
-                        parse_variant_pattern(
-                            token_stream_advance(tokens.clone(), 1),
-                            ctx.clone(),
-                            n.clone(),
-                        )
+                    if is_variant_pattern_start(n.clone()) {
+                        parse_variant_pattern(r.tokens.clone(), ctx.clone(), n.clone())
                     } else {
                         Rc::new(PatternResult {
                             pattern: Rc::new(MatchPattern::Bind { name: n.clone() }),
-                            tokens: token_stream_advance(tokens.clone(), 1),
+                            tokens: r.tokens.clone(),
                             ctx: ctx.clone(),
                             err: None,
                         })
@@ -12856,32 +12869,86 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
         }
         let name = r.name.clone();
         let name_span = r.span.clone();
-        let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
+        match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon))).clone() {
+            EatResult::EatConsumed { tokens: __ec, .. } => {
+                let tr = parse_type_expr(__ec.clone(), ctx.clone());
+                if has_err(tr.err.clone()) {
+                    return Rc::new(ExprResult {
+                        expr: dummy_expr.clone(),
+                        tokens: tr.tokens.clone(),
+                        ctx: tr.ctx.clone(),
+                        err: tr.err.clone(),
+                    });
+                }
+                let r2 = expect(tr.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
+                if has_err(r2.err.clone()) {
+                    return Rc::new(ExprResult {
+                        expr: dummy_expr.clone(),
+                        tokens: r2.tokens.clone(),
+                        ctx: tr.ctx.clone(),
+                        err: r2.err.clone(),
+                    });
+                }
+                let r3 = parse_expr(r2.tokens.clone(), tr.ctx.clone());
+                if has_err(r3.err.clone()) {
+                    return r3;
+                }
+                let node = Rc::new(Node {
+                    name: name.clone(),
+                    span: span.clone(),
+                    ident_span: Some(name_span.clone()),
+                    children: Rc::new(vec![r3.expr.clone()]),
+                    connective: Connective::NoConnective,
+                    params: Rc::new(vec![]),
+                    inferred: None,
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: Some(tr.type_expr.clone()),
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::ExprLet),
+                    ident: None,
+                });
+                Rc::new(ExprResult {
+                    expr: node.clone(),
+                    tokens: r3.tokens.clone(),
+                    ctx: r3.ctx.clone(),
+                    err: None,
+                })
+            }
+            EatResult::EatUnchanged { tokens: __eu, .. } => {
+                let r2 = expect(__eu.clone(), Rc::new(ExpectedToken::ExpectEq));
+                if has_err(r2.err.clone()) {
+                    return Rc::new(ExprResult {
+                        expr: dummy_expr.clone(),
+                        tokens: r2.tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: r2.err.clone(),
+                    });
+                }
+                let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
+                if has_err(r3.err.clone()) {
+                    return r3;
+                }
+                Rc::new(ExprResult {
+                    expr: make_named_expr_node(
+                        name.clone(),
+                        Rc::new(ExprData::ExprLet),
+                        Rc::new(vec![r3.expr.clone()]),
+                        None,
+                        span.clone(),
+                        name_span.clone(),
+                    ),
+                    tokens: r3.tokens.clone(),
+                    ctx: r3.ctx.clone(),
+                    err: None,
+                })
+            }
         }
-        let r = parse_expr(r.tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return r;
-        }
-        Rc::new(ExprResult {
-            expr: make_named_expr_node(
-                name.clone(),
-                Rc::new(ExprData::ExprLet),
-                Rc::new(vec![r.expr.clone()]),
-                None,
-                span.clone(),
-                name_span.clone(),
-            ),
-            tokens: r.tokens.clone(),
-            ctx: r.ctx.clone(),
-            err: None,
-        })
     }
 }
 
