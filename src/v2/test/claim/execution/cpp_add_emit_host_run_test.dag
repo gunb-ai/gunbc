@@ -1,4 +1,4 @@
-module v2.test.execution.emit_host_transport_wire
+module v2.test.execution.cpp_add_emit_host_run
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_host {
@@ -8,10 +8,10 @@ import v2.compiler.emit_host {
   runtime_value_parse
 }
 import v2.compiler.eval { Inputs, inputs_root_only }
-import v2.extdeps.languages.rust {
-  rust_emit_host_cargo_manifest,
-  rust_source_text,
-  rust_target_model_staging
+import v2.extdeps.languages.cpp {
+  cpp_emit_host_runtime_primitive_type_node,
+  cpp_source_text,
+  cpp_target_model
 }
 import v2.std.diagnostic { Accepted, Rejected, None }
 import v2.std.host_run { HostLogicalRun }
@@ -23,6 +23,7 @@ import v2.std.host_transport {
   HostTransportDescriptor,
   LiteralArg,
   ProcessInvocation,
+  ProducedProgram,
   WorkspaceFile
 }
 import v2.std.logic { Bool }
@@ -32,57 +33,58 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn wire_probe_node() -> Node {
+fn cpp_run_probe_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^emit_host_wire_probe } },
+    kind: TypeNode { connective: Atom { identity: ^cpp_emit_host_run_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn wire_inputs() -> Inputs {
-  inputs_root_only(root: wire_probe_node())
+fn cpp_run_inputs() -> Inputs {
+  inputs_root_only(root: cpp_run_probe_node())
 }
 
-fn wire_source() -> Medium<String> {
-  Medium { carried: rust_source_text, fidelity: Lossless }
+fn cpp_run_source() -> Medium<String> {
+  Medium { carried: cpp_source_text, fidelity: Lossless }
 }
 
-fn wire_fixed_main_row(main_text: String) -> EmitHostRuntimeRow {
+fn cpp_fixed_source_row(source_text: String) -> EmitHostRuntimeRow {
   EmitHostRuntimeRow {
     transport: HostTransportDescriptor {
-      identity: ^emit_host_wire_probe_fixed_main,
+      identity: ^cpp_emit_host_run_probe_fixed,
       workspace: [
         WorkspaceFile {
-          path: "Cargo.toml",
-          content: FixedText { text: rust_emit_host_cargo_manifest }
-        },
-        WorkspaceFile {
-          path: "src/main.rs",
-          content: FixedText { text: main_text }
+          path: "fixture.c",
+          content: FixedText { text: source_text }
         }
       ],
-      build: [],
+      build: [
+        ProcessInvocation {
+          program: HostToolProgram { tool: ^host_tool_cc },
+          args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+        }
+      ],
       run: ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
-        args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+        program: ProducedProgram { path: "fixture" },
+        args: []
       },
       runtime_value_codec: FixedWidthBytes { width: 5 }
     },
-    runtime_primitive_type: wire_probe_node()
+    runtime_primitive_type: cpp_emit_host_runtime_primitive_type_node()
   }
 }
 
-test fn emit_host_transport_green_run_holds() -> Bool {
+test fn cpp_add_emit_host_green_run_holds() -> Bool {
   match run_emit_host(
-    target: rust_target_model_staging(),
-    source: wire_source(),
-    fixture_inputs: wire_inputs()
+    target: cpp_target_model(),
+    source: cpp_run_source(),
+    fixture_inputs: cpp_run_inputs()
   ) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
-          match runtime_value_parse(target: rust_target_model_staging(), stdout: stdout) {
+          match runtime_value_parse(target: cpp_target_model(), stdout: stdout) {
             Accepted { value: _, diagnostics: _ } =>
               stdout.bytes == emit_host_octets_byte_string(octets: [0, 5, 0, 0, 0])
             Rejected { diagnostics: _ } => false
@@ -93,12 +95,12 @@ test fn emit_host_transport_green_run_holds() -> Bool {
   }
 }
 
-test fn emit_host_transport_nonzero_exit_refuses_holds() -> Bool {
+test fn cpp_add_emit_host_nonzero_exit_refuses_holds() -> Bool {
   match run_host_process(
-    row: wire_fixed_main_row(main_text: "fn main() { std::process::exit(3); }"),
-    target: rust_target_model_staging(),
-    source: wire_source(),
-    fixture_inputs: wire_inputs()
+    row: cpp_fixed_source_row(source_text: "int main(void) { return 3; }"),
+    target: cpp_target_model(),
+    source: cpp_run_source(),
+    fixture_inputs: cpp_run_inputs()
   ) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
@@ -109,17 +111,17 @@ test fn emit_host_transport_nonzero_exit_refuses_holds() -> Bool {
   }
 }
 
-test fn emit_host_transport_byte_width_mismatch_refuses_holds() -> Bool {
+test fn cpp_add_emit_host_byte_width_mismatch_refuses_holds() -> Bool {
   match run_host_process(
-    row: wire_fixed_main_row(main_text: "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 4]); }"),
-    target: rust_target_model_staging(),
-    source: wire_source(),
-    fixture_inputs: wire_inputs()
+    row: cpp_fixed_source_row(source_text: "extern long write(int, const void *, unsigned long);\nint main(void) { unsigned char b[4] = {0, 0, 0, 0}; write(1, b, 4); return 0; }"),
+    target: cpp_target_model(),
+    source: cpp_run_source(),
+    fixture_inputs: cpp_run_inputs()
   ) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
-          match runtime_value_parse(target: rust_target_model_staging(), stdout: stdout) {
+          match runtime_value_parse(target: cpp_target_model(), stdout: stdout) {
             Rejected { diagnostics: _ } => true
             Accepted { value: _, diagnostics: _ } => false
           }
@@ -129,8 +131,8 @@ test fn emit_host_transport_byte_width_mismatch_refuses_holds() -> Bool {
   }
 }
 
-test fn emit_host_transport_wire_all_holds() -> Bool {
-  emit_host_transport_green_run_holds()
-    && emit_host_transport_nonzero_exit_refuses_holds()
-    && emit_host_transport_byte_width_mismatch_refuses_holds()
+test fn cpp_add_emit_host_run_all_holds() -> Bool {
+  cpp_add_emit_host_green_run_holds()
+    && cpp_add_emit_host_nonzero_exit_refuses_holds()
+    && cpp_add_emit_host_byte_width_mismatch_refuses_holds()
 }
