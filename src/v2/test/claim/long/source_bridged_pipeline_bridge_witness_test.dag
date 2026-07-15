@@ -1,4 +1,4 @@
-module v2.test.complexity_gate.source_bridged_pipeline_bridge_test
+module v2.test.long.source_bridged_pipeline_bridge_witness
 
 import v2.compiler.ingested_fixture_arrows { ingested_add_module_source }
 import v2.test.complexity_gate.source_bridged_pipeline_bridge { source_bridged_resolved_root }
@@ -7,6 +7,8 @@ import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data source_bridged_pipeline_bridge_long_note: String = "Full tokenize→parse→normalize→resolve bridge exceeds the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note)."
 
 test fn source_bridged_pipeline_bridge_resolves_add_source() -> Bool {
   match source_bridged_resolved_root(

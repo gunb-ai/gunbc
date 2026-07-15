@@ -373,16 +373,7 @@ fn pbf_ambiguous_export_rejects() -> Bool {
   }
 }
 
-test fn witness_parse_binding_fidelity_distinct_identifiers_holds() -> Bool {
-  pbf_parse_preserves_param_x_binding()
-    && pbf_parse_preserves_param_y_binding()
-    && pbf_parse_does_not_collapse_to_token_ident()
-}
-
-test fn witness_resolve_distinct_param_bindings_holds() -> Bool {
-  pbf_resolved_add_accepts()
-    && pbf_resolved_tree_has_distinct_param_bindings()
-}
+data parse_binding_fidelity_fast_note: String = "Parse+resolve binding fidelity for census add module lives in long/parse_binding_fidelity_witness_test.dag (exceeds 5s fast-lane budget)."
 
 test fn witness_cross_file_import_binding_resolves_holds() -> Bool {
   pbf_cross_file_import_resolves()

@@ -2,7 +2,8 @@ module v2.test.manual.add_body_value_expression_fold_typescript
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.test.complexity_gate.source_bridged_add_subject_producer {
-  source_bridged_add_arrow_with_body
+  source_bridged_add_arrow_with_body,
+  source_bridged_add_arrow_with_body_swapped_operands
 }
 import v2.compiler.translate { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.typescript {
@@ -219,7 +220,7 @@ test fn add_body_ts_fold_add_body_tokens_holds() -> Bool {
 }
 
 test fn add_body_ts_fold_operand_swap_discriminates() -> Bool {
-  match source_bridged_add_arrow_with_body() {
+  match source_bridged_add_arrow_with_body_swapped_operands() {
     Accepted { value: swapped_arrow, diagnostics: _ } =>
       add_body_fold_tokens_accept_arrow(
         arrow: swapped_arrow,
