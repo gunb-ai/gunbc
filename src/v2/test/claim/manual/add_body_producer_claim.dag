@@ -45,7 +45,7 @@ fn add_body_bool_node(pass: Bool) -> Node {
   }
 }
 
-fn add_body_produce_add_arrow_accepts() -> Bool {
+fn add_body_table_fixture_arrow_accepts() -> Bool {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       well_formed(n: arrow) && arrow_has_body_edge(arrow: arrow)
@@ -125,10 +125,6 @@ fn add_body_arrow_with_atom_body_rejects() -> Bool {
   !well_formed(n: arrow)
 }
 
-fn add_body_resolved_bridge_produces_well_formed_arrow() -> Bool {
-  add_body_produce_add_arrow_accepts()
-}
-
 fn add_body_edge_targets_binary_transform() -> Bool {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
@@ -145,9 +141,9 @@ fn add_body_edge_targets_binary_transform() -> Bool {
 }
 
 data claim_add_body_producer_well_formed: TestClaim = EqualsClaim {
-  label: "manual/add_arrow: ingested_add_arrow_with_body is well-formed with Arrow.body Behavior subtree",
+  label: "manual/add_arrow: table_fixture_add_arrow_with_body is well-formed with Arrow.body Behavior subtree",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: add_body_bool_node(pass: add_body_produce_add_arrow_accepts()),
+  lhs: add_body_bool_node(pass: add_body_table_fixture_arrow_accepts()),
   rhs: add_body_bool_node(pass: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -164,14 +160,6 @@ data claim_add_body_is_transform: TestClaim = EqualsClaim {
   label: "manual/add_arrow: Arrow.body target is ComputationNode Transform for add",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: add_body_bool_node(pass: add_body_edge_targets_binary_transform()),
-  rhs: add_body_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_add_body_resolved_bridge_produces_well_formed_arrow: TestClaim = EqualsClaim {
-  label: "manual/add_arrow: census ingest yields well-formed Arrow with Behavior body from source",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: add_body_bool_node(pass: add_body_resolved_bridge_produces_well_formed_arrow()),
   rhs: add_body_bool_node(pass: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
