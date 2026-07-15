@@ -5,10 +5,7 @@ import std.cache_identity { ExecutionReceiptDigest }
 import std.measure { ByteSize, Bandwidth, byte_size, bandwidth, byte_size_count, bandwidth_count }
 import std.machine_shape {
   Quantified,
-  Precision,
-  Evidence,
   UnknownQuantity,
-  quantified_unknown,
   quantified_known_exact,
   quantified_known_interval,
   quantified_is_unknown,
@@ -115,7 +112,7 @@ fn known_with_measured_by_evidence() -> Bool {
 }
 
 fn red_unknown_must_not_be_known() -> Bool {
-  match quantified_unknown<ByteSize>() {
+  match unknown_byte_capacity {
     UnknownQuantity => true
     Known { precision: _, evidence: _ } => false
   }
