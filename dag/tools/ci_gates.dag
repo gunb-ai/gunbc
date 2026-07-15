@@ -1,5 +1,8 @@
 module tools.ci_gates
 
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.ci_spec {
+  gunbc_ci_gates, CiSpec, Gate,
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
