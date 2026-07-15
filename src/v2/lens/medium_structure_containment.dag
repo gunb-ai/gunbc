@@ -1,5 +1,37 @@
 module v2.lens.medium_structure_containment
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+
+import v2.lens.bash_composition_recognizer {
+  BashCompositionDisposition,
+  AmbiguousParse,
+  NoLanguageDecision,
+  ConstPart,
+  HolePart,
+  SkeletonPart,
+  LiteralSkeleton,
+  classify_bash_skeleton,
+  disposition_is_violation,
+  disposition_is_ambiguous
+}
+import v2.std.algebra {
+  fold_list,
+  length,
+  list_append,
+  list_snoc_item
+}
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates, Witness }
 
 data medium_structure_grammar_classifier_note: String = "no-smuggled-programs wall (HALF B): this lens is a GRAMMAR CLASSIFIER over substrate string literals, REPLACING the marker heuristic (medium_syntax_markers + emit-fn/string-op walks DELETED in one motion, both the .dag markers and the Rust text.contains in medium_structure_census.rs). The seed (medium_structure_literal_parts_facts, ruling R1b grammar/language-ignorant) enumerates RawLine.text / Heredoc.body field-expression PARTS as neutral [Const|Hole]; this lens applies the TYPE-STRUCTURAL language gate and runs bash_composition_recognizer. A composition of a modeled language = typed/located/COUNTED Violation; an atom = Clean; the undecidable residue = counted AmbiguousParse (DecodeFidelity). ConstructionJustification = WallAfterGrounding (marker heuristic -> grammar classifier); the genuine-Unknown AmbiguousParse residue is RatchetForever."
 

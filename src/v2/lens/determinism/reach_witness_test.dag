@@ -1,5 +1,23 @@
 module v2.test.lens_determinism.reach_witness
 
+import v2.lens.determinism { determinism_axis_for_node, determinism_contract_witness, determinism_compile_gate }
+import std.determinism { Determinism, Deterministic, NonDeterministic }
+import v2.std.determinism { DeterminismFact }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  Transform,
+  TypeNode
+}
+import v2.std.witness { Holds, Violates, Witness }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

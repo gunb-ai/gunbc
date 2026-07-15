@@ -1,4 +1,28 @@
 module v2.compiler.emit_semantic_decl
+
+import v2.compiler.translate {
+  grammar_relation_row_for_emitted,
+  grammar_relation_row_tokens_root,
+  serialize_concrete_syntax_tokens_to_source
+}
+import v2.extdeps.languages.rust {
+  rust_enum_decl_surface_from_coproduct,
+  rust_enum_decl_surface_from_coproduct_generic,
+  rust_enum_general_decl_productions_only_translation_rules,
+  rust_enum_general_decl_structural_target_model,
+  rust_struct_decl_surface_from_record,
+  rust_struct_decl_surface_from_record_generic,
+  rust_struct_general_decl_productions_only_translation_rules,
+  rust_struct_general_decl_structural_target_model
+}
+import v2.std.collection { List }
+import v2.std.compilers.target_model { TargetModel, concrete_syntax_token_list_from_node }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, bind_outcome, node_locus, outcome_rejected }
+import std.algebra { Cons, Empty }
+import v2.std.node { Conj, Disj, Node, Symbol, TypeNode }
+import extdeps.communication.medium { Medium }
+import v2.std.text { String }
+
 fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^emit_semantic_decl_unsupported_shape,

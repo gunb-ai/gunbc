@@ -1,5 +1,17 @@
 module v2.lens.determinism
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.determinism { Determinism, Deterministic, NonDeterministic, determinism_compose }
+import std.algebra { Cons, Empty }
+import v2.std.determinism { DeterminismFact }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, node_locus, outcome_accepted }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
+import v2.std.node_query { node_is_call, node_positional_child_targets }
+import v2.std.witness { Holds, Violates, Witness }
 
 type DeterminismRoot {
   signature: Symbol,

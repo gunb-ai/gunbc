@@ -1,5 +1,17 @@
 module v2.test.medium_structure_containment.lens_unit.discriminators
 
+import v2.lens.medium_structure_containment {
+  RawLiteralPart,
+  RawLiteralPartsFact,
+  medium_structure_exception_roster,
+  medium_structure_violation_count,
+  medium_structure_violation_count_canonical,
+  medium_structure_ambiguous_count
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

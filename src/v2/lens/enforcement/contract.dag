@@ -1,5 +1,23 @@
 module v2.lens.enforcement.contract
 
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.lens.registry { LensRegistryEntryV0, LensIdV0, Cost, Complexity, lens_registry_v0_cost, lens_registry_v0_complexity }
+import v2.lens.enforcement.vocab {
+  SubjectRoster, ScopeRoster,
+  EnforcementMode, Blocking, AuditOnly, Advisory,
+  ConsumerKind, FloorGate, WitnessOnly, NoConsumer,
+  ConsumerWitnessBinding, BoundConsumerWitness, NoConsumerWitness,
+  ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,
+  NarrowingReason, TypeReflectionUnavailable,
+  RedControlStatus, RedControlPassed, RedControlMissing, RedControlFailedToFlip,
+  SelfApplicationStatus, SelfAppliesObserved, SelfExemptObserved, SelfApplicationAbsent,
+  ReceiptRef, HasReceiptRef, NoReceiptRef
+}
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow, RatchetForever }
+import std.disposition { SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
 
 type LensContract {
   entry: LensRegistryEntryV0

@@ -1,5 +1,7 @@
 module v2.test.manual.sql_create_table_fold_runner
 
+import std.realization_schedule { Runnable, RunnableSingleClaim }
+import v2.std.collection { List }
 
 data sql_fold_test_entry: String = "src/v2/test/claim/sql_create_table_fold_test.dag"
 

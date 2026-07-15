@@ -1,5 +1,9 @@
 module v2.extdeps.file_system
 
+import std.algebra { FreeMonoid }
+import v2.std.diagnostic { Outcome }
+import v2.std.machine { Byte }
+
 type PosixByteString = FreeMonoid<Byte>
 
 type NamedPathComponent {

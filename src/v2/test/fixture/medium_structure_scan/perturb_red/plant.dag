@@ -1,5 +1,7 @@
 module v2.test.fixture.medium_structure_scan.perturb_red_plant
 
+import extdeps.languages.bash.program { ShellProgram, RawLine }
+
 data perturb_red_note: String = "Perturb fixture: one planted RawLine.text bash composition. When perturb_red_test appends this fixture dir to the scan roots, the canonical containment witness must FLIP from Holds to Violates and the live violation count must go positive — a green-to-red proof by execution that the wall is live, not inert."
 
 data perturb_red_program: ShellProgram = ShellProgram {

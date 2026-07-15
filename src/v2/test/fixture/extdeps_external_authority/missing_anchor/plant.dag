@@ -1,2 +1,4 @@
 module extdeps.fixture.external_authority_missing
 
+import extdeps.external_authority { ExternalAuthority }
+

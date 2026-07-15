@@ -1,5 +1,7 @@
 module v2.test.manual.fn_as_value
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type Rec { v: Int }

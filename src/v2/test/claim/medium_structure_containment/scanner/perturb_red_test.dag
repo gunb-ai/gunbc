@@ -1,5 +1,16 @@
 module v2.test.medium_structure_containment.scanner.perturb_red
 
+import v2.lens.medium_structure_containment {
+  medium_structure_containment_canonical_witness,
+  medium_structure_containment_canonical_with_perturb_witness,
+  medium_structure_violation_count_live,
+  medium_structure_scan_roots_with_perturb
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

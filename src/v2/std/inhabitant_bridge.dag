@@ -1,1 +1,4 @@
 module v2.std.inhabitant_bridge
+
+import v2.std.node { Symbol }
+

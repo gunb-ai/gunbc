@@ -1,5 +1,19 @@
 module v2.lens.duplicate_computation
 
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Assign, If, Subshell, BraceGroup, AndOr, Pipe,
+  EnvPrefixed, WithRedir, Heredoc, Exit, Negation, RawLine,
+  Lit, VarRef, Concat, CmdSubst, Raw,
+  AndOrOp, AndThen, OrElse
+}
+import std.disposition { RealizationDispatch }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.algebra { any, fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
 
 type DemandGuard
   = UnguardedDemand

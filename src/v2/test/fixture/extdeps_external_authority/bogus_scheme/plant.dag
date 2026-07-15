@@ -1,5 +1,7 @@
 module extdeps.fixture.external_authority_bogus_scheme
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri }
 
 type BogusUriScheme
   = Gopher

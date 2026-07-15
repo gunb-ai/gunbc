@@ -1,5 +1,17 @@
 module v2.test.realization_vocabulary_containment.corpus.importer_count_ratchet
 
+import v2.lens.layering_imports { LayerImportFact }
+import v2.lens.realization_vocabulary_containment {
+  bash_program_importer_count,
+  bash_program_importer_count_baseline,
+  bash_program_importer_count_ratchet_holds,
+  bash_program_module,
+  importer_count_ratchet_holds
+}
+import v2.std.collection { List }
+import v2.std.layer { LayerPrefixStd }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

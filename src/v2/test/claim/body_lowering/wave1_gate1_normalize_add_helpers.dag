@@ -1,5 +1,22 @@
 module v2.test.claim.body_lowering.wave1_gate1_normalize_add_helpers
 
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { Absent, Optional, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  ComputationNode,
+  Node,
+  Transform,
+  TypeNode,
+  well_formed
+}
+import v2.std.node_query { find_arrow_body_child }
 
 data wave1_gate1_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 

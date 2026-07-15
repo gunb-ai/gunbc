@@ -1,5 +1,8 @@
 module v2.test.workflow.claim_witness_corpus_ci_runner
 
+import v2.std.collection { List }
+import v2.std.text { String }
+
 type ClaimWitnessCorpusExpectation
   = ExpectPass
   | ExpectFail { bind_anchor: String }

@@ -1,5 +1,15 @@
 module v2.test.medium_structure_containment.corpus.roster_growth_ratchet
 
+import v2.lens.medium_structure_containment {
+  medium_structure_exception_roster,
+  medium_structure_exception_roster_size_baseline,
+  medium_structure_roster_growth_ratchet_holds,
+  roster_growth_ratchet_holds
+}
+import v2.std.algebra { list_append, length }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

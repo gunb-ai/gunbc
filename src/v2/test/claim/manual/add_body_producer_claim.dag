@@ -1,5 +1,57 @@
 module v2.test.manual.add_body_producer_claim
 
+import v2.compiler.body_producer {
+  arrow_has_body_edge,
+  produce_add_arrow_with_body,
+  produce_add_arrow_with_body_from_resolved
+}
+import v2.extdeps.languages.dag { dag_add_binary_body_fixture }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse {
+  grammar_validate_for_parse,
+  parse_production_tree,
+}
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_grammar_production_fn_add,
+  dag_language_model,
+  dag_source_text
+}
+import v2.std.diagnostic {
+  Accepted,
+  Rejected,
+  bind_outcome,
+  outcome_accepted,
+  port_locus
+}
+import v2.std.grammar { GrammarRoot, ParseTree }
+import v2.std.compilers.lexing { Token, token_stream_remaining }
+import v2.std.collection { List, Set }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  node_synthetic,
+  well_formed
+}
+import v2.std.node_query { find_arrow_body_child }
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
 
 fn add_body_bool_node(pass: Bool) -> Node {
   if pass {

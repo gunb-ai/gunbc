@@ -1,5 +1,21 @@
 module v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner
 
+import v2.lens.registry {
+  LensOwnedFnV0,
+  lens_owned_fn_llvm_instruction_cost,
+  lens_owned_fn_registry_v0
+}
+import v2.std.algebra { count_equal, unique }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.node { Atom, Conj, Node, TypeNode, SyntheticOccurrence }
 
 data p9_registry_owner_authority_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^symbol_llvm_instruction_cost } },

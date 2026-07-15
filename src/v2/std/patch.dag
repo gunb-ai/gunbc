@@ -1,4 +1,7 @@
 module v2.std.patch
+
+import v2.std.algebra { Magma, Semigroup, Monoid }
+
 type ConfigPatchRecord<Config>
 
 fn config_patch_layer<Config>(base: Config, patch: ConfigPatchRecord<Config>) -> Config {

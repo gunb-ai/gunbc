@@ -1,4 +1,11 @@
 module v2.std.verdict
+
+import v2.std.algebra { Magma, Monoid, Semigroup, is_empty }
+import v2.std.collection { List, Optional, Absent }
+import v2.std.diagnostic { Diagnostic, Outcome }
+import v2.std.nat { Nat, Succ, Zero, nat_add }
+import v2.std.test_claim_falsification { FalsificationReceipt }
+
 type Verdict<Subj, T>
   = Pass
   | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<Subj, T>> }
