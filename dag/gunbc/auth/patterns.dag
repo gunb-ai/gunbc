@@ -41,13 +41,15 @@ fn build_token(payload: Secret, scheme: AuthScheme, header_name: String, source_
   { token: payload, scheme: scheme, expires_at: none }
 }
 
+data default_credential_scheme: AuthScheme = Bearer
+
 pattern credential_chain(
   runtime: AuthRuntime,
   audience: NonEmptyStr,
   service_account: ServiceAccountEmail?,
   secret_name: NonEmptyStr,
   project_id: GcpProjectId,
-  scheme: AuthScheme = Bearer,
+  scheme: AuthScheme = default_credential_scheme,
   header_name: String?,
   source_id: NonEmptyStr,
   required_scopes: List<String>,
