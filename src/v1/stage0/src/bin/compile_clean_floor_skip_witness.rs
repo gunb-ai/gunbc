@@ -2,9 +2,7 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{
-    documentation_only_floor_skip_label_for_ci, workspace_root,
-};
+use v1_compiler::cli_run::{documentation_only_floor_skip_label_for_ci, workspace_root};
 
 fn main() -> ExitCode {
     std::env::set_current_dir(workspace_root()).expect("chdir to workspace root");
