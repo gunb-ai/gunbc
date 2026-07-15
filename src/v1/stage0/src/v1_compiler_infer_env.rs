@@ -57,7 +57,7 @@ pub fn global_bare_fallback_invariant() -> String {
 pub fn qualified_module_projection_invariant() -> String {
     thread_local! {
         static CACHED: String = {
-            "Grammar lane G1: container.member module projection in type positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare. build_symbol_index_census materializes declared-module paths once; lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics).".to_string()
+            "Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let type-annotation positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module item paths plus module-unique Disj variant aliases (mirrors v2 symbol_index_fill_unique_variant_aliases); lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -146,7 +146,7 @@ pub fn scope_push(scope: Rc<Scope>, binding: Rc<ScopeBinding>) -> Rc<Scope> {
 pub fn ancestry_cache_sharing_dissolution_trigger() -> String {
     thread_local! {
         static CACHED: String = {
-            "🟡 dissolve-on: single-parent ancestry_str_bindings borrows parent.type_env_cache.str_bindings (Rc-shared visible surface) instead of map_merge(parent.ancestry_str_bindings, parent.str_bindings) per module — kills O(M²) SipHash/map_merge churn on import chains; full SymbolIndex authority is the follow-on (type-env-single-authority-design.md).".to_string()
+            "DISSOLVED (v1-run-stability-throughline, single-parent ancestry share): build_type_env / build_type_env_unresolved formerly recomputed ancestry_str_bindings as a fresh per-module map_merge(parent.interface.env.ancestry_str_bindings, parent.interface.env.str_bindings) in the single-import case — provably byte-identical to parent.interface.cache.str_bindings (interface.cache.str_bindings == map_merge(env.ancestry_str_bindings, env.str_bindings) by construction at both build sites, line 5973/6081), which is exactly ancestry_cache.str_bindings when count==1 (union of one parent cache is that cache, Rc-shared unchanged). So all three branches resolved to ancestry_cache.str_bindings and the conditional collapsed to `let ancestry_str_bindings = ancestry_cache.str_bindings` — one Rc-borrow, no fresh HAMT per module. Kills the O(M²) SipHash/map_merge churn on single-import chains and lets chains Rc-share the parent's already-retained str_bindings spine (§2 redundancy, §6 bare-minimum-cost; construction not validation — the recompute is now unwritable). Full SymbolIndex authority is the follow-on (type-env-single-authority-design.md).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

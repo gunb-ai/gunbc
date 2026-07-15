@@ -1,0 +1,217 @@
+module v2.compiler.ingested_fixture_arrows
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { Absent, Optional, Present }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node {
+  Arrow,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_synthetic,
+  well_formed
+}
+import v2.std.node_query { find_arrow_body_child }
+
+data ingested_fixture_arrows_note: String = "Wave 1 Gate 1 Stage D: census-ingest Arrow fixtures replacing produce_* flat-token MVP producers. Every arrow is tokenize→parse_module→normalize→resolve→extract. dissolve-on: general body producer fully subsumes produce_* and flat-token StampBinding tables (wave-2). Well-formedness + behavior-kind: long/wave1_gate1_d_mvp_subsumption_witness_test.dag; ingested bind/loop execution+RED: long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match execution: long/wave1_gate1_general_body_producer_witness_test.dag and execution/pick_ingested_*."
+
+data ingested_add_module_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+data ingested_add_swapped_operands_module_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { y + x }\n"
+
+data ingested_pick_module_source: String = "module m\n\nfn pick() -> Int { if true { 1 } else { 2 } }\n"
+data ingested_pick_false_module_source: String = "module m\n\nfn pick() -> Int { if false { 1 } else { 2 } }\n"
+data ingested_pick_swapped_arms_module_source: String = "module m\n\nfn pick() -> Int { if true { 2 } else { 1 } }\n"
+
+data ingested_loop_module_source: String = "module m\n\nfn one() -> Int { loop 1 }\n"
+data ingested_loop_wrong_value_module_source: String = "module m\n\nfn one() -> Int { loop 2 }\n"
+
+data ingested_bind_module_source: String = "module m\n\nfn one() -> Int { let x = 1 in x }\n"
+data ingested_bind_wrong_value_module_source: String = "module m\n\nfn one() -> Int { let x = 2 in x }\n"
+
+data ingested_match_module_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => false,\n    false => true\n  }\n}\n"
+data ingested_match_swapped_arms_module_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => true,\n    false => false\n  }\n}\n"
+
+fn ingested_fixture_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } => Present { value: root }
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => ingested_find_arrow_in_module(root: e.target)
+        }
+      })
+  }
+}
+
+fn ingested_resolved_module_from_source(source: String, file: Symbol) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: source, file: file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: normalize(parse_tree: artifact.tree),
+            f: fn(normalized) {
+              resolve(tree: normalized, lm: lm)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn ingested_arrow_from_source(source: String, file: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: ingested_resolved_module_from_source(source: source, file: file),
+    f: fn(resolved) {
+      match ingested_find_arrow_in_module(root: resolved) {
+        Present { value: arrow } =>
+          if well_formed(n: arrow) {
+            outcome_accepted(value: arrow)
+          } else {
+            outcome_rejected(
+              d: ingested_fixture_diagnostic(
+                reason: ^ingested_fixture_reason_arrow_not_well_formed,
+                n: arrow
+              )
+            )
+          }
+        Absent =>
+          outcome_rejected(
+            d: ingested_fixture_diagnostic(
+              reason: ^ingested_fixture_reason_arrow_missing,
+              n: resolved
+            )
+          )
+      }
+    }
+  )
+}
+
+fn ingested_add_arrow_with_body() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_add_module_source,
+    file: ^ingested_fixture_add_file
+  )
+}
+
+fn ingested_add_arrow_with_body_swapped_operands() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_add_swapped_operands_module_source,
+    file: ^ingested_fixture_add_swapped_file
+  )
+}
+
+fn ingested_pick_if_arrow_with_body() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_pick_module_source,
+    file: ^ingested_fixture_pick_file
+  )
+}
+
+fn ingested_pick_if_arrow_with_body_swapped_arms() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_pick_swapped_arms_module_source,
+    file: ^ingested_fixture_pick_swapped_file
+  )
+}
+
+fn ingested_pick_if_arrow_with_body_false_condition() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_pick_false_module_source,
+    file: ^ingested_fixture_pick_false_file
+  )
+}
+
+fn ingested_loop_arrow_with_body() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_loop_module_source,
+    file: ^ingested_fixture_loop_file
+  )
+}
+
+fn ingested_loop_arrow_with_body_wrong_value() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_loop_wrong_value_module_source,
+    file: ^ingested_fixture_loop_wrong_file
+  )
+}
+
+fn ingested_bind_arrow_with_body() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_bind_module_source,
+    file: ^ingested_fixture_bind_file
+  )
+}
+
+fn ingested_bind_arrow_with_body_wrong_value() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_bind_wrong_value_module_source,
+    file: ^ingested_fixture_bind_wrong_file
+  )
+}
+
+fn ingested_match_arrow_with_body() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_match_module_source,
+    file: ^ingested_fixture_match_file
+  )
+}
+
+fn ingested_match_arrow_with_body_swapped_arms() -> Outcome<Node> {
+  ingested_arrow_from_source(
+    source: ingested_match_swapped_arms_module_source,
+    file: ^ingested_fixture_match_swapped_file
+  )
+}
+
+fn ingested_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: ingested_add_arrow_with_body(),
+    f: fn(arrow_with_body) {
+      outcome_accepted(
+        value: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Named { name: fn_name },
+              target: arrow_with_body
+            }
+          ]
+        )
+      )
+    }
+  )
+}
