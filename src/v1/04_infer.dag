@@ -2923,6 +2923,8 @@ fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
   }
 }
 
+data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): a ZERO-field literal of a coproduct VARIANT (field_inits empty AND variant_owner_node != none) is sanctioned as a TAG REFERENCE, not a construction — the `discriminant(v: PrefixToken {})` idiom (16+ sites in src/v2/std/compilers/target_model.dag) names a variant to obtain its stable tag identity without materializing a value. Presence checking is skipped for exactly this shape; PARTIAL literals (any field present) stay red, and zero-field literals of NON-variant records (variant_owner_node == none) stay red — so the audit F1 probes (CacheProvider/CostAccount partial literals) are unaffected. This is a decidable structural exemption (not an absorbing fallback: it refuses precisely, never widens on failure). DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the exemption is deleted and the sites migrate to the carrier."
+
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let struct_fields = match type_name {
     Present { value: tn } =>
@@ -2986,7 +2988,9 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         }
     }
   }
-  let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 {
+  let is_zero_field_variant_tag_reference = (field_inits |> count) == 0
+    && variant_owner_node(scope: scope, name: tn_str) != none
+  let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || is_zero_field_variant_tag_reference {
       []
     } else {
       presence_fields
