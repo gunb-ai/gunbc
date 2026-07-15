@@ -58,10 +58,14 @@ fn belt_action_is_spawn(a: BeltAction) -> Bool {
   }
 }
 
-fn belt_spawn_nodes(actions: List<BeltAction>) -> List<RoadmapNode> {
-  fold(actions, init: [], f: (acc, a) => match a {
-    SpawnWorker { node } => concat(acc, [node])
-    HoldPaused => acc
-    AtCapacity { ready_waiting: _ } => acc
+fn belt_spawn_count(actions: List<BeltAction>) -> Int {
+  count(actions |> filter(a => belt_action_is_spawn(a: a)))
+}
+
+fn belt_spawns_node(actions: List<BeltAction>, id: RoadmapNodeId) -> Bool {
+  any(actions, a => match a {
+    SpawnWorker { node } => node.node == id
+    HoldPaused => false
+    AtCapacity { ready_waiting: _ } => false
   })
 }
