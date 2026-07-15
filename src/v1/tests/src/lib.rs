@@ -7,6 +7,9 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod global_bare_corpus_census_test;
+
+#[cfg(test)]
 mod global_bare_cascade_test;
 
 #[cfg(test)]
