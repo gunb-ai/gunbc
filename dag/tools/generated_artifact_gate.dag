@@ -1,5 +1,5 @@
 
-
+module tools.generated_artifact_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -12,9 +12,6 @@ import gunbc.generated_artifact_emit {
   artifact_generate,
   artifact_extra_valid
 }
-
-module tools.generated_artifact_gate
-
 
 data drift_perturb_suffix: String = "\n# gunbc-generated-artifact-drift-receipt-perturb"
 
