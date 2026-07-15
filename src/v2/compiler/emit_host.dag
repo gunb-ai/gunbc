@@ -87,14 +87,6 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, Violates }
 
-fn emit_host_unknown_host_tool_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: ^emit_host_unknown_host_tool,
-    at: port_locus(port: ^emit_host_transport_port),
-    correction: None
-  }
-}
-
 fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_run_unsupported_target,
@@ -182,22 +174,17 @@ fn emit_host_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
   }
 }
 
-fn host_tool_program_name(tool: Symbol) -> Outcome<String> {
-  if tool == ^host_tool_cargo {
-    Accepted { value: "cargo", diagnostics: None }
-  } else if tool == ^host_tool_cc {
-    Accepted { value: "cc", diagnostics: None }
-  } else {
-    outcome_rejected(d: emit_host_unknown_host_tool_diagnostic())
-  }
-}
-
 fn process_program_name(program: ProcessProgram) -> Outcome<String> {
   match program {
-    HostToolProgram { tool: t } => host_tool_program_name(tool: t)
+    HostToolProgram { executable: exe } =>
+      Accepted { value: exe, diagnostics: None }
     ProducedProgram { path: p } =>
       Accepted { value: concat("./", p), diagnostics: None }
   }
+}
+
+fn emit_host_process_program_name(program: ProcessProgram) -> Outcome<String> {
+  process_program_name(program: program)
 }
 
 fn invocation_arg_text(arg: InvocationArg) -> String {
