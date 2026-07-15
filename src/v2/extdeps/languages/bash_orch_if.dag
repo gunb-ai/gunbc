@@ -6,7 +6,8 @@ import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
-  bound_tokens_source_text
+  bound_tokens_source_text,
+  render_target_text
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
@@ -85,7 +86,7 @@ fn bash_stmt_if_else_target_model(cond: String, then_body: String, else_body: St
           source_literal: ^bash_stmt_if_else_source_literal,
           production_name: ^bash_production_stmt_if_else,
           tokens: bash_stmt_if_else_tokens(),
-          source_text: source_text,
+          source_text: render_target_text(t: source_text),
           lex: bash_stmt_if_else_lex(),
           binding_spellings: bash_stmt_if_else_binding_spellings(
             cond: cond,
@@ -150,7 +151,7 @@ fn bash_test_str_eq_target_model(lhs: String, rhs: String) -> Outcome<TargetMode
           source_literal: ^bash_test_str_eq_source_literal,
           production_name: ^bash_production_test_str_eq,
           tokens: bash_test_str_eq_tokens(),
-          source_text: source_text,
+          source_text: render_target_text(t: source_text),
           lex: bash_test_str_eq_lex(),
           binding_spellings: bash_test_str_eq_binding_spellings(lhs: lhs, rhs: rhs)
         )
@@ -205,7 +206,7 @@ fn bash_test_str_empty_target_model(operand: String) -> Outcome<TargetModel> {
           source_literal: ^bash_test_str_empty_source_literal,
           production_name: ^bash_production_test_str_empty,
           tokens: bash_test_str_empty_tokens(),
-          source_text: source_text,
+          source_text: render_target_text(t: source_text),
           lex: bash_test_str_empty_lex(),
           binding_spellings: bash_test_str_empty_binding_spellings(operand: operand)
         )
@@ -260,7 +261,7 @@ fn bash_test_str_nonempty_target_model(operand: String) -> Outcome<TargetModel> 
           source_literal: ^bash_test_str_nonempty_source_literal,
           production_name: ^bash_production_test_str_nonempty,
           tokens: bash_test_str_nonempty_tokens(),
-          source_text: source_text,
+          source_text: render_target_text(t: source_text),
           lex: bash_test_str_nonempty_lex(),
           binding_spellings: bash_test_str_nonempty_binding_spellings(operand: operand)
         )
@@ -319,7 +320,7 @@ fn bash_log_matches_grep_target_model(pattern: String, source: String) -> Outcom
           source_literal: ^bash_log_matches_grep_source_literal,
           production_name: ^bash_production_log_matches_grep,
           tokens: bash_log_matches_grep_tokens(),
-          source_text: source_text,
+          source_text: render_target_text(t: source_text),
           lex: bash_log_matches_grep_lex(),
           binding_spellings: bash_log_matches_grep_binding_spellings(pattern: pattern, source: source)
         )
@@ -372,7 +373,7 @@ fn bash_stmt_or_ignore_fail_target_model(stmt: String) -> Outcome<TargetModel> {
           source_literal: ^bash_stmt_or_ignore_fail_source_literal,
           production_name: ^bash_production_stmt_or_ignore_fail,
           tokens: bash_stmt_or_ignore_fail_tokens(),
-          source_text: source_text,
+          source_text: render_target_text(t: source_text),
           lex: bash_stmt_or_ignore_fail_lex(),
           binding_spellings: bash_stmt_or_ignore_fail_binding_spellings(stmt: stmt)
         )
