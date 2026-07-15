@@ -7,8 +7,8 @@ import v2.compiler.self_host.frontier {
   SeedRetained,
   compiler_frontier_roster
 }
-import v2.std.algebra { fold_list, length }
-import v2.std.collection { List, Optional, Absent, Present }
+import v2.std.algebra { fold, length }
+import v2.std.collection { List, Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -33,15 +33,25 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
 
 data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = []
 
+fn wet_receipt_binding_if_path_matches(
+  module_path: String,
+  b: SelfHostWetReceiptBinding
+) -> Optional<SelfHostWetReceiptBinding> {
+  if b.module_path == module_path {
+    optional_present(value: b)
+  } else {
+    optional_absent()
+  }
+}
+
 fn find_wet_receipt_binding(module_path: String) -> Optional<SelfHostWetReceiptBinding> {
-  fold_list(
-    xs: falsifier_self_host_wet_module_bindings,
-    empty: Absent,
-    cons: fn(acc, b) {
-      if b.module_path == module_path {
-        Present { value: b }
-      } else {
-        acc
+  fold(
+    falsifier_self_host_wet_module_bindings,
+    init: Absent,
+    f: fn(acc, b) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => wet_receipt_binding_if_path_matches(module_path: module_path, b: b)
       }
     }
   )
@@ -62,10 +72,10 @@ fn frontier_row_wet_entries_if_enrolled(row: CompilerModuleFrontierRow) -> List<
 }
 
 fn falsifier_self_host_wet_frontier_enrolled_entries() -> List<ScheduleWitnessEntry> {
-  fold_list(
-    xs: compiler_frontier_roster,
-    empty: [],
-    cons: fn(acc, row) {
+  fold(
+    compiler_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
       concat(acc, frontier_row_wet_entries_if_enrolled(row: row))
     }
   )
