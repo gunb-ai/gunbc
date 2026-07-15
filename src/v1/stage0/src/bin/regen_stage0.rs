@@ -137,7 +137,12 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     // AIMD memory governor (2026-07-12): run-time adaptive width against the slot's
     // cgroup budget; replaced the plan-pinned spawn-width constants. Hand-maintained
     // beside cli_run/v1_interpreter until host-effect modules migrate to .dag.
-    "memory_governor.rs",
+    // Wave 2 use_site_verdict pilot seed oracle (hand-retained until v2.std.node self-emits).
+    // Dissolve-on: ssuv_scaffold_dissolution_trigger — retire when modeled harness lands.
+    "usv_pilot_v2_std_algebra.rs",
+    "usv_pilot_v2_std_collection.rs",
+    "usv_pilot_v2_std_node.rs",
+    "v2_compiler_use_site_verdict.rs",
 ];
 
 /// Hand-maintained stage0 support living in subdirectories (not flat `.rs` files).
