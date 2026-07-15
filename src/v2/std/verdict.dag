@@ -2,14 +2,7 @@ module v2.std.verdict
 
 import v2.std.algebra { Magma, Monoid, Semigroup, is_empty }
 import v2.std.collection { List, Optional, Absent }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  port_locus
-}
+import v2.std.diagnostic { Diagnostic, Outcome }
 import v2.std.nat { Nat, Succ, Zero, nat_add }
 import v2.std.test_claim_falsification { FalsificationReceipt }
 import v2.std.logic { Bool }
@@ -23,17 +16,6 @@ type Verdict<Subj, T>
   | BuildFailed { actual: Outcome<T>, diagnostic: Diagnostic }
   | RunFailed { actual: Outcome<T>, diagnostic: Diagnostic }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
-
-fn verdict_diagnostic_from_rejected_outcome<T>(actual: Outcome<T>) -> Diagnostic {
-  match actual {
-    Rejected { diagnostics: ds } => ds.head
-    _ => Diagnostic {
-      reason: ^verdict_failure_outcome_not_rejected,
-      at: port_locus(port: ^verdict_surface),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
-}
 
 fn verdict_semantic_mismatch<Subj, T>(
   actual: Outcome<T>,
@@ -50,42 +32,8 @@ fn verdict_run_failed<Subj, T>(actual: Outcome<T>, diagnostic: Diagnostic) -> Ve
   RunFailed { actual: actual, diagnostic: diagnostic }
 }
 
-fn verdict_build_failed_from_outcome<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
-  verdict_build_failed(
-    actual: actual,
-    diagnostic: verdict_diagnostic_from_rejected_outcome(actual: actual)
-  )
-}
-
-fn verdict_run_failed_from_outcome<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
-  verdict_run_failed(
-    actual: actual,
-    diagnostic: verdict_diagnostic_from_rejected_outcome(actual: actual)
-  )
-}
-
 fn verdict_fail<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
   verdict_semantic_mismatch(actual: actual, falsification: Absent)
-}
-
-fn verdict_is_semantic_mismatch<Subj, T>(v: Verdict<Subj, T>) -> Bool {
-  match v {
-    SemanticMismatch { actual: _, falsification: _ } => true
-    Pass => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
-}
-
-fn verdict_is_any_failure<Subj, T>(v: Verdict<Subj, T>) -> Bool {
-  match v {
-    Pass => false
-    SemanticMismatch { actual: _, falsification: _ } => true
-    BuildFailed { actual: _, diagnostic: _ } => true
-    RunFailed { actual: _, diagnostic: _ } => true
-    Deferred { actual: _, diagnostic: _ } => false
-  }
 }
 
 fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict<Subj, T> {

@@ -43,6 +43,7 @@ import v2.std.diagnostic {
   Accepted,
   Rejected,
   None,
+  Some,
   diagnostics_singleton,
   port_locus,
   node_locus,
@@ -76,9 +77,7 @@ import v2.std.verdict {
   Deferred,
   SemanticMismatch,
   verdict_build_failed,
-  verdict_build_failed_from_outcome,
   verdict_run_failed,
-  verdict_run_failed_from_outcome,
   verdict_semantic_mismatch
 }
 import v2.std.verification {
@@ -374,8 +373,16 @@ fn run_test_claim_emit_vs_eval_verdict(
           )
         )
       }
-    _ =>
-      verdict_build_failed_from_outcome(actual: expected)
+    Rejected { diagnostics: ds } =>
+      verdict_build_failed(
+        actual: expected,
+        diagnostic: ds.head
+      )
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } =>
+      verdict_build_failed(
+        actual: expected,
+        diagnostic: ds.head
+      )
   }
 }
 

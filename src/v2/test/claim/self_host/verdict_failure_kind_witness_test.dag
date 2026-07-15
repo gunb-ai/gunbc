@@ -10,9 +10,12 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.verdict {
+  BuildFailed,
+  Deferred,
+  Pass,
+  RunFailed,
+  SemanticMismatch,
   verdict_build_failed,
-  verdict_is_semantic_mismatch,
-  verdict_is_any_failure,
   verdict_run_failed,
   verdict_semantic_mismatch
 }
@@ -49,11 +52,27 @@ fn witness_semantic_mismatch_discriminates_from_host_failures() -> Bool {
     actual: rejected,
     diagnostic: sample_diagnostic(reason: ^emit_host_exit_not_ok)
   )
-  verdict_is_semantic_mismatch(v: semantic)
-    && !verdict_is_semantic_mismatch(v: build)
-    && !verdict_is_semantic_mismatch(v: run)
-    && verdict_is_any_failure(v: build)
-    && verdict_is_any_failure(v: run)
+  match semantic {
+    SemanticMismatch { actual: _, falsification: _ } => true
+    Pass => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+    && match build {
+      BuildFailed { actual: _, diagnostic: _ } => true
+      Pass => false
+      SemanticMismatch { actual: _, falsification: _ } => false
+      RunFailed { actual: _, diagnostic: _ } => false
+      Deferred { actual: _, diagnostic: _ } => false
+    }
+    && match run {
+      RunFailed { actual: _, diagnostic: _ } => true
+      Pass => false
+      SemanticMismatch { actual: _, falsification: _ } => false
+      BuildFailed { actual: _, diagnostic: _ } => false
+      Deferred { actual: _, diagnostic: _ } => false
+    }
 }
 
 test fn verdict_failure_kind_witnesses() -> Bool {

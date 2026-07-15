@@ -6,7 +6,7 @@ import v2.compiler.eval {
   eval_diagnostic,
   run_test_claim_assert
 }
-import v2.std.verdict { Verdict, Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed, verdict_is_any_failure }
+import v2.std.verdict { Verdict, Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed }
 import v2.std.node { Node }
 import v2.std.diagnostic {
   AmbiguousIntent,

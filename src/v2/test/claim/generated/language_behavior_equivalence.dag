@@ -12,7 +12,7 @@ import v2.compiler.eval {
   test_claim_typed_input_node
 }
 import v2.std.collection { Absent }
-import v2.std.verdict { Verdict, Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed, verdict_is_any_failure }
+import v2.std.verdict { Verdict, Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed }
 import v2.compiler.infer {
   InferredFacts,
   InferredTree

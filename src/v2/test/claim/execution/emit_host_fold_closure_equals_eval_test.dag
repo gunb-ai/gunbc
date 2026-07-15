@@ -63,7 +63,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict, verdict_is_semantic_mismatch }
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -281,7 +281,13 @@ fn emit_fold_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool
 }
 
 fn emit_fold_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  verdict_is_semantic_mismatch(v: run.verdict)
+  match run.verdict {
+    SemanticMismatch { actual: _, falsification: _ } => true
+    Pass => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
 }
 
 test fn emit_host_fold_closure_equals_eval_holds() -> Bool {

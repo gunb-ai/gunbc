@@ -8,7 +8,7 @@ import v2.compiler.eval {
   eval_test_claim_subject,
   run_test_claim
 }
-import v2.std.verdict { Verdict, Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed, verdict_is_any_failure }
+import v2.std.verdict { Verdict, Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed }
 import v2.compiler.infer {
   InferredFacts,
   InferredTree
