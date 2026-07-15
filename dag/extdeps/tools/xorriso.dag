@@ -21,3 +21,43 @@ data xorriso_cli_tool: CliTool = CliTool {
   min_version: Present { value: xorriso_pinned_version },
   installable_via: [SourceApt { package: package_xorriso }],
 }
+
+service xorriso.Iso {
+  operation ExtractPathBestEffort {
+    input { iso_path: NonEmptyStr, iso_internal_path: NonEmptyStr, destination: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["xorriso", "-osirrox", "on", "-indev", "{iso_path}", "-extract", "{iso_internal_path}", "{destination}"]
+    }
+    exit {
+      0 => Unit "extracted"
+      nonzero => Unit "path not present on ISO"
+    }
+  }
+
+  operation ExtractTree {
+    input { iso_path: NonEmptyStr, destination: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["xorriso", "-osirrox", "on", "-indev", "{iso_path}", "-extract", "/", "{destination}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "xorriso -extract / failed"
+    }
+  }
+
+  operation BuildIso {
+    input { volume_id: NonEmptyStr, output_path: NonEmptyStr, source_dir: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    transport shell {
+      argv: ["xorriso", "-as", "mkisofs", "-r", "-V", "{volume_id}", "-o", "{output_path}", "-graft-points", "/={source_dir}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "xorriso -as mkisofs failed"
+    }
+  }
+}
