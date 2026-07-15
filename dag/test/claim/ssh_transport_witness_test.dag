@@ -1,20 +1,15 @@
 module test.claim.ssh_transport_witness
 
-import std.types { Bool, NonEmptyStr }
-import std.measure { byte_size_count }
-import gunbc.live_deploy.emit { live_deploy_apply_script_for }
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
-import extdeps.shell { shell_argv_max_arg_strlen }
-import extdeps.diagnostic.mock_corpus { diagnostic_ssh_session_mock_case_exec_script }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ssh_exec_script_remote_receiver: NonEmptyStr = "bash -s"
 
+data ssh_argv_embed_budget: ByteSize = byte_size(65536)
+
 fn witness_apply_script_exceeds_argv_embed_budget() -> Bool {
   let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1()))
-  let budget = byte_size_count(b: shell_argv_max_arg_strlen)
+  let budget = byte_size_count(b: ssh_argv_embed_budget)
   script_len > budget
 }
 

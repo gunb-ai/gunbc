@@ -1,18 +1,5 @@
 module v2.test.long.dag_compile_clean_scope_sigma_test
 
-import extdeps.filesystem.filesystem_io
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.fn_family { module_sigma_family_count, module_largest_family_member_count, module_sigma_families, FnFamilyFinding }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Node, Symbol }
-import v2.std.algebra { FreeMonoid, length, fold_list, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.integer { Int }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

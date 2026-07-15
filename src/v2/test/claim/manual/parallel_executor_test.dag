@@ -1,36 +1,5 @@
 module v2.test.manual.parallel_executor
 
-import v2.std.collection { List }
-import v2.std.dependency { ReadinessLayer }
-import v2.std.logic { Bool }
-import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
-import v2.workflow.executor {
-  ExecutorBatch,
-  ExecutorEmptyFrontier,
-  ExecutorRunBlocked,
-  ExecutorRunComplete,
-  ExecutorRunRunnable,
-  ExecutorSchedulerBlocked,
-  executor_batch_contains_node,
-  executor_batches_preserve_frontiers,
-  executor_job_for_node,
-  parallel_executor_plan_from_dependencies,
-  parallel_executor_plan_from_layers,
-  parallel_executor_step_plan_from_dependencies
-}
-import v2.workflow.scheduler {
-  SchedulerNoRunnableFrontier
-}
-import v2.test.manual.scheduler_runnable_frontier {
-  scheduler_build_node,
-  scheduler_emit_node,
-  scheduler_fixture_dependencies,
-  scheduler_fixture_dependencies_with_contains_noise,
-  scheduler_fixture_nodes,
-  scheduler_missing_prerequisite_dependencies,
-  scheduler_test_node
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

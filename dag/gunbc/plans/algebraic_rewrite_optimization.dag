@@ -1,8 +1,5 @@
 module gunbc.plans.algebraic_rewrite_optimization
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, cell, row }
 
 fn algebraic_rewrite_optimization_body() -> List<MarkdownBlock> {
   [

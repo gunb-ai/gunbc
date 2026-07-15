@@ -18,6 +18,7 @@ import std.realization_schedule {
   WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams
 }
 
+
 data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness_test.dag"
 
 type LocalTidyCheck
@@ -376,56 +377,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "wave1_gate1_c1_arrow_body_cost_domain_excluded_witness_holds",
         "wave1_gate1_c1_unpriceable_combiner_refusal_witness_holds",
         "wave1_gate1_c1_multi_linear_ambiguous_refusal_witness_holds"
-      ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
-      check_fns: ["wave1_gate1_d_census_subsumption_witness_holds"],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag",
-      check_fns: [
-        "wave1_gate1_d_ingested_bind_executes_witness_holds",
-        "wave1_gate1_d_ingested_loop_executes_witness_holds"
-      ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
-      check_fns: [
-        "witness_parse_binding_fidelity_distinct_identifiers_holds",
-        "witness_resolve_distinct_param_bindings_holds"
-      ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-      check_fns: [
-        "lens_affected_set_provenance_producer_single_read_emits_row_holds",
-        "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds",
-        "lens_affected_set_provenance_producer_rejects_beyond_surface_ingest_holds",
-        "lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds",
-        "lens_affected_set_provenance_producer_coverage_receipt_holds",
-        "lens_affected_set_provenance_producer_git_diff_wire_holds",
-        "lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds"
       ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared

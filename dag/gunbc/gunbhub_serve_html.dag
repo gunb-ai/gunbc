@@ -1,15 +1,5 @@
 module gunbc.gunbhub_serve_html
 
-import std.markup {
-  MarkupNode,
-  ElementNode,
-  TextNode,
-}
-import extdeps.languages.html {
-  try_serialize_html_source,
-  EmitOk,
-  EmitRejected,
-}
 
 fn sample_html_page() -> MarkupNode {
   ElementNode {

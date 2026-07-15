@@ -1,5 +1,6 @@
 module v1.compiler.infer_resolve
 
+<<<<<<< HEAD
 import std.types { SourceSpan, container_param_name }
 import v1.std.core {
   Node,
@@ -39,6 +40,8 @@ import std.induction { SubValueUnknown }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
 }
+=======
+>>>>>>> 62111b1273 (Wave-1 namespace integration: restore collapsed import-strip on current main.)
 
 fn is_unit_variant_node(variant: Node) -> Bool {
   (variant.children |> count) == 0

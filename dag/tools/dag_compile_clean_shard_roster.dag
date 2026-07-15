@@ -1,10 +1,5 @@
 module tools.dag_compile_clean_shard_roster
 
-import tools.dag_compile_clean_partition {
-  CompileCleanModuleShard,
-  compile_clean_partition_boundary
-}
-import std.types { String, Bool, Int, List, list_length }
 
 type CompileCleanModuleDeclFact {
   module: String

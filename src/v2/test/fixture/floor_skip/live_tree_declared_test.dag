@@ -1,7 +1,5 @@
 module v2.test.fixture.floor_skip.live_tree_declared
 
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,10 +1,5 @@
 module gunbc.stage0_emit_model
 
-import extdeps.languages.rust.emit {
-  rust_qualified_module_mod_basename,
-  rust_qualified_module_mod_filename
-}
-import std.types { List, String, Bool, Int }
 
 data generated_stage0_files: List<String> = [
   "compiler_tests.rs",

@@ -1,13 +1,5 @@
 module v2.test.manual.swift_language_model_anchor
-import v2.std.language_model { LanguageModel }
 
-import v2.extdeps.languages.swift {
-  swift_primitive_language_model,
-  swift_language_model,
-  swift_primitive_model_core,
-  swift_model_core
-}
-import v2.std.model_core { ModelCore }
 
 type swift_anchor_language_model = LanguageModel
 

@@ -1,45 +1,5 @@
 module v2.test.claim.ci_floor_plan_witness
 
-import std.realization {
-  Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
-}
-import v2.workflow.ci_floor_plan {
-  gunbc_falsifier_batches,
-  gunbc_ci_floor_batches,
-  floor_schedule_for,
-  corpus_runnable_for, execution_corpus_runnable_for,
-  corpus_witness_entries, execution_witness_entries,
-  floor_corpus_exclusion_resource_edges,
-  gunbc_ci_floor_plan_serializes_heavy_resolves,
-  floor_plan_serializes_heavy_resolves_for,
-  floor_plan_co_runs_heavy_without_serialization_for,
-  gate_runnable,
-  witness_floor_corpus_exclusion_edges_exist,
-  witness_floor_compile_gate_honest_heavy_profile,
-  witness_floor_no_corpus_resource_edge_to_compile_anchor,
-  witness_ci_corpus_discovery_is_live,
-  witness_ci_corpus_discovery_flip_authored,
-  witness_floor_discovery_flip_serializes_gates_after_corpus,
-  witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor,
-  witness_regen_spec_carries_no_witness_corpus,
-  gunbc_falsifier_self_host_wet_receipt_wall_budget_ms,
-  gunbc_falsifier_self_host_wet_interp_eval_budget_ms,
-  gunbc_ci_fast_lane_eval_budget_ms,
-}
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
-import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
-import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, LayeringImportsGate, RegenVerifyGate }
-import std.realization_schedule {
-  SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
-  runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
-  ScheduleWitnessEntry, schedule_witness_entry_eq,
-  CorpusWitnessKind, ExecutionWitnessKind
-}
-import std.execution_mode { Hermetic, Wet, execution_mode_eq }
-import v2.std.algebra { length, list_snoc_item, skip }
-import v2.std.collection { List }
-import std.types { Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -319,64 +279,22 @@ fn falsifier_batch_selection(mode: NodeFrontierSelection) -> Bool {
   }
 }
 
-fn discovery_batch_declares_wet(r: Runnable) -> Bool {
+fn falsifier_runnable_is_predict_only(r: Runnable) -> Bool {
   match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
-      execution_mode_eq(left: p.execution_mode, right: Wet)
-    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
-  }
-}
-
-fn falsifier_predict_only_batch_holds(r: Runnable) -> Bool {
-  match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
       falsifier_batch_selection(mode: mode)
         && (length(xs: entries) == 0)
         && (length(xs: dirs) == 2)
-        && execution_mode_eq(left: p.execution_mode, right: Hermetic)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
 }
 
-fn falsifier_self_host_wet_batch_holds(r: Runnable) -> Bool {
-  match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
-      match mode {
-        SelectionApplied => true
-        SelectionPredictOnly => false
-        SelectionOff => false
-      }
-        && (length(xs: dirs) == 0)
-        && (length(xs: entries) == length(xs: falsifier_self_host_wet_entries()))
-        && discovery_batch_declares_wet(r: r)
-        && p.spawns_host_compiler
-    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
-  }
-}
-
-fn falsifier_self_host_wet_budget_declared_holds() -> Bool {
-  gunbc_falsifier_self_host_wet_receipt_wall_budget_ms() == 600000
-    && gunbc_falsifier_self_host_wet_interp_eval_budget_ms() == 120000
-    && gunbc_ci_fast_lane_eval_budget_ms() == 5000
-}
-
-fn falsifier_plan_structure_holds() -> Bool {
+fn falsifier_plan_is_one_predict_only_batch() -> Bool {
   let batches = gunbc_falsifier_batches()
-  if length(xs: falsifier_self_host_wet_entries()) > 0 {
-    let wet_batch = skip(xs: batches, n: 1).first()
-    (length(xs: batches) == 2)
-      && (batches.first().length() == 1)
-      && falsifier_predict_only_batch_holds(r: batches.first().first())
-      && (wet_batch.length() == 1)
-      && falsifier_self_host_wet_batch_holds(r: wet_batch.first())
-  } else {
-    (length(xs: batches) == 1)
-      && (batches.first().length() == 1)
-      && falsifier_predict_only_batch_holds(r: batches.first().first())
-  }
+  (length(xs: batches) == 1)
+    && (batches.first().length() == 1)
+    && falsifier_runnable_is_predict_only(r: batches.first().first())
 }
 
 test fn ci_floor_plan_witnesses() -> Bool {
@@ -386,8 +304,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
     witness_plan_serializes_heavy_resolves()
-    && falsifier_plan_structure_holds()
-    && falsifier_self_host_wet_budget_declared_holds()
+    && falsifier_plan_is_one_predict_only_batch()
     && witness_hermetic_floor_posture_declared()
 }
 

@@ -1,32 +1,5 @@
 module gunbc.tools.bmc_onboard
 
-import extdeps.bmc.http
-import extdeps.filesystem.filesystem_io
-import extdeps.entropy
-import extdeps.cloud.gcp.secret_manager
-import extdeps.cloud.gcp.gcp { GcpProjectId }
-import extdeps.shell
-import gunbc.bmc_onboarding {
-  new_altra_onboarding_plan,
-  BmcCredentialProbeResult,
-  FactoryCredentialActive,
-  RotatedCredentialActive,
-  CredentialStateUnknown,
-}
-import std.credentials { Stored }
-import std.types { NonEmptyStr, Secret, String }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.logic { Bool }
-import std.resources { Network }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.languages.json.emit {
-  serialize_json,
-  json_object,
-  json_kv,
-  json_string,
-}
 
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"

@@ -1,8 +1,5 @@
 module gunbc.plans.m5_fixture_store_consolidation
 
-import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, cell, row }
 
 fn m5_fixture_store_consolidation_body() -> List<MarkdownBlock> {
   [
