@@ -348,17 +348,9 @@ fn classify_scan_state(st: ScanState) -> BashCompositionDisposition {
   }
 }
 
-data hole_straddle_note: String = "T3 HoleStraddlesToken is ACTIVE, not deferred (correcting the assume-Clean absorbing fallback, DESIGN.md §5): a parts-projection Hole is a .dag compose-time value concatenated into the source string before bash parses it, so an UNQUOTED Hole (quote_is_out at the hole position) could contain a separator and is set as hole_straddle. classify_scan_state routes hole_straddle -> AmbiguousParse cause HoleStraddlesToken AFTER P2 static-token composition (a line already decided a Violation by real tokens stays Violation; a line decidable Clean by static tokens becomes AmbiguousParse when an unquoted Hole could still introduce a separator). The earnable escape to Clean: a Hole in QUOTED context (double/single) is bounded — word-splitting and control operators cannot apply inside quotes — so quote_is_out is false and hole_straddle is not set."
+data hole_straddle_note: String = "T3 HoleStraddlesToken is ACTIVE, not deferred (correcting the assume-Clean absorbing fallback, DESIGN.md §5): a parts-projection Hole is a .dag compose-time value concatenated into the source string before bash parses it, so an UNQUOTED Hole (quote_terminated at the hole position — the same single QuoteOut predicate the munch-termination check reads) could contain a separator and is set as hole_straddle. classify_scan_state routes hole_straddle -> AmbiguousParse cause HoleStraddlesToken AFTER P2 static-token composition (a line already decided a Violation by real tokens stays Violation; a line decidable Clean by static tokens becomes AmbiguousParse when an unquoted Hole could still introduce a separator). The earnable escape to Clean: a Hole in QUOTED context (double/single) is bounded — word-splitting and control operators cannot apply inside quotes — so quote_terminated is false and hole_straddle is not set."
 
-fn quote_is_out(q: QuoteMode) -> Bool {
-  match q {
-    QuoteOut => true
-    QuoteSingle => false
-    QuoteDouble => false
-    QuoteEscOut => false
-    QuoteEscDouble => false
-  }
-}
+data operand_framing_residue_note: String = "TRACKED RESIDUE (DESIGN.md §5 ledger completeness, beside p1_dominance_residue_note; parent threat model = ACCIDENTAL hand-splicing, NOT adversarial): bash command-substitution and grouping metacharacters that carry NO modeled token — backticks, dollar-paren, and brace-groups written without a separating space — fall through longest_significant_match as OperandFraming (ordinary run chars), so a hand-written literal like a backtick-substitution lands Clean rather than AmbiguousParse. Under the accidental-splicing threat model this is acceptable (a determined smuggler is already covered as out-of-scope by p1_dominance_residue_note's keyword-inclusion note). It is NAMED here so the residue is counted, not a silent gap. DISSOLVES-ON: the wall's scope is declared to widen to adversarial input, at which point these metacharacters get modeled token classes (Separator/JoiningControl-adjacent) and P2/T3 decide through them."
 
 fn scan_part(st: ScanState, part: SkeletonPart) -> ScanState {
   match part {
@@ -370,7 +362,7 @@ fn scan_part(st: ScanState, part: SkeletonPart) -> ScanState {
       has_if: st.has_if,
       saw_unmodeled_kw: st.saw_unmodeled_kw,
       hole_present: true,
-      hole_straddle: st.hole_straddle || quote_is_out(q: st.quote)
+      hole_straddle: st.hole_straddle || quote_terminated(q: st.quote)
     }
   }
 }

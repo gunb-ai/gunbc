@@ -80,6 +80,14 @@ fn dag_files_sorted(root: &str) -> Vec<PathBuf> {
 // SCAFFOLD (§7 hand-Rust shrink-to-zero): rides the `marshal_string_literal_atom` literal-
 // preservation idiom (coproduct_reflection.rs) and the #5364 field-expression projection corridor;
 // dissolves when the projection is a modeled substrate fold rather than a hand-Rust walk here.
+//
+// §3 note (review, 2026-07-15): `RawLiteralPartsFact.{constructor,field}` are two String tags used as
+// an IN-BAND discriminator that `classify_raw_literal_fact` matches against ("RawLine","text") else
+// NoLanguageDecision — an implicit sum across the seed<->.dag seam. It stays String-shaped only while
+// this walk is hand-Rust and the target set is the 2-element `medium_bash_sink_targets`. DISSOLVES-ON
+// the same trigger as this scaffold: when the projection moves in-substrate the caller-supplied target
+// vector becomes a typed sink COPRODUCT (a variant per smuggling-capable field), and the (constructor,
+// field) string pair is replaced by that coproduct's discriminant — no in-band string sum remains.
 
 pub struct LiteralPartRaw {
     pub is_hole: bool,
