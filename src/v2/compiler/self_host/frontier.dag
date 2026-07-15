@@ -109,7 +109,7 @@ data compiler_frontier_qualified_module_bindings: List<FrontierQualifiedModuleBi
   FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/use_site_verdict.dag", qualified_module: "v2.compiler.use_site_verdict" }
 ]
 
-data compiler_frontier_crate_layout_note: String = "Single crate-organization authority (Wave 2 derived layout): self-emitted stage0 mod basenames derive from compiler_frontier_roster SelfEmitted rows via qualified_module bindings + stage0_module_emit_basename. Seed-retained intrinsic kernel + pilot scaffolds compose in gunbc.stage0_crate_layout for the v1 regen closure; witness stage0_crate_layout_witness_test pins the projection. Dissolve-on: regen compile roots include src/v2 and v1.compiler.emit_rust imports frontier directly."
+data compiler_frontier_crate_layout_note: String = "Single crate-organization authority (Wave 2 derived layout): self-emitted stage0 mod basenames derive from compiler_frontier_roster SelfEmitted rows via qualified_module bindings + stage0_module_emit_basename. Seed-retained intrinsic kernel + pilot scaffolds compose via hand_maintained_pub_mod_basenames. v1.compiler.emit_rust keeps a witness-synced projection (v1 layer cannot import this module); witness self_host/crate_layout_witness_test + stage0_crate_layout_witness_test pin drift. Dissolve-on: v1 regen closure imports frontier directly once layer boundary lifts."
 
 fn measured_stage_for_blocker(blocker: FrontierBlockerClass) -> FrontierProbeStage {
   match blocker {
