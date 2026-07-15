@@ -1690,7 +1690,6 @@ fn compile_clean_resolve_has_hard_errors(
     compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
 }
 
-<<<<<<< HEAD
 // Single authority (DESIGN.md §3/§7): whether a diagnostic blocks is decided by
 // `00_core.dag`, never restated here. `is_interpreter_blocking_diagnostic` is the
 // {ComplexityUnknown, UnlistedImportUse} tolerance this gate has always intended;
@@ -1720,36 +1719,6 @@ fn eprint_compile_clean_hard_diagnostics(diagnostics: &im_rc::Vector<Rc<ErrorNod
                 diagnostic_to_message(d.diagnostic.clone())
             );
             shown += 1;
-=======
-fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) -> bool {
-    use crate::v1_std_core::CompilerDiagnostic;
-    diagnostics.iter().any(|d| {
-        !matches!(
-            *d.diagnostic.clone(),
-            CompilerDiagnostic::ComplexityUnknown { .. }
-        )
-    })
-}
-
-fn eprint_compile_clean_hard_diagnostics(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) {
-    use crate::v1_std_core::CompilerDiagnostic;
-    let mut count = 0usize;
-    for d in diagnostics.iter() {
-        if matches!(
-            *d.diagnostic.clone(),
-            CompilerDiagnostic::ComplexityUnknown { .. }
-        ) {
-            continue;
-        }
-        eprintln!(
-            "compile-clean: {}",
-            diagnostic_to_message(d.diagnostic.clone())
-        );
-        count += 1;
-        if count >= 20 {
-            eprintln!("compile-clean: (truncated hard diagnostics at 20)");
-            break;
->>>>>>> 9e3b98c60b (revert(compile-clean): drop cli_run fork fix — owned by #6683.)
         }
     }
     if total > SHOWN_LIMIT {
