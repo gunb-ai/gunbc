@@ -93,7 +93,7 @@ fn transport_script_lens_verdict(
     Holds
   } else {
     lens_verdict_module_violation(
-      reason: "transport_script_literal_blob_in_script_position",
+      reason: ^transport_script_literal_blob_in_script_position,
       module_name: "v2.lens.host_language_transport_script"
     )
   }

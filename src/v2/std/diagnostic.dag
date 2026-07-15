@@ -59,6 +59,19 @@ fn node_locus(node: Node) -> Locus {
 fn port_locus(port: Symbol) -> Locus {
   PortLocus { anchor: LocusAnchor { at: port } }
 }
+
+fn textual_whole_file_locus(file: Symbol) -> Locus {
+  Textual { file: file, extent: WholeFile }
+}
+
+fn module_unavailable_diagnostic(reason: Symbol, module_file: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: textual_whole_file_locus(file: module_file),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn outcome_accepted<T>(value: T) -> Outcome<T> {
   Accepted { value: value, diagnostics: None }
 }

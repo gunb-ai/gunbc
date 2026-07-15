@@ -8,11 +8,12 @@ import std.measure {
   byte_size, byte_size_count, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }
-import std.diagnostic { Diagnostic, module_diagnostic_unavailable }
+import v2.std.diagnostic { Diagnostic, module_unavailable_diagnostic }
 import std.lens_verdict {
   LensVerdict,
   Holds,
   Violation,
+  lens_verdict_module_file,
 }
 
 type CostBasis
@@ -262,26 +263,27 @@ fn schedule_lens_violation_diagnostic(
   kind: ScheduleLensViolation,
   compile_gate_fn: String
 ) -> Diagnostic {
+  let module_file = lens_verdict_module_file(module_name: schedule_lens_module)
   match kind {
     EmptySchedule =>
-      module_diagnostic_unavailable(
-        reason: "schedule_lens_empty_schedule",
-        module_name: schedule_lens_module
+      module_unavailable_diagnostic(
+        reason: ^schedule_lens_empty_schedule,
+        module_file: module_file
       )
     CompileGateNotFirst { expected: expected } =>
-      module_diagnostic_unavailable(
-        reason: "schedule_lens_compile_gate_not_first:" + expected,
-        module_name: schedule_lens_module
+      module_unavailable_diagnostic(
+        reason: ^schedule_lens_compile_gate_not_first,
+        module_file: module_file
       )
     CorpusBeforeCompile =>
-      module_diagnostic_unavailable(
-        reason: "schedule_lens_corpus_before_compile",
-        module_name: schedule_lens_module
+      module_unavailable_diagnostic(
+        reason: ^schedule_lens_corpus_before_compile,
+        module_file: module_file
       )
     SingleBatchOnly =>
-      module_diagnostic_unavailable(
-        reason: "schedule_lens_single_batch_only",
-        module_name: schedule_lens_module
+      module_unavailable_diagnostic(
+        reason: ^schedule_lens_single_batch_only,
+        module_file: module_file
       )
   }
 }
