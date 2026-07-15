@@ -97,9 +97,6 @@ fn inert_layer_lens_body() -> List<MarkdownBlock> {
       li(text: "**Dissolution:** the lens itself never dissolves (inertness is a standing property); its *exception roster* dissolves to empty as the realization loop wires each carrier, at which point the lens flips from advisory ② to fail-closed ① wall."),
     ]),
     h2(text: "8. Generalization — one rule, N substrates (code · docs · lenses)"),
-    quote(blocks: [
-      p(text: "**Sibling family (§2 redundancy, the other half).** Inertness is *\"nothing reaches this concept\"* (0 authorities/consumers). Its dual is *\"this concept is reached but duplicates an authority that already exists\"* (≥2 authorities) — the **redundancy / degenerate-work** family, whose test-substrate instance is the [vacuity lens](vacuity-lens-design.md) (a test whose expected value duplicates a code authority = `AuthoredDuplication` on the authored-fact substrate of the `materialization_ladder`). Same §2/§3 root, opposite end of the plurality axis (0 vs ≥2)."),
-    ]),
     p(text: "Reachability-completeness is **not specific to code** — it is a §2-horizontal \"one concept, every breadth\": *every declared node in a graph must be reachable from a root, on an exception roster, or deleted.* It already runs over the **lens** graph (#5433). It applies unchanged to the **doc** graph — and the doc instance is the **cheapest wall of all** (pure link reachability — no reflective edges *needed for the dangling half*, and far simpler than the code substrate):"),
     TableBlock {
       header: row(cells: [cell(text: "substrate"), cell(text: "nodes"), cell(text: "edges"), cell(text: "roots"), cell(text: "inert ="), cell(text: "dangling =")]),
