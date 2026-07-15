@@ -13534,8 +13534,6 @@ mod reference_edge_producer_tests {
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
-    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
-    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
     // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
     // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
     // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
@@ -13564,6 +13562,12 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // the std eq rows; dissolve with derived equality from inhabitance (dag/std/algebra).
     "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
     "src/v2/lens/live_read_classification.dag::path_pattern_eq",
+    // 2026-07-15 backfill: #6680 merge landed bash_composition_recognizer.dag::apply_role
+    // with a two-special-variant dispatch (IfFraming / UnmodeledKeyword mutate ScanState;
+    // every other TokenRole through close_run unchanged). The nfr witness is corpus-read;
+    // the landing PR predict-skipped it and the red surfaced on the next cold sweep. Burns
+    // down with the bash composition recognizer fold migration.
+    "src/v2/lens/bash_composition_recognizer.dag::apply_role",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.
@@ -13636,7 +13640,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
     "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
-    "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
     "src/v2/compiler/emit_host.dag::runtime_value_signed_i32_le_as_int",
     "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
     "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
@@ -14076,6 +14079,36 @@ mod nfr_tests {
             !sites.contains(&"m.dag::f".to_string()),
             "an exhaustive match (no wildcard) must NOT be flagged; got {sites:?}"
         );
+    }
+
+    #[test]
+    fn nfr_roster_receipt() {
+        let live: std::collections::BTreeSet<&str> = nfr_build_report()
+            .sites
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        eprintln!(
+            "nfr_roster_receipt: unrostered={} stale={} live={}",
+            non_fold_residue_unrostered_count(),
+            non_fold_residue_stale_roster_count(),
+            live.len()
+        );
+        for site in nfr_build_report().sites.iter() {
+            if !non_fold_residue_site_is_rostered(site) {
+                eprintln!("unrostered live site: {site}");
+            }
+            assert!(
+                non_fold_residue_site_is_rostered(site),
+                "unrostered: {site}"
+            );
+        }
+        for entry in NON_FOLD_RESIDUE_ROSTER {
+            if !live.contains(entry) {
+                eprintln!("stale roster entry: {entry}");
+            }
+            assert!(live.contains(entry), "stale roster: {entry}");
+        }
     }
 
     #[test]
