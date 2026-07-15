@@ -258,10 +258,8 @@ fn witness_floor_disposition_marker_initialized_before_docs_only_branch() -> Boo
   )
   string_contains(s: script, pattern: ci_floor_disposition_marker_init_note) &&
     string_contains(s: script, pattern: stamp) &&
-    string_contains(
-      s: script,
-      pattern: concat(concat(compile_clean_floor_skip_witness_bin, " 2>/dev/null"), "")
-    )
+    string_contains(s: script, pattern: compile_clean_floor_skip_witness_bin) &&
+    string_contains(s: script, pattern: "2>/dev/null || echo run_full_floor")
 }
 
 fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
