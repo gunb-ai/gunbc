@@ -4,10 +4,6 @@ import v2.test.complexity_gate.source_bridged_loop_subject_producer {
   source_bridged_loop_arrow_with_body,
   source_bridged_loop_wrong_value_arrow_with_body
 }
-import v2.test.complexity_gate.source_bridged_loop_subject_producer {
-  source_bridged_loop_arrow_with_body,
-  source_bridged_loop_wrong_value_arrow_with_body
-}
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,

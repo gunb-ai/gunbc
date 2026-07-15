@@ -4259,6 +4259,7 @@ fn dag_pick_arrow_with_body_false_condition_node() -> Node {
   )
 }
 
+fn dag_pick_arrow_with_body_node() -> Node {
   dag_arrow_with_body_node(
     domain: dag_pick_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,

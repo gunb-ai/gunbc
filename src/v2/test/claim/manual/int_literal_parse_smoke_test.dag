@@ -1,10 +1,6 @@
 module v2.test.manual.int_literal_parse_smoke
 
-import v2.compiler.ingested_fixture_arrows {
-  ingested_loop_module_source,
-  ingested_pick_module_source
-}
-import v2.compiler.parse { parse_module }
+import v2.compiler.ingested_fixture_arrows { ingested_loop_module_source }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_int_literal_magnitude_int_from_node,
@@ -55,25 +51,9 @@ test fn int_literal_loop_token_lexeme_builds_holds() -> Bool {
   }
 }
 
-fn int_literal_smoke_parse_module_source(source_text: String) -> Bool {
-  let lm = dag_language_model()
-  match tokenize(text: source_text, file: ^int_literal_smoke_file, rules: lm.lex) {
-    Accepted { value: stream, diagnostics: _ } =>
-      match parse_module(tokens: stream, grammar: lm.grammar) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn int_literal_loop_source_parse_holds() -> Bool {
-  int_literal_smoke_parse_module_source(source_text: ingested_loop_module_source)
-}
-
-test fn int_literal_pick_source_parse_holds() -> Bool {
-  int_literal_smoke_parse_module_source(source_text: ingested_pick_module_source)
-}
+// Full module parse for loop/pick census sources exceeds the 5s fast-lane eval budget
+// (gunbc_ci_fast_lane_rule_note). Parse fidelity for those sources is covered by long-lane
+// ingest witnesses (wave1_gate1_d, pick_ingested_probe, pipeline_stage_add_pick).
 
 test fn int_literal_from_token_lexeme_holds() -> Bool {
   let lm = dag_language_model()
