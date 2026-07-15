@@ -120,6 +120,27 @@ fn pick() -> ProbeCurrency {
 }
 
 #[test]
+fn probe_bare_nullary_function_reference_resolves() {
+    let definer = r#"module probe.def
+
+fn probe_nullary_thing() -> Int {
+  1
+}
+"#;
+    let user = r#"module probe.use
+
+fn call_it() -> Int {
+  probe_nullary_thing()
+}
+"#;
+    let d = hard_diags(definer, user);
+    assert!(
+        d.is_empty(),
+        "bare NULLARY fn ref should resolve via global_bare: {d:?}"
+    );
+}
+
+#[test]
 fn probe_bare_data_with_value_reference_resolves() {
     let definer = r#"module probe.def
 
