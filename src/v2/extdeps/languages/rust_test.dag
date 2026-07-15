@@ -945,7 +945,7 @@ fn rust_loop_binding_spellings() -> Map<Symbol, String> {
 fn rust_loop_additional_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_unwired_loop, text: "loop { break "),
-    rust_lex_rule(token_class: ^rust_token_semicolon, text: "; ")
+    rust_lex_rule(token_class: ^rust_token_semicolon, text: ";")
   ]
 }
 
