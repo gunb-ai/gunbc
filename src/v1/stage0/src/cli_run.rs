@@ -1378,35 +1378,41 @@ fn compile_clean_resolve_has_hard_errors(
     compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
 }
 
-fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) -> bool {
-    use crate::v1_std_core::CompilerDiagnostic;
-    diagnostics.iter().any(|d| {
-        !matches!(
-            *d.diagnostic.clone(),
-            CompilerDiagnostic::ComplexityUnknown { .. }
-        )
-    })
+// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks is decided by
+// `00_core.dag`, never restated here. `is_interpreter_blocking_diagnostic` is the
+// {ComplexityUnknown, UnlistedImportUse} tolerance this gate has always intended;
+// the prior hand-rolled `!matches!(ComplexityUnknown)` predated UnlistedImportUse's
+// demotion to advisory and silently reded the namespace import strip.
+fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
+    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+}
+
+pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) -> bool {
+    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
 fn eprint_compile_clean_hard_diagnostics(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) {
-    use crate::v1_std_core::CompilerDiagnostic;
-    let mut count = 0usize;
-    for d in diagnostics.iter() {
-        if matches!(
-            *d.diagnostic.clone(),
-            CompilerDiagnostic::ComplexityUnknown { .. }
-        ) {
-            continue;
+    const SHOWN_LIMIT: usize = 20;
+    let mut shown = 0usize;
+    let mut total = 0usize;
+    // One pass, no accumulator: the total is counted, never collected (§6).
+    for d in diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+    {
+        total += 1;
+        if shown < SHOWN_LIMIT {
+            eprintln!(
+                "compile-clean: {}",
+                diagnostic_to_message(d.diagnostic.clone())
+            );
+            shown += 1;
         }
-        eprintln!(
-            "compile-clean: {}",
-            diagnostic_to_message(d.diagnostic.clone())
-        );
-        count += 1;
-        if count >= 20 {
-            eprintln!("compile-clean: (truncated hard diagnostics at 20)");
-            break;
-        }
+    }
+    if total > SHOWN_LIMIT {
+        // Count the residue rather than hiding it (§5): a truncated burndown that
+        // never reports its size makes the deficit unprioritizable.
+        eprintln!("compile-clean: (truncated hard diagnostics at {SHOWN_LIMIT}; {total} total)");
     }
 }
 
@@ -1632,7 +1638,9 @@ pub fn documentation_only_floor_skip_label_for_ci() -> String {
     }
     match floor_git_diff_name_status_range() {
         Err(msg) => {
-            eprintln!("documentation-only floor skip: diff observation failed ({msg}) — full floor");
+            eprintln!(
+                "documentation-only floor skip: diff observation failed ({msg}) — full floor"
+            );
             RUN_FULL_FLOOR_LABEL.to_string()
         }
         Ok((changed_paths, _departed)) => {
@@ -9962,7 +9970,10 @@ new file mode 100644
             }
         }
         lying.sort();
-        eprintln!("lying SubstrateInputsOnly stamps (G1 carrier closure): {}", lying.len());
+        eprintln!(
+            "lying SubstrateInputsOnly stamps (G1 carrier closure): {}",
+            lying.len()
+        );
         for (entry, carrier) in &lying {
             eprintln!("  {entry}  ->  {carrier}");
         }

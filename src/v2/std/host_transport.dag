@@ -38,7 +38,7 @@ type InvocationArg
   | ProducedArtifact { path: RelPath }
 
 type ProcessProgram
-  = HostToolProgram { tool: Symbol }
+  = HostToolProgram { executable: String }
   | ProducedProgram { path: RelPath }
 
 type ProcessInvocation {

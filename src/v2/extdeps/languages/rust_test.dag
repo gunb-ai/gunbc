@@ -639,12 +639,12 @@ fn rust_call_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
+        program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
       }
     ],
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_cargo },
+      program: HostToolProgram { executable: "cargo" },
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
@@ -751,12 +751,12 @@ fn rust_match_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
+        program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
       }
     ],
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_cargo },
+      program: HostToolProgram { executable: "cargo" },
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
@@ -1044,12 +1044,12 @@ fn rust_loop_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
+        program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
       }
     ],
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_cargo },
+      program: HostToolProgram { executable: "cargo" },
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
@@ -1093,12 +1093,12 @@ fn rust_classical_not_ingested_host_transport_descriptor() -> HostTransportDescr
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
+        program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
       }
     ],
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_cargo },
+      program: HostToolProgram { executable: "cargo" },
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
@@ -1458,12 +1458,12 @@ fn rust_field_access_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
+        program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
       }
     ],
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_cargo },
+      program: HostToolProgram { executable: "cargo" },
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
@@ -1771,12 +1771,12 @@ fn rust_variant_construct_host_transport_descriptor() -> HostTransportDescriptor
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
+        program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
       }
     ],
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_cargo },
+      program: HostToolProgram { executable: "cargo" },
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
@@ -2072,12 +2072,12 @@ fn rust_logic_complement_host_transport_descriptor() -> HostTransportDescriptor 
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
+        program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
       }
     ],
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_cargo },
+      program: HostToolProgram { executable: "cargo" },
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
@@ -2322,12 +2322,12 @@ fn rust_bool_fn_host_runtime_row(
         ],
         build: [
           ProcessInvocation {
-            program: HostToolProgram { tool: ^host_tool_cargo },
+            program: HostToolProgram { executable: "cargo" },
             args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
           }
         ],
         run: ProcessInvocation {
-          program: HostToolProgram { tool: ^host_tool_cargo },
+          program: HostToolProgram { executable: "cargo" },
           args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
         },
         runtime_value_codec: FixedWidthBytes { width: 5 }
@@ -2975,12 +2975,12 @@ fn rust_rec_nine_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
+        program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
       }
     ],
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_cargo },
+      program: HostToolProgram { executable: "cargo" },
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
@@ -3290,12 +3290,12 @@ fn rust_fold_call_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
+        program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
       }
     ],
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_cargo },
+      program: HostToolProgram { executable: "cargo" },
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }
