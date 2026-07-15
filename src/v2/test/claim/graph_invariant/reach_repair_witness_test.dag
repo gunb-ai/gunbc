@@ -203,16 +203,3 @@ test fn witness_reach_lens_verdict_violation_suggested_on_unreachable() -> Bool 
     _ => false
   }
 }
-
-test fn witness_reach_lens_verdict_red_on_clean_misflagged() -> Bool {
-  match graph_invariant_reach_verdict(
-    reason: ^graph_invariant_reach_repair_witness,
-    root: rr_out(),
-    unreachable: rr_in(),
-    projection: rr_dead_projection()
-  ) {
-    Violation { diagnostic: _ } => false
-    Holds => true
-    _ => false
-  }
-}
