@@ -1,7 +1,7 @@
 module test.claim.roadmap_frontier_witness
 
-import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_model {
+  RoadmapNodeId,
   RoadmapNode, RoadmapEdge,
   IntricacyHigh, VolumeMedium,
   PrsMerged,

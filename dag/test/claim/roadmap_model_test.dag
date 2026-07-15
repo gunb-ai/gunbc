@@ -1,11 +1,11 @@
 module test.claim.roadmap_model
 
-import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine,
   DriftVerdict, Drifted, Clean, Underivable,
 }
 import gunbc.roadmap_model {
+  RoadmapNodeId,
   Pointer,
   RoadmapNode, RoadmapEdge,
   RoadmapParent, TopLevel, UnderParent,

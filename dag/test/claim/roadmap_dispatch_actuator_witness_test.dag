@@ -1,9 +1,9 @@
 module test.claim.roadmap_dispatch_actuator
 
-import gunbc.roadmap_model { RoadmapNodeId }
 import std.types { NonEmptyStr, GitRef, FilePath }
 import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap_model {
+  RoadmapNodeId,
   RoadmapNode, RoadmapEdge,
   IntricacyHigh, VolumeMedium,
   PrsMerged,
