@@ -29,9 +29,8 @@ use crate::v1_std_core::{
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items,
-    param_node_name_at,
-    param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    param_node_name_at, param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData,
+    InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -3725,8 +3724,13 @@ fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
     if !name.contains('.') {
         return None;
     }
-    name.rfind('.')
-        .and_then(|pos| if pos > 0 { Some(name[..pos].to_string()) } else { None })
+    name.rfind('.').and_then(|pos| {
+        if pos > 0 {
+            Some(name[..pos].to_string())
+        } else {
+            None
+        }
+    })
 }
 
 fn collect_qualified_projection_module_paths_from_node(
@@ -3815,22 +3819,24 @@ fn parse_module_node_from_index_source(
     }
 }
 
+// SCAFFOLD (§7 seed-retained HAND-RUST — Grammar lane G1 entry-scoped reconcile)
+// 🟡 dissolve-on: build_symbol_index_for_reconcile — parse/resolve provider modules
+// referenced by dotted qualified names in the entry import closure when absent from that
+// closure; dissolve when multi-entry SymbolIndex authority is modeled (.dag census over
+// the indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
 fn build_symbol_index_for_reconcile(
     index: &MultiEntryIndex,
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<SymbolIndex>, String> {
-    let mut symbol_index = v1_compiler_infer::build_symbol_index_census(
-        graph.modules.clone(),
-        source_indices.clone(),
-    );
+    let mut symbol_index =
+        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices.clone());
     let closure_module_names: HashSet<String> = graph
         .modules
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
-    for module_path in qualified_projection_module_paths_in_graph(&graph, source_indices.clone())
-    {
+    for module_path in qualified_projection_module_paths_in_graph(&graph, source_indices.clone()) {
         if closure_module_names.contains(&module_path) {
             continue;
         }
@@ -3841,10 +3847,8 @@ fn build_symbol_index_for_reconcile(
         let mut provider_si = (*source_indices).clone();
         provider_si.insert(provider_nl_index.file.clone(), provider_nl_index);
         let provider_si = Rc::new(provider_si);
-        let provider_graph = v1_compiler_resolve::resolve_modules(
-            Rc::new(vec![module].into()),
-            provider_si.clone(),
-        );
+        let provider_graph =
+            v1_compiler_resolve::resolve_modules(Rc::new(vec![module].into()), provider_si.clone());
         let provider_index = v1_compiler_infer::build_symbol_index_census(
             provider_graph.modules.clone(),
             provider_si,
@@ -3869,7 +3873,8 @@ fn reconcile_with_typed_cache(
     // global_bare_fallback_invariant in v1_compiler_infer_env.
     let global_bare =
         v1_compiler_infer::build_global_bare_census(graph.modules.clone(), source_indices.clone());
-    let symbol_index = get_or_build_corpus_symbol_index(index)?;
+    let symbol_index =
+        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the

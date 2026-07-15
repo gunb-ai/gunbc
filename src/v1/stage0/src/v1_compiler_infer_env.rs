@@ -672,13 +672,16 @@ pub fn lookup_qualified_module_projection(
     env: Rc<TypeEnv>,
     name: String,
 ) -> Option<Rc<TypeBinding>> {
-    match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-        Some(resolved) => Some(Rc::new(TypeBinding {
-            name: name.clone(),
-            resolved: resolved.clone(),
-            provenance: Rc::new(SubValueRelation::SubValueUnknown),
-        })),
-        None => None,
+    match v1_rt::contains(name.clone(), ".".to_string()) {
+        false => None,
+        true => match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+            Some(resolved) => Some(Rc::new(TypeBinding {
+                name: name.clone(),
+                resolved: resolved.clone(),
+                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+            })),
+            None => None,
+        },
     }
 }
 

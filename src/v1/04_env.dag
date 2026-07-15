@@ -390,16 +390,20 @@ fn lookup_binding_after_global_bare(env: TypeEnv, name: String) -> TypeBinding? 
 }
 
 fn lookup_qualified_module_projection(env: TypeEnv, name: String) -> TypeBinding? {
-  match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
-    Present { value: resolved } =>
-      Present {
-        value: TypeBinding {
-          name: name,
-          resolved: resolved,
-          provenance: SubValueUnknown
-        }
+  match contains(name, ".") {
+    false => Absent
+    true =>
+      match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
+        Present { value: resolved } =>
+          Present {
+            value: TypeBinding {
+              name: name,
+              resolved: resolved,
+              provenance: SubValueUnknown
+            }
+          }
+        Absent => Absent
       }
-    Absent => Absent
   }
 }
 
