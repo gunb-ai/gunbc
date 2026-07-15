@@ -7,7 +7,7 @@ import v2.compiler.self_host.frontier {
 }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
-import v2.std.text { String, concat }
+import v2.std.text { String }
 
 fn escape_dag_string_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
