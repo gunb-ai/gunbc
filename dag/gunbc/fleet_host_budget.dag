@@ -274,7 +274,7 @@ fn fleet_host_plan_for(
     OomdEnforced =>
       match citation {
         JobserverAbsent =>
-          FleetHostPlanUnsound { reason: "ctrl-jobserver config citation absent: refuse to derive the build token bound without the cited installer knobs (margin / mem_reserve / mib_per_job)" }
+          FleetHostPlanUnsound { reason: "jobserver config citation absent: refuse to derive the build token bound without the cited installer knobs (margin / mem_reserve / mib_per_job)" }
         JobserverCited { config: cfg, provenance: _ } =>
           match container_baseline_bytes(c: runner) {
             BaselineUnmeasured { reason: r } => FleetHostPlanUnsound { reason: r }

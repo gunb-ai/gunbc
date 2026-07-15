@@ -1,9 +1,5 @@
 module test.claim.roadmap_dispatch_actuator
 
-<<<<<<< HEAD
-import gunbc.process_algebra { ProcessNodeId }
-=======
->>>>>>> origin/main
 import std.types { NonEmptyStr, GitRef, FilePath }
 import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap_model {

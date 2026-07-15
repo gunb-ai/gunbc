@@ -1,9 +1,5 @@
 module test.claim.roadmap_model
 
-<<<<<<< HEAD
-import gunbc.process_algebra { ProcessNodeId }
-=======
->>>>>>> origin/main
 import gunbc.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine,
   DriftVerdict, Drifted, Clean, Underivable,

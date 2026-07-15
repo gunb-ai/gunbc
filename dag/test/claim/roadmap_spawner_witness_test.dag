@@ -1,9 +1,5 @@
 module test.claim.roadmap_spawner
 
-<<<<<<< HEAD
-import gunbc.process_algebra { ProcessNodeId }
-=======
->>>>>>> origin/main
 import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode, RoadmapEdge, Pointer,

@@ -1,10 +1,6 @@
 module gunbc.roadmap_model
 
-<<<<<<< HEAD
-import gunbc.process_algebra { ProcessNodeId }
-=======
 import std.types { NonEmptyStr }
->>>>>>> origin/main
 import gunbc.roadmap_status { RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift }
 
 type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")

@@ -1,9 +1,5 @@
 module gunbc.roadmap_spawner
 
-<<<<<<< HEAD
-import gunbc.process_algebra { ProcessNodeId }
-=======
->>>>>>> origin/main
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
   Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,

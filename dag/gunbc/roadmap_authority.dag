@@ -10,10 +10,6 @@ import gunbc.roadmap_model {
   SectionElement, section_prose, section_group,
 }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, Signoff, Unsigned, SignedOff }
-<<<<<<< HEAD
-import gunbc.process_algebra { ProcessNodeId }
-=======
->>>>>>> origin/main
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import extdeps.languages.markdown { serialize_markdown_source }
 
