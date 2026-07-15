@@ -196,10 +196,9 @@ Ruled:
 
 Open:
 
-1. Home + name for the machine-shape authority (`std.machine_shape`?), and whether `Quantified<T>` should subsume `CostBasis` (§3: they smell like one evidence concept — but that convergence touches every `CostAccount` consumer, so it needs its own runway). **Witness-realization P1 (#6663) is a named third party to this convergence** — its `ObservePeakResidentAtSubject` receipts are `MeasuredBy` fills; one evidence carrier must land, not three (single owner TBD by operator; note both lanes queue edits to `realization_measurement.dag` — merge-order coordination needed).
-2. `Energy` vs `Watt` (DESIGN.md §2 divergence) — add the quantity or amend the doc? (Independently found as #6663 audit F3 — dedupe to one owner.)
-3. Whether Phase 4's law carrier should wait for the enforcement-intent lane (`StandingIntent` ⇄ `LensContract`) since "every combine inhabits Monoid" is precisely a standing intent — or land as a local carrier first and enroll later.
-4. Sequencing vs the namespace/SymbolIndex lane: OperandFlow derivation wants the containment SymbolIndex for cheap whole-tree walks; Phase 2 may be gated the same way the general body producer is.
-5. ~~Self-caught dual representation~~ **RESOLVED (operator agreement 2026-07-15)**: `MemoryLevel.sharing` dropped; sharing derives from graph structure (`SharedLevelEdge` membership). The §3 type block reflects this.
-6. **Scheduling-authority supersession (BLOCKS Phase 3)**: §5's declared extension of the signed hardware-free-topology invariant (`bounded-input-cost-envelope-scheduling.md:10-18`) — topology as a pure function of *declared* (Cited/Derived) machine shape, `MeasuredBy` still banned from topology, `schedule_eq` generalized to "equal given equal declared inputs" — requires explicit operator sign-off; the confined fallback (peripheral ordering-only affinity, membership untouched) is recorded in §5. (Review finding 2026-07-15.)
-7. Hash-authority convergence (BLOCKS Phase 2): ground `v2.std.node.Hash` and std `ContentHash` as one authority — the pre-existing fnv1a64 dual-surface thread, now with a consumer waiting on it.
+1. Whether Phase 4's law carrier waits for the enforcement-intent lane (`StandingIntent` ⇄ `LensContract`) since "every combine inhabits Monoid" is precisely a standing intent — or lands locally and enrolls later.
+2. Sequencing vs the namespace/SymbolIndex lane: OperandFlow derivation wants the containment SymbolIndex for cheap whole-tree walks; Phase 2 may be gated the same way the general body producer is.
+3. **Hash-authority convergence (BLOCKS Phase 2)**: ground `v2.std.node.Hash` and std `ContentHash` as one authority — the pre-existing fnv1a64 dual-surface thread, now with a consumer waiting. Dispatched as a work item under sunny-deer-248 (2026-07-15).
+4. **Witness-realization P0 field wall (#6663)**: record-literal field presence/type checking — Phase-1 acceptance-RED precondition; owned by the #6663 lane.
+
+(Earlier open items 1, 2, 5, 6 resolved as rulings 5–8 and the sharing resolution above.)
