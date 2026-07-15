@@ -37,7 +37,6 @@ data realization_edge_path_prefixes: List<String> = [
 data realization_vocab_exception_roster: List<String> = [
   "dag/extdeps/bmc/webui/nbd_proxy_serve.dag",
   "dag/gunbc/node_http_server_emit.dag",
-  "dag/gunbc/srv3_host_effect_script.dag",
   "dag/tools/build_step.dag",
   "dag/tools/host_prelude.dag",
   "src/v2/lens/duplicate_computation.dag",
