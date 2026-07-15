@@ -1,3 +1,0 @@
-module v2.test.resolve.parse_string_only_data
-
-data x: String = "y"

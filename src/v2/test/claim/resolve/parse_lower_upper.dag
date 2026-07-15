@@ -1,3 +1,0 @@
-module v2.test.parse_lower_upper
-
-type LocalAlias = foo.Bar

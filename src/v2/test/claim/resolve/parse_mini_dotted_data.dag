@@ -1,3 +1,0 @@
-module v2.test.resolve.parse_mini_dotted_data
-
-data x: foo.bar = "y"

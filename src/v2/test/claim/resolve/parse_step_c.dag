@@ -1,3 +1,0 @@
-module test.parse_step_c
-
-data c: v2.Foo = "x"

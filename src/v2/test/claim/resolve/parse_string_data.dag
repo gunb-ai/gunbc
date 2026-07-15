@@ -1,3 +1,0 @@
-module test.parse_string_data
-
-data x: String = "y"

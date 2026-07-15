@@ -1,3 +1,0 @@
-module v2.test.parse_dotted_module
-
-data x: String = "y"

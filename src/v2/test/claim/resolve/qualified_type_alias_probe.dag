@@ -1,3 +1,0 @@
-module v2.test.resolve.qualified_type_alias_probe
-
-type LocalAlias = v2.test.resolve.qualified_module_projection_provider.ProviderType

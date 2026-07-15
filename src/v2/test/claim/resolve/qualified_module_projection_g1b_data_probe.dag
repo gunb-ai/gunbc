@@ -1,3 +1,0 @@
-module v2.test.resolve.qualified_module_projection_g1b_data_probe
-
-data item: v2.test.resolve.qualified_module_projection_provider.ProviderType = "g1b"

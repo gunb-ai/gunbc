@@ -92,6 +92,13 @@ fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> L
   )
 }
 
+fn is_type_expr_annotation(n: Node) -> Bool {
+  match n.expr_data {
+    NoExprData => true
+    _ => false
+  }
+}
+
 fn is_width_nat_type_literal(n: Node) -> Bool {
   match n.expr_data {
     ExprLiteral { value: LitInt { value: _ } } => true
@@ -864,10 +871,12 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = match br { Present { value: r } => [vr.expr, r.expr]  Absent => [vr.expr] }
       let anno_resolved = if texpr.type_annotation == none {
         NodeResolveResult { resolved: unit_type, diagnostics: [] }
-      } else {
+      } else if is_type_expr_annotation(n: texpr.type_annotation.value) {
         resolve_node(n: texpr.type_annotation.value, env: env, module_name: module_name)
+      } else {
+        NodeResolveResult { resolved: texpr.type_annotation.value, diagnostics: [] }
       }
-      let resolved_anno = if texpr.type_annotation == none { none } else { Present { value: anno_resolved.resolved } }
+      let resolved_anno = if texpr.type_annotation == none { none } else if is_type_expr_annotation(n: texpr.type_annotation.value) { Present { value: anno_resolved.resolved } } else { texpr.type_annotation }
       let let_node = Node {
         name: let_binding_name_at(texpr: texpr, source_indices: env.source_indices),
         span: texpr.span,

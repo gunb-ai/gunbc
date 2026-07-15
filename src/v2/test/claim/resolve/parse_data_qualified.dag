@@ -1,3 +1,0 @@
-module v2.test.parse_data_qualified
-
-data item: v2.foo = "x"

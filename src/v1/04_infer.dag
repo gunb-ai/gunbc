@@ -164,6 +164,13 @@ import v1.compiler.infer_access {
   check_index_access_node, check_slice_access_node
 }
 
+fn is_type_expr_annotation(n: Node) -> Bool {
+  match n.expr_data {
+    NoExprData => true
+    _ => false
+  }
+}
+
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
 }
@@ -2181,7 +2188,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
         Absent => false
       }
-      let val_expected = if texpr.type_annotation != none {
+      let val_expected = if texpr.type_annotation != none && is_type_expr_annotation(n: texpr.type_annotation.value) {
         Present { value: texpr.type_annotation.value }
       } else if is_tail_return {
         expected

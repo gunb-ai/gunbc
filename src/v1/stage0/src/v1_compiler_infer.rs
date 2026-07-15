@@ -177,6 +177,10 @@ use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
+    matches!((*n.expr_data.clone()).clone(), ExprData::NoExprData)
+}
+
 pub fn is_witness_type_name(name: String) -> bool {
     ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
 }
@@ -4412,14 +4416,14 @@ match bare_s.clone() {
                     },
                     None => false,
                 };
-                let val_expected = if (texpr.type_annotation.clone() != None) {
+                let val_expected = if (texpr.type_annotation.clone() != None)
+                    && is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap())
+                {
                     Some(texpr.type_annotation.clone().clone().unwrap())
+                } else if is_tail_return.clone() {
+                    expected.clone()
                 } else {
-                    if is_tail_return.clone() {
-                        expected.clone()
-                    } else {
-                        None
-                    }
+                    None
                 };
                 let val_result = infer_expr(val_expr.clone(), scope.clone(), val_expected.clone());
                 let val_typed = val_result.typed.clone();

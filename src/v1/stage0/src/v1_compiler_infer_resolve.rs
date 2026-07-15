@@ -147,6 +147,10 @@ pub fn collect_unit_variant_phantom_matches(
     }
 }
 
+pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
+    matches!((*n.expr_data.clone()).clone(), ExprData::NoExprData)
+}
+
 pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {
     match (*n.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. } => {
@@ -2585,17 +2589,24 @@ pub fn resolve_expr_types(
                         resolved: unit_type(),
                         diagnostics: Rc::new(vec![]),
                     })
-                } else {
+                } else if is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()) {
                     resolve_node(
                         texpr.type_annotation.clone().clone().unwrap(),
                         env.clone(),
                         module_name.clone(),
                     )
+                } else {
+                    Rc::new(NodeResolveResult {
+                        resolved: texpr.type_annotation.clone().clone().unwrap(),
+                        diagnostics: Rc::new(vec![]),
+                    })
                 };
                 let resolved_anno = if (texpr.type_annotation.clone() == None) {
                     None
-                } else {
+                } else if is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()) {
                     Some(anno_resolved.resolved.clone())
+                } else {
+                    texpr.type_annotation.clone()
                 };
                 let let_node = Rc::new(Node {
                     name: let_binding_name_at(texpr.clone(), env.source_indices.clone()),

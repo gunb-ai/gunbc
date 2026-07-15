@@ -1,6 +1,0 @@
-module v2.test.resolve.qualified_module_projection_g1b_fixture_probe
-
-fn consumer() -> v2.test.resolve.qualified_module_projection_provider.ProviderType {
-  let x: v2.test.resolve.qualified_module_projection_provider.ProviderType = "g1b"
-  x
-}
