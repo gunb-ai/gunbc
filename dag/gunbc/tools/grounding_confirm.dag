@@ -1,5 +1,7 @@
 module gunbc.tools.grounding_confirm
 
+import extdeps.llm.anthropic
+import extdeps.llm.anthropic_rest
 
 data eval_corpus_path: String = "src/v2/lens/testdata/anemia_confirm_eval_corpus.json"
 

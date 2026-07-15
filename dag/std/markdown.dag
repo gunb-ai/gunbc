@@ -1,5 +1,15 @@
 module std.markdown
 
+import std.markup {
+  Fragment,
+  Element,
+  FragmentText,
+  Attribute,
+  AttributeContext,
+  UrlContext,
+
+}
+
 type HeadingLevel = H1 | H2 | H3 | H4 | H5 | H6
 
 type MarkdownInline
@@ -226,4 +236,3 @@ fn markdown_document_to_fragment(doc: MarkdownDocument) -> Fragment {
     children: markdown_blocks_to_fragments(blocks: doc.blocks),
   }
 }
-

@@ -1,5 +1,7 @@
 module std.approximate_field
 
+import std.algebra { Field }
+import std.integer { PositiveInt }
 
 type RoundingMode
   = ToNearestEven

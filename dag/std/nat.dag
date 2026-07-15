@@ -1,5 +1,7 @@
 module std.nat
 
+import std.algebra { CommutativeSemiring, Ordering, Less, Equal, Greater }
+import std.magnitude { Magnitude }
 
 type Nat = CommutativeSemiring<Magnitude>
 

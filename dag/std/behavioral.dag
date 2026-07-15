@@ -1,5 +1,6 @@
 module std.behavioral
 
+import std.determinism { Determinism }
 
 type SideEffects = ReadOnly | WritesState | WritesExternal
 

@@ -1,5 +1,6 @@
 module std.markup
 
+import std.string_type { String }
 
 type EscapeContext = TextContext | AttributeContext | UrlContext
 

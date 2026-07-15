@@ -1,5 +1,15 @@
 module gunbc.idea_pr_spine
 
+import std.types { List }
+import std.reducible {
+  ReduceVerdict, Reduced, Irreducible, Unknown,
+  reduce_verdicts_located,
+}
+import ctrl.review_verdict {
+  ReviewVerdict, Approve, ApproveWithComments, RequestChanges,
+  NeedsHumanTriage, NoVerdict,
+  ReviewProvider, Llm, Claude, HumanReviewer, ProviderOther,
+}
 
 type WorkProduct
   = DesignPlan

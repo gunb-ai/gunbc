@@ -1,2 +1,4 @@
 module std.list
 
+import std.types { List }
+

@@ -1,5 +1,12 @@
 module gunbc.tools.review
 
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Step, render_cron_schedule }
+import gunbc.tools.cron_tag { upsert_tagged_cron_tab }
+import extdeps.github.pulls
+import std.types { CommitSha }
+import extdeps.llm.anthropic
+import extdeps.llm.anthropic_rest
+import extdeps.shell
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: CronSchedule = CronSchedule {

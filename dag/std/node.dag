@@ -1,5 +1,9 @@
 module std.node
 
+import std.induction {
+  InductiveField, RecursionShape,
+  DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion
+}
 
 data compiler_inductive_fields: List<InductiveField> = [
 

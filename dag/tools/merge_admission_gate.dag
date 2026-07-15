@@ -1,5 +1,26 @@
 module tools.merge_admission_gate
 
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { ContentHash }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.merge_admission {
+  current_gate_roster_hash,
+  classify_merge_admission_verdict,
+  MergeAdmissionVerdict,
+  MergeDeniedStaleBase,
+  MergeDeniedStaleRoster,
+  MergeDeniedNotSuccess,
+  MergeAdmitted,
+}
+import gunbc.merge_admission_produce {
+  merge_admission_receipt_path,
+  merge_admission_merge_base_ref,
+  parse_receipt_wire,
+  ci_repo_root_shell,
+  shell_stdout_line,
+}
+import gunbc.ci_failure_class { merge_admission_blocks_merge }
 
 fn merge_target_tree_hash() -> ContentHash {
   let result = shell.Exec.Run(

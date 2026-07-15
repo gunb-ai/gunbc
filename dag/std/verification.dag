@@ -1,5 +1,7 @@
 module std.verification
 
+import std.nat { Nat }
+import std.measure { Measure, Time, Nano, measure_count }
 
 type NanosecondDuration = Measure<Time, Nano, Nat>
 

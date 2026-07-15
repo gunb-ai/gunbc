@@ -1,5 +1,6 @@
 module std.exec_format
 
+import std.types { Bool }
 
 type ExecutableFormatFamily
   = Elf
