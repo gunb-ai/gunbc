@@ -1,0 +1,38 @@
+module std.diagnostic
+
+import std.types { String, Int }
+
+data diagnostic_home_note: String = "Diagnostic is the single authority for located lens/schedule verdict messages at the dag/std layer (W1.2 reground). v2.std.diagnostic is the compiler-layer surface with Node-bearing Correction.Suggested; this carrier holds the shared Extent/Locus/Correction shape for std-layer consumers until the node defork promotes the full record here (execution_mode re-home pattern). LensVerdict and schedule-lens violations ground here — no parallel LensVerdictDiagnostic."
+
+type Extent
+  = WholeFile
+  | ByteRange { start: Int, end: Int }
+
+type Locus
+  = Textual { file: String, extent: Extent }
+
+type NoCorrectionReason
+  = UserInputBoundary
+  | AmbiguousIntent
+  | ExternalContractUnknown
+
+type Correction
+  = Unavailable { reason: NoCorrectionReason }
+
+type Diagnostic {
+  reason: String
+  at: Locus
+  correction: Correction
+}
+
+fn module_whole_file_locus(module_name: String) -> Locus {
+  Textual { file: module_name, extent: WholeFile }
+}
+
+fn module_diagnostic_unavailable(reason: String, module_name: String) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: module_whole_file_locus(module_name: module_name),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}

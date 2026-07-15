@@ -1,15 +1,35 @@
 module std.lens_verdict
 
-type LensVerdictLocus
-  = ModuleWholeFile { module_name: String }
+import std.diagnostic { Diagnostic, module_diagnostic_unavailable, module_whole_file_locus }
 
-type LensVerdictDiagnostic {
-  reason: String
-  at: LensVerdictLocus
-}
+data lens_verdict_home_note: String = "LensVerdict is the shared fail-closed lattice for lenses that have not yet specialized to a mechanism-specific verdict authority (ReachVerdict, LadderVerdict, VacuityEvidence, …). Diagnostics ground on std.diagnostic — not the retired LensVerdictDiagnostic/LensVerdictLocus fork (W1.2)."
 
 type LensVerdict
   = Holds
-  | Violation { diagnostic: LensVerdictDiagnostic }
-  | NotApplicable { diagnostic: LensVerdictDiagnostic }
-  | Unrealized { diagnostic: LensVerdictDiagnostic }
+  | Violation { diagnostic: Diagnostic }
+  | NotApplicable { diagnostic: Diagnostic }
+  | Unrealized { diagnostic: Diagnostic }
+
+fn lens_verdict_module_violation(reason: String, module_name: String) -> LensVerdict {
+  Violation {
+    diagnostic: module_diagnostic_unavailable(reason: reason, module_name: module_name)
+  }
+}
+
+fn lens_verdict_module_unrealized(reason: String, module_name: String) -> LensVerdict {
+  Unrealized {
+    diagnostic: module_diagnostic_unavailable(reason: reason, module_name: module_name)
+  }
+}
+
+fn lens_verdict_module_not_applicable(reason: String, module_name: String) -> LensVerdict {
+  NotApplicable {
+    diagnostic: module_diagnostic_unavailable(reason: reason, module_name: module_name)
+  }
+}
+
+fn lens_verdict_diagnostic_locus_module(d: Diagnostic) -> String {
+  match d.at {
+    Textual { file: module_name, extent: _ } => module_name
+  }
+}
