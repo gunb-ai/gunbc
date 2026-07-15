@@ -665,6 +665,13 @@ pub fn lookup_field_in_variant(
     }
 }
 
+fn variant_pattern_coverage_key(name: String) -> String {
+    match name.rsplit_once('.') {
+        Some((_, last)) => last.to_string(),
+        None => name,
+    }
+}
+
 pub fn check_match_exhaustiveness(
     scrutinee_type: Rc<Node>,
     arms: Rc<Vec<Rc<Node>>>,
@@ -743,7 +750,11 @@ pub fn check_match_exhaustiveness(
                             .clone()
                             {
                                 MatchPattern::VariantPattern { name: n, .. } => {
-                                    v1_rt::rc_map_insert(acc.clone(), n.clone(), true)
+                                    v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        variant_pattern_coverage_key(n.clone()),
+                                        true,
+                                    )
                                 }
                                 MatchPattern::LitPattern { value: v, .. } => {
                                     match (*v.clone()).clone() {

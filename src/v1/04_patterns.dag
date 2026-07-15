@@ -286,6 +286,10 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
   }
 }
 
+fn variant_pattern_coverage_key(name: String) -> String {
+  fold(split(name, separator: "."), init: name, f: (_, seg) => seg)
+}
+
 fn check_match_exhaustiveness(
   scrutinee_type: Node,
   arms: List<Node>,
@@ -328,7 +332,7 @@ fn check_match_exhaustiveness(
       let covered_set = arms |> fold(init: empty_map(), f: (acc, arm) =>
         match arm_pattern(n: arm) {
           VariantPattern { name: n, parent_enum: _, field_bindings: _ } =>
-            map_insert(acc, n, true)
+            map_insert(acc, variant_pattern_coverage_key(name: n), true)
           LitPattern { value: v } => match v {
             LitBool { value: b } => if b { map_insert(acc, "True", true) } else { map_insert(acc, "False", true) }
             _ => acc
