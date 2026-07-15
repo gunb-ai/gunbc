@@ -62,7 +62,7 @@ A host is a *graph* of execution domains whose memory towers may share levels. "
 
 **§3 de-forks this phase performs rather than creating:**
 
-1. **`LocalityTier` unifies with `cache_interface`'s lattice, not beside it.** `dag/std/cache_interface.dag` already has `PersistenceLocality = InProcess | PerRunnerFilesystem | PerHostFilesystem | CrossHostNetwork` and `ReadLatencyClass = InProcessNs | LocalDiskUs | LanMs | WanTensMs` with a monotone-locality law (`cache_layer_ids_respect_locality`, :382-403). A register/L1/LLC/DRAM tier is **new rungs on that one lattice** (below `InProcessNs`), not a second hierarchy. The nanosecond memoization and the CAS artifact store are the same concept at two breadths — §2 horizontal, the same claim the Realization pattern already proved across ns→sccache→OS provisioning. Keying semantics (`CacheKeying`, `ProviderTier`) stay `cache_interface`'s own; only the locality/latency axis unifies.
+1. **`LocalityTier` unifies with `cache_interface`'s lattice, not beside it** (decided 2026-07-15: the lattice lifts *out* to the std authority and `cache_interface` imports it). `dag/std/cache_interface.dag` already has `PersistenceLocality = InProcess | PerRunnerFilesystem | PerHostFilesystem | CrossHostNetwork` and `ReadLatencyClass = InProcessNs | LocalDiskUs | LanMs | WanTensMs` with a monotone-locality law (`cache_layer_ids_respect_locality`, :382-403). A register/L1/LLC/DRAM tier is **new rungs on that one lattice** (below `InProcessNs`), not a second hierarchy. The nanosecond memoization and the CAS artifact store are the same concept at two breadths — §2 horizontal, the same claim the Realization pattern already proved across ns→sccache→OS provisioning. Keying semantics (`CacheKeying`, `ProviderTier`) stay `cache_interface`'s own; only the locality/latency axis unifies.
 2. **GPU interconnect de-forks `PcieLink` from storage.** `NvmeDeviceCatalogRow.pcie_link: PcieLink` with derived per-lane bandwidth already exists (`dag/extdeps/storage/types.dag:23-38,56`); `GpuModelCatalogRow` has no bus. Move/share `PcieLink` at the layer both can import and add `interconnect: PcieLink` to GPU rows — cited, like the NVMe rows.
 3. **CPU catalog rows gain cited cache geometry** (`dag/extdeps/cpu/*`): L1d/L2/L3 capacity + line size per SKU, cited to vendor datasheets — same discipline as the DRAM organization axes. The Ampere row is the natural first fill (fleet hardware).
 4. **Concrete GPU fill**: RTX 5090 / Apple M5 rows already carry `execution_lane_count`, `memory_bandwidth`, `boost_clock` (`dag/extdeps/gpu/nvidia.dag:18-38`) — enough for a roofline once shaped. Add SM shared-memory/register-file levels as cited rows. (The demo cites an "A100" with no catalog row — either add the row or repoint the demo at a cited device.)
@@ -71,7 +71,7 @@ A host is a *graph* of execution domains whose memory towers may share levels. "
 
 Acceptance (green-by-execution): witness that one `MachineShape` value with all-`UnknownQuantity` magnitudes is constructible and consumable (the abstract shape is a citizen); witness that the concrete RTX 5090 fill derives a roofline bound; RED: a hand-authored magnitude with no citation refuses (no authored literals — the 2026-07-12 ruling generalized).
 
-## 3. Phase 2 — operand facts on edges (the crux the survey located)
+## 4. Phase 2 — operand facts on edges (the crux the survey located)
 
 Today `DependencyView` edges carry no operand: the scheduler collapses `DataDependsOn` to a Bool (`src/v2/workflow/scheduler.dag:55-73`), so shared-operand structure — N consumers of one value — is invisible to batch formation. Locality is a property of *edges* (data flowing), not nodes; this phase gives it a carrier.
 
@@ -81,7 +81,7 @@ Today `DependencyView` edges carry no operand: the scheduler collapses `DataDepe
 
 Acceptance: for a fixture graph with one Substantial shared operand and two consumers, the derived `OperandFlow` rows name the same `ContentHash` with equal derived footprints; RED: a graph whose footprint is unsettled yields typed `UnknownQuantity` rows and *no* affinity claim downstream.
 
-## 4. Phase 3 — locality: affinity as derived topology (every level of the tower, any machine)
+## 5. Phase 3 — locality: affinity as derived topology (every level of the tower, any machine)
 
 The repel primitive exists (`runnable_excludes_corpus_co_residence` → `ResourceDependsOn` edges, `ci_floor_plan.dag:322-352`); the attract dual does not. Constraint from the signed scheduling design (`bounded-input-cost-envelope-scheduling.md` invariant 4): "Schedule topology stays central... measured decisions must not break `schedule_eq` across hosts." Therefore affinity must be **derived centrally from graph facts** (OperandFlow rows — pure, deterministic, host-independent), exactly like the exclusion edges are today. It is topology, not a peripheral host tweak:
 
@@ -91,7 +91,7 @@ The repel primitive exists (`runnable_excludes_corpus_co_residence` → `Resourc
 
 Acceptance: a two-consumer shared-operand fixture schedules the consumers co-batch when capacity evidence admits both, with a `TrafficAccount` showing the operand loaded once; RED (discriminating): force the consumers into separate batches and the account shows the double load — the defect is *visible in the account*, which is the point.
 
-## 5. Phase 4 — within-fold parallelization: licensed by algebraic evidence, priced by lane facts
+## 6. Phase 4 — within-fold parallelization: licensed by algebraic evidence, priced by lane facts
 
 A serial fold is optimal at `lane_count = 1` and leaves `lane_count − 1` lanes idle otherwise — one derived cost, no machine kinds. What licenses parallelizing *within* a fold (tree-reduce/scan) is associativity of the combine. MapReduce demands it by assertion; this substrate can demand it **by executed witness**. Note the first consumer is not a GPU: the demo's contiguous-loop/SIMD path is a CPU execution domain with `lane_count > 1`, and it is where the seam already lives ("Build the seam on CPU... same plan, one target row → GPU", accelerator-demo-roundtrip.md:110-111) — the GPU is the same recognition with a larger fill and an interconnect edge to price, not a second path:
 
@@ -101,7 +101,7 @@ A serial fold is optimal at `lane_count = 1` and leaves `lane_count − 1` lanes
 - **Placement is priced, not preferred.** A step's domain is chosen by comparing, per candidate domain in the machine graph, `edge_crossing_cost + roofline_time(domain)` over evidence-carrying quantities — the operand's current domain is just one candidate whose crossing cost is zero. Any `UnknownQuantity` in the comparison → stay at the operand's current domain with a counted `PlacementUndecidable{missing}` diagnostic. No "prefer GPU" flag exists; no domain-kind is consulted (none exists to consult).
 - **Realization handlers are the existing seams**: simd contiguous-loop (live), WGSL kernel (dormant, `feature:dag-gpu-realization-handler` — waking it is this phase's optional closer, operator-gated). Differential witness against the scalar oracle stays the acceptance instrument.
 
-## 6. The orthogonality proof (the §7 deliverable)
+## 7. The orthogonality proof (the DESIGN §7 deliverable)
 
 One derivation, **three fills on one axis**, by execution: run the same computation graph (the demo's fused elementwise chain + one witnessed-associative reduction) through the one scheduling kernel against three `MachineShape` fills that differ only in facts — scalar domain (`lane_count: 1`, Ampere core), SIMD domain (`lane_count: ~8-16`, same tower), many-lane domain behind a `LinkEdge` (RTX 5090 fill, `lane_count: 21760`):
 
@@ -112,7 +112,7 @@ One derivation, **three fills on one axis**, by execution: run the same computat
 
 That set of REDs *is* the orthogonality claim made executable: the schedule is a function of machine facts — monotone where the facts are ordered — and every cross-term is either derived or a typed refusal.
 
-## 7. Non-goals and standing walls
+## 8. Non-goals and standing walls
 
 - No interpreter parallelization (Rc→Arc gate removed, operator-signed — parallelism stays at the plan/Runnable grain).
 - No hash-partition-by-key primitive; sharding remains "an independent region of the DependencyView" (execution-spine-design §5).
