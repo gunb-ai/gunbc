@@ -34,7 +34,6 @@ import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_login_body_path,
   srv3_bmcweb_login_response_path,
   srv3_bmcweb_token_path,
-  srv3_nbd_proxy_serve_script_path,
   srv3_sol_console_log_path,
 }
 import extdeps.languages.bash.program { serialize_bash }
@@ -147,16 +146,6 @@ fn srv3_bmcweb_token_extract_script() -> String {
   )
 }
 
-fn srv3_nbd_proxy_serve_wrapper_script() -> String {
-  concat(
-    concat(
-      concat("export BMCWEB_SESSION_TOKEN=$(cat ", srv3_bmcweb_token_path),
-      "); bash ",
-    ),
-    srv3_nbd_proxy_serve_script_path,
-  )
-}
-
 fn srv3_join_adjacent_pairs(parts: List<String>) -> List<String> {
   let paired = fold(
     parts,
@@ -228,8 +217,7 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
       Present { value: shell_exec_via_bash(body: srv3_bmcweb_session_login_script()) }
     Srv3BmcwebTokenExtract =>
       Present { value: shell_exec_via_bash(body: srv3_bmcweb_token_extract_script()) }
-    Srv3NbdProxyServe =>
-      Present { value: shell_exec_via_bash(body: srv3_nbd_proxy_serve_wrapper_script()) }
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => Absent
     Srv3BootOnceReadBackSleep =>
       Present {
         value: shell_exec_via_bash(
