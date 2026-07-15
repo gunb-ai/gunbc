@@ -2949,7 +2949,8 @@ pub fn infer_expr(
                                     scope.module_name.clone(),
                                 )]),
                             })
-                        }
+                            }
+                        },
                     },
                 }
             }
@@ -12749,7 +12750,6 @@ pub fn local_binding_for_census_item(
         None => {
             if (item.body.clone() != None)
                 && ((item.params.clone().len() as i64) == 0)
-                && (item.inferred.clone() == None)
                 && (item.type_annotation.clone() != None)
             {
                 Some(Rc::new(TypeBinding {
