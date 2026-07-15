@@ -27,6 +27,7 @@ import v2.std.compilers.target_model {
   TargetModel,
   bound_tokens_source_text,
   phrase_to_fixed_concrete_tokens,
+  render_target_text,
   target_model_emit_transforms_empty,
   target_model_make_with_emit_transforms,
   concrete_syntax_token_to_node
@@ -1951,7 +1952,7 @@ fn bash_stmt_if_target_model(cond: String, body: String) -> Outcome<TargetModel>
           source_literal: ^bash_stmt_if_source_literal,
           production_name: ^bash_production_stmt_if,
           tokens: bash_stmt_if_tokens(),
-          source_text: source_text,
+          source_text: render_target_text(t: source_text),
           lex: bash_stmt_if_lex(),
           binding_spellings: bash_stmt_if_binding_spellings(cond: cond, body: body)
         )

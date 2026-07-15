@@ -10,6 +10,8 @@ import v2.lens.affected_set.entry_selection {
   entry_affected_by_dependency_view
 }
 import std.types { String, Bool, List, list_length }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type CompileCleanScopeDisposition
   = ScopedRun { entry_paths: List<String> }
@@ -31,14 +33,25 @@ fn compile_clean_touched_path_is_docs_only(path: String) -> Bool {
   )
 }
 
-fn compile_clean_touches_allow_skip(touched_paths: List<String>) -> Bool {
-  list_length(items: touched_paths) == 0
-    || fold(
+fn compile_clean_all_touched_paths_docs_universe(touched_paths: List<String>) -> Bool {
+  list_length(items: touched_paths) > 0
+    && fold(
       touched_paths,
       init: true,
       f: fn(ok, p) { ok && compile_clean_touched_path_is_docs_only(path: p) }
     )
 }
+
+data compile_clean_docs_universe_path_grain_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "tools.dag_compile_clean_scope",
+    decl_name: "compile_clean_all_touched_paths_docs_universe",
+    field: WholeDeclaration
+  }
+}
+
+data compile_clean_docs_universe_path_grain_dissolve_trigger: String = "🟡 dissolve-on: compile_clean_docs_universe_path_grain — docs/** path-prefix predicate short-circuits floor admission before #6239 substrate-ready affected-set scoping; DISSOLVES WHEN corpus_dependency_view_per_pr_substrate_ready and entry_affected_by_dependency_view over the merge-base diff are the sole authority for docs-only skip (witness bin reads scope disposition without pre-substrate short-circuit)"
 
 fn compile_clean_pool_roots() -> List<String> {
   compile_clean_partition_boundary().pool_roots
@@ -85,15 +98,13 @@ fn compile_clean_scope_disposition_from_touched_with_roster(
   touched_paths: List<String>,
   roster: List<String>
 ) -> CompileCleanScopeDisposition {
-  if compile_clean_touches_allow_skip(touched_paths: touched_paths) {
-    if list_length(items: touched_paths) == 0 {
-      SkipNoAffectedEntries {
-        reason: "no compile-clean entry DependencyView frontier intersects touched paths"
-      }
-    } else {
-      SkipNoAffectedEntries {
-        reason: "docs-only diff — no compile-clean entry selection required"
-      }
+  if list_length(items: touched_paths) == 0 {
+    SkipNoAffectedEntries {
+      reason: "no touched paths in diff observation"
+    }
+  } else if compile_clean_all_touched_paths_docs_universe(touched_paths: touched_paths) {
+    SkipNoAffectedEntries {
+      reason: "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
     }
   } else if corpus_dependency_view_per_pr_substrate_ready() == false {
     RequireWholeTree {
@@ -110,7 +121,7 @@ fn compile_clean_scope_disposition_from_touched_with_roster(
       ScopedRun { entry_paths: affected }
     } else {
       RequireWholeTree {
-        reason: "non-empty non-docs diff with no shard intersection — whole-tree baseline"
+        reason: "non-empty diff with no shard intersection — whole-tree baseline"
       }
     }
   }
@@ -158,6 +169,7 @@ type ScopeDispositionRow {
 data scope_disposition_rows: List<ScopeDispositionRow> = [
   ScopeDispositionRow { touched: "docs/plans/example.md", expect: ExpectSkip },
   ScopeDispositionRow { touched: "./docs/plans/example.md", expect: ExpectSkip },
+  ScopeDispositionRow { touched: "dag/gunbc/plans/example.dag", expect: ExpectWholeTree },
   ScopeDispositionRow { touched: "dag/std/logic.dag", expect: ExpectScopedContaining { required_entry: "dag/std/logic.dag" } },
   ScopeDispositionRow { touched: "src/v1/stage0/src/cli_run.rs", expect: ExpectWholeTree },
   ScopeDispositionRow { touched: ".github/workflows/ci.yml", expect: ExpectWholeTree },

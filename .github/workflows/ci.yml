@@ -66,14 +66,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! ("$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc --bin compile_clean_floor_skip_witness --bin floor_skip_discovery_witness --bin discover_source_root_ingest --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness || exit 1
                 else
                   exit 1
                 fi
@@ -84,13 +84,13 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness"
           sccache --show-stats 2>/dev/null || true
         timeout-minutes: 45
       - name: Pack release bins for cross-job handoff (tar keeps exec bits)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          tar -czf "$ROOT/release-bins.tgz" -C "$ROOT/target/release" "claim_executor" "gunbc" "floor_skip_discovery_witness" "discover_source_root_ingest" "claim_batch" "regen_stage0" "interp_recorded_fixture_witness" "v1_src_dag_parse" "auth_declared_but_unwired_witness" "bootstrap_witness" "dag_collect_fingerprint_witness" "diagnostics_witness" "effects_rest_transport_witness" "infer_semantics_witness" "parse_witness"
+          tar -czf "$ROOT/release-bins.tgz" -C "$ROOT/target/release" "claim_executor" "gunbc" "compile_clean_floor_skip_witness" "floor_skip_discovery_witness" "discover_source_root_ingest" "claim_batch" "regen_stage0" "interp_recorded_fixture_witness" "v1_src_dag_parse" "auth_declared_but_unwired_witness" "bootstrap_witness" "dag_collect_fingerprint_witness" "diagnostics_witness" "effects_rest_transport_witness" "infer_semantics_witness" "parse_witness"
         timeout-minutes: 5
       - name: Upload release-bins artifact
         uses: actions/upload-artifact@v4
@@ -158,7 +158,7 @@ jobs:
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/compile_clean_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness"
         timeout-minutes: 5
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)
         run: |
@@ -175,31 +175,16 @@ jobs:
           # Positive floor-running stamp at the start of every floor step clears stale documentation_only_skipped left in target/ on persistent self-hosted runners (review 37010 / operator ruling 2026-07-11). Receipt gates skip only on an exact documentation_only_skipped match — never on file presence alone.
           mkdir -p target
           echo floor_running > target/ci-floor-disposition.txt
-          _ci_changed=$(git diff --name-only origin/main...HEAD 2>/dev/null || true)
-          if [ -n "$_ci_changed" ]; then
-          # Interim plan-artifact scoping: merge-base diffs whose only changed paths are under docs/ or dag/gunbc/plans/ run compile-clean then skip the witness corpus. Path-prefix matching is an interim heuristic — dissolve-on: affected-set-scoped compile-clean (Ruling 1 path grain) replaces it. Empty _ci_changed (git fetch/diff failure) short-circuits this block and falls through to the full floor (fail-closed, not widening). Merge-admission stamps Skipped (not Success) via CI_FLOOR_DISPOSITION=documentation_only_skipped so floor-not-run ≠ floor-green. Generated-artifact carriers (.gitignore, README.md/CLAUDE.md/DESIGN.md symlinks) are excluded from the allowlist — their only drift guard is floor-resident; whitelisting them would self-shortcut that gate (#6236 class). CI substrate (.github/workflows/ci.yml, dag/gunbc/ci_spec.dag, ci_spec witnesses) is likewise excluded.
-          # 🟡 dissolve-on: ci_documentation_only_floor_shortcut_script — concat-built bash path-prefix predicate + heredoc over git diff --name-only (interim path heuristic until affected-set-scoped compile-clean); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes floor scoping through orchestration emit and this shortcut retires
-            PLAN_ARTIFACT_ONLY=1
-            while IFS= read -r _ci_path; do
-              [ -z "$_ci_path" ] && continue
-              if [[ "$_ci_path" == docs/* ]] || [[ "$_ci_path" == dag/gunbc/plans/* ]]; then
-                :
-              else
-                PLAN_ARTIFACT_ONLY=0
-                break
-              fi
-            done <<_ci_diff_eof_
-          $_ci_changed
-          _ci_diff_eof_
-            if [ "$PLAN_ARTIFACT_ONLY" = "1" ]; then
+          # Affected-set-scoped floor admission (Ruling 1 path grain): compile_clean_floor_skip_witness reads tools.dag_compile_clean_scope disposition via the host fast path (entry_affected_by_dependency_view over the merge-base diff). A non-empty docs-only diff with no compile-clean shard intersection runs compile-clean batch 1 then skips the witness corpus; empty diff or diff-observation failure falls through to the full floor (fail-closed, not widening). Merge-admission stamps Skipped (not Success) via CI_FLOOR_DISPOSITION=documentation_only_skipped so floor-not-run ≠ floor-green.
+          _ci_floor_skip=$("$ROOT/target/release/compile_clean_floor_skip_witness" 2>/dev/null || echo run_full_floor)
+          if [ "$_ci_floor_skip" = "documentation_only_skip" ]; then
               "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_plan_artifact_batches || exit $?
               mkdir -p target
               echo documentation_only_skipped > target/ci-floor-disposition.txt
-              echo "claim_executor: plan-artifact-only diff — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=documentation_only_skipped)"
+              echo "claim_executor: docs-only diff (affected-set compile-clean skip) — compile-clean ok; floor skipped (CI_FLOOR_DISPOSITION=documentation_only_skipped)"
               CI_FLOOR_DISPOSITION=documentation_only_skipped "$ROOT/target/release/gunbc" run --source-root dag --entry dag/tools/merge_admission_stamp.dag --function main
               exit $?
             fi
-          fi
           set +e
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
           FLOOR_EXIT=$?

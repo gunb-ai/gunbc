@@ -15,8 +15,8 @@ import gunbc.ci_spec {
   scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
   ci_release_build_script, ci_floor_build_verify_script,
   ci_repo_root_shell,
-  ci_documentation_only_diff_note,
-  ci_documentation_only_floor_shortcut_shell_emit_dissolution_trigger,
+  ci_documentation_only_floor_policy_note,
+  compile_clean_floor_skip_witness_bin,
 }
 import gunbc.ci_diff_defaults { ci_merge_base_ref }
 import gunbc.ci_materialization {
@@ -39,7 +39,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\" \"$ROOT/target/release/floor_skip_discovery_witness\" \"$ROOT/target/release/discover_source_root_ingest\" \"$ROOT/target/release/claim_batch\" \"$ROOT/target/release/regen_stage0\" \"$ROOT/target/release/interp_recorded_fixture_witness\" \"$ROOT/target/release/v1_src_dag_parse\" \"$ROOT/target/release/auth_declared_but_unwired_witness\" \"$ROOT/target/release/bootstrap_witness\" \"$ROOT/target/release/dag_collect_fingerprint_witness\" \"$ROOT/target/release/diagnostics_witness\" \"$ROOT/target/release/effects_rest_transport_witness\" \"$ROOT/target/release/infer_semantics_witness\" \"$ROOT/target/release/parse_witness\"\n"
+data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\" \"$ROOT/target/release/compile_clean_floor_skip_witness\" \"$ROOT/target/release/floor_skip_discovery_witness\" \"$ROOT/target/release/discover_source_root_ingest\" \"$ROOT/target/release/claim_batch\" \"$ROOT/target/release/regen_stage0\" \"$ROOT/target/release/interp_recorded_fixture_witness\" \"$ROOT/target/release/v1_src_dag_parse\" \"$ROOT/target/release/auth_declared_but_unwired_witness\" \"$ROOT/target/release/bootstrap_witness\" \"$ROOT/target/release/dag_collect_fingerprint_witness\" \"$ROOT/target/release/diagnostics_witness\" \"$ROOT/target/release/effects_rest_transport_witness\" \"$ROOT/target/release/infer_semantics_witness\" \"$ROOT/target/release/parse_witness\"\n"
 
 data reflect_gate_type: Symbol = ^Gate
 
@@ -203,20 +203,18 @@ fn witness_documentation_only_shortcut_in_floor_script() -> Bool {
     string_contains(s: script, pattern: merge_admission_floor_disposition_documentation_only_skipped) &&
     string_contains(s: script, pattern: ci_floor_disposition_marker_path) &&
     string_contains(s: script, pattern: "mkdir -p target") &&
-    string_contains(s: script, pattern: "[[ \"$_ci_path\" == dag/gunbc/plans/* ]]") &&
+    string_contains(s: script, pattern: compile_clean_floor_skip_witness_bin) &&
+    string_contains(s: script, pattern: "documentation_only_skip") &&
     string_contains(s: script, pattern: "--plan-entry src/v2/workflow/ci_floor_plan.dag") &&
     string_contains(s: script, pattern: "--plan-function gunbc_ci_plan_artifact_batches") &&
     string_contains(s: script, pattern: merge_admission_stamp_invoke()) &&
     string_contains(s: script, pattern: "--source-root dag") &&
-    string_contains(s: script, pattern: ci_documentation_only_diff_note) &&
-    string_contains(s: script, pattern: ci_documentation_only_floor_shortcut_shell_emit_dissolution_trigger) &&
+    string_contains(s: script, pattern: ci_documentation_only_floor_policy_note) &&
+    string_contains(s: script, pattern: "affected-set compile-clean skip") &&
     !string_contains(s: script, pattern: "CI_FLOOR_EXIT=0") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == .github/workflows/ci.yml ]]") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == dag/gunbc/ci_spec.dag ]]") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == README.md ]]") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == CLAUDE.md ]]") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == DESIGN.md ]]") &&
-    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == .gitignore ]]") &&
+    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == docs/* ]]") &&
+    !string_contains(s: script, pattern: "[[ \"$_ci_path\" == dag/gunbc/plans/* ]]") &&
+    !string_contains(s: script, pattern: "PLAN_ARTIFACT_ONLY") &&
     !string_contains(s: script, pattern: "printf '%s")
 }
 
@@ -259,10 +257,9 @@ fn witness_floor_disposition_marker_initialized_before_docs_only_branch() -> Boo
     concat(" > ", ci_floor_disposition_marker_path)
   )
   string_contains(s: script, pattern: ci_floor_disposition_marker_init_note) &&
-    string_contains(
-      s: script,
-      pattern: concat(concat(stamp, "\n\n"), "_ci_changed=$(git diff")
-    )
+    string_contains(s: script, pattern: stamp) &&
+    string_contains(s: script, pattern: compile_clean_floor_skip_witness_bin) &&
+    string_contains(s: script, pattern: "2>/dev/null || echo run_full_floor")
 }
 
 fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
