@@ -948,7 +948,7 @@ mod global_bare_wiring_oracle_tests {
     use super::{
         anchor_source_root, build_corpus_global_bare_census_from_index,
         build_module_graph_facts_live, build_module_index_primary_precedence,
-        build_multi_entry_index, census_module_path_included,
+        build_multi_entry_index, census_module_contributes_declarations,
         compile_clean_diagnostic_histogram_key, compile_clean_diagnostic_is_hard,
         disable_floor_compile_clean_lazy_install_for_test, load_compile_clean_entry_sources,
         merge_source_indices, reconcile_with_typed_cache, set_census_eval_overlay,
@@ -1047,44 +1047,59 @@ mod global_bare_wiring_oracle_tests {
         Ok(hard_diag_stats(&result))
     }
 
-    /// Discriminating gate probes — fast, no whole-tree load.
-    /// Paths where inclusion/exclusion is unambiguous on both contribute and receive axes.
+    /// Discriminating gate probes for the Q1 CONTRIBUTION predicate — fast, no whole-tree
+    /// load. (The Q2 RECEIVE axis has no predicate: it is total. See the `typecheck_module`
+    /// call in the reconcile loop, which passes `global_bare.clone()` unconditionally.)
     #[test]
-    fn census_module_path_included_gate_probes() {
-        assert!(census_module_path_included("dag/std/types.dag"));
-        assert!(census_module_path_included(
+    fn census_module_contributes_declarations_gate_probes() {
+        assert!(census_module_contributes_declarations("dag/std/types.dag"));
+        assert!(census_module_contributes_declarations(
             "dag/gunbc/workflow_escalation.dag"
         ));
-        assert!(census_module_path_included(
+        assert!(census_module_contributes_declarations(
             "dag/gunbc/fleet_posix_accounts.dag"
         ));
-        assert!(census_module_path_included("src/v2/compiler/04_infer.dag"));
-        assert!(!census_module_path_included(
+        assert!(census_module_contributes_declarations(
+            "src/v2/compiler/04_infer.dag"
+        ));
+        // dag/test/** never contributes — test modules are not a naming authority.
+        assert!(!census_module_contributes_declarations(
             "dag/test/claim/parse_test.dag"
         ));
-        assert!(!census_module_path_included(
+        // Post-de-fork (option A): the docker homonym is NO LONGER excluded from
+        // contribution. It contributes; its collision with product.NetworkInterface
+        // surfaces as GlobalBareAmbiguousBinding and bare lookup refuses (§5), rather
+        // than being silently hidden so the other authority wins.
+        assert!(census_module_contributes_declarations(
             "dag/extdeps/docker/container_stats.dag"
         ));
     }
 
-    /// Characterizes the §3 conflation defect (quiet-gull-833 msg_a06c5010): one predicate
-    /// answers both "contributes declarations to census" and "receives census" in
-    /// `global_bare_for_decl_file`. Excluding `src/v2/std/*` homonyms is correct for Q1
-    /// but catastrophic for Q2 — this pins current defective receive-path behavior until
-    /// `census_module_contributes_declarations` / `census_module_receives_census` de-fork.
-    /// DELETE WHEN dissolved: this test must flip red when receive path is fixed.
+    /// The §3 conflation defect (quiet-gull-833 msg_a06c5010) is DISSOLVED: one predicate
+    /// used to answer both "contributes declarations" (Q1) and "receives census" (Q2) via
+    /// `global_bare_for_decl_file`, so `src/v2/std/*` homonyms typechecked against an empty
+    /// census — the ~9.3k "name not found" on #6640. The de-fork made Q2 total and Q1 its
+    /// own predicate. This test pins the FIX: a homonym module that (correctly) does NOT get
+    /// special exclusion now CONTRIBUTES, and its consumption is handled by the total Q2
+    /// path, not by this predicate. Reds if the receive-path gate is ever reintroduced.
     #[test]
-    fn census_module_path_included_receive_path_conflation_defect() {
+    fn receive_path_is_total_not_gated_by_contribution() {
+        // A src/v2/std homonym contributes (Q1) — no exclusion list.
         assert!(
-            !census_module_path_included("src/v2/std/algebra.dag"),
-            "defect characterization: receive path wrongly excludes src/v2/std homonym"
+            census_module_contributes_declarations("src/v2/std/algebra.dag"),
+            "de-fork: homonyms contribute; ambiguity surfaces at lookup, not via exclusion"
         );
+        // The Q2 receive path has no predicate at all — every module gets the census.
+        // `global_bare_for_decl_file` no longer exists; the reconcile-loop
+        // `typecheck_module` call passes `global_bare.clone()` directly.
     }
 
-    /// Whole-tree closure audit: which modules fail `census_module_path_included`?
+    /// Whole-tree closure audit: which modules do NOT contribute declarations to the
+    /// census? (Q1 axis. Post-de-fork these are only `dag/test/**` and non-`src/v2` paths;
+    /// the `src/v2/std` homonyms and docker are no longer excluded.)
     #[test]
     #[ignore = "whole-tree entry closure load; run with --ignored for locate-only census"]
-    fn census_module_path_included_gate_closure_audit() {
+    fn census_module_contributes_declarations_closure_audit() {
         disable_floor_compile_clean_lazy_install_for_test();
         std::env::remove_var("GITHUB_ACTIONS");
         std::env::remove_var("GUNBC_CI_DIFF_BASE");
@@ -1102,7 +1117,7 @@ mod global_bare_wiring_oracle_tests {
         let mut gate_false = 0usize;
         for sf in &sources {
             let rel = workspace_relative_repo_path(&sf.path);
-            if !census_module_path_included(&rel) {
+            if !census_module_contributes_declarations(&rel) {
                 gate_false += 1;
                 eprintln!("GATE_FALSE\t{rel}");
             }
@@ -1112,8 +1127,8 @@ mod global_bare_wiring_oracle_tests {
             sources.len()
         );
         assert!(
-            census_module_path_included("dag/std/types.dag"),
-            "probe dag/std/types.dag must pass gate"
+            census_module_contributes_declarations("dag/std/types.dag"),
+            "probe dag/std/types.dag must contribute to census"
         );
     }
 
@@ -3937,8 +3952,8 @@ fn build_corpus_global_bare_census_from_index(
             {
                 return false;
             }
-            // PR-5c import strip: see `census_module_path_included`.
-            census_module_path_included(&p)
+            // PR-5c import strip, Q1 only: see `census_module_contributes_declarations`.
+            census_module_contributes_declarations(&p)
         })
         .map(|(_, sf)| sf.clone())
         .collect();
