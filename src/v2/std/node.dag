@@ -1,6 +1,7 @@
 module v2.std.node
 
-import std.types { ContentHash }
+import std.algebra { FreeMonoid }
+import std.types { ContentHash, List }
 import std.content_hash { content_hash_atom, content_hash_combine }
 
 type Symbol
