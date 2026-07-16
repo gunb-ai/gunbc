@@ -831,12 +831,14 @@ mod regen_input_closure_tests {
             &closure
         ));
         assert!(regen_path_affects_regen("src/v1/03_resolve.dag", &closure));
-        // Cargo manifest / lockfile (emitter binary inputs).
+        // Cargo / toolchain build config (emitter binary inputs).
         assert!(regen_path_affects_regen("Cargo.lock", &closure));
         assert!(regen_path_affects_regen(
             "src/v1/stage0/Cargo.toml",
             &closure
         ));
+        assert!(regen_path_affects_regen("rust-toolchain.toml", &closure));
+        assert!(regen_path_affects_regen(".cargo/config.toml", &closure));
         // dag file in v1's transitive import closure.
         assert!(regen_path_affects_regen("dag/std/x.dag", &closure));
         // NOT affecting: v2 sources, unimported dag, docs — the skip-eligible surface.
@@ -1909,9 +1911,17 @@ fn regen_path_affects_regen(changed: &str, dag_closure: &HashSet<String>) -> boo
     if p.starts_with("src/v1/") {
         return true;
     }
-    // Cargo manifest / lockfile: the emitter binary is built from these; a dependency
-    // change could in principle alter emitted bytes. Rare in practice; fail-closed.
-    if p == "Cargo.lock" || p == "Cargo.toml" || p.ends_with("/Cargo.toml") {
+    // Cargo/toolchain build config: the emitter binary is built from these; a
+    // dependency, pinned-toolchain, or cargo-config change could in principle alter
+    // emitted bytes. Rare in practice; fail-closed (whole-file matches, no substring).
+    if p == "Cargo.lock"
+        || p == "Cargo.toml"
+        || p.ends_with("/Cargo.toml")
+        || p == "rust-toolchain.toml"
+        || p == "rust-toolchain"
+        || p == ".cargo/config.toml"
+        || p == ".cargo/config"
+    {
         return true;
     }
     // dag/** files in v1's transitive import closure.
@@ -1958,7 +1968,7 @@ pub fn regen_floor_skip_label_for_ci() -> String {
         }
         None => {
             eprintln!(
-                "regen floor skip: {} changed path(s), none intersect the regen input closure (src/v1/** ∪ v1 dag import-closure ∪ Cargo manifest) — self-host fixed-point provably unchanged; skipping (main + 4-hourly falsifier run it cold)",
+                "regen floor skip: {} changed path(s), none intersect the regen input closure (src/v1/** ∪ v1 dag import-closure ∪ Cargo/toolchain config) — self-host fixed-point provably unchanged; skipping (main + 4-hourly falsifier run it cold)",
                 changed_paths.len()
             );
             REGEN_NOT_AFFECTED_SKIP_LABEL.to_string()
