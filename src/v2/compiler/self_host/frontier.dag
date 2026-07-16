@@ -77,7 +77,7 @@ type CompilerModuleFrontierRow {
 
 data compiler_frontier_module_count_expected: Int = 27
 
-data compiler_frontier_self_emitted_baseline: Int = 3
+data compiler_frontier_self_emitted_baseline: Int = 4
 
 data compiler_frontier_qualified_module_bindings: List<FrontierQualifiedModuleBinding> = [
   FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/00_compile.dag", qualified_module: "v2.compiler.compile" },
@@ -299,11 +299,16 @@ data compiler_frontier_row_06_translate: CompilerModuleFrontierRow = knowledge_a
   migration_trigger: ^migrate_when_rust_value_expression_projection_wired
 )
 
-data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
   module_path: "src/v2/compiler/07_target_carriers.dag",
   closure_reads: 36,
-  measured_blocker: EmitSurfaceGap,
-  migration_trigger: ^migrate_when_rust_body_emit_track_b_completes
+  measured_probe: FrontierProbeReceipt {
+    module_path: "src/v2/compiler/07_target_carriers.dag",
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  },
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: EmitSurfaceGap)
 )
 
 data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
@@ -748,11 +753,6 @@ fn band_a_emit_readiness_other_gate_matches_frontier_row(row: BandAEmitReadiness
         trigger: trigger,
         row: compiler_frontier_row_use_site_verdict
       )
-        || band_a_emit_readiness_roster_row_trigger_matches(
-          module_path: row.module_path,
-          trigger: trigger,
-          row: compiler_frontier_row_07_target_carriers
-        )
         || band_a_emit_readiness_roster_row_trigger_matches(
           module_path: row.module_path,
           trigger: trigger,
