@@ -204,7 +204,10 @@ service shell.Exec {
       stderr: String from "stderr"
     }
 
-    transport shell { argv: ["sh", "-c", "{script}"] }
+    transport shell {
+      argv: ["sh", "-s"]
+      stdin: script
+    }
     exit {
       0 => Unit
       nonzero => String "Script failed"
