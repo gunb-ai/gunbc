@@ -569,7 +569,7 @@ fn cargo_invalidation_input(
     let bytes = fs::read(path)
         .map_err(|e| format!("read cargo invalidation input {}: {e}", path.display()))?;
     Ok(CargoInvalidationInput {
-        path: display_source_path(path, workspace),
+        path: v1_compiler::cli_run::regen_workspace_relpath(path, workspace),
         content_hash: format!("fnv1a64:{:016x}", fnv1a64(&bytes)),
         len_bytes: bytes.len() as u64,
     })
@@ -625,135 +625,23 @@ fn source_files_for_roots(
     roots: &[PathBuf],
     workspace: &Path,
 ) -> Result<Vec<Rc<SourceFile>>, String> {
-    let index = build_module_index(roots)?;
-    let entry_root = roots
-        .first()
-        .ok_or_else(|| "source root list must not be empty".to_string())?;
-    let mut entry_files = Vec::new();
-    let mut dag_paths = Vec::new();
-    collect_dag_files(entry_root, &mut dag_paths)?;
-    for path in dag_paths {
-        let content =
-            fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        entry_files.push((display_source_path(&path, workspace), content));
+    // The regen input closure ([src/v1, dag] entries + transitive import closure) is
+    // computed by the single authority `cli_run::regen_input_sources`, which the
+    // regen-affected-set skip witness also consumes — so "what regen reads" lives in
+    // exactly one place. `roots` must match that authority's roots (asserted here so a
+    // caller drift is a loud refusal, never a silent fork).
+    let expected = v1_compiler::cli_run::regen_source_roots(workspace);
+    if roots != expected.as_slice() {
+        return Err(format!(
+            "source_files_for_roots called with roots {roots:?}; regen closure authority \
+             (cli_run::regen_source_roots) expects {expected:?}"
+        ));
     }
-
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue = Vec::new();
-    for (path, content) in &entry_files {
-        if let Some(module_path) = extract_module_path(content) {
-            seen.insert(
-                module_path,
-                Rc::new(SourceFile {
-                    path: path.clone(),
-                    content: content.clone(),
-                }),
-            );
-        }
-        queue.push((path.clone(), content.clone()));
-    }
-
-    while let Some((_path, content)) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = index.get(&module_path) {
-                let file_content = fs::read_to_string(file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                let rel_path = display_source_path(file_path, workspace);
-                seen.insert(
-                    module_path,
-                    Rc::new(SourceFile {
-                        path: rel_path.clone(),
-                        content: file_content.clone(),
-                    }),
-                );
-                queue.push((rel_path, file_content));
-            }
-        }
-    }
-
-    let mut result: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    result.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(result)
-}
-
-fn build_module_index(roots: &[PathBuf]) -> Result<HashMap<String, PathBuf>, String> {
-    let mut index: HashMap<String, PathBuf> = HashMap::new();
-    for root in roots {
-        if !root.exists() {
-            return Err(format!("source root does not exist: {}", root.display()));
-        }
-        let mut dag_paths = Vec::new();
-        collect_dag_files(root, &mut dag_paths)?;
-        for path in dag_paths {
-            let content =
-                fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-            if let Some(module_path) = extract_module_path(&content) {
-                if let Some(existing) = index.get(&module_path) {
-                    return Err(format!(
-                        "duplicate module path `{module_path}`: {} and {}",
-                        existing.display(),
-                        path.display()
-                    ));
-                }
-                index.insert(module_path, path);
-            }
-        }
-    }
-    Ok(index)
-}
-
-fn collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    let mut entries: Vec<_> = fs::read_dir(dir)
-        .map_err(|e| format!("read dir {}: {e}", dir.display()))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("read dir entry in {}: {e}", dir.display()))?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_dag_files(&path, files)?;
-        } else if path.extension().is_some_and(|ext| ext == "dag") {
-            files.push(path);
-        }
-    }
-    Ok(())
-}
-
-fn extract_module_path(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("module ") {
-            return Some(rest.trim().to_string());
-        }
-        if !trimmed.is_empty() && !trimmed.starts_with("//") {
-            break;
-        }
-    }
-    None
-}
-
-fn extract_import_paths(content: &str) -> Vec<String> {
-    let mut imports = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("import ") {
-            let module_path = rest.split('{').next().unwrap_or(rest).trim();
-            if !module_path.is_empty() {
-                imports.push(module_path.to_string());
-            }
-        }
-    }
-    imports
-}
-
-fn display_source_path(path: &Path, workspace: &Path) -> String {
-    path.strip_prefix(workspace)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .to_string()
+    let sources = v1_compiler::cli_run::regen_input_sources(workspace)?;
+    Ok(sources
+        .into_iter()
+        .map(|(path, content)| Rc::new(SourceFile { path, content }))
+        .collect())
 }
 
 fn write_emitted_crate(dir: &Path, files: &HashMap<String, String>) -> Result<(), String> {
@@ -1020,7 +908,7 @@ fn verify_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> 
         let committed =
             fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
         if committed != expected {
-            mismatches.push(display_source_path(&path, workspace));
+            mismatches.push(v1_compiler::cli_run::regen_workspace_relpath(&path, workspace));
         }
     }
     if mismatches.is_empty() {
