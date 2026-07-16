@@ -5962,6 +5962,40 @@ fn base64_encode_std(input: &[u8]) -> String {
     out
 }
 
+/// The `Authorization: Basic …` header value for RFC 7617 credentials — the single-authority
+/// derivation dispatch_rest uses for a transport `auth_basic` property. Pure so it is
+/// execution-witnessable without a live server.
+fn rest_basic_auth_header_value(username: &str, password: &str) -> String {
+    format!(
+        "Basic {}",
+        base64_encode_std(format!("{}:{}", username, password).as_bytes())
+    )
+}
+
+/// The interpreter's disposition for a rest transport `tls:` posture (extdeps.transports.rest
+/// TlsPosture). `VerifyPeer` proceeds on the stock verifier; `InsecureAcceptAnyCert` is realized
+/// emit-only (operator decision 2026-07-16) so the interpreter refuses it rather than carry a
+/// cert-verification bypass into the retiring seed; an unrecognized posture also refuses. Pure so
+/// each arm is execution-witnessable.
+fn rest_tls_posture_interp_disposition(posture: &str) -> Result<(), String> {
+    match posture {
+        "VerifyPeer" => Ok(()),
+        "InsecureAcceptAnyCert" => Err(
+            "rest transport tls: InsecureAcceptAnyCert is realized emit-only (reqwest \
+             danger_accept_invalid_certs); the interpreter refuses it by design rather than carry \
+             a cert-verification bypass into the retiring seed — run such ops through emitted code"
+                .to_string(),
+        ),
+        other => Err(format!("rest transport tls: unrecognized posture '{}'", other)),
+    }
+}
+
+/// The single-authority rule (§3): a rest operation must not declare both config-level auth and a
+/// transport `auth_basic` property. Pure so the conflict rule is execution-witnessable.
+fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool) -> bool {
+    config_auth_resolved && has_auth_basic
+}
+
 fn dispatch_rest(
     service_node: &Rc<Node>,
     op_node: &Rc<Node>,
@@ -6087,23 +6121,8 @@ fn dispatch_rest(
         find_property(transport.properties.clone(), "tls".to_string(), si.clone())
     {
         let posture = authored_name_at(si.clone(), tls_node);
-        match posture.as_str() {
-            "VerifyPeer" => {}
-            "InsecureAcceptAnyCert" => {
-                return Err(InterpError::TypeError {
-                    msg:
-                        "rest transport tls: InsecureAcceptAnyCert is realized emit-only (reqwest \
-                          danger_accept_invalid_certs); the interpreter refuses it by design rather \
-                          than carry a cert-verification bypass into the retiring seed — run such \
-                          ops through emitted code"
-                            .to_string(),
-                });
-            }
-            other => {
-                return Err(InterpError::TypeError {
-                    msg: format!("rest transport tls: unrecognized posture '{}'", other),
-                });
-            }
+        if let Err(msg) = rest_tls_posture_interp_disposition(&posture) {
+            return Err(InterpError::TypeError { msg });
         }
     }
 
@@ -6152,7 +6171,7 @@ fn dispatch_rest(
         "auth_basic".to_string(),
         si.clone(),
     ) {
-        if let AuthResolution::Resolved { .. } = auth {
+        if rest_auth_authority_conflict(matches!(auth, AuthResolution::Resolved { .. }), true) {
             return Err(InterpError::TypeError {
                 msg: "rest transport declares both config-level auth and auth_basic — one auth \
                       authority per operation (§3)"
@@ -6180,10 +6199,7 @@ fn dispatch_rest(
         }
         match (username, password) {
             (Some(u), Some(p)) => {
-                let header_val = format!(
-                    "Basic {}",
-                    base64_encode_std(format!("{}:{}", u, p).as_bytes())
-                );
+                let header_val = rest_basic_auth_header_value(&u, &p);
                 request = request.set("Authorization", &header_val);
             }
             _ => {
