@@ -29,6 +29,7 @@ import std.machine_shape {
   MemoryLevel,
   IndependentLanes,
   LinkEdge,
+  SharedLevelEdge,
   PcieAttach,
   MachineShapeOk,
   MachineShapeRefused,
@@ -105,40 +106,27 @@ fn red_dangling_domain_refuses() -> Bool {
   match machine_shape_validate(shape: bad) {
     MachineShapeRefused { cause: UnknownDomain { id: id } } => id == dangling_domain
     MachineShapeRefused { cause: UnknownLevel { owner: _, level: _ } } => false
-    MachineShapeRefused { cause: DuplicateDomain { id: _ } } => false
-    MachineShapeRefused { cause: DuplicateLevel { level: _ } } => false
     MachineShapeOk { shape: _ } => false
   }
 }
 
 fn red_dangling_level_refuses() -> Bool {
-  let good = shape_from_rtx5090_catalog()
-  match good.domains {
-    Cons { head: domain, tail: Empty } =>
-      match domain.memory {
-        Cons { head: level, tail: Empty } =>
-          let bad_level: LevelId = "missing-level" as LevelId
-          let bad = MachineShape {
-            domains: good.domains
-            edges: [
-              SharedLevelEdge {
-                owner: domain.id
-                sharer: dangling_domain
-                level: bad_level
-              }
-            ]
-          }
-          match machine_shape_validate(shape: bad) {
-            MachineShapeRefused { cause: UnknownDomain { id: _ } } => true
-            MachineShapeRefused { cause: UnknownLevel { owner: o, level: l } } =>
-              o == domain.id && l == bad_level
-            MachineShapeRefused { cause: DuplicateDomain { id: _ } } => false
-            MachineShapeRefused { cause: DuplicateLevel { level: _ } } => false
-            MachineShapeOk { shape: _ } => false
-          }
-        _ => false
+  let bad_level: LevelId = "missing-level" as LevelId
+  let bad = MachineShape {
+    domains: shape_from_rtx5090_catalog().domains
+    edges: [
+      SharedLevelEdge {
+        owner: rtx5090_domain
+        sharer: rtx5090_domain
+        level: bad_level
       }
-    _ => false
+    ]
+  }
+  match machine_shape_validate(shape: bad) {
+    MachineShapeRefused { cause: UnknownLevel { owner: o, level: l } } =>
+      o == rtx5090_domain && l == bad_level
+    MachineShapeRefused { cause: UnknownDomain { id: _ } } => false
+    MachineShapeOk { shape: _ } => false
   }
 }
 

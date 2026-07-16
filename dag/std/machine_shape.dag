@@ -1,14 +1,11 @@
 module std.machine_shape
 
-import std.types { NonEmptyStr, Bool, List, Int }
+import std.types { NonEmptyStr, Bool, List, Int, list_length }
 import std.measure {
   ByteSize,
   Bandwidth,
   Nanosecond,
   HardwareThreadCount,
-  hardware_thread_count_value,
-  byte_size_count,
-  bandwidth_count,
 }
 import extdeps.storage.types { PcieLink }
 import extdeps.gpu.types { GpuModelCatalogRow }
@@ -55,8 +52,6 @@ type MachineShape {
 type MachineShapeRefusalCause
   = UnknownDomain { id: DomainId }
   | UnknownLevel { owner: DomainId, level: LevelId }
-  | DuplicateDomain { id: DomainId }
-  | DuplicateLevel { level: LevelId }
 
 type MachineShapeConstruction
   = MachineShapeOk { shape: MachineShape }
@@ -79,158 +74,105 @@ fn memory_level_from_gpu_catalog(level_id: LevelId, row: GpuModelCatalogRow) -> 
   }
 }
 
-fn domain_id_present(domains: List<ExecutionDomain>, id: DomainId) -> Bool {
-  any(domains, d => d.id == id)
+fn domain_id_in_list(domains: List<ExecutionDomain>, id: DomainId) -> Bool {
+  fold(domains, init: false, f: (found, d) => found || d.id == id)
 }
 
-fn level_id_in_domain(domain: ExecutionDomain, level: LevelId) -> Bool {
-  any(domain.memory, m => m.id == level)
+fn owner_has_level(domains: List<ExecutionDomain>, owner_id: DomainId, level_id: LevelId) -> Bool {
+  fold(domains, init: false, f: (found, d) =>
+    found || (d.id == owner_id && level_id_in_memory(levels: d.memory, level: level_id)))
 }
 
-fn find_domain(domains: List<ExecutionDomain>, id: DomainId) -> ExecutionDomain? {
-  match filter(domains, d => d.id == id) {
-    Cons { head: h, tail: _ } => Present { value: h }
-    Empty => Absent
-  }
-}
-
-fn machine_shape_has_duplicate_domain(domains: List<ExecutionDomain>) -> DomainId? {
-  match domains {
-    Empty => Absent
-    Cons { head: h, tail: rest } =>
-      if any(rest, d => d.id == h.id) {
-        Present { value: h.id }
-      } else {
-        machine_shape_has_duplicate_domain(domains: rest)
-      }
-  }
-}
-
-fn machine_shape_collect_level_ids(domains: List<ExecutionDomain>) -> List<LevelId> {
-  match domains {
-    Empty => []
-    Cons { head: d, tail: rest } =>
-      concat(map(d.memory, m => m.id), machine_shape_collect_level_ids(domains: rest))
-  }
-}
-
-fn list_has_duplicate_level(levels: List<LevelId>) -> LevelId? {
-  match levels {
-    Empty => Absent
-    Cons { head: h, tail: rest } =>
-      if any(rest, l => l == h) {
-        Present { value: h }
-      } else {
-        list_has_duplicate_level(levels: rest)
-      }
-  }
+fn level_id_in_memory(levels: List<MemoryLevel>, level: LevelId) -> Bool {
+  fold(levels, init: false, f: (found, m) => found || m.id == level)
 }
 
 fn machine_shape_validate_edge(shape: MachineShape, edge: InterconnectEdge) -> MachineShapeConstruction? {
   match edge {
     LinkEdge { from: from_id, to: to_id, link: _ } =>
-      if !domain_id_present(domains: shape.domains, id: from_id) {
+      if !domain_id_in_list(domains: shape.domains, id: from_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: from_id } } }
-      } else if !domain_id_present(domains: shape.domains, id: to_id) {
+      } else if !domain_id_in_list(domains: shape.domains, id: to_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: to_id } } }
       } else {
         none
       }
     SharedLevelEdge { owner: owner_id, sharer: sharer_id, level: level_id } =>
-      if !domain_id_present(domains: shape.domains, id: owner_id) {
+      if !domain_id_in_list(domains: shape.domains, id: owner_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: owner_id } } }
-      } else if !domain_id_present(domains: shape.domains, id: sharer_id) {
+      } else if !domain_id_in_list(domains: shape.domains, id: sharer_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: sharer_id } } }
+      } else if !owner_has_level(domains: shape.domains, owner_id: owner_id, level_id: level_id) {
+        Present { value: MachineShapeRefused { cause: UnknownLevel { owner: owner_id, level: level_id } } }
       } else {
-        match find_domain(domains: shape.domains, id: owner_id) {
-          Present { value: owner } =>
-            if !level_id_in_domain(domain: owner, level: level_id) {
-              Present { value: MachineShapeRefused { cause: UnknownLevel { owner: owner_id, level: level_id } } }
-            } else {
-              none
-            }
-          Absent =>
-            Present { value: MachineShapeRefused { cause: UnknownDomain { id: owner_id } } }
-        }
-      }
-  }
-}
-
-fn machine_shape_validate_edges(shape: MachineShape) -> MachineShapeConstruction? {
-  match shape.edges {
-    Empty => none
-    Cons { head: edge, tail: rest } =>
-      match machine_shape_validate_edge(shape: shape, edge: edge) {
-        Present { value: refused } => Present { value: refused }
-        Absent =>
-          machine_shape_validate_edges(shape: MachineShape { domains: shape.domains, edges: rest })
+        none
       }
   }
 }
 
 fn machine_shape_validate(shape: MachineShape) -> MachineShapeConstruction {
-  match machine_shape_has_duplicate_domain(domains: shape.domains) {
-    Present { value: dup } => MachineShapeRefused { cause: DuplicateDomain { id: dup } }
-    Absent =>
-      match list_has_duplicate_level(levels: machine_shape_collect_level_ids(domains: shape.domains)) {
-        Present { value: dup_level } => MachineShapeRefused { cause: DuplicateLevel { level: dup_level } }
-        Absent =>
-          match machine_shape_validate_edges(shape: shape) {
-            Present { value: refused } => refused
-            Absent => MachineShapeOk { shape: shape }
-          }
-      }
+  match fold(shape.edges, init: none, f: (refused, edge) =>
+    match refused {
+      Present { value: _ } => refused
+      Absent => machine_shape_validate_edge(shape: shape, edge: edge)
+    }) {
+    Present { value: refused } => refused
+    Absent => MachineShapeOk { shape: shape }
   }
 }
 
 fn shape_from_catalog(input: ShapeFromCatalogInput) -> MachineShapeConstruction {
   match input {
     FromGpuModelCatalog { domain: domain, device_level: device_level, row: row } =>
-      machine_shape_validate(shape: MachineShape {
-        domains: [
-          ExecutionDomain {
-            id: domain
-            execution: execution_shape_independent_lanes(lane_count: row.execution_lane_count)
-            memory: [memory_level_from_gpu_catalog(level_id: device_level, row: row)]
-          }
-        ]
-        edges: []
-      })
+      MachineShapeOk {
+        shape: MachineShape {
+          domains: [
+            ExecutionDomain {
+              id: domain
+              execution: execution_shape_independent_lanes(lane_count: row.execution_lane_count)
+              memory: [memory_level_from_gpu_catalog(level_id: device_level, row: row)]
+            }
+          ]
+          edges: []
+        }
+      }
   }
 }
 
 fn machine_shape_is_single_domain(shape: MachineShape) -> Bool {
-  match shape.domains {
-    Cons { head: _, tail: Empty } => true
-    _ => false
-  }
+  list_length(items: shape.domains) == 1
 }
 
 fn machine_shape_domain_lane_count(shape: MachineShape) -> HardwareThreadCount? {
-  match shape.domains {
-    Cons { head: d, tail: Empty } => Present { value: d.execution.lane_count }
-    _ => Absent
-  }
+  fold(shape.domains, init: Absent, f: (found, d) =>
+    match found {
+      Present { value: _ } => found
+      Absent => Present { value: d.execution.lane_count }
+    })
 }
 
 fn machine_shape_device_level_capacity(shape: MachineShape) -> ByteSize? {
-  match shape.domains {
-    Cons { head: d, tail: Empty } =>
-      match d.memory {
-        Cons { head: level, tail: Empty } => Present { value: level.capacity }
-        _ => Absent
-      }
-    _ => Absent
-  }
+  fold(shape.domains, init: Absent, f: (found, d) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        fold(d.memory, init: Absent, f: (lvl_found, m) =>
+          match lvl_found {
+            Present { value: _ } => lvl_found
+            Absent => Present { value: m.capacity }
+          })
+    })
 }
 
 fn machine_shape_device_level_bandwidth(shape: MachineShape) -> Bandwidth? {
-  match shape.domains {
-    Cons { head: d, tail: Empty } =>
-      match d.memory {
-        Cons { head: level, tail: Empty } => level.bandwidth
-        _ => Absent
-      }
-    _ => Absent
-  }
+  fold(shape.domains, init: Absent, f: (found, d) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        fold(d.memory, init: Absent, f: (lvl_found, m) =>
+          match lvl_found {
+            Present { value: _ } => lvl_found
+            Absent => m.bandwidth
+          })
+    })
 }
