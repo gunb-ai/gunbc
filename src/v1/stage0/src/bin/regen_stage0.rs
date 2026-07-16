@@ -273,11 +273,16 @@ fn run() -> Result<(), String> {
     let mut emit_fresh: Option<PathBuf> = None;
     let mut write_manifest: Option<PathBuf> = None;
     let mut verify_only = false;
+    let mut affected_by_diff = false;
     let mut index = 0usize;
     while index < args.len() {
         match args[index].as_str() {
             "--verify" => {
                 verify_only = true;
+                index += 1;
+            }
+            "--affected-by-diff" => {
+                affected_by_diff = true;
                 index += 1;
             }
             "--emit-fresh" => {
@@ -308,6 +313,38 @@ fn run() -> Result<(), String> {
     }
     if write_manifest.is_some() && emit_fresh.is_none() {
         return Err("regen_stage0: --write-manifest requires --emit-fresh".to_string());
+    }
+
+    // CI regen admission (self-host fixed-point step scoping): print `regen_affected` or
+    // `regen_not_affected_skip` and exit. The input closure is computed by the SAME loader
+    // `compile_stage0` uses (`source_files_for_roots` over [src/v1, dag]), so the closure
+    // authority is the read set itself — never a second walk. Any failure prints the
+    // affected label (fail-closed: refuse to skip, never to run).
+    if affected_by_diff {
+        if verify_only || emit_fresh.is_some() {
+            return Err(
+                "regen_stage0: --affected-by-diff is exclusive with --verify/--emit-fresh"
+                    .to_string(),
+            );
+        }
+        let workspace = v1_compiler::cli_run::workspace_root();
+        let roots = vec![workspace.join("src/v1"), workspace.join("dag")];
+        let closure: std::collections::HashSet<String> =
+            match source_files_for_roots(&roots, &workspace) {
+                Ok(files) => files.iter().map(|f| f.path.clone()).collect(),
+                Err(msg) => {
+                    eprintln!(
+                        "regen scope: input-closure walk failed ({msg}) — regen runs (fail-closed)"
+                    );
+                    println!("{}", v1_compiler::cli_run::REGEN_AFFECTED_LABEL);
+                    return Ok(());
+                }
+            };
+        println!(
+            "{}",
+            v1_compiler::cli_run::regen_affected_by_diff_label_for_ci(&closure)
+        );
+        return Ok(());
     }
 
     assert_registry_is_partitioned()?;

@@ -1785,6 +1785,19 @@ pub fn regen_affected_by_diff_label_for_ci(closure_paths: &HashSet<String>) -> S
 }
 
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
+    // Falsifier cold-control arm: force the whole-tree compile before any diff observation.
+    // Widen-to-more-checking only — this env can never skip or narrow the gate, so it is a
+    // control, not an escape hatch (the deterministic whole-tree counterpart to the scoped
+    // per-PR admission, on the falsifier cadence).
+    if std::env::var("GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        eprintln!(
+            "compile-clean scope: whole-tree cold control forced (GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1)"
+        );
+        return CompileCleanScopePlan::WholeTree;
+    }
     if !compile_clean_scoping_active() {
         eprintln!("compile-clean scope: whole-tree (ci diff scoping inactive)");
         return CompileCleanScopePlan::WholeTree;
@@ -16206,6 +16219,53 @@ mod witness_layer_roots_compile_clean_tests {
                 "expected SkipNoAffected, got {plan:?}"
             );
         });
+    }
+
+    /// Regen admission decision table: run on every arm that cannot prove disjointness
+    /// from the regen input closure; skip only a non-empty diff provably outside it.
+    #[test]
+    fn regen_affected_decision_covers_run_and_skip_arms() {
+        let closure: HashSet<String> = [
+            "src/v1/04_infer.dag".to_string(),
+            "dag/std/logic.dag".to_string(),
+            "dag/gunbc/stage0_emit_model.dag".to_string(),
+        ]
+        .into_iter()
+        .collect();
+        let none: HashSet<String> = HashSet::new();
+        let s = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+
+        assert_eq!(regen_affected_decision(&[], &none, &closure), REGEN_AFFECTED_LABEL);
+        assert_eq!(
+            regen_affected_decision(&s(&["src/v1/stage0/src/cli_run.rs"]), &none, &closure),
+            REGEN_AFFECTED_LABEL
+        );
+        assert_eq!(
+            regen_affected_decision(&s(&["dag/std/logic.dag"]), &none, &closure),
+            REGEN_AFFECTED_LABEL
+        );
+        assert_eq!(
+            regen_affected_decision(&s(&["Cargo.lock"]), &none, &closure),
+            REGEN_AFFECTED_LABEL
+        );
+        let departed_dag: HashSet<String> =
+            ["dag/std/removed.dag".to_string()].into_iter().collect();
+        assert_eq!(
+            regen_affected_decision(&s(&["dag/test/claim/parse_test.dag"]), &departed_dag, &closure),
+            REGEN_AFFECTED_LABEL
+        );
+        assert_eq!(
+            regen_affected_decision(
+                &s(&["src/v2/lens/machine_shape.dag", "docs/plans/example.md"]),
+                &none,
+                &closure
+            ),
+            REGEN_NOT_AFFECTED_SKIP_LABEL
+        );
+        assert_eq!(
+            regen_affected_decision(&s(&["docs/plans/example.md"]), &none, &closure),
+            REGEN_NOT_AFFECTED_SKIP_LABEL
+        );
     }
 
     /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
