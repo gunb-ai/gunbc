@@ -5,6 +5,7 @@ import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
 import std.types { ContentHash, NonEmptyStr }
 import v2.std.collection { Absent, Present, empty_map, map_insert }
 import v2.std.compilers.compilation_unit {
+  CompilationUnit,
   CompilationUnitId,
   HandExplicit,
   ModuleDag,
@@ -19,6 +20,7 @@ import v2.std.compilers.compilation_unit {
   LinkageCycle,
   SccSplit,
   UnitGraphCycle,
+  compilation_unit_artifact_id,
   partition_fold_outcome,
   partition_provenance_eq,
   partition_provenance_hand_explicit,
@@ -35,7 +37,6 @@ import v2.workflow.rust_crate_partition {
   rust_crate_partition_declared_core_target,
   rust_crate_partition_dissolve_on,
   rust_crate_partition_module_bearing_unit_target,
-  stage0_compilation_units,
   stage0_interim_explicit_assignment,
   stage0_module_dag,
   stage0_module_dag_interface_grounding_debt_dissolve_on,
@@ -43,6 +44,9 @@ import v2.workflow.rust_crate_partition {
   stage0_module_bearing_unit_count,
   stage0_partition_fold_ok,
   stage0_partition_member_coverage_consistent,
+  Stage0PartitionReceiptFoldRefused,
+  Stage0PartitionReceiptOk,
+  Stage0PartitionReceiptResolveRefused,
   stage0_partition_receipt_outcome,
   stage0_physical_crate_count,
   stage0_single_crate_fold_outcome,
@@ -62,6 +66,11 @@ data witness_mod_b: ModuleId = "witness.scc.b" as NonEmptyStr
 data witness_mod_c: ModuleId = "witness.scc.c" as NonEmptyStr
 data witness_unit_x: CompilationUnitId = "witness-unit-x" as ContentHash
 data witness_unit_y: CompilationUnitId = "witness-unit-y" as ContentHash
+
+data witness_unit_p: CompilationUnitId = "witness-unit-p" as ContentHash
+data witness_unit_q: CompilationUnitId = "witness-unit-q" as ContentHash
+data witness_mod_p: ModuleId = "witness.unit.p" as NonEmptyStr
+data witness_mod_q: ModuleId = "witness.unit.q" as NonEmptyStr
 
 fn witness_triangle_scc_dag() -> ModuleDag {
   ModuleDag {
@@ -93,6 +102,52 @@ fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
   match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
     PartitionR4Refused { cause: SccSplit { detail: _ } } => true
     PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => false
+    PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
+    PartitionR4Valid => false
+  }
+}
+
+fn witness_acyclic_module_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_p, witness_mod_q],
+    edges: [ModuleDagEdge { from: witness_mod_p, to: witness_mod_q }],
+    exports: empty_map(),
+    type_definitions: empty_map(),
+  }
+}
+
+fn witness_two_unit_assignment_no_scc_split() -> Map<ModuleId, CompilationUnitId> {
+  empty_map()
+    |> map_insert(witness_mod_p, witness_unit_p)
+    |> map_insert(witness_mod_q, witness_unit_q)
+}
+
+fn witness_cyclic_unit_graph() -> List<CompilationUnit> {
+  [
+    CompilationUnit {
+      id: witness_unit_p,
+      members: [witness_mod_p],
+      interface: [],
+      deps: [witness_unit_q],
+      artifact: compilation_unit_artifact_id(unit_id: witness_unit_p)
+    },
+    CompilationUnit {
+      id: witness_unit_q,
+      members: [witness_mod_q],
+      interface: [],
+      deps: [witness_unit_p],
+      artifact: compilation_unit_artifact_id(unit_id: witness_unit_q)
+    }
+  ]
+}
+
+fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool {
+  let dag = witness_acyclic_module_dag()
+  let assignment = witness_two_unit_assignment_no_scc_split()
+  let units = witness_cyclic_unit_graph()
+  match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
+    PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => true
+    PartitionR4Refused { cause: SccSplit { detail: _ } } => false
     PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
     PartitionR4Valid => false
   }
@@ -150,29 +205,41 @@ fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
 }
 
 fn witness_runtime_unit_members_holds() -> Bool {
-  let units = stage0_compilation_units()
-  match partition_unit_by_id(units: units, unit_id: stage0_unit_runtime) {
-    Present { value: unit } =>
-      (unit.members |> count) == 2
-    Absent => false
+  match stage0_partition_receipt_outcome() {
+    Stage0PartitionReceiptOk { units: units } =>
+      match partition_unit_by_id(units: units, unit_id: stage0_unit_runtime) {
+        Present { value: unit } =>
+          (unit.members |> count) == 2
+        Absent => false
+      }
+    Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
 
 fn witness_v1_infer_unit_members_holds() -> Bool {
-  let units = stage0_compilation_units()
-  match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
-    Present { value: unit } =>
-      (unit.members |> count) == 6
-    Absent => false
+  match stage0_partition_receipt_outcome() {
+    Stage0PartitionReceiptOk { units: units } =>
+      match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
+        Present { value: unit } =>
+          (unit.members |> count) == 6
+        Absent => false
+      }
+    Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
 
 fn witness_v1_artifact_unit_members_holds() -> Bool {
-  let units = stage0_compilation_units()
-  match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_artifact) {
-    Present { value: unit } =>
-      (unit.members |> count) == 2
-    Absent => false
+  match stage0_partition_receipt_outcome() {
+    Stage0PartitionReceiptOk { units: units } =>
+      match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_artifact) {
+        Present { value: unit } =>
+          (unit.members |> count) == 2
+        Absent => false
+      }
+    Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
 
@@ -220,6 +287,7 @@ test fn rust_crate_partition_witnesses() -> Bool {
     && witness_partition_r4_valid_on_interim_holds()
     && witness_resolve_partition_explicit_returns_assignment_holds()
     && witness_r4_refuses_forced_scc_split_holds()
+    && witness_r4_refuses_unit_graph_cycle_holds()
     && witness_partition_perturbation_member_coverage_holds()
     && witness_stage0_module_dag_interface_grounding_debt_declared_holds()
     && witness_stage0_module_dag_interface_grounding_debt_dissolve_on_present_holds()
