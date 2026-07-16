@@ -4,9 +4,9 @@
 use std::rc::Rc;
 
 use im_rc::{vector, HashMap};
+use v1_compiler::cli_run::finish_global_bare_diagnostic_reconcile_refusal;
 use v1_compiler::v1_compiler_infer::{
-    build_global_bare_variant_locals, finish_global_bare_diagnostic_reconcile_refusal,
-    merge_global_bare_variant_locals, take_merge_global_bare_per_module_scans, VariantFoldState,
+    build_global_bare_variant_locals, merge_global_bare_variant_locals, VariantFoldState,
 };
 use v1_compiler::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding};
 use v1_compiler::v1_rt;
@@ -117,35 +117,37 @@ fn build_global_bare_variant_locals_only_admits_disj_with_named_arm() {
 }
 
 #[test]
-fn precomputed_merge_records_zero_has_child_named_per_module() {
-    let (census, source_indices, _) = fixture_disj_with_named_arm();
+fn precomputed_merge_materializes_hoisted_variant_locals() {
+    let (census, source_indices, red_binding) = fixture_disj_with_named_arm();
     let precomputed = build_global_bare_variant_locals(census.clone(), source_indices.clone());
     let init = Rc::new(VariantFoldState {
         locals: v1_rt::rc_empty_map(),
         collision_errors: Rc::new(vector![]),
     });
 
-    std::env::set_var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE", "1");
-    let _ = merge_global_bare_variant_locals(
+    let merged_a = merge_global_bare_variant_locals(
         precomputed.clone(),
         init.clone(),
         source_indices.clone(),
         "mod_a".to_string(),
     );
-    let _ = merge_global_bare_variant_locals(
+    let merged_b = merge_global_bare_variant_locals(
         precomputed,
         init,
         source_indices.clone(),
         "mod_b".to_string(),
     );
-    let rows = take_merge_global_bare_per_module_scans();
-    std::env::remove_var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE");
 
-    assert_eq!(rows.len(), 2, "one receipt row per module merge");
     assert!(
-        rows.iter().all(|(_, keys, has_child)| *keys == 1 && *has_child == 0),
-        "precomputed merge visits hoisted keys only — has_child_named is module-invariant: {rows:?}"
+        merged_a.locals.contains_key("Red"),
+        "hoisted merge must admit precomputed variant locals"
     );
+    assert!(
+        merged_b.locals.contains_key("Red"),
+        "module-invariant precomputed map reused across modules"
+    );
+    let red = merged_a.locals.get("Red").expect("Red binding");
+    assert_eq!(red.name, red_binding.name);
 }
 
 #[test]
