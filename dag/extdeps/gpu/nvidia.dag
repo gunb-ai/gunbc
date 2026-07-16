@@ -1,6 +1,6 @@
 module extdeps.gpu.nvidia
 
-import extdeps.gpu.types { GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, GpuSmCacheGeometry, Cuda }
+import extdeps.gpu.types { GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, GpuSmCacheGeometry, Cuda, cuda_compute_capabilities_authority }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { PcieLink, PcieGeneration }
 import extdeps.cpu.types { CacheGeometryCitation }
@@ -14,13 +14,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5090/"
-  }
-}
-
-data cuda_compute_capabilities_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/compute-capabilities.html"
   }
 }
 
