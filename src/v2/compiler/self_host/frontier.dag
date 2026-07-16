@@ -753,7 +753,7 @@ fn band_a_emit_readiness_other_gate_matches_frontier_row(row: BandAEmitReadiness
         trigger: trigger,
         row: compiler_frontier_row_use_site_verdict
       )
-        ||       band_a_emit_readiness_roster_row_trigger_matches(
+        || band_a_emit_readiness_roster_row_trigger_matches(
           module_path: row.module_path,
           trigger: trigger,
           row: compiler_frontier_row_materialization_carriers
