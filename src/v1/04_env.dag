@@ -290,7 +290,7 @@ fn union_variant_locals_into_acc(acc: Map<String, TypeBinding>, overlay: Map<Str
       Present { value: incoming } =>
         match map_get(m, name) {
           Absent => map_insert(m, name, incoming)
-          Present { value: existing } => if binding_same_authority(a: existing, b: incoming) { m } else { map_insert(m, name, incoming) }
+          Present { value: _existing } => map_insert(m, name, incoming)
         }
     }
   )
