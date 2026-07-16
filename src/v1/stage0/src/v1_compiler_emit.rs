@@ -2325,7 +2325,6 @@ pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
         ExprData::ExprLet => ExprCategory::ExprCatBinding,
         ExprData::ExprReturn => ExprCategory::ExprCatControlFlow,
         ExprData::NoExprData => ExprCategory::ExprCatNone,
-        _ => ExprCategory::ExprCatNone,
     }
 }
 
