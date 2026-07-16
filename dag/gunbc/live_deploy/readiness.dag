@@ -1,0 +1,152 @@
+module gunbc.live_deploy.readiness
+
+import std.types { String, Bool, Int, NonEmptyStr }
+import std.measure { Second, second_count }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounding,
+  Grounds,
+  DoesNotGround,
+  Reconciliation,
+  Converged,
+  NotConverged,
+  reconcile_grounded,
+  reconciliation_converged,
+}
+import gunbc.roadmap_health
+import gunbc.live_deploy.service_ready {
+  ServiceNotReady,
+  service_not_ready_reason,
+  live_deploy_service_ready_poll_bound,
+  live_deploy_service_ready_unit_authority,
+  live_deploy_service_ready_endpoint_authority,
+}
+import extdeps.tools.sleep
+
+type ServiceReadyEvidence {
+  body: String
+}
+
+type ServiceReadyApplyEffect {
+  unit: NonEmptyStr
+  endpoint: NonEmptyStr
+}
+
+type HealthzEffectiveRead {
+  body: String
+  probe_error: String
+}
+
+fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
+  ServiceReadyApplyEffect {
+    unit: live_deploy_service_ready_unit_authority,
+    endpoint: live_deploy_service_ready_endpoint_authority,
+  }
+}
+
+fn healthz_body_groundable(body: String) -> Bool {
+  starts_with(s: body, prefix: "{")
+    && ends_with(s: body, suffix: "}")
+    && string_contains(s: body, pattern: "\"status\"")
+}
+
+fn ground_service_ready_from_healthz(read: HealthzEffectiveRead) -> Grounding<ServiceReadyEvidence> {
+  if read.probe_error != "" {
+    DoesNotGround { reason: read.probe_error }
+  } else {
+    if healthz_body_groundable(body: read.body) {
+      Grounds { evidence: ServiceReadyEvidence { body: read.body } }
+    } else {
+      DoesNotGround { reason: "healthz body is not parseable json shape" }
+    }
+  }
+}
+
+fn show_healthz_read() -> ShowEffectiveRead<HealthzEffectiveRead> {
+  let probe = roadmap.Health.GetHealthz()
+  ReadObserved {
+    value: HealthzEffectiveRead {
+      body: probe.body,
+      probe_error: "",
+    }
+  }
+}
+
+fn reconcile_service_ready_read(
+  read: ShowEffectiveRead<HealthzEffectiveRead>
+) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  match read {
+    ReadAbsent { reason: why } =>
+      reconcile_grounded(
+        apply_effect: service_ready_apply_effect(),
+        show_read: read,
+        grounding: DoesNotGround { reason: why }
+      )
+    ReadObserved { value: observed } =>
+      reconcile_grounded(
+        apply_effect: service_ready_apply_effect(),
+        show_read: read,
+        grounding: ground_service_ready_from_healthz(read: observed)
+      )
+  }
+}
+
+fn live_deploy_service_ready_once() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  reconcile_service_ready_read(read: show_healthz_read())
+}
+
+fn live_deploy_poll_service_ready_after_seconds(
+  elapsed: Int,
+  last_probe: String
+) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  let bound = second_count(s: live_deploy_service_ready_poll_bound)
+  if elapsed >= bound {
+    NotConverged {
+      reason: service_not_ready_reason(refusal: ServiceNotReady {
+        unit: live_deploy_service_ready_unit_authority,
+        endpoint: live_deploy_service_ready_endpoint_authority,
+        waited: live_deploy_service_ready_poll_bound,
+        last_probe: last_probe,
+      }),
+      applied: service_ready_apply_effect(),
+    }
+  } else {
+    let attempt = live_deploy_service_ready_once()
+    if reconciliation_converged(r: attempt) {
+      attempt
+    } else {
+      let delay = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
+      if delay.success {
+        live_deploy_poll_service_ready_after_seconds(
+          elapsed: elapsed + 1,
+          last_probe: last_probe_from_attempt(attempt: attempt)
+        )
+      } else {
+        NotConverged {
+          reason: service_not_ready_reason(refusal: ServiceNotReady {
+            unit: live_deploy_service_ready_unit_authority,
+            endpoint: live_deploy_service_ready_endpoint_authority,
+            waited: live_deploy_service_ready_poll_bound,
+            last_probe: "sleep between health probes failed",
+          }),
+          applied: service_ready_apply_effect(),
+        }
+      }
+    }
+  }
+}
+
+fn last_probe_from_attempt(
+  attempt: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>
+) -> String {
+  match attempt {
+    NotConverged { reason: why, applied: _ } => why
+    Converged { evidence: _, applied: _ } => "converged"
+  }
+}
+
+fn live_deploy_poll_until_service_ready() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  live_deploy_poll_service_ready_after_seconds(elapsed: 0, last_probe: "no probe yet")
+}

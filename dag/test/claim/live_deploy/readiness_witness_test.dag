@@ -1,0 +1,72 @@
+module test.claim.live_deploy.readiness
+
+import gunbc.live_deploy.readiness {
+  live_deploy_service_ready_once,
+  live_deploy_poll_until_service_ready,
+  live_deploy_poll_service_ready_after_seconds,
+  healthz_body_groundable,
+}
+import gunbc.live_deploy.service_ready {
+  live_deploy_service_ready_poll_bound,
+  service_not_ready_reason,
+  ServiceNotReady,
+  live_deploy_service_ready_unit_authority,
+  live_deploy_service_ready_endpoint_authority,
+}
+import std.realization_reconcile { reconciliation_converged, NotConverged }
+import std.measure { second_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_healthz_mock_body_groundable() -> Bool {
+  healthz_body_groundable(body: "{\"status\":\"ok\"}")
+}
+
+fn witness_healthz_bad_body_not_groundable() -> Bool {
+  !healthz_body_groundable(body: "")
+}
+
+fn witness_service_ready_once_converges_on_healthy_mock() -> Bool {
+  reconciliation_converged(r: live_deploy_service_ready_once())
+}
+
+fn witness_poll_until_service_ready_converges_on_healthy_mock() -> Bool {
+  reconciliation_converged(r: live_deploy_poll_until_service_ready())
+}
+
+fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
+  let bound = second_count(s: live_deploy_service_ready_poll_bound)
+  let r = live_deploy_poll_service_ready_after_seconds(
+    elapsed: bound,
+    last_probe: "health probe never succeeded"
+  )
+  match r {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "ServiceNotReady")
+        && string_contains(s: why, pattern: "waited_s=30")
+        && string_contains(s: why, pattern: "health probe never succeeded")
+        && !string_contains(s: why, pattern: "converged")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
+  let reason = service_not_ready_reason(refusal: ServiceNotReady {
+    unit: live_deploy_service_ready_unit_authority,
+    endpoint: live_deploy_service_ready_endpoint_authority,
+    waited: live_deploy_service_ready_poll_bound,
+    last_probe: "connection refused",
+  })
+  string_contains(s: reason, pattern: "ServiceNotReady")
+    && string_contains(s: reason, pattern: "gunbc-roadmap.service")
+}
+
+test fn live_deploy_readiness_witnesses() -> Bool {
+  witness_healthz_mock_body_groundable()
+    && witness_healthz_bad_body_not_groundable()
+    && witness_service_ready_once_converges_on_healthy_mock()
+    && witness_poll_until_service_ready_converges_on_healthy_mock()
+    && witness_red_control_never_ready_refuses_at_poll_bound()
+    && witness_service_not_ready_refusal_shape_matches_contract()
+}
