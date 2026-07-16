@@ -7,7 +7,60 @@ import v2.std.collection { List }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution | TableDecisionTree | Determinism
+type LensIdV0
+  = Complexity
+  | Cost
+  | Parallelism
+  | EffectEnumeration
+  | Idempotency
+  | Provenance
+  | UnusedParameters
+  | StructuralResolution
+  | TableDecisionTree
+  | Determinism
+  | BashCompositionRecognizer
+  | ComplexityAccumulatorCopy
+  | ComplexityLinearityAudit
+  | ComplexityLowering
+  | Coverage
+  | DependencyFidelity
+  | Discrimination
+  | DispositionRedundancy
+  | DocReachability
+  | DuplicateComputation
+  | ExtdepsExternalAuthority
+  | ExtdepsShapeTransportPolicy
+  | FactCardinality
+  | FactDensity
+  | FnFamily
+  | Grounding
+  | HostLanguageTransportScript
+  | IdenticalVariantPayload
+  | InertCarrier
+  | InertLens
+  | IntentLinearity
+  | InterfaceSummary
+  | LanguagesConsumerCensus
+  | LayeringImports
+  | LeafModelVerification
+  | LiveReadClassification
+  | MachineShape
+  | MediumStructureContainment
+  | MockTotality
+  | MutationAdequacy
+  | NonFoldResidue
+  | RealizationVocabularyContainment
+  | ScheduleLens
+  | SimulatedRelationship
+  | StructuralSimilarity
+  | Subsumption
+  | Synthesis
+  | TestMigrationDebt
+  | UnitModeling
+  | Vacuity
+  | Visibility
+  | WiringLiveness
+  | WitnessCostLocality
 
 type LensModulePathV0 = Bound { path: String } | Unbound
 
