@@ -137,33 +137,15 @@ fn emit_run_doc() -> String {
 fn emit_run_artifact() -> String {
   let entry = local_tidy_gate_entry()
   concat(
-    concat("echo \"[pre-push] generated-artifact drift gate\"\nif ", emit_claim_batch(entry: entry, function: generated_artifact_drift_gate_check_fn, suffix: " --wet")),
-    concat(
-      "; then :; else\n  echo \"[pre-push] drift detected; running main_wet\"\n  ",
-      concat(
-        emit_claim_batch(entry: entry, function: local_tidy_gate_wet_fn(), suffix: " --wet"),
-        concat(
-          "\n  echo \"[pre-push] staging regen outputs:\"\n  git diff --name-only --diff-filter=ACMR | while IFS= read -r p; do\n    [ -n \"$p\" ] || continue\n    echo \"  + $p\"\n    git add -u -- \"$p\"\n  done\n  git ls-files --others --exclude-standard | while IFS= read -r p; do\n    [ -n \"$p\" ] || continue\n    echo \"  + $p (untracked)\"\n    git add -- \"$p\"\n  done\n  echo \"[pre-push] re-checking drift after regen\"\n  ",
-          concat(emit_claim_batch(entry: entry, function: generated_artifact_drift_gate_check_fn, suffix: " --wet"), "\nfi\n")
-        )
-      )
-    )
+    concat("echo \"[pre-push] generated-artifact drift gate\"\nif ! ", emit_claim_batch(entry: entry, function: generated_artifact_drift_gate_check_fn, suffix: " --wet")),
+    " 2>/dev/null; then\n  echo \"[pre-push] generated artifacts are stale — run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet   (then commit the regenerated files and re-push, or 'git push --no-verify' to skip)\" >&2\n  exit 1\nfi\n"
   )
 }
 
 fn emit_run_fmt() -> String {
   concat(
-    "echo \"[pre-push] cargo fmt --all --check\"\nif cargo fmt --all --check 2>/dev/null; then\n  exit 0\nfi\n",
-    concat(
-      "if [[ \"$HEAD_BRANCH_IN_PUSH\" != \"1\" ]]; then\n  echo \"[pre-push] fmt drift detected; auto-fix out of scope for this push.\" >&2\n  exit 1\nfi\n",
-      concat(
-        "echo \"[pre-push] running cargo fmt --all\"\ncargo fmt --all\ngit add -u\n",
-        concat(
-          "if git diff --cached --quiet; then echo \"[pre-push] fmt reported drift but produced no diff\" >&2; exit 1; fi\n",
-          "git commit -m \"chore: apply cargo fmt\"\necho \"[pre-push] fmt committed locally; re-run git push.\"\nexit 1\n"
-        )
-      )
-    )
+    "echo \"[pre-push] cargo fmt --all --check\"\n",
+    "if ! cargo fmt --all --check 2>/dev/null; then\n  echo \"[pre-push] rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)\" >&2\n  exit 1\nfi\n"
   )
 }
 
@@ -235,7 +217,7 @@ fn expected_githooks_pre_push_sh() -> String {
             concat(
               emit_run_artifact(),
               concat(
-                "fi\nif [[ \"$NEED_ARTIFACT\" == \"1\" ]]; then\n  if ! git diff --cached --quiet; then\n    if [[ \"$HEAD_BRANCH_IN_PUSH\" != \"1\" ]]; then echo \"[pre-push] regen staged but HEAD branch not in push\" >&2; exit 1; fi\n    echo \"[pre-push] staged after regen:\"\n    git diff --cached --name-only | while IFS= read -r p; do echo \"  + $p\"; done\n    git commit -m \"chore: regenerate committed projections\"\n    echo \"[pre-push] regen committed locally; re-run git push.\"\n    exit 1\n  fi\nfi\n",
+                "fi\n",
                 concat(
                   concat("if [[ \"$NEED_WITNESS\" == \"1\" ]]; then\n", concat(emit_run_witness(), "fi\n")),
                   concat("if [[ \"$NEED_FMT\" == \"1\" ]]; then\n", concat(emit_run_fmt(), "fi\nexit 0\n"))
