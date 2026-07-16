@@ -7,6 +7,8 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
+data inert_carrier_local_alias_roster_note: String = "Floor hygiene: roster LocalAlias for inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (latent main gap; exposed by W1.2 broad affected set; not W3.1 reachability migration)."
+
 data inert_carrier_roster: List<String> = [
   "AccessPolicy",
   "CargoDependency",
