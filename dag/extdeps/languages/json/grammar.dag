@@ -158,10 +158,15 @@ fn json_int_lexeme(n: Int) -> JsonNumberLexeme {
   json_number_lexeme_unchecked(s: to_string(n))
 }
 
-type JsonTextParseResult {
-  end: Int
-  ok: Bool
-}
+type JsonTextParseResult
+  = JsonTextParseOk { end: Int }
+  | JsonTextParseFail { end: Int }
+
+type JsonWhitespaceChar
+  = JsonWsSpace
+  | JsonWsNewline
+  | JsonWsCarriageReturn
+  | JsonWsTab
 
 fn json_text_trim_trailing_lf(body: String) -> String {
   if ends_with(s: body, suffix: "\n") {
@@ -172,23 +177,42 @@ fn json_text_trim_trailing_lf(body: String) -> String {
 }
 
 fn json_text_parse_fail(end: Int) -> JsonTextParseResult {
-  JsonTextParseResult { end: end, ok: false }
+  JsonTextParseFail { end: end }
 }
 
 fn json_text_parse_ok(end: Int) -> JsonTextParseResult {
-  JsonTextParseResult { end: end, ok: true }
+  JsonTextParseOk { end: end }
 }
 
-fn json_text_is_ws(c: String) -> Bool {
-  c == " " || c == "\n" || c == "\r" || c == "\t"
+fn json_text_parse_end(r: JsonTextParseResult) -> Int {
+  match r {
+    JsonTextParseOk { end: e } => e
+    JsonTextParseFail { end: e } => e
+  }
+}
+
+fn json_text_whitespace_char(c: String) -> JsonWhitespaceChar? {
+  if c == " " {
+    Present { value: JsonWsSpace }
+  } else if c == "\n" {
+    Present { value: JsonWsNewline }
+  } else if c == "\r" {
+    Present { value: JsonWsCarriageReturn }
+  } else if c == "\t" {
+    Present { value: JsonWsTab }
+  } else {
+    none
+  }
 }
 
 fn json_text_skip_ws(s: String, i: Int) -> Int {
-  if i >= s.length() { i }
-  else if json_text_is_ws(c: char_at(s: s, i: i)) {
-    json_text_skip_ws(s: s, i: i + 1)
-  } else {
+  if i >= s.length() {
     i
+  } else {
+    match json_text_whitespace_char(c: char_at(s: s, i: i)) {
+      none => i
+      Present { value: _ } => json_text_skip_ws(s: s, i: i + 1)
+    }
   }
 }
 
@@ -268,15 +292,17 @@ fn json_text_parse_array_values(s: String, i: Int) -> JsonTextParseResult {
   if char_at(s: s, i: p) == "]" {
     json_text_parse_ok(end: p + 1)
   } else {
-    let v = json_text_parse_value(s: s, i: p)
-    if !v.ok { v } else {
-      let q = json_text_skip_ws(s: s, i: v.end)
-      if char_at(s: s, i: q) == "]" {
-        json_text_parse_ok(end: q + 1)
-      } else if char_at(s: s, i: q) == "," {
-        json_text_parse_array_values(s: s, i: q + 1)
-      } else {
-        json_text_parse_fail(end: q)
+    match json_text_parse_value(s: s, i: p) {
+      JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
+      JsonTextParseOk { end: end } => {
+        let q = json_text_skip_ws(s: s, i: end)
+        if char_at(s: s, i: q) == "]" {
+          json_text_parse_ok(end: q + 1)
+        } else if char_at(s: s, i: q) == "," {
+          json_text_parse_array_values(s: s, i: q + 1)
+        } else {
+          json_text_parse_fail(end: q)
+        }
       }
     }
   }
@@ -295,21 +321,25 @@ fn json_text_parse_object_members(s: String, i: Int) -> JsonTextParseResult {
   if char_at(s: s, i: p) == "}" {
     json_text_parse_ok(end: p + 1)
   } else {
-    let key = json_text_parse_string(s: s, i: p)
-    if !key.ok { key } else {
-      let c = json_text_skip_ws(s: s, i: key.end)
-      if char_at(s: s, i: c) != ":" {
-        json_text_parse_fail(end: c)
-      } else {
-        let v = json_text_parse_value(s: s, i: c + 1)
-        if !v.ok { v } else {
-          let q = json_text_skip_ws(s: s, i: v.end)
-          if char_at(s: s, i: q) == "}" {
-            json_text_parse_ok(end: q + 1)
-          } else if char_at(s: s, i: q) == "," {
-            json_text_parse_object_members(s: s, i: q + 1)
-          } else {
-            json_text_parse_fail(end: q)
+    match json_text_parse_string(s: s, i: p) {
+      JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
+      JsonTextParseOk { end: key_end } => {
+        let c = json_text_skip_ws(s: s, i: key_end)
+        if char_at(s: s, i: c) != ":" {
+          json_text_parse_fail(end: c)
+        } else {
+          match json_text_parse_value(s: s, i: c + 1) {
+            JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
+            JsonTextParseOk { end: val_end } => {
+              let q = json_text_skip_ws(s: s, i: val_end)
+              if char_at(s: s, i: q) == "}" {
+                json_text_parse_ok(end: q + 1)
+              } else if char_at(s: s, i: q) == "," {
+                json_text_parse_object_members(s: s, i: q + 1)
+              } else {
+                json_text_parse_fail(end: q)
+              }
+            }
           }
         }
       }
@@ -343,6 +373,9 @@ fn json_text_parse_value(s: String, i: Int) -> JsonTextParseResult {
 }
 
 fn json_text_parseable(s: String) -> Bool {
-  let parsed = json_text_parse_value(s: s, i: 0)
-  parsed.ok && json_text_skip_ws(s: s, i: parsed.end) == s.length()
+  match json_text_parse_value(s: s, i: 0) {
+    JsonTextParseOk { end: end } =>
+      json_text_skip_ws(s: s, i: end) == s.length()
+    JsonTextParseFail { end: _ } => false
+  }
 }
