@@ -37,6 +37,7 @@ import std.realization_reconcile {
 }
 import std.measure { second_count, measure_fit_count_floor }
 import extdeps.tools.sleep
+import gunbc.roadmap_static_site { roadmap_site_healthz_body }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -49,6 +50,10 @@ fn witness_healthz_mock_body_groundable() -> Bool {
 
 fn witness_healthz_trailing_lf_body_groundable() -> Bool {
   healthz_body_groundable(body: concat("{\"status\":\"ok\"}", "\n"))
+}
+
+fn witness_healthz_malformed_extension_not_groundable() -> Bool {
+  !healthz_body_groundable(body: concat(roadmap_site_healthz_body(), "}"))
 }
 
 fn witness_healthz_bad_body_not_groundable() -> Bool {
@@ -170,6 +175,7 @@ fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
 test fn live_deploy_readiness_witnesses() -> Bool {
   witness_healthz_mock_body_groundable()
     && witness_healthz_trailing_lf_body_groundable()
+    && witness_healthz_malformed_extension_not_groundable()
     && witness_healthz_bad_body_not_groundable()
     && witness_ssh_mock_stdout_is_discriminating_red()
     && witness_transport_probe_script_targets_localhost_healthz()
