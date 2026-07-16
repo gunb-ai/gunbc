@@ -1877,6 +1877,98 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
     *guard = Some(receipt);
 }
 
+/// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
+/// Instrument path for diagnostic histogram — not for cargo tests.
+/// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
+/// (`compile_to_resolved` on the whole-tree source closure).
+pub fn compile_clean_whole_tree_hard_diagnostics(
+) -> Result<im_rc::Vector<Rc<ErrorNode>>, String> {
+    let plan = CompileCleanScopePlan::WholeTree;
+    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
+        None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
+        Some(s) => s,
+    };
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    Ok(result
+        .diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .cloned()
+        .collect())
+}
+
+/// `(class, name)` key for histogram aggregation over hard diagnostics.
+pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, String) {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let class = match d.diagnostic.as_ref() {
+        CompilerDiagnostic::UnresolvedImport { .. } => "UnresolvedImport",
+        CompilerDiagnostic::MissingExport { .. } => "MissingExport",
+        CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
+        CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
+        CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
+        CompilerDiagnostic::VariantNotFound { .. } => "VariantNotFound",
+        CompilerDiagnostic::FieldNotFound { .. } => "FieldNotFound",
+        CompilerDiagnostic::MissingField { .. } => "MissingField",
+        CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
+        CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
+        CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
+        CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
+        CompilerDiagnostic::ParseError { .. } => "ParseError",
+        CompilerDiagnostic::InternalError { .. } => "InternalError",
+        CompilerDiagnostic::ComplexityUnknown { .. } => "ComplexityUnknown",
+        CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
+        CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
+        CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
+    };
+    let name = match d.diagnostic.as_ref() {
+        CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
+        CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
+        CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
+        CompilerDiagnostic::TypeMismatch { got, .. } => got.clone(),
+        CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
+        CompilerDiagnostic::VariantNotFound { variant, .. } => variant.clone(),
+        CompilerDiagnostic::FieldNotFound { field, .. } => field.clone(),
+        CompilerDiagnostic::MissingField { field, .. } => field.clone(),
+        CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
+        CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
+        CompilerDiagnostic::DuplicateModule { name, .. } => name.clone(),
+        CompilerDiagnostic::MissingAnnotation { fn_name, .. } => fn_name.clone(),
+        CompilerDiagnostic::ParseError { message, .. } => truncate_histogram_label(message, 80),
+        CompilerDiagnostic::InternalError { message, .. } => {
+            compile_clean_internal_error_histogram_name(message)
+        }
+        CompilerDiagnostic::ComplexityUnknown { func_name, .. } => func_name.clone(),
+        CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
+        CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
+        CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+    };
+    (class.to_string(), name)
+}
+
+fn truncate_histogram_label(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max.saturating_sub(1)])
+    }
+}
+
+fn compile_clean_internal_error_histogram_name(message: &str) -> String {
+    if let Some(rest) = message.strip_prefix("function '") {
+        if let Some(name) = rest.split_once('\'').map(|(n, _)| n) {
+            return format!("function:{name}");
+        }
+    }
+    if let Some(rest) = message.strip_prefix("undefined variable '") {
+        if let Some(name) = rest.split_once('\'').map(|(n, _)| n) {
+            return format!("variable:{name}");
+        }
+    }
+    truncate_histogram_label(message, 80)
+}
+
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
