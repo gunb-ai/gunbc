@@ -36,7 +36,7 @@ data hma82gr7afr8n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   data_rate_mts: 2666,
   ecc: true,
   buffering: Registered,
-  chip_width: bit_width(4),
+  chip_width: bit_width(8),
 
   rank_count: 2,
 }
