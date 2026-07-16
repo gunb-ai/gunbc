@@ -5588,9 +5588,10 @@ fn dispatch_shell(
                 msg: format!("failed to execute '{}': {}", argv[0], e),
             })?;
 
-        let stdin_writer = child.stdin.take().map(|mut stdin| {
-            std::thread::spawn(move || stdin.write_all(&stdin_bytes))
-        });
+        let stdin_writer = child
+            .stdin
+            .take()
+            .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
         let output = child
             .wait_with_output()
