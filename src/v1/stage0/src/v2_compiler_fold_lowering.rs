@@ -6,8 +6,5 @@
 pub type Symbol = String;
 
 pub fn fold_family_head(sym: Symbol) -> bool {
-    sym == "fold"
-        || sym == "fold_list"
-        || sym == "fold_list_right"
-        || sym == "fold_node"
+    sym == "fold" || sym == "fold_list" || sym == "fold_list_right" || sym == "fold_node"
 }
