@@ -1,5 +1,8 @@
 module std.currency
 
+import std.types { Int }
+
+
 
 type CurrencyCode =
     Eur

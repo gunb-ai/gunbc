@@ -1,5 +1,9 @@
 module v2.lens.common.construction_justification
 
+import std.disposition { ConstructionMechanism }
+import std.decl_ref { DeclarationRef }
+
+
 
 
 type ConstructionClass
