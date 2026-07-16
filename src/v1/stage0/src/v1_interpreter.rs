@@ -7211,6 +7211,34 @@ fn eval_builtin_inner(
             }),
         },
 
+        // ObservePeakResidentAtSubject realization seam (witness-realization plan P1):
+        // process peak resident set (VmHWM) in bytes. Fail-closed when the host
+        // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
+        "observed_peak_resident_bytes" => match positional.as_slice() {
+            [] => {
+                let bytes = std::fs::read_to_string("/proc/self/status")
+                    .ok()
+                    .and_then(|status| {
+                        status
+                            .lines()
+                            .find(|l| l.starts_with("VmHWM"))
+                            .and_then(|line| line.split_whitespace().nth(1))
+                            .and_then(|kb| kb.parse::<i64>().ok())
+                    })
+                    .map(|kb| kb.saturating_mul(1024));
+                match bytes {
+                    Some(b) => Ok(Some(Value::Int(b))),
+                    None => Err(InterpError::TypeError {
+                        msg: "observed_peak_resident_bytes: VmHWM unavailable on this host (refusing to fabricate a Measured space fact)"
+                            .to_string(),
+                    }),
+                }
+            }
+            _ => Err(InterpError::TypeError {
+                msg: "observed_peak_resident_bytes takes no arguments".to_string(),
+            }),
+        },
+
         "hash_combine" => match positional.as_slice() {
             [Value::Str(a), Value::Str(b)] if positional.len() == 2 => {
                 if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
