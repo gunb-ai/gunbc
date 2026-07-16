@@ -41,8 +41,6 @@ mod direct_import_precedence_over_transitive_leak_test;
 #[cfg(test)]
 mod eval_measurement_purity_test;
 #[cfg(test)]
-mod exec_arg_limit_witness_test;
-#[cfg(test)]
 mod faithful_string_element_char_witness_test;
 #[cfg(test)]
 mod fn_as_value_test;

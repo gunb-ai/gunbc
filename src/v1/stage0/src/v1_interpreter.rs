@@ -9117,7 +9117,43 @@ mod shell_completion_trace_tests {
 
 #[cfg(test)]
 mod argv_arg_limit_test {
-    use super::{argv_arg_limit_refusal, InterpError, HOST_ARG_MAX_STRLEN_BYTES};
+    use std::rc::Rc;
+
+    use im_rc::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
+
+    use super::{
+        dispatch_shell, argv_arg_limit_refusal, Env, ExecutionMode, InterpContext, InterpError,
+        HOST_ARG_MAX_STRLEN_BYTES,
+    };
+
+    fn argv_limit_test_context() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
+    }
+
+    /// `shell.Exec.Check`-shaped argv: `sh -c "<command>"` as three literal tokens.
+    fn shell_check_style_transport(command: &str) -> Rc<Node> {
+        let span = make_span(0, 0);
+        shell_transport_node(
+            Rc::new(im_vec![
+                make_text_part_node("sh".to_string(), span.clone()),
+                make_text_part_node("-c".to_string(), span.clone()),
+                make_text_part_node(command.to_string(), span.clone()),
+            ]),
+            Rc::new(im_vec![]),
+            None,
+            span,
+        )
+    }
 
     // Pin the Rust seed mirror to the single authority modeled in
     // extdeps/os/exec_arg_limit.dag (host_exec_arg_max_strlen = byte_size(131072),
@@ -9169,5 +9205,48 @@ mod argv_arg_limit_test {
             .collect();
         // total is ~2x the limit, but no single token exceeds it.
         assert!(argv_arg_limit_refusal(&many_small, limit).is_none());
+    }
+
+    // Wiring proof: `dispatch_shell` must reach `argv_arg_limit_refusal` on the
+    // evaluated argv and refuse BEFORE any exec branch. Without that guard arm the
+    // same transport would proceed to `Command::spawn` and surface an opaque spawn
+    // error instead of `ArgvExceedsHostArgMax` (RED control — predicate-only tests
+    // do not exercise this call path).
+    #[test]
+    fn dispatch_shell_wiring_refuses_oversized_argv() {
+        let ctx = argv_limit_test_context();
+        let transport =
+            shell_check_style_transport(&"x".repeat(HOST_ARG_MAX_STRLEN_BYTES + 1));
+        let env = Env::empty();
+        match dispatch_shell(&transport, &env, &ctx) {
+            Err(InterpError::ArgvExceedsHostArgMax {
+                actual_bytes,
+                limit_bytes,
+                argv0,
+            }) => {
+                assert_eq!(actual_bytes, HOST_ARG_MAX_STRLEN_BYTES + 1);
+                assert_eq!(limit_bytes, HOST_ARG_MAX_STRLEN_BYTES);
+                assert_eq!(argv0, "sh");
+            }
+            Err(other) => panic!(
+                "expected dispatch_shell to refuse via ArgvExceedsHostArgMax before spawn, got {other:?}"
+            ),
+            Ok(_) => panic!("expected refusal before spawn, got Ok"),
+        }
+    }
+
+    // GREEN control on the wiring path: a small argv is not refused by the wall
+    // (dispatch proceeds to spawn — wet, but the discriminating RED is pre-spawn).
+    #[test]
+    fn dispatch_shell_wiring_admits_small_argv() {
+        let ctx = argv_limit_test_context();
+        let transport = shell_check_style_transport("true");
+        let env = Env::empty();
+        match dispatch_shell(&transport, &env, &ctx) {
+            Err(InterpError::ArgvExceedsHostArgMax { .. }) => {
+                panic!("small argv must not trip the arg-size wall")
+            }
+            Ok(_) | Err(_) => {}
+        }
     }
 }
