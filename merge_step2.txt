@@ -1,0 +1,30 @@
+Merge made by the 'ort' strategy.
+ dag/gunbc/fleet_intent.dag                         |   2 +-
+ dag/gunbc/plans/v2_self_hosting.dag                |   2 +-
+ dag/product/network_topology.dag                   |   5 +-
+ .../build_artifact_verification_witness_test.dag   |  71 --------
+ .../claim/machine_shape_construction_wall_test.dag |  98 ++++++++++
+ dag/tools/build_step.dag                           |  13 +-
+ docs/plans/v2-self-hosting.md                      |   2 +-
+ src/v2/compiler/00_compile.dag                     |   9 +-
+ src/v2/lens/machine_shape.dag                      | 199 +++++++++++++++++++++
+ .../build_artifact_verification_witness_test.dag   |  92 ++++++++++
+ src/v2/workflow/bash_program_emit.dag              |   8 +-
+ src/v2/workflow/build_step_emit.dag                |  14 ++
+ 12 files changed, 426 insertions(+), 89 deletions(-)
+ delete mode 100644 dag/test/claim/build_artifact_verification_witness_test.dag
+ create mode 100644 dag/test/claim/machine_shape_construction_wall_test.dag
+ create mode 100644 src/v2/lens/machine_shape.dag
+ create mode 100644 src/v2/test/claim/build_artifact_verification_witness_test.dag
+ create mode 100644 src/v2/workflow/build_step_emit.dag
+EXIT:0
+On branch session/smart-tern-393
+Your branch is ahead of 'origin/session/smart-tern-393' by 5 commits.
+  (use "git push" to publish your local commits)
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	merge_step1.txt
+	merge_step2.txt
+
+nothing added to commit but untracked files present (use "git add" to track)
