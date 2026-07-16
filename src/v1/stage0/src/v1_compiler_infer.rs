@@ -15569,8 +15569,20 @@ pub fn typecheck(
                 )
             },
         );
+        // [LOCAL MEASUREMENT PROBE — do not commit] whole-graph census + fold attribution
+        let __probe_gb_started = std::time::Instant::now();
         let global_bare = build_global_bare_census(graph.modules.clone(), source_indices.clone());
+        eprintln!(
+            "[gate-phase] global_bare_census ms={}",
+            __probe_gb_started.elapsed().as_millis()
+        );
+        let __probe_si_started = std::time::Instant::now();
         let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
+        eprintln!(
+            "[gate-phase] symbol_index_census ms={}",
+            __probe_si_started.elapsed().as_millis()
+        );
+        let __probe_fold_started = std::time::Instant::now();
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -15622,8 +15634,17 @@ pub fn typecheck(
             }
             __result
         });
+        eprintln!(
+            "[gate-phase] realize_fold ms={}",
+            __probe_fold_started.elapsed().as_millis()
+        );
+        let __probe_ets_started = std::time::Instant::now();
         let expanded_registry =
             expand_transitive_services(modules.clone(), state.item_registry.clone(), 5);
+        eprintln!(
+            "[gate-phase] expand_transitive_services ms={}",
+            __probe_ets_started.elapsed().as_millis()
+        );
         Rc::new(TypedGraph {
             modules: modules.clone(),
             item_registry: expanded_registry.clone(),
@@ -15667,11 +15688,15 @@ pub fn realize_module(
                             )
                         },
                     );
+                    // [LOCAL MEASUREMENT PROBE — do not commit] per-module attribution
+                    let __probe_pe_started = std::time::Instant::now();
                     let parent_result = collect_parent_envs(
                         resolved.clone(),
                         dep_state.module_index.clone(),
                         source_indices.clone(),
                     );
+                    let __probe_pe_us = __probe_pe_started.elapsed().as_micros();
+                    let __probe_tc_started = std::time::Instant::now();
                     let tc_result = typecheck_module(
                         resolved.clone(),
                         dep_state.module_index.clone(),
@@ -15680,6 +15705,12 @@ pub fn realize_module(
                         intern_table.clone(),
                         global_bare.clone(),
                         symbol_index.clone(),
+                    );
+                    eprintln!(
+                        "[gate-typecheck] module={} pe_us={} tc_us={}",
+                        name,
+                        __probe_pe_us,
+                        __probe_tc_started.elapsed().as_micros()
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
@@ -16371,13 +16402,39 @@ pub fn reconcile(
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
     {
+        // [LOCAL MEASUREMENT PROBE — do not commit] reconcile sub-phase attribution
+        let __probe_tc_started = std::time::Instant::now();
         let typed = typecheck(graph.clone(), source_indices.clone(), intern_table.clone());
+        eprintln!(
+            "[gate-phase] typecheck_total ms={}",
+            __probe_tc_started.elapsed().as_millis()
+        );
+        let __probe_rw1_started = std::time::Instant::now();
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
+        eprintln!(
+            "[gate-phase] rewire_type_env_parent_links ms={}",
+            __probe_rw1_started.elapsed().as_millis()
+        );
+        let __probe_rw2_started = std::time::Instant::now();
         let modules =
             rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
+        eprintln!(
+            "[gate-phase] rewire_type_env_import_str_binding_identity ms={}",
+            __probe_rw2_started.elapsed().as_millis()
+        );
+        let __probe_rw3_started = std::time::Instant::now();
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+        eprintln!(
+            "[gate-phase] rewire_func_env_parent_links ms={}",
+            __probe_rw3_started.elapsed().as_millis()
+        );
+        let __probe_emit_started = std::time::Instant::now();
         let has_v1_seed = corpus_has_v1_seed_source_indices(modules.clone());
         let emit_info = build_emit_graph_info(modules.clone(), has_v1_seed.clone());
+        eprintln!(
+            "[gate-phase] build_emit_graph_info ms={}",
+            __probe_emit_started.elapsed().as_millis()
+        );
         Rc::new(ResolvedGraph {
             modules: modules.clone(),
             item_registry: typed.item_registry.clone(),

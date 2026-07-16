@@ -2481,19 +2481,30 @@ pub fn compile_to_resolved_with_options(
                 );
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
                 let typed_diags = typed.diagnostics.clone();
+                // [LOCAL MEASUREMENT PROBE — do not commit] analyses attribution
+                let __probe_cx_started = std::time::Instant::now();
                 let complexity = if options.analyze_complexity.clone() {
                     run_complexity_analysis(typed.clone(), source_indices.clone())
                 } else {
                     empty_complexity_report()
                 };
+                eprintln!(
+                    "[gate-phase] complexity_analysis ms={}",
+                    __probe_cx_started.elapsed().as_millis()
+                );
                 let complexity_diags = if options.analyze_complexity.clone() {
                     complexity_diagnostics(complexity.clone())
                 } else {
                     Rc::new(vec![])
                 };
                 let all_diags = v1_rt::concat(typed_diags.clone(), complexity_diags.clone());
+                let __probe_own_started = std::time::Instant::now();
                 let ownership = extract_ownership_proofs(typed.clone());
                 let ownership_diags = ownership_diagnostics(ownership.clone());
+                eprintln!(
+                    "[gate-phase] ownership ms={}",
+                    __probe_own_started.elapsed().as_millis()
+                );
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
