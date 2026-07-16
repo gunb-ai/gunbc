@@ -3,7 +3,10 @@ module v2.test.claim.c_compilation_unit_witness
 import std.algebra { Empty }
 import std.types { ContentHash, NonEmptyStr, List }
 import v2.extdeps.languages.c {
+  CPartitionFoldOk,
+  CPartitionFoldRefused,
   c_include_directive_for_dep,
+  c_partition_fold_outcome,
   c_partition_unit_graph_has_cycle,
   c_translation_unit_spelling,
   c_unit_header_path,
@@ -14,18 +17,21 @@ import v2.extdeps.languages.c {
 import v2.std.compilers.compilation_unit {
   CompilationUnit,
   CompilationUnitId,
+  InterfaceClosureUnreachedFixpoint,
   ModuleDag,
   ModuleDagEdge,
   ModuleId,
   ModuleTypeDefinitionRow,
   PartitionFoldOk,
+  PartitionFoldRefused,
   PartitionR4Refused,
   PartitionR4Valid,
   PartitionR4ValidityVerdict,
   SccSplit,
   compilation_unit_artifact_id,
-  partition_fold,
   partition_fold_outcome,
+  partition_fold_outcome_with_closure_fuel,
+  partition_interface_contains_node,
   partition_unit_by_id
 }
 import v2.std.collection { empty_map, map_insert }
@@ -158,10 +164,13 @@ fn witness_link_cyclic_assignment() -> Map<ModuleId, CompilationUnitId> {
 }
 
 fn witness_partition_fold_two_units() -> List<CompilationUnit> {
-  partition_fold(
+  match c_partition_fold_outcome(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()
-  )
+  ) {
+    CPartitionFoldOk { units: units } => units
+    CPartitionFoldRefused { outcome: _ } => []
+  }
 }
 
 fn witness_r3_header_source_object_paths() -> Bool {
@@ -175,6 +184,21 @@ fn witness_r3_include_directive_per_dep() -> Bool {
 }
 
 fn witness_r3_spelling_from_partition_fold() -> Bool {
+  let units = witness_partition_fold_two_units()
+  let point_def = witness_point_struct_conj_body()
+  match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
+    Present { value: unit } =>
+      let spelling = c_translation_unit_spelling(unit: unit, units: units)
+      (spelling.header_path == "cu-two.h")
+        && (spelling.source_path == "cu-two.c")
+        && (spelling.object_path == "cu-two.o")
+        && partition_interface_contains_node(interface: spelling.interface_nodes, needle: point_def)
+        && ((spelling.interface_nodes |> count) >= 2)
+    Absent => false
+  }
+}
+
+fn witness_r3_unit_one_spelling_paths() -> Bool {
   let units = witness_partition_fold_two_units()
   match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
     Present { value: unit } =>
@@ -191,31 +215,37 @@ fn witness_r3_spelling_from_partition_fold() -> Bool {
 fn witness_r4_accepts_link_cyclic_unit_graph() -> Bool {
   let dag = witness_link_cyclic_dag()
   let assignment = witness_link_cyclic_assignment()
-  let units = partition_fold(module_dag: dag, assignment: assignment)
-  c_partition_unit_graph_has_cycle(units: units)
-    && match c_validate_partition_r4(
-      module_dag: dag,
-      assignment: assignment,
-      units: units
-    ) {
-      PartitionR4Valid => true
-      PartitionR4Refused { cause: _ } => false
-    }
+  match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    CPartitionFoldOk { units: units } =>
+      c_partition_unit_graph_has_cycle(units: units)
+        && match c_validate_partition_r4(
+          module_dag: dag,
+          assignment: assignment,
+          units: units
+        ) {
+          PartitionR4Valid => true
+          PartitionR4Refused { cause: _ } => false
+        }
+    CPartitionFoldRefused { outcome: _ } => false
+  }
 }
 
 fn witness_r4_refuses_module_scc_split() -> Bool {
   let assignment = witness_two_unit_assignment()
-  let units = partition_fold(
+  match c_partition_fold_outcome(
     module_dag: witness_triangle_dag(),
     assignment: assignment
-  )
-  match c_validate_partition_r4(
-    module_dag: witness_triangle_dag(),
-    assignment: assignment,
-    units: units
   ) {
-    PartitionR4Refused { cause: SccSplit { detail: _ } } => true
-    PartitionR4Valid => false
+    CPartitionFoldOk { units: units } =>
+      match c_validate_partition_r4(
+        module_dag: witness_triangle_dag(),
+        assignment: assignment,
+        units: units
+      ) {
+        PartitionR4Refused { cause: SccSplit { detail: _ } } => true
+        PartitionR4Valid => false
+      }
+    CPartitionFoldRefused { outcome: _ } => false
   }
 }
 
@@ -246,20 +276,35 @@ fn witness_r4_refuses_duplicate_member_partition() -> Bool {
   }
 }
 
-fn witness_partition_fold_ok_before_c_r4() -> Bool {
+fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
+  match partition_fold_outcome_with_closure_fuel(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment(),
+    closure_fuel: 0
+  ) {
+    PartitionFoldRefused {
+      cause: InterfaceClosureUnreachedFixpoint { unit_id: _ },
+    } => true
+    PartitionFoldOk { units: _ } => false
+  }
+}
+
+fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
   match partition_fold_outcome(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()
   ) {
     PartitionFoldOk { units: units } => (units |> count) == 2
-    _ => false
+    PartitionFoldRefused { cause: _ } => true
   }
 }
 
 test fn c_compilation_unit_witnesses() -> Bool {
-  witness_partition_fold_ok_before_c_r4()
+  witness_partition_fold_compat_wrapper_not_receipt_path()
+    && witness_partition_fold_outcome_refuses_zero_closure_fuel()
     && witness_r3_header_source_object_paths()
     && witness_r3_include_directive_per_dep()
+    && witness_r3_unit_one_spelling_paths()
     && witness_r3_spelling_from_partition_fold()
     && witness_r4_accepts_link_cyclic_unit_graph()
     && witness_r4_refuses_module_scc_split()

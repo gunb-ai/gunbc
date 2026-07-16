@@ -33,18 +33,52 @@ import v2.std.compilers.compilation_unit {
   CompilationUnitId,
   ModuleDag,
   ModuleId,
+  PartitionFoldOk,
+  PartitionFoldOutcome,
+  PartitionFoldRefused,
   PartitionR4Refused,
   PartitionR4Valid,
   PartitionR4ValidityVerdict,
   SccSplit,
   module_unit_id,
+  partition_fold_outcome,
   partition_unit_by_id
 }
 import v2.std.logic { Bool }
+import v2.std.node { Node }
 
 data c_r3_interface_members_split_note: String = "C R3: CompilationUnit.interface renders to the unit .h (declarations only); CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
 
-data c_r4_permissive_linkage_note: String = "C R4: permissive on unit-graph / linkage condensation cycles (forward-declared cross-calls resolve at link time). Refuses only module-SCC split across units (SccSplit) and duplicate module membership across units (split-definition / ODR)."
+data c_r4_permissive_linkage_note: String = "C R4: permissive on LinkageCycle (unit-graph / linkage condensation may be cyclic; forward-declared cross-calls resolve at link time). Refuses module-SCC split (SccSplit) and duplicate member assignment (split-definition / ODR, also SccSplit). Does not refuse UnitGraphCycle or LinkageCycle. Incomplete by-value type cycles are NOT modeled here yet — if a witness needs a cause outside the closed coproduct, escalate to the home author."
+
+data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes partition_fold_outcome). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback)."
+
+type CPartitionFold
+  = CPartitionFoldOk { units: List<CompilationUnit> }
+  | CPartitionFoldRefused { outcome: PartitionFoldOutcome }
+
+fn c_partition_fold_outcome(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> CPartitionFold {
+  match partition_fold_outcome(module_dag: module_dag, assignment: assignment) {
+    PartitionFoldOk { units: units } => CPartitionFoldOk { units: units }
+    PartitionFoldRefused { cause: cause } =>
+      CPartitionFoldRefused {
+        outcome: PartitionFoldRefused { cause: cause },
+      }
+  }
+}
+
+fn c_partition_fold_units_or_empty(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> List<CompilationUnit> {
+  match c_partition_fold_outcome(module_dag: module_dag, assignment: assignment) {
+    CPartitionFoldOk { units: units } => units
+    CPartitionFoldRefused { outcome: _ } => []
+  }
+}
 
 type CTranslationUnitSpelling {
   unit_id: CompilationUnitId
@@ -53,6 +87,7 @@ type CTranslationUnitSpelling {
   include_directives: List<String>
   include_closure: List<CompilationUnitId>
   object_path: String
+  interface_nodes: List<Node>
 }
 
 fn c_unit_basename(unit_id: CompilationUnitId) -> String {
@@ -159,6 +194,7 @@ fn c_translation_unit_spelling(
     include_directives: c_unit_include_directives(deps: unit.deps)
     include_closure: c_include_closure(unit: unit, units: units)
     object_path: c_unit_object_path(artifact: unit.artifact)
+    interface_nodes: unit.interface
   }
 }
 
