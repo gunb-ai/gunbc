@@ -7,7 +7,8 @@ import extdeps.languages.bash.program {
   lit, var_ref, serialize_bash
 }
 import v2.workflow.bash_program_emit { bash_program_serialize_stmt_required }
-import tools.build_step { BuildArtifact, emit_verifications, verifications_script }
+import v2.workflow.build_step_emit { verifications_script }
+import tools.build_step { BuildArtifact, emit_verifications }
 import gunbc.ci_spec { ci_floor_build_verify_script }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
