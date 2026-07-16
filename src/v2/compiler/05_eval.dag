@@ -589,6 +589,8 @@ fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
       test_claim_symbol_digest(sym: ^test_claim_no_correction_ambiguous_intent_tag)
     ExternalContractUnknown =>
       test_claim_symbol_digest(sym: ^test_claim_no_correction_external_contract_unknown_tag)
+    CorrectionNotModeled =>
+      test_claim_symbol_digest(sym: ^test_claim_no_correction_correction_not_modeled_tag)
   }
 }
 
