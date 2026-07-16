@@ -37,16 +37,16 @@ pub enum EffectShape {
 pub enum CreateCause {
     PostAlways,
     CreateIfAbsent { key_source: Rc<KeySource> },
+    KeylessFallback { method: HttpMethod },
 }
-impl CreateCause {
-    pub fn key_source(&self) -> Rc<KeySource> {
-        match self {
-            CreateCause::PostAlways => panic!("no key_source on unit variant"),
-            CreateCause::CreateIfAbsent {
-                key_source: __val, ..
-            } => __val.clone(),
-        }
+
+pub fn keyless_fallback_cause_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "KeylessFallback de-conflates PostAlways. derive_effect_shape maps a PUT/PATCH/DELETE whose path carries no key onto CreateEffect, and before this variant that arm answered PostAlways -- so one cause meant BOTH 'the spec said POST' AND 'we fell back because there was no key', losing the originating method (state-space conflation, DESIGN failure-mode list). The conflation was observable: check_modifier_vs_derivation could only hedge 'idempotency may be spec-declared' on a keyless PUT because it could not see which case it held. RESIDUE (deliberate, not oversight): is_idempotent_effect still answers false for KeylessFallback, preserving the pre-variant verdict exactly. RFC 9110 makes PUT and DELETE idempotent BY METHOD, so the method-derived refinement (keyless PUT declared idempotent => Agrees, not DerivationUnknown) is the correct end state -- it changes live verdicts and generate_idempotency_obligations output, so it lands with its own discriminating witness rather than riding this de-conflation. Discriminating control: test.claim.effects_witness_test.effects_keyless_fallback_is_not_post_witnesses.".to_string()
+        };
     }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -90,6 +90,7 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
                 ..
             } => true,
             CreateCause::PostAlways => false,
+            CreateCause::KeylessFallback { method: method, .. } => false,
         },
         EffectShape::AppendEffect => false,
     }
@@ -120,6 +121,7 @@ pub fn create_effect_is_dedupable(shape: Rc<EffectShape>) -> bool {
                 ..
             } => true,
             CreateCause::PostAlways => false,
+            CreateCause::KeylessFallback { method: method, .. } => false,
         },
         _ => false,
     }
@@ -135,11 +137,13 @@ pub fn create_double_init_collapsible(a: Rc<EffectShape>, b: Rc<EffectShape>) ->
                             key_source_eq(ka.clone(), kb.clone())
                         }
                         CreateCause::PostAlways => false,
+                        CreateCause::KeylessFallback { method: method, .. } => false,
                     }
                 }
                 _ => false,
             },
             CreateCause::PostAlways => false,
+            CreateCause::KeylessFallback { method: method, .. } => false,
         },
         _ => false,
     }
@@ -231,7 +235,9 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
             None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::PostAlways),
+                cause: Rc::new(CreateCause::KeylessFallback {
+                    method: HttpMethod::DELETE,
+                }),
             }),
         },
         HttpMethod::PUT => match last_path_param(path.clone()) {
@@ -239,7 +245,9 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
             None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::PostAlways),
+                cause: Rc::new(CreateCause::KeylessFallback {
+                    method: HttpMethod::PUT,
+                }),
             }),
         },
         HttpMethod::PATCH => match last_path_param(path.clone()) {
@@ -247,7 +255,9 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
             None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::PostAlways),
+                cause: Rc::new(CreateCause::KeylessFallback {
+                    method: HttpMethod::PATCH,
+                }),
             }),
         },
     }
@@ -315,6 +325,15 @@ pub fn check_modifier_vs_derivation(
                         };
                         Rc::new(ModifierAgreement::DerivationUnknown {
     reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared".to_string(),
+})
+                    }
+                    EffectShape::CreateEffect { ref cause, .. } => {
+                        let CreateCause::KeylessFallback { method: method, .. } = cause.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        Rc::new(ModifierAgreement::DerivationUnknown {
+    reason: "keyless PUT/PATCH/DELETE derives CreateEffect; idempotency may be method-derived".to_string(),
 })
                     }
                     _ => Rc::new(ModifierAgreement::Disagrees {
