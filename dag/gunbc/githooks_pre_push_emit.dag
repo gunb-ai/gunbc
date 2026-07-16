@@ -36,8 +36,9 @@ fn emit_glob_case_arms(globs: List<String>) -> String {
 }
 
 fn emit_claim_batch(entry: String, function: String, suffix: String) -> String {
+  let roots = fold(witness_layer_roots, init: "", f: fn(acc, r) { concat(acc, concat(" --source-root ", r)) })
   concat(
-    "\"$CLAIM_BATCH\" --source-root dag --source-root src/v2 --entry ",
+    concat("\"$CLAIM_BATCH\"", concat(roots, " --entry ")),
     concat(entry, concat(" --function ", concat(function, suffix)))
   )
 }
