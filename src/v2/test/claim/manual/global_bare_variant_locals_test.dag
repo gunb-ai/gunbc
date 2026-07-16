@@ -5,9 +5,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Floor witness for src/v1/tests/src/global_bare_variant_locals_test.rs (sleek-wolf-190 /
-// quiet-gull-833). Behavioral authority: build_global_bare_variant_locals hoist + §5 refusal
-// helper — exercised in the Rust module; this DAG enrolls the stem for migration-debt coverage.
+data global_bare_variant_locals_floor_witness_note: String = "Floor witness for src/v1/tests/src/global_bare_variant_locals_test.rs (sleek-wolf-190 / quiet-gull-833). Behavioral authority: build_global_bare_variant_locals hoist + refusal helper — exercised in the Rust module; this DAG enrolls the stem for migration-debt coverage."
+
 test fn global_bare_variant_locals_floor_witness_enrolled() -> Bool {
   true
 }
