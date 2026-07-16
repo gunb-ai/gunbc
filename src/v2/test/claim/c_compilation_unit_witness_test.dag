@@ -442,7 +442,7 @@ fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
     assignment: witness_two_unit_assignment()
   ) {
     PartitionFoldOk { units: units } => (units |> count) == 2
-    PartitionFoldRefused { cause: _ } => true
+    PartitionFoldRefused { cause: _ } => false
   }
 }
 
