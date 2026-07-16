@@ -5,8 +5,8 @@ use std::rc::Rc;
 
 use im_rc::{vector, HashMap};
 use v1_compiler::v1_compiler_infer::{
-    build_global_bare_variant_locals, merge_global_bare_variant_locals,
-    take_merge_global_bare_per_module_scans, VariantFoldState,
+    build_global_bare_variant_locals, finish_global_bare_diagnostic_reconcile_refusal,
+    merge_global_bare_variant_locals, take_merge_global_bare_per_module_scans, VariantFoldState,
 };
 use v1_compiler::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding};
 use v1_compiler::v1_rt;
@@ -145,5 +145,17 @@ fn precomputed_merge_records_zero_has_child_named_per_module() {
     assert!(
         rows.iter().all(|(_, keys, has_child)| *keys == 1 && *has_child == 0),
         "precomputed merge visits hoisted keys only — has_child_named is module-invariant: {rows:?}"
+    );
+}
+
+#[test]
+fn baseline_merge_diagnostic_refuses_green_resolve_after_receipt() {
+    std::env::set_var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE", "1");
+    let err = finish_global_bare_diagnostic_reconcile_refusal(3, None)
+        .expect_err("diagnostic baseline merge must refuse green resolve after receipt");
+    std::env::remove_var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE");
+    assert!(
+        err.contains("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE"),
+        "refusal must name the diagnostic env: {err}"
     );
 }

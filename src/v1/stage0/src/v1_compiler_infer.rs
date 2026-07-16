@@ -16628,8 +16628,7 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
-    reconcile_checked(graph, source_indices, intern_table)
-        .unwrap_or_else(|e| panic!("{e}"))
+    reconcile_checked(graph, source_indices, intern_table).unwrap_or_else(|e| panic!("{e}"))
 }
 
 pub fn reconcile_checked(
