@@ -56,9 +56,9 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
-  content_hash,
   SyntheticOccurrence
 }
+import v2.std.node_content_hash { content_hash }
 import v2.std.witness { Holds, Witness }
 import v2.std.node_query { coproduct_arm_keys }
 import v2.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at }
