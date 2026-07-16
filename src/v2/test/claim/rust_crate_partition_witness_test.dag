@@ -17,6 +17,7 @@ import v2.std.compilers.compilation_unit {
   PartitionFoldRefused,
   PartitionR4Refused,
   PartitionR4Valid,
+  ByValueTypeCycle,
   LinkageCycle,
   SccSplit,
   UnitGraphCycle,
@@ -103,6 +104,7 @@ fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
     PartitionR4Refused { cause: SccSplit { detail: _ } } => true
     PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => false
     PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
+    PartitionR4Refused { cause: ByValueTypeCycle { detail: _ } } => false
     PartitionR4Valid => false
   }
 }
@@ -149,6 +151,7 @@ fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool {
     PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => true
     PartitionR4Refused { cause: SccSplit { detail: _ } } => false
     PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
+    PartitionR4Refused { cause: ByValueTypeCycle { detail: _ } } => false
     PartitionR4Valid => false
   }
 }
