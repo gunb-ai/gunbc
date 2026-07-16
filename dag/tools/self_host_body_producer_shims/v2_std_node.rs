@@ -59,6 +59,14 @@ pub struct Node {
     pub occurrence_id: Rc<NodeOccurrenceId>,
 }
 
+pub fn node_synthetic(kind: Rc<NodeKind>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Node> {
+    Rc::new(Node {
+        kind,
+        children,
+        occurrence_id: Rc::new(NodeOccurrenceId::SyntheticOccurrence),
+    })
+}
+
 pub fn node_rebuild(n: Rc<Node>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Node> {
     Rc::new(Node {
         kind: n.kind.clone(),

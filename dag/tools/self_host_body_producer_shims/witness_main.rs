@@ -11,8 +11,12 @@ use v1_compiler::usv_pilot_v2_std_node::{
     Edge as SEdge, EdgeLabel as SEdgeLabel, Node as SNode, NodeKind as SNodeKind,
 };
 
-fn outcome_is_accepted<T>(o: &emitted::Outcome<T>) -> bool {
-    matches!(o, emitted::Outcome::Accepted { .. })
+fn outcome_is_accepted_emitted<T>(o: &Rc<emitted::Outcome<T>>) -> bool {
+    matches!(&**o, emitted::Outcome::Accepted { .. })
+}
+
+fn outcome_is_accepted_seed<T>(o: &Rc<seed::Outcome<T>>) -> bool {
+    matches!(&**o, seed::Outcome::Accepted { .. })
 }
 
 fn transform_body_emitted() -> Rc<ENode> {
@@ -79,13 +83,15 @@ fn main() {
 
     let e_dispatch = emitted::body_producer_dispatch_structured_body(transform_body_emitted());
     let s_dispatch = seed::body_producer_dispatch_structured_body(transform_body_seed());
-    let dispatch_ok = outcome_is_accepted(&e_dispatch) && outcome_is_accepted(&s_dispatch);
+    let dispatch_ok =
+        outcome_is_accepted_emitted(&e_dispatch) && outcome_is_accepted_seed(&s_dispatch);
     println!("dispatch_transform eq_accept={dispatch_ok}");
     all_pass &= dispatch_ok;
 
     let e_reject = emitted::body_producer_dispatch_structured_body(atom_body_emitted());
     let s_reject = seed::body_producer_dispatch_structured_body(atom_body_seed());
-    let reject_ok = !outcome_is_accepted(&e_reject) && !outcome_is_accepted(&s_reject);
+    let reject_ok =
+        !outcome_is_accepted_emitted(&e_reject) && !outcome_is_accepted_seed(&s_reject);
     println!("dispatch_non_behavior eq_reject={reject_ok}");
     all_pass &= reject_ok;
 
@@ -101,8 +107,9 @@ fn main() {
         arrow_signature_seed(),
         transform_body_seed(),
     );
-    let produce_ok = outcome_is_accepted(&e_produce) == outcome_is_accepted(&s_produce)
-        && (!inject_fault || !outcome_is_accepted(&e_produce));
+    let produce_ok = outcome_is_accepted_emitted(&e_produce)
+        == outcome_is_accepted_seed(&s_produce)
+        && (!inject_fault || !outcome_is_accepted_emitted(&e_produce));
     println!(
         "produce_arrow inject_fault={inject_fault} parity={produce_ok}"
     );
