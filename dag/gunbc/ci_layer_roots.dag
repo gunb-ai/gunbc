@@ -38,6 +38,7 @@ data witness_exclusion_substrings: List<String> = [
   "self_host_parse_engine_hooks_behavioral_witness_test.dag",
   "self_host_use_site_verdict_behavioral_witness_test.dag",
   "self_host_discovery_enumeration_behavioral_witness_test.dag",
+  "self_host_fold_lowering_behavioral_witness_test.dag",
   "dag_collect_fingerprint_witness_test.dag",
   "dag_compile_clean_perturb_receipts_test.dag",
   "test/claim/diagnostics_test.dag",

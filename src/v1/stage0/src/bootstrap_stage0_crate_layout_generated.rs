@@ -18,6 +18,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "usv_pilot_v2_std_collection.rs",
     "usv_pilot_v2_std_node.rs",
     "v2_compiler_discovery_enumeration.rs",
+    "v2_compiler_fold_lowering.rs",
     "v2_compiler_parse_engine_hooks.rs",
     "v2_compiler_use_site_verdict.rs"
 ];

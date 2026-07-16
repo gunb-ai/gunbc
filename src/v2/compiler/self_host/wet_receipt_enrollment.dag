@@ -46,6 +46,11 @@ data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = 
     module_path: "src/v2/compiler/discovery_enumeration.dag",
     entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
     function: "self_host_discovery_enumeration_behavioral_receipt_holds"
+  },
+  SelfHostWetReceiptBinding {
+    module_path: "src/v2/compiler/fold_lowering.dag",
+    entry: "dag/test/claim/self_host_fold_lowering_behavioral_witness_test.dag",
+    function: "self_host_fold_lowering_behavioral_receipt_holds"
   }
 ]
 
