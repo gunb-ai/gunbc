@@ -1,0 +1,60 @@
+module v2.std.lens_verdict
+
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.diagnostic {
+  CorrectionNotModeled,
+  Diagnostic,
+  NodeLocus,
+  PortLocus,
+  Textual,
+  Unavailable,
+  textual_whole_file_diagnostic,
+}
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data lens_verdict_home_note: String = "LensVerdict is the shared fail-closed lattice for lenses that have not yet specialized to a mechanism-specific verdict authority (LadderVerdict, VacuityEvidence, …). Diagnostics ground on v2.std.diagnostic — the retired LensVerdictDiagnostic/LensVerdictLocus fork is dissolved (W1.2)."
+
+type LensVerdict
+  = Holds
+  | Violation { diagnostic: Diagnostic }
+  | NotApplicable { diagnostic: Diagnostic }
+  | Unrealized { diagnostic: Diagnostic }
+
+fn lens_verdict_module_file(module_name: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: module_name)
+}
+
+fn lens_verdict_module_diagnostic(reason: Symbol, module_name: String) -> Diagnostic {
+  textual_whole_file_diagnostic(
+    reason: reason,
+    module_file: lens_verdict_module_file(module_name: module_name),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  )
+}
+
+fn lens_verdict_module_violation(reason: Symbol, module_name: String) -> LensVerdict {
+  Violation {
+    diagnostic: lens_verdict_module_diagnostic(reason: reason, module_name: module_name)
+  }
+}
+
+fn lens_verdict_module_unrealized(reason: Symbol, module_name: String) -> LensVerdict {
+  Unrealized {
+    diagnostic: lens_verdict_module_diagnostic(reason: reason, module_name: module_name)
+  }
+}
+
+fn lens_verdict_module_not_applicable(reason: Symbol, module_name: String) -> LensVerdict {
+  NotApplicable {
+    diagnostic: lens_verdict_module_diagnostic(reason: reason, module_name: module_name)
+  }
+}
+
+fn lens_verdict_diagnostic_locus_module(d: Diagnostic) -> String {
+  match d.at {
+    Textual { file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
+    NodeLocus { anchor: _ } => ""
+    PortLocus { anchor: _ } => ""
+  }
+}

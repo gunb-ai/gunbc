@@ -877,6 +877,8 @@ fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_ambiguous)
     ExternalContractUnknown =>
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_external)
+    CorrectionNotModeled =>
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_not_modeled)
   }
 }
 
