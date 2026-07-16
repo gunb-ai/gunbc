@@ -32,7 +32,6 @@ type ApproximateField<T> {
   mul: fn(T, T) -> T
   one: T
   compare: fn(T, T) -> Ordering
-  eq: fn(T, T) -> Bool
 }
 
 fn freemonoid_empty<T>() -> FreeMonoid<T> {
