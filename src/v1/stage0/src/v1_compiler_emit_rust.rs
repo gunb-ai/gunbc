@@ -140,10 +140,11 @@ pub use crate::v1_std_core::{
     module_items, param_node_default_value, param_node_name_at, param_node_type_expr,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value,
     service_config_auth, service_config_auth_input, service_config_auth_source,
-    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_header_name,
-    transport_auth_token, transport_base_url, transport_env, transport_has_auth, transport_headers,
-    transport_method, transport_path_template, transport_query, transport_request_body,
-    transport_response_format, transport_stdin, tuple_type_name, with_required_cardinality,
+    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_basic,
+    transport_auth_header_name, transport_auth_token, transport_base_url, transport_env,
+    transport_has_auth, transport_headers, transport_method, transport_path_template,
+    transport_query, transport_request_body, transport_response_format, transport_stdin,
+    transport_tls_posture, tuple_type_name, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -3991,7 +3992,6 @@ pub fn emit_module_full(
             }
             __result
         });
-        let prelude = emit_prelude(prelude_imported_names.clone());
         let local_type_names = Rc::new({
             let mut __result = Vec::new();
             for item in Rc::new({
@@ -4019,6 +4019,7 @@ pub fn emit_module_full(
             }
             __result
         });
+        let prelude = emit_prelude(prelude_imported_names.clone());
         let imports_str = emit_imports(
             module_imports(m.clone()),
             emit_info.clone(),
@@ -4029,10 +4030,39 @@ pub fn emit_module_full(
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
         );
-        let imports_section = if (imports_str.clone() == "".to_string()) {
+        let dag_import_lines = if (imports_str.clone() == "".to_string()) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(
+                imports_str
+                    .clone()
+                    .split(&"\n".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let carrier_import_lines = if module_renders_faithful_text_carrier(
+            typed_module.items.clone(),
+            emit_info.corpus_repr.clone(),
+            shared_types.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        ) {
+            emit_faithful_text_carrier_import_lines(
+                prelude_imported_names.clone(),
+                local_type_names.clone(),
+            )
+        } else {
+            Rc::new(vec![])
+        };
+        let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
+            dag_import_lines.clone(),
+            carrier_import_lines.clone(),
+        ))
+        .join(&"\n".to_string());
+        let imports_section = if (merged_imports.clone() == "".to_string()) {
             "".to_string()
         } else {
-            v1_rt::concat("\n".to_string(), imports_str.clone())
+            v1_rt::concat("\n".to_string(), merged_imports.clone())
         };
         let this_mod_filename =
             module_to_filename(authored_name(scope.type_env.clone(), m.clone()));
@@ -7322,6 +7352,180 @@ pub fn emit_imports(
             });
             dedupe_rust_import_lines(import_lines.clone()).join(&"\n".to_string())
         }
+    }
+}
+
+pub fn type_node_is_faithful_string_leaf(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    corpus_repr: RustCorpusRepr,
+) -> bool {
+    (((authored_name_at(source_indices.clone(), n.clone()) == "String".to_string())
+        && ((n.children.clone().len() as i64) == 0))
+        && corpus_repr_is_faithful(corpus_repr.clone()))
+}
+
+pub fn node_tree_has_faithful_string_leaf(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    corpus_repr: RustCorpusRepr,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if type_node_is_faithful_string_leaf(n.clone(), source_indices.clone(), corpus_repr.clone())
+        {
+            true
+        } else {
+            {
+                let child_hit = {
+                    let mut __found = false;
+                    for child in n.children.clone().iter().cloned() {
+                        if node_tree_has_faithful_string_leaf(
+                            child.clone(),
+                            source_indices.clone(),
+                            corpus_repr.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                };
+                let annotation_hit = match n.type_annotation.clone() {
+                    Some(ta) => node_tree_has_faithful_string_leaf(
+                        ta.clone(),
+                        source_indices.clone(),
+                        corpus_repr.clone(),
+                    ),
+                    None => false,
+                };
+                (child_hit.clone() || annotation_hit.clone())
+            }
+        }
+    })
+}
+
+pub fn module_renders_faithful_text_carrier(
+    items: Rc<Vec<Rc<Node>>>,
+    corpus_repr: RustCorpusRepr,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (!corpus_repr_is_faithful(corpus_repr.clone())
+        || !v1_rt::set_contains(&shared_types, "FreeMonoid".to_string()))
+    {
+        false
+    } else {
+        {
+            let mut __found = false;
+            for item in items.clone().iter().cloned() {
+                if ((match item.type_annotation.clone() {
+                    Some(ta) => node_tree_has_faithful_string_leaf(
+                        ta.clone(),
+                        source_indices.clone(),
+                        corpus_repr.clone(),
+                    ),
+                    None => false,
+                } || {
+                    let mut __found = false;
+                    for p in item.params.clone().iter().cloned() {
+                        if node_tree_has_faithful_string_leaf(
+                            p.clone(),
+                            source_indices.clone(),
+                            corpus_repr.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }) || match item.body.clone() {
+                    Some(body) => node_tree_has_faithful_string_leaf(
+                        body.clone(),
+                        source_indices.clone(),
+                        corpus_repr.clone(),
+                    ),
+                    None => false,
+                }) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn rust_import_name_already_resolved(
+    imported_names: Rc<Vec<String>>,
+    local_type_names: Rc<Vec<String>>,
+    name: String,
+) -> bool {
+    ({
+        let mut __found = false;
+        for n in imported_names.clone().iter().cloned() {
+            if (n.clone() == name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    } || {
+        let mut __found = false;
+        for n in local_type_names.clone().iter().cloned() {
+            if (n.clone() == name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+pub fn emit_faithful_text_carrier_import_lines(
+    imported_names: Rc<Vec<String>>,
+    local_type_names: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        let free_monoid = if rust_import_name_already_resolved(
+            imported_names.clone(),
+            local_type_names.clone(),
+            "FreeMonoid".to_string(),
+        ) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                rust_visibility_prefix(),
+                "use crate::std_algebra::FreeMonoid;".to_string(),
+            )])
+        };
+        let char_line = if rust_import_name_already_resolved(
+            imported_names.clone(),
+            local_type_names.clone(),
+            "Char".to_string(),
+        ) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                rust_visibility_prefix(),
+                "use crate::std_types::Char;".to_string(),
+            )])
+        };
+        let non_empty_str = if rust_import_name_already_resolved(
+            imported_names.clone(),
+            local_type_names.clone(),
+            "NonEmptyStr".to_string(),
+        ) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                rust_visibility_prefix(),
+                "use crate::std_types::NonEmptyStr;".to_string(),
+            )])
+        };
+        v1_rt::concat(
+            v1_rt::concat(free_monoid.clone(), char_line.clone()),
+            non_empty_str.clone(),
+        )
     }
 }
 
@@ -21542,86 +21746,211 @@ pub fn emit_rest_call(
     env: Rc<TypeEnv>,
 ) -> String {
     {
-        let client_init =
-            "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
-                .to_string();
-        let url_line =
-            emit_rest_url_line(transport.clone(), op_name.clone(), source_indices.clone());
-        let http_method = emit_rest_http_method(transport.clone(), source_indices.clone());
-        let auth_line = emit_rest_auth_line(
-            transport.clone(),
-            service_item.clone(),
-            http_method.clone(),
-            source_indices.clone(),
-        );
-        let query_line = emit_rest_query_line(
-            transport.clone(),
-            corpus_repr.clone(),
-            source_indices.clone(),
-        );
-        let body_line = emit_rest_body_line(transport.clone(), source_indices.clone());
-        let headers = transport_headers(transport.clone(), source_indices.clone());
-        let header_lines = Rc::new({
-            let mut __result = Vec::new();
-            for h in headers.clone().iter().cloned() {
-                __result.push({
-                    let hval = field_init_node_value(h.clone());
-                    let val_str =
-                        emit_simple_expr(hval.clone(), RenderTarget::Rust, source_indices.clone());
+        let has_config_auth =
+            match service_config_auth(service_item.clone(), source_indices.clone()) {
+                Some(_) => true,
+                None => false,
+            };
+        let has_basic_auth = match transport_auth_basic(transport.clone(), source_indices.clone()) {
+            Some(_) => true,
+            None => false,
+        };
+        if (has_config_auth.clone() && has_basic_auth.clone()) {
+            "compile_error!(\"rest transport declares both config-level auth and auth_basic - one auth authority per operation (§3)\");".to_string()
+        } else {
+            {
+                let client_init = emit_rest_client_init(transport.clone(), source_indices.clone());
+                let url_line =
+                    emit_rest_url_line(transport.clone(), op_name.clone(), source_indices.clone());
+                let http_method = emit_rest_http_method(transport.clone(), source_indices.clone());
+                let auth_line = emit_rest_auth_line(
+                    transport.clone(),
+                    service_item.clone(),
+                    http_method.clone(),
+                    source_indices.clone(),
+                );
+                let basic_auth_line =
+                    emit_rest_basic_auth_line(transport.clone(), source_indices.clone());
+                let query_line = emit_rest_query_line(
+                    transport.clone(),
+                    corpus_repr.clone(),
+                    source_indices.clone(),
+                );
+                let body_line = emit_rest_body_line(transport.clone(), source_indices.clone());
+                let headers = transport_headers(transport.clone(), source_indices.clone());
+                let header_lines = Rc::new({
+                    let mut __result = Vec::new();
+                    for h in headers.clone().iter().cloned() {
+                        __result.push({
+                            let hval = field_init_node_value(h.clone());
+                            let val_str = emit_simple_expr(
+                                hval.clone(),
+                                RenderTarget::Rust,
+                                source_indices.clone(),
+                            );
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "let request = request.header(\"".to_string(),
+                                            field_init_node_name_at(
+                                                h.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                        ),
+                                        "\", ".to_string(),
+                                    ),
+                                    val_str.clone(),
+                                ),
+                                ");".to_string(),
+                            )
+                        });
+                    }
+                    __result
+                });
+                let send_line = "let response = request.send().await?;".to_string();
+                let response_handling = emit_response_code_handling(
+                    op_node.clone(),
+                    transport.clone(),
+                    source_indices.clone(),
+                    shared_types.clone(),
+                    corpus_repr.clone(),
+                    env.clone(),
+                );
+                let all_lines = Rc::new({
+                    let mut __result = Vec::new();
+                    for l in v1_rt::concat(
+                        v1_rt::concat(
+                            Rc::new(vec![
+                                client_init.clone(),
+                                url_line.clone(),
+                                auth_line.clone(),
+                                basic_auth_line.clone(),
+                            ]),
+                            header_lines.clone(),
+                        ),
+                        Rc::new(vec![
+                            query_line.clone(),
+                            body_line.clone(),
+                            send_line.clone(),
+                            response_handling.clone(),
+                        ]),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        if (l.clone() != "".to_string()) {
+                            __result.push(l);
+                        }
+                    }
+                    __result
+                });
+                all_lines.clone().join(&"\n".to_string())
+            }
+        }
+    }
+}
+
+pub fn emit_rest_client_init(
+    transport: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match transport_tls_posture(transport.clone(), source_indices.clone()) {
+        Some(p) => {
+            if (p.clone() == "InsecureAcceptAnyCert".to_string()) {
+                "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").danger_accept_invalid_certs(true).build()?;".to_string()
+            } else {
+                if (p.clone() == "VerifyPeer".to_string()) {
+                    "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
+                        .to_string()
+                } else {
                     v1_rt::concat(
+                        v1_rt::concat(
+                            "compile_error!(\"rest transport tls: unrecognized posture '"
+                                .to_string(),
+                            p.clone(),
+                        ),
+                        "'\");".to_string(),
+                    )
+                }
+            }
+        }
+        None => "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
+            .to_string(),
+    }
+}
+
+pub fn emit_rest_basic_auth_line(
+    transport: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match transport_auth_basic(transport.clone(), source_indices.clone()) {
+        Some(b) => {
+            let user_field = Rc::new({
+                let mut __result = Vec::new();
+                for fi in b.children.clone().iter().cloned() {
+                    if (field_init_node_name_at(fi.clone(), source_indices.clone())
+                        == "username".to_string())
+                    {
+                        __result.push(fi);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned();
+            let pass_field = Rc::new({
+                let mut __result = Vec::new();
+                for fi in b.children.clone().iter().cloned() {
+                    if (field_init_node_name_at(fi.clone(), source_indices.clone())
+                        == "password".to_string())
+                    {
+                        __result.push(fi);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned();
+            match user_field.clone() {
+                Some(uf) => match pass_field.clone() {
+                    Some(pf) => {
+                        let user_expr = emit_simple_expr(
+                            field_init_node_value(uf.clone()),
+                            RenderTarget::Rust,
+                            source_indices.clone(),
+                        );
+                        let pass_expr = emit_simple_expr(
+                            field_init_node_value(pf.clone()),
+                            RenderTarget::Rust,
+                            source_indices.clone(),
+                        );
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    "let request = request.header(\"".to_string(),
-                                    field_init_node_name_at(h.clone(), source_indices.clone()),
+                                    v1_rt::concat(
+                                        "let request = request.basic_auth(".to_string(),
+                                        user_expr.clone(),
+                                    ),
+                                    ", Some(".to_string(),
                                 ),
-                                "\", ".to_string(),
+                                pass_expr.clone(),
                             ),
-                            val_str.clone(),
-                        ),
-                        ");".to_string(),
-                    )
-                });
-            }
-            __result
-        });
-        let send_line = "let response = request.send().await?;".to_string();
-        let response_handling = emit_response_code_handling(
-            op_node.clone(),
-            transport.clone(),
-            source_indices.clone(),
-            shared_types.clone(),
-            corpus_repr.clone(),
-            env.clone(),
-        );
-        let all_lines = Rc::new({
-            let mut __result = Vec::new();
-            for l in v1_rt::concat(
-                v1_rt::concat(
-                    Rc::new(vec![
-                        client_init.clone(),
-                        url_line.clone(),
-                        auth_line.clone(),
-                    ]),
-                    header_lines.clone(),
-                ),
-                Rc::new(vec![
-                    query_line.clone(),
-                    body_line.clone(),
-                    send_line.clone(),
-                    response_handling.clone(),
-                ]),
-            )
-            .iter()
-            .cloned()
-            {
-                if (l.clone() != "".to_string()) {
-                    __result.push(l);
+                            "));".to_string(),
+                        )
+                    }
+                    None => {
+                        "compile_error!(\"auth_basic requires both username and password fields\");"
+                            .to_string()
+                    }
+                },
+                None => {
+                    "compile_error!(\"auth_basic requires both username and password fields\");"
+                        .to_string()
                 }
             }
-            __result
-        });
-        all_lines.clone().join(&"\n".to_string())
+        }
+        None => "".to_string(),
     }
 }
 

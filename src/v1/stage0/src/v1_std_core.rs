@@ -2075,6 +2075,24 @@ pub fn transport_headers_key() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn transport_auth_basic_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "auth_basic".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn transport_tls_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "tls".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn make_transport_node(
     properties: Rc<Vec<Rc<Node>>>,
     children: Rc<Vec<Rc<Node>>>,
@@ -2501,7 +2519,7 @@ pub fn transport_response_format(
 }
 
 pub fn is_config_reserved_key(name: String) -> bool {
-    ((((((((((((name.clone() == transport_url_key())
+    ((((((((((((((name.clone() == transport_url_key())
         || (name.clone() == transport_path_key()))
         || (name.clone() == transport_auth_scheme_key()))
         || (name.clone() == transport_auth_header_key()))
@@ -2513,6 +2531,33 @@ pub fn is_config_reserved_key(name: String) -> bool {
         || (name.clone() == transport_stdin_key()))
         || (name.clone() == transport_response_format_key()))
         || (name.clone() == transport_headers_key()))
+        || (name.clone() == transport_auth_basic_key()))
+        || (name.clone() == transport_tls_key()))
+}
+
+pub fn transport_auth_basic(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    find_property(
+        t.properties.clone(),
+        transport_auth_basic_key(),
+        source_indices.clone(),
+    )
+}
+
+pub fn transport_tls_posture(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match find_property(
+        t.properties.clone(),
+        transport_tls_key(),
+        source_indices.clone(),
+    ) {
+        Some(n) => Some(authored_name_at(source_indices.clone(), n.clone())),
+        None => None,
+    }
 }
 
 pub fn transport_headers(
