@@ -5423,6 +5423,8 @@ fn reconcile_with_typed_cache(
     index: &MultiEntryIndex,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
+    let global_bare_variant_locals =
+        v1_compiler_infer::build_global_bare_variant_locals(global_bare.clone(), source_indices.clone());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
@@ -5525,6 +5527,7 @@ fn reconcile_with_typed_cache(
                         // nothing). Q1 (which declarations FEED the census) is separate, and
                         // is answered by `census_module_contributes_declarations`.
                         global_bare.clone(),
+                        global_bare_variant_locals.clone(),
                         symbol_index.clone(),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured

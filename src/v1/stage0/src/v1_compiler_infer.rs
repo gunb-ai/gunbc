@@ -14579,6 +14579,7 @@ pub fn typecheck_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    global_bare_variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<TypecheckModuleResult> {
     {
@@ -14647,6 +14648,7 @@ pub fn typecheck_module(
             resolved.resolved_imports.clone(),
             env.clone(),
             resolved_module_name.clone(),
+            global_bare_variant_locals.clone(),
         );
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
@@ -14800,6 +14802,7 @@ pub fn typecheck_module_isolated(
         source_indices.clone(),
         intern_table.clone(),
         v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         empty_symbol_index(),
     )
 }
@@ -15416,6 +15419,8 @@ pub fn typecheck(
             },
         );
         let global_bare = build_global_bare_census(graph.modules.clone(), source_indices.clone());
+        let global_bare_variant_locals =
+            build_global_bare_variant_locals(global_bare.clone(), source_indices.clone());
         let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
@@ -15432,6 +15437,7 @@ pub fn typecheck(
                     source_indices.clone(),
                     intern_table.clone(),
                     global_bare.clone(),
+                    global_bare_variant_locals.clone(),
                     symbol_index.clone(),
                 )
             },
@@ -15491,6 +15497,7 @@ pub fn realize_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    global_bare_variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -15509,6 +15516,7 @@ pub fn realize_module(
                                 source_indices.clone(),
                                 intern_table.clone(),
                                 global_bare.clone(),
+                                global_bare_variant_locals.clone(),
                                 symbol_index.clone(),
                             )
                         },
@@ -15525,6 +15533,7 @@ pub fn realize_module(
                         source_indices.clone(),
                         intern_table.clone(),
                         global_bare.clone(),
+                        global_bare_variant_locals.clone(),
                         symbol_index.clone(),
                     );
                     let typed = tc_result.typed.clone();
