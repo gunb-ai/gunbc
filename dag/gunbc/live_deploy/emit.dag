@@ -187,4 +187,13 @@ data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Dis
   }
 }
 
-data live_deploy_golden_freeze_note: String = "The apply/retract scripts rendered here are frozen as committed golden artifacts (gunbc.generated_artifact LiveDeployApplyScriptArtifact / LiveDeployRetractScriptArtifact, gated byte-for-byte in test.claim.live_deploy.emit) so live_deploy's current shell-emission behavior is provable (green by execution + a discriminating RED), killing the #6023-class self-referential drift check that compared expected_live_deploy_apply_script() to itself. This is a SCAFFOLD, not the end-state: live_deploy is RUNTIME-PRESENT (docs/plans/shell-emission-model.md Slice 3) and dissolves when heredoc file bodies become typed Filesystem.Write effects and apt/systemctl/tailscale become typed argv invocations — see live_deploy_emit_shell_dissolution_trigger / live_deploy_retract_emit_shell_dissolution_trigger. Transport-aware remote mutation service-op realization (Filesystem.Write/systemctl/tailscale executed on srv1 over ssh without emitted-script indirection) is OUT OF SCOPE for Slice 3 and retires on the same axis as live_deploy_emit_shell_dissolution_trigger — see live_deploy_remote_mutation_service_op_realization_dissolution_trigger."
+data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.emit_orchestration",
+    decl_name: "orch_emit_pipeline",
+    field: WholeDeclaration,
+  }
+}
+
+data live_deploy_golden_freeze_note: String = "The apply/retract scripts rendered here are frozen as committed golden artifacts (gunbc.generated_artifact LiveDeployApplyScriptArtifact / LiveDeployRetractScriptArtifact, gated byte-for-byte in test.claim.live_deploy.emit) so live_deploy's current shell-emission behavior is provable (green by execution + a discriminating RED), killing the #6023-class self-referential drift check that compared expected_live_deploy_apply_script() to itself. This is a SCAFFOLD, not the end-state: live_deploy is RUNTIME-PRESENT (docs/plans/shell-emission-model.md Slice 3) and dissolves when heredoc file bodies become typed orchestration intent emitted via orch_emit. Transport-aware remote mutation service-op realization is OUT OF SCOPE for Slice 3 — live_deploy_remote_mutation_service_op_realization_dissolution_trigger. Dependency-graph topo-order emit deriving poll-wait from Node/Edge graph (alternative to required-field ServiceReadyGate lowering) is OUT OF SCOPE for Slice 3 — live_deploy_intent_dependency_graph_emit_dissolution_trigger binds v2.compiler.emit_orchestration.orch_emit_pipeline. Known gap until Slice 3 lands: healthz readback races systemctl restart when readiness wait not yet wired."

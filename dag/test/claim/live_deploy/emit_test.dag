@@ -22,6 +22,7 @@ import gunbc.live_deploy.emit {
   deployment_ensure_dependency_script,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
+  live_deploy_intent_dependency_graph_emit_dissolution_trigger,
 }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -212,6 +213,17 @@ fn witness_emit_shell_dissolution_trigger_is_scaffold() -> Bool {
   }
 }
 
+fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
+  match live_deploy_intent_dependency_graph_emit_dissolution_trigger {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+    } =>
+      m == "v2.compiler.emit_orchestration" && n == "orch_emit_pipeline"
+    Terminal { reason: _ } => false
+  }
+}
+
 fn witness_apply_script_matches_committed_golden() -> Bool {
   let r = Filesystem.Read(path: artifact_path(a: LiveDeployApplyScriptArtifact))
   r.success
@@ -247,5 +259,6 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_apply_script_matches_committed_golden()
     && witness_retract_script_matches_committed_golden()
     && witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis()
+    && witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline()
     && witness_emit_shell_dissolution_trigger_is_scaffold()
 }
