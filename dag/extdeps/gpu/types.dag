@@ -2,6 +2,7 @@ module extdeps.gpu.types
 
 import std.types { Int, NonEmptyStr, String, List }
 import std.measure { HardwareThreadCount, Hertz, Watt, Bandwidth }
+import extdeps.catalog_estimate { Estimate }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
@@ -70,7 +71,7 @@ type GpuModelCatalogRow {
   execution_lane_count: HardwareThreadCount
   memory: MemoryFacts
   memory_bandwidth: Bandwidth
-  boost_clock: Hertz?
+  boost_clock: Estimate<Hertz>?
   tdp_watts: Watt?
   compute_capability: GpuComputeCapability?
   supported_runtimes: List<GpuRuntime>

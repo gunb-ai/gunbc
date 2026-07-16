@@ -2,6 +2,7 @@ module test.claim.machine_shape_witness
 
 import extdeps.gpu.nvidia { nvidia_rtx_5090_catalog }
 import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.catalog_estimate { Exact, Interval, estimate_floor }
 import extdeps.storage.types { PcieLink, PcieGeneration, Gen4 }
 import std.measure {
   ByteSize,
@@ -19,6 +20,8 @@ import std.measure {
   joule_count,
   watt_count,
   second_count,
+  hertz,
+  hertz_count,
 }
 import std.machine_shape {
   DomainId,
@@ -91,6 +94,23 @@ fn energy_derived_not_stored() -> Bool {
   joule_count(j: energy_from_power_and_time(power: watt(count: 100), time: second(count: 5))) == 500
 }
 
+fn catalog_estimate_exact_on_row() -> Bool {
+  match nvidia_rtx_5090_catalog.boost_clock {
+    Present { value: Exact { value: hz } } =>
+      hertz_count(h: estimate_floor(estimate: Exact { value: hz })) == 2410000000
+    Present { value: Interval { lo: _, hi: _ } } => false
+    Absent => false
+  }
+}
+
+fn catalog_estimate_interval_floor() -> Bool {
+  hertz_count(
+    h: estimate_floor(
+      estimate: Interval { lo: hertz(count: 1500000000), hi: hertz(count: 2410000000) }
+    )
+  ) == 1500000000
+}
+
 fn red_dangling_domain_refuses() -> Bool {
   let good = shape_from_rtx5090_catalog()
   let bad = MachineShape {
@@ -134,6 +154,8 @@ test fn machine_shape_witnesses() -> Bool {
   catalog_derivation_matches_row()
     && minimal_grant_is_single_domain()
     && energy_derived_not_stored()
+    && catalog_estimate_exact_on_row()
+    && catalog_estimate_interval_floor()
     && red_dangling_domain_refuses()
     && red_dangling_level_refuses()
 }
