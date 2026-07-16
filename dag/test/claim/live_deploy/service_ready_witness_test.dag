@@ -1,11 +1,9 @@
 module test.claim.live_deploy.service_ready
 
 import gunbc.live_deploy.service_ready {
-  ServiceReadyPredicate,
   ServiceNotReady,
-  live_deploy_service_ready_predicate,
-  service_ready_predicate_unit,
-  service_ready_predicate_endpoint,
+  live_deploy_service_ready_unit_authority,
+  live_deploy_service_ready_endpoint_authority,
   service_not_ready_reason,
   live_deploy_readiness_poll_bound_is_positive,
   live_deploy_readiness_poll_bound_seconds,
@@ -17,12 +15,12 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_service_ready_predicate_targets_roadmap_unit() -> Bool {
-  service_ready_predicate_unit(predicate: live_deploy_service_ready_predicate()) == gunbc_roadmap_unit_name
+fn witness_service_ready_unit_authority() -> Bool {
+  live_deploy_service_ready_unit_authority == gunbc_roadmap_unit_name
 }
 
-fn witness_service_ready_predicate_health_endpoint_is_authority() -> Bool {
-  service_ready_predicate_endpoint(predicate: live_deploy_service_ready_predicate()) == roadmap_site_health_path
+fn witness_service_ready_endpoint_authority() -> Bool {
+  live_deploy_service_ready_endpoint_authority == roadmap_site_health_path
 }
 
 fn witness_service_not_ready_reason_is_located() -> Bool {
@@ -48,8 +46,8 @@ fn witness_health_probe_path_matches_service_ready_endpoint() -> Bool {
 }
 
 test fn live_deploy_service_ready_witnesses() -> Bool {
-  witness_service_ready_predicate_targets_roadmap_unit()
-    && witness_service_ready_predicate_health_endpoint_is_authority()
+  witness_service_ready_unit_authority()
+    && witness_service_ready_endpoint_authority()
     && witness_service_not_ready_reason_is_located()
     && witness_readiness_poll_bound_is_positive()
     && witness_health_probe_path_matches_service_ready_endpoint()

@@ -5,7 +5,6 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import gunbc.roadmap_static_site { roadmap_site_health_path }
-import gunbc.roadmap_health { roadmap_health_probe_path }
 import v2.std.dependency { ready_set }
 import v2.std.node { Node }
 
@@ -13,14 +12,9 @@ data live_deploy_service_ready_scaffold_disposition: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "gunbc.live_deploy.service_ready",
-    decl_name: "live_deploy_service_ready_predicate",
+    decl_name: "live_deploy_readback_ready_set",
     field: WholeDeclaration,
   }
-}
-
-type ServiceReadyPredicate {
-  unit: NonEmptyStr
-  health_endpoint: NonEmptyStr
 }
 
 type ServiceNotReady {
@@ -32,20 +26,9 @@ type ServiceNotReady {
 
 data live_deploy_service_ready_poll_bound_seconds: Duration = 30
 
-fn live_deploy_service_ready_predicate() -> ServiceReadyPredicate {
-  ServiceReadyPredicate {
-    unit: gunbc_roadmap_unit_name,
-    health_endpoint: roadmap_site_health_path,
-  }
-}
+data live_deploy_service_ready_unit_authority: NonEmptyStr = gunbc_roadmap_unit_name
 
-fn service_ready_predicate_unit(predicate: ServiceReadyPredicate) -> NonEmptyStr {
-  predicate.unit
-}
-
-fn service_ready_predicate_endpoint(predicate: ServiceReadyPredicate) -> NonEmptyStr {
-  predicate.health_endpoint
-}
+data live_deploy_service_ready_endpoint_authority: NonEmptyStr = roadmap_site_health_path
 
 fn service_not_ready_reason(refusal: ServiceNotReady) -> String {
   concat(
