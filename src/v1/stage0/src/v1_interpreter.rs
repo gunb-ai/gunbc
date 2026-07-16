@@ -5600,19 +5600,15 @@ fn dispatch_shell(
             })?;
 
         if let Some(writer) = stdin_writer {
-            let write_result = writer.join().map_err(|_| InterpError::TypeError {
+            // A stdin-write error (e.g. broken pipe) here is not itself the
+            // failure to report: the child may have exited (successfully or
+            // not) before consuming all of stdin, which is ordinary POSIX
+            // pipe behavior. The child's real exit_code/stdout/stderr in
+            // `output` is the authoritative result and already flows to the
+            // `exit { .. }` clause in the .dag transport declaration.
+            let _ = writer.join().map_err(|_| InterpError::TypeError {
                 msg: format!("shell transport stdin writer for '{}' panicked", argv[0]),
             })?;
-            if let Err(e) = write_result {
-                if !output.status.success() {
-                    return Err(InterpError::TypeError {
-                        msg: format!(
-                            "failed to write shell transport stdin for '{}': {}",
-                            argv[0], e
-                        ),
-                    });
-                }
-            }
         }
         render_shell_completion_trace(
             output.status.code().unwrap_or(-1),
