@@ -377,7 +377,7 @@ fn resolve_partition(
 ) -> Map<ModuleId, CompilationUnitId> {
   match resolve_partition_outcome(parameter: parameter, module_dag: module_dag) {
     ResolvePartitionOk { assignment: assignment } => assignment
-    ResolvePartitionRefused { cause: _ } => []
+    ResolvePartitionRefused { cause: _ } => empty_map()
   }
 }
 
@@ -475,7 +475,7 @@ fn stage0_partition_fold_outcome() -> PartitionFoldOutcome {
     module_dag: dag
   ) {
     ResolvePartitionOk { assignment: assignment } => assignment
-    ResolvePartitionRefused { cause: _ } => []
+    ResolvePartitionRefused { cause: _ } => empty_map()
   }
   partition_fold_outcome(module_dag: dag, assignment: assignment)
 }
@@ -644,7 +644,7 @@ fn stage0_partition_r4_valid() -> Bool {
     module_dag: dag
   ) {
     ResolvePartitionOk { assignment: assignment } => assignment
-    ResolvePartitionRefused { cause: _ } => []
+    ResolvePartitionRefused { cause: _ } => empty_map()
   }
   let units = stage0_compilation_units()
   match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {

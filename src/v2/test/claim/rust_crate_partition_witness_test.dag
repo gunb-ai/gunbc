@@ -27,6 +27,7 @@ import v2.std.compilers.compilation_unit {
 }
 import v2.workflow.rust_crate_partition {
   PolicyPartitionParam,
+  PolicyResolverUnimplemented,
   PartitionPolicy,
   ResolvePartitionRefused,
   ResolvePartitionOk,
@@ -109,8 +110,25 @@ fn witness_partition_perturbation_member_coverage_holds() -> Bool {
   )
 }
 
-fn witness_interim_explicit_unit_count_holds() -> Bool {
-  stage0_partition_unit_count() == rust_crate_partition_declared_core_target
+fn witness_interim_physical_crate_count_holds() -> Bool {
+  stage0_physical_crate_count() == rust_crate_partition_declared_core_target
+}
+
+fn witness_interim_module_bearing_unit_count_holds() -> Bool {
+  stage0_module_bearing_unit_count() == rust_crate_partition_module_bearing_unit_target
+}
+
+fn witness_policy_partition_refuses_holds() -> Bool {
+  let dag = stage0_module_dag()
+  match resolve_partition_outcome(
+    parameter: PolicyPartitionParam {
+      policy: PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
+    },
+    module_dag: dag
+  ) {
+    ResolvePartitionRefused { cause: PolicyResolverUnimplemented { policy: _ } } => true
+    ResolvePartitionOk { assignment: _ } => false
+  }
 }
 
 fn witness_interim_provenance_is_hand_explicit_holds() -> Bool {
@@ -169,9 +187,13 @@ fn witness_partition_r4_valid_on_interim_holds() -> Bool {
 
 fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   let dag = stage0_module_dag()
-  let resolved = resolve_partition(parameter: stage0_partition_parameter(), module_dag: dag)
-  let expected = stage0_interim_explicit_assignment()
-  (resolved |> count) == (expected |> count)
+  match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: dag) {
+    ResolvePartitionOk { assignment: resolved } => {
+      let expected = stage0_interim_explicit_assignment()
+      (resolved |> count) == (expected |> count)
+    }
+    ResolvePartitionRefused { cause: _ } => false
+  }
 }
 
 fn witness_dissolve_on_note_present_holds() -> Bool {
@@ -187,7 +209,9 @@ fn witness_stage0_module_dag_interface_grounding_debt_dissolve_on_present_holds(
 }
 
 test fn rust_crate_partition_witnesses() -> Bool {
-  witness_interim_explicit_unit_count_holds()
+  witness_interim_physical_crate_count_holds()
+    && witness_interim_module_bearing_unit_count_holds()
+    && witness_policy_partition_refuses_holds()
     && witness_interim_provenance_is_hand_explicit_holds()
     && witness_provenance_distinct_from_policy_derived_holds()
     && witness_runtime_unit_members_holds()
