@@ -6,11 +6,12 @@ import std.realization {
   RealizationPlan,
   RealizationObjective,
   Runnable,
-  schedule_lens_verdict_for_ci_floor,
   schedule_generates_identical_schedule,
   schedule_eq,
   cost_account_predicted_zero,
 }
+import v2.lens.schedule_lens { schedule_lens_verdict_for_ci_floor }
+import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
 import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_realization_plan,
   gunbc_ci_floor_batches,

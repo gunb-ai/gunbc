@@ -52,11 +52,11 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    empty_symbol_index, empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
-    symbol_index_insert,
+    empty_symbol_index, empty_type_env_cache, global_bare_is_ambiguous, inductive_fields_for,
+    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
+    lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
+    merge_type_env_cache_guarded, put_inductive_field, put_inductive_field_cross,
+    str_bindings_from_bindings, symbol_index_insert,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
@@ -1073,10 +1073,7 @@ match exp.children.clone().get(pair.0.clone() as usize).cloned() {
     None => acc.clone(),
 }
 });
-                                        let template_fields = record_lit_expected_fields(
-                                            type_name.clone(),
-                                            scope.clone(),
-                                        );
+                                        let template_fields = decl.children.clone();
                                         Some(Rc::new({
                                             let mut __result = Vec::new();
                                             for sf in template_fields.clone().iter().cloned() {
@@ -5938,6 +5935,15 @@ pub fn zero_field_variant_tag_reference_frontier_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn presence_check_census_gate_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus). Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn infer_record_lit(
     type_name: Option<String>,
     field_inits: Rc<Vec<Rc<Node>>>,
@@ -6037,9 +6043,12 @@ pub fn infer_record_lit(
         };
         let is_zero_field_variant_tag_reference = (((field_inits.clone().len() as i64) == 0)
             && (variant_owner_node(scope.clone(), tn_str.clone()) != None));
-        let missing_field_diags = if (((tn_str.clone() == "".to_string())
+        let presence_name_is_ambiguous =
+            global_bare_is_ambiguous(scope.type_env.clone(), tn_str.clone());
+        let missing_field_diags = if ((((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
             || is_zero_field_variant_tag_reference.clone())
+            || presence_name_is_ambiguous.clone())
         {
             Rc::new(vec![])
         } else {
@@ -12845,6 +12854,79 @@ pub fn build_symbol_index_census(
     )
 }
 
+pub fn direct_import_export_precedence_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields; ledger arm = the fork row is still recorded).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn overlay_skips_kernel_name(name: String) -> bool {
+    (((((is_kernel_type(name.clone()) || is_container_type(name.clone()))
+        || (name.clone() == "Unit".to_string()))
+        || (name.clone() == "Optional".to_string()))
+        || (name.clone() == "Present".to_string()))
+        || (name.clone() == "Absent".to_string()))
+}
+
+pub fn overlay_direct_import_exports(
+    ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    resolved_imports.clone().iter().cloned().fold(
+        ancestry_str_bindings.clone(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
+            &parent_index,
+            imp.module_path.clone(),
+        ) {
+            Some(typed_parent) => {
+                let export_surface = interface_env_for_import(
+                    imp.module_path.clone(),
+                    typed_parent.interface.clone().env.clone(),
+                );
+                let selected = if imp.is_all.clone() {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for name in Rc::new(v1_rt::map_keys(&export_surface.str_bindings.clone()))
+                            .iter()
+                            .cloned()
+                        {
+                            if (is_type_variable_name(name.clone()) == false) {
+                                __result.push(name);
+                            }
+                        }
+                        __result
+                    })
+                } else {
+                    imp.specific_names.clone()
+                };
+                selected.clone().iter().cloned().fold(
+                    acc.clone(),
+                    |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
+                        if overlay_skips_kernel_name(name.clone()) {
+                            bacc.clone()
+                        } else {
+                            match v1_rt::map_get(&export_surface.str_bindings.clone(), name.clone())
+                            {
+                                Some(binding) => v1_rt::rc_map_insert(
+                                    bacc.clone(),
+                                    name.clone(),
+                                    binding.clone(),
+                                ),
+                                None => bacc.clone(),
+                            }
+                        }
+                    },
+                )
+            }
+            None => acc.clone(),
+        },
+    )
+}
+
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -13332,7 +13414,11 @@ pub fn build_type_env(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
-        let ancestry_str_bindings = ancestry_cache.str_bindings.clone();
+        let ancestry_str_bindings = overlay_direct_import_exports(
+            ancestry_cache.str_bindings.clone(),
+            module.resolved_imports.clone(),
+            parent_index.clone(),
+        );
         let svn_local = Rc::new(v1_rt::map_keys(&local_str_bindings))
             .iter()
             .cloned()
