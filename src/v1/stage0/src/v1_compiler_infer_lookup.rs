@@ -16,9 +16,9 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, is_recursive_type, lookup_binding_by_name, lookup_type, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
-pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
@@ -44,8 +44,8 @@ pub use crate::v1_std_core::{
     with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    error_type, Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, MethodSemantics, NewlineIndex, Node, SubValueRelation,
+    error_type, Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary,
+    FieldValueShape, InferredNode, MethodSemantics, NewlineIndex, Node, SubValueRelation,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
