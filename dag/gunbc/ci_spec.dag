@@ -433,6 +433,7 @@ data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
 data regen_floor_plan_function: String = "gunbc_ci_regen_floor_batches"
 
+
 fn scheduler_invoke_with(spec: CiSpec, plan_function: String) -> String {
   concat(
     concat(
