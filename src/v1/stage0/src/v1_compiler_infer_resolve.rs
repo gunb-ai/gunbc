@@ -740,6 +740,14 @@ pub fn resolve_node_bounded(
     depth: i64,
     masked: bool,
 ) -> Rc<NodeResolveResult> {
+    {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static RNB_COUNT: AtomicU64 = AtomicU64::new(0);
+        let __c = RNB_COUNT.fetch_add(1, Ordering::Relaxed);
+        if __c % 2_000_000 == 0 {
+            eprintln!("[rnb-count] resolve_node_bounded calls={__c} depth={depth} masked={masked}");
+        }
+    }
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (depth.clone() > 100) {
             return Rc::new(NodeResolveResult {
