@@ -9126,7 +9126,7 @@ mod argv_arg_limit_test {
     use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
 
     use super::{
-        dispatch_shell, argv_arg_limit_refusal, Env, ExecutionMode, InterpContext, InterpError,
+        argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, InterpContext, InterpError,
         HOST_ARG_MAX_STRLEN_BYTES,
     };
 
@@ -9215,8 +9215,7 @@ mod argv_arg_limit_test {
     #[test]
     fn dispatch_shell_wiring_refuses_oversized_argv() {
         let ctx = argv_limit_test_context();
-        let transport =
-            shell_check_style_transport(&"x".repeat(HOST_ARG_MAX_STRLEN_BYTES + 1));
+        let transport = shell_check_style_transport(&"x".repeat(HOST_ARG_MAX_STRLEN_BYTES + 1));
         let env = Env::empty();
         match dispatch_shell(&transport, &env, &ctx) {
             Err(InterpError::ArgvExceedsHostArgMax {
