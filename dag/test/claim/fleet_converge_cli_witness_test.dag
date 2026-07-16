@@ -1,7 +1,7 @@
 module test.claim.fleet_converge_cli_witness
 
 import std.logic { Bool }
-import gunbc.host_converge { VerdictConverged, Absent }
+import gunbc.host_converge { VerdictConverged, converge_verdict, converge_verdict_label }
 import gunbc.fleet_converge_cli {
   ConvergeCliReceipt,
   ConvergeCliRefusalCause,
@@ -31,7 +31,7 @@ fn witness_converge_cli_run_srv1_uses_slice1_not_realize_frontier() -> Bool {
           UnknownHost { host: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
-      none => r.verdict == VerdictConverged
+      Absent => r.verdict == VerdictConverged
     }
 }
 
@@ -40,7 +40,7 @@ fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
   r.host == "srv2"
     && r.applied == 0
     && r.drifted == 0
-    && r.verdict == Absent
+    && converge_verdict_label(v: r.verdict) == "absent"
     && !converge_cli_receipt_converged(r: r)
     && match r.reason {
       Present { value: cause } =>
@@ -50,7 +50,7 @@ fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
           UnknownHost { host: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
-      none => false
+      Absent => false
     }
 }
 
@@ -59,7 +59,7 @@ fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
   r.host == "no-such-fleet-host"
     && r.applied == 0
     && r.drifted == 0
-    && r.verdict == Absent
+    && converge_verdict_label(v: r.verdict) == "absent"
     && !converge_cli_receipt_converged(r: r)
     && match r.reason {
       Present { value: cause } =>
@@ -69,7 +69,7 @@ fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
           KnobFrontier { reason: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
-      none => false
+      Absent => false
     }
 }
 
@@ -115,9 +115,9 @@ fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
             UnknownHost { host: _ } => false
             ComputeInventoryAbsent { host: _ } => false
           }
-        none => false
+        Absent => false
       }
-    none => false
+    Absent => false
   }
 }
 
@@ -127,7 +127,7 @@ fn witness_converge_cli_receipt_line_matches_byte_locked_grammar() -> Bool {
     host: "srv1",
     applied: 0,
     drifted: 0,
-    verdict: Absent,
+    verdict: converge_verdict(effective: "", expected: "refused"),
     reason: Present { value: KnobFrontier { reason: "refused" } },
   }
   converge_cli_receipt_line(r: converged) == "converge-receipt host=srv9 applied=3 drifted=0 verdict=converged"
@@ -140,7 +140,7 @@ fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
     && !out.converged
     && match out.reason {
       Present { value: why } => string_contains(s: why, pattern: "unknown fleet host identity")
-      none => false
+      Absent => false
     }
 }
 
