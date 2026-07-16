@@ -15521,11 +15521,17 @@ pub fn realize_module(
                             )
                         },
                     );
+                    let __rm_name = authored_name_at(source_indices.clone(), resolved.module.clone());
+                    let __n_imports = resolved.resolved_imports.clone().len();
+                    eprintln!("[realize-attr] START {__rm_name} imports={__n_imports}");
+                    let __pe_t0 = std::time::Instant::now();
                     let parent_result = collect_parent_envs(
                         resolved.clone(),
                         dep_state.module_index.clone(),
                         source_indices.clone(),
                     );
+                    let __pe_ms = __pe_t0.elapsed().as_millis();
+                    let __tc_t0 = std::time::Instant::now();
                     let tc_result = typecheck_module(
                         resolved.clone(),
                         dep_state.module_index.clone(),
@@ -15536,6 +15542,10 @@ pub fn realize_module(
                         global_bare_variant_locals.clone(),
                         symbol_index.clone(),
                     );
+                    let __tc_ms = __tc_t0.elapsed().as_millis();
+                    if __tc_ms + __pe_ms >= 150 {
+                        eprintln!("[realize-attr] DONE {__rm_name} parent_ms={__pe_ms} tc_ms={__tc_ms} imports={__n_imports}");
+                    }
                     let typed = tc_result.typed.clone();
                     let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
                     Rc::new(RealizeState {
