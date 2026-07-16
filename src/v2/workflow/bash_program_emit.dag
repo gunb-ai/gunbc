@@ -8,8 +8,6 @@ import extdeps.languages.bash.program {
   ShellWord,
   Redir,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.bash {
@@ -487,29 +485,4 @@ fn bash_program_serialize(p: ShellProgram) -> Outcome<String> {
       }
     }
   )
-}
-
-data bash_program_serialize_refusal_script: String = "'echo' 'bash_program_serialize refused' >&2\nexit 127\n"
-
-data bash_program_serialize_required_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "v2.workflow.bash_program_emit",
-    decl_name: "bash_program_serialize_required",
-    field: WholeDeclaration
-  }
-}
-
-fn bash_program_serialize_required(p: ShellProgram) -> String {
-  match bash_program_serialize(p: p) {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => bash_program_serialize_refusal_script
-  }
-}
-
-fn bash_program_serialize_stmt_required(stmt: ShellStmt) -> String {
-  match bash_program_serialize_stmt(stmt: stmt) {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => bash_program_serialize_refusal_script
-  }
 }

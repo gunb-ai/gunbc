@@ -6,10 +6,11 @@ import extdeps.languages.bash.program {
   If, Command, Concat, VarRef, Lit,
   lit, var_ref, serialize_bash
 }
-import v2.workflow.bash_program_emit { bash_program_serialize_stmt_required }
+import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
 import v2.workflow.build_step_emit { verifications_script }
 import tools.build_step { BuildArtifact, emit_verifications }
 import gunbc.ci_spec { ci_floor_build_verify_script }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -25,8 +26,13 @@ fn probe_stmts() -> List<ShellStmt> {
   emit_verifications(produces: [probe_artifact()])
 }
 
-fn stmt_text(s: ShellStmt) -> String {
-  bash_program_serialize_stmt_required(stmt: s)
+fn stmt_text(s: ShellStmt) -> Bool {
+  match bash_program_serialize_stmt(stmt: s) {
+    Accepted { value: text, diagnostics: _ } =>
+      string_contains(s: text, pattern: "-x")
+        && !string_contains(s: text, pattern: "-newer")
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn is_if(s: ShellStmt) -> Bool {
@@ -42,19 +48,19 @@ fn witness_single_artifact_produces_two_checks() -> Bool {
 }
 
 fn witness_existence_check_no_mtime() -> Bool {
-  let stmts = probe_stmts()
-  let existence = stmt_text(s: stmts.first())
-  string_contains(s: existence, pattern: "-x")
-    && !string_contains(s: existence, pattern: "-newer")
+  stmt_text(s: probe_stmts().first())
 }
 
 fn witness_serialized_conjuncts_and_teeth() -> Bool {
-  let script = verifications_script(produces: [probe_artifact()])
-  string_contains(s: script, pattern: "-x")
-    && string_contains(s: script, pattern: "-s")
-    && !string_contains(s: script, pattern: "-newer")
-    && string_contains(s: script, pattern: "/target/release/probe_bin")
-    && string_contains(s: script, pattern: "exit 1")
+  match verifications_script(produces: [probe_artifact()]) {
+    Accepted { value: script, diagnostics: _ } =>
+      string_contains(s: script, pattern: "-x")
+        && string_contains(s: script, pattern: "-s")
+        && !string_contains(s: script, pattern: "-newer")
+        && string_contains(s: script, pattern: "/target/release/probe_bin")
+        && string_contains(s: script, pattern: "exit 1")
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn witness_verifications_script_byte_identical_to_serialize_bash() -> Bool {
@@ -63,7 +69,10 @@ fn witness_verifications_script_byte_identical_to_serialize_bash() -> Bool {
     set_e: false,
     statements: emit_verifications(produces: probe)
   })
-  verifications_script(produces: probe) == v1
+  match verifications_script(produces: probe) {
+    Accepted { value: v2, diagnostics: _ } => v2 == v1
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn witness_floor_covers_both_release_bins() -> Bool {
