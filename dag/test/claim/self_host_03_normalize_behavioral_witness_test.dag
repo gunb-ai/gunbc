@@ -2,7 +2,7 @@ module test.claim.self_host_03_normalize_behavioral_witness
 
 import tools.self_host_03_normalize_behavioral_transport { sn_behavioral_receipt_holds }
 
-data self_host_03_normalize_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Wave 2 parallel flip (03_normalize): tools.self_host_03_normalize_behavioral_transport emits src/v2/compiler/03_normalize.dag via gunbc --entry, assembles curated seed-linked v1_compiled (emitted entry + dep shims + v1-compiler path dep), runs cargo build + witness (plain + --inject-fault). RED until emitter Rc/Optional coherence fixes land (sn_emit_surface_rustc_refusal_note)."
+data self_host_03_normalize_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Wave 2 parallel flip (03_normalize): tools.self_host_03_normalize_behavioral_transport emits src/v2/compiler/03_normalize.dag via gunbc --entry, assembles curated seed-linked v1_compiled (emitted entry + dep shims + v1-compiler path dep), runs cargo build + witness (plain + --inject-fault). Live host effects (shell.Mktemp.Dir, cargo build, process execution) — excluded from per-PR hermetic discovery (gunbc.ci_layer_roots witness_exclusion_substrings); enrolls in falsifier_self_host_wet_entries only when frontier row flips SelfEmitted with a declared binding (SeedRetained today — never known-red in nightly). RED until emitter Rc/Optional coherence fixes land (sn_emit_surface_rustc_refusal_note)."
 
 test fn self_host_03_normalize_behavioral_receipt_holds() -> Bool {
   sn_behavioral_receipt_holds()
