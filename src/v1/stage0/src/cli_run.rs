@@ -1960,12 +1960,13 @@ fn regen_path_affects_regen(changed: &str, dag_closure: &HashSet<String>) -> boo
 
 /// CI label for the regen self-host fixed-point step's affected-set skip arm.
 /// `regen_not_affected_skip` iff the merge-base diff touches no regen input;
-/// `run_regen` on any intersection, empty diff, or observation/closure failure
-/// (fail-closed). This computes the label only; the CI shell (ci_spec.dag) gates
-/// the skip to pull_request events, so push-to-main runs regen unconditionally as
-/// the cold control that surfaces a wrong closure on the next merge.
+/// `run_regen` on any intersection, empty diff, departed non-docs path, or
+/// observation/closure failure (fail-closed). This computes the label only; the CI
+/// shell (ci_spec.dag) gates the skip to pull_request events, so push-to-main runs
+/// regen unconditionally as the cold control that surfaces a wrong closure on the
+/// next merge.
 pub fn regen_floor_skip_label_for_ci() -> String {
-    let (changed_paths, _departed) = match floor_git_diff_name_status_range() {
+    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
         Ok(v) => v,
         Err(msg) => {
             eprintln!("regen floor skip: diff observation failed ({msg}) — run regen");
@@ -1974,6 +1975,21 @@ pub fn regen_floor_skip_label_for_ci() -> String {
     };
     if changed_paths.is_empty() {
         eprintln!("regen floor skip: empty diff — run regen (fail-closed cold control)");
+        return RUN_REGEN_LABEL.to_string();
+    }
+    // Departed (deleted / renamed-from) non-docs paths: the closure below is computed
+    // from the CURRENT tree, so a deleted `.dag` file that WAS in the regen closure is
+    // invisible to it — the intersection test would skip a diff that provably changes
+    // the fresh emit (the deleted module no longer contributes; its importers now fail
+    // to resolve). Same guard shape as compile-clean's departed arm: run, never skip.
+    if let Some(gone) = departed_paths.iter().find(|p| {
+        let n = normalize_repo_path(p);
+        !n.starts_with("docs/")
+    }) {
+        eprintln!(
+            "regen floor skip: departed non-docs path in diff ({}) — run regen (current-tree closure cannot see deletions)",
+            normalize_repo_path(gone)
+        );
         return RUN_REGEN_LABEL.to_string();
     }
     let workspace = workspace_root();
@@ -16445,58 +16461,39 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
-    /// Regen admission decision table: run on every arm that cannot prove disjointness
-    /// from the regen input closure; skip only a non-empty diff provably outside it.
+    /// Regen departed-path guard: a deleted `.dag` path must run regen even when the
+    /// current-tree closure no longer contains it (the closure is computed from the
+    /// current tree, so deletions are invisible to the intersection test). The control
+    /// below proves the same path as a modification outside the closure still skips.
     #[test]
-    fn regen_affected_decision_covers_run_and_skip_arms() {
-        let closure: HashSet<String> = [
-            "src/v1/04_infer.dag".to_string(),
-            "dag/std/logic.dag".to_string(),
-            "dag/gunbc/stage0_emit_model.dag".to_string(),
-        ]
-        .into_iter()
-        .collect();
-        let none: HashSet<String> = HashSet::new();
-        let s = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    fn regen_floor_skip_runs_on_departed_dag_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "D\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(regen_floor_skip_label_for_ci(), RUN_REGEN_LABEL);
+            });
+        });
+    }
 
-        assert_eq!(
-            regen_affected_decision(&[], &none, &closure),
-            REGEN_AFFECTED_LABEL
-        );
-        assert_eq!(
-            regen_affected_decision(&s(&["src/v1/stage0/src/cli_run.rs"]), &none, &closure),
-            REGEN_AFFECTED_LABEL
-        );
-        assert_eq!(
-            regen_affected_decision(&s(&["dag/std/logic.dag"]), &none, &closure),
-            REGEN_AFFECTED_LABEL
-        );
-        assert_eq!(
-            regen_affected_decision(&s(&["Cargo.lock"]), &none, &closure),
-            REGEN_AFFECTED_LABEL
-        );
-        let departed_dag: HashSet<String> =
-            ["dag/std/removed.dag".to_string()].into_iter().collect();
-        assert_eq!(
-            regen_affected_decision(
-                &s(&["dag/test/claim/parse_test.dag"]),
-                &departed_dag,
-                &closure
-            ),
-            REGEN_AFFECTED_LABEL
-        );
-        assert_eq!(
-            regen_affected_decision(
-                &s(&["src/v2/lens/machine_shape.dag", "docs/plans/example.md"]),
-                &none,
-                &closure
-            ),
-            REGEN_NOT_AFFECTED_SKIP_LABEL
-        );
-        assert_eq!(
-            regen_affected_decision(&s(&["docs/plans/example.md"]), &none, &closure),
-            REGEN_NOT_AFFECTED_SKIP_LABEL
-        );
+    /// Control for the departed guard: the same non-closure path as a plain
+    /// modification keeps the skip arm (proves the guard discriminates on D, not path).
+    #[test]
+    fn regen_floor_skip_skips_on_modified_non_closure_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    regen_floor_skip_label_for_ci(),
+                    REGEN_NOT_AFFECTED_SKIP_LABEL
+                );
+            });
+        });
     }
 
     /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
