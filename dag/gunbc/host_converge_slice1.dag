@@ -1,7 +1,8 @@
 module gunbc.host_converge_slice1
 
 import std.types { String, NonEmptyStr, Bool, Int }
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
 import product.placement_supply { HostIdentity }
 import extdeps.os.systemd { systemd_memory_max_property }
@@ -32,7 +33,16 @@ import gunbc.fleet_show_effective_read {
 }
 
 data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
-  reason: "Slice 1 host-converge: wire the first real knob — srv1 actions-runner@srv1-01.service per_slot_memory_max_bytes — from fleet_converge_policy through live systemctl show/set-property (LocalShell on-host) into ConvergeTarget PerSlotMemoryCap verdict semantics, with independent read-back and reapply-noop proof. ONE knob only; srv2/srv3 and other knobs stay on the host_converge_realize frontier."
+  reason: "Slice 1 host-converge: wire the first real knob — srv1 actions-runner@srv1-01.service per_slot_memory_max_bytes — from fleet_converge_policy through live systemctl show/set-property (LocalShell on-host) into ConvergeTarget PerSlotMemoryCap verdict semantics, with independent read-back and reapply-noop proof. ONE knob only; srv2/srv3 and other knobs stay on the host_converge_realize frontier. Transport intent lives here; shell realization is scaffold-marked medium-as-string (host_converge_slice1_transport_script_scaffold) until host_effect orchestration emit binds grammar rows — read scripts delegate to fleet_show_effective_read; set-property is slice-local concat."
+}
+
+data host_converge_slice1_transport_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration,
+  }
 }
 
 data host_converge_slice1_probe_unit: NonEmptyStr = "actions-runner@srv1-01.service"

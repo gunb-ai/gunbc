@@ -25,7 +25,9 @@ import gunbc.host_converge_slice1 {
   host_converge_slice1_apply_path_wired,
   host_converge_slice1_memory_max_read_script,
   host_converge_slice1_memory_max_set_script,
+  host_converge_slice1_transport_script_scaffold,
 }
+import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -109,6 +111,13 @@ fn witness_transport_scripts_are_read_only_systemctl() -> Bool {
 
 fn witness_apply_and_knob_paths_wired() -> Bool {
   host_converge_slice1_knob_wired() && host_converge_slice1_apply_path_wired()
+}
+
+fn witness_transport_script_scaffold_carries_dissolution_trigger() -> Bool {
+  match host_converge_slice1_transport_script_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
 }
 
 test fn host_converge_slice1_wires_srv1_memory_cap() -> Bool {
