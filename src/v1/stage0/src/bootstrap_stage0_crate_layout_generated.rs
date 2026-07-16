@@ -2,13 +2,13 @@
 // Authority: v2.compiler.self_host.frontier; regen via dag/tools/generated_artifact_gate.dag main_wet.
 
 pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
+    "v1_interpreter.rs",
     "cli_run.rs",
     "coproduct_reflection.rs",
-    "recorded_fixture.rs",
     "resolved_graph_cache.rs",
     "shared_typecheck_store.rs",
+    "recorded_fixture.rs",
     "main.rs",
-    "v1_interpreter.rs",
     "phase_profile.rs",
     "memory_governor.rs",
     "usv_pilot_v2_std_algebra.rs",
