@@ -14583,6 +14583,9 @@ pub fn typecheck_module(
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<TypecheckModuleResult> {
     {
+        let __dbg_name = authored_name_at(source_indices.clone(), resolved.module.clone());
+        let __dbg = __dbg_name.contains("bmc_bootstrap_provision");
+        let __t0 = std::time::Instant::now();
         let env_result = build_type_env(
             resolved.clone(),
             parent_index.clone(),
@@ -14591,6 +14594,7 @@ pub fn typecheck_module(
             global_bare.clone(),
             symbol_index.clone(),
         );
+        if __dbg { eprintln!("[tcm-phase] {} build_type_env done @ {}ms", __dbg_name, __t0.elapsed().as_millis()); }
         let env = env_result.env.clone();
         let env_cache = env_result.cache.clone();
         let env_diags = env_result.diagnostics.clone();
@@ -14641,6 +14645,7 @@ pub fn typecheck_module(
             }
             __result
         });
+        if __dbg { eprintln!("[tcm-phase] {} analyze_item loop done @ {}ms", __dbg_name, __t0.elapsed().as_millis()); }
         let ctx = build_module_context(
             contributions.clone(),
             parent_index.clone(),
@@ -14681,7 +14686,9 @@ pub fn typecheck_module(
             item_registry: ctx.item_registry.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         });
+        if __dbg { eprintln!("[tcm-phase] {} build_module_context+data_locals done @ {}ms", __dbg_name, __t0.elapsed().as_millis()); }
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
+        if __dbg { eprintln!("[tcm-phase] {} infer_items done @ {}ms", __dbg_name, __t0.elapsed().as_millis()); }
         let typed_items = Rc::new({
             let mut __result = Vec::new();
             for tir in typed_item_results.clone().iter().cloned() {
