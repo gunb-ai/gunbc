@@ -266,7 +266,7 @@ fn roadmap_site_readback_script(port: Int) -> String {
       concat(
         concat("set -euo pipefail\n", "# roadmap static-site read-back host=srv1\n"),
         concat(
-          concat("curl -sf ", sh_single_quote(s: health_url)),
+          concat(curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: health_url)),
           " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: healthz json parse failed >&2; exit 1; \}\n"
         )
       ),
@@ -276,7 +276,7 @@ fn roadmap_site_readback_script(port: Int) -> String {
       concat(roadmap_site_readback_curl_digest_check(url: concat(base, dispatch.url_path), expected: dispatch.digest), "\n"),
       concat(
         concat(
-          concat("curl -sf ", sh_single_quote(s: concat(base, dispatch.url_path))),
+          concat(curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: concat(base, dispatch.url_path))),
           " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: dispatch json parse failed >&2; exit 1; \}\n"
         ),
         concat(roadmap_site_deploy_receipt_line(host: "srv1", port: port), "\n")
