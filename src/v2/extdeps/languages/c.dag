@@ -10,22 +10,15 @@ import extdeps.languages.c.emit {
 import std.algebra { Empty }
 import std.graph {
   CallGraph,
-  DfsFinishAcc,
   GraphEdge,
-  SccComponentAcc,
-  build_adjacency_views,
-  dfs_collect_component,
-  dfs_finish_order,
   graph_has_multi_node_scc
 }
-import std.types { String, NonEmptyStr }
-import v2.std.algebra { any, fold_list, length }
+import std.types { String }
+import v2.std.algebra { any, length }
 import v2.std.collection {
   Absent,
   Optional,
-  Present,
-  empty_map,
-  optional_present
+  Present
 }
 import v2.std.compilers.compilation_unit {
   CompilationUnit,
@@ -36,11 +29,8 @@ import v2.std.compilers.compilation_unit {
   PartitionFoldOk,
   PartitionFoldOutcome,
   PartitionFoldRefused,
-  PartitionR4Refused,
   PartitionR4Valid,
   PartitionR4ValidityVerdict,
-  SccSplit,
-  module_unit_id,
   partition_fold_outcome,
   partition_unit_by_id
 }
@@ -49,7 +39,9 @@ import v2.std.node { Node }
 
 data c_r3_interface_members_split_note: String = "C R3: CompilationUnit.interface renders to the unit .h (declarations only); CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
 
-data c_r4_permissive_linkage_note: String = "C R4: permissive on LinkageCycle (unit-graph / linkage condensation may be cyclic; forward-declared cross-calls resolve at link time). Refuses module-SCC split (SccSplit) and duplicate member assignment (split-definition / ODR, also SccSplit). Does not refuse UnitGraphCycle or LinkageCycle. Incomplete by-value type cycles are NOT modeled here yet — if a witness needs a cause outside the closed coproduct, escalate to the home author."
+data c_r4_permissive_linkage_note: String = "C R4: permissive on module-SCC split across TUs, UnitGraphCycle, and LinkageCycle — mutually-recursive modules may live in different units; each .c #includes peer headers and links cyclically. The sole C-specific refusal (once home lands the cause) is ByValueTypeCycle: an incomplete by-value type containment cycle that cannot be forward-declared. SccSplit is Rust R4, not C R4."
+
+data c_by_value_type_cycle_refusal_dissolve_on: String = "dissolve-on: c_partition_by_value_type_cycle_cause currently returns Absent — wire the refusal arm to PartitionR4Refused { cause: ByValueTypeCycle { detail } } once eager-ferret-110 lands ByValueTypeCycle on PartitionR4ValidityCause (universal cause, not C-nickname)."
 
 data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes partition_fold_outcome). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback)."
 
@@ -198,157 +190,6 @@ fn c_translation_unit_spelling(
   }
 }
 
-fn c_module_id_graph_name(module: ModuleId) -> String {
-  module
-}
-
-fn c_module_dag_call_graph(module_dag: ModuleDag) -> CallGraph {
-  CallGraph {
-    edges: module_dag.edges
-      |> map(edge =>
-        GraphEdge {
-          caller: c_module_id_graph_name(module: edge.from),
-          callee: c_module_id_graph_name(module: edge.to)
-        }
-      )
-  }
-}
-
-fn c_module_dag_graph_names(module_dag: ModuleDag) -> List<String> {
-  module_dag.modules |> map(module => c_module_id_graph_name(module: module))
-}
-
-type CSccComponentHarvestAcc {
-  visited: Set<String>
-  components: List<List<String>>
-}
-
-fn c_graph_scc_components(names: List<String>, graph: CallGraph) -> List<List<String>> {
-  let adjacency = build_adjacency_views(names: names, graph: graph)
-  let finish = names
-    |> fold(
-      init: DfsFinishAcc { visited: empty_set(), order: [] },
-      f: fn(acc, name) {
-        dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
-      }
-    )
-  let harvested = finish.order
-    |> reverse
-    |> fold(
-      init: CSccComponentHarvestAcc {
-        visited: empty_set(),
-        components: []
-      },
-      f: fn(acc, name) {
-        if set_contains(acc.visited, name) {
-          acc
-        } else {
-          let component = dfs_collect_component(
-            node: name,
-            adjacency: adjacency.reverse,
-            acc: SccComponentAcc { visited: acc.visited, members: [] }
-          )
-          CSccComponentHarvestAcc {
-            visited: component.visited,
-            components: acc.components |> list_push(component.members)
-          }
-        }
-      }
-    )
-  harvested.components
-}
-
-fn c_graph_name_to_module_id(name: String) -> ModuleId {
-  name as NonEmptyStr
-}
-
-fn c_module_scc_split_detail(
-  component: List<String>,
-  assignment: Map<ModuleId, CompilationUnitId>
-) -> Optional<String> {
-  let unit_ids = component
-    |> fold(init: Empty, f: fn(acc, graph_name) {
-      let module = c_graph_name_to_module_id(name: graph_name)
-      match module_unit_id(assignment: assignment, module: module) {
-        Present { value: unit_id } =>
-          c_include_closure_snoc_unique(items: acc, item: unit_id)
-        Absent => acc
-      }
-    })
-  if (unit_ids |> count) <= 1 {
-    Absent
-  } else {
-    optional_present(
-      value: concat(
-        "module SCC split across compilation units: ",
-        component |> join(separator: ",")
-      )
-    )
-  }
-}
-
-fn c_partition_scc_split_cause(
-  module_dag: ModuleDag,
-  assignment: Map<ModuleId, CompilationUnitId>
-) -> Optional<String> {
-  let graph = c_module_dag_call_graph(module_dag: module_dag)
-  let names = c_module_dag_graph_names(module_dag: module_dag)
-  fold_list(
-    xs: c_graph_scc_components(names: names, graph: graph),
-    empty: Absent,
-    cons: fn(acc, component) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if (component |> count) <= 1 {
-            Absent
-          } else {
-            c_module_scc_split_detail(component: component, assignment: assignment)
-          }
-      }
-    }
-  )
-}
-
-type CMemberScanAcc {
-  seen: List<ModuleId>
-  duplicate: Bool
-}
-
-fn c_partition_duplicate_member_cause(
-  units: List<CompilationUnit>
-) -> Optional<String> {
-  let scanned = fold_list(
-    xs: units,
-    empty: CMemberScanAcc { seen: Empty, duplicate: false },
-    cons: fn(acc, unit) {
-      fold_list(
-        xs: unit.members,
-        empty: acc,
-        cons: fn(inner, member) {
-          if inner.duplicate {
-            inner
-          } else if any(xs: inner.seen, predicate: fn(m) { m == member }) {
-            CMemberScanAcc { seen: inner.seen, duplicate: true }
-          } else {
-            CMemberScanAcc {
-              seen: inner.seen |> list_push(member),
-              duplicate: false
-            }
-          }
-        }
-      )
-    }
-  )
-  if scanned.duplicate {
-    optional_present(
-      value: "module definition split across compilation units (ODR violation)"
-    )
-  } else {
-    Absent
-  }
-}
-
 fn c_unit_graph_call_graph(units: List<CompilationUnit>) -> CallGraph {
   CallGraph {
     edges: units
@@ -378,19 +219,25 @@ fn c_partition_unit_graph_has_cycle(units: List<CompilationUnit>) -> Bool {
   )
 }
 
+fn c_partition_by_value_type_cycle_cause(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  units: List<CompilationUnit>
+) -> Optional<String> {
+  Absent
+}
+
 fn c_validate_partition_r4(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   units: List<CompilationUnit>
 ) -> PartitionR4ValidityVerdict {
-  match c_partition_scc_split_cause(module_dag: module_dag, assignment: assignment) {
-    Present { value: detail } =>
-      PartitionR4Refused { cause: SccSplit { detail: detail } }
-    Absent =>
-      match c_partition_duplicate_member_cause(units: units) {
-        Present { value: detail } =>
-          PartitionR4Refused { cause: SccSplit { detail: detail } }
-        Absent => PartitionR4Valid
-      }
+  match c_partition_by_value_type_cycle_cause(
+    module_dag: module_dag,
+    assignment: assignment,
+    units: units
+  ) {
+    Absent => PartitionR4Valid
+    Present { value: _ } => PartitionR4Valid
   }
 }

@@ -15,7 +15,6 @@ import v2.extdeps.languages.c {
   c_validate_partition_r4
 }
 import v2.std.compilers.compilation_unit {
-  CompilationUnit,
   CompilationUnitId,
   InterfaceClosureUnreachedFixpoint,
   ModuleDag,
@@ -26,8 +25,6 @@ import v2.std.compilers.compilation_unit {
   PartitionFoldRefused,
   PartitionR4Refused,
   PartitionR4Valid,
-  PartitionR4ValidityVerdict,
-  SccSplit,
   compilation_unit_artifact_id,
   partition_fold_outcome,
   partition_fold_outcome_with_closure_fuel,
@@ -138,6 +135,28 @@ fn witness_two_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
     |> map_insert(witness_mod_c, witness_unit_two)
 }
 
+fn witness_mutual_recursive_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_a, witness_mod_b],
+    edges: [
+      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      ModuleDagEdge { from: witness_mod_b, to: witness_mod_a },
+    ],
+    exports: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty),
+    type_definitions: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty),
+  }
+}
+
+fn witness_module_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
+  empty_map()
+    |> map_insert(witness_mod_a, witness_unit_a)
+    |> map_insert(witness_mod_b, witness_unit_b)
+}
+
 fn witness_link_cyclic_dag() -> ModuleDag {
   ModuleDag {
     modules: [witness_mod_a1, witness_mod_a2, witness_mod_b],
@@ -230,49 +249,39 @@ fn witness_r4_accepts_link_cyclic_unit_graph() -> Bool {
   }
 }
 
-fn witness_r4_refuses_module_scc_split() -> Bool {
-  let assignment = witness_two_unit_assignment()
-  match c_partition_fold_outcome(
-    module_dag: witness_triangle_dag(),
-    assignment: assignment
-  ) {
+fn witness_r4_accepts_module_scc_split_across_units() -> Bool {
+  let dag = witness_mutual_recursive_dag()
+  let assignment = witness_module_scc_split_assignment()
+  match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
     CPartitionFoldOk { units: units } =>
-      match c_validate_partition_r4(
-        module_dag: witness_triangle_dag(),
-        assignment: assignment,
-        units: units
-      ) {
-        PartitionR4Refused { cause: SccSplit { detail: _ } } => true
-        PartitionR4Valid => false
-      }
+      (units |> count) == 2
+        && c_partition_unit_graph_has_cycle(units: units)
+        && match c_validate_partition_r4(
+          module_dag: dag,
+          assignment: assignment,
+          units: units
+        ) {
+          PartitionR4Valid => true
+          PartitionR4Refused { cause: _ } => false
+        }
     CPartitionFoldRefused { outcome: _ } => false
   }
 }
 
-fn witness_r4_refuses_duplicate_member_partition() -> Bool {
-  let duplicate_units = [
-    CompilationUnit {
-      id: witness_unit_one
-      members: [witness_mod_a]
-      interface: Empty
-      deps: Empty
-      artifact: compilation_unit_artifact_id(unit_id: witness_unit_one)
-    },
-    CompilationUnit {
-      id: witness_unit_two
-      members: [witness_mod_a]
-      interface: Empty
-      deps: Empty
-      artifact: compilation_unit_artifact_id(unit_id: witness_unit_two)
-    }
-  ]
-  match c_validate_partition_r4(
-    module_dag: witness_triangle_dag(),
-    assignment: witness_two_unit_assignment(),
-    units: duplicate_units
-  ) {
-    PartitionR4Refused { cause: SccSplit { detail: _ } } => true
-    PartitionR4Valid => false
+fn witness_r4_accepts_triangle_module_scc_split() -> Bool {
+  let dag = witness_triangle_dag()
+  let assignment = witness_two_unit_assignment()
+  match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    CPartitionFoldOk { units: units } =>
+      match c_validate_partition_r4(
+        module_dag: dag,
+        assignment: assignment,
+        units: units
+      ) {
+        PartitionR4Valid => true
+        PartitionR4Refused { cause: _ } => false
+      }
+    CPartitionFoldRefused { outcome: _ } => false
   }
 }
 
@@ -307,6 +316,6 @@ test fn c_compilation_unit_witnesses() -> Bool {
     && witness_r3_unit_one_spelling_paths()
     && witness_r3_spelling_from_partition_fold()
     && witness_r4_accepts_link_cyclic_unit_graph()
-    && witness_r4_refuses_module_scc_split()
-    && witness_r4_refuses_duplicate_member_partition()
+    && witness_r4_accepts_module_scc_split_across_units()
+    && witness_r4_accepts_triangle_module_scc_split()
 }
