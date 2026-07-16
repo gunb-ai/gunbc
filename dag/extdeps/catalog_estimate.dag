@@ -1,0 +1,5 @@
+module extdeps.catalog_estimate
+
+type Estimate<T>
+  = Exact { value: T }
+  | Interval { lo: T, hi: T }
