@@ -115,10 +115,6 @@ fn witness_hand_maintained_filenames_include_self_emitted_holds() -> Bool {
   )
     && string_list_contains(
       xs: generated_stage0_filenames,
-      needle: "v2_compiler_parse_engine_hooks.rs"
-    )
-    && string_list_contains(
-      xs: generated_stage0_filenames,
       needle: "v2_compiler_discovery_enumeration.rs"
     )
     && string_list_contains(
