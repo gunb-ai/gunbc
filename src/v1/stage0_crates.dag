@@ -5,206 +5,8 @@ import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep }
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 
-type Stage0PartitionCrateKind
-  = Stage0FoundationCrate
-  | Stage0LayeredCoreCrate
-  | Stage0EmitCoreCrate
-
-type Stage0PartitionCrateRow {
-  package_name: String
-  crate_dir: String
-  kind: Stage0PartitionCrateKind
-  modules: List<String>
-  reexport_packages: List<String>
-  carries_non_empty_wrappers: Bool
-}
-
-data stage0_crate_plan_dissolve_on: String = "dissolve-on: stage0_crate_plan_interim_explicit — regen-closure mirror of v2.workflow.rust_crate_partition HandExplicit rows; dissolves when PolicyPartition replaces ExplicitPartition (see rust_crate_partition_dissolve_on)."
-
-fn stage0_runtime_modules() -> List<String> {
-  ["v1_rt", "v1_std_core"]
-}
-
-fn stage0_std_primitive_modules() -> List<String> {
-  [
-    "std_content_hash",
-    "std_coercion",
-    "std_decl_ref",
-    "std_disposition",
-    "std_error_primitives",
-    "std_http_path",
-    "std_emit_model",
-    "std_magnitude",
-    "std_measure",
-    "std_types",
-    "std_lens_verdict"
-  ]
-}
-
-fn stage0_std_core_modules() -> List<String> {
-  [
-    "std_algebra",
-    "std_nat",
-    "std_node",
-    "std_syntax",
-    "std_computation",
-    "std_termination",
-    "std_induction",
-    "std_iteration",
-    "std_graph"
-  ]
-}
-
-fn stage0_std_surface_modules() -> List<String> {
-  [
-    "std_effects",
-    "std_execution_mode",
-    "std_interface_summary",
-    "std_pareto",
-    "std_realization_schedule"
-  ]
-}
-
-fn stage0_extdeps_modules() -> List<String> {
-  [
-    "extdeps_external_authority",
-    "extdeps_languages_dag_emit",
-    "extdeps_languages_dag_syntax",
-    "extdeps_languages_dag_types",
-    "extdeps_languages_go_emit",
-    "extdeps_languages_go_syntax",
-    "extdeps_languages_go_types",
-    "extdeps_languages_python_emit",
-    "extdeps_languages_python_syntax",
-    "extdeps_languages_python_types",
-    "extdeps_languages_rust_emit",
-    "extdeps_languages_rust_syntax",
-    "extdeps_languages_rust_types",
-    "extdeps_uri"
-  ]
-}
-
-fn stage0_v1_infer_modules() -> List<String> {
-  [
-    "v1_compiler_infer_emit_info",
-    "v1_compiler_infer_env",
-    "v1_compiler_infer_items",
-    "v1_compiler_infer_service",
-    "v1_compiler_infer_sigs",
-    "v1_compiler_infer_types"
-  ]
-}
-
-fn stage0_v1_artifact_modules() -> List<String> {
-  ["v1_compiler_artifact", "v1_compiler_languages"]
-}
-
-fn stage0_emit_core_modules() -> List<String> {
-  [
-    "v1_compiler_artifact",
-    "v1_compiler_infer_items",
-    "v1_compiler_infer_service",
-    "v1_compiler_infer_types",
-    "v1_compiler_languages",
-    "v1_rt",
-    "v1_std_core"
-  ]
-}
-
-fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
-  [
-    Stage0PartitionCrateRow {
-      package_name: "v1-stage0-runtime",
-      crate_dir: "src/v1/stage0_runtime",
-      kind: Stage0FoundationCrate,
-      modules: stage0_runtime_modules(),
-      reexport_packages: [],
-      carries_non_empty_wrappers: true
-    },
-    Stage0PartitionCrateRow {
-      package_name: "v1-stage0-std-primitives",
-      crate_dir: "src/v1/stage0_std_primitives",
-      kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_primitive_modules(),
-      reexport_packages: ["v1-stage0-runtime"],
-      carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
-      package_name: "v1-stage0-std-core",
-      crate_dir: "src/v1/stage0_std_core",
-      kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_core_modules(),
-      reexport_packages: ["v1-stage0-runtime", "v1-stage0-std-primitives"],
-      carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
-      package_name: "v1-stage0-std-surface",
-      crate_dir: "src/v1/stage0_std_surface",
-      kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_surface_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-primitives",
-        "v1-stage0-std-core"
-      ],
-      carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
-      package_name: "v1-stage0-extdeps",
-      crate_dir: "src/v1/stage0_extdeps",
-      kind: Stage0LayeredCoreCrate,
-      modules: stage0_extdeps_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-primitives",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface"
-      ],
-      carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
-      package_name: "v1-stage0-v1-infer",
-      crate_dir: "src/v1/stage0_v1_infer",
-      kind: Stage0LayeredCoreCrate,
-      modules: stage0_v1_infer_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-primitives",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface",
-        "v1-stage0-extdeps"
-      ],
-      carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
-      package_name: "v1-stage0-v1-artifact",
-      crate_dir: "src/v1/stage0_v1_artifact",
-      kind: Stage0LayeredCoreCrate,
-      modules: stage0_v1_artifact_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-primitives",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface",
-        "v1-stage0-extdeps",
-        "v1-stage0-v1-infer"
-      ],
-      carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
-      package_name: "v1-stage0-emit-core",
-      crate_dir: "src/v1/stage0_emit_core",
-      kind: Stage0EmitCoreCrate,
-      modules: stage0_emit_core_modules(),
-      reexport_packages: [],
-      carries_non_empty_wrappers: false
-    }
-  ]
-}
-
 type Stage0CrateKind
-  = FoundationCrate
-  | LayeredCoreCrate
+  = CoreCrate
   | EmitCoreCrate
 
 type Stage0CrateSpec {
@@ -214,16 +16,15 @@ type Stage0CrateSpec {
   header_doc: String
   modules: List<String>
   dependencies: List<CargoDependency>
-  reexport_packages: List<String>
+
   features: List<CargoFeature>
+
   carries_non_empty_wrappers: Bool
 }
 
 type Stage0CratePlan {
   crates: List<Stage0CrateSpec>
 }
-
-data stage0_crate_plan_note: String = "HandExplicit ~8-crate partition (regen closure). Workflow authority + CompilationUnit fold/R4 live in v2.workflow.rust_crate_partition; this file is the R3 renderer consumed by regen_stage0."
 
 fn stage0_crate_allow_block() -> String {
   [
@@ -241,30 +42,17 @@ fn stage0_crate_allow_block() -> String {
   ] |> join(separator: "\n")
 }
 
-fn stage0_foundation_header_doc(package_name: String) -> String {
+fn stage0_core_header_doc() -> String {
   [
     "//! Generated by regen_stage0 -- do not edit.",
     "//!",
-    "//! Foundation crate boundary for generated v2 stage0 support (",
-    package_name,
-    ").",
+    "//! Crate boundary for generated v2 stage0 core authorities.",
     "//!",
-    "//! Module bodies remain generated into `src/v1/stage0/src`. This crate",
-    "//! is the first layer in the HandExplicit ~8-crate partition realized via",
-    "//! `v2.workflow.rust_crate_partition` against the shared CompilationUnit home."
-  ] |> join(separator: "\n")
-}
-
-fn stage0_layered_core_header_doc(package_name: String) -> String {
-  [
-    "//! Generated by regen_stage0 -- do not edit.",
-    "//!",
-    "//! Layered core crate boundary (",
-    package_name,
-    ").",
-    "//!",
-    "//! Re-exports lower partition layers at the crate root so generated",
-    "//! module bodies can keep addressing dependencies as `crate::...`."
+    "//! The module bodies remain generated into `src/v1/stage0/src`. This crate",
+    "//! exposes the lower std/runtime/artifact/language/infer support surface",
+    "//! without copying generated module bodies. The root `NonEmpty*` wrappers are",
+    "//! mirrored from the stage0 lib root because generated modules address them as",
+    "//! `crate::NonEmptyVec` and `crate::NonEmptyBTreeSet`."
   ] |> join(separator: "\n")
 }
 
@@ -272,11 +60,11 @@ fn stage0_emit_core_header_doc() -> String {
   [
     "//! Generated by regen_stage0 -- do not edit.",
     "//!",
-    "//! Emit-core crate boundary for generated v2 emit support.",
+    "//! Crate boundary proof for generated v2 emit core support.",
     "//!",
     "//! The semantic bodies remain generated from `src/v1/05_emit_core_support.dag`",
-    "//! into the stage0 seed. This crate exposes the emit surface through the",
-    "//! partitioned stage0 stack, avoiding copied Rust semantics."
+    "//! into the stage0 seed. This crate exposes that generated support surface",
+    "//! through `v1-stage0-core`, avoiding copied Rust semantics."
   ] |> join(separator: "\n")
 }
 
@@ -322,7 +110,7 @@ fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> TextFile {
   TextFile { path: concat(spec.crate_dir, "/Cargo.toml"), content: content }
 }
 
-fn render_stage0_foundation_lib(spec: Stage0CrateSpec) -> String {
+fn render_stage0_core_lib(spec: Stage0CrateSpec) -> String {
   let includes = spec.modules
     |> map(m => concat("#[path = \"../../stage0/src/", m, ".rs\"]\npub mod ", m, ";"))
     |> join(separator: "\n")
@@ -338,54 +126,14 @@ fn render_stage0_foundation_lib(spec: Stage0CrateSpec) -> String {
   }
 }
 
-fn render_stage0_reexport_block(packages: List<String>) -> String {
-  if (packages |> count) == 0 {
-    ""
-  } else {
-    let body = packages
-      |> map(pkg => concat("pub use ", pkg, "::*;"))
-      |> join(separator: "\n")
-    concat("\n\n", body, "\n\n")
-  }
-}
-
-fn render_stage0_layered_core_lib(spec: Stage0CrateSpec) -> String {
-  let includes = spec.modules
-    |> map(m => concat("#[path = \"../../stage0/src/", m, ".rs\"]\npub mod ", m, ";"))
-    |> join(separator: "\n")
-  concat(
-    spec.header_doc, "\n\n",
-    stage0_crate_allow_block(), "\n\n",
-    render_stage0_reexport_block(packages: spec.reexport_packages),
-    includes, "\n"
-  )
-}
-
-fn emit_core_reexport_crate(module: String) -> String {
-  if module == "v1_compiler_artifact" {
-    "v1_stage0_v1_artifact"
-  } else if module == "v1_compiler_languages" {
-    "v1_stage0_v1_artifact"
-  } else if module == "v1_rt" {
-    "v1_stage0_runtime"
-  } else if module == "v1_std_core" {
-    "v1_stage0_runtime"
-  } else {
-    "v1_stage0_v1_infer"
-  }
-}
-
 fn render_stage0_emit_core_lib(spec: Stage0CrateSpec) -> String {
   let reexports = spec.modules
-    |> map(m => concat(
-      "pub mod ", m, " {\n    pub use ",
-      emit_core_reexport_crate(module: m), "::", m, "::*;\n}"
-    ))
+    |> map(m => concat("pub mod ", m, " {\n    pub use v1_stage0_core::", m, "::*;\n}"))
     |> join(separator: "\n\n")
   concat(
     spec.header_doc, "\n\n",
     stage0_crate_allow_block(), "\n\n",
-    "pub use v1_stage0_runtime::\{NonEmptyBTreeSet, NonEmptyVec};", "\n\n",
+    "pub use v1_stage0_core::\{NonEmptyBTreeSet, NonEmptyVec};", "\n\n",
     reexports, "\n\n",
     "#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;", "\n\n",
     "pub use v1_compiler_emit_core_support::*;", "\n"
@@ -394,97 +142,108 @@ fn render_stage0_emit_core_lib(spec: Stage0CrateSpec) -> String {
 
 fn emit_stage0_crate_lib(spec: Stage0CrateSpec) -> TextFile {
   let content = match spec.kind {
-    FoundationCrate => render_stage0_foundation_lib(spec)
-    LayeredCoreCrate => render_stage0_layered_core_lib(spec)
+    CoreCrate => render_stage0_core_lib(spec)
     EmitCoreCrate => render_stage0_emit_core_lib(spec)
   }
   TextFile { path: concat(spec.crate_dir, "/src/lib.rs"), content: content }
 }
 
-fn stage0_registry_dependencies() -> List<CargoDependency> {
-  [
-    CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
-    CargoDependency { name: "im-rc", source: RegistryDep { version: "15.1", features: ["serde"] } },
-    CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
-    CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } },
-    CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", features: [] } },
-    CargoDependency { name: "unicode-properties", source: RegistryDep { version: "0.1", features: ["emoji"] } }
-  ]
-}
-
-fn stage0_local_path_dep(name: String, path: String) -> CargoDependency {
-  CargoDependency { name: name, source: LocalPathDep { path: path } }
-}
-
-fn stage0_reexport_path_deps(packages: List<String>) -> List<CargoDependency> {
-  packages
-    |> map(pkg => stage0_local_path_dep(
-      name: pkg,
-      path: concat("../", pkg |> replace("v1-stage0-", "stage0_"))
-    ))
-}
-
-fn stage0_partition_kind_from_row(kind: Stage0PartitionCrateKind) -> Stage0CrateKind {
-  match kind {
-    Stage0FoundationCrate => FoundationCrate
-    Stage0LayeredCoreCrate => LayeredCoreCrate
-    Stage0EmitCoreCrate => EmitCoreCrate
-  }
-}
-
-fn stage0_header_doc_for_row(row: Stage0PartitionCrateRow) -> String {
-  match row.kind {
-    Stage0FoundationCrate => stage0_foundation_header_doc(package_name: row.package_name)
-    Stage0LayeredCoreCrate => stage0_layered_core_header_doc(package_name: row.package_name)
-    Stage0EmitCoreCrate => stage0_emit_core_header_doc()
-  }
-}
-
-fn stage0_dependencies_for_row(row: Stage0PartitionCrateRow) -> List<CargoDependency> {
-  match row.kind {
-    Stage0FoundationCrate => stage0_registry_dependencies()
-    Stage0LayeredCoreCrate =>
-      stage0_registry_dependencies()
-        |> concat(stage0_reexport_path_deps(packages: row.reexport_packages))
-    Stage0EmitCoreCrate => [
-      CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
-      CargoDependency { name: "im-rc", source: RegistryDep { version: "15.1", features: ["serde"] } },
-      CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
-      stage0_local_path_dep(name: "v1-stage0-v1-artifact", path: "../stage0_v1_artifact"),
-      stage0_local_path_dep(name: "v1-stage0-v1-infer", path: "../stage0_v1_infer"),
-      stage0_local_path_dep(name: "v1-stage0-runtime", path: "../stage0_runtime")
-    ]
-  }
-}
-
-fn stage0_features_for_row(row: Stage0PartitionCrateRow) -> List<CargoFeature> {
-  match row.kind {
-    Stage0FoundationCrate => [
-      CargoFeature { name: "text_lookup_work_counter", dependencies: [] }
-    ]
-    Stage0LayeredCoreCrate => []
-    Stage0EmitCoreCrate => []
-  }
-}
-
-fn stage0_crate_spec_from_partition_row(row: Stage0PartitionCrateRow) -> Stage0CrateSpec {
-  Stage0CrateSpec {
-    package_name: row.package_name
-    crate_dir: row.crate_dir
-    kind: stage0_partition_kind_from_row(kind: row.kind)
-    header_doc: stage0_header_doc_for_row(row: row)
-    modules: row.modules
-    dependencies: stage0_dependencies_for_row(row: row)
-    reexport_packages: row.reexport_packages
-    features: stage0_features_for_row(row: row)
-    carries_non_empty_wrappers: row.carries_non_empty_wrappers
-  }
-}
-
 fn stage0_crate_plan() -> Stage0CratePlan {
   Stage0CratePlan {
-    crates: stage0_partition_crate_rows()
-      |> map(stage0_crate_spec_from_partition_row)
+    crates: [
+      Stage0CrateSpec {
+        package_name: "v1-stage0-core",
+        crate_dir: "src/v1/stage0_core",
+        kind: CoreCrate,
+        header_doc: stage0_core_header_doc(),
+        modules: [
+          "extdeps_external_authority",
+          "extdeps_languages_dag_emit",
+          "extdeps_languages_dag_syntax",
+          "extdeps_languages_dag_types",
+          "extdeps_languages_go_emit",
+          "extdeps_languages_go_syntax",
+          "extdeps_languages_go_types",
+          "extdeps_languages_python_emit",
+          "extdeps_languages_python_syntax",
+          "extdeps_languages_python_types",
+          "extdeps_languages_rust_emit",
+          "extdeps_languages_rust_syntax",
+          "extdeps_languages_rust_types",
+          "extdeps_uri",
+          "std_algebra",
+          "std_coercion",
+          "std_computation",
+          "std_content_hash",
+          "std_decl_ref",
+          "std_disposition",
+          "std_effects",
+          "std_emit_model",
+          "std_error_primitives",
+          "std_execution_mode",
+          "std_graph",
+          "std_http_path",
+          "std_induction",
+          "std_interface_summary",
+          "std_iteration",
+          "std_lens_verdict",
+          "std_magnitude",
+          "std_measure",
+          "std_nat",
+          "std_node",
+          "std_pareto",
+          "std_realization_schedule",
+          "std_syntax",
+          "std_termination",
+          "std_types",
+          "v1_compiler_artifact",
+          "v1_compiler_infer_emit_info",
+          "v1_compiler_infer_env",
+          "v1_compiler_infer_items",
+          "v1_compiler_infer_service",
+          "v1_compiler_infer_sigs",
+          "v1_compiler_infer_types",
+          "v1_compiler_languages",
+          "v1_rt",
+          "v1_std_core"
+        ],
+        dependencies: [
+          CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
+          CargoDependency { name: "im-rc", source: RegistryDep { version: "15.1", features: ["serde"] } },
+          CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
+          CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } },
+          CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", features: [] } },
+          CargoDependency { name: "unicode-properties", source: RegistryDep { version: "0.1", features: ["emoji"] } }
+        ],
+        features: [
+          CargoFeature { name: "text_lookup_work_counter", dependencies: [] }
+        ],
+        carries_non_empty_wrappers: true
+      },
+      Stage0CrateSpec {
+        package_name: "v1-stage0-emit-core",
+        crate_dir: "src/v1/stage0_emit_core",
+        kind: EmitCoreCrate,
+        header_doc: stage0_emit_core_header_doc(),
+        modules: [
+          "v1_compiler_artifact",
+          "v1_compiler_infer_items",
+          "v1_compiler_infer_service",
+          "v1_compiler_infer_types",
+          "v1_compiler_languages",
+          "v1_rt",
+          "v1_std_core"
+        ],
+        dependencies: [
+          CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
+          CargoDependency { name: "im-rc", source: RegistryDep { version: "15.1", features: ["serde"] } },
+          CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
+          CargoDependency { name: "v1-stage0-core", source: LocalPathDep { path: "../stage0_core" } }
+        ],
+        features: [],
+        carries_non_empty_wrappers: false
+      }
+    ]
   }
 }
 

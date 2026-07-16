@@ -26,7 +26,7 @@ import v2.std.compilers.compilation_unit {
   PartitionR4ValidityVerdict,
   SccSplit,
   UnitGraphCycle,
-  partition_fold,
+  PartitionFoldOutcome,
   partition_fold_outcome,
   partition_provenance_hand_explicit
 }
@@ -380,10 +380,61 @@ fn validate_partition_r4(
   }
 }
 
-fn stage0_compilation_units() -> List<CompilationUnit> {
+fn stage0_compilation_units_from_outcome(outcome: PartitionFoldOutcome) -> List<CompilationUnit> {
+  match outcome {
+    PartitionFoldOk { units: units } => units
+    PartitionFoldRefused { cause: _ } => []
+  }
+}
+
+fn stage0_partition_fold_outcome() -> PartitionFoldOutcome {
   let dag = stage0_module_dag()
-  let assignment = resolve_partition(parameter: stage0_partition_parameter(), module_dag: dag)
-  partition_fold(module_dag: dag, assignment: assignment)
+  partition_fold_outcome(
+    module_dag: dag,
+    assignment: resolve_partition(parameter: stage0_partition_parameter(), module_dag: dag)
+  )
+}
+
+fn stage0_compilation_units() -> List<CompilationUnit> {
+  stage0_compilation_units_from_outcome(outcome: stage0_partition_fold_outcome())
+}
+
+fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
+  stage0_assign_modules_to_unit(
+    assignment: empty_map(),
+    modules: stage0_all_partitioned_modules(),
+    unit_id: stage0_unit_runtime
+  )
+}
+
+fn stage0_single_crate_fold_outcome() -> PartitionFoldOutcome {
+  let dag = stage0_module_dag()
+  partition_fold_outcome(
+    module_dag: dag,
+    assignment: stage0_single_crate_assignment()
+  )
+}
+
+fn compilation_unit_member_count(units: List<CompilationUnit>) -> Int {
+  units |> flat_map(unit => unit.members) |> count
+}
+
+fn stage0_partition_member_coverage_consistent(
+  left: PartitionFoldOutcome,
+  right: PartitionFoldOutcome
+) -> Bool {
+  match left {
+    PartitionFoldOk { units: left_units } =>
+      match right {
+        PartitionFoldOk { units: right_units } => {
+          let left_count = compilation_unit_member_count(units: left_units)
+          let right_count = compilation_unit_member_count(units: right_units)
+          left_count == right_count
+        }
+        PartitionFoldRefused { cause: _ } => false
+      }
+    PartitionFoldRefused { cause: _ } => false
+  }
 }
 
 fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {

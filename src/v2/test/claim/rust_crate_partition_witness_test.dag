@@ -1,6 +1,7 @@
 module v2.test.claim.rust_crate_partition_witness
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
 import std.types { ContentHash, NonEmptyStr }
 import v2.std.collection { Absent, Present, empty_map, map_insert }
 import v2.std.compilers.compilation_unit {
@@ -10,11 +11,15 @@ import v2.std.compilers.compilation_unit {
   ModuleDagEdge,
   ModuleId,
   PolicyDerived,
+  PartitionFoldOk,
+  PartitionFoldOutcome,
+  PartitionFoldRefused,
   PartitionR4Refused,
   PartitionR4Valid,
+  LinkageCycle,
   SccSplit,
   UnitGraphCycle,
-  partition_fold,
+  partition_fold_outcome,
   partition_provenance_eq,
   partition_provenance_hand_explicit,
   partition_provenance_policy_derived,
@@ -27,7 +32,10 @@ import v2.workflow.rust_crate_partition {
   stage0_compilation_units,
   stage0_interim_explicit_assignment,
   stage0_module_dag,
+  stage0_partition_fold_outcome,
   stage0_partition_fold_ok,
+  stage0_partition_member_coverage_consistent,
+  stage0_single_crate_fold_outcome,
   stage0_partition_parameter,
   stage0_partition_provenance,
   stage0_partition_r4_valid,
@@ -69,12 +77,27 @@ fn witness_forced_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
 fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
   let dag = witness_triangle_scc_dag()
   let assignment = witness_forced_scc_split_assignment()
-  let units = partition_fold(module_dag: dag, assignment: assignment)
+  let units = match partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    PartitionFoldOk { units: units } => units
+    PartitionFoldRefused { cause: _ } => []
+  }
   match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
     PartitionR4Refused { cause: SccSplit { detail: _ } } => true
     PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => false
+    PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
     PartitionR4Valid => false
   }
+}
+
+fn witness_partition_perturbation_member_coverage_holds() -> Bool {
+  let coverage_same = stage0_partition_member_coverage_consistent(
+    left: stage0_single_crate_fold_outcome(),
+    right: stage0_partition_fold_outcome()
+  )
+  perturbation_consistent(
+    reading: ForwardSameInSameOut,
+    output_responded: !coverage_same
+  )
 }
 
 fn witness_interim_explicit_unit_count_holds() -> Bool {
@@ -157,5 +180,6 @@ test fn rust_crate_partition_witnesses() -> Bool {
     && witness_partition_r4_valid_on_interim_holds()
     && witness_resolve_partition_explicit_returns_assignment_holds()
     && witness_r4_refuses_forced_scc_split_holds()
+    && witness_partition_perturbation_member_coverage_holds()
     && witness_dissolve_on_note_present_holds()
 }
