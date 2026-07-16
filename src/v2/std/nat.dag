@@ -1,4 +1,20 @@
 module v2.std.nat
+
+import v2.std.algebra {
+  Magma,
+  Semigroup,
+  Monoid,
+  CommutativeMonoid,
+  Semiring,
+  CommutativeSemiring,
+  Ordering,
+  Less,
+  Equal,
+  Greater,
+}
+import v2.std.node { Symbol }
+import v2.std.collection { List }
+
 type Nat
   = Zero
   | Succ { prev: Nat }
