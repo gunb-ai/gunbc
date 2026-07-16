@@ -12,6 +12,7 @@ import gunbc.local_tidy_spec {
   generated_artifact_drift_gate_check_fn
 }
 import gunbc.ci_gate { GeneratedArtifactDriftGate }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags, witness_layer_source_flags_rooted }
 import extdeps.git.hooks { pre_push_zero_sha, pre_push_stdin_read_vars }
 
 data bash_at: String = "@"
@@ -35,8 +36,9 @@ fn emit_glob_case_arms(globs: List<String>) -> String {
 }
 
 fn emit_claim_batch(entry: String, function: String, suffix: String) -> String {
+  let roots = witness_layer_source_flags(roots: witness_layer_roots)
   concat(
-    "\"$CLAIM_BATCH\" --source-root dag --entry ",
+    concat("\"$CLAIM_BATCH\"", concat(roots, " --entry ")),
     concat(entry, concat(" --function ", concat(function, suffix)))
   )
 }
@@ -93,6 +95,29 @@ fn emit_freshness_fmt() -> String {
   )
 }
 
+fn emit_freshness_witness() -> String {
+  concat(
+    emit_freshness_path_fn(label: "fresh_witness", globs: map(witness_layer_roots, r => concat(r, "/"))),
+    concat(
+      "fresh_witness() {\n  local p\n  for p in \"",
+      concat(bash_positional_all(), "\"; do fresh_witness_path \"$p\" && return 0; done\n  return 1\n}\n")
+    )
+  )
+}
+
+fn emit_run_witness() -> String {
+  concat(
+    "echo \"[pre-push] affected-set witness corpus (claim_executor; scoped to origin/main...HEAD)\"\nensure_executor\n",
+    concat(
+      concat(
+        concat("if ! \"$CLAIM_EXECUTOR\"", witness_layer_source_flags_rooted(roots: witness_layer_roots)),
+        " --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_witness_corpus_only_batches; then\n"
+      ),
+      "  echo \"[pre-push] affected tests FAILED — fix them and re-push, or 'git push --no-verify' to override (CI still gates).\" >&2\n  exit 1\nfi\n"
+    )
+  )
+}
+
 fn pre_push_checks_from_roster() -> List<LocalTidyCheck> {
   project_local_tidy_checks(roster: commit_gate_roster)
 }
@@ -117,33 +142,15 @@ fn emit_run_doc() -> String {
 fn emit_run_artifact() -> String {
   let entry = local_tidy_gate_entry()
   concat(
-    concat("echo \"[pre-push] generated-artifact drift gate\"\nif ", emit_claim_batch(entry: entry, function: generated_artifact_drift_gate_check_fn, suffix: " --wet")),
-    concat(
-      "; then :; else\n  echo \"[pre-push] drift detected; running main_wet\"\n  ",
-      concat(
-        emit_claim_batch(entry: entry, function: local_tidy_gate_wet_fn(), suffix: " --wet"),
-        concat(
-          "\n  echo \"[pre-push] staging regen outputs:\"\n  git diff --name-only --diff-filter=ACMR | while IFS= read -r p; do\n    [ -n \"$p\" ] || continue\n    echo \"  + $p\"\n    git add -u -- \"$p\"\n  done\n  git ls-files --others --exclude-standard | while IFS= read -r p; do\n    [ -n \"$p\" ] || continue\n    echo \"  + $p (untracked)\"\n    git add -- \"$p\"\n  done\n  echo \"[pre-push] re-checking drift after regen\"\n  ",
-          concat(emit_claim_batch(entry: entry, function: generated_artifact_drift_gate_check_fn, suffix: " --wet"), "\nfi\n")
-        )
-      )
-    )
+    concat("echo \"[pre-push] generated-artifact drift gate\"\nif ! ", emit_claim_batch(entry: entry, function: generated_artifact_drift_gate_check_fn, suffix: " --wet")),
+    " 2>/dev/null; then\n  echo \"[pre-push] generated artifacts are stale — run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet   (then commit the regenerated files and re-push, or 'git push --no-verify' to skip)\" >&2\n  exit 1\nfi\n"
   )
 }
 
 fn emit_run_fmt() -> String {
   concat(
-    "echo \"[pre-push] cargo fmt --all --check\"\nif cargo fmt --all --check 2>/dev/null; then\n  exit 0\nfi\n",
-    concat(
-      "if [[ \"$HEAD_BRANCH_IN_PUSH\" != \"1\" ]]; then\n  echo \"[pre-push] fmt drift detected; auto-fix out of scope for this push.\" >&2\n  exit 1\nfi\n",
-      concat(
-        "echo \"[pre-push] running cargo fmt --all\"\ncargo fmt --all\ngit add -u\n",
-        concat(
-          "if git diff --cached --quiet; then echo \"[pre-push] fmt reported drift but produced no diff\" >&2; exit 1; fi\n",
-          "git commit -m \"chore: apply cargo fmt\"\necho \"[pre-push] fmt committed locally; re-run git push.\"\nexit 1\n"
-        )
-      )
-    )
+    "echo \"[pre-push] cargo fmt --all --check\"\n",
+    "if ! cargo fmt --all --check 2>/dev/null; then\n  echo \"[pre-push] rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)\" >&2\n  exit 1\nfi\n"
   )
 }
 
@@ -156,8 +163,8 @@ fn expected_githooks_pre_push_sh() -> String {
     concat(
       concat("ZERO_SHA=\"", concat(pre_push_zero_sha, "\"\n")),
       concat(
-        "ensure_bins() {\n  if [[ -x \"$ROOT/target/release/claim_batch\" ]]; then\n    CLAIM_BATCH=\"$ROOT/target/release/claim_batch\"\n  elif [[ -x \"$ROOT/target/debug/claim_batch\" ]]; then\n    CLAIM_BATCH=\"$ROOT/target/debug/claim_batch\"\n  else\n    echo \"[pre-push] claim_batch not built; compiling debug (one-time)...\"\n    (cd \"$ROOT\" && CTRL_BUILD_WRAP_CARGO=0 cargo build -p v1-compiler --bin claim_batch)\n    CLAIM_BATCH=\"$ROOT/target/debug/claim_batch\"\n  fi\n}\n",
-        concat(emit_freshness_doc(), concat(emit_freshness_artifact(), emit_freshness_fmt()))
+        "ensure_bins() {\n  if [[ -x \"$ROOT/target/release/claim_batch\" ]]; then\n    CLAIM_BATCH=\"$ROOT/target/release/claim_batch\"\n  elif [[ -x \"$ROOT/target/debug/claim_batch\" ]]; then\n    CLAIM_BATCH=\"$ROOT/target/debug/claim_batch\"\n  else\n    echo \"[pre-push] claim_batch not built; compiling debug (one-time)...\"\n    (cd \"$ROOT\" && CTRL_BUILD_WRAP_CARGO=0 cargo build -p v1-compiler --bin claim_batch)\n    CLAIM_BATCH=\"$ROOT/target/debug/claim_batch\"\n  fi\n}\nensure_executor() {\n  if [[ -x \"$ROOT/target/release/claim_executor\" ]]; then\n    CLAIM_EXECUTOR=\"$ROOT/target/release/claim_executor\"\n  elif [[ -x \"$ROOT/target/debug/claim_executor\" ]]; then\n    CLAIM_EXECUTOR=\"$ROOT/target/debug/claim_executor\"\n  else\n    echo \"[pre-push] claim_executor not built; compiling release (one-time, minutes)...\"\n    (cd \"$ROOT\" && CTRL_BUILD_WRAP_CARGO=0 cargo build -p v1-compiler --release --bin claim_executor)\n    CLAIM_EXECUTOR=\"$ROOT/target/release/claim_executor\"\n  fi\n}\n",
+        concat(emit_freshness_doc(), concat(emit_freshness_artifact(), concat(emit_freshness_fmt(), emit_freshness_witness())))
       )
     ),
     concat(
@@ -184,7 +191,7 @@ fn expected_githooks_pre_push_sh() -> String {
       concat(
         concat(
           concat(
-            "NEED_DOC=0 NEED_ARTIFACT=0 NEED_FMT=0\nif fresh_doc \"",
+            "NEED_DOC=0 NEED_ARTIFACT=0 NEED_FMT=0 NEED_WITNESS=0\nif fresh_doc \"",
             bash_array_all(name: "PUSH_CHANGED")
           ),
           "\"; then NEED_DOC=1; fi\nif fresh_artifact \""
@@ -195,7 +202,13 @@ fn expected_githooks_pre_push_sh() -> String {
             "\"; then NEED_ARTIFACT=1; fi\nif fresh_fmt \"",
             concat(
               bash_array_all(name: "PUSH_CHANGED"),
-              "\"; then NEED_FMT=1; fi\nif [[ \"$NEED_DOC\" == \"0\" && \"$NEED_ARTIFACT\" == \"0\" && \"$NEED_FMT\" == \"0\" ]]; then exit 0; fi\n"
+              concat(
+                "\"; then NEED_FMT=1; fi\nif fresh_witness \"",
+                concat(
+                  bash_array_all(name: "PUSH_CHANGED"),
+                  "\"; then NEED_WITNESS=1; fi\nif [[ \"$NEED_DOC\" == \"0\" && \"$NEED_ARTIFACT\" == \"0\" && \"$NEED_FMT\" == \"0\" && \"$NEED_WITNESS\" == \"0\" ]]; then exit 0; fi\n"
+                )
+              )
             )
           )
         )
@@ -209,8 +222,11 @@ fn expected_githooks_pre_push_sh() -> String {
             concat(
               emit_run_artifact(),
               concat(
-                "fi\nif [[ \"$NEED_ARTIFACT\" == \"1\" ]]; then\n  if ! git diff --cached --quiet; then\n    if [[ \"$HEAD_BRANCH_IN_PUSH\" != \"1\" ]]; then echo \"[pre-push] regen staged but HEAD branch not in push\" >&2; exit 1; fi\n    echo \"[pre-push] staged after regen:\"\n    git diff --cached --name-only | while IFS= read -r p; do echo \"  + $p\"; done\n    git commit -m \"chore: regenerate committed projections\"\n    echo \"[pre-push] regen committed locally; re-run git push.\"\n    exit 1\n  fi\nfi\n",
-                concat("if [[ \"$NEED_FMT\" == \"1\" ]]; then\n", concat(emit_run_fmt(), "fi\nexit 0\n"))
+                "fi\n",
+                concat(
+                  concat("if [[ \"$NEED_WITNESS\" == \"1\" ]]; then\n", concat(emit_run_witness(), "fi\n")),
+                  concat("if [[ \"$NEED_FMT\" == \"1\" ]]; then\n", concat(emit_run_fmt(), "fi\nexit 0\n"))
+                )
               )
             )
           )
