@@ -118,15 +118,15 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
 data claim_validate_then_compile_module_compiles: TestClaim = CompilesClaim {
   label: "manual/validate_then_compile: validate_then_compile public terminal module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: ^claim_validate_then_compile_module,
-  expected_value: ^claim_validate_then_compile_module,
+  input: claim_symbol_node(s: ^claim_validate_then_compile_module),
+  expected_value: claim_symbol_node(s: ^claim_validate_then_compile_module),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 data claim_empty_lenses_skips_gate: TestClaim = EqualsClaim {
   label: "manual/validate_then_compile: empty lens list does not compile_lens_gate_reject (infer/compile-core Rejected OK)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ^claim_validate_then_compile_module,
+  lhs: claim_symbol_node(s: ^claim_validate_then_compile_module),
   rhs: claim_validate_then_compile_skips_gate_passes(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -148,7 +148,7 @@ fn claim_validate_then_compile_skips_gate_passes() -> Node {
 data claim_rejecting_lens_blocks_before_compile: TestClaim = EqualsClaim {
   label: "manual/validate_then_compile: required lens Rejected blocks before compile-core",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ^claim_validate_then_compile_module,
+  lhs: claim_symbol_node(s: ^claim_validate_then_compile_module),
   rhs: claim_rejecting_lens_blocks_passes(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

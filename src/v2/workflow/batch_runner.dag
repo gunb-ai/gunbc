@@ -4,7 +4,7 @@ import v2.std.algebra { fold_list_right, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.text { String }
 import v2.workflow.executor {
   ExecutorBatch,
@@ -23,17 +23,20 @@ data bre_suite_entry: String = "src/v2/workflow/affected_set_ci_runner_test.dag"
 
 data bre_core_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^bre_core_symbol } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data bre_a_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^bre_a_symbol } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data bre_b_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^bre_b_symbol } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data bre_core_to_a_dependency: DependencyView = DependencyView {
