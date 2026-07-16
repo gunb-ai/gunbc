@@ -665,6 +665,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn truncate_histogram_label_respects_utf8_boundaries() {
+        let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
+        let out = super::truncate_histogram_label(&s, 80);
+        assert!(out.ends_with('…'));
+        assert!(out.is_char_boundary(out.len()));
+    }
+
+    #[test]
     fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();
         let baked = workspace_root();
@@ -1974,7 +1982,14 @@ fn truncate_histogram_label(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}…", &s[..max.saturating_sub(1)])
+        let budget = max.saturating_sub(1);
+        let end = s
+            .char_indices()
+            .map(|(i, c)| i + c.len_utf8())
+            .take_while(|&end| end <= budget)
+            .last()
+            .unwrap_or(0);
+        format!("{}…", &s[..end])
     }
 }
 
