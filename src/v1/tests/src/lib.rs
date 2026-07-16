@@ -15,7 +15,7 @@ mod body_producer_infer_perf_witness_test;
 #[cfg(test)]
 mod bug_sentinel_ratchet;
 #[cfg(test)]
-mod c_compilation_unit_witness_exec_test;
+mod c_compilation_unit_witness_test;
 #[cfg(test)]
 mod cache_purity_oracle_test;
 #[cfg(test)]
