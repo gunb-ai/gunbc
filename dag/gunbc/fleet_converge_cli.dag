@@ -119,6 +119,10 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
   }
 }
 
+fn converge_cli_routes_to_slice1(host: String) -> Bool {
+  host == (operator_host_srv1 as String)
+}
+
 fn converge_cli_slice1_srv1_receipt() -> ConvergeCliReceipt {
   match host_converge_slice1_converge_loop() {
     HostConvergeSlice1Converged { applied_knobs: n, receipt: r } =>
@@ -215,7 +219,7 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
         reason: Present { value: PolicyUnsound { reason: why } },
       }
     ConvergePolicyDerived { hosts: hosts } =>
-      if host == (operator_host_srv1 as String) {
+      if converge_cli_routes_to_slice1(host: host) {
         converge_cli_slice1_srv1_receipt()
       } else {
         match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {

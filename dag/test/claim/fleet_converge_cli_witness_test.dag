@@ -2,6 +2,8 @@ module test.claim.fleet_converge_cli_witness
 
 import std.logic { Bool }
 import gunbc.host_converge { VerdictConverged, converge_verdict, converge_verdict_label }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.host_converge_slice1 { host_converge_slice1_fixture_receipt }
 import gunbc.fleet_converge_cli {
   ConvergeCliReceipt,
   ConvergeCliRefusalCause,
@@ -10,6 +12,7 @@ import gunbc.fleet_converge_cli {
   ComputeInventoryAbsent,
   KnobFrontier,
   converge_cli_run,
+  converge_cli_routes_to_slice1,
   converge_cli_receipt_line,
   converge_cli_receipt_converged,
   converge_cli_output,
@@ -19,19 +22,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_converge_cli_run_srv1_uses_slice1_not_realize_frontier() -> Bool {
-  let r = converge_cli_run(host: "srv1")
-  r.host == "srv1"
-    && match r.reason {
-      Present { value: cause } =>
-        match cause {
-          KnobFrontier { reason: why } =>
-            !string_contains(s: why, pattern: "host_converge_realize")
-          PolicyUnsound { reason: _ } => false
-          UnknownHost { host: _ } => false
-          ComputeInventoryAbsent { host: _ } => false
-        }
-      _ => r.verdict == VerdictConverged
+fn witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier() -> Bool {
+  converge_cli_routes_to_slice1(host: "srv1")
+    && match host_converge_slice1_fixture_receipt() {
+      Present { value: receipt } =>
+        receipt.host == operator_host_srv1
+          && !string_contains(s: "host_converge_realize", pattern: host_converge_slice1_knob_name)
+      Absent => false
     }
 }
 
