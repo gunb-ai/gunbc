@@ -1546,6 +1546,7 @@ enum CompileCleanScopePlan {
 
 fn compile_clean_scope_plan_from_touched_paths(
     touched_paths: &[String],
+    departed_paths: &HashSet<String>,
 ) -> Result<CompileCleanScopePlan, String> {
     let roots = default_source_roots();
     let (graph, indices) = resolve_entry_graph_shared(&roots, COMPILE_CLEAN_SCOPE_ENTRY)
@@ -1555,17 +1556,29 @@ fn compile_clean_scope_plan_from_touched_paths(
         .iter()
         .map(|s| v1_interpreter::Value::Str(s.clone()))
         .collect();
-    let args = [(
-        Some("touched_paths".to_string()),
-        list_value_from_vec(paths),
-    )];
+    let mut departed_sorted: Vec<&String> = departed_paths.iter().collect();
+    departed_sorted.sort();
+    let departed: Vec<v1_interpreter::Value> = departed_sorted
+        .into_iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [
+        (
+            Some("touched_paths".to_string()),
+            list_value_from_vec(paths),
+        ),
+        (
+            Some("departed_paths".to_string()),
+            list_value_from_vec(departed),
+        ),
+    ];
     let result = v1_interpreter::run_in_context_with_args(
         &ctx,
-        "compile_clean_scope_disposition_from_touched",
+        "compile_clean_scope_disposition_from_diff",
         &args,
         false,
     )
-    .map_err(|e| format!("compile_clean_scope_disposition_from_touched: {e}"))?;
+    .map_err(|e| format!("compile_clean_scope_disposition_from_diff: {e}"))?;
     match &result {
         v1_interpreter::Value::Variant {
             variant_name,
@@ -1602,7 +1615,7 @@ fn compile_clean_scope_plan_from_touched_paths(
             Ok(CompileCleanScopePlan::WholeTree)
         }
         other => Err(format!(
-            "compile_clean_scope_disposition_from_touched returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree",
+            "compile_clean_scope_disposition_from_diff returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree",
             ctx.format_value(other)
         )),
     }
@@ -1646,10 +1659,35 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
     paths
 }
 
-/// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_touched` (DependencyView +
-/// `#6239` substrate gate) without the Wet interpreter fold over `compile_clean_shard_entry_paths()`.
+/// Mirror of `tools.dag_compile_clean_scope.compile_clean_touched_path_selectable`:
+/// import-closure selection can only answer for `.dag` sources (and the docs universe);
+/// any other touched path (compiler seed `.rs`, workflow yml, manifests) can change
+/// compile behavior outside the module graph, so the gate keeps its whole-tree baseline.
+fn compile_clean_touched_path_selectable(path: &str) -> bool {
+    let norm = path.strip_prefix("./").unwrap_or(path);
+    norm.starts_with("docs/") || norm.ends_with(".dag")
+}
+
+/// Mirror of `tools.dag_compile_clean_scope.compile_clean_departed_paths_outside_docs`:
+/// a departed (deleted / renamed-from) non-docs path is invisible to current-tree
+/// adjacency — a dangling import drops the edge, so a broken importer would not be
+/// selected — whole-tree baseline.
+fn compile_clean_departed_paths_outside_docs(departed_paths: &HashSet<String>) -> bool {
+    departed_paths.iter().any(|p| {
+        let norm = p.strip_prefix("./").unwrap_or(p);
+        !norm.starts_with("docs/")
+    })
+}
+
+/// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_diff`
+/// (`tools.dag_compile_clean_scope`, module-graph import-closure grain — channel 2 of
+/// operator fork (c) 2026-07-10) without the Wet interpreter fold over
+/// `compile_clean_shard_entry_paths()`. Selection reuses the SAME certified realization
+/// as the discovery-corpus channel (`entry_file_touched_via_import_closure`); every arm
+/// that cannot answer falls back to the gate's whole-tree baseline, loudly.
 fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     touched_paths: &[String],
+    departed_paths: &HashSet<String>,
 ) -> CompileCleanScopePlan {
     if touched_paths.is_empty() {
         return CompileCleanScopePlan::SkipNoAffected {
@@ -1665,40 +1703,32 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
         return CompileCleanScopePlan::SkipNoAffected { reason };
     }
 
-    // `dag_compile_clean_scope.dag` — RequireWholeTree when substrate not ready.
-    // floor_fast has no whole-tree resolve context (loaded=0) until #6239; live substrate is false.
-    if !fn_arrow_decl_substrate_is_whole_tree_for_census(0) {
+    if let Some(outside) = touched_paths
+        .iter()
+        .find(|p| !compile_clean_touched_path_selectable(p))
+    {
         eprintln!(
-            "compile-clean scope: DependencyView per-PR selection blocked-on-#6239 (fn_arrow_decl_substrate_is_whole_tree false)"
+            "compile-clean scope: touched path outside the selectable universe ({outside}) — compiler/infra change, whole-tree baseline"
+        );
+        return CompileCleanScopePlan::WholeTree;
+    }
+
+    if compile_clean_departed_paths_outside_docs(departed_paths) {
+        eprintln!(
+            "compile-clean scope: departed non-docs path in diff (deletion/rename) — whole-tree baseline"
         );
         return CompileCleanScopePlan::WholeTree;
     }
 
     let pool_roots = compile_clean_source_roots();
-    let roots = default_source_roots();
-    let (graph, indices) = match resolve_entry_graph_shared(&roots, ENTRY_SELECTION_ENTRY) {
-        Ok(v) => v,
-        Err(msg) => {
-            eprintln!(
-                "compile-clean scope: entry_selection resolve failed ({msg}) — whole-tree baseline"
-            );
-            return CompileCleanScopePlan::WholeTree;
-        }
-    };
-    let es_ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    if !fn_arrow_decl_substrate_is_whole_tree_for_census(es_ctx.modules.len()) {
-        eprintln!(
-            "compile-clean scope: DependencyView per-PR selection blocked-on-#6239 (fn_arrow_decl_substrate_is_whole_tree false)"
-        );
-        return CompileCleanScopePlan::WholeTree;
-    }
-
+    let facts = build_module_graph_facts_live(&pool_roots);
+    let declared_paths = facts.declared_repo_paths();
     let mut affected = Vec::new();
     for entry_path in compile_clean_shard_entry_paths_fast() {
-        match call_entry_affected_by_dependency_view(
-            &es_ctx,
+        match entry_file_touched_via_import_closure(
             &entry_path,
-            &pool_roots,
+            &facts,
+            &declared_paths,
             touched_paths,
         ) {
             Ok(true) => affected.push(entry_path),
@@ -1930,12 +1960,13 @@ fn regen_path_affects_regen(changed: &str, dag_closure: &HashSet<String>) -> boo
 
 /// CI label for the regen self-host fixed-point step's affected-set skip arm.
 /// `regen_not_affected_skip` iff the merge-base diff touches no regen input;
-/// `run_regen` on any intersection, empty diff, or observation/closure failure
-/// (fail-closed). This computes the label only; the CI shell (ci_spec.dag) gates
-/// the skip to pull_request events, so push-to-main runs regen unconditionally as
-/// the cold control that surfaces a wrong closure on the next merge.
+/// `run_regen` on any intersection, empty diff, departed non-docs path, or
+/// observation/closure failure (fail-closed). This computes the label only; the CI
+/// shell (ci_spec.dag) gates the skip to pull_request events, so push-to-main runs
+/// regen unconditionally as the cold control that surfaces a wrong closure on the
+/// next merge.
 pub fn regen_floor_skip_label_for_ci() -> String {
-    let (changed_paths, _departed) = match floor_git_diff_name_status_range() {
+    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
         Ok(v) => v,
         Err(msg) => {
             eprintln!("regen floor skip: diff observation failed ({msg}) — run regen");
@@ -1944,6 +1975,21 @@ pub fn regen_floor_skip_label_for_ci() -> String {
     };
     if changed_paths.is_empty() {
         eprintln!("regen floor skip: empty diff — run regen (fail-closed cold control)");
+        return RUN_REGEN_LABEL.to_string();
+    }
+    // Departed (deleted / renamed-from) non-docs paths: the closure below is computed
+    // from the CURRENT tree, so a deleted `.dag` file that WAS in the regen closure is
+    // invisible to it — the intersection test would skip a diff that provably changes
+    // the fresh emit (the deleted module no longer contributes; its importers now fail
+    // to resolve). Same guard shape as compile-clean's departed arm: run, never skip.
+    if let Some(gone) = departed_paths.iter().find(|p| {
+        let n = normalize_repo_path(p);
+        !n.starts_with("docs/")
+    }) {
+        eprintln!(
+            "regen floor skip: departed non-docs path in diff ({}) — run regen (current-tree closure cannot see deletions)",
+            normalize_repo_path(gone)
+        );
         return RUN_REGEN_LABEL.to_string();
     }
     let workspace = workspace_root();
@@ -1979,16 +2025,32 @@ pub fn regen_floor_skip_label_for_ci() -> String {
 }
 
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
+    // Falsifier cold-control arm: force the whole-tree compile before any diff observation.
+    // Widen-to-more-checking only — this env can never skip or narrow the gate, so it is a
+    // control, not an escape hatch (the deterministic whole-tree counterpart to the scoped
+    // per-PR admission, on the falsifier cadence).
+    if std::env::var("GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        eprintln!(
+            "compile-clean scope: whole-tree cold control forced (GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1)"
+        );
+        return CompileCleanScopePlan::WholeTree;
+    }
     if !compile_clean_scoping_active() {
         eprintln!("compile-clean scope: whole-tree (ci diff scoping inactive)");
         return CompileCleanScopePlan::WholeTree;
     }
     match floor_git_diff_name_status_range() {
-        Ok((changed_paths, _departed)) => {
+        Ok((changed_paths, departed_paths)) => {
             if FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst) {
-                return compile_clean_scope_plan_from_touched_paths_floor_fast(&changed_paths);
+                return compile_clean_scope_plan_from_touched_paths_floor_fast(
+                    &changed_paths,
+                    &departed_paths,
+                );
             }
-            match compile_clean_scope_plan_from_touched_paths(&changed_paths) {
+            match compile_clean_scope_plan_from_touched_paths(&changed_paths, &departed_paths) {
                 Ok(plan) => plan,
                 Err(msg) => CompileCleanScopePlan::Refused {
                     reason: format!("compile-clean scope disposition failed: {msg}"),
@@ -8162,7 +8224,6 @@ struct FloorDiffEdits {
 }
 
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
-const ENTRY_SELECTION_ENTRY: &str = "src/v2/lens/affected_set/entry_selection.dag";
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 
 // `entry_file_touched_via_dependency_view` (the fn-arrow DependencyView wrapper) was
@@ -8170,57 +8231,11 @@ const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // `Ok(true)` — a silent widen that marked every row entry-file-touched whenever any entry
 // file was touched, while its comment called that arm fail-closed. The channel's decision
 // now lives in `entry_file_touched_via_import_closure` (module-graph import-closure grain,
-// typed refusal on a facts gap). `call_entry_affected_by_dependency_view` remains below for
-// its other consumer (compile-clean scoping, gated on #6239) and as the decl-level
-// candidate when the namespace-only terminal step re-decides the grain.
-
-fn call_entry_affected_by_dependency_view(
-    ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    pool_roots: &[String],
-    touched_paths: &[String],
-) -> Result<bool, String> {
-    if !ctx
-        .item_registry
-        .contains_key("entry_affected_by_dependency_view")
-    {
-        return Err(
-            "entry_affected_by_dependency_view missing from entry_selection context".to_string(),
-        );
-    }
-    let roots: Vec<v1_interpreter::Value> = pool_roots
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
-    let touched: Vec<v1_interpreter::Value> = touched_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
-    let args = [
-        (
-            Some("entry_path".to_string()),
-            v1_interpreter::Value::Str(entry_path.to_string()),
-        ),
-        (Some("pool_roots".to_string()), list_value_from_vec(roots)),
-        (
-            Some("touched_paths".to_string()),
-            list_value_from_vec(touched),
-        ),
-    ];
-    match v1_interpreter::run_in_context_with_args(
-        ctx,
-        "entry_affected_by_dependency_view",
-        &args,
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
-        Ok(other) => Err(format!(
-            "entry_affected_by_dependency_view returned `{}`, expected Bool",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!("entry_affected_by_dependency_view: {e}")),
-    }
-}
+// typed refusal on a facts gap). `call_entry_affected_by_dependency_view` was deleted
+// 2026-07-16 when its last consumer (compile-clean scoping) regrounded onto the same
+// import-closure realization; the fn-arrow chain stays in `.dag`
+// (`v2.lens.affected_set.entry_selection`) as the decl-level candidate for when the
+// namespace-only terminal step re-decides the grain.
 
 fn call_entry_affected_by_touched_paths(
     ctx: &v1_interpreter::InterpContext,
@@ -16373,13 +16388,14 @@ mod witness_layer_roots_compile_clean_tests {
         );
     }
 
-    /// Lever-a receipt: docs-only compile-clean scope skips at path grain (pre-#6239).
+    /// Lever-a receipt: docs-only compile-clean scope skips at path grain.
     #[test]
     fn floor_fast_scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
-                "docs/plans/example.md".to_string(),
-            ]);
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &["docs/plans/example.md".to_string()],
+                &HashSet::new(),
+            );
             assert_eq!(
                 plan,
                 CompileCleanScopePlan::SkipNoAffected {
@@ -16403,15 +16419,114 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
-    /// Interim #6239: substrate not ready → whole-tree (not import-closure Scoped).
+    /// Selectable-universe guard: a mixed diff carrying a non-.dag non-docs path (compiler
+    /// seed `.rs`) keeps the whole-tree baseline even though a `.dag` path also intersects.
     #[test]
-    fn floor_fast_plan_whole_tree_when_substrate_not_ready() {
+    fn floor_fast_plan_whole_tree_on_mixed_rs_and_dag_touch() {
         with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
-                "dag/tools/dag_compile_clean_transport.dag".to_string(),
-                "src/v1/stage0/src/cli_run.rs".to_string(),
-            ]);
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &[
+                    "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                    "src/v1/stage0/src/cli_run.rs".to_string(),
+                ],
+                &HashSet::new(),
+            );
             assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+        });
+    }
+
+    /// Departed-path guard: a deleted/renamed-from non-docs path forces the whole-tree
+    /// baseline (current-tree adjacency cannot see the broken importers of a deleted module).
+    #[test]
+    fn floor_fast_plan_whole_tree_on_departed_dag_path() {
+        with_workspace_cwd(|| {
+            let departed: HashSet<String> = ["dag/std/logic.dag".to_string()].into_iter().collect();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &["dag/std/logic.dag".to_string()],
+                &departed,
+            );
+            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+        });
+    }
+
+    /// Docs-only departure stays a skip — the departed guard fires only outside docs/**.
+    #[test]
+    fn floor_fast_plan_docs_only_departure_still_skips() {
+        with_workspace_cwd(|| {
+            let departed: HashSet<String> =
+                ["docs/plans/example.md".to_string()].into_iter().collect();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &["docs/plans/example.md".to_string()],
+                &departed,
+            );
+            assert!(
+                matches!(plan, CompileCleanScopePlan::SkipNoAffected { .. }),
+                "expected SkipNoAffected, got {plan:?}"
+            );
+        });
+    }
+
+    /// Regen departed-path guard: a deleted `.dag` path must run regen even when the
+    /// current-tree closure no longer contains it (the closure is computed from the
+    /// current tree, so deletions are invisible to the intersection test). The control
+    /// below proves the same path as a modification outside the closure still skips.
+    #[test]
+    fn regen_floor_skip_runs_on_departed_dag_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "D\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(regen_floor_skip_label_for_ci(), RUN_REGEN_LABEL);
+            });
+        });
+    }
+
+    /// Control for the departed guard: the same non-closure path as a plain
+    /// modification keeps the skip arm (proves the guard discriminates on D, not path).
+    #[test]
+    fn regen_floor_skip_skips_on_modified_non_closure_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    regen_floor_skip_label_for_ci(),
+                    REGEN_NOT_AFFECTED_SKIP_LABEL
+                );
+            });
+        });
+    }
+
+    /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
+    /// itself through the import-closure grain (the discriminating RED for this arm is
+    /// `floor_fast_plan_whole_tree_on_mixed_rs_and_dag_touch` — same touch set plus an `.rs`
+    /// path flips the disposition to whole-tree).
+    #[test]
+    fn floor_fast_plan_scopes_touched_dag_entry_via_import_closure() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &["dag/std/logic.dag".to_string()],
+                &HashSet::new(),
+            );
+            match plan {
+                CompileCleanScopePlan::Scoped { entry_paths } => {
+                    assert!(
+                        entry_paths.iter().any(|p| p == "dag/std/logic.dag"),
+                        "expected dag/std/logic.dag in {entry_paths:?}"
+                    );
+                    let roster_len = compile_clean_shard_entry_paths_fast().len();
+                    assert!(
+                        entry_paths.len() < roster_len,
+                        "scoped selection must be a strict subset of the roster ({} vs {roster_len})",
+                        entry_paths.len()
+                    );
+                }
+                other => panic!("expected ScopedRun, got {other:?}"),
+            }
         });
     }
 
@@ -16420,9 +16535,11 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
     fn scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
-            let plan =
-                compile_clean_scope_plan_from_touched_paths(&["docs/plans/example.md".to_string()])
-                    .expect("scope disposition");
+            let plan = compile_clean_scope_plan_from_touched_paths(
+                &["docs/plans/example.md".to_string()],
+                &HashSet::new(),
+            )
+            .expect("scope disposition");
             assert_eq!(
                 plan,
                 CompileCleanScopePlan::SkipNoAffected {
@@ -16438,10 +16555,13 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold"]
     fn scoped_plan_includes_lever_a_dag_transport_touch() {
         with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths(&[
-                "dag/tools/dag_compile_clean_transport.dag".to_string(),
-                "src/v1/stage0/src/cli_run.rs".to_string(),
-            ])
+            let plan = compile_clean_scope_plan_from_touched_paths(
+                &[
+                    "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                    "src/v1/stage0/src/cli_run.rs".to_string(),
+                ],
+                &HashSet::new(),
+            )
             .expect("scope disposition");
             match plan {
                 CompileCleanScopePlan::Scoped { entry_paths } => {
@@ -16462,9 +16582,11 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
     fn scoped_plan_includes_touched_dag_entry() {
         with_workspace_cwd(|| {
-            let plan =
-                compile_clean_scope_plan_from_touched_paths(&["dag/std/logic.dag".to_string()])
-                    .expect("scope disposition");
+            let plan = compile_clean_scope_plan_from_touched_paths(
+                &["dag/std/logic.dag".to_string()],
+                &HashSet::new(),
+            )
+            .expect("scope disposition");
             match plan {
                 CompileCleanScopePlan::Scoped { entry_paths } => {
                     assert!(
@@ -16501,6 +16623,18 @@ mod witness_layer_roots_compile_clean_tests {
             let _ga = EnvGuard::set("GITHUB_ACTIONS", "true");
             let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
             assert!(compile_clean_scoping_active());
+        });
+    }
+
+    /// Falsifier cold-control arm: the env forces WholeTree before any diff observation
+    /// (widen-to-more-checking only — it can never skip or narrow the gate).
+    #[test]
+    fn cold_control_env_forces_whole_tree_scope_plan() {
+        with_env_test_lock(|| {
+            let _cc = EnvGuard::set("GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL", "1");
+            let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
+            let plan = compile_clean_scope_plan_for_ci();
+            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
         });
     }
 
