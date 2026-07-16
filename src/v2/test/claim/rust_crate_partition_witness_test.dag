@@ -1,21 +1,28 @@
 module v2.test.claim.rust_crate_partition_witness
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { ContentHash, NonEmptyStr }
+import v2.std.collection { Absent, Present, empty_map, map_insert }
 import v2.std.compilers.compilation_unit {
+  CompilationUnitId,
   HandExplicit,
+  ModuleId,
   PolicyDerived,
   PartitionR4Refused,
   PartitionR4Valid,
   SccSplit,
   UnitGraphCycle,
   partition_fold,
-  partition_unit_by_id,
   partition_provenance_eq,
   partition_provenance_hand_explicit,
   partition_provenance_policy_derived,
-  ModuleId,
-  CompilationUnitId
+  partition_unit_by_id
 }
 import v2.workflow.rust_crate_partition {
+  resolve_partition,
+  rust_crate_partition_declared_core_target,
+  rust_crate_partition_dissolve_on,
+  stage0_compilation_units,
   stage0_interim_explicit_assignment,
   stage0_module_dag,
   stage0_partition_fold_ok,
@@ -23,7 +30,10 @@ import v2.workflow.rust_crate_partition {
   stage0_partition_provenance,
   stage0_partition_r4_valid,
   stage0_partition_unit_count,
-  stage0_compilation_units,
+  stage0_unit_runtime,
+  stage0_unit_v1_compiler,
+  validate_partition_r4
+}
 
 data witness_red_control_note: String = "Discriminating RED: (1) assign std_algebra and std_nat to different units while keeping std_nat -> std_algebra edge → validate_partition_r4 returns SccSplit refusal; (2) fabricate a cyclic unit dep graph → UnitGraphCycle refusal; (3) drop a module from explicit assignment → partition_fold_outcome refuses or unit member count diverges."
 
@@ -32,8 +42,7 @@ fn witness_module_id(name: String) -> ModuleId {
 }
 
 fn witness_forced_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
-  let base = stage0_interim_explicit_assignment()
-  base
+  stage0_interim_explicit_assignment()
     |> map_insert(witness_module_id(name: "std_algebra"), "witness-unit-a" as ContentHash)
     |> map_insert(witness_module_id(name: "std_nat"), "witness-unit-b" as ContentHash)
 }
