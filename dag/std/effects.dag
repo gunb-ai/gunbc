@@ -17,6 +17,7 @@ type EffectShape
 type CreateCause
   = PostAlways
   | CreateIfAbsent { key_source: KeySource }
+  | KeylessFallback { method: HttpMethod }
 
 type KeySource
   = PathParam { param: String }
@@ -37,6 +38,7 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
       match cause {
         CreateIfAbsent { key_source: key_source } => true
         PostAlways => false
+        KeylessFallback { method: method } => false
       }
     AppendEffect => false
   }
@@ -65,6 +67,7 @@ fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
       match cause {
         CreateIfAbsent { key_source: key_source } => true
         PostAlways => false
+        KeylessFallback { method: method } => false
       }
     _ => false
   }
@@ -80,10 +83,12 @@ fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
               match cause_b {
                 CreateIfAbsent { key_source: kb } => key_source_eq(left: ka, right: kb)
                 PostAlways => false
+                KeylessFallback { method: method } => false
               }
             _ => false
           }
         PostAlways => false
+        KeylessFallback { method: method } => false
       }
     _ => false
   }
