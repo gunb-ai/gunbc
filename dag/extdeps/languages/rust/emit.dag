@@ -227,3 +227,11 @@ data rust_higher_order_methods: List<HigherOrderMethodSpec> = [
   { method_name: "all", inline_template: "\{ let mut __all = true; for \{param\} in \{iter\} \{ if !(\{body\}) \{ __all = false; break; \} \} __all \}", fn_ref_template: "\{iter\}.all(\{arg\})", wraps_in_sharing: false },
   { method_name: "flat_map", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ __result.extend(\{inner_iter\}); \} __result \}", fn_ref_template: "\{iter\}.flat_map(\{arg\}).collect::<Vec<_>>()", wraps_in_sharing: true }
 ]
+
+fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
+  qualified_module |> split(delimiter: ".") |> join(separator: "_")
+}
+
+fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
+  concat(rust_qualified_module_mod_basename(qualified_module: qualified_module), ".rs")
+}

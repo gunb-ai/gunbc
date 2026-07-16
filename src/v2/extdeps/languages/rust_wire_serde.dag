@@ -323,6 +323,7 @@ fn rust_wire_serde_target_model(naming: VariantNaming) -> TargetModel {
     lex: rust_ws_lex(),
     binding_spellings: empty_map(),
     authority_source_text: rust_ws_authority_source_text(naming: naming),
+    token_class_emit_transforms: empty_map(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }

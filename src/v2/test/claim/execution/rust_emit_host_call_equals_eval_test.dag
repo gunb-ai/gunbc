@@ -52,7 +52,9 @@ import v2.std.runtime {
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
 import v2.std.verification {
@@ -151,7 +153,10 @@ fn emit_call_eval_interpretation(
     transform: TransformInterpreter { call_primitive: call_primitive },
     branch: BranchInterpreter { choose_branch: emit_call_eval_choose_branch },
     loop: LoopInterpreter { step_loop: emit_call_eval_step_loop },
-    bind: BindInterpreter { bind_value: emit_call_eval_bind_value }
+    bind: BindInterpreter { bind_value: emit_call_eval_bind_value },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
+    }
   }
 }
 

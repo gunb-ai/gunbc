@@ -72,6 +72,8 @@ fn witness_corpus_never_forbids_co_residence() -> Bool {
       memory: runnable_memory_substantial(),
       execution_mode: Wet
     )
+    exclude_substrings: []
+    discovery_scope_dirs: []
   }
   !runnable_forbids_corpus_co_residence(r: corpus)
 }
