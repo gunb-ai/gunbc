@@ -1,35 +1,5 @@
 module v2.test.language_model.rust_r3_internal
 
-import v2.lens.leaf_model_verification {
-  rust_r3_internal_emit_coupling_both_projections_changed,
-  rust_r3_internal_fixture
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile,
-  outcome_rejected
-}
-import v2.std.leaf_model_verification {
-  LeafModelVerificationRunReceipt,
-  leaf_model_claim_rust_r3_internal_symbol_coupling,
-  TargetCompileAccepted,
-  TargetCompileVerdict
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verdict { verdict_fail }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Boundary,
-  manual_claim_anchor
-}
 fn rust_r3_internal_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^rust_r3_internal_claim_bool_true } }, children: [],

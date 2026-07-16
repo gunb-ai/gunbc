@@ -1,9 +1,5 @@
 module v2.test.claim.cargo_build_run_argv_witness
 
-import std.logic { Bool }
-import std.types { List, Int }
-import v2.std.algebra { length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

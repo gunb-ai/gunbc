@@ -1,12 +1,5 @@
 module gunbc.plans.md_helpers
 
-import std.markdown {
-  MarkdownBlock, MarkdownListItem, MarkdownTaskItem,
-  MarkdownTableCell, MarkdownTableRow,
-  HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock,
-  TaskListBlock, BlockquoteBlock,
-  TextInline, H2, H3, CheckboxState, Unchecked, ThematicBreak,
-}
 
 fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
 fn h3(text: String) -> MarkdownBlock { HeadingBlock { level: H3, inlines: [TextInline { text: text }] } }

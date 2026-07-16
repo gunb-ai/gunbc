@@ -1,32 +1,5 @@
 module test.claim.deploy_access_privilege_witness
 
-import std.logic { Bool }
-import std.types { NonEmptyStr }
-import gunbc.ci_deploy_access {
-  ci_deploy_srv1_access,
-  deploy_access_refusal_prefix,
-  deploy_access_privileged_fixture_actor,
-  deploy_access_unprivileged_fixture_actor,
-  deploy_access_check,
-  Permit,
-  Deny,
-  deploy_access_decision_reason,
-}
-import gunbc.host_effect {
-  ShellCommand,
-  HostOs,
-  NodeControlPlane,
-  host_effect_identity_evidence,
-  LocalShell,
-}
-import gunbc.host_effect_realize {
-  host_effect_apply_gated,
-  host_effect_drive_directive,
-  Refused,
-}
-import std.realization_reconcile { reconciliation_converged, NotConverged, Converged }
-import gunbc.fleet_intent { srv1_host }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

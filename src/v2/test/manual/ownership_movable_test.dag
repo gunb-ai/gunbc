@@ -1,6 +1,5 @@
 module v2.test.manual.ownership_movable
 
-import v1.compiler.ownership { build_movable_set, make_decision, BindingUsage, EdgeClassification, EdgeKind, OwnershipProof, OwnershipDecision }
 
 data ownership_movable_manual_pool_note: String = "Imports v1.compiler.ownership (#6249). Not in dag/ compile-clean closure — run with --source-root src/v1 in the dependency pool (local/manual receipt only)."
 

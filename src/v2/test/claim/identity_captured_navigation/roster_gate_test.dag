@@ -1,17 +1,5 @@
 module v2.test.claim.identity_captured_navigation.roster_gate
 
-import v2.lens.identity_captured_navigation { Finding }
-import v2.lens.identity_captured_navigation.roster_gate {
-  file_gate,
-  source_findings,
-  source_has_suspect
-}
-import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

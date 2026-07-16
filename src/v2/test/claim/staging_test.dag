@@ -1,10 +1,5 @@
 module v2.test.claim.staging
 
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
-import v2.std.staging { then_outcome, cached_stage, CacheProbe, Hit, Miss }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

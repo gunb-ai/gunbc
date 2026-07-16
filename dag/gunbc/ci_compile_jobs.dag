@@ -1,13 +1,5 @@
 module gunbc.ci_compile_jobs
 
-import std.types { Int, String }
-import std.measure { ByteSize, HardwareThreadCount, hardware_thread_count_value }
-import std.realization_width { process_memory_aware_spawn_width }
-import gunbc.ci_compile_measurement {
-  CompileJobMeasurement, CompileJobMeasured, CompileJobUnmeasured,
-  gunbc_ci_compile_measurement, gunbc_ci_compile_conservative_fallback_jobs
-}
-import extdeps.cpu.ampere { altra_max_m12830_catalog }
 
 type DerivedCompileJobs
   = CompileJobs { count: Int }

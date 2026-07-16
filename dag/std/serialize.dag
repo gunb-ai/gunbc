@@ -1,8 +1,5 @@
 module std.serialize
 
-import std.types { String, Bool, List }
-import std.layout { Doc, DocConcat, doc_text, doc_concat }
-import std.languages { SerializationKnobs, SerialField, SerialValue, ScalarValue, RecordValue }
 fn serial_scalar(text: String) -> SerialValue {
   ScalarValue { text: text }
 }

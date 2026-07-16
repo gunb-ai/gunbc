@@ -1,14 +1,5 @@
 module test.claim.srv3_os_install_emit
 
-import std.logic { Bool }
-import gunbc.os_install_emit { autoinstall_user_data }
-import gunbc.os_install { srv3_ubuntu_autoinstall }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

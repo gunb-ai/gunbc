@@ -1,17 +1,5 @@
 module v2.test.long.parse_table_memo_counter_witness
 
-import v2.compiler.parse {
-  ParseMemoStats,
-  grammar_validate_for_parse,
-  parse_production_memo_stats
-}
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.compilers.lexing { token_stream_remaining }
-import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.grammar { ModeledGrammar, ParseGrammar }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

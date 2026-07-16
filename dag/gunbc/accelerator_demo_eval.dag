@@ -1,15 +1,5 @@
 module gunbc.accelerator_demo_eval
 
-import std.types { Int, List }
-import std.realization_width { int_max }
-import gunbc.accelerator_demo_program {
-  AcceleratorDemoProgram,
-  PureElementwiseMap,
-  EffectfulElementwiseMap,
-  DataDependentGatherMap,
-  ElementwiseArrayOp,
-  pure_elementwise_ops_shape_recognizable,
-}
 
 fn int_relu(x: Int) -> Int {
   int_max(a: 0, b: x)

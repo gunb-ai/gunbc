@@ -1,32 +1,5 @@
 module v2.test.claim.bash_program_fold
 
-import extdeps.languages.bash.program {
-  CmdSubst,
-  AndOr,
-  AndThen,
-  Command,
-  Exit,
-  If,
-  OrElse,
-  Subshell,
-  Concat,
-  Lit,
-  ShellProgram,
-  ShellStmt,
-  ShellWord,
-  StderrToNull,
-  VarRef,
-  WithRedir,
-  assign,
-  command,
-  lit,
-  var_ref,
-  test_not_executable
-}
-import tools.build_step { BuildArtifact, emit_verifications }
-import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,10 +1,5 @@
 module v2.lens.languages_consumer_census
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data languages_consumer_census_data_decl_baseline: Int = 73
 data languages_consumer_census_per_language_row_baseline: Int = 66

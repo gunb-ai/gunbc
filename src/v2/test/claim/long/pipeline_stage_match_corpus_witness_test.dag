@@ -1,13 +1,5 @@
 module v2.test.long.pipeline_stage_match_corpus
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.test.compiler.pipeline.stage_bridge {
-  pipeline_match_corpus_infer_relationship_holds,
-  pipeline_match_corpus_lower_relationship_holds,
-  pipeline_match_corpus_normalize_relationship_holds,
-  pipeline_match_corpus_resolve_relationship_holds
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

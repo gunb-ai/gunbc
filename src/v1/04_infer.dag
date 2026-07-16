@@ -1,6 +1,11 @@
 module v1.compiler.infer
 
+<<<<<<< HEAD
 import std.types { SourceSpan, ContentHash, NonEmptyStr, container_param_name }
+=======
+<<<<<<< HEAD
+import std.types { SourceSpan, container_param_name }
+>>>>>>> 68baf375d7 (WIP: Namespace integration branch: collapse strip PRs #6603 #6600 #6607 #6610)
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
@@ -165,6 +170,8 @@ import v1.compiler.infer_access {
   check_index_access_node, check_slice_access_node
 }
 
+=======
+>>>>>>> 62111b1273 (Wave-1 namespace integration: restore collapsed import-strip on current main.)
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
 }

@@ -1,12 +1,6 @@
 
 module gunbc.design_document
 
-import std.markdown {
-  MarkdownDocument, MarkdownBlock,
-  HeadingBlock, TextInline, H1,
-}
-import gunbc.plans.md_helpers { h2, p, li, li_blocks, ul, hr }
-import extdeps.languages.markdown { serialize_markdown_source }
 
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 
