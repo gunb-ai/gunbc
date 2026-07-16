@@ -79,45 +79,32 @@ fn machine_shape_build_validation_index(domains: List<ExecutionDomain>) -> Machi
     })
 }
 
-fn domain_id_in_index(index: Map<DomainId, Bool>, id: DomainId) -> Bool {
-  match map_get(index, id) {
-    Present { value: true } => true
-    Present { value: false } => false
-    Absent => false
-  }
-}
-
-fn owner_has_level_in_index(index: Map<DomainId, Map<LevelId, Bool>>, owner_id: DomainId, level_id: LevelId) -> Bool {
-  match map_get(index, owner_id) {
-    Present { value: levels } =>
-      match map_get(levels, level_id) {
-        Present { value: true } => true
-        Present { value: false } => false
-        Absent => false
-      }
-    Absent => false
-  }
-}
-
 fn machine_shape_validate_edge(index: MachineShapeValidationIndex, edge: InterconnectEdge) -> MachineShapeConstruction? {
   match edge {
     LinkEdge { from: from_id, to: to_id, link: _ } =>
-      if !domain_id_in_index(index: index.domain_ids, id: from_id) {
+      if !map_contains_key(index.domain_ids, from_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: from_id } } }
-      } else if !domain_id_in_index(index: index.domain_ids, id: to_id) {
+      } else if !map_contains_key(index.domain_ids, to_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: to_id } } }
       } else {
         none
       }
     SharedLevelEdge { owner: owner_id, sharer: sharer_id, level: level_id } =>
-      if !domain_id_in_index(index: index.domain_ids, id: owner_id) {
+      if !map_contains_key(index.domain_ids, owner_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: owner_id } } }
-      } else if !domain_id_in_index(index: index.domain_ids, id: sharer_id) {
+      } else if !map_contains_key(index.domain_ids, sharer_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: sharer_id } } }
-      } else if !owner_has_level_in_index(index: index.owner_levels, owner_id: owner_id, level_id: level_id) {
-        Present { value: MachineShapeRefused { cause: UnknownLevel { owner: owner_id, level: level_id } } }
       } else {
-        none
+        match map_get(index.owner_levels, owner_id) {
+          Present { value: owner_level_index } =>
+            if !map_contains_key(owner_level_index, level_id) {
+              Present { value: MachineShapeRefused { cause: UnknownLevel { owner: owner_id, level: level_id } } }
+            } else {
+              none
+            }
+          Absent =>
+            Present { value: MachineShapeRefused { cause: UnknownLevel { owner: owner_id, level: level_id } } }
+        }
       }
   }
 }
