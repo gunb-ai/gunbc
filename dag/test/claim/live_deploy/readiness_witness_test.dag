@@ -29,14 +29,19 @@ import gunbc.host_effect {
   SshShell,
 }
 import gunbc.host_effect_realize { host_effect_apply }
+import std.disposition { Scaffold, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_reconcile {
   reconciliation_converged,
   NotConverged,
   DoesNotGround,
   Grounds,
 }
-import std.measure { second_count, measure_fit_count_floor }
-import extdeps.tools.sleep
+import std.measure { measure_fit_count_floor }
+import extdeps.tools.sleep {
+  sleep_delay_seconds_flat_scalar_dissolution_trigger,
+  sleep_delay_seconds_second_carrier_projection,
+}
 import gunbc.roadmap_static_site { roadmap_site_healthz_body }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -111,6 +116,21 @@ fn witness_reconcile_grounds_healthy_fixture_read() -> Bool {
   )
 }
 
+fn witness_sleep_second_carrier_projection_paces_poll() -> Bool {
+  sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
+}
+
+fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
+  match sleep_delay_seconds_flat_scalar_dissolution_trigger {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+    } =>
+      m == "extdeps.tools.sleep" && n == "sleep_delay_seconds_second_carrier_projection"
+    Terminal { reason: _ } => false
+  }
+}
+
 fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() -> Bool {
   let spec = deployment_spec_srv1()
   let probe = reconcile_service_ready_read(
@@ -127,9 +147,8 @@ fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() -> Bool
       )
     )
   )
-  let cadence = to_string(second_count(s: live_deploy_service_ready_poll_cadence_seconds())) as NonEmptyStr
-  let delay = sleep.Delay.Seconds(seconds: cadence)
-  !reconciliation_converged(r: probe) && delay.success
+  let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
+  !reconciliation_converged(r: probe) && delay
 }
 
 fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
@@ -183,6 +202,8 @@ test fn live_deploy_readiness_witnesses() -> Bool {
     && witness_service_ready_once_converges_on_healthy_fixture()
     && witness_reconcile_grounds_healthy_fixture_read()
     && witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep()
+    && witness_sleep_second_carrier_projection_paces_poll()
+    && witness_sleep_flat_scalar_dissolution_trigger_tracked()
     && witness_bounded_poll_early_exit_on_grounded_read()
     && witness_bounded_poll_max_attempts_derived_from_bound_over_cadence()
     && witness_red_control_never_ready_refuses_at_poll_bound()

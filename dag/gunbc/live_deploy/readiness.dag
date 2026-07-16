@@ -1,7 +1,6 @@
 module gunbc.live_deploy.readiness
 
 import std.types { String, Bool, Int, NonEmptyStr }
-import std.measure { Second, second_count }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -228,9 +227,8 @@ fn live_deploy_poll_service_ready_after_attempts(
     if reconciliation_converged(r: probe) {
       probe
     } else {
-      let cadence = to_string(second_count(s: live_deploy_service_ready_poll_cadence)) as NonEmptyStr
-      let delay = sleep.Delay.Seconds(seconds: cadence)
-      if delay.success {
+      let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence)
+      if delay {
         live_deploy_poll_service_ready_after_attempts(
           spec: spec,
           transport: transport,
