@@ -533,9 +533,7 @@ pub fn union_variant_locals_into_acc(
             None => m.clone(),
             Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
                 None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
-                Some(_existing) => {
-                    v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
-                }
+                Some(_existing) => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
             },
         },
     )

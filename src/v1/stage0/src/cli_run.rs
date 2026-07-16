@@ -5427,8 +5427,10 @@ fn reconcile_with_typed_cache(
     index: &MultiEntryIndex,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
-    let global_bare_variant_locals =
-        v1_compiler_infer::build_global_bare_variant_locals(global_bare.clone(), source_indices.clone());
+    let global_bare_variant_locals = v1_compiler_infer::build_global_bare_variant_locals(
+        global_bare.clone(),
+        source_indices.clone(),
+    );
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =

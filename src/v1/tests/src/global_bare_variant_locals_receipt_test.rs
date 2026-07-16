@@ -80,8 +80,9 @@ fn simulate_old_merge_global_bare_variant_locals(
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: &str,
 ) -> Rc<VariantFoldState> {
-    global_bare.iter().fold(state, |acc, (name, lookup)| {
-        match lookup.as_ref() {
+    global_bare
+        .iter()
+        .fold(state, |acc, (name, lookup)| match lookup.as_ref() {
             GlobalBareLookupState::GlobalBareUniqueBinding { binding } => {
                 let owner = binding.resolved.clone();
                 if owner.connective == Connective::Disj
@@ -103,8 +104,7 @@ fn simulate_old_merge_global_bare_variant_locals(
                 }
             }
             GlobalBareLookupState::GlobalBareAmbiguousBinding => acc,
-        }
-    })
+        })
 }
 
 fn expected_variant_locals_old_path(
@@ -201,12 +201,8 @@ fn receipt1_owning_module_same_authority_variant_locals_byte_identical() {
     );
 
     let got = tc.typed.type_env_cache.variant_locals.clone();
-    let expected_old = expected_variant_locals_old_path(
-        &resolved,
-        &source_indices,
-        &intern_table,
-        &global_bare,
-    );
+    let expected_old =
+        expected_variant_locals_old_path(&resolved, &source_indices, &intern_table, &global_bare);
 
     assert!(
         maps_byte_identical(&got, &expected_old, &source_indices),
@@ -227,8 +223,13 @@ fn receipt1_owning_module_same_authority_variant_locals_byte_identical() {
             collision_errors: Rc::new(im_rc::Vector::new()),
         }),
     );
-    let probe_eur_module = module_fold.locals.get("ProbeEur").expect("module defines ProbeEur");
-    let probe_eur_got = got.get("ProbeEur").expect("env_variant_locals has ProbeEur");
+    let probe_eur_module = module_fold
+        .locals
+        .get("ProbeEur")
+        .expect("module defines ProbeEur");
+    let probe_eur_got = got
+        .get("ProbeEur")
+        .expect("env_variant_locals has ProbeEur");
     assert!(
         binding_byte_identical(probe_eur_got, probe_eur_module, &source_indices),
         "overlay-wins: env_variant_locals[ProbeEur] must be the module-fold binding"
