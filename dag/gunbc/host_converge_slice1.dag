@@ -33,7 +33,7 @@ import gunbc.fleet_show_effective_read {
 }
 
 data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
-  reason: "Slice 1 host-converge: wire the first real knob — srv1 actions-runner@srv1-01.service per_slot_memory_max_bytes — from fleet_converge_policy through live systemctl show/set-property (LocalShell on-host) into ConvergeTarget PerSlotMemoryCap verdict semantics, with independent read-back and reapply-noop proof. ONE knob only; srv2/srv3 and other knobs stay on the host_converge_realize frontier. Transport intent lives here; shell realization is scaffold-marked medium-as-string (host_converge_slice1_transport_script_scaffold) until host_effect orchestration emit binds grammar rows — read scripts delegate to fleet_show_effective_read; set-property is slice-local concat."
+  reason: "Slice 1 host-converge: wire the first real knob — srv1 actions-runner@srv1-01.service per_slot_memory_max_bytes — from fleet_converge_policy through live systemctl show/set-property (LocalShell on-host) into ConvergeTarget PerSlotMemoryCap verdict semantics, with independent read-back and reapply-noop proof. ONE knob only; srv2/srv3 and other knobs stay on the host_converge_realize frontier. Transport intent lives here; shell realization is scaffold-marked medium-as-string (host_converge_slice1_transport_script_scaffold) until host_effect orchestration emit binds grammar rows — read scripts delegate to fleet_show_effective_read; set-property is slice-local concat. Dissolve-on (same bind): knob.desired bytes_value is inherited ConvergeKnob String at the shell seam; emit lane should terminate on ByteSize-typed argv rows, not raw String interpolation."
 }
 
 data host_converge_slice1_transport_script_scaffold: Disposition = Scaffold {
@@ -388,25 +388,4 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
         }
       }
   }
-}
-
-fn host_converge_slice1_knob_wired() -> Bool {
-  match host_converge_slice1_srv1_per_slot_memory_max_knob() {
-    Present { value: knob } => host_converge_slice1_knob_is_per_slot_memory_max(knob: knob)
-    Absent => false
-  }
-}
-
-fn host_converge_slice1_apply_path_wired() -> Bool {
-  string_contains(
-    s: host_converge_slice1_memory_max_set_script(
-      unit: host_converge_slice1_probe_unit,
-      bytes_value: "1",
-    ),
-    pattern: "set-property",
-  )
-    && string_contains(
-      s: host_converge_slice1_memory_max_read_script(unit: host_converge_slice1_probe_unit),
-      pattern: "systemctl show",
-    )
 }
